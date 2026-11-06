@@ -1,11 +1,14 @@
+import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 import type { LabAdapter, TaskRow } from "../adapter";
 import { COLUMNS, columnOf, dismissalKey, type Column } from "../lib/columns";
 import { taskSignalTone } from "../lib/task-status";
 import { useMissing, useNow, useWatch } from "../lib/use-watch";
+import { PANE_TITLE } from "../modes";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
 import { TaskTime } from "./flow-state/task-signals";
+import { PaneHeader } from "./PaneHeader";
 import { HarnessTag, rowNote, ThreadIcon } from "./ThreadStatus";
 import { ThreadView } from "./ThreadView";
 
@@ -55,53 +58,68 @@ export function ThreadsBoard({
 
   return (
     <aside aria-label="Tasks" className="flex h-full min-h-0 flex-col bg-inspector">
-      <h2 className="border-b border-border px-4 py-3 text-sm font-semibold">Tasks</h2>
+      <PaneHeader>
+        <h2 className="text-sm font-semibold">{PANE_TITLE.board}</h2>
+      </PaneHeader>
       {groups.length === 0 ? (
-        <p className="px-4 py-3 text-xs text-muted-foreground">
+        <p className="px-4 py-4 text-xs text-muted-foreground">
           None yet. Ask the main session for something and it starts a task for each piece.
         </p>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
           {groups.map((group) => {
             const shut = collapsed[group.id] ?? false;
             return (
-              <section key={group.id} aria-label={group.label} data-column={group.id} className="mb-2">
+              <section key={group.id} aria-label={group.label} data-column={group.id} className="mb-3">
                 <button
                   type="button"
                   aria-expanded={!shut}
                   onClick={() => setCollapsed((c) => ({ ...c, [group.id]: !shut }))}
-                  className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                  className="flex w-full items-center gap-1 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  {group.label} · {group.rows.length} {shut ? "▸" : "▾"}
+                  <ChevronRightIcon aria-hidden className={cn("size-3.5 shrink-0 transition-transform", !shut && "rotate-90")} />
+                  {group.label} · {group.rows.length}
                 </button>
                 {shut ? null : (
-                  <ul>
+                  <ul className="mt-0.5">
                     {group.rows.map((task) => (
                       <li key={task.id}>
                         <button
                           type="button"
                           onClick={() => onOpen(task.id)}
+                          aria-current={task.id === openId ? "true" : undefined}
                           data-task-status={task.status}
                           data-task-id={task.id}
-                          className="flex w-full items-start gap-2 px-2 py-1.5 text-left hover:bg-accent"
+                          className={cn(
+                            "flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent/60",
+                            task.id === openId && "bg-accent",
+                          )}
                         >
                           <ThreadIcon task={task} />
                           <span className="min-w-0 flex-1">
-                            <span className="flex items-center gap-2">
-                              <span className="truncate text-sm font-semibold">{task.title}</span>
-                              <HarnessTag task={task} />
+                            <span className="flex items-baseline gap-2">
+                              <span className="min-w-0 flex-1 truncate text-sm font-medium">{task.title}</span>
+                              {task.view !== undefined ? (
+                                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                                  <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={taskSignalTone} />
+                                </span>
+                              ) : null}
                             </span>
-                            <span className={cn("block truncate text-xs text-muted-foreground", task.steps && "font-mono")}>
+                            <span
+                              className={cn(
+                                "mt-0.5 block truncate text-xs",
+                                task.status === "errored" ? "text-destructive" : "text-muted-foreground",
+                                task.steps && "font-mono",
+                              )}
+                            >
                               {task.steps ? `${task.steps.done}/${task.steps.total} · ` : ""}
                               {rowNote(task)}
                             </span>
-                            <Spend spend={task.spend} />
-                          </span>
-                          {task.view !== undefined ? (
-                            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                              <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={taskSignalTone} />
+                            <span className="mt-1 flex items-center gap-1.5">
+                              <HarnessTag task={task} />
+                              <Spend spend={task.spend} className="min-w-0 flex-1" />
                             </span>
-                          ) : null}
+                          </span>
                         </button>
                       </li>
                     ))}

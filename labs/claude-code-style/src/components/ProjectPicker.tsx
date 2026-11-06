@@ -71,7 +71,7 @@ export function ProjectPicker({
                 type="button"
                 disabled={pick.busy}
                 onClick={() => void pick.submit(undefined, project)}
-                className="w-full border border-border bg-background px-3 py-2 text-left font-mono text-sm hover:bg-accent disabled:opacity-50"
+                className="rounded-md w-full border border-border bg-background px-3 py-2 text-left font-mono text-sm hover:bg-accent disabled:opacity-50"
               >
                 {project.name}
               </button>
@@ -90,7 +90,7 @@ export function ProjectPicker({
             placeholder="Name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="border border-border bg-background px-3 py-2 text-sm"
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm"
           />
           <input
             aria-label="Repository"
@@ -102,7 +102,7 @@ export function ProjectPicker({
               // A refusal is asked again: the person may have fixed the repository since.
               if (value !== "" && (checked?.repository !== value || !checked.answer.usable)) void check.submit(undefined, value);
             }}
-            className="border border-border bg-background px-3 py-2 font-mono text-sm"
+            className="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
           />
           <p className="text-[11px] text-muted-foreground">A git repository on this machine, as a file:// address. Its committed .gitignore must ignore .fsdev/.</p>
           {current === undefined ? null : current.usable ? (
@@ -123,7 +123,7 @@ export function ProjectPicker({
           <button
             type="submit"
             disabled={create.busy || name.trim() === "" || repository.trim() === "" || current?.usable === false}
-            className="border border-border bg-background px-3 py-2 text-left text-sm font-semibold hover:bg-accent disabled:opacity-50"
+            className="rounded-md border border-border bg-background px-3 py-2 text-left text-sm font-semibold hover:bg-accent disabled:opacity-50"
           >
             Create project
           </button>

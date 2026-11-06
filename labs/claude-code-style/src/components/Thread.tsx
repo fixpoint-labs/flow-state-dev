@@ -5,6 +5,8 @@ import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
 import { cn } from "../lib/utils";
 import { Composer } from "./Composer";
+import { PaneHeader } from "./PaneHeader";
+import { WorkingDots } from "./WorkingLine";
 import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
 import { JumpToLatestButton } from "./JumpToLatest";
 import { LoadEarlier } from "./LoadEarlier";
@@ -63,17 +65,14 @@ export function Thread({
 
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col">
-      <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
+      <PaneHeader className="px-6">
         <div className="min-w-0">
           <h1 className="truncate text-sm font-semibold">{session.title}</h1>
           <div className="truncate font-mono text-xs text-muted-foreground">
             {session.projectId === null ? "no project" : `in project: ${project?.name ?? session.projectId}`}
           </div>
         </div>
-        <span className="border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-          {mode?.label ?? session.worker}
-        </span>
-      </header>
+      </PaneHeader>
       {/* A stopped feed comes back with the page: the thread's feed reopens on load. */}
       <ConnectionBanner feed={{ state: connection }} onRetry={() => window.location.reload()} />
       <div ref={feed.ref} className="flex-1 overflow-y-auto px-6 pt-4 pb-10">
@@ -89,7 +88,7 @@ export function Thread({
                     <button
                       type="button"
                       onClick={() => setSeed({ text: line, at: Date.now() })}
-                      className="w-full border border-border bg-background px-3 py-1.5 text-left text-xs text-foreground hover:bg-accent"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-left text-xs text-foreground hover:bg-accent"
                     >
                       {line}
                     </button>
@@ -99,7 +98,7 @@ export function Thread({
             )}
           </div>
         ) : (
-          <div className="mx-auto flex max-w-2xl flex-col gap-3">
+          <div className="mx-auto flex max-w-2xl flex-col gap-3 [&>*]:shrink-0">
             <LoadEarlier load={view?.loadEarlier} />
             {view?.entries.map((entry) =>
               entry.kind === "thread" ? (
@@ -124,8 +123,8 @@ export function Thread({
               ),
             )}
             {running && view?.turnStartedAt !== undefined ? (
-              <div role="status" className={cn("flex items-center gap-2 text-xs text-info", stale && STALE_CLASS)} data-request-id={view.requestId}>
-                <span className="size-2 animate-pulse rounded-full bg-info" />
+              <div role="status" className={cn("flex items-center gap-3 py-1 text-sm text-muted-foreground", stale && STALE_CLASS)} data-request-id={view.requestId}>
+                <WorkingDots />
                 working · {elapsed(view.turnStartedAt, now)}
               </div>
             ) : null}
