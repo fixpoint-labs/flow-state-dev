@@ -360,17 +360,32 @@ export type ZodDeclaredDefault =
 
 /**
  * The default a `.default()` declares, or `undefined` for any other schema.
- * A static default's value is read through zod's own thunk; an author's
- * factory is returned as is, never called.
+ *
+ * zod 3 keeps no raw value: `.default(value)` stores the thunk `() => def`,
+ * and `.default(fn)` stores `fn`. So a default is read as static only when
+ * both hold: its text is exactly zod's thunk, which is a read of one binding
+ * and so has no side effect to run; and two calls return the same value
+ * (`Object.is`), which a closure that recomputes (a getter behind the name,
+ * say) does not. That value is kept, so the thunk runs twice at most. Any
+ * other function is an author's factory: returned as is and never called.
  */
 export function getZodDeclaredDefault(schema: ZodTypeAny): ZodDeclaredDefault | undefined {
   if (getZodTypeName(schema) !== "ZodDefault") return undefined;
   const raw = (schema as any)._def.defaultValue;
   if (typeof raw !== "function") return { kind: "static", factory: () => raw, value: () => raw };
   const factory = raw as () => unknown;
-  return STATIC_DEFAULT_SOURCE !== undefined && String(factory) === STATIC_DEFAULT_SOURCE
-    ? { kind: "static", factory, value: factory }
-    : { kind: "dynamic", factory };
+  if (STATIC_DEFAULT_SOURCE === undefined || String(factory) !== STATIC_DEFAULT_SOURCE) {
+    return { kind: "dynamic", factory };
+  }
+  let first: unknown;
+  let second: unknown;
+  try {
+    first = factory();
+    second = factory();
+  } catch {
+    return { kind: "dynamic", factory };
+  }
+  return Object.is(first, second) ? { kind: "static", factory, value: () => first } : { kind: "dynamic", factory };
 }
 
 /** `true` for a `z.object` with no catchall, no strict or passthrough mode and no refinement. */

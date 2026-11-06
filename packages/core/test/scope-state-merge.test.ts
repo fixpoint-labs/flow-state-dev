@@ -250,6 +250,32 @@ describe("a default JSON and deepEqual can't read never crashes defineFlow", () 
   });
 });
 
+describe("a static default is told from a factory by behaviour, not only by its text", () => {
+  const merge = (a: z.ZodTypeAny, b: z.ZodTypeAny) =>
+    mergeScopeStateSchemas("Flow \"f\"", "session", [
+      decl(z.object({ x: a }), "block \"a\""),
+      decl(z.object({ x: b }), "block \"b\"")
+    ]);
+
+  it("a closure with zod's thunk text that recomputes each call is a factory, compared by identity", () => {
+    let n = 0;
+    Object.defineProperty(globalThis, "def", { get: () => ++n, configurable: true });
+    try {
+      // The same source text zod gives `.default(value)`'s thunk.
+      const one = new Function("return () => def")() as () => number;
+      const two = new Function("return () => def")() as () => number;
+      expect(() => merge(z.number().default(one), z.number().default(two))).toThrow(/a dynamic default/);
+    } finally {
+      delete (globalThis as { def?: unknown }).def;
+    }
+  });
+
+  it("two separate .default(value) declarations still merge, primitive or not", () => {
+    expect(() => merge(z.string().default("plan"), z.string().default("plan"))).not.toThrow();
+    expect(() => merge(z.array(z.string()).default([]), z.array(z.string()).default([]))).not.toThrow();
+  });
+});
+
 describe("a static default's fingerprint ignores key order, not array order", () => {
   const item = (prefs: unknown) =>
     z.array(z.object({ prefs: z.record(z.string()).default(prefs as Record<string, string>) }));
