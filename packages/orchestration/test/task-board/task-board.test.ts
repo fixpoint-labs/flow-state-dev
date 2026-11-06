@@ -4,7 +4,7 @@
  * Coverage:
  *   - handle structure and validation
  *   - basic drain (single + multi worker)
- *   - dependency-gated dispatch (topological)
+ *   - the default claim order (fifo): dep gating, concurrent claims, cancel
  *   - worker registry routing by task.assignee
  *   - CAS contention safety (no double-dispatch)
  *   - mid-drain enqueue (workers add new tasks during the drain)
@@ -18,7 +18,7 @@
  * every dispatch, which is the convention the pattern is designed
  * around. No `z.any()` escape hatches.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { testBlock } from "@flow-state-dev/testing";
@@ -39,6 +39,7 @@ import {
   createClaimTask,
   createRecordSuccess,
   createSeedCollection,
+  type TaskBoardClaimOrderInput,
 } from "../../src/task-board";
 
 // ---------------------------------------------------------------------------
@@ -348,8 +349,17 @@ describe("taskBoard - basic drain", () => {
 // Dependency-gated dispatch
 // ---------------------------------------------------------------------------
 
-describe("taskBoard - dependency-gated dispatch (topological)", () => {
-  it("waits for upstream completion before dispatching downstream", async () => {
+describe("taskBoard - default claim order (fifo)", () => {
+  // A board that names no claim order claims through `fifoClaimOrder`: the
+  // substrate's admission rule does the dep gating, so the default needs no
+  // order of its own. Spying on the export proves which claim order runs, not
+  // only that the outcome happens to match.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("claims through fifoClaimOrder and waits for upstream completion before dispatching downstream", async () => {
+    const claim = vi.spyOn(fifoClaimOrder, "claim");
     const order: string[] = [];
 
     const orderedWorker = handler({
@@ -366,7 +376,6 @@ describe("taskBoard - dependency-gated dispatch (topological)", () => {
       name: "topo",
       collection: { collectionId: "topo" },
       concurrency: 2,
-      claimOrder: "topological",
       workers: orderedWorker,
       initialTasks: [
         { id: "u", goal: "upstream" },
@@ -377,9 +386,78 @@ describe("taskBoard - dependency-gated dispatch (topological)", () => {
 
     const result = await testBlock(board.drain, { input: undefined });
     expect(result.error).toBeNull();
-    // u must come first; leaf must come last; downstream sits between.
-    expect(order[0]).toBe("upstream");
-    expect(order[order.length - 1]).toBe("leaf");
+    expect(claim).toHaveBeenCalled();
+    // Dep order holds under two concurrent workers, and no row runs twice.
+    expect(order).toEqual(["upstream", "downstream", "leaf"]);
+  });
+
+  it("dispatches each row exactly once when concurrent workers race the default claim", async () => {
+    const claim = vi.spyOn(fifoClaimOrder, "claim");
+    const trace: string[] = [];
+
+    const board = taskBoard({
+      name: "fifo-race",
+      collection: { collectionId: "fifo-race" },
+      concurrency: 4,
+      workers: makeEchoWorker("uniform", trace),
+      initialTasks: Array.from({ length: 8 }, (_, i) => ({
+        id: `t${i}`,
+        goal: `t${i}`,
+        input: { topic: `t${i}` },
+      })),
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    // Four workers race the claim; the substrate's re-check lets one win a row.
+    expect(claim.mock.calls.length).toBeGreaterThanOrEqual(8);
+    expect([...trace].sort()).toEqual(
+      Array.from({ length: 8 }, (_, i) => `uniform:t${i}`).sort()
+    );
+  });
+
+  it("never claims a dependent whose upstream errored; the board cancels it", async () => {
+    const claim = vi.spyOn(fifoClaimOrder, "claim");
+    const ran: string[] = [];
+    const failingWorker = handler({
+      name: "fail-up",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: noOutputSchema,
+      execute: (input) => {
+        ran.push(input.goal);
+        if (input.goal === "u") throw new Error("upstream failed");
+        return null;
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "fifo-cancel",
+      collection: { collectionId: "fifo-cancel" },
+      concurrency: 2,
+      workers: failingWorker,
+      initialTasks: [
+        { id: "u", goal: "u" },
+        { id: "d", goal: "d", deps: ["u"] },
+      ],
+      onError: "skip",
+      idlePollMs: 10,
+      maxIterations: 200,
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    expect(claim).toHaveBeenCalled();
+    expect(ran).toEqual(["u"]);
+    const final = lastTaskState(result.items);
+    expect(final.get("u")).toBe("errored");
+    expect(final.get("d")).toBe("cancelled");
+  });
+
+  it('offers two named claim orders: "topological" is not one', () => {
+    // @ts-expect-error -- "topological" had fifo's body and left the union.
+    const retired: TaskBoardClaimOrderInput = "topological";
+    const named: TaskBoardClaimOrderInput[] = ["fifo", "priority"];
+    expect(named).not.toContain(retired);
   });
 });
 
@@ -852,7 +930,7 @@ describe("taskBoard - failure handling", () => {
   it("downstream pending task with errored deps blocks loop exit until cancelled (onIdle: 'complete')", async () => {
     // Regression for the legacy `onIdle: "complete"` behavior the
     // FIX-626 default change supersedes. Pinned explicitly: the
-    // topological dispatcher excludes `d` (its dep `u` is errored,
+    // fifo claim order excludes `d` (its dep `u` is errored,
     // not completed), and `"complete"` mode still counts `d` as
     // in-flight — workers spin-poll until an external actor cancels
     // the unreachable task. The new `"complete-or-blocked"` default
@@ -885,7 +963,7 @@ describe("taskBoard - failure handling", () => {
       name: "deps-fail",
       collection: { backing: "sequencer", collectionId: "df" },
       concurrency: 1,
-      claimOrder: "topological",
+      claimOrder: "fifo",
       workers: failingWorker,
       initialTasks: [
         { id: "u", goal: "u" },
@@ -987,7 +1065,7 @@ describe("taskBoard - onIdle modes", () => {
       name: "deps-fail-default",
       collection: { collectionId: "dfd" },
       concurrency: 1,
-      claimOrder: "topological",
+      claimOrder: "fifo",
       workers: failingWorker,
       initialTasks: [
         { id: "u", goal: "u" },
@@ -1013,7 +1091,7 @@ describe("taskBoard - onIdle modes", () => {
       name: "cob-success",
       collection: { collectionId: "cob-success" },
       concurrency: 2,
-      claimOrder: "topological",
+      claimOrder: "fifo",
       workers: makeEchoWorker("uniform", trace),
       initialTasks: [
         { id: "a", goal: "a", input: { topic: "a" } },
@@ -1773,7 +1851,7 @@ describe("taskBoard - board-meta emission", () => {
       name: "meta-blocked",
       collection: { collectionId: "meta-blocked" },
       concurrency: 1,
-      claimOrder: "topological",
+      claimOrder: "fifo",
       workers: failingWorker,
       initialTasks: [
         { id: "u", goal: "u" },

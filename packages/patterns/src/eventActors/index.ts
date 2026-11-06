@@ -44,7 +44,7 @@ import {
   type TaskInit,
   type TaskWorkerInput,
   type TaskWorkerRegistry,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { matchTopic } from "./match-topic";
 import {

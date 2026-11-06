@@ -204,7 +204,11 @@ export type SendOptions = {
   metadata?: Record<string, unknown>;
 };
 
-/** The answer that resolves a pending suspension. */
+/**
+ * The answer that resolves a pending suspension. Who resolved it is the
+ * signed-in caller (the request's owner when the app does not authenticate),
+ * set by the server.
+ */
 export type ResumeSuspensionBody = {
   /** Id of the pending suspension to resolve. */
   suspensionId: string;
@@ -217,11 +221,6 @@ export type ResumeSuspensionBody = {
   action: ResumeAction;
   /** Resume payload validated against the suspension's `resumeSchema`. */
   data?: unknown;
-  /**
-   * @deprecated Ignored: the server records the signed-in caller (the
-   * request's owner when the app does not authenticate) as who resolved it.
-   */
-  resumedBy?: string;
 };
 
 /**
@@ -326,9 +325,12 @@ export interface RequestHandle {
    * handle. Rejects with a `ClientHttpError`: 404 for a stop that is not the
    * caller's or not a user's, 409 for one already resolved (an answer, a
    * cancel, a deadline or a stop got there first), 410 past its deadline,
-   * 400 for an answer that fails the stop's schema.
+   * 400 for an answer that fails the stop's schema. With `{ stream: true }`
+   * it resolves to the route's SSE `Response` instead, so the continuation
+   * streams from the POST itself, as `resume` and `continue` do.
    */
   answer(body: AnswerSuspensionBody): Promise<RequestHandle>;
+  answer(body: AnswerSuspensionBody, options: StreamOption): Promise<Response>;
   /** Follow the request's events. */
   stream(options: RequestStreamOptions): RequestStreamHandle;
 }
@@ -796,6 +798,22 @@ function requestHandle(
       : requestHandle(t, flow, resumed.requestId, session === undefined ? undefined : await session);
   }
 
+  async function answer(body: AnswerSuspensionBody, answerOptions?: StreamOption): Promise<RequestHandle | Response> {
+    requireValue(body.suspensionId, "suspensionId");
+    if (!RESUME_ACTIONS.includes(body.action)) {
+      clientError(`answer requires action one of ${RESUME_ACTIONS.join(", ")}`);
+    }
+    const init: RequestInit = {
+      method: "POST",
+      body: JSON.stringify({ suspensionId: body.suspensionId, action: body.action, ...(body.data !== undefined ? { data: body.data } : {}) })
+    };
+    if (answerOptions?.stream === true) {
+      return t.raw(`${base}/answer`, { ...init, headers: { ...JSON_HEADERS, ...SSE_HEADERS } });
+    }
+    await t.json<{ requestId: string }>(`${base}/answer`, { ...init, headers: JSON_HEADERS });
+    return handle;
+  }
+
   const handle: RequestHandle = {
     id,
     flow,
@@ -828,18 +846,7 @@ function requestHandle(
       return requestHandle(t, retried.request.flowId ?? flow, retried.request.id, retried.session?.id ?? null);
     },
     resume: resume as RequestHandle["resume"],
-    answer: async (body) => {
-      requireValue(body.suspensionId, "suspensionId");
-      if (!RESUME_ACTIONS.includes(body.action)) {
-        clientError(`answer requires action one of ${RESUME_ACTIONS.join(", ")}`);
-      }
-      await t.json<{ requestId: string }>(`${base}/answer`, {
-        method: "POST",
-        headers: JSON_HEADERS,
-        body: JSON.stringify({ suspensionId: body.suspensionId, action: body.action, ...(body.data !== undefined ? { data: body.data } : {}) })
-      });
-      return handle;
-    },
+    answer: answer as RequestHandle["answer"],
     stream: ({ includeTrace, startingAfter, lastEventId, dedupWindowSize, ...callbacks }) =>
       openRequestStream(
         {

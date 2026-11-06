@@ -9,7 +9,7 @@
  * only what the host reports.
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { localWorkspaceHost, WorkspaceRefusedError } from "../src/local-host";
@@ -38,7 +38,7 @@ beforeEach(() => {
   // `pr list` finds none open; `pr create` prints the link, as gh does.
   writeFileSync(
     gh,
-    `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\nif [ "$2" = "list" ]; then echo '[]'; else echo '${PR_URL}'; fi\n`,
+    `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\npwd >> '${ghLog}.cwd'\nif [ "$2" = "list" ]; then echo '[]'; else echo '${PR_URL}'; fi\n`,
   );
   chmodSync(gh, 0o755);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -50,8 +50,17 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function host() {
-  return localWorkspaceHost({ root, remotes: { allow: [] }, localRepositories: [repo], source: () => ({ kind: "repo", repo }) });
+/** The GitHub repository the test's upstream stands for: its URL is a local `file://` one, which names none. */
+const GITHUB_REPO = "github.com/acme/widgets";
+
+function host(pullRequestRepo: ((url: string) => string | undefined) | null = () => GITHUB_REPO) {
+  return localWorkspaceHost({
+    root,
+    remotes: { allow: [] },
+    localRepositories: [repo],
+    source: () => ({ kind: "repo", repo }),
+    ...(pullRequestRepo === null ? {} : { pullRequestRepo }),
+  });
 }
 
 /** A run's place, with one commit on its branch touching `file`. */
@@ -78,8 +87,40 @@ describe("accepting a run by opening a pull request", () => {
     // pushed: the branch is on the upstream, at the run's commit.
     expect(upstream.rev("refs/heads/fsd/run-1")).toBe(commit);
     // opened: gh was asked to create it, from the run's branch into main.
-    expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes("--head fsd/run-1") && call.includes("--base main"))).toBe(true);
+    expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes(`--repo ${GITHUB_REPO}`) && call.includes("--head acme:fsd/run-1") && call.includes("--base main"))).toBe(true);
     expect(landed).toEqual({ kind: "pull-request", url: PR_URL, number: 42, branch: "fsd/run-1", base: "main", remote: upstream.url });
+  });
+
+  it("runs gh outside every checkout the run can configure, so it can't push again through the run's config", async () => {
+    const { h, place } = await runWithCommit();
+
+    await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh });
+
+    const cwds = readFileSync(`${ghLog}.cwd`, "utf8").trim().split("\n");
+    expect(cwds.length).toBeGreaterThan(0);
+    for (const cwd of cwds) {
+      // Not the run's worktree or the person's repository, and not inside a git repository at all.
+      expect(cwd.startsWith(realpathSync(place.cwd))).toBe(false);
+      expect(cwd.startsWith(realpathSync(repo))).toBe(false);
+    }
+    // gh is told the repository and the branch, so it never reads a remote or pushes it itself.
+    expect(ghCalls().length).toBeGreaterThan(0);
+    expect(ghCalls().every((call) => call.includes(`--repo ${GITHUB_REPO}`))).toBe(true);
+    expect(ghCalls().filter((call) => call.startsWith("pr create")).every((call) => call.includes("--head acme:fsd/run-1"))).toBe(true);
+  });
+
+  it("refuses a pull request where the pinned remote names no GitHub repository, before pushing anything", async () => {
+    const h = host(null);
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    writeFileSync(join(place.cwd, "change.txt"), "the run's change\n");
+    git(place.cwd, "add", "change.txt");
+    git(place.cwd, "commit", "-q", "-m", "The run's change");
+
+    await expect(h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "pull-request", title: "t", body: "b", gh })).rejects.toMatchObject({
+      reason: "no-pull-request-repo",
+    });
+    expect(() => upstream.rev("refs/heads/fsd/run-1")).toThrow();
+    expect(ghCalls()).toEqual([]);
   });
 
   it("refuses to push to a remote repointed since the host started, and pushes nothing", async () => {
@@ -105,6 +146,28 @@ describe("accepting a run by opening a pull request", () => {
     await expect(landing).rejects.toBeInstanceOf(WorkspaceRefusedError);
     await expect(landing).rejects.toMatchObject({ reason: "push-failed" });
     expect(git(repo, "rev-parse", "refs/heads/fsd/run-1")).toBe(commit);
+  });
+});
+
+describe("the ways a run can land, asked before its review", () => {
+  it("offers both for a worktree of a listed repository whose remote names a GitHub repository", async () => {
+    const { h, place } = await runWithCommit();
+    expect(await h.landWays!({ cwd: place.cwd, branch: "fsd/run-1" })).toEqual(["pull-request", "merge"]);
+  });
+
+  it("offers only the merge when the remote names no GitHub repository", async () => {
+    const h = host(null);
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    expect(await h.landWays!({ cwd: place.cwd, branch: "fsd/run-1" })).toEqual(["merge"]);
+  });
+
+  it("offers nothing for a checkout that isn't a worktree of a listed repository, where land would refuse", async () => {
+    const h = host();
+    const clone = join(tempDir("land-clone"), "clone");
+    git(join(clone, ".."), "clone", "-q", upstream.url, clone);
+    git(clone, "checkout", "-q", "-b", "fsd/run-1");
+    expect(await h.landWays!({ cwd: clone, branch: "fsd/run-1" })).toEqual([]);
+    await expect(h.land!({ cwd: clone, branch: "fsd/run-1" }, { kind: "merge" })).rejects.toMatchObject({ reason: "land-unsupported" });
   });
 });
 
@@ -220,6 +283,99 @@ describe("a merge that git reports done but that didn't commit the run's work", 
     expect(git(repo, "status", "--porcelain")).toBe("");
     expect(() => git(repo, "merge-base", "--is-ancestor", commit, "refs/heads/main")).toThrow();
   });
+});
+
+describe("a merge never runs a program the run could have planted in the shared config", () => {
+  /** A script that leaves `marker` behind when it runs, then does what `then` says. */
+  function planted(marker: string, then: string): string {
+    const bin = tempDir("land-planted");
+    const script = join(bin, "planted");
+    writeFileSync(script, `#!/bin/sh\ntouch '${marker}'\n${then}\n`);
+    chmodSync(script, 0o755);
+    return script;
+  }
+
+  it("runs no planted fsmonitor or filter while it checks and merges the person's checkout", async () => {
+    const marker = join(tempDir("land-marker"), "ran");
+    const h = host();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    // The run shares the repository's config: it plants programs there, and attributes on its branch.
+    git(place.cwd, "config", "core.fsmonitor", planted(marker, "exit 1"));
+    git(place.cwd, "config", "filter.evil.smudge", `${planted(marker, "cat")}`);
+    git(place.cwd, "config", "filter.evil.clean", `${planted(marker, "cat")}`);
+    writeFileSync(join(place.cwd, ".gitattributes"), "*.txt filter=evil\n");
+    writeFileSync(join(place.cwd, "change.txt"), "the run's change\n");
+    git(place.cwd, "-c", "filter.evil.clean=cat", "-c", "core.fsmonitor=false", "add", ".gitattributes", "change.txt");
+    git(place.cwd, "-c", "filter.evil.clean=cat", "-c", "core.fsmonitor=false", "commit", "-q", "-m", "The run's change");
+
+    const landed = await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge" });
+
+    expect(landed).toMatchObject({ kind: "merge", branch: "main" });
+    expect(readFileSync(join(repo, "change.txt"), "utf8")).toBe("the run's change\n");
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("runs no planted filter whose name holds an =, which a -c key=value would split", async () => {
+    const marker = join(tempDir("land-marker"), "ran");
+    const h = host();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    git(place.cwd, "config", "filter.a=b.smudge", planted(marker, "cat"));
+    writeFileSync(join(place.cwd, ".gitattributes"), "*.txt filter=a=b\n");
+    writeFileSync(join(place.cwd, "change.txt"), "the run's change\n");
+    git(place.cwd, "add", ".gitattributes", "change.txt");
+    git(place.cwd, "commit", "-q", "-m", "The run's change");
+
+    await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge" });
+
+    expect(readFileSync(join(repo, "change.txt"), "utf8")).toBe("the run's change\n");
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("runs no planted merge driver on a conflict, and still stops on it", async () => {
+    const marker = join(tempDir("land-marker"), "ran");
+    // The attribute is on the base already; only the driver it names is the run's.
+    writeFileSync(join(repo, ".gitattributes"), "marker.txt merge=evil\n");
+    git(repo, "add", ".gitattributes");
+    git(repo, "commit", "-q", "-m", "Attributes");
+    const h = host();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    git(place.cwd, "config", "merge.evil.driver", planted(marker, "exit 0"));
+    writeFileSync(join(place.cwd, "marker.txt"), "the run's marker\n");
+    git(place.cwd, "add", "marker.txt");
+    git(place.cwd, "commit", "-q", "-m", "The run's marker");
+    writeFileSync(join(repo, "marker.txt"), "the person's marker\n");
+    git(repo, "commit", "-q", "-am", "The person's marker");
+
+    await expect(h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge" })).rejects.toMatchObject({ reason: "merge-conflict" });
+    expect(existsSync(marker)).toBe(false);
+    expect(readFileSync(join(repo, "marker.txt"), "utf8")).toBe("the person's marker\n");
+  });
+});
+
+describe("a merge that runs out of the landing's time", () => {
+  it("still puts the checkout back, with its own time to do it, so Retry can run", async () => {
+    const { h, place } = await runWithCommit();
+    // Diverged, so the merge makes a commit; signing it takes longer than the landing may.
+    writeFileSync(join(repo, "other.txt"), "the person's other change\n");
+    git(repo, "add", "other.txt");
+    git(repo, "commit", "-q", "-m", "The person's other change");
+    const before = git(repo, "rev-parse", "main");
+    // The person's own slow signer, in their global config: trusted, so the hardening leaves it on.
+    const bin = tempDir("land-gpg");
+    writeFileSync(join(bin, "slow-gpg"), "#!/bin/sh\nsleep 3\nexit 1\n");
+    chmodSync(join(bin, "slow-gpg"), 0o755);
+    writeFileSync(join(bin, "gitconfig"), `[commit]\n\tgpgSign = true\n[gpg]\n\tformat = openpgp\n\tprogram = ${join(bin, "slow-gpg")}\n`);
+    vi.stubEnv("GIT_CONFIG_GLOBAL", join(bin, "gitconfig"));
+
+    const landing = h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge", timeoutMs: 1000 });
+
+    // It failed on the landing's deadline, not on anything else, and was still undone.
+    await expect(landing).rejects.toMatchObject({ reason: "merge-failed", message: expect.stringContaining("ran out of the landing's time") });
+    vi.unstubAllEnvs();
+    expect(existsSync(join(repo, ".git", "MERGE_HEAD"))).toBe(false);
+    expect(git(repo, "rev-parse", "main")).toBe(before);
+    expect(git(repo, "status", "--porcelain", "--untracked-files=no")).toBe("");
+  }, 20_000);
 });
 
 describe("a run whose base is a remote-tracking ref", () => {

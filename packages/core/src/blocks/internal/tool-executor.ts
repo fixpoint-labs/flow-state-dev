@@ -73,12 +73,12 @@ export function buildToolExecutor(
   tool: GeneratorTool,
   config: ToolExecutorConfig,
   ctx: BlockContext,
-): (args: unknown, options?: { toolCallId?: string; stepNumber?: number; pathName?: string }) => Promise<unknown> {
+): (args: unknown, options?: { toolCallId?: string; stepNumber?: number }) => Promise<unknown> {
   const { flowTools, generatorBlockName, itemVisibility, agentName, statusGuard } = config;
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
 
-  return async (args: unknown, options?: { toolCallId?: string; stepNumber?: number; pathName?: string }) => {
+  return async (args: unknown, options?: { toolCallId?: string; stepNumber?: number }) => {
     const cacheable = tool.config.cacheable;
     let cacheMiss: { key: string; cfg: BlockCacheableConfig; store: ToolCacheStore } | undefined;
     if (cacheable !== undefined) {
@@ -170,8 +170,7 @@ export function buildToolExecutor(
         options?.stepNumber !== undefined
           ? `${options.stepNumber}:${options?.toolCallId ?? "0"}`
           : (options?.toolCallId ?? "0");
-      // `pathName`: a resumed call recorded under the tool's former name keeps that name's path.
-      const toolPath = extendBlockPath(parentPath, blockPathTool(options?.pathName ?? tool.name, disambiguator));
+      const toolPath = extendBlockPath(parentPath, blockPathTool(tool.name, disambiguator));
       const instanceId = buildBlockInstanceId(ctx.request.identity.id, toolPath, 0);
       return ctx._withExecutionScope(
         // FIX-914: a tool that declares its own `stateSchema` gets a

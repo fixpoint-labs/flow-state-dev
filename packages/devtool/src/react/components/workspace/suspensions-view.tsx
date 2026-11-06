@@ -235,6 +235,7 @@ function SuspensionDetail({
         flowId: suspensionOwnerId(record),
         requestId: record.requestId,
         suspensionId: record.suspensionId,
+        reason: record.reason,
         action,
         data
       });

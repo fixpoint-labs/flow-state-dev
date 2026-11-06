@@ -164,6 +164,39 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+  # The export check (FIX-2448): no published package root gains a name that no
+  # app, example, lab or docs page uses, and no adopter code gains an import of
+  # an `/internal` path. A ratchet against the base, read in place, so names
+  # that already fail don't fail this run; the script's header owns the rules.
+  # Its own job because it needs the base commit: depth 2, and on a PR the base
+  # is the merge's first parent (`HEAD^1`), as in the mechanisms job.
+  export-check:
+    name: Export check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Package roots gain no name nobody outside the framework uses
+        run: node scripts/check-root-exports.mjs HEAD^1
+
+      # Every plant must be named, or the check above could pass because it
+      # stopped reading a rule. It runs even when the check is red.
+      - name: The export check refuses its plants
+        if: ${{ !cancelled() }}
+        run: node --test scripts/root-exports.test.mjs
+
   # The package tests, split across runners by scripts/test-shards.mjs. Each
   # shard runs its packages one at a time, as `pnpm test` does: two at once on
   # one runner oversubscribe it and tests start timing out.

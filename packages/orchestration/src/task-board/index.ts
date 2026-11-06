@@ -517,7 +517,8 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   /**
    * Claim order for ready-task selection. Either a `ClaimOrder`
    * instance or a string naming one of the standard claim orders
-   * (`"fifo"`, `"topological"`, `"priority"`). Default: `"topological"`.
+   * (`"fifo"`, `"priority"`). Default: `"fifo"`. Neither claims a task
+   * with unmet `deps`: the substrate's admission rule gates on them.
    */
   claimOrder?: TaskBoardClaimOrderInput;
 
@@ -730,7 +731,7 @@ export function taskBoard<
     defaultWorker: defaultWorkerConfig,
     newSession: newSessionConfig,
     concurrency = 4,
-    claimOrder: claimOrderInput = "topological",
+    claimOrder: claimOrderInput = "fifo",
     onIdle = "complete-or-blocked",
     initialTasks = [],
     onError = "skip",
@@ -741,25 +742,13 @@ export function taskBoard<
     flowPolicy: flowPolicyConfig,
   } = config;
 
-  // The park exit is gone (FIX-2131): a task waiting on a person holds on its
-  // row or suspends its run, and the board exits `blocked` around it. Refused
-  // by name (BP-030), so a board still built with it fails at construction.
-  if ("onReview" in (config as object)) { // retired-name-refusal: the board refuses the removed option by name
-    throw new Error(
-      `[task-board] "${name}" sets \`onReview\`, which was removed (FIX-2131). A task waiting on a person ` + // retired-name-refusal
-        `no longer parks: a worker's question keeps the task waiting (\`holdTaskForUser\`) and a review suspends its run ` +
-        `(\`ctx.suspendForUser({ kind: "review" })\`), and a board whose only open rows wait on a person exits ` +
-        `\`blocked\` on its own. Remove the option.`
-    );
-  }
-
   // The claim order's option was `dispatcher` (FIX-2245), the word the block
   // keeps. Refused by name, so a board built with it does not quietly drop its
   // claim order, and with it a guard such as `runOwnerClaimOrder()`.
   if ((config as { dispatcher?: unknown }).dispatcher !== undefined) {
     throw new Error(
       `[task-board] "${name}" sets \`dispatcher\`, which is now \`claimOrder\`. Pass the same ` +
-        `claim order (or "fifo", "topological", "priority") as \`claimOrder\`.`
+        `claim order (or "fifo", "priority") as \`claimOrder\`.`
     );
   }
 

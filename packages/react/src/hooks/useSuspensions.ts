@@ -22,7 +22,6 @@ import type {
   SuspensionResumeItem
 } from "@flow-state-dev/core/items";
 import type { ResumeAction, SuspensionReason, SuspensionStatus } from "@flow-state-dev/core/types";
-import { useFlowContext } from "../context/FlowContext";
 import type { SessionView } from "./useSession";
 
 /**
@@ -104,6 +103,30 @@ export function deriveSuspensions(
   options: UseSuspensionsOptions = {},
   inFlight: ReadonlySet<string> = new Set()
 ): { suspensions: SuspensionView[]; pending: SuspensionView[] } {
+  refuseOldReasons(options.reasons);
+  return suspensionViews(items, options, inFlight);
+}
+
+/** The `user_*` reason each old `human_*` one was renamed to. */
+const RENAMED_REASONS: Readonly<Record<string, string>> = {
+  human_approval: "user_approval", // retired-name-refusal: the old reason, refused or read as its new one
+  human_input: "user_input" // retired-name-refusal: the old reason, refused or read as its new one
+};
+
+/** An old `human_*` filter would match nothing new: refused, naming its `user_*` reason. */
+function refuseOldReasons(reasons: readonly string[] | undefined): void {
+  for (const reason of reasons ?? []) {
+    const renamed = Object.hasOwn(RENAMED_REASONS, reason) ? RENAMED_REASONS[reason] : undefined;
+    if (renamed !== undefined) throw new Error(`useSuspensions: reason "${reason}" was renamed. Use "${renamed}".`);
+  }
+}
+
+/** {@link deriveSuspensions} without the filter check, for the hook, which checks once per filter. */
+function suspensionViews(
+  items: readonly OutputItem[],
+  options: UseSuspensionsOptions,
+  inFlight: ReadonlySet<string>
+): { suspensions: SuspensionView[]; pending: SuspensionView[] } {
   // Match by `type` literal — this package imports only TYPES from core, not
   // its runtime predicates.
   const resumeIndex = new Map<string, SuspensionResumeItem>();
@@ -119,7 +142,9 @@ export function deriveSuspensions(
     if (item.type !== "suspension") continue;
     const suspItem = item as SuspensionItem;
     if (options.requestId !== undefined && suspItem.requestId !== options.requestId) continue;
-    if (options.reasons !== undefined && !options.reasons.includes(suspItem.reason)) continue;
+    // A stop core 0.2.0 stored under an old `human_*` reason matches its `user_*` filter.
+    const reason = Object.hasOwn(RENAMED_REASONS, suspItem.reason) ? RENAMED_REASONS[suspItem.reason]! : suspItem.reason;
+    if (options.reasons !== undefined && !options.reasons.includes(reason)) continue;
     const resume = resumeIndex.get(suspItem.suspensionId);
     suspensions.push({
       item: suspItem,
@@ -143,7 +168,7 @@ export function deriveSuspensions(
 /**
  * Arguments for {@link resolveSuspension}. `markStart`/`markEnd` toggle the
  * caller's in-flight set; `setError` is the error slot setter. `resolve` is the
- * session's streaming resume (`SessionView.resumeSuspension`) — the resolution
+ * session's streaming answer (`SessionView.answerSuspension`) — the resolution
  * streams the continuation back into `session.items`.
  */
 export interface ResolveSuspensionArgs {
@@ -152,12 +177,10 @@ export interface ResolveSuspensionArgs {
     requestId: string;
     action: ResumeAction;
     data?: unknown;
-    resumedBy?: string;
   }) => Promise<void>;
   item: Pick<SuspensionItem, "suspensionId" | "requestId">;
   action: ResumeAction;
   data?: unknown;
-  resumedBy?: string;
   markStart: (id: string) => void;
   markEnd: (id: string) => void;
   setError: (error: Error | null) => void;
@@ -165,7 +188,7 @@ export interface ResolveSuspensionArgs {
 
 /**
  * The shared body of `approve`/`reject`. Marks in-flight, streams the resolution
- * through the session's resume (so the continuation renders live), captures any
+ * through the session's answer (so the continuation renders live), captures any
  * error into `setError`, and **rethrows** so callers can branch on success.
  * In-flight is always cleared in `finally`. Exported for direct unit testing.
  */
@@ -180,8 +203,7 @@ export async function resolveSuspension(
       suspensionId: item.suspensionId,
       requestId: item.requestId,
       action: args.action,
-      data: args.data,
-      resumedBy: args.resumedBy
+      data: args.data
     });
   } catch (err) {
     // Normalize once and rethrow the SAME value stored in the error slot, so a
@@ -198,14 +220,12 @@ export async function resolveSuspension(
 /**
  * Derives suspension state from `session.items` and returns approve/reject
  * actions. Derivation is a `useMemo` over the live stream (BP-010); resolution
- * goes through the recovery client built from the FlowContext `baseUrl`.
+ * goes through `session.answerSuspension`.
  */
 export function useSuspensions(
   session: SessionView,
   options: UseSuspensionsOptions = {}
 ): UseSuspensionsResult {
-  const { userId: ctxUserId } = useFlowContext();
-
   // In-flight suspensionIds, immutably updated so concurrent resolves of
   // different ids never clobber one another's membership.
   const [inFlight, setInFlight] = useState<ReadonlySet<string>>(() => new Set());
@@ -216,8 +236,11 @@ export function useSuspensions(
   // (`useSuspensions(session, { reasons: ["user_approval"] })`) is a new array
   // every render, which would force deriveSuspensions to recompute each time.
   const reasonsKey = reasons === undefined ? undefined : reasons.join(" ");
+  // Checked once per distinct filter, not on each stream update; an old one still throws here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useMemo(() => refuseOldReasons(reasons), [reasonsKey]);
   const { suspensions, pending } = useMemo(
-    () => deriveSuspensions(session.items, { requestId, reasons }, inFlight),
+    () => suspensionViews(session.items, { requestId, reasons }, inFlight),
     // `reasons` is intentionally tracked via `reasonsKey` (by value, not reference).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [session.items, requestId, reasonsKey, inFlight]
@@ -234,8 +257,6 @@ export function useSuspensions(
     });
   }, []);
 
-  const resolvedBy = ctxUserId ?? session.userId;
-
   const resolve = useCallback(
     (suspensionId: string, args: { action: ResumeAction; data?: unknown }): Promise<void> => {
       const target = session.items.find(
@@ -248,17 +269,16 @@ export function useSuspensions(
         return Promise.reject(new Error("No suspension found with id: " + suspensionId));
       }
       return resolveSuspension({
-        resolve: session.resumeSuspension,
+        resolve: session.answerSuspension,
         item: target,
         action: args.action,
         data: args.data,
-        resumedBy: resolvedBy,
         markStart,
         markEnd,
         setError
       });
     },
-    [session.resumeSuspension, session.items, resolvedBy, markStart, markEnd]
+    [session.answerSuspension, session.items, markStart, markEnd]
   );
 
   // Binary approve/reject stay as thin wrappers over the general resolver.

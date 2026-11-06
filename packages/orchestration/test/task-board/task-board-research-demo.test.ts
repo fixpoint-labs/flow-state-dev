@@ -5,7 +5,7 @@
  * self-organize against a task board." Three worker types
  * (`market-analyst`, `financial-analyst`, `synthesizer`), a dependency
  * chain (synthesize after both analyses complete), executed
- * end-to-end via the topological dispatcher.
+ * end-to-end via the fifo claim order.
  *
  * Workers here are plain blocks with typed input/output schemas — no
  * `z.any()` escape hatches and no handler-wrapping-worker indirection
@@ -104,7 +104,7 @@ describe("taskBoard - research-board demo", () => {
       name: "research-board",
       collection: { backing: "sequencer", collectionId: "research" },
       concurrency: 3,
-      claimOrder: "topological",
+      claimOrder: "fifo",
       workers: {
         "market-analyst": makeAnalyst("market"),
         "financial-analyst": makeAnalyst("financial"),
@@ -138,7 +138,7 @@ describe("taskBoard - research-board demo", () => {
 
     // Walk the `task-change` component-item stream: assert all three
     // completed and that synthesis-1 completed AFTER both analyses (the
-    // topological dispatcher's contract).
+    // substrate admission rule every claim order shares).
     const statusByTask = new Map<string, string>();
     let marketCompleted = false;
     let financialCompleted = false;

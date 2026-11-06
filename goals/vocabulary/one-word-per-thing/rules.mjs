@@ -322,6 +322,16 @@ export const KEEP = [
     why: "FIX-2151: the release note that tells consumers which old reasons to replace"
   },
   {
+    path: /^\.changeset\/(retired-names-(contracts|react)|no-compat-engine)\.md$/,
+    rules: ["human-reasons"],
+    why: "FIX-2454: the release notes that say a new human_* reason throws and a stored one reads as a user's"
+  },
+  {
+    path: /^packages\/(engine|react)\/test\/retired-suspension-reasons\.test\.tsx?$/,
+    rules: ["human-reasons"],
+    why: "FIX-2454: the tests that a stored human_* stop reads as a user's and a new one throws: they name the old reasons to probe them"
+  },
+  {
     path: /^goals\//,
     line: /^\| \d{4}-\d{2}-\d{2} \|/,
     rules: ["seat-mailbox-goal-names"],

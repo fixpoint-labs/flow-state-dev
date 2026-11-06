@@ -11,7 +11,8 @@
  *   1. onApprove/onReject options → caller owns the resume call
  *   2. SuspensionResolverProvider → resolve through the session's STREAMING
  *      resume, so the continuation streams into the chat view live (no refresh)
- *   3. self-contained recovery client (non-streaming fire-and-forget fallback)
+ *   3. self-contained recovery client (non-streaming fire-and-forget fallback),
+ *      through `answer` for a user's stop and `resume` for a custom one
  */
 import { useState, useMemo, useCallback, useEffect } from "react";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
@@ -19,6 +20,7 @@ import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useFlowContext } from "../context/FlowContext";
 import { useClient } from "../internal/useClient";
 import { useSuspensionResolver } from "../context/SuspensionResolver";
+import { answerStop } from "../internal/answerStop";
 
 // ---------------------------------------------------------------------------
 // Receipt outcome derivation
@@ -152,7 +154,7 @@ export function useApproval(
   options: UseApprovalOptions = {}
 ): UseApprovalResult {
   const { isResolved = false, resolution, onApprove, onReject } = options;
-  const { flowKind, userId } = useFlowContext();
+  const { flowKind } = useFlowContext();
   const fsd = useClient();
   const streamingResolve = useSuspensionResolver();
 
@@ -217,11 +219,10 @@ export function useApproval(
         } else {
           // Self-contained fallback: non-streaming fire-and-forget resume.
           if (!hasFlowKind) return;
-          await fsd.flow(flowKind!).request(item.requestId).resume({
+          await answerStop(fsd.flow(flowKind!).request(item.requestId), item.reason, {
             suspensionId: item.suspensionId,
             action,
-            ...(data !== undefined ? { data } : {}),
-            resumedBy: userId
+            data
           });
         }
         // Success: mark resolved immediately so a card that lingers before its
@@ -233,7 +234,7 @@ export function useApproval(
         setPendingAction(null);
       }
     },
-    [isResolving, canApprove, canReject, hasFlowKind, flowKind, item.requestId, item.suspensionId, userId, fsd, streamingResolve, onApprove, onReject]
+    [isResolving, canApprove, canReject, hasFlowKind, flowKind, item.requestId, item.suspensionId, item.reason, fsd, streamingResolve, onApprove, onReject]
   );
 
   const approve = useCallback(() => { void handleAction("approve"); }, [handleAction]);

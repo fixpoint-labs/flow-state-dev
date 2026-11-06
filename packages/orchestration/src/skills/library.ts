@@ -58,7 +58,7 @@ import {
   type InitialSkillsSource,
 } from "./initial-skills";
 import { buildLoadCatalogContext, createLoadSkillTool } from "./load-tool";
-import { parseSkillMd, SkillAgentsRemovedError, validateSkillName } from "./skill-md";
+import { parseSkillMd, validateSkillName } from "./skill-md";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -180,16 +180,8 @@ function indexInitialSkills(
         contextMode: parsed.state.contextMode ?? "inline",
         disableModelInvocation: parsed.state.disableModelInvocation,
       });
-    } catch (err) {
-      // A skill that declares `agents:` is refused here, at construction: the
-      // seeder would only warn and retry on every hydrate, and a skill that
-      // never seeds reads to its author as one that silently vanished.
-      if (err instanceof SkillAgentsRemovedError) {
-        throw new Error(`createSkillsLibrary(): bundled skill "${skill.name}": ${err.message}`, {
-          cause: err,
-        });
-      }
-      // Any other malformed or invalidly-named bundled skill is a seeding-time
+    } catch {
+      // A malformed or invalidly-named bundled skill is a seeding-time
       // concern; skip it here so config resolution fails loud on a binding to
       // it (via the "unknown skill" path) rather than silently accepting it.
     }

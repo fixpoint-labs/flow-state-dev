@@ -6,9 +6,7 @@
  * flow declares them `serverOwned`, so a session create can't seed them.
  *
  * Nothing here records a delivery: each one is a row on the conversation's
- * board, and the row's claim is what lets its answer land once. A session
- * saved with the old delivery ledger (`deliveries`, retired-name-refusal) reads as if it had none,
- * and the key is dropped at its next write (BP-030).
+ * board, and the row's claim is what lets its answer land once.
  */
 import { z } from "zod";
 import {
@@ -20,18 +18,6 @@ import {
 } from "../delegates/delegate-list";
 import { HOLD_STATE, LANDED_STATE, ROUND_ROBIN_STATE, ROUNDS_STATE } from "./coordinator-keys";
 import { landedAnswersSchema } from "./coordinator-lines";
-
-/** The key a session saved with the old delivery ledger keeps it under. retired-name-refusal: BP-030 */
-const RETIRED_DELIVERIES_STATE = "deliveries"; // retired-name-refusal: BP-030, the legacy reader
-
-/**
- * The patch that drops a saved delivery ledger (retired-name-refusal), for a write that runs on
- * every post: nothing reads it, and a session that still carries one sheds
- * it here.
- */
-export function dropRetiredLedger(state: Readonly<Record<string, unknown>>): Record<string, unknown> {
-  return RETIRED_DELIVERIES_STATE in state ? { [RETIRED_DELIVERIES_STATE]: undefined } : {}; // retired-name-refusal: BP-030
-}
 
 /** Who best fit holds the user's next post for: the delegate the last one went to. */
 export const bestFitHoldSchema = z.object({ messageRequestId: z.string(), delegate: delegateRefSchema });

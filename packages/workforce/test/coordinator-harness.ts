@@ -44,7 +44,7 @@ import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { defineWorkerRosterFlow } from "../src/workers/roster-flow";
 
-export const ORG = "acme";
+const ORG = "acme";
 
 /**
  * The standard workers: two coordinators, four helpers, one worker that takes

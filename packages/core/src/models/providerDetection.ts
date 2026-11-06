@@ -165,8 +165,7 @@ export function canonicalizeIntentName(intentName: string): string {
 /**
  * Parse a model string into its lane: `provider/model`, `intent/name`, or
  * `name:model` (first `:` before the first `/`, so `openai/gpt-oss:free` stays
- * a slash id). The removed `gateway/provider/model` form throws, naming its
- * colon spelling.
+ * a slash id). Any other shape throws as an invalid format.
  */
 export function parseModelString(modelString: string): ParsedModelString {
   const trimmed = modelString.trim();
@@ -203,16 +202,9 @@ export function parseModelString(modelString: string): ParsedModelString {
     return { type: "direct", provider: parts[0], modelId: parts[1] };
   }
 
-  if (parts.length >= 3) {
-    if (parts[0] === "intent") {
-      throw new Error(
-        `Invalid model format: "${modelString}". intent/* model strings must be 2 parts (intent/name).`
-      );
-    }
-    const renamed = `${parts[0]}:${parts.slice(1).join("/")}`;
+  if (parts.length >= 3 && parts[0] === "intent") {
     throw new Error(
-      `Invalid model format: "${modelString}". The "gateway/provider/model" form was removed; ` +
-        `name the route with a colon: "${renamed}".`
+      `Invalid model format: "${modelString}". intent/* model strings must be 2 parts (intent/name).`
     );
   }
 

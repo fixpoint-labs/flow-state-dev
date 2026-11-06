@@ -90,7 +90,7 @@ import {
 import { createHostPlace } from "./host-place";
 import { acquireLock, HOST_LOCK_BOUNDS, releaseLock, tryAcquireLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
-import { landRun, type Landed, type LandRequest, type LandTarget } from "./land";
+import { landRun, landWays, type Landed, type LandRequest, type LandTarget } from "./land";
 import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, withoutCredential, type AllowedRemote } from "./remotes";
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import {
@@ -226,6 +226,13 @@ export interface LocalWorkspaceHostOptions {
    * allowance, judged before any git process, the same as `remotes.allow`.
    */
   localRepositories?: readonly string[];
+  /**
+   * The GitHub repository (`host/owner/name`) a listed repository's pinned
+   * remote URL names, for `land`'s pull request. Default: read from a
+   * GitHub-shaped URL (`https://github.com/owner/name.git`,
+   * `git@github.com:owner/name.git`); `undefined` offers no pull request.
+   */
+  pullRequestRepo?: (url: string) => string | undefined;
   /**
    * How long one whole provision may take, every git command in it included,
    * in milliseconds. Defaults to ten minutes. A caller that holds a lock
@@ -568,6 +575,13 @@ export interface WorkspaceHost {
    * `landRun`'s.
    */
   land?(target: LandTarget, request: LandRequest): Promise<Landed>;
+  /**
+   * The ways `land` can land this run here, asked before the review is: none
+   * for a checkout `land` would refuse as `land-unsupported`, `merge` for a
+   * worktree of a listed repository, and `pull-request` too when its base has
+   * a pinned remote that names a GitHub repository. Never rejects.
+   */
+  landWays?(target: LandTarget): Promise<Array<LandRequest["kind"]>>;
 }
 
 /**
@@ -2161,24 +2175,40 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     return (await attachToWorktree(attachOptions.worktrees, key, attachOptions.by)) ? key : null;
   }
 
-  /** `WorkspaceHost.land`: the run's checkout must be a worktree of a listed repository. */
-  async function land(target: LandTarget, request: LandRequest): Promise<Landed> {
-    const common = async (cwd: string) =>
-      realpathSync(await git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"], GIT_TIMEOUT_MS));
+  /**
+   * The listed repository `cwd` is a worktree of, or a `land-unsupported`
+   * refusal saying why there is none. The one check `land` and `landWays` share.
+   */
+  async function listedRepositoryOf(cwd: string): Promise<string> {
+    const common = async (dir: string) =>
+      realpathSync(await git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"], GIT_TIMEOUT_MS));
     let runCommon: string;
     try {
-      runCommon = await common(target.cwd);
+      runCommon = await common(cwd);
     } catch (error) {
-      throw new WorkspaceRefusedError("land-unsupported", `${target.cwd} is not a git checkout this host can land: ${firstLine(error)}.`);
+      throw new WorkspaceRefusedError("land-unsupported", `${cwd} is not a git checkout this host can land: ${firstLine(error)}.`);
     }
     for (const repo of localRepositories) {
       const listed = await common(repo).catch(() => undefined);
-      if (listed === runCommon) return await landRun({ repo, pins: fetchPins.get(repo), env }, target, request);
+      if (listed === runCommon) return repo;
     }
     throw new WorkspaceRefusedError(
       "land-unsupported",
-      `${target.cwd} is not a worktree of a repository listed in localRepositories, so this host can't push or merge it.`,
+      `${cwd} is not a worktree of a repository listed in localRepositories, so this host can't push or merge it.`,
     );
+  }
+
+  const landHost = (repo: string) => ({ repo, pins: fetchPins.get(repo), env, pullRequestRepo: options.pullRequestRepo });
+
+  /** `WorkspaceHost.land`: the run's checkout must be a worktree of a listed repository. */
+  async function land(target: LandTarget, request: LandRequest): Promise<Landed> {
+    return await landRun(landHost(await listedRepositoryOf(target.cwd)), target, request);
+  }
+
+  /** `WorkspaceHost.landWays`: none where `land` would refuse as `land-unsupported`. */
+  async function ways(target: LandTarget): Promise<Array<LandRequest["kind"]>> {
+    const repo = await listedRepositoryOf(target.cwd).catch(() => undefined);
+    return repo === undefined ? [] : await landWays(landHost(repo), target);
   }
 
   async function recordCheckout(
@@ -2344,6 +2374,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     attach,
     recordCheckout,
     land,
+    landWays: ways,
     async checkpoint(place, recorded) {
       const holding = place.holding;
       if (heldWork === undefined || holding === undefined || place.kind !== "repo") return null;

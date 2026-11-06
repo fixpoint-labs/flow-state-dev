@@ -18,7 +18,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 
 export interface LabelFailedReviewsOptions {
   name: string;
