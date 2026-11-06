@@ -35,7 +35,7 @@
 import { z, type ZodTypeAny } from "zod";
 import { deepEqual } from "./deep-equal";
 import {
-  containsDynamicDefault,
+  dynamicDefaultFactories,
   getZodDeclaredDefault,
   getZodInnerType,
   getZodObjectShape,
@@ -101,55 +101,112 @@ export function isMergeableScopeStateSchema(schema: ZodTypeAny): boolean {
 }
 
 /**
- * Refuse a default factory on a field the flow's own schema doesn't declare.
+ * Refuse a default factory whose value would not be stored, so that reading
+ * the same stored record always gives the same value.
  *
- * Only the flow's own schema shapes what is stored: a new session is born
- * with its defaults, and writes validate against it. A field only a block or
- * a capability declares is filled at read time and never stored, so a factory
- * default there (`() => crypto.randomUUID()`, a counter) would run on every
- * read of the same record and give a new value each time. A static default is
- * the same on every read, and is allowed.
+ * A factory default (`() => crypto.randomUUID()`, a counter) is stored only
+ * when a session is born, by parsing the flow's own session schema. So it is
+ * allowed only there: in session scope, on a field whose own declaration on
+ * the flow carries that same factory (a block or capability may restate it,
+ * compared by identity). Everywhere else the fill would run the factory on
+ * every read of a record that lacks the field and give a new value each
+ * time, so these are refused:
  *
- * Walks `declaration` beside `flowOwn` field by field. Where the flow declares
- * a field, it owns what is stored there, and the walk descends only while both
- * are objects. Where the flow declares none, the declaration's field is
- * refused if a factory default sits anywhere inside it.
+ * - a factory on a field only a block or a capability declares;
+ * - a session factory where the flow declares the field without it;
+ * - any factory in user or org scope, the flow's own included: those records
+ *   are stored as written, never parsed at creation.
  *
- * @throws Error naming the field path, the declarer and the fix.
+ * Static defaults are allowed everywhere: they are the same on every read.
+ * No factory is called.
+ *
+ * @param declarations Every declaration of the scope, the flow's own included.
+ * @throws Error naming the field path, the declarer and a fix that holds there.
  */
-export function refuseUndeclaredFactoryDefaults(
+export function refuseUnstoredFactoryDefaults(
   owner: string,
   scope: string,
   flowOwn: ZodTypeAny | undefined,
-  declaration: ScopeStateDeclaration
+  declarations: readonly ScopeStateDeclaration[]
 ): void {
   const shapeOf = (schema: ZodTypeAny | undefined, root: boolean): Record<string, ZodTypeAny> | undefined => {
     if (schema === undefined) return undefined;
     const core = peel(schema, root).core;
     return root || isPlainZodObject(core) ? getZodObjectShape(core) : undefined;
   };
-  const walk = (own: ZodTypeAny | undefined, declared: ZodTypeAny, path: string, root: boolean): void => {
+  /** The factories on an object's own wrappers (its `.default(() => ...)`), not its fields'. */
+  const ownFactories = (schema: ZodTypeAny, root: boolean): Set<() => unknown> =>
+    new Set(
+      peel(schema, root)
+        .chain.map((w) => w.declared)
+        .filter((d): d is Extract<ZodDeclaredDefault, { kind: "dynamic" }> => d?.kind === "dynamic")
+        .map((d) => d.factory)
+    );
+  const subset = (a: Set<() => unknown>, b: Set<() => unknown>) => [...a].every((f) => b.has(f));
+  const base = `${scope}.state`;
+
+  if (scope !== "session") {
+    // User and org: no factory anywhere.
+    const find = (schema: ZodTypeAny, path: string, root: boolean): string | undefined => {
+      const shape = shapeOf(schema, root);
+      if (shape === undefined) return dynamicDefaultFactories(schema).size > 0 ? path : undefined;
+      if (ownFactories(schema, root).size > 0) return path;
+      for (const [key, field] of Object.entries(shape)) {
+        const at = find(field, `${path}.${key}`, false);
+        if (at !== undefined) return at;
+      }
+      return undefined;
+    };
+    for (const declaration of declarations) {
+      const at = find(declaration.schema, base, true);
+      if (at === undefined) continue;
+      throw new Error(
+        `${owner}: ${at} has a default factory declared by ${declaration.source}. A ${scope} record is ` +
+          `stored as written and its defaults are filled on every read, so a factory would give a new value ` +
+          `on every read of the same record. Use a static default, or set the value when you write the record.`
+      );
+    }
+    return;
+  }
+
+  const refuse = (at: string, source: string, flowDeclares: boolean): never => {
+    throw new Error(
+      flowDeclares
+        ? `${owner}: ${at} has a default factory declared by ${source}, and the flow declares the field ` +
+            `without it. Only the flow's own declaration is stored when a session is born, so this factory ` +
+            `would run on every read of a record that lacks the field and give a new value each time. Give ` +
+            `the flow's declaration the same factory (share one schema), or use a static default.`
+        : `${owner}: ${at} has a default factory declared by ${source}, and the flow doesn't declare the ` +
+            `field. A field only a block or a capability declares is filled when it is read and never stored, ` +
+            `so its factory would give a new value on every read of the same record. To keep it, declare the ` +
+            `field on the flow's session stateSchema with the same factory (share one schema), or give it a ` +
+            `static default.`
+    );
+  };
+  const walk = (own: ZodTypeAny | undefined, declared: ZodTypeAny, path: string, root: boolean, source: string): void => {
     const declaredShape = shapeOf(declared, root);
     if (declaredShape === undefined) return;
     const ownShape = shapeOf(own, root) ?? {};
     for (const [key, field] of Object.entries(declaredShape)) {
       const ownField = ownShape[key];
       const at = `${path}.${key}`;
-      if (ownField !== undefined) {
-        walk(ownField, field, at, false);
+      if (ownField === undefined) {
+        if (dynamicDefaultFactories(field).size > 0) refuse(at, source, false);
         continue;
       }
-      if (containsDynamicDefault(field)) {
-        throw new Error(
-          `${owner}: ${at} has a default factory declared by ${declaration.source}, and the flow ` +
-            `doesn't declare the field. A field only a block or a capability declares is filled when it ` +
-            `is read and never stored, so its factory would give a new value on every read of the same ` +
-            `record. To keep it, declare the field on the flow's ${scope} stateSchema, or give it a static default.`
-        );
+      const bothObjects = shapeOf(field, false) !== undefined && shapeOf(ownField, false) !== undefined;
+      if (bothObjects) {
+        if (!subset(ownFactories(field, false), ownFactories(ownField, false))) refuse(at, source, true);
+        walk(ownField, field, at, false, source);
+      } else if (!subset(dynamicDefaultFactories(field), dynamicDefaultFactories(ownField))) {
+        refuse(at, source, true);
       }
     }
   };
-  walk(flowOwn, declaration.schema, `${scope}.state`, true);
+  for (const declaration of declarations) {
+    if (declaration.schema === flowOwn) continue;
+    walk(flowOwn, declaration.schema, base, true, declaration.source);
+  }
 }
 
 type WrapperKind = "optional" | "nullable" | "readonly" | "default";

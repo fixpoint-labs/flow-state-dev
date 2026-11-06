@@ -389,47 +389,70 @@ export function getZodDeclaredDefault(schema: ZodTypeAny): ZodDeclaredDefault | 
 }
 
 /**
- * Whether `schema` declares an author's default factory anywhere a read could
- * fill from it: under its wrappers, in an object's fields, an array's or a
- * set's items, a record's or a map's values, a tuple, a union, an
- * intersection, a lazy. Never calls a factory.
+ * Every author's default factory `schema` declares anywhere a read could fill
+ * from it: under its wrappers, in an object's fields, an array's or a set's
+ * items, a record's or a map's values, a tuple, a union, an intersection, a
+ * lazy. Never calls a factory.
  */
-export function containsDynamicDefault(schema: ZodTypeAny, seen: Set<ZodTypeAny> = new Set()): boolean {
-  if (seen.has(schema)) return false;
+export function dynamicDefaultFactories(
+  schema: ZodTypeAny,
+  out: Set<() => unknown> = new Set(),
+  seen: Set<ZodTypeAny> = new Set()
+): Set<() => unknown> {
+  if (seen.has(schema)) return out;
   seen.add(schema);
   const def = (schema as any)._def;
-  const walk = (child: unknown) => child !== undefined && child !== null && containsDynamicDefault(child as ZodTypeAny, seen);
+  const walk = (child: unknown) => {
+    if (child !== undefined && child !== null) dynamicDefaultFactories(child as ZodTypeAny, out, seen);
+  };
   switch (getZodTypeName(schema)) {
-    case "ZodDefault":
-      return getZodDeclaredDefault(schema)!.kind === "dynamic" || walk(def.innerType);
+    case "ZodDefault": {
+      const declared = getZodDeclaredDefault(schema)!;
+      if (declared.kind === "dynamic") out.add(declared.factory);
+      walk(def.innerType);
+      break;
+    }
     case "ZodObject":
-      return Object.values(getZodObjectShape(schema) ?? {}).some(walk) || walk(def.catchall);
+      Object.values(getZodObjectShape(schema) ?? {}).forEach(walk);
+      walk(def.catchall);
+      break;
     case "ZodArray":
     case "ZodSet":
-      return walk(def.type ?? def.valueType);
+      walk(def.type ?? def.valueType);
+      break;
     case "ZodRecord":
     case "ZodMap":
-      return walk(def.valueType);
+      walk(def.valueType);
+      break;
     case "ZodTuple":
-      return (def.items as ZodTypeAny[]).some(walk) || walk(def.rest);
+      (def.items as ZodTypeAny[]).forEach(walk);
+      walk(def.rest);
+      break;
     case "ZodUnion":
     case "ZodDiscriminatedUnion":
-      return [...(def.options instanceof Map ? def.options.values() : def.options)].some(walk);
+      [...(def.options instanceof Map ? def.options.values() : def.options)].forEach(walk);
+      break;
     case "ZodIntersection":
-      return walk(def.left) || walk(def.right);
+      walk(def.left);
+      walk(def.right);
+      break;
     case "ZodLazy":
-      return walk(def.getter());
+      walk(def.getter());
+      break;
     case "ZodBranded":
-      return walk(def.type);
+      walk(def.type);
+      break;
     case "ZodPipeline":
-      return walk(def.in) || walk(def.out);
+      walk(def.in);
+      walk(def.out);
+      break;
     case "ZodCatch":
-      return walk(def.innerType);
-    default: {
-      const inner = getZodInnerType(schema);
-      return inner !== undefined && walk(inner);
-    }
+      walk(def.innerType);
+      break;
+    default:
+      walk(getZodInnerType(schema));
   }
+  return out;
 }
 
 /** `true` for a `z.object` with no catchall, no strict or passthrough mode and no refinement. */

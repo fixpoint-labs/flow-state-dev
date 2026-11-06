@@ -543,6 +543,59 @@ describe("reading one stored record always gives one value", () => {
   it("accepts a static default on a block-only field: it is the same on every read", () => {
     expect(() => flowWith("static-ok", factoryBlock("s", "session", z.string().default("plan")))).not.toThrow();
   });
+
+  it("refuses a session factory the flow declares the field without (an optional on the flow)", () => {
+    const uuid = z.string().default(() => crypto.randomUUID());
+    expect(() => flowWith("optional-on-flow", factoryBlock("ids", "session", uuid), z.object({ id: z.string().optional() }))).toThrow(
+      /session\.state\.id has a default factory declared by block "ids", and the flow declares the field without it[\s\S]*same factory/
+    );
+  });
+
+  it("refuses a session factory that differs from the one the flow declares", () => {
+    const theirs = z.string().default(() => "a");
+    const ours = z.string().default(() => "a");
+    expect(() => flowWith("other-factory", factoryBlock("ids", "session", theirs), z.object({ id: ours }))).toThrow(
+      /session\.state\.id has a default factory declared by block "ids", and the flow declares the field without it/
+    );
+  });
+
+  it("refuses any factory in user or org scope, the flow's own included: those records are stored as written", () => {
+    for (const scope of ["user", "org"] as const) {
+      const visitorId = z.string().default(() => crypto.randomUUID());
+      const own = z.object({ visitorId });
+      // The flow declares it, and a block restates the same factory.
+      expect(() =>
+        defineFlow({
+          kind: `own-${scope}`,
+          [scope]: { stateSchema: own },
+          actions: {
+            read: {
+              inputSchema: z.object({}),
+              block: handler({ name: "restates", inputSchema: z.object({}), [`${scope}StateSchema`]: own, execute: () => ({}) } as never)
+            }
+          }
+        } as never)
+      ).toThrow(new RegExp(`${scope}\\.state\\.visitorId has a default factory[\\s\\S]*static default, or set the value when you write`));
+      // The flow alone declares it.
+      expect(() =>
+        defineFlow({
+          kind: `alone-${scope}`,
+          [scope]: { stateSchema: z.object({ visitorId: z.string().default(() => "x") }) },
+          actions: { read: { inputSchema: z.object({}), block: handler({ name: "n", inputSchema: z.object({}), execute: () => ({}) }) } }
+        } as never)
+      ).toThrow(new RegExp(`${scope}\\.state\\.visitorId has a default factory declared by flow "alone-${scope}"`));
+    }
+  });
+
+  it("allows a static default in user and org scope", () => {
+    expect(() =>
+      defineFlow({
+        kind: "static-user",
+        user: { stateSchema: z.object({ theme: z.string().default("light") }) },
+        actions: { read: { inputSchema: z.object({}), block: factoryBlock("t", "user", z.string().default("light")) } }
+      })
+    ).not.toThrow();
+  });
 });
 
 describe("a decision on stored state reads it as a run reads it, defaults filled", () => {
@@ -700,17 +753,16 @@ describe("declarations that disagree are refused before anything runs", () => {
     expect(registry.list().map((f) => f.id)).toEqual(["shares-1", "shares-2"]);
   });
 
-  it("two flows that share one block's dynamic user default, each merging its own fields too, are not refused", () => {
-    // The shared block defaults `visitorId` with a factory, so each flow
-    // declares that field too (a factory on a block-only field is refused);
-    // each flow's own block types it without one, so each flow's merge has
-    // several declarations of the field.
-    const visitorId = z.string().default(() => crypto.randomUUID());
-    const at = z.string().default(() => new Date().toISOString());
-    const sharedId = handler({
-      name: "shared-id",
+  it("two flows that share one block's constrained user field, each merging it again, are not refused", () => {
+    // A constrained field compares by identity, so it agrees across flows only
+    // while each flow's merge keeps the shared schema object itself. Each flow's
+    // own block types the field again, without the default, so each flow's
+    // merge has two declarations of it; `prefs` is a merged object in each.
+    const code = z.string().min(2);
+    const sharedCode = handler({
+      name: "shared-code",
       inputSchema: z.object({}),
-      userStateSchema: z.object({ visitorId, prefs: z.object({ at }).default({}) }),
+      userStateSchema: z.object({ code: code.default("ab"), prefs: z.object({ at: code.default("cd") }).default({}) }),
       execute: () => ({})
     });
     const own = (kind: string) =>
@@ -718,7 +770,7 @@ describe("declarations that disagree are refused before anything runs", () => {
         name: `${kind}-own`,
         inputSchema: z.object({}),
         userStateSchema: z.object({
-          visitorId: z.string(),
+          code,
           [`${kind}Count`]: z.number().default(0),
           prefs: z.object({ size: z.number().default(1) })
         }),
@@ -729,8 +781,7 @@ describe("declarations that disagree are refused before anything runs", () => {
       registry.register(
         defineFlow({
           kind,
-          user: { stateSchema: z.object({ visitorId, prefs: z.object({ at }) }) },
-          actions: { a: { inputSchema: z.object({}), block: sharedId }, b: { inputSchema: z.object({}), block: own(kind) } }
+          actions: { a: { inputSchema: z.object({}), block: sharedCode }, b: { inputSchema: z.object({}), block: own(kind) } }
         })()
       );
     }

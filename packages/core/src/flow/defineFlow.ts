@@ -48,7 +48,7 @@ import { hasZodObjectCatchall, introspectStateKeys, isZodObject } from "../helpe
 import { walkBlockGraph } from "../helpers/block-graph";
 import {
   mergeScopeStateSchemas,
-  refuseUndeclaredFactoryDefaults,
+  refuseUnstoredFactoryDefaults,
   type ScopeStateDeclaration
 } from "../helpers/scope-state-merge";
 import { getBaseCapability } from "../capability/merge";
@@ -776,14 +776,12 @@ function mergeFlowScopeStateSchemas(
   const merged: { session?: ZodTypeAny; user?: ZodTypeAny; org?: ZodTypeAny } = {};
   for (const scope of STATE_SCOPES) {
     const own = scopes[scope]?.stateSchema;
-    const declared = blockScopeStateDeclarations(scope, reachable);
-    for (const declaration of declared) {
-      if (declaration.schema !== own) refuseUndeclaredFactoryDefaults(`Flow "${kind}"`, scope, own, declaration);
-    }
-    const schema = mergeScopeStateSchemas(`Flow "${kind}"`, scope, [
+    const declarations = [
       ...(own === undefined ? [] : [{ schema: own, source: `flow "${kind}"` }]),
-      ...declared
-    ]);
+      ...blockScopeStateDeclarations(scope, reachable)
+    ];
+    refuseUnstoredFactoryDefaults(`Flow "${kind}"`, scope, own, declarations);
+    const schema = mergeScopeStateSchemas(`Flow "${kind}"`, scope, declarations);
     if (schema !== undefined) merged[scope] = schema;
   }
   return merged;
