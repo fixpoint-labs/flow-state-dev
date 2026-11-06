@@ -8,9 +8,11 @@
  *   adopter   a file under `apps/` (not `apps/docs/` or `apps/devtool/`), `examples/` or
  *             `labs/` imports it from the root, in any import form;
  *   docs      a docs-site file (`apps/docs/`) imports it from the root;
- *   readme    the package's README names it, or a pending changeset whose `Docs:` line lists
- *             that README names it (README prose is written at release from the changeset,
- *             docs/contributing/release-docs.md, so the changeset is the PR's README line);
+ *   readme    the package's README names it in code form (backticked, as a call `name(`, or in
+ *             an import's brace list; a bare word in prose doesn't count), or a pending
+ *             changeset whose `Docs:` line lists that README does (README prose is written at
+ *             release from the changeset, docs/contributing/release-docs.md, so the changeset
+ *             is the PR's README line);
  *   reached   a used name's declaration names it in a type position (`Foo`, `typeof foo`),
  *             followed to a fixpoint: the adopter meets it through a signature.
  * Anything else FAILS: only our own packages, goals or scripts import it, or nothing does.
@@ -24,8 +26,15 @@
  * Every published root is read, every PR. Names that already fail are their owners' to rule
  * on (FIX-2448 for core; FIX-2568 / FIX-2569 for the roots no epic child owns).
  *
- * It also lists, without failing, each name a README or changeset line added since the base
- * is the only thing clearing, so the reviewer reads those lines as the ruling they are.
+ * It also lists, without failing, each name a README or changeset mention is the only thing
+ * clearing where the base did not clear it that way (a new export the README already named
+ * counts too), so the reviewer reads that mention as the ruling it is. Names reached from such a
+ * name are not listed separately: a type a documented signature names is met through it, and
+ * the reviewer rules on the signature.
+ *
+ * A name is keyed by package and name, so one renamed or moved to another package reads as new.
+ * CI compares with `HEAD^1` of the PR's merge commit; the local default is the merge base with
+ * `origin/main`, which can differ when `origin/main` is stale, so a local PASS is not CI's answer.
  *
  * Reach is read from source, not from emitted declarations, so it approximates the
  * compiler's; base and head are read by the same rule, so the ratchet compares like with like.
@@ -44,7 +53,20 @@ import { fsReader, gitReader, packageEntryExports } from "./mechanism-exports.mj
 export const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 const escape = (s) => s.replace(/[$]/g, "\\$");
-const names = (text, name) => new RegExp(`(?<![\\w$])${escape(name)}(?![\\w$])`).test(text);
+/**
+ * Whether README text names `name` in code form: inside backticks (`` `name` ``, `` `name(opts)` ``),
+ * as a call (`name(`), or in an import's brace list. A bare word in prose does not count, or a
+ * common name (`run`, `state`, `client`) would clear on a sentence that was never about it.
+ */
+const names = (text, name) => {
+  const n = escape(name);
+  const end = String.raw`(?![\w$])`;
+  return new RegExp([
+    "`" + n + end + "[^`\\n]*`",
+    String.raw`(?<![\w$.])` + n + String.raw`\(`,
+    String.raw`\bimport\s+(?:type\s+)?(?:[\w$]+\s*,\s*)?\{[^}]*(?<![\w$])` + n + end + String.raw`[^}]*\}\s*from\b`,
+  ].join("|")).test(text);
+};
 
 /** Published (not `private`) packages: name → directory under `packages/`. */
 function publishedPackages(read) {
@@ -143,8 +165,8 @@ const internalKey = (i) => `${i.file}\t${i.spec}`;
 /**
  * Compare a head report with a base report. Returns
  * `{ newFailing: [{ pkg, name, file }], newInternal: [{ file, spec, form }], readmeCleared: [{ pkg, name }] }`.
- * `readmeCleared` is advisory: a name a README or changeset line is the only thing clearing,
- * where the base had no such line.
+ * `readmeCleared` is advisory: a name a README or changeset mention is the only thing clearing,
+ * where the base did not clear it that way (the mention itself may predate the change).
  */
 export function compare(base, head) {
   const was = failing(base);
@@ -173,7 +195,7 @@ export function render({ newFailing, newInternal, readmeCleared }) {
   }
   for (const { file, spec, form } of newInternal) out.push(`${file}: ${form} of ${spec}. /internal paths are for FSD's own packages; use a public entry.`);
   if (readmeCleared.length) {
-    out.push(`Cleared only by a README or changeset line this change adds (for the reviewer, not a failure):`);
+    out.push(`Cleared only by a README or changeset mention, with no import (for the reviewer, not a failure; check the mention documents the name):`);
     for (const { pkg, name } of readmeCleared) out.push(`  ${pkg}: ${name}`);
   }
   return { ok: newFailing.length === 0 && newInternal.length === 0, lines: out };

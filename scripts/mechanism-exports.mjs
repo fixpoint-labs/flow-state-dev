@@ -30,6 +30,12 @@ function grepFiles(root, refArgs, text, dirs, prefix) {
   }
 }
 
+/**
+ * Whether an `exports` target is a source module the walk can read: anything under `src/`, or
+ * a TypeScript source file wherever it sits (shift-manager's `./cli/index.ts`), never emitted output.
+ */
+const isSourceTarget = (t) => t.includes("/src/") || (/\.[mc]?tsx?$/.test(t) && !/\.d\.[mc]?tsx?$/.test(t) && !/(^|\/)dist\//.test(t));
+
 /** Read files from the working tree under `root`. */
 export const fsReader = (root) => {
   const read = (path) => { try { return readFileSync(join(root, path), "utf8"); } catch { return null; } };
@@ -151,7 +157,7 @@ export function packageEntryExports(read) {
     w.dirs.set(name, dir);
     for (const [sub, v] of Object.entries(typeof map === "string" ? { ".": map } : map)) {
       const target = typeof v === "string" ? v : v.default ?? v.import;
-      if (typeof target !== "string" || !target.includes("/src/")) continue;
+      if (typeof target !== "string" || !isSourceTarget(target)) continue;
       const add = (key, file) => { w.bare.set(key === "." ? name : `${name}/${key.slice(2)}`, file); files.push([key, file]); };
       const pattern = normalize(join("packages", dir, target));
       if (!pattern.includes("*")) { add(sub, pattern); continue; }

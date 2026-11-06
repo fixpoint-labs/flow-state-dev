@@ -16,8 +16,10 @@
  * Retained history (`specs/`, `docs/internal/`, `.changeset/`, CHANGELOGs) is never read.
  *
  * Every import form counts: `import`, `import type`, `export … from`, a side-effect
- * `import "…"`, `import()` (including `typeof import()`), and `require()`.
+ * `import "…"`, `import()` (including `typeof import()`), and `require()`. In a code file an
+ * import inside a comment does not; in Markdown every code block's imports do.
  */
+import ts from "typescript";
 
 /** Retained history: never rewritten, never a caller. */
 export const isHistory = (f) =>
@@ -58,6 +60,25 @@ const SIDE_EFFECT_RE = new RegExp(String.raw`\bimport\s*["']` + PKG + `["']`, "g
 // import("…"), typeof import("…"), require("…"), import x = require("…").
 const CALL_RE = new RegExp(String.raw`\b(import|require)\s*\(\s*["']` + PKG + String.raw`["']\s*\)`, "g");
 
+/**
+ * `text` with its comments blanked to spaces (offsets kept), read by the TypeScript scanner so
+ * a `//` inside a string survives. For code files only: in Markdown a `//` is prose.
+ */
+export function stripComments(text) {
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.JSX, text);
+  let out = "";
+  let at = 0;
+  for (let k = scanner.scan(); k !== ts.SyntaxKind.EndOfFileToken; k = scanner.scan()) {
+    if (k !== ts.SyntaxKind.SingleLineCommentTrivia && k !== ts.SyntaxKind.MultiLineCommentTrivia) continue;
+    const start = scanner.getTokenStart?.() ?? scanner.getTokenPos();
+    out += text.slice(at, start) + text.slice(start, scanner.getTextPos()).replace(/[^\n]/g, " ");
+    at = scanner.getTextPos();
+  }
+  return out + text.slice(at);
+}
+
+const isCode = (f) => /\.[mc]?[jt]sx?$/.test(f);
+
 const bindingNames = (list) =>
   (list ?? "").split(",").map((s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0].trim()).filter(Boolean);
 
@@ -94,8 +115,10 @@ export function importCensus(read) {
   const internalImports = [];
   const files = read.grep("@flow-state-dev/", ["apps", "examples", "labs"]).filter((f) => !isHistory(f) && areaOf(f) !== "ours");
   for (const file of files) {
-    const text = read(file);
-    if (text == null) continue;
+    const raw = read(file);
+    if (raw == null) continue;
+    // A commented-out import is not a use (and must not hide the name after it in a brace list).
+    const text = isCode(file) ? stripComments(raw) : raw;
     const area = areaOf(file);
     for (const { pkg, sub, names, form } of importsIn(text)) {
       if (isInternalSubpath(sub)) internalImports.push({ file, spec: pkg + sub, form });

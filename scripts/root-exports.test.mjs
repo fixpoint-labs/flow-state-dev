@@ -3,6 +3,8 @@
  *
  * The check must pass this commit against itself, and must name every planted violation:
  * a root name nobody imports, one only a sibling package imports, one only a goal imports,
+ * one the README names only as a bare word in prose, one on a root outside `src/`, one an
+ * app imports only inside a comment,
  * a name whose last app import is removed, and adopter imports of `/internal` paths in each
  * import form. It must let through what the rules say counts as use (an app import, a README
  * or changeset line, a type met through a used signature) and list the README and changeset
@@ -38,6 +40,7 @@ function overlay(files) {
 const CORE = "packages/core/src/index.ts";
 const ENGINE = "packages/engine/src/index.ts";
 const CORE_README = "packages/core/README.md";
+const SHIFT = "packages/shift-manager/cli/index.ts";
 
 const plants = {
   [CORE]: real(CORE) + `
@@ -45,6 +48,13 @@ export const zzNobody = 1;
 export const zzGoalOnly = 1;
 export const zzAppUsed = 1;
 export const zzReadmeDump = 1;
+export const zzProseOnly = 1;
+export const zzTicked = 1;
+export const zzCalled = 1;
+export const zzImported = 1;
+export const zzCommentedOut = 1;
+export const zzBlockCommented = 1;
+export const zzAfterComment = 1;
 export const zzChangesetDoc = 1;
 export const zzChangesetElsewhere = 1;
 export const zzWasUsed = 1;
@@ -53,12 +63,20 @@ export interface ZzBodyOnly { b: number }
 export function zzSigned(options: ZzOptions): void { const x: ZzBodyOnly = { b: options.a }; void x; }
 `,
   [ENGINE]: real(ENGINE) + "\nexport const zzSiblingOnly = 1;\n",
+  // shift-manager's root is `./cli/index.ts`, outside any `src/`: still a published root.
+  [SHIFT]: real(SHIFT) + "\nexport const zzShiftRoot = 1;\n",
   "packages/testing/src/zz-plant.ts": `import { zzSiblingOnly } from "@flow-state-dev/engine";\nvoid zzSiblingOnly;\n`,
   "goals/zz-plant/check.mts": `import { zzGoalOnly } from "@flow-state-dev/core";\nimport type { X } from "@flow-state-dev/core/internal";\n`,
   "apps/kitchen-sink/zz-plant.ts": `import { zzAppUsed, zzSigned } from "@flow-state-dev/core";\nimport type { Seam } from "@flow-state-dev/core/internal";\n`,
+  // A commented-out import is not a use, and a comment inside a brace list doesn't hide the name after it.
+  "apps/kitchen-sink/zz-comments.ts": `// import { zzCommentedOut } from "@flow-state-dev/core";\n/* import { zzBlockCommented } from "@flow-state-dev/core"; */\nimport {\n  // a note\n  zzAfterComment,\n} from "@flow-state-dev/core";\nconst url = "https://example.com"; // import { zzInString } from "@flow-state-dev/core"\n`,
   "labs/zz-plant/dynamic.ts": `const seams = await import("@flow-state-dev/engine/internal");\n`,
   "examples/zz-plant/require.js": `const o = require("@flow-state-dev/orchestration/internal");\n`,
-  [CORE_README]: real(CORE_README) + "\nzzReadmeDump\n",
+  // Only a code-form mention names an export: a bare word in prose (zzProseOnly, zzReadmeDump)
+  // is how a common name like `run` or `state` would clear on text that was never about it.
+  [CORE_README]: real(CORE_README) +
+    "\nzzReadmeDump\n\nThe zzProseOnly word in a sentence.\n\nCall \`zzTicked\` or zzCalled(opts).\n\n" +
+    "```ts\nimport { createFlow, zzImported } from \"@flow-state-dev/core\";\n```\n",
   ".changeset/zz-plant.md": `---\n"@flow-state-dev/core": minor\n---\n\nAdds \`zzChangesetDoc\` (FIX-2448).\n\nDocs: packages/core/README.md\n`,
   ".changeset/zz-elsewhere.md": `---\n"@flow-state-dev/core": minor\n---\n\nAdds \`zzChangesetElsewhere\` (FIX-2448).\n\nDocs: apps/docs/docs/api/core.md\n`,
 };
@@ -84,11 +102,16 @@ describe("the export check", () => {
   it("fails each root name nobody outside the framework uses, and only those", () => {
     assert.deepEqual(failingNames(), [
       "@flow-state-dev/core ZzBodyOnly", // named only inside a function body, not by its signature
+      "@flow-state-dev/core zzBlockCommented", // an import inside a comment is not a use
       "@flow-state-dev/core zzChangesetElsewhere", // its changeset's Docs: line doesn't list the README
+      "@flow-state-dev/core zzCommentedOut",
       "@flow-state-dev/core zzGoalOnly", // goals are ours
       "@flow-state-dev/core zzNobody",
+      "@flow-state-dev/core zzProseOnly", // a bare word in README prose is not the README naming it
+      "@flow-state-dev/core zzReadmeDump",
       "@flow-state-dev/core zzWasUsed",
       "@flow-state-dev/engine zzSiblingOnly", // a sibling package's import is not a use
+      "@flow-state-dev/shift-manager zzShiftRoot", // a root outside src/ is read too
     ]);
     assert.equal(render(result).ok, false);
   });
@@ -96,15 +119,19 @@ describe("the export check", () => {
   it("lets through an app import, a type a used signature names, and a README or changeset line", () => {
     const core = planted.roots.get("@flow-state-dev/core");
     assert.equal(core.get("zzAppUsed").why, "adopter");
+    assert.equal(core.get("zzAfterComment").why, "adopter");
     assert.equal(core.get("ZzOptions").why, "reached");
-    assert.equal(core.get("zzReadmeDump").why, "readme");
-    assert.equal(core.get("zzChangesetDoc").why, "readme");
+    for (const n of ["zzTicked", "zzCalled", "zzImported", "zzChangesetDoc"]) assert.equal(core.get(n).why, "readme", n);
   });
 
   it("lists the names only a new README or changeset line clears, for the reviewer", () => {
     const cleared = result.readmeCleared.map((c) => c.name).sort();
-    assert.deepEqual(cleared, ["zzChangesetDoc", "zzReadmeDump"]);
-    assert.match(render(result).lines.join("\n"), /for the reviewer, not a failure/);
+    assert.deepEqual(cleared, ["zzCalled", "zzChangesetDoc", "zzImported", "zzTicked"]);
+    const text = render(result).lines.join("\n");
+    assert.match(text, /for the reviewer, not a failure/);
+    // The mention may predate the change (a new export the README already named), so the
+    // message must not claim the change added it.
+    assert.doesNotMatch(text, /this change adds/);
   });
 
   it("fails a name whose last app import is removed", () => {
