@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { BoardColumns } from "@flow-state-dev/react";
+import { BoardColumns } from "@flow-state-dev/react/workforce";
 
 import {
   boardRow,

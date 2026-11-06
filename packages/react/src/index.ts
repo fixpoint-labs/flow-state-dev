@@ -155,33 +155,12 @@ export {
   type SessionRowState
 } from "./components/flow-navigator";
 
-export {
-  Roster,
-  rosterPropNames,
-  BoardColumns,
-  boardColumnsPropNames,
-  BoardList,
-  boardListPropNames,
-  groupIntoColumns,
-  BOARD_STATUS_COLUMNS,
-  type BoardCard,
-  type BoardCardRow,
-  type BoardColumn,
-  type BoardColumnsProps,
-  type BoardColumnsSlots,
-  type BoardListProps,
-  type BoardListSlots,
-  type BoardStatus,
-  type PanelRowSource,
-  type PanelItemSource,
-  type PanelLiveSource,
-  type RosterProps,
-  type RosterWorker,
-  type RosterWorkerRow,
-  type RosterSlots,
-  WorkerDetail,
-  type WorkerDetailProps
-} from "./components/panels";
+// ---------------------------------------------------------------------------
+// Deprecated aliases: the workforce panels moved to
+// `@flow-state-dev/react/workforce`. Kept until the minor that removes every
+// alias; deleting this line and `./workforce-root-aliases.ts` is the removal.
+// ---------------------------------------------------------------------------
+export * from "./workforce-root-aliases";
 
 export {
   useReadFence,
