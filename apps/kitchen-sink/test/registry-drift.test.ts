@@ -4,7 +4,8 @@
  * `compareRegistryCopies` does the walk. This file only states this app's
  * scope: stories are not installed, and neither are the two `generative/`
  * components, the connection bar and screen, the request-recovery line, the
- * task action row, the task time signal, or the harness readiness chips.
+ * task action row, the task time signal, the harness readiness chips, or the
+ * session overlay.
  * `compared.length` fails a walk that passes by comparing less.
  */
 import { dirname, join } from "node:path";
@@ -41,6 +42,8 @@ const NOT_INSTALLED_COMPONENTS = new Set([
   "task-signals.tsx",
   // Kitchen Sink draws no background task's feed, so nothing here says what one is doing now.
   "working-status.ts",
+  // The session overlay is the labs' popup over a session; Kitchen Sink opens no such popup.
+  "session-overlay.tsx",
 ]);
 
 const drift = () =>
