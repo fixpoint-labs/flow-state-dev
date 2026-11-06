@@ -68,6 +68,7 @@ import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
 import { noteRoutedLines } from "../coordinator/routed-brief";
 import { taskMessage } from "./task-message";
+import { taskBriefMetadata } from "./task-brief";
 
 
 /**
@@ -310,9 +311,14 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
    * the answer that re-queued it) is part of the session's history: a later
    * turn in the session is handed what it was asked. The entry is reached
    * through the board's claim gate, so its input is the dispatch envelope and
-   * the task is its payload.
+   * the task is its payload. It is marked as the task's brief
+   * (`taskBriefOf`), so a screen draws it as what the session was handed,
+   * not as a line the user typed.
    */
-  const userMessage = (dispatch: TaskDispatchInput) => taskMessage(dispatch.payload as TaskWorkerInput);
+  const userMessage = (dispatch: TaskDispatchInput) => {
+    const task = dispatch.payload as TaskWorkerInput;
+    return { text: taskMessage(task), metadata: taskBriefMetadata({ taskId: task.taskId }) };
+  };
 
   return { block, from, userMessage, concurrency: REPLY_CONCURRENCY };
 }

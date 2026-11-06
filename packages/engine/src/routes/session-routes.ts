@@ -327,8 +327,10 @@ export async function handleListSessions(
     if (own ?? hostRuleAdmits(s)) visible.push(s);
   }
 
-  // Each visible row's latest request status, only when asked, under each
-  // session's own request scope. A few at a time, so a long listing costs
+  // Each visible row's latest request status, only when asked:
+  // read on the server, under each session's own request scope, so a list
+  // shows which session needs its user without a read per row from the
+  // browser. A few sessions at a time, so a long listing costs
   // time rather than a burst of store reads.
   const provider = ctx.durabilityProvider;
   const listSuspended: SuspensionStore["list"] =

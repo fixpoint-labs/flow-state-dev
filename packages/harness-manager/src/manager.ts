@@ -38,7 +38,10 @@ import {
   defineCapability,
   handler,
   observedPullRequestsCollection,
+  pullRequestRefFromUrl,
   sequencer,
+  writePullRequests,
+  type PullRequestCollection,
   type DefinedCapability,
   type PresetDef,
   type UsesSlot,
@@ -91,6 +94,7 @@ import {
   worktreeKey,
   worktreesCollection,
   type HeldWork,
+  type Landed,
   type WorktreeCollection,
   type RecordedPlace,
   type RunSourceAnswer,
@@ -841,6 +845,22 @@ type StateClaim = z.infer<typeof stateClaimSchema>;
 /** The most of a run's final message its output carries. */
 export const MAX_ANSWER_CHARS = 8_000;
 
+/** Where an accepted run's work landed, as the workspace host's `land` reports it. */
+const landedSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("pull-request"),
+    url: z.string(),
+    number: z.number().int(),
+    branch: z.string(),
+    base: z.string(),
+    remote: z.string(),
+  }),
+  z.object({ kind: z.literal("merge"), branch: z.string(), commit: z.string(), checkout: z.string(), from: z.string() }),
+]);
+
+/** How an accept asks a run's work to land. */
+type LandHow = "pull-request" | "merge";
+
 /** The manager's own result. Two outcomes; there is deliberately no third. */
 const managerOutputSchema = z.object({
   issue: z.string(),
@@ -875,12 +895,25 @@ const managerOutputSchema = z.object({
    * when no review was asked. Defaulted so a decision kept before it parses (BP-030).
    */
   review: z.enum(["accepted", "deadline"]).nullable().default(null),
+  /**
+   * Where an accepted run's work went (FIX-2543), when the person chose a
+   * way to land it: the pull request opened from its branch, or the base
+   * branch it was merged into and the commit that branch is at. `null` when
+   * none was chosen. Defaulted so an output kept before it parses (BP-030).
+   */
+  landed: landedSchema.nullable().default(null),
 });
 type ManagerOutput = z.infer<typeof managerOutputSchema>;
 
-/** A person's answer to the review of a run's changes: accept them, or ask for changes in words. */
+/**
+ * A person's answer to the review of a run's changes: accept them, or ask for
+ * changes in words. An accept may name how the work lands (`land`, FIX-2543):
+ * `pull-request` pushes the run's branch and opens a pull request; `merge`
+ * merges it into the base branch of the person's checkout. Offered only on a
+ * host that can land (`WorkspaceHost.land`), as the review's `data.lands`.
+ */
 export const harnessReviewAnswerSchema = z.discriminatedUnion("verdict", [
-  z.object({ verdict: z.literal("accepted") }),
+  z.object({ verdict: z.literal("accepted"), land: z.enum(["pull-request", "merge"]).optional() }),
   // A word, not just space: a revision with none is refused when it is given.
   z.object({ verdict: z.literal("revise"), words: z.string().regex(/\S/) }),
 ]);
@@ -992,6 +1025,8 @@ const managerStateSchema = z.object({
        * settle on it; `revise` and `cancelled` must not complete the run.
        */
       reviewed: z.enum(["accepted", "deadline", "revise", "cancelled"]).nullable().default(null),
+      /** Where an accept that named a way to land sent the work (FIX-2543). `null` otherwise. */
+      landed: landedSchema.nullable().default(null),
       /** The checks the phase's `isDone` ran (`commandCheck`), for the review's `data`. `null` when it ran none. */
       checks: z.array(commandCheckResultSchema).nullable().default(null),
     })
@@ -1259,6 +1294,65 @@ function reviewPrompt(
   );
   lines.push("The judge's verdict is information, not approval. Accept the changes, or ask for changes in words.");
   return lines.join("\n");
+}
+
+/** What the feed says once an accepted run's work landed: where it went, and what comes next. */
+function landedLine(landed: Landed): string {
+  return landed.kind === "pull-request"
+    ? `Opened pull request #${landed.number} from ${landed.branch} into ${landed.base}: ${landed.url}. Next: review and merge it.`
+    : `Merged ${landed.from} into ${landed.branch} in ${landed.checkout}, now at ${landed.commit.slice(0, 12)}. Next: push ${landed.branch} when you're ready.`;
+}
+
+/** What the feed and the review asked again say when landing failed: the run's commits are still on its branch. */
+function landFailedLine(failed: { land: LandHow; message: string }): string {
+  const what = failed.land === "pull-request" ? "Opening the pull request" : "Merging locally";
+  return `${what} failed: ${failed.message} Nothing was lost: try again, or choose the other way.`;
+}
+
+/** The most characters a pull request's title keeps. */
+const PULL_REQUEST_TITLE_CHARS = 72;
+
+/**
+ * An accepted run's pull request text: its one commit's subject (or the
+ * task's goal) as the title; the goal, the commits, the checks and the
+ * judge's verdict as the body.
+ */
+function pullRequestText(
+  state: ManagerState,
+  decision: NonNullable<ManagerState["decided"]>,
+  read: HarnessJudgeVerdict | null,
+): { title: string; body: string } {
+  const subjects = decision.changes?.subjects ?? [];
+  const goal = (state.goal ?? "").trim();
+  const first = subjects.length === 1 ? subjects[0]! : (goal.split("\n")[0] ?? "").trim() || (subjects[0] ?? `Changes on ${state.branch}`);
+  const title = first.length > PULL_REQUEST_TITLE_CHARS ? `${first.slice(0, PULL_REQUEST_TITLE_CHARS - 1)}…` : first;
+  const body: string[] = [];
+  if (goal !== "") body.push(goal, "");
+  if (subjects.length > 0) body.push("Commits:", ...subjects.map((subject) => `- ${subject}`), "");
+  const checks = decision.checks ?? null;
+  if (checks !== null && checks.length > 0) body.push(`${commandChecksSummary(checks)}.`, "");
+  body.push(read === null ? "No judge read this run." : `The judge: ${read.verdict} (${read.confidence.toFixed(2)}): ${read.reason}`);
+  body.push("", "Opened from a coding run a person reviewed and accepted.");
+  return { title, body: body.join("\n") };
+}
+
+/**
+ * The pull request an accept opened, written to the run session's record
+ * (FIX-2268's `observed-pull-requests`) so every reader of the record shows
+ * it. Never throws: a record that can't be written is a status note.
+ */
+async function recordLandedPullRequest(ctx: BlockContext, landed: Extract<Landed, { kind: "pull-request" }>): Promise<void> {
+  const collection = (ctx.resources as Record<string, unknown> | undefined)?.[OBSERVED_PULL_REQUESTS] as PullRequestCollection | undefined;
+  const link = pullRequestRefFromUrl(landed.url);
+  if (typeof collection?.upsert !== "function" || link === null) return;
+  try {
+    await writePullRequests(collection, [{ ...link, state: "open", branch: landed.branch }], {
+      source: "branch",
+      requestId: ctx.request.identity.id,
+    });
+  } catch (error) {
+    ctx.emit.status(`The pull request was not recorded: ${error instanceof Error ? error.message : String(error)}`, { transient: false });
+  }
 }
 
 /** Read the manager's state, or throw rather than derive a wrong directory. */
@@ -2765,13 +2859,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           path: state.filesOnly === true ? null : state.workspacePath,
           judged: false,
           review: null,
+          landed: null,
         };
         // Read once here, so the review's prompt and data come from state alone.
         const diff: RunDiff | null =
           reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0
             ? (read ?? (await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)))
             : null;
-        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, reviewed: null, checks } });
+        await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, reviewed: null, landed: null, checks } });
         return judgeInput;
       };
       // A run of kept files alone has no branch, so nothing on one to review: a verified none.
@@ -3307,7 +3402,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         "the row was completed",
       );
       const review = decision.reviewed === "accepted" || decision.reviewed === "deadline" ? decision.reviewed : null;
-      return { ...decision.output, judged: read !== null, review };
+      return { ...decision.output, judged: read !== null, review, landed: decision.landed ?? null };
     },
   });
 
@@ -3320,6 +3415,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * a verified zero skips it. The manager's one suspension; questions hold.
    *
    * - **accepted**: the settle completes the task, with no harness run.
+   *   An accept that names how the work lands (`land`, FIX-2543) first
+   *   lands it through the host: `pull-request` pushes the run's branch and
+   *   opens a pull request (recorded in the session's `observed-pull-requests`),
+   *   `merge` merges it into the base branch of the person's checkout. Where
+   *   it went is on the output's `landed` and said on the stream. A landing
+   *   that fails (a refused push, a merge conflict, which is never resolved
+   *   here) asks the review again with the error, so the person can retry or
+   *   choose the other way; the run's branch and checkout are kept as they are.
    * - **revise**: the words are written as the user's steer, so the steer
    *   check after this takes them into one more step of the same coding
    *   session, on the same attempt, which comes back here. A run whose harness
@@ -3346,74 +3449,127 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) return input;
       const changes = decision.changes;
       if (changes?.verified === true && changes.count === 0) return input;
-      const reviewed = async (outcome: "accepted" | "deadline" | "revise" | "cancelled") =>
-        ctx.sequencer!.patchState({ decided: { ...decision, reviewed: outcome } });
+      const reviewed = async (outcome: "accepted" | "deadline" | "revise" | "cancelled", landed: Landed | null = null) =>
+        ctx.sequencer!.patchState({ decided: { ...decision, reviewed: outcome, landed } });
 
-      let asked: Awaited<ReturnType<BlockContext["suspendForUser"]>>;
-      try {
-        asked = await ctx.suspendForUser({
-          kind: "review",
-          title: "Review the run's changes",
-          prompt: reviewPrompt(changes, decision.output.branch, read, decision.diff ?? null, decision.checks ?? null),
-          resumeSchema: harnessReviewAnswerSchema,
-          data: {
-            branch: decision.output.branch,
-            commits: changes?.verified === true ? changes.count : null,
-            subjects: changes?.subjects ?? [],
-            // Each changed file's lines, when they were read (FIX-2384); `null` when they couldn't be.
-            files: decision.diff?.verified === true ? decision.diff.files : null,
-            fileCount: decision.diff?.verified === true ? decision.diff.fileCount : null,
-            added: decision.diff?.verified === true ? decision.diff.added : null,
-            removed: decision.diff?.verified === true ? decision.diff.removed : null,
-            judge: read,
-            checks: decision.checks ?? null,
-            // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
-          } satisfies ReviewDetail & Record<string, unknown>,
+      // The ways this host can land an accept; none on a host without `land`.
+      const lands: LandHow[] = host.land === undefined || decision.output.branch === null ? [] : ["pull-request", "merge"];
+      // The last landing that failed, shown on the review asked again, with a retry.
+      let failed: { land: LandHow; message: string } | null = null;
+      for (let round = 0; ; round++) {
+        let asked: Awaited<ReturnType<BlockContext["suspendForUser"]>>;
+        try {
+          asked = await ctx.suspendForUser({
+            kind: "review",
+            title: failed === null ? "Review the run's changes" : "The accepted changes didn't land",
+            prompt:
+              (failed === null ? "" : `${landFailedLine(failed)}\n\n`) +
+              reviewPrompt(changes, decision.output.branch, read, decision.diff ?? null, decision.checks ?? null),
+            resumeSchema: harnessReviewAnswerSchema,
+            data: {
+              branch: decision.output.branch,
+              commits: changes?.verified === true ? changes.count : null,
+              subjects: changes?.subjects ?? [],
+              // Each changed file's lines, when they were read (FIX-2384); `null` when they couldn't be.
+              files: decision.diff?.verified === true ? decision.diff.files : null,
+              fileCount: decision.diff?.verified === true ? decision.diff.fileCount : null,
+              added: decision.diff?.verified === true ? decision.diff.added : null,
+              removed: decision.diff?.verified === true ? decision.diff.removed : null,
+              judge: read,
+              checks: decision.checks ?? null,
+              lands,
+              landFailed: failed,
+              // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
+            } satisfies ReviewDetail & Record<string, unknown>,
+          });
+        } catch (error) {
+          if (!(error instanceof SuspensionTimeoutError)) throw error;
+          await reviewed("deadline");
+          return input;
+        }
+        if (asked.cancelled) {
+          await reviewed("cancelled");
+          return input;
+        }
+        const answer = harnessReviewAnswerSchema.parse((asked as { answer: unknown }).answer);
+        if (answer.verdict === "accepted" && answer.land === undefined) {
+          await reviewed("accepted");
+          return input;
+        }
+        if (answer.verdict === "accepted") {
+          // Once per round, so a resume that runs this again doesn't push or merge twice.
+          const outcome = await landOnce(ctx, state, decision, read, answer.land!, `land:${state.steerSteps ?? 0}:${round}`);
+          if ("error" in outcome) {
+            // Asked again with the error and a retry; the feed says so through the review's prompt.
+            failed = { land: answer.land!, message: outcome.error };
+            continue;
+          }
+          await reviewed("accepted", outcome.landed);
+          ctx.emit.status(landedLine(outcome.landed), { transient: false });
+          if (outcome.landed.kind === "pull-request") await recordLandedPullRequest(ctx, outcome.landed);
+          return input;
+        }
+
+        // The words, as the user's steer on the row: keyed by this round, so a
+        // resume that runs this again adds it once.
+        const board = await runBoard(ctx);
+        if (board.steer === undefined) {
+          throw new Error(`[harness-manager] the board "${board.collectionId}" keeps no steers, so a review can't ask for changes.`);
+        }
+        const written = await board.steer(state.taskId!, {
+          message: answer.words,
+          from: "user",
+          key: `review:${ctx.request.identity.id}:${state.steerSteps ?? 0}`,
         });
-      } catch (error) {
-        if (!(error instanceof SuspensionTimeoutError)) throw error;
-        await reviewed("deadline");
-        return input;
-      }
-      if (asked.cancelled) {
-        await reviewed("cancelled");
-        return input;
-      }
-      const answer = harnessReviewAnswerSchema.parse((asked as { answer: unknown }).answer);
-      if (answer.verdict === "accepted") {
-        await reviewed("accepted");
-        return input;
-      }
-
-      // The words, as the user's steer on the row: keyed by this round, so a
-      // resume that runs this again adds it once.
-      const board = await runBoard(ctx);
-      if (board.steer === undefined) {
-        throw new Error(`[harness-manager] the board "${board.collectionId}" keeps no steers, so a review can't ask for changes.`);
-      }
-      const written = await board.steer(state.taskId!, {
-        message: answer.words,
-        from: "user",
-        key: `review:${ctx.request.identity.id}:${state.steerSteps ?? 0}`,
-      });
-      if (written.outcome === "declined") {
-        if (written.reason === "steer-limit") {
+        if (written.outcome === "declined") {
+          if (written.reason === "steer-limit") {
+            throw new HarnessAttemptFailed(
+              `the review asked for changes, and the task has taken the most steers it can (${MAX_STEERS})`,
+            );
+          }
+          throw new HarnessAttemptSuperseded("the review's changes were written");
+        }
+        if ((await readConfirmedSession(ctx, state.topic!, state.attempt!)) === null) {
           throw new HarnessAttemptFailed(
-            `the review asked for changes, and the task has taken the most steers it can (${MAX_STEERS})`,
+            `the review asked for changes, and the run's harness confirmed no coding session to continue; ` +
+              `the next try takes them: ${answer.words}`,
           );
         }
-        throw new HarnessAttemptSuperseded("the review's changes were written");
+        await reviewed("revise");
+        return input;
       }
-      if ((await readConfirmedSession(ctx, state.topic!, state.attempt!)) === null) {
-        throw new HarnessAttemptFailed(
-          `the review asked for changes, and the run's harness confirmed no coding session to continue; ` +
-            `the next try takes them: ${answer.words}`,
-        );
-      }
-      await reviewed("revise");
-      return input;
     },
   });
+
+  /**
+   * Land an accepted run's branch through the host (`WorkspaceHost.land`),
+   * once per `key`: what a resume reads is what the first try did. A failure
+   * of any kind comes back as its message, for the review asked again; the
+   * run's branch and checkout are untouched by it.
+   */
+  const landOnce = async (
+    ctx: BlockContext,
+    state: ManagerState,
+    decision: NonNullable<ManagerState["decided"]>,
+    read: HarnessJudgeVerdict | null,
+    how: LandHow,
+    key: string,
+  ): Promise<{ landed: Landed } | { error: string }> => {
+    const attempt = async (): Promise<{ landed: Landed } | { error: string }> => {
+      try {
+        if (host.land === undefined) throw new Error("this host can't push or merge a run's branch");
+        const target = { cwd: state.workspacePath!, branch: state.branch!, baseRef: state.baseRef };
+        const landed =
+          how === "merge"
+            ? await host.land(target, { kind: "merge" })
+            : await host.land(target, { kind: "pull-request", ...pullRequestText(state, decision, read) });
+        return { landed };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
+      }
+    };
+    return ctx.runOnce === undefined ? await attempt() : await ctx.runOnce(key, attempt);
+  };
 
   /**
    * Poll the row while the step runs. A row this attempt no longer holds
@@ -3476,7 +3632,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           const taking = (async () => {
             const take = await takeSteersFor(ctx, takenIn, (now, id) => steersTakenIn(now, id));
             if (take === null || take.steers.length === 0) return;
-            showTakenSteers(ctx, take.taken);
+            await showTakenSteers(ctx, take.taken);
             // The step ended, or its run withdrew the offer, while the take wrote
             // the row: these lines are the next step's, never dropped (D2).
             if (!live() || watch.steer !== steer) {
@@ -3673,7 +3829,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const steers = [...carried.steers, ...take.steers];
     if (steers.length === 0 && !stopped) return undefined;
     // The steers this take wrote, as lines in the run's session from their senders.
-    showTakenSteers(ctx, take.taken);
+    await showTakenSteers(ctx, take.taken);
     const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
     await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session, steerSteps: loop });
     // A turn's save points let a place with kept files go (`saveKeptFiles`):

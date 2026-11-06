@@ -6,7 +6,7 @@ import { useWatch } from "../lib/use-watch";
 import { Avatar } from "./Avatar";
 import { ErrorBody } from "./flow-state/error";
 import { MarkdownText } from "./flow-state/message-response";
-import { ReviewHold, type ReviewAnswer } from "./flow-state/review-hold";
+import { LandedOutcome, ReviewHold, type ReviewAnswer } from "./flow-state/review-hold";
 import { Spend } from "./flow-state/spend";
 import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
@@ -173,9 +173,10 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
         );
       })}
       {/* The run's result is its last entry. */}
-      {task?.result ? (
+      {task?.result || task?.landed ? (
         <section aria-label="Result" data-step="result" className="rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2 text-sm">
-          <MarkdownText text={task.result} />
+          {task.result ? <MarkdownText text={task.result} /> : null}
+          {task.landed === undefined ? null : <LandedOutcome landed={task.landed} />}
         </section>
       ) : task?.status === "done" ? (
         // Done with nothing written is not a plain success: say so, where the result would be.
@@ -236,6 +237,7 @@ function TaskReview({ adapter, sessionId, task, onAnswered }: {
         onAnswered(answer);
       }}
       unanswerable={task.waiting?.unanswerable ?? null}
+      holdId={task.waiting?.holdId ?? null}
     />
   );
 }

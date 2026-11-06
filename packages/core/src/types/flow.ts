@@ -194,6 +194,12 @@ export interface ActionMcpConfig {
   session?: string | { fromInput: string };
 }
 
+/** What an action's `userMessage` may return beside plain text: the text, and the item's `metadata`. */
+export type UserMessageEcho = {
+  readonly text: string;
+  readonly metadata?: Record<string, unknown>;
+};
+
 /**
  * The shared core of an action: the executable unit (a block) plus its
  * execution policy, independent of how the action is addressed or
@@ -217,7 +223,14 @@ export type ActionCore<
   inputSchema?: TBlock["inputSchema"];
   onCompleted?: BlockDefinition<any, any>;
   onErrored?: BlockDefinition<any, any>;
-  userMessage?: (input: TBlock["inputSchema"]["_output"]) => string;
+  /**
+   * The request's input as a `user` message item, written when the request
+   * starts: the text alone, or the text with `metadata` the item carries for
+   * a client to read (say, to draw a message the flow was handed, not one a
+   * person typed, as something other than the person's line). The metadata is
+   * never sent to a model.
+   */
+  userMessage?: (input: TBlock["inputSchema"]["_output"]) => string | UserMessageEcho;
   /**
    * Names the task this request is for, read from the action's input. When it
    * returns an id, the runtime stamps it as `OutputItem.taskId` on the
