@@ -54,7 +54,7 @@
     <rect class="use" x="602" y="154" width="60" height="26" rx="3"/><text class="t-use" x="608" y="171">uses</text>
   </g>
   <g id="er5">
-    <text class="t-row" x="16" y="204">ER-5 nothing that ships carries a tracker id</text>
+    <text class="t-row" x="16" y="204">ER-5 nothing an adopter reads carries a tracker id</text>
     <rect class="own" x="536" y="186" width="60" height="26" rx="3"/><text class="t-own" x="542" y="203">OWNS</text>
     <rect class="use" x="668" y="186" width="60" height="26" rx="3"/><text class="t-use" x="674" y="203">uses</text>
     <rect class="use" x="800" y="186" width="60" height="26" rx="3"/><text class="t-use" x="806" y="203">uses</text>
@@ -73,7 +73,7 @@
     <rect class="own" x="734" y="282" width="60" height="26" rx="3"/><text class="t-own" x="740" y="299">OWNS</text>
   </g>
   <g id="er9">
-    <text class="t-row" x="16" y="332">ER-9 tarballs; a child flips only its rows</text>
+    <text class="t-row" x="16" y="332">ER-9 tarballs; a child flips only its cells</text>
     <rect class="use" x="800" y="314" width="60" height="26" rx="3"/><text class="t-use" x="806" y="331">uses</text>
     <rect class="own" x="866" y="314" width="60" height="26" rx="3"/><text class="t-own" x="872" y="331">OWNS</text>
     <rect class="use" x="668" y="314" width="60" height="26" rx="3"/><text class="t-use" x="674" y="331">uses</text>

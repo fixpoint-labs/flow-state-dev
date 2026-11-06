@@ -1,0 +1,58 @@
+<svg viewBox="0 0 940 352" role="img" aria-label="Where workforce's five root entry constants go. Today WORKER_TASK_ENTRY, STEER_TURN_ENTRY, MESSAGE_RECEIVED_ENTRY, WORKSTREAM_OPENED_ENTRY and FILE_SCHEDULED_TASK_ENTRY sit on workforce's root. After: each becomes module-private, and an app writes its string: work, onTaskSteered, onMessageReceived, onWorkstreamOpened; fileScheduledTask is the board's alone. One hire rule refuses a factory's piece under any other name. Not this issue's: core's WAIT_DEADLINE_ENTRY and orchestration's TASK_SETTLED_ENTRY, which move with their own roots. Not built: a defineFlow parts primitive."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .root  { fill:var(--surface-2); stroke:var(--gone); stroke-width:1.4; }
+    .intl  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .str   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .nb    { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-m   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .gone  { fill:var(--gone); }
+    .acc   { fill:var(--accent); }
+    .code  { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="352"/>
+  <g id="today">
+    <rect class="root" x="16" y="16" width="908" height="62" rx="6"/>
+    <text class="t-lbl gone" x="32" y="36">TODAY · ON WORKFORCE'S ROOT · 5</text>
+    <text class="t-m" x="32" y="58">WORKER_TASK_ENTRY   STEER_TURN_ENTRY   MESSAGE_RECEIVED_ENTRY</text>
+    <text class="t-m" x="32" y="72">WORKSTREAM_OPENED_ENTRY   FILE_SCHEDULED_TASK_ENTRY</text>
+  </g>
+  <g id="arrows">
+    <path class="arrow" d="M300 82 V108"/>
+  </g>
+  <g id="strings">
+    <rect class="str" x="16" y="112" width="580" height="120" rx="6"/>
+    <text class="t-lbl code" x="32" y="132">WORKFORCE · MODULE-PRIVATE · AN APP WRITES THE STRING</text>
+    <text class="t-m" x="32" y="160">"work"   "onTaskSteered"   "onMessageReceived"</text>
+    <text class="t-m" x="32" y="182">"onWorkstreamOpened"</text>
+    <text class="t-m" x="32" y="208">"fileScheduledTask" · the board's alone, no app writes it</text>
+  </g>
+  <g id="elsewhere">
+    <rect class="nb" x="612" y="112" width="312" height="120" rx="6"/>
+    <text class="t-lbl" x="628" y="132">NOT THIS ISSUE'S · MOVED WITH THEIR ROOTS</text>
+    <text class="t-m" x="628" y="160">core: WAIT_DEADLINE_ENTRY</text>
+    <text class="t-m" x="628" y="182">orchestration: TASK_SETTLED_ENTRY</text>
+    <text class="t-s" x="628" y="208">framework seams, no app reads either</text>
+  </g>
+  <g id="rule">
+    <rect class="str" x="16" y="248" width="908" height="40" rx="6"/>
+    <text class="t-b" x="32" y="273">One hire rule: a piece an entry factory built, under any other name, is refused, naming the string</text>
+  </g>
+  <g id="not-built">
+    <rect class="nb" x="16" y="300" width="908" height="40" rx="6"/>
+    <text class="t-lbl" x="32" y="324">NOT BUILT</text>
+    <text class="t-s" x="130" y="324">defineFlow({ parts }) · the session board's five-slot spread stays, already guarded at hire</text>
+  </g>
+</svg>

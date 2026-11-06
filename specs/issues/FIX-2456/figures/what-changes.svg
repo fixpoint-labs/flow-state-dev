@@ -1,0 +1,97 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="Three lanes, today beside after. The scroll rule: today two rules, useJumpToLatest in DevTool, Shift Manager and both labs, and the registry Conversation's own 50 pixel stick, ScrollOnNewRequest and a 70dvh last group in adopters' apps and Kitchen Sink; after, one rule, useJumpToLatest, in every conversation including the registry's. The jump button: today five, the registry's ConversationScrollButton plus hand copies in Shift Manager, DevTool and both labs; after, two, the registry's ConversationScrollButton taking the feed, installed by every app but DevTool and styled by its className, and DevTool's own, which stays because a published package takes no copy-in. The react root: today it carries hooks, renderers, FlowNavigator, the key helpers and the four workforce panels; after, the panels move to the react/workforce subpath and everything else stays."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F4E2E0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A2321; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .gone  { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .sub   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; letter-spacing:.12em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="columns">
+    <text class="t-col" x="156" y="26">TODAY</text>
+    <text class="t-col" x="604" y="26">AFTER</text>
+  </g>
+
+  <g id="lane-rule">
+    <rect class="lane" x="16" y="38" width="908" height="128" rx="6"/>
+    <text class="t-lbl" x="28" y="60">THE SCROLL</text>
+    <text class="t-lbl" x="28" y="73">RULE</text>
+    <text class="t-s" x="28" y="92">two → one</text>
+    <rect class="n-box" x="140" y="50" width="390" height="48" rx="5"/>
+    <text class="t-b" x="154" y="70">useJumpToLatest · the sent line rises</text>
+    <text class="t-s" x="154" y="88">DevTool, Shift Manager, both labs</text>
+    <rect class="gone" x="140" y="106" width="390" height="50" rx="5"/>
+    <text class="t-g" x="154" y="126">registry Conversation’s own rule</text>
+    <text class="t-s" x="154" y="144">50px stick · ScrollOnNewRequest · last group 70dvh</text>
+    <path class="arrow" d="M540 102 L582 102 M576 97 L582 102 L576 107"/>
+    <rect class="keep" x="592" y="66" width="320" height="72" rx="5"/>
+    <text class="t-b" x="606" y="90">useJumpToLatest, everywhere</text>
+    <text class="t-s" x="606" y="108">the registry Conversation and Kitchen Sink too;</text>
+    <text class="t-s" x="606" y="124">the app calls sent(), request groups mark the line</text>
+  </g>
+
+  <g id="lane-button">
+    <rect class="lane" x="16" y="176" width="908" height="128" rx="6"/>
+    <text class="t-lbl" x="28" y="198">THE JUMP</text>
+    <text class="t-lbl" x="28" y="211">BUTTON</text>
+    <text class="t-s" x="28" y="230">five → two</text>
+    <rect class="n-box" x="140" y="188" width="390" height="40" rx="5"/>
+    <text class="t-b" x="154" y="206">registry ConversationScrollButton</text>
+    <text class="t-s" x="154" y="221">reads its own context; takes height when it shows</text>
+    <rect class="gone" x="140" y="236" width="92" height="56" rx="5"/>
+    <text class="t-g" x="150" y="258">Shift</text>
+    <text class="t-g" x="150" y="274">Manager</text>
+    <rect class="n-box" x="239" y="236" width="92" height="56" rx="5"/>
+    <text class="t-b" x="249" y="258">DevTool</text>
+    <text class="t-s" x="249" y="274">stays its own</text>
+    <rect class="gone" x="338" y="236" width="92" height="56" rx="5"/>
+    <text class="t-g" x="348" y="258">Claude</text>
+    <text class="t-s" x="348" y="274">Code lab</text>
+    <rect class="gone" x="437" y="236" width="93" height="56" rx="5"/>
+    <text class="t-g" x="447" y="258">Teammates</text>
+    <text class="t-s" x="447" y="274">lab</text>
+    <path class="arrow" d="M540 240 L582 240 M576 235 L582 240 L576 245"/>
+    <rect class="keep" x="592" y="204" width="320" height="72" rx="5"/>
+    <text class="t-b" x="606" y="228">ConversationScrollButton({ feed })</text>
+    <text class="t-s" x="606" y="246">installed by every app but DevTool; no height,</text>
+    <text class="t-s" x="606" y="262">so it never moves the feed; look by className</text>
+  </g>
+
+  <g id="lane-root">
+    <rect class="lane" x="16" y="314" width="908" height="142" rx="6"/>
+    <text class="t-lbl" x="28" y="336">REACT'S</text>
+    <text class="t-lbl" x="28" y="349">ROOT</text>
+    <text class="t-s" x="28" y="368">panels move</text>
+    <rect class="n-box" x="140" y="326" width="390" height="60" rx="5"/>
+    <text class="t-b" x="154" y="346">@flow-state-dev/react</text>
+    <text class="t-s" x="154" y="364">hooks · renderers · FlowNavigator</text>
+    <text class="t-s" x="154" y="378">isSendKey · isTypingTarget · useJumpToLatest</text>
+    <rect class="gone" x="140" y="394" width="390" height="50" rx="5"/>
+    <text class="t-g" x="154" y="414">…and the workforce panels, on the same root</text>
+    <text class="t-s" x="154" y="432">Roster · BoardColumns · BoardList · WorkerDetail</text>
+    <path class="arrow" d="M540 384 L582 384 M576 379 L582 384 L576 389"/>
+    <rect class="keep" x="592" y="326" width="320" height="60" rx="5"/>
+    <text class="t-b" x="606" y="346">@flow-state-dev/react · unchanged</text>
+    <text class="t-s" x="606" y="364">hooks · renderers · FlowNavigator</text>
+    <text class="t-s" x="606" y="378">isSendKey · isTypingTarget · useJumpToLatest</text>
+    <rect class="sub" x="592" y="394" width="320" height="50" rx="5"/>
+    <text class="t-b" x="606" y="414">@flow-state-dev/react/workforce</text>
+    <text class="t-s" x="606" y="432">the four panels and their types, documented</text>
+  </g>
+</svg>
