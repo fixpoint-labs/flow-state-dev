@@ -132,17 +132,33 @@ export function isUnknownAgentFailure(err: unknown): boolean {
 
 /**
  * The caller's signal fired. A cancelled run is a throw and never a handle
- * (LAB-152 §9), and this class is what distinguishes "you stopped it" from "it
- * broke" for a manager deciding whether to retry.
+ * (LAB-152 §9), and this is what tells "you stopped it" from "it broke" for a
+ * manager deciding whether to retry.
+ *
+ * A host tells it with core's `isAbortLike`, whatever stopped the run: the
+ * root of its `cause` chain is always an `AbortError`, whose message is the
+ * signal's reason. The reason itself (a deadline's `TimeoutError`, a plain
+ * `Error`, or none) is on {@link reason}.
  */
 export class CursorAgentAbortedError extends Error {
   readonly code = "CURSOR_AGENT_ABORTED";
-  constructor(readonly sessionId: string | null) {
+  constructor(
+    readonly sessionId: string | null,
+    /** The stopping signal's reason, as the caller gave it. */
+    readonly reason?: unknown,
+  ) {
     super(
       sessionId === null
         ? "The Cursor run was aborted before it named an agent."
         : `The Cursor run was aborted. Agent ${sessionId} can be resumed.`,
+      { cause: stopCause(reason) },
     );
     this.name = "CursorAgentAbortedError";
   }
+}
+
+/** An `AbortError` carrying a stop's reason as its message: the root of every stop's `cause` chain. */
+function stopCause(reason: unknown): DOMException {
+  const said = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
+  return new DOMException(said === "" ? "This operation was aborted." : said, "AbortError");
 }

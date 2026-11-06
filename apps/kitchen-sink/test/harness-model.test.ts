@@ -26,9 +26,9 @@ import { CODEX_SESSION, codexModelChoices, codexSessionFlow } from "@/lib/codex-
 import { CURSOR_DEFAULT_MODEL, cursorModelChoices, cursorModelSelection, cursorSessionFlow } from "@/lib/cursor-mode";
 import { harnessModelChoices, resetHarnessModelChoicesForTests, type ModelChoices } from "@/lib/harness-models";
 import { HARNESS_SESSION_MODEL_REQUIRED, type HarnessSessionState } from "@flow-state-dev/harness-manager";
-import { scriptedClaudeCode, scriptedPauses } from "@/lib/scripted-claude-code";
+import { scriptedClaudeCode } from "@/lib/scripted-claude-code";
 import { scriptedCodex, scriptedCodexPauses } from "@/lib/scripted-codex";
-import { scriptedCursor, scriptedCursorPauses } from "@/lib/scripted-cursor";
+import { scriptedCursor } from "@/lib/scripted-cursor";
 
 let scratch: string;
 let repo: string;
@@ -42,10 +42,6 @@ beforeAll(() => {
   execFileSync("git", ["-C", repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
   scriptedCodexPauses.stepMs = 0;
   scriptedCodexPauses.slowMs = 0;
-  scriptedPauses.stepMs = 0;
-  scriptedPauses.slowMs = 0;
-  scriptedCursorPauses.stepMs = 0;
-  scriptedCursorPauses.slowMs = 0;
 });
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));

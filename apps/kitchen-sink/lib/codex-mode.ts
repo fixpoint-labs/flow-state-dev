@@ -214,7 +214,7 @@ export function codexClient(
     if (stopped === undefined) return (await resolver)(ctx);
     let onAbort: (() => void) | undefined;
     const aborted = new Promise<never>((_, reject) => {
-      onAbort = () => reject(new CodexAgentAbortedError(null));
+      onAbort = () => reject(new CodexAgentAbortedError(null, stopped.reason));
       if (stopped.aborted) onAbort();
       else stopped.addEventListener("abort", onAbort, { once: true });
     });

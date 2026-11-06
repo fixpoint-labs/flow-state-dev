@@ -37,7 +37,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
-import { testFlow } from "@flow-state-dev/testing";
+import { createTestContext, testFlow } from "@flow-state-dev/testing";
 
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { codexSessionFlow } from "@/lib/codex-mode";
@@ -275,13 +275,18 @@ describe("the session flow, for every mode", () => {
  *
  * Read only as a host reads it: each package's public entry, imported as a
  * namespace when the cell runs (a missing name fails its own cell, not the
- * file), driven only through the seams the package documents (an SDK importer or module, Codex's program), and judged
- * against core's shared shapes. No harness's internals are imported.
+ * file), driven only through the seams the package documents (an SDK
+ * importer or module, a client resolver, Codex's program), and judged against
+ * core's shared shapes and readers. No harness's internals are imported, and
+ * no error class is named: a host branches on core's readers.
  *
  * Red under main at the merge base: the Cursor list cell (no `listCursorModels`),
  * the Claude Code list cell (its list was `listClaudeModels`), the base-list
- * cell (no `HARNESS_BASE_PASS`) and the no-hand-list cell; the Codex list cell
- * and the pass-list cells pass there, which shows the block reaches the code.
+ * cell (no `HARNESS_BASE_PASS`), the no-hand-list cell, the Codex and Cursor
+ * stop cells for every reason, and Claude Code's stop cells for a timeout and
+ * a plain `Error`. The Codex list cell, the pass-list cells, Claude Code's
+ * reason-less stop and every not-a-stop cell pass there, which shows the
+ * block reaches the code.
  */
 describe("the contract every harness owes a host", () => {
   /** The models every scripted SDK below answers with, in the shared shape they come back in. */
@@ -391,6 +396,120 @@ describe("the contract every harness owes a host", () => {
       // Cursor's catalog marks no model default: a list with no default is a valid answer.
       const expected = harness.mode === "cursor" ? LISTED.map((m) => ({ ...m, isDefault: false })) : LISTED;
       expect(shared).toEqual(expected);
+    });
+  });
+
+  /**
+   * Each harness's block as a host builds it from the package's entry, behind
+   * the scripted SDK Kitchen Sink's modes use (`lib/scripted-*.ts`): a
+   * `[slow]` prompt holds the run long enough for a stop to land, `[fail]`
+   * fails it, and `[refuse]` refuses the conversation it was asked to resume.
+   */
+  const RUNNABLE = [
+    {
+      mode: "claude-code",
+      block: async (seam: (createDefault: unknown) => Record<string, unknown>) => {
+        const { claudeCodeAgent, createDefaultResolveClaudeAgent } = (await import("@flow-state-dev/claude-code/sdk")) as Record<string, any>;
+        return claudeCodeAgent({ resolveClaudeAgent: scriptedClaudeCode(), cwd: () => repo, ...seam(createDefaultResolveClaudeAgent) });
+      },
+      absent: (create: any) => ({ resolveClaudeAgent: create(async () => Promise.reject(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"))) }),
+    },
+    {
+      mode: "codex",
+      block: async (seam: (createDefault: unknown) => Record<string, unknown>) => {
+        const { codexAgent, createDefaultResolveCodexClient } = (await import("@flow-state-dev/codex")) as Record<string, any>;
+        return codexAgent({ resolveCodexClient: scriptedCodex(), cwd: () => repo, ...seam(createDefaultResolveCodexClient) });
+      },
+      absent: (create: any) => ({ resolveCodexClient: create({}, async () => Promise.reject(new Error("Cannot find module '@openai/codex-sdk'"))) }),
+    },
+    {
+      mode: "cursor",
+      block: async (seam: (createDefault: unknown) => Record<string, unknown>) => {
+        const { cursorAgent, createDefaultResolveCursorClient } = (await import("@flow-state-dev/cursor")) as Record<string, any>;
+        return cursorAgent({ resolveCursorClient: scriptedCursor(), cwd: () => repo, model: "composer-2.5", ...seam(createDefaultResolveCursorClient) });
+      },
+      absent: (create: any) => ({ resolveCursorClient: create(async () => Promise.reject(new Error("Cannot find module '@cursor/sdk'"))) }),
+    },
+  ] as const;
+
+  /**
+   * Run one turn of `harness`'s block on `prompt` and return what it threw.
+   * `options` are added to the block's own (`resume`), `seam` picks a resolver
+   * from the package's default one (the absent SDK), and `stop`, when given,
+   * fires the block's signal once the run has its prompt.
+   */
+  async function thrownBy(
+    harness: (typeof RUNNABLE)[number],
+    prompt: string,
+    { stop, options = {}, absent = false }: { stop?: (controller: AbortController) => void; options?: Record<string, unknown>; absent?: boolean } = {},
+  ): Promise<unknown> {
+    const block = await harness.block((create) => ({ ...(absent ? harness.absent(create) : {}), ...options }));
+    const runtime = await createTestContext({});
+    // Cursor's script reads its directives off the turn's input, which a block carries as its parent's.
+    Object.defineProperty(runtime.ctx, "parent", { value: { input: { prompt } } });
+    const controller = new AbortController();
+    (runtime.ctx as { signal?: AbortSignal }).signal = controller.signal;
+    scriptedReceived.length = 0;
+    const running = (block as { config: { execute: (input: unknown, ctx: unknown) => Promise<unknown> } }).config.execute({ prompt }, runtime.ctx);
+    if (stop !== undefined) {
+      for (let waited = 0; !scriptedReceived.includes(prompt); waited += 10) {
+        if (waited > 5_000) throw new Error(`${harness.mode}: the run never had its prompt`);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      stop(controller);
+    }
+    try {
+      await running;
+    } catch (error) {
+      return error;
+    }
+    throw new Error(`${harness.mode}: the turn did not throw`);
+  }
+
+  /** The ways a host stops a run: with no reason, a deadline, and a plain error (harness-manager's steer). */
+  const STOPS = [
+    { reason: "none", stop: (c: AbortController) => c.abort() },
+    { reason: "a timeout", stop: (c: AbortController) => c.abort(new DOMException("The deadline passed.", "TimeoutError")) },
+    { reason: "a plain Error", stop: (c: AbortController) => c.abort(new Error("[harness-manager] stopped for a steer")) },
+  ] as const;
+
+  describe.each(RUNNABLE)("$mode, telling a stop from a failure with core's readers", (harness) => {
+    beforeEach(() => {
+      for (const pauses of [scriptedPauses, scriptedCodexPauses, scriptedCursorPauses]) pauses.slowMs = 20_000;
+    });
+    afterEach(() => {
+      for (const pauses of [scriptedPauses, scriptedCodexPauses, scriptedCursorPauses]) pauses.slowMs = 0;
+    });
+
+    it.each(STOPS)("a stop with $reason is abort-like", async ({ stop }) => {
+      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
+      const thrown = await thrownBy(harness, "[slow] do some work", { stop });
+      expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(true);
+    }, 15_000);
+
+    it("a run that failed is not abort-like", async () => {
+      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
+      // Codex's `[fail]` is a failed turn it reports, not a throw; `[fail-early]` throws.
+      const thrown = await thrownBy(harness, harness.mode === "codex" ? "[fail-early] do some work" : "[fail] do some work");
+      expect(String(thrown)).toMatch(/fail/i);
+      expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(false);
+    });
+
+    it("an absent SDK is not abort-like", async () => {
+      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
+      const thrown = await thrownBy(harness, "do some work", { absent: true });
+      expect(String(thrown)).toMatch(/install/i);
+      expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(false);
+    });
+
+    it("a refused resume is not abort-like, and reads as an unknown conversation", async () => {
+      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
+      const { harnessFailureKind } = (await import("@flow-state-dev/core/harness")) as Record<string, any>;
+      // Claude Code takes a conversation to resume only as background work: in a session its own state owns it.
+      const resume = { resume: () => "conversation-gone", ...(harness.mode === "claude-code" ? { detached: true } : {}) };
+      const thrown = await thrownBy(harness, "[refuse] go on", { options: resume });
+      expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(false);
+      expect(harnessFailureKind(thrown), `${harness.mode}: ${String(thrown)}`).toBe("unknown-conversation");
     });
   });
 
