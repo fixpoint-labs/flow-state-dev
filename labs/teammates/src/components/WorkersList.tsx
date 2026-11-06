@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LabAdapter, NewTeammate, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
-import { useAttention, useNotifyToggle, type RowAttention } from "../lib/attention";
-import { endedAt, freshEndings, needsOf, statusOf } from "../lib/status";
+import { rowAttention, supported, useAttention, useNotifyToggle, type RowAttention } from "../lib/attention";
+import { useStable } from "../lib/stable";
+import { freshEndings, needsOf, statusOf } from "../lib/status";
 import { useSeen } from "../lib/unread";
 import { useNow, useStale, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
@@ -57,11 +58,7 @@ export function WorkersList({
   const notify = useNotifyToggle();
   // What each row reports: whether it has something for you, and what is new. A fired teammate's report leaves with its row.
   const [reports, setReports] = useState<Record<string, RowAttention>>({});
-  const report = useCallback(
-    (worker: string, attention: RowAttention) =>
-      setReports((prev) => (prev[worker] !== undefined && JSON.stringify(prev[worker]) === JSON.stringify(attention) ? prev : { ...prev, [worker]: attention })),
-    [],
-  );
+  const report = useCallback((worker: string, attention: RowAttention) => setReports((prev) => (prev[worker] === attention ? prev : { ...prev, [worker]: attention })), []);
   const current = useMemo(() => Object.fromEntries(workers.flatMap((w) => (reports[w.id] === undefined ? [] : [[w.id, reports[w.id]!]]))), [workers, reports]);
   useAttention(current, notify.on);
   return (
@@ -103,7 +100,7 @@ export function WorkersList({
           </button>
         )}
         <label className="flex w-fit items-center gap-2">
-          <input type="checkbox" checked={notify.on} disabled={!("Notification" in window)} onChange={() => void notify.toggle()} />
+          <input type="checkbox" checked={notify.on} disabled={!supported()} onChange={() => void notify.toggle()} />
           Notify me
         </label>
         {notify.blocked === undefined ? null : <span data-notify-blocked>{notify.blocked}</span>}
@@ -154,21 +151,8 @@ function WorkerItem({
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
   const inputs = { activity, entries: view?.entries ?? [], talk, tasks, now };
   const status = statusOf(worker.id, inputs, nameOf, isCoding);
-  const needs = needsOf(inputs);
-  const endings = freshEndings(tasks, now, isCoding);
-  // Reported up for the tab's title and the notifications: a need, and a coding task that just ended.
-  const attention = useMemo<RowAttention>(
-    () => ({
-      asks: unread > 0 || status.needsYou,
-      alerts: [
-        ...needs.map((n) => ({ key: n.key, text: n.kind === "approval" ? `${worker.name} needs your OK: ${n.text}` : `${worker.name} is waiting on you: ${n.text}` })),
-        ...endings.map((t) => ({ key: `ended:${t.id}:${endedAt(t)}`, text: `Coding task ${t.status === "failed" ? "failed" : "finished"}: ${t.title}` })),
-      ],
-    }),
-    // The lists are rebuilt each render; their content is the dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [unread, status.needsYou, worker.name, JSON.stringify(needs.map(({ key, text, kind }) => ({ key, text, kind }))), endings.map((t) => `${t.id}:${t.status}:${endedAt(t)}`).join()],
-  );
+  // Reported up for the tab's title and the notifications; the same object while its content holds, so it reports only on change.
+  const attention = useStable(rowAttention(worker.name, unread, needsOf(inputs), freshEndings(tasks, now, isCoding)));
   useEffect(() => onReport(worker.id, attention), [onReport, worker.id, attention]);
   return (
     <button

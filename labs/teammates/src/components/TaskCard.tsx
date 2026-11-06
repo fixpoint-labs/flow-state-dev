@@ -1,10 +1,11 @@
 import { memo } from "react";
 import type { BoardTask } from "../adapter";
+import { taskRowPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import { Spend } from "./flow-state/spend";
-import { RunsOn, runsOn, taskLabel, taskLine, taskRowPresentation } from "./Popups";
+import { RunsOn, runsOn, taskLabel, taskLine } from "./Popups";
 
 /** What a task's line draws: a board row's task, or a filed task's stand-in before its row is read. */
 export type TaskLine = Pick<BoardTask, "id" | "to" | "title" | "status" | "harness" | "model" | "spend" | "landed" | "waiting">;

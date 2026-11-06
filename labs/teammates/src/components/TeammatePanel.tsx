@@ -3,12 +3,13 @@ import { ChevronRightIcon, TerminalIcon } from "lucide-react";
 import type { BoardTask, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useNow, useStale, useWatch } from "../lib/use-watch";
+import { taskRowPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
 import { costAmount, tokenCount } from "./flow-state/spend";
 import { TaskTime, taskCounts, taskSignal } from "./flow-state/task-signals";
-import { reasonLine, runsOn, taskLabel, taskLine, taskRowPresentation, type Popup } from "./Popups";
+import { reasonLine, runsOn, taskLabel, taskLine, type Popup } from "./Popups";
 import { InstructionsForm } from "./TeammateForms";
 
 /** The heading over each of the panel's sections. */

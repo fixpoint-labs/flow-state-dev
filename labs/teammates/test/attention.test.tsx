@@ -13,12 +13,12 @@
  * and the notifier case fails; count unread lines instead of teammates and
  * the title case fails.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { taskRowView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BoardTask, ConversationEntry } from "../src/adapter";
 import { App } from "../src/App";
-import { createNotifier, titleFor } from "../src/lib/attention";
+import { createNotifier, rowAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
 import { ENDING_SHOWN_MS, statusOf, type StatusInputs } from "../src/lib/status";
 import { createFixtureLab } from "./fake-lab";
 
@@ -62,6 +62,39 @@ describe("the tab's title", () => {
   it("counts the teammates that have something for you, each once", () => {
     expect(titleFor({})).toBe("Teammates");
     expect(titleFor({ a: { asks: true, alerts: [{ key: "1", text: "" }, { key: "2", text: "" }] }, b: { asks: false, alerts: [{ key: "3", text: "" }] }, c: { asks: true, alerts: [] } })).toBe("(2) Teammates");
+  });
+
+  it("counts a teammate with only unread lines, though it needs nothing and notifies nothing", () => {
+    // D3: the title counts unread or needing you; the badge and notifications are needs only.
+    const unreadOnly = rowAttention("writer", 2, [], []);
+    expect(unreadOnly).toEqual({ asks: true, alerts: [] });
+    expect(titleFor({ writer: unreadOnly, researcher: rowAttention("researcher", 0, [], []) })).toBe("(1) Teammates");
+  });
+});
+
+describe("Notify me", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+  const stub = (answer: string) => vi.stubGlobal("Notification", Object.assign(function () {}, { permission: "default", requestPermission: async () => answer }));
+
+  it("a refused permission leaves it off, remembers nothing, and says why", async () => {
+    stub("denied");
+    const { result } = renderHook(() => useNotifyToggle());
+    await act(() => result.current.toggle());
+    expect(result.current.on).toBe(false);
+    expect(result.current.blocked).toBe("Notifications are blocked for this page in the browser's settings.");
+    expect(window.localStorage.getItem("teammates.notify")).toBeNull();
+  });
+
+  it("a granted permission turns it on and remembers it", async () => {
+    stub("granted");
+    const { result } = renderHook(() => useNotifyToggle());
+    await act(() => result.current.toggle());
+    expect(result.current.on).toBe(true);
+    expect(result.current.blocked).toBeUndefined();
+    expect(window.localStorage.getItem("teammates.notify")).toBe("on");
   });
 });
 

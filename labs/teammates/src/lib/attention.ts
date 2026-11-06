@@ -5,8 +5,14 @@
  * the background. Both read only what each teammate's row already holds:
  * whether it has unread lines, what it needs from you, and which coding
  * tasks just ended.
+ *
+ * Two rules, on purpose (FIX-2397 D1, D3): what *needs* you is `needsOf`'s,
+ * and drives the badge, the status line and the notifications; what the
+ * title counts is wider, a teammate with an unread line or a need, once.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { BoardTask } from "../adapter";
+import { endedAt, type Need } from "./status";
 
 /** The page's own name, the title with nothing waiting. */
 export const TITLE = "Teammates";
@@ -17,10 +23,21 @@ export interface Alert {
   text: string;
 }
 
-/** What one teammate's row reports up: it has something for you, and the alerts it holds now. */
+/** What one teammate's row reports up: it has something for you (an unread line or a need), and the alerts it holds now. */
 export interface RowAttention {
   asks: boolean;
   alerts: readonly Alert[];
+}
+
+/** A row's attention, from its name, its unread count, what it needs from you and its coding tasks that just ended. */
+export function rowAttention(name: string, unread: number, needs: readonly Need[], endings: readonly BoardTask[]): RowAttention {
+  return {
+    asks: unread > 0 || needs.length > 0,
+    alerts: [
+      ...needs.map((n) => ({ key: n.key, text: n.kind === "approval" ? `${name} needs your OK: ${n.text}` : `${name} is waiting on you: ${n.text}` })),
+      ...endings.map((t) => ({ key: `ended:${t.id}:${endedAt(t)}`, text: `Coding task ${t.status === "failed" ? "failed" : "finished"}: ${t.title}` })),
+    ],
+  };
 }
 
 /** The tab's title: how many teammates have something for you, each counted once. */
@@ -48,7 +65,7 @@ export function createNotifier(io: { enabled: () => boolean; hidden: () => boole
 const KEY = "teammates.notify";
 
 /** Whether this browser can show notifications at all. */
-const supported = () => typeof window !== "undefined" && "Notification" in window;
+export const supported = () => typeof window !== "undefined" && "Notification" in window;
 
 /**
  * *Notify me*: off until you turn it on, then remembered per viewer in
@@ -90,7 +107,7 @@ export function useNotifyToggle(): { on: boolean; blocked: string | undefined; t
   return { on, blocked, toggle };
 }
 
-/** Sets the tab's title from the rows, and notifies of new alerts while `notifyOn`. Puts the plain title back on unmount. */
+/** Sets the tab's title from the rows, and notifies of new alerts while `notifyOn`. Puts back the title the page had on unmount. */
 export function useAttention(rows: Readonly<Record<string, RowAttention>>, notifyOn: boolean): void {
   const enabled = useRef(notifyOn);
   enabled.current = notifyOn;
@@ -107,11 +124,12 @@ export function useAttention(rows: Readonly<Record<string, RowAttention>>, notif
       },
     }),
   );
+  const [original] = useState(() => document.title);
   const title = titleFor(rows);
   useEffect(() => {
     document.title = title;
   }, [title]);
-  useEffect(() => () => void (document.title = TITLE), []);
+  useEffect(() => () => void (document.title = original), [original]);
   useEffect(() => {
     observe(Object.values(rows).flatMap((r) => r.alerts));
   }, [rows, observe]);

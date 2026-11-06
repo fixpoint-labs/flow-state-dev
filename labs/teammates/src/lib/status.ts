@@ -9,7 +9,7 @@
  * and no open message, it is idle.
  */
 import type { Activity, BoardTask, ConversationEntry, LabAdapter, TalkRow, WorkerRow } from "../adapter";
-import { taskRowPresentation } from "../components/Popups";
+import { taskRowPresentation } from "./task-presentation";
 import { waitingOn } from "./talk";
 import { age, useNow, useWatch } from "./use-watch";
 
@@ -43,18 +43,18 @@ const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** An approval it asked for that you haven't answered yet. */
 const openApproval = (e: ConversationEntry): boolean => e.kind === "approval" && e.resolution === undefined;
 
-/** A task of its that waits on you. */
-const taskWaitsOnYou = (t: BoardTask): boolean => t.status === "running" && t.waiting !== undefined;
+/** One thing a teammate needs from you: its key (stable, for the notifier), what it asks, and, for a task, the task. */
+export type Need = { key: string; text: string } & ({ kind: "approval" } | { kind: "task"; task: BoardTask });
 
 /**
  * What a teammate needs from you, oldest first: each open approval, then each
  * task that waits on you. The one rule for "needs you": the status line, the
  * row's badge, the tab's title and the notifications all read it.
  */
-export function needsOf({ entries, tasks }: Pick<StatusInputs, "entries" | "tasks">): { key: string; text: string; kind: "approval" | "task"; task?: BoardTask }[] {
+export function needsOf({ entries, tasks }: Pick<StatusInputs, "entries" | "tasks">): Need[] {
   return [
-    ...entries.flatMap((e) => (e.kind === "approval" && openApproval(e) ? [{ key: `approval:${e.suspensionId}`, text: e.text, kind: "approval" as const }] : [])),
-    ...tasks.flatMap((t) => (taskWaitsOnYou(t) && t.waiting !== undefined ? [{ key: `waiting:${t.id}`, text: t.waiting.prompt, kind: "task" as const, task: t }] : [])),
+    ...entries.flatMap((e): Need[] => (e.kind === "approval" && openApproval(e) ? [{ key: `approval:${e.suspensionId}`, text: e.text, kind: "approval" }] : [])),
+    ...tasks.flatMap((t): Need[] => (t.status === "running" && t.waiting !== undefined ? [{ key: `waiting:${t.id}`, text: t.waiting.prompt, kind: "task", task: t }] : [])),
   ];
 }
 
@@ -63,11 +63,13 @@ export const endedAt = (t: BoardTask): number | undefined => t.view?.times.compl
 
 /** The coding tasks that ended (done or failed) in the last {@link ENDING_SHOWN_MS}, newest first. */
 export function freshEndings(tasks: readonly BoardTask[], now: number, isCoding: (id: string) => boolean): BoardTask[] {
-  const fresh = (t: BoardTask) => {
-    const at = endedAt(t);
-    return at !== undefined && now - at < ENDING_SHOWN_MS;
-  };
-  return tasks.filter((t) => (t.status === "done" || t.status === "failed") && isCoding(t.to) && fresh(t)).sort((a, b) => endedAt(b)! - endedAt(a)!);
+  return tasks
+    .flatMap((task) => {
+      const at = endedAt(task);
+      return (task.status === "done" || task.status === "failed") && isCoding(task.to) && at !== undefined && now - at < ENDING_SHOWN_MS ? [{ task, at }] : [];
+    })
+    .sort((a, b) => b.at - a.at)
+    .map(({ task }) => task);
 }
 
 /**
@@ -80,8 +82,8 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
   const { activity, entries, talk, tasks, now } = inputs;
   const need = needsOf(inputs)[0];
   if (need?.kind === "approval") return { text: `Needs your OK: ${need.text}`, tone: NEEDS_OK, needsYou: true };
-  if (need !== undefined) {
-    const state = taskRowPresentation(need.task!);
+  if (need?.kind === "task") {
+    const state = taskRowPresentation(need.task);
     return { text: `${upperFirst(state.word)}: ${need.text}`, tone: state.tone, needsYou: true };
   }
   const plain = (text: string): Status => ({ text, tone: PLAIN, needsYou: false });
@@ -103,17 +105,12 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
   return plain(activity.lastActiveAt > 0 ? `Idle · ${age(activity.lastActiveAt, now)}` : "Idle");
 }
 
-/** {@link statusOf}'s words alone. */
-export function statusLine(worker: string, inputs: StatusInputs, nameOf: (id: string) => string, isCoding: (id: string) => boolean): string {
-  return statusOf(worker, inputs, nameOf, isCoding).text;
-}
-
-/** A teammate's status line, live. Its age holds while `stale`. */
+/** A teammate's status line, its words alone, live. Its age holds while `stale`. */
 export function useStatusLine(adapter: LabAdapter, worker: WorkerRow, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
   const now = useNow(undefined, !stale);
   const activity = useWatch(adapter.watchActivity, worker.id);
   const talk = useWatch(adapter.watchTalk, worker.id) ?? [];
   const view = useWatch(adapter.watchConversation, sessionId);
   const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
-  return statusLine(worker.id, { activity, entries: view?.entries ?? [], talk, tasks, now }, nameOf, isCoding);
+  return statusOf(worker.id, { activity, entries: view?.entries ?? [], talk, tasks, now }, nameOf, isCoding).text;
 }
