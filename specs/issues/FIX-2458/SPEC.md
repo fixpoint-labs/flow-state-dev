@@ -72,7 +72,7 @@ Read across a row: today each cell is a vendor's own answer, and after it is one
 + env: harnessEnv({ pass: [...HARNESS_BASE_PASS, "MY_KEY"] }),
 ```
 
-How old names reach adopters is per ER-3 and Q1's answer: every rename and removal above. The repository's own 32 files that import `claude-code/sdk` (shift-manager, integration tests, goals, labs, Kitchen Sink) move with this change, or ride Q1's alias.
+Old names go with no alias (ER-3; Q1 answered break): every rename and removal above. The repository's own 32 files that import `claude-code/sdk` (shift-manager, integration tests, goals, labs, Kitchen Sink) move with this change: Q1 was answered break, so there is no alias to ride.
 
 **Docs:** update `apps/docs/docs/tools/coding-agents.md` (telling a stop, a refusal and an
 unusable SDK apart; the model list; the shared environment), `claude-code-sdk.md` (the entry and
@@ -114,7 +114,7 @@ public entry, and that shared shapes come from `core/harness`.
 | The debt | |
 |---|---|
 | **Removes** | Kitchen Sink's hand list of Cursor models and its own model type · its hand SDK checks for Codex and Cursor · four per-harness model types · four copies of 13 environment names (shift-manager's `CODEX_USAGE_PASS` too) · two copies of the installed-version reader, the version gate and its error class · 8 names on two or three entries · claude-code's `./cli`, its translate and emit names, and its second spellings |
-| **Adds** | Three names on `core/harness`; `listCursorModels`, its options and a Cursor variants type; one gate, its range match and one error class on `core/internal`, shared by the three. With Q1's alias option, deprecated aliases until the removal minor |
+| **Adds** | Three names on `core/harness`; `listCursorModels`, its options and a Cursor variants type; one gate, its range match and one error class on `core/internal`, shared by the three. No deprecated aliases (Q1 answered break) |
 | **Leaves** | Three near-copied `emit.ts` and `errors.ts` (LAB-156) · usage's two shapes (FIX-2330) · `useHarnessLines`'s name (FIX-2557) |
 
 **Net: down.** Three copies become one per job; about 35 public names leave the entries for about 7 added.

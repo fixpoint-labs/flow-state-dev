@@ -102,6 +102,6 @@
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
     <text class="t-b" x="494" y="369">Its constructors stay unused for a minor</text>
-    <text class="t-s" x="494" y="387">then delete them in the alias-removal minor</text>
+    <text class="t-s" x="494" y="387">then delete them in the next minor</text>
   </g>
 </svg>

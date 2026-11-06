@@ -2,25 +2,31 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-The epic decided the rule ([FIX-2447 D3](../../epics/FIX-2447/DECISIONS.md#d3)). Two calls it
-left open are the sign-off; everything else here is context for them.
+The epic decided the rule ([FIX-2447 D3](../../epics/FIX-2447/DECISIONS.md#d3)), and on Nov 6 the owner replaced it:
+[D4](../../epics/FIX-2447/DECISIONS.md#d4), no backward-compat code, and [Q1](../../epics/FIX-2447/DECISIONS.md#q1) answered break. **D1 and D2 below are
+superseded** and kept as the history of what was signed on Nov 5. This issue has no sign-off
+decision of its own now; it deletes.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-2454 · epic D3's rule, built"] --> D1["D1 · a stored 0.2.0 human_* stop reads as a user's stop"]
+  I["FIX-2454 · deletion only · epic D4"] --> D1["D1 · superseded · a stored 0.2.0 human_* stop reads as a user's stop"]
   D1 -.->|"rejected · its waiting approvals vanish"| X1["refuse it too, as FIX-2151 planned"]
-  I --> D2["D2 · a refusal lives two minors past its first"]
+  I --> D2["D2 · superseded · a refusal lives two minors past its first"]
   D2 -.->|"rejected · tables grow to 1.0"| X2["every refusal until 1.0"]
   D2 -.->|"rejected · the sweep's compare and Q1 disagree"| X4["an alias exempt, one minor"]
   D2 -.->|"rejected · a skipped minor goes silent"| X3["one minor"]
 ```
 
-Solid edges are what you're signing. Dashed edges lost, and the label says why.
+Solid edges were what was signed on Nov 5; both are superseded by epic D4. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
 ## D1 · A stored `human_*` suspension from 0.2.0 reads as a user's stop; a new `human_*` value is refused
+
+> **Amended (Nov 6): superseded by [epic D4](../../epics/FIX-2447/DECISIONS.md#d4).** Neither half is built. A stored `human_*`
+> stop is not read as a user's stop, and a new `human_*` value is not refused: it runs as a custom
+> reason, as on 0.4.0. FIX-2151's "no dual-read" stands. The card below is the history.
 
 | | |
 |---|---|
@@ -39,6 +45,9 @@ checks it first (below).
 <a name="d2"></a>
 ## D2 · A refusal names a removal version at least two minors past the first version that refuses it
 
+> **Amended (Nov 6): superseded by [epic D4](../../epics/FIX-2447/DECISIONS.md#d4).** There are no refusals to version and no
+> aliases ([Q1](../../epics/FIX-2447/DECISIONS.md#q1) answered break), so there is no window. The card below is the history.
+
 | | |
 |---|---|
 | **Instead of** | Every refusal until 1.0; or one minor; or a looser rule for a Q1 `@deprecated` alias |
@@ -55,46 +64,35 @@ month of warning, and the floor drops to one.
 
 ## Decided, not asked
 
-- **From the epic, cited, not restated:** [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-4](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `shims.never-published`, `shims.human-approval-throws`, `shims.stored-human-approval`.
+As amended on Nov 6. The bullets this amendment removed (the helper and its home on
+`contracts/internal`, the one message and error class, the sweep's table and expiry pass, the
+BP-030 and BP-034 rewrites) are in the retained Nov 5 revision of this file, merged with #4772.
+
+- **From the epic, cited, not restated:** [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [D4](../../epics/FIX-2447/DECISIONS.md#d4) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `shims.never-published`.
 - **The test is "a published version accepted or wrote it,"** read off npm tarballs. Six
   refusals (`middleware`, `work`, `expectAttempt`, `dispatch: { mode }`,
   `detachedDrainTimeoutMs`, `maxWorkstreamListLimit`) refused already in their package's first
   published version, so no adopter wrote them. The census lists all 19 that go.
-- **Convergence point:** each package's one table. `human_*` has three entry points:
-  `ctx.suspend` in `createExecutionContext.ts` (the one writer), `useSuspensions`'s `reasons`
-  filter, and `isUserSuspension`/`suspendForUserKindOf` (the readers).
-- **The helper lives on `@flow-state-dev/contracts/internal`**, epic D2's published hidden
-  kind: contracts is zero-dependency and owns `SuspensionReason`. Refusing packages add it as a
-  direct dependency.
-- **One message, one error class** (`RetiredNameError`), no tracker id (ER-5): `<where>:
-  "<old>" was retired. Use <new>. This refusal is removed in <package> <version>.`
-- **The vocabulary sweep gates it**, in CI's existing step: `rules.mjs` gains the census's
-  refusal shape; a pass reads every `packages/<pkg>/src/retired.ts` and its package's version,
-  fails at or past `removeIn`, and fails a refusal-shaped `src` line no table owns. `--control`
-  gains two plants (an unowned refusal, an expired entry), each caught by its own rule id. The
-  never-published scope is leg b's, on installed tarballs: npm stays out of CI. Not ESLint (ER-4).
-- **`contracts/internal`** is a new hidden entry, epic D2's kind: a plain published subpath,
-  no completions fix. Contracts' row on *What each package root is for* says the root is the shared layer core
-  re-exports and `/internal` is ours.
+- **The ten published names go too, under epic D4.** Their refusals are deleted with the names,
+  and `refuseRetiredDispatcherOption` and `rejectRemovedMiddleware` with them. A typed caller
+  fails to compile; the changeset names the replacement (ER-7). `human_approval` has no refusal
+  today and gets none.
+- **The guard.** A reader of a stored record whose absence would *silently corrupt data*, not
+  merely fail, is raised to the coordinator before it is removed. The census's one published
+  stored shape is `blocked` read as `held` (`retired-shapes.ts`); the implementer checks what a
+  stored `blocked` row does with no reader, and raises it before deleting.
+- **`agents` and `catalog`** lose their literal types; the workforce refusal goes with them.
 - **The census's 19 are `shims.never-published`'s scope.**
-- **Blocks only the PRs that call the helper**, per [the epic's seam](../../epics/FIX-2447/DECISIONS.md#coordination-seams); FIX-2459's
-  `"topological"` claim order sits in orchestration's table.
-- **`agents` and `catalog`** lose their literal types and are refused at runtime.
+- **Blocks nothing.** With no helper, FIX-2452's slot PR and FIX-2459's claim-order PR no longer
+  wait on this issue ([the epic's seams](../../epics/FIX-2447/DECISIONS.md#coordination-seams)). FIX-2535, outside the set,
+  planned to call the helper; the coordinator tells it.
 - **Our dev stores** holding a never-published shape are not read; they are reset, as before.
 - **Published changelogs stay**; the next changeset says those shapes no longer read.
-- **BP-030, rewritten:** dual-read only what a published version wrote; refuse a retired value
-  or key through the helper, with replacement and a removal version at least two minors out (D2);
-  delete what no published version accepted. `removeIn` replaces its `TODO(FIX-NNN)` pointer.
-- **BP-034, amended to the epic's Q1.** *Alias:* the old path stays a `@deprecated` alias
-  naming the new path and the one minor that removes it (at least two minors past the first
-  version that carries it, only if Q1 applies D2's floor to aliases); the sweep reads those tags
-  as it reads table entries. *Hold* or *break as
-  each lands:* re-export from every path the docs name after the move; the old root path goes;
-  the changeset names the new home.
 - **ER-7 supersedes "one fragment per logical change"** (`release-notes-workflow.md`): one
   fragment per published package touched, one line for its reader, naming each moved name's new
   home. Core's features leave fsdev's changelog. Checked at implementation review.
-- **The title's "before 0.4.0 publishes"** is moot: 0.4.0 shipped on Nov 3. It still builds early.
+- **The title's "before 0.4.0 publishes"** is moot: 0.4.0 shipped on Nov 3. So is its "expiry"
+  and "one rename policy": the policy is epic D4.
 
 ## Considered and dropped
 
@@ -114,10 +112,8 @@ month of warning, and the floor drops to one.
   fails as it must. It widened the issue's three task-row shims to six, plus core's
   `waitForUser` resume map.
 
-- **Unchecked: a 0.2.0 suspension resumes on the next minor at all.** D1 rests on it. The
-  implementer runs a 0.2.0-written suspension record through the next minor's answer path before
-  building D1's read. If it can't resume for another reason, D1 flips and `human_*` is refused
-  everywhere.
+- **Unchecked, and no longer needed: a 0.2.0 suspension resumes on the next minor at all.** D1
+  rested on it; with D1 superseded, nothing does.
 
 ## Analysis
 
@@ -125,6 +121,14 @@ Skipped in this spec: the epic-agent runs `analysis` and `reuse-review` over the
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). The direction shrinks to deletion: D1
+  (the stored `human_*` read) and D2 (the removal window) are superseded; the helper, the
+  per-package tables, `contracts/internal`, the refusals, the sweep's table and expiry pass and
+  its two plants, and the BP-030 and BP-034 rewrites are dropped. Kept: deleting the census's 19.
+  Added under D4: the ten published names' refusals go too, with the one stored-shape reader
+  raised under the guard. FIX-2564 drops two of this issue's three cells; FIX-2452 and FIX-2459
+  no longer wait on it.
 - **Set review (Nov 5)** — ownership and expiry extend the vocabulary sweep, not a new
   scanner; `contracts/internal` listed with call 6's completions line; D2's floor covers a Q1
   alias, and BP-034 says so; leg b's three cells and the 19 as their scope; blocks only

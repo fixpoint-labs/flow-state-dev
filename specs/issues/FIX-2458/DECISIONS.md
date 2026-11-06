@@ -60,7 +60,7 @@ Then claude-code's range is one version wide, under the same policy.
 |---|---|
 | **Instead of** | The issue's same-named `listModels()` in all three packages |
 | **Because** | Three declarations named `listModels` collide when one app installs two harnesses, which leg b refuses and Kitchen Sink would alias at every import. Today 8 names already collide this way. A shape that is the same everywhere belongs once in core, and a function that runs one vendor says which |
-| **Locks in** | Public names: `HarnessModelInfo`, `HarnessModelList` and `HARNESS_BASE_PASS` on `core/harness`; `listCursorModels`. claude-code spells every name `ClaudeCode`/`claudeCode`/`CLAUDE_CODE_`, as Codex and Cursor already use their package names, and its one entry is the package root. Old names reach adopters per ER-3 and Q1's answer |
+| **Locks in** | Public names: `HarnessModelInfo`, `HarnessModelList` and `HARNESS_BASE_PASS` on `core/harness`; `listCursorModels`. claude-code spells every name `ClaudeCode`/`claudeCode`/`CLAUDE_CODE_`, as Codex and Cursor already use their package names, and its one entry is the package root. Old names go with no alias (ER-3; Q1 answered break) |
 
 ![D3: names that carry their package, beside the same names in every harness. Decides it: two harnesses installed in one app. Price: one rename round for claude-code. Flips if no app installs two harnesses](figures/d3-naming.svg)
 
@@ -97,8 +97,8 @@ It comes down to an app with two harnesses: shared names collide, and Kitchen Si
   its one site.
 - **No retired runtime value.** The error `code` strings (`CLAUDE_AGENT_RUN_FAILED`, …) and the
   value of `SDK_SESSION_ID_KEY` are emitted into items and stored, so they keep their values when
-  their exported names change. FIX-2454's refusal helper is not used; every change is a moved or
-  removed export, under Q1.
+  their exported names change. No refusal is added (epic D4); every change is a moved or
+  removed export, with no alias (Q1 answered break).
 - **A range's lower bound is the version the lockfile pins** (claude-code: 0.3.316, held by the
   root `pnpm.overrides`). Versions named only in comments are not tested.
 - **The goal check extends Kitchen Sink's parity suite**, the one place the three harnesses
@@ -129,6 +129,10 @@ Skipped in member mode: the epic-agent runs `analysis` and `reuse-review` over t
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). Old names go with no alias, and the repo's 32 `claude-code/sdk`
+  importers move in the same change. The SDK version gate is a forward check, not compat code,
+  and stays. Direction otherwise unchanged.
 - **Draft** — framed as one reader per job across three harnesses; narrowed the issue's four
   failure kinds to core's existing readers (Step 3.5: *refine the substrate*), a tested-range
   version policy, and package-named exports with shared shapes in `core/harness`.
