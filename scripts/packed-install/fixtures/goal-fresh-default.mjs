@@ -15,8 +15,12 @@
  *     the field and both blocks;
  *   - **type conflict**: the same for two blocks that give one field
  *     different types. Refusing only a default conflict fails the cell;
+ *   - **capability conflict**: the same between a capability a block uses
+ *     and another block, naming the capability and the block;
  *   - **identical**: two blocks declaring one field identically define
  *     without complaint.
+ *
+ * No refusal may carry a tracker id: it is a plain error, not a retired value.
  *
  * "At flow definition" is `defineFlow(...)` or the instance call that follows
  * it: before a server or a request.
@@ -126,6 +130,24 @@ const byType = refusal(
 if (byType == null) failures.push("type conflict: two blocks typing session.state.level as a string and a number defined without refusal");
 else if (!names(byType, "level", "goal-texter", "goal-counter"))
   failures.push(`type conflict: refused without naming the field and both blocks: ${byType.slice(0, 200)}`);
+
+const withCapability = refusal(
+  "goal-conflict-capability",
+  handler({
+    name: "goal-toned",
+    ...empty,
+    uses: [defineCapability({ name: "goal-warm-cap", sessionStateSchema: z.object({ tone: z.string().default("warm") }) })],
+    execute: () => ({ ok: true }),
+  }),
+  declares("goal-cool", { tone: z.string().default("cool") }),
+);
+if (withCapability == null) failures.push("capability conflict: a capability defaulting session.state.tone to \"warm\" and a block to \"cool\" defined without refusal");
+else if (!names(withCapability, "tone", "goal-warm-cap", "goal-cool"))
+  failures.push(`capability conflict: refused without naming the field, the capability and the block: ${withCapability.slice(0, 200)}`);
+
+// The refusal is a plain error, not a retired value: it carries no tracker id.
+for (const [label, message] of [["default", byDefault], ["type", byType], ["capability", withCapability]])
+  if (message != null && /\b[A-Z]{2,}-\d+\b/.test(message)) failures.push(`${label} conflict: the refusal carries a tracker id: ${message.slice(0, 200)}`);
 
 const identical = refusal(
   "goal-identical",
