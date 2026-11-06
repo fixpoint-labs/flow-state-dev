@@ -116,12 +116,6 @@ export function ThreadView({
               <span className="font-semibold">Waiting on you</span> · {question.prompt}
             </div>
           ) : null}
-          {/* A long review scrolls here, so the feed above and the Resolve box below stay on screen. */}
-          {column === "review" ? (
-            <div className="max-h-[40vh] min-h-0 overflow-y-auto">
-              <ReviewCard task={task} review={work?.review} />
-            </div>
-          ) : null}
           {finished ? (
             <p role="note" className="text-xs text-muted-foreground">
               This task is finished.
@@ -186,12 +180,14 @@ export function ThreadView({
           <ErrorBody message={task.error} />
         </div>
       ) : null}
-      {/* Ready for review is said once, by its card in the footer, and a failed task's error says why it failed. */}
+      {/* Ready for review is said once, by its card at the end of the feed, and a failed task's error says why it failed. */}
       {column === "review" || task.status === "errored" ? null : <div className="truncate text-xs text-muted-foreground" title={statusLine(task)}>{statusLine(task)}</div>}
       <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => (
         <Entry key={entry.id} entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
       ))}
+      {/* Ready for review closes the feed, in the one scroll area, so a long review reads like the rest of it. Resolve and the request for changes stay under it. */}
+      {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
       {task.status === "in_progress" && task.waitingOn === undefined ? (
         <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
