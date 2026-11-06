@@ -2606,7 +2606,8 @@ export async function createExecutionContext<
   // The session's readonly state fields, as it was created with them. A
   // mutation that would change one is refused before anything is written,
   // whichever path proposed it: a block, a tool, an action.
-  const readonlyFields = getReadonlyStateKeys(flow.session?.stateSchema);
+  // Off the merged schema, so a readonly field a block declares is guarded too.
+  const readonlyFields = getReadonlyStateKeys(scopeStateSchema(flow, "session"));
   const createdWith = sessionContainer.read() as Record<string, unknown>;
   const sessionOps = createScopeStateOps(sessionContainer, {
     cas: flow.session?.cas,

@@ -49,7 +49,7 @@ export function toClientSession(
   const visible = owner.ok
     ? [
         ...(owner.flow.session?.client?.expose ?? []),
-        ...getReadonlyStateKeys(owner.flow.session?.stateSchema)
+        ...getReadonlyStateKeys(scopeStateSchema(owner.flow, "session"))
       ]
     : [];
   // The fields read as a run reads them: with the schema's defaults.

@@ -59,6 +59,7 @@
  * - the liveness gate refused → `livenessOf` is **absent from the bundle**
  */
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
+import { scopeStateSchema } from "./scope-state-defaults";
 import type {
   DispatchOutcome,
   DispatchRefusal,
@@ -495,7 +496,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     // change (a different worker, say). Refused by name rather than run as
     // the record's value.
     const differs = readonlyStateMismatch(
-      getReadonlyStateKeys(targetFlow.session?.stateSchema),
+      getReadonlyStateKeys(scopeStateSchema(targetFlow, "session")),
       initialState,
       current!.state as Readonly<Record<string, unknown>> | undefined
     );

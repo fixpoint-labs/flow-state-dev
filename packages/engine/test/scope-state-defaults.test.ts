@@ -22,6 +22,7 @@ import {
   runAction
 } from "../src";
 import { applyScopeStateDefaults } from "../src/context/scope-state-defaults";
+import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 
 const ORG = "org_defaults";
 const USER = "user_defaults";
@@ -394,6 +395,63 @@ describe("defaults a block or a capability declares", () => {
   });
 });
 
+describe("a readonly session field a block declares is protected like the flow's own", () => {
+  // The block owns `owner`: set when the session is born, never changed. The
+  // flow restates nothing, and an action's caller supplies the value it writes.
+  const ownerBlock = handler({
+    name: "owner-writer",
+    inputSchema: z.object({ owner: z.string() }),
+    sessionStateSchema: z.object({ owner: z.string().readonly().default("alice"), note: z.string().default("") }),
+    execute: async (input, ctx) => {
+      await ctx.session.patchState({ owner: input.owner } as never);
+      return {};
+    }
+  });
+  // A second block that types `owner` the same way, so the merge rebuilds the field.
+  const ownerReader = handler({
+    name: "owner-reader",
+    inputSchema: z.object({}),
+    sessionStateSchema: z.object({ owner: z.string().readonly() }),
+    execute: (_input, ctx) => ({ owner: (ctx.session.state as { owner?: string }).owner })
+  });
+  const ownerFlow = defineFlow({
+    kind: "block-readonly",
+    actions: {
+      write: { inputSchema: z.object({ owner: z.string() }), block: ownerBlock },
+      read: { inputSchema: z.object({}), block: ownerReader }
+    }
+  })();
+
+  async function run(stores: ReturnType<typeof createInMemoryStores>, actionName: "read" | "write", input: unknown) {
+    return runAction({
+      orgId: ORG,
+      flow: ownerFlow,
+      actionName,
+      input,
+      userId: USER,
+      sessionId: "sess_block_readonly",
+      stores,
+      responseEmitter: createResponseEmitter({ requestId: `req_ro_${actionName}_${Math.random()}` }),
+      runtimeConfig: {}
+    });
+  }
+
+  it("refuses a caller's write that would change it, and the stored record keeps its value", async () => {
+    const stores = createInMemoryStores();
+    expect((await run(stores, "read", {})).output).toEqual({ owner: "alice" });
+
+    const write = await run(stores, "write", { owner: "mallory" });
+    expect(write.error?.message).toMatch(/readonly/i);
+    expect((await stores.session.get("sess_block_readonly"))?.state).not.toMatchObject({ owner: "mallory" });
+    expect((await run(stores, "read", {})).output).toEqual({ owner: "alice" });
+  });
+
+  it("is listed as readonly, so the session list exposes it", () => {
+    const session = ownerFlow.scopeStateSchemas?.session;
+    expect(getReadonlyStateKeys(session)).toEqual(["owner"]);
+  });
+});
+
 describe("declarations that disagree are refused before anything runs", () => {
   const leaf = (name: string, session: z.ZodTypeAny) =>
     handler({ name, inputSchema: z.object({}), sessionStateSchema: session, execute: () => ({}) });
@@ -489,6 +547,41 @@ describe("declarations that disagree are refused before anything runs", () => {
       );
     }
     expect(registry.list().map((f) => f.id)).toEqual(["shares-1", "shares-2"]);
+  });
+
+  it("two flows that share one block's dynamic user default, each merging its own fields too, are not refused", () => {
+    // The shared block defaults `visitorId`; each flow's own block types it
+    // without one, so each flow's merge has two declarations of the field.
+    const sharedId = handler({
+      name: "shared-id",
+      inputSchema: z.object({}),
+      userStateSchema: z.object({
+        visitorId: z.string().default(() => crypto.randomUUID()),
+        prefs: z.object({ at: z.string().default(() => new Date().toISOString()) }).default({})
+      }),
+      execute: () => ({})
+    });
+    const own = (kind: string) =>
+      handler({
+        name: `${kind}-own`,
+        inputSchema: z.object({}),
+        userStateSchema: z.object({
+          visitorId: z.string(),
+          [`${kind}Count`]: z.number().default(0),
+          prefs: z.object({ size: z.number().default(1) })
+        }),
+        execute: () => ({})
+      });
+    const registry = createFlowRegistry();
+    for (const kind of ["visits-1", "visits-2"]) {
+      registry.register(
+        defineFlow({
+          kind,
+          actions: { a: { inputSchema: z.object({}), block: sharedId }, b: { inputSchema: z.object({}), block: own(kind) } }
+        })()
+      );
+    }
+    expect(registry.list().map((f) => f.id)).toEqual(["visits-1", "visits-2"]);
   });
 
   it("two flows on one server that type a shared user field differently: the second is refused, both named", () => {

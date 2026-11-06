@@ -16,6 +16,7 @@
  * writes nothing.
  */
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
+import { scopeStateSchema } from "./scope-state-defaults";
 import type {
   FlowInstance,
   HistoryTurn,
@@ -119,7 +120,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       // legacy row, the singleton named by its kind. A flow of another kind
       // under that address is not its owner, and declares nothing for it.
       const owner = flowAt(record.flowId ?? record.flowKind);
-      const readonly = owner?.kind === record.flowKind ? getReadonlyStateKeys(owner.session?.stateSchema) : [];
+      const readonly = owner?.kind === record.flowKind ? getReadonlyStateKeys(scopeStateSchema(owner, "session")) : [];
       const state: Record<string, unknown> = {};
       for (const key of readonly) {
         if (Object.prototype.hasOwnProperty.call(record.state, key)) state[key] = structuredClone(record.state[key]);

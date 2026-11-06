@@ -37,13 +37,14 @@ import { getZodInnerType, getZodObjectShape, getZodTypeName, isZodObject } from 
 import { isJsonObject } from "../utils/json-helpers";
 
 /**
- * The schema `scope`'s reads fill defaults from: the flow's merged one, which
+ * The schema `scope`'s reads fill defaults from, and its readonly fields are
+ * read off: the flow's merged one, which
  * `defineFlow` builds from the flow's own `stateSchema` and every declaration
  * its reachable blocks and their capabilities make. An instance built without
  * `defineFlow` carries none, and reads its own `stateSchema`.
  */
 export function scopeStateSchema(
-  flow: Pick<FlowInstance, "scopeStateSchemas" | "session" | "user" | "org">,
+  flow: Pick<FlowInstance, "scopeStateSchemas"> & Partial<Pick<FlowInstance, "session" | "user" | "org">>,
   scope: "session" | "user" | "org"
 ): ZodTypeAny | undefined {
   if (flow.scopeStateSchemas !== undefined) return flow.scopeStateSchemas[scope];
