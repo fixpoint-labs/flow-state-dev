@@ -50,6 +50,8 @@ export interface FixtureOptions {
   notSetUp?: string[];
   /** A coding run asks which line has the typo before it edits, and waits for your answer. */
   asks?: boolean;
+  /** A coding run holds before its first step until `startRuns()`, so what shows before it reports anything can be read. */
+  held?: boolean;
   /** A coding run that committed waits for your review: Accept completes it, Ask for changes runs it once more. */
   review?: boolean;
   /**
@@ -72,6 +74,8 @@ export interface FixtureLab extends LabAdapter {
   failTurn(sessionId: string, reason: string): void;
   /** Each `retry` the screen made, in order. */
   readonly retries: { sessionId: string; requestId: string }[];
+  /** With `held`, every coding run waiting to start goes on to its first step. */
+  startRuns(): void;
 }
 
 /**
@@ -182,6 +186,8 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   let connection: SessionConnectionState = "live";
   /** What each run waiting on you is waiting for: the answer it goes on with. */
   const waits = new Map<string, (answer: TaskAnswer) => void>();
+  /** With `held`, the coding runs waiting on `startRuns()`. */
+  const held = new Set<() => void>();
   /** Each run's latest review, by its run session. */
   const reviews = new Map<string, ReviewDetail>();
   /** The worker each open approval belongs to, by suspension id. */
@@ -313,6 +319,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
         updateTask(task.id, { waiting: { ...waiting, holdId: `hold-${++holdCount}` } });
       });
     void (async () => {
+      if (options.held) await new Promise<void>((resolve) => held.add(resolve));
       await sleep(600);
       // The run reports its model, if its harness reports one, once it starts.
       if (model !== undefined) updateTask(task.id, { model });
@@ -501,6 +508,10 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       notify();
     },
     retries,
+    startRuns() {
+      for (const start of [...held]) start();
+      held.clear();
+    },
     failTurn(sessionId, reason) {
       const w = bySession(sessionId);
       if (!w) throw new Error(`no conversation ${sessionId}`);
