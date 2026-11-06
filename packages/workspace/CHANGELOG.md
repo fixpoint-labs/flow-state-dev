@@ -1,5 +1,29 @@
 # @flow-state-dev/workspace
 
+## 0.4.0
+
+### Minor Changes
+
+- 73f8352: Accepting a coding run's review can now land its work: **Open a PR** pushes the run's branch and opens a pull request, and **Merge locally** merges it into the base branch where your checkout has it (FIX-2543).
+
+  - **harness-manager:** with `reviewChanges`, an accept can name `land: "pull-request" | "merge"` (`harnessReviewAnswerSchema`). The review's data lists the ways this host offers (`lands`). If the landing fails, the task doesn't complete: the review is asked again with the error (`landFailed: { land, message }`), so the user can retry or pick the other way, and the run's branch and commits are kept. The output gains `landed`: `{ kind: "pull-request", url, number, branch, base, remote }` or `{ kind: "merge", branch, commit, checkout, from }`, `null` unless the work landed. A pull request is written to the run session's `observed-pull-requests` record. `ReviewDetail` gains optional `lands` and `landFailed`, and `ReviewLand` is exported from the `browser` entry. A plain `{ verdict: "accepted" }` completes the task without landing anything.
+  - **workspace:** `WorkspaceHost.land(target, request)`, implemented by `localWorkspaceHost` for a repository in `localRepositories`. A pull request pushes to the remote pinned at start (the base's upstream, else `origin`), never force-pushes, and returns the pull request already open for the branch instead of opening a second. A merge lands the run's commits on the base by fast-forward or a merge commit, whatever the repository's squash or no-commit settings say, never overwrites an ignored file, and never resolves a conflict. A base that names a pinned remote's branch (`origin/main`, `refs/remotes/origin/main`) targets that branch on the remote for a pull request and the local branch tracking it for a merge; a local branch named `origin/main` stays that branch. A refusal is a `WorkspaceRefusedError` whose `reason` is `land-unsupported`, `base-unknown`, `no-push-remote`, `remote-repointed`, `push-failed`, `pull-request-failed`, `base-not-checked-out`, `checkout-dirty`, `checkout-busy` (the checkout is mid-merge, rebase, cherry-pick or revert, and is left alone), `merge-conflict` (aborted, naming the files) or `merge-failed`; after a merge refusal the checkout is as it was. New exports: `LAND_TIMEOUT_MS`, `Landed`, `LandRequest`, `LandTarget`.
+  - **ui registry (`review-hold`):** with `lands`, Accept is two buttons, **Open a PR** and **Merge locally**, and a review asked again with `landFailed` shows the error and **Retry**. Pass the stop's suspension id, or the hold's id, as `holdId`, so a retry that fails with the same error still shows Retry. `LandedOutcome` draws where accepted work went and what to do next.
+
+  Docs: apps/docs/docs/orchestration/harness-manager.md, packages/harness-manager/README.md, packages/workspace/README.md, packages/ui/README.md
+
+### Patch Changes
+
+- a124a8e: A project's repository can be checked before any run. `localWorkspaceHost` answers `checkRepository(repository, { ignored })` without making anything: whether a run's checkout could be made there, and if not, a sentence naming the fix. The ignore rule is read from the last commit, as a run's checkout gets it, so a rule that is only in uncommitted changes is refused with "commit it". `defineProjectBlocks({ checkRepository })` uses it to refuse `createProject` and `setRepository` with `repository-unusable`, and serves a read-only `checkRepository` action a page can ask before Create. `harness-manager` exports `ASK_MARKER_IGNORED`, the rule coding runs need (FIX-2403).
+- Updated dependencies [531bf32]
+- Updated dependencies [05a7022]
+- Updated dependencies [c67aa49]
+- Updated dependencies [f1e6315]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/core@0.5.0
+
 ## 0.3.0
 
 ### Minor Changes
