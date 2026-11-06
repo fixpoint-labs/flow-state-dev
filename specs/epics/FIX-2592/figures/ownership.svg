@@ -1,0 +1,159 @@
+<svg viewBox="0 0 940 424" role="img" aria-label="Who owns what: ten rules across FIX-2593 the workspace package, FIX-2597 the harness packages, FIX-2594 the sidebar and Settings, FIX-2595 the working line, FIX-2598 the harness and model selector, FIX-2599 plan mode, FIX-2596 the closure and the coordinator. Each rule has exactly one owner. ER-1 One list of repositories: owned by FIX-2594. ER-2 A later add passes the start-up checks: owned by FIX-2593. ER-3 Removal never strands a run: owned by FIX-2593. ER-4 Registration is an operator act: owned by FIX-2594. ER-5 The word is repository: owned by FIX-2594. ER-6 No default repository: owned by FIX-2594. ER-7 FIX-2403's checks survive: owned by FIX-2594. ER-8 The line reads the thread's own state: owned by FIX-2595. ER-9 A harness is asked what it offers: owned by FIX-2597. ER-10 Consumed issues keep their parents: owned by the coordinator. The closure checks every rule but ER-10." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; } }
+    .bg   { fill:var(--surface); }
+    .line { stroke:var(--rule); stroke-width:1; }
+    .o    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .u    { fill:var(--accent-soft); }
+    .c    { fill:var(--surface); stroke:var(--accent); stroke-width:1; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-id  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-o   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-u   { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="424"/>
+
+  <g id="columns">
+    <text class="t-col" x="336" y="36" text-anchor="middle">2593</text>
+    <text class="t-lbl" x="336" y="52" text-anchor="middle">workspace</text>
+    <text class="t-col" x="412" y="36" text-anchor="middle">2597</text>
+    <text class="t-lbl" x="412" y="52" text-anchor="middle">harness</text>
+    <text class="t-col" x="488" y="36" text-anchor="middle">2594</text>
+    <text class="t-lbl" x="488" y="52" text-anchor="middle">sidebar</text>
+    <text class="t-col" x="564" y="36" text-anchor="middle">2595</text>
+    <text class="t-lbl" x="564" y="52" text-anchor="middle">line</text>
+    <text class="t-col" x="640" y="36" text-anchor="middle">2598</text>
+    <text class="t-lbl" x="640" y="52" text-anchor="middle">selector</text>
+    <text class="t-col" x="716" y="36" text-anchor="middle">2599</text>
+    <text class="t-lbl" x="716" y="52" text-anchor="middle">plan</text>
+    <text class="t-col" x="792" y="36" text-anchor="middle">2596</text>
+    <text class="t-lbl" x="792" y="52" text-anchor="middle">closure</text>
+    <text class="t-col" x="868" y="36" text-anchor="middle">Coord.</text>
+    <text class="t-lbl" x="868" y="52" text-anchor="middle">the loop</text>
+    <line class="line" x1="16" y1="62" x2="924" y2="62"/>
+  </g>
+
+  <g id="er-1">
+    <text class="t-id" x="16" y="82">ER-1</text>
+    <text class="t-b" x="62" y="82">One list of repositories</text>
+    <rect class="u" x="304" y="66" width="64" height="22" rx="3"/>
+    <text class="t-u" x="336" y="81" text-anchor="middle">uses</text>
+    <rect class="o" x="456" y="66" width="64" height="22" rx="3"/>
+    <text class="t-o" x="488" y="81" text-anchor="middle">owns</text>
+    <rect class="c" x="760" y="66" width="64" height="22" rx="3"/>
+    <text class="t-u" x="792" y="81" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="92" x2="924" y2="92"/>
+  </g>
+  <g id="er-2">
+    <text class="t-id" x="16" y="112">ER-2</text>
+    <text class="t-b" x="62" y="112">A later add passes start-up checks</text>
+    <rect class="o" x="304" y="96" width="64" height="22" rx="3"/>
+    <text class="t-o" x="336" y="111" text-anchor="middle">owns</text>
+    <rect class="u" x="456" y="96" width="64" height="22" rx="3"/>
+    <text class="t-u" x="488" y="111" text-anchor="middle">uses</text>
+    <rect class="c" x="760" y="96" width="64" height="22" rx="3"/>
+    <text class="t-u" x="792" y="111" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="122" x2="924" y2="122"/>
+  </g>
+  <g id="er-3">
+    <text class="t-id" x="16" y="142">ER-3</text>
+    <text class="t-b" x="62" y="142">Removal never strands a run</text>
+    <rect class="o" x="304" y="126" width="64" height="22" rx="3"/>
+    <text class="t-o" x="336" y="141" text-anchor="middle">owns</text>
+    <rect class="u" x="456" y="126" width="64" height="22" rx="3"/>
+    <text class="t-u" x="488" y="141" text-anchor="middle">uses</text>
+    <rect class="c" x="760" y="126" width="64" height="22" rx="3"/>
+    <text class="t-u" x="792" y="141" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="152" x2="924" y2="152"/>
+  </g>
+  <g id="er-4">
+    <text class="t-id" x="16" y="172">ER-4</text>
+    <text class="t-b" x="62" y="172">Registration is an operator act</text>
+    <rect class="u" x="304" y="156" width="64" height="22" rx="3"/>
+    <text class="t-u" x="336" y="171" text-anchor="middle">uses</text>
+    <rect class="o" x="456" y="156" width="64" height="22" rx="3"/>
+    <text class="t-o" x="488" y="171" text-anchor="middle">owns</text>
+    <rect class="c" x="760" y="156" width="64" height="22" rx="3"/>
+    <text class="t-u" x="792" y="171" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="182" x2="924" y2="182"/>
+  </g>
+  <g id="er-5">
+    <text class="t-id" x="16" y="202">ER-5</text>
+    <text class="t-b" x="62" y="202">The word is repository</text>
+    <rect class="o" x="456" y="186" width="64" height="22" rx="3"/>
+    <text class="t-o" x="488" y="201" text-anchor="middle">owns</text>
+    <rect class="u" x="532" y="186" width="64" height="22" rx="3"/>
+    <text class="t-u" x="564" y="201" text-anchor="middle">uses</text>
+    <rect class="u" x="608" y="186" width="64" height="22" rx="3"/>
+    <text class="t-u" x="640" y="201" text-anchor="middle">uses</text>
+    <rect class="u" x="684" y="186" width="64" height="22" rx="3"/>
+    <text class="t-u" x="716" y="201" text-anchor="middle">uses</text>
+    <rect class="c" x="760" y="186" width="64" height="22" rx="3"/>
+    <text class="t-u" x="792" y="201" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="212" x2="924" y2="212"/>
+  </g>
+  <g id="er-6">
+    <text class="t-id" x="16" y="232">ER-6</text>
+    <text class="t-b" x="62" y="232">No default repository</text>
+    <rect class="o" x="456" y="216" width="64" height="22" rx="3"/>
+    <text class="t-o" x="488" y="231" text-anchor="middle">owns</text>
+    <rect class="c" x="760" y="216" width="64" height="22" rx="3"/>
+    <text class="t-u" x="792" y="231" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="242" x2="924" y2="242"/>
+  </g>
+  <g id="er-7">
+    <text class="t-id" x="16" y="262">ER-7</text>
+    <text class="t-b" x="62" y="262">FIX-2403's checks survive</text>
+    <rect class="u" x="304" y="246" width="64" height="22" rx="3"/>
+    <text class="t-u" x="336" y="261" text-anchor="middle">uses</text>
+    <rect class="o" x="456" y="246" width="64" height="22" rx="3"/>
+    <text class="t-o" x="488" y="261" text-anchor="middle">owns</text>
+    <rect class="c" x="760" y="246" width="64" height="22" rx="3"/>
+    <text class="t-u" x="792" y="261" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="272" x2="924" y2="272"/>
+  </g>
+  <g id="er-8">
+    <text class="t-id" x="16" y="292">ER-8</text>
+    <text class="t-b" x="62" y="292">The line reads the thread's own state</text>
+    <rect class="o" x="532" y="276" width="64" height="22" rx="3"/>
+    <text class="t-o" x="564" y="291" text-anchor="middle">owns</text>
+    <rect class="c" x="760" y="276" width="64" height="22" rx="3"/>
+    <text class="t-u" x="792" y="291" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="302" x2="924" y2="302"/>
+  </g>
+  <g id="er-9">
+    <text class="t-id" x="16" y="322">ER-9</text>
+    <text class="t-b" x="62" y="322">A harness is asked what it offers</text>
+    <rect class="o" x="380" y="306" width="64" height="22" rx="3"/>
+    <text class="t-o" x="412" y="321" text-anchor="middle">owns</text>
+    <rect class="u" x="608" y="306" width="64" height="22" rx="3"/>
+    <text class="t-u" x="640" y="321" text-anchor="middle">uses</text>
+    <rect class="u" x="684" y="306" width="64" height="22" rx="3"/>
+    <text class="t-u" x="716" y="321" text-anchor="middle">uses</text>
+    <rect class="c" x="760" y="306" width="64" height="22" rx="3"/>
+    <text class="t-u" x="792" y="321" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="332" x2="924" y2="332"/>
+  </g>
+  <g id="er-10">
+    <text class="t-id" x="16" y="352">ER-10</text>
+    <text class="t-b" x="62" y="352">Consumed issues keep their parents</text>
+    <rect class="o" x="836" y="336" width="64" height="22" rx="3"/>
+    <text class="t-o" x="868" y="351" text-anchor="middle">owns</text>
+    <line class="line" x1="16" y1="362" x2="924" y2="362"/>
+  </g>
+
+  <g id="legend">
+    <rect class="o" x="16" y="384" width="40" height="18" rx="3"/>
+    <text class="t-b" x="64" y="397">decides or builds it · exactly one per rule</text>
+    <rect class="u" x="360" y="384" width="40" height="18" rx="3"/>
+    <text class="t-b" x="408" y="397">uses it · must not decide again</text>
+    <rect class="c" x="640" y="384" width="40" height="18" rx="3"/>
+    <text class="t-b" x="688" y="397">the closure checks it</text>
+  </g>
+</svg>
