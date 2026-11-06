@@ -463,6 +463,24 @@ export const GOAL_CHECKS = [
     name: "a stored human_approval suspension reads as a user's stop",
     run: (project) => goalFixture(project, "goal-stored-approval.mjs", "stored-approval"),
   },
+  {
+    id: "onepath.output-read",
+    name: "the installed client's request(firstId).result(), under 101 newer requests, returns the computed output; a failing action resolves failed with its error.code",
+    run: (project) => goalFixture(project, "goal-output-read.mjs", "output-read"),
+  },
+  {
+    id: "types.typed-handler",
+    name: "a uses: [cap] handler passes its ctx to orchestration/tasks' getOrCreateTaskCollection and compiles against the installed .d.ts with no cast",
+    run(project) {
+      npmInstall(project.dir, [TYPESCRIPT_SPEC]);
+      return goalFixture(project, "goal-typed-handler.mjs", "typed-handler");
+    },
+  },
+  {
+    id: "types.fresh-session-default",
+    name: "a fresh session reads the flow's, a block's and a capability's defaults; conflicting declarations are refused at defineFlow, naming the field and both blocks",
+    run: (project) => goalFixture(project, "goal-fresh-default.mjs", "fresh-default"),
+  },
 ];
 
 /**

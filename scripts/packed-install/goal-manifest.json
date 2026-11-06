@@ -25,7 +25,9 @@
     {
       "id": "onepath",
       "title": "One path",
-      "assertions": []
+      "assertions": [
+        "onepath.output-read"
+      ]
     },
     {
       "id": "first-hour",
@@ -51,7 +53,10 @@
     {
       "id": "types",
       "title": "Types",
-      "assertions": []
+      "assertions": [
+        "types.typed-handler",
+        "types.fresh-session-default"
+      ]
     }
   ],
   "expect": {
@@ -70,10 +75,13 @@
     "surface.root.workforce": "fail",
     "surface.collisions": "fail",
     "surface.core-installed-dts": "fail",
+    "onepath.output-read": "fail",
     "leakage.tracker-ids": "fail",
     "shims.never-published": "fail",
     "shims.human-approval-throws": "fail",
-    "shims.stored-human-approval": "fail"
+    "shims.stored-human-approval": "fail",
+    "types.typed-handler": "fail",
+    "types.fresh-session-default": "fail"
   },
   "ratchets": {
     "export-check": null,
