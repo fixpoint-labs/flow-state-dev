@@ -1,5 +1,71 @@
 # @flow-state-dev/workforce
 
+## 0.5.0
+
+### Minor Changes
+
+- 79b03fc: A screen that lists workers can follow the roster instead of reading it once (FIX-2412).
+
+  - **workforce:** `WorkforceClient.watchRoster(onRoster, { onError })`, on `@flow-state-dev/workforce/browser`, hands the user's roster to `onRoster`, and again each time a hire, fork, edit or fire changes it, from any tab or any worker's turn. It listens on the client's `subscribe` (the user's topic) and reads every 3 s only where push can miss a change; it reports only a changed roster and returns its stop function. **Breaking for a hand-built source:** `WorkforceClientSource` now includes `subscribe`. A client from `createClient` works as before.
+  - **shift-manager:** Roster, TEAMS, a project's lead picker, worker settings and DELEGATES follow the roster through one watch per connection, so a worker hired elsewhere shows without a reload.
+
+- da4a4bb: A worker's conversation can follow a thread on an outside service, and hears each event on it once, as a message from `service:<provider>` (FIX-2534).
+
+  - **workforce:** `subscriptionTools({ providers })` gives the `subscribe` and `unsubscribe` tools; `defineSubscriptionServiceFlow({ kind, provider, installation, trustedBots?, capPerHour? })` builds a provider's service flow, which routes each event through five code screens (`sender`, `own`, `labels`, `words`, `allow`) and delivers once per conversation, under the subscribing session's tenant. A subscription ends on `unsubscribe`, when the thread it follows closes (a PR's closing leaves a subscription to its repository running), or when the task whose session made it fails or is cancelled. See the README's Subscriptions section.
+  - **engine:** `fireOwnerRunThrough(host, run)` starts an internal entry as the user whose stored row it names, only when the row is there, names the same org and tenant, and isn't `enabled: false`; `routeServiceEvent(host, …, { concurrency? })` runs a service flow's entry, reads the owner runs it names, and fires them a few at once, recording each one's failure. `resolveSharedUserCellKey(userId, orgId, flowKind)` is the storage key both read a user's shared rows at.
+  - **core:** `subscriptionEventSchema` / `SubscriptionEvent`, the normalized event a webhook or a poll maps into.
+
+- 5f569fd: A task's session tells what a person said from what the task was handed (FIX-2574, FIX-2575).
+
+  - **core / engine:** an action's `userMessage` can return `{ text, metadata }`. The echo is still the request's `user` line, and it carries `metadata` for a client to read. A plain string works as before.
+  - **orchestration:** a steer from a person (sent from a screen, or a coding review's request for changes) now shows in the task's session as a `user` line with their words alone, not as an assistant line reading "Message from the user: …". A filer's or the board's steer reads as before. **Breaking:** `showTakenSteers` is now async; await it.
+  - **workforce:** a task request's opening `user` line (the task as filed, or re-queued with its steers) is marked as the task's brief. Read it with `taskBriefOf(item)` from `@flow-state-dev/workforce/browser` to draw it as a brief, not as the person's line.
+
+### Patch Changes
+
+- a124a8e: A project's repository can be checked before any run. `localWorkspaceHost` answers `checkRepository(repository, { ignored })` without making anything: whether a run's checkout could be made there, and if not, a sentence naming the fix. The ignore rule is read from the last commit, as a run's checkout gets it, so a rule that is only in uncommitted changes is refused with "commit it". `defineProjectBlocks({ checkRepository })` uses it to refuse `createProject` and `setRepository` with `repository-unusable`, and serves a read-only `checkRepository` action a page can ask before Create. `harness-manager` exports `ASK_MARKER_IGNORED`, the rule coding runs need (FIX-2403).
+- 05a7022: An action's optional `taskOf(input)` names the task a request is for, and the request's user message and items carry it as `taskId`; Workforce's built-in doors take an optional `taskId` through `doorTask`, and the inventory row says so as `doorTakesTask` (FIX-2422).
+- b9bde3f: A worker flow of your own can open its prompt with the same default layer as the built-in worker flow (FIX-2493).
+
+  - **workforce:** exports `workerIdentityPrompt(ctx, installation)`. Put `(_input, ctx) => workerIdentityPrompt(ctx, installation)` first in a model block's `prompt` and its workers are told who they are, who they can reach, and to work things out themselves first.
+  - **shift-manager:** the DevTeam's Engineering Manager now gets that layer ahead of its team's and its own instructions.
+
+- 8d3921e: An app can change a task on a board with one call each, from the browser-safe Inbox entry (FIX-2381).
+
+  - **orchestration:** `createInboxClient(client).board({ flowId, sessionId, board })` returns the board's `cancel(id)`, `steer(id, message)`, `release(id)`, `retry(id)` and `refile(row, overrides?)`. Each resolves when the board says yes and rejects with the board's own words when it refuses. `cancel` resolves to the dependents it cancelled with the task, `refile` to the new task's id. `taskActionName(tool, board)` gives a board action's name. New types: `BoardAt`, `BoardActions`, `RefileRow`, `RefileOverrides`, `TaskActionTool`. A row answer through `answer` / `answerOne` now finds its request past the first 100 in the session, and rejects when the board's answer can't be read instead of resolving.
+  - **workforce:** a browser's read of a conversation board now includes each row's `context`, beside `goal`.
+
+- 65ee4c5: Scope state reads with its schema's defaults (FIX-2554).
+
+  `ctx.session.state`, `ctx.user.state` and `ctx.org.state` now hold the default of every defaulted field of the flow's scope `stateSchema` that the stored record lacks, as their `z.infer` type already promised: on a fresh user or session, on a record stored before the field existed, and after a concurrent write. Only missing values are filled in; a stored value is read as stored, and keys the schema doesn't declare are kept, so another flow's fields on a shared user or org record survive. The `/state` projection's `clientData` and the session listing read the same way. A `?? default` fallback on a field the flow's schema defaults can go. A block's or capability's own `sessionStateSchema` still only types `ctx.session.state`.
+
+  An `incState` or `pushState` on a field the stored record lacks builds on the field's default (`count.default(10)` plus 1 is 11), not on the store's empty start.
+
+  `hireWorkforce` refuses a worker flow registered as a manager or coordinator whose session `stateSchema` doesn't default the fields its board and delegates read (`delegates`, `fallback`, `taskNotices`, and a coordinator's rounds). Declare `session: installation.session(board.sessionStateShape)`.
+
+- 58474ba: `answerTextOf(output)` is exported from the root and from `./browser` (FIX-2561): a completed task's answer as text, read from its row's `output` by the rule the conversation lands it by. An agent worker's answer is the output itself, a string; a coding run's is the output's `answer`. A screen that read only `output.answer` showed no result for an agent worker's task.
+- c29777f: A built-in agent worker's turn now defaults to 50 model steps instead of core's generator default of 8, so a worker can read several files or make several lookups before it answers. A worker that keeps calling tools can now spend up to 50 model calls per turn. Set `maxSteps: 8` on the flow options to keep the old cap (FIX-2491).
+- Updated dependencies [73f8352]
+- Updated dependencies [531bf32]
+- Updated dependencies [a124a8e]
+- Updated dependencies [05a7022]
+- Updated dependencies [c67aa49]
+- Updated dependencies [8d3921e]
+- Updated dependencies [3646a14]
+- Updated dependencies [a1386ea]
+- Updated dependencies [f1e6315]
+- Updated dependencies [3b8c97c]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [8788d02]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/workspace@0.4.0
+  - @flow-state-dev/orchestration@0.6.0
+  - @flow-state-dev/core@0.5.0
+  - @flow-state-dev/client@0.5.0
+  - @flow-state-dev/tools@0.2.2
+  - @flow-state-dev/scheduled@0.3.2
+
 ## 0.4.1
 
 ### Patch Changes

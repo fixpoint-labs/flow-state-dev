@@ -1,5 +1,51 @@
 # @flow-state-dev/orchestration
 
+## 0.6.0
+
+### Minor Changes
+
+- 531bf32: A task board's change reaches every open view of the board, from whichever session or process settles the task (FIX-2429).
+
+  - **orchestration:** every change to a board built by `getOrCreateTaskCollection` also publishes a `board` change notice on the topic of the session that filed the row (`Task.filer`, else the ledger's legacy filer, else the running session), narrowed to the board's `collectionId`. A screen subscribes `topic.session(conversationId, { resource: "tasks" })` and reads again. Nothing to wire: the `task-change` item is unchanged. The board's `listTasks` action (a client's read, not the model's tool) also answers each row's `updatedAt`, so a client holding a row from two sources keeps the newer.
+  - **engine:** the block context carries the seam that publishes a board notice on the running request's bus, under its tenant, with the request as `origin`.
+  - **react:** **Breaking for a hand-built client slice:** a live `BoardList`'s `client` takes `subscribe` in place of `sessions.stream`. A client from `createClient` works as before. The list now hears a task that settles in another session or process, never wakes on a reply streaming in the session, and reads every 3 s where push can miss a change. `useSubscription` takes `client`, for an app that builds its own client, and hands `read` an `AbortSignal` that aborts when the subscription ends.
+  - **core / contracts:** `ChangeKind` gains `"board"`; `publishBoardChange` and `BOARD_NOTICE_SEAM` (framework-facing) in `@flow-state-dev/core/types`.
+  - **shift-manager:** the conversation's task panel and task cards read on board notices; they keep their 3 s timer only while a task is open, and only where push can miss a change.
+
+- 8d3921e: An app can change a task on a board with one call each, from the browser-safe Inbox entry (FIX-2381).
+
+  - **orchestration:** `createInboxClient(client).board({ flowId, sessionId, board })` returns the board's `cancel(id)`, `steer(id, message)`, `release(id)`, `retry(id)` and `refile(row, overrides?)`. Each resolves when the board says yes and rejects with the board's own words when it refuses. `cancel` resolves to the dependents it cancelled with the task, `refile` to the new task's id. `taskActionName(tool, board)` gives a board action's name. New types: `BoardAt`, `BoardActions`, `RefileRow`, `RefileOverrides`, `TaskActionTool`. A row answer through `answer` / `answerOne` now finds its request past the first 100 in the session, and rejects when the board's answer can't be read instead of resolving.
+  - **workforce:** a browser's read of a conversation board now includes each row's `context`, beside `goal`.
+
+- 5f569fd: A task's session tells what a person said from what the task was handed (FIX-2574, FIX-2575).
+
+  - **core / engine:** an action's `userMessage` can return `{ text, metadata }`. The echo is still the request's `user` line, and it carries `metadata` for a client to read. A plain string works as before.
+  - **orchestration:** a steer from a person (sent from a screen, or a coding review's request for changes) now shows in the task's session as a `user` line with their words alone, not as an assistant line reading "Message from the user: …". A filer's or the board's steer reads as before. **Breaking:** `showTakenSteers` is now async; await it.
+  - **workforce:** a task request's opening `user` line (the task as filed, or re-queued with its steers) is marked as the task's brief. Read it with `taskBriefOf(item)` from `@flow-state-dev/workforce/browser` to draw it as a brief, not as the person's line.
+
+- 8788d02: A partitioned task ledger finds a task id through its own declared `byTaskId` index (FIX-2532).
+
+  - `findTaskPartitions` uses an index on SQLite and Postgres and scans the user's rows on other stores. Tasks added by an older version are found too: on SQLite and Postgres, the first lookup in each user's scope indexes the rows already there.
+  - `taskLedgerResources(ledger)` returns the ledger alone. The `<ledger id>__ids` collection is gone, and the `__ids` rows an older version wrote are no longer read or written; they can be left in the store or deleted.
+  - `taskIdIndexKey` is removed from `@flow-state-dev/orchestration/tasks`.
+
+### Patch Changes
+
+- 3646a14: The board's `listTasks` action (a client's read, not the model's tool) answers a running row's `leaseUntil`, the deadline a live run keeps pushing forward while it works. Pass the row to `leaseLapsed(row, now)` from `@flow-state-dev/orchestration/tasks` to tell a task whose run stopped answering, by the same rule the board uses to take such a row back. A row nobody holds has no `leaseUntil` and never reads lapsed. A row's `run.startedAt` is when this attempt's first run started, so a screen can time the attempt rather than the task (FIX-2394).
+
+  Docs: packages/orchestration/README.md (the `listTasks` rows section: `run.startedAt` and `leaseUntil`, with `leaseLapsed`)
+
+- Updated dependencies [531bf32]
+- Updated dependencies [05a7022]
+- Updated dependencies [c67aa49]
+- Updated dependencies [a1386ea]
+- Updated dependencies [f1e6315]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/core@0.5.0
+  - @flow-state-dev/client@0.5.0
+
 ## 0.5.0
 
 ### Minor Changes
