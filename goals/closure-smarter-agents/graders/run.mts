@@ -13,9 +13,12 @@ import { spawn } from "node:child_process";
 import { REPO_ROOT, runGoal, sleep } from "../../lib/index.mts";
 import type { SessionStateSnapshotResponse } from "@flow-state-dev/client";
 import { harnessTurnRecordSchema } from "@flow-state-dev/harness-manager";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import { FOLD_MARGIN, foldFillersPassed, planted, servedUntilStopped, skillFiles, turnChecksOf } from "../closure.mts";
-import { answerOnHaiku, APP_MODELS, claudeCodeSettings, closureModel, HAIKU, HAIKU_CONFIG, HAIKU_ID, haikuResolver, servedModel } from "../model.mts";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { createClient } from "@flow-state-dev/client";
+import { createFlowState, createInProcessFetch, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { z } from "zod";
+import { act, FOLD_MARGIN, foldFillersPassed, planted, servedUntilStopped, skillFiles, turnChecksOf } from "../closure.mts";
+import { APP_MODELS, serveOnHaiku, claudeCodeSettings, closureModel, HAIKU, HAIKU_CONFIG, HAIKU_ID, haikuResolver, servedModel } from "../model.mts";
 
 /**
  * A harness session's state snapshot as `GET /sessions/:id/state` serves it
@@ -237,14 +240,41 @@ const throwsNaming = (fn: () => unknown, name: string) => {
     return String(error).includes(name) && !String(error).includes(KEY);
   }
 };
-/** A FlowState served through the wrapper: the resolver the router and the worker read is Haiku's. */
-async function wrapperSwapsTheResolver(): Promise<boolean> {
-  const app = createFlowState({ flows: {}, stores: { dev: { primary: inMemoryStores() } } });
-  const served = await answerOnHaiku(app, haiku);
-  const swapped = served === app && (await app.getRuntime()).runtimeConfig.modelResolver === haiku;
-  await app.dispose();
-  return swapped;
+/** A flow whose one action answers with the model a generator naming `openai/gpt-6-luna` resolves to. */
+const probeFlow = defineFlow({
+  kind: "model-probe",
+  actions: {
+    which: {
+      inputSchema: z.object({}),
+      block: handler({ name: "which-model", inputSchema: z.object({}), execute: (_input: object, ctx) => ({ model: ctx.resolveModel.resolveId("openai/gpt-6-luna") }) }),
+    },
+  },
+})();
+
+/**
+ * An app config served through the wrapper (`serveOnHaiku`, as
+ * `haiku.config.mts` runs it), then asked over its router which model it
+ * resolves. `routerAtImport`: the config builds its router while it is
+ * imported, as Shift Manager's `openLab` does; otherwise on first request.
+ */
+async function routerResolvesHaiku(routerAtImport: boolean): Promise<string> {
+  let app: FlowState | undefined;
+  const loadApp = async () => {
+    app = createFlowState({ flows: { probe: probeFlow }, models: { default: "openai/gpt-6-luna" }, stores: { default: { primary: inMemoryStores() } } });
+    if (routerAtImport) await app.getRouter();
+    return app;
+  };
+  try {
+    const served = await serveOnHaiku({ createFlowState, inMemoryStores }, loadApp, haiku);
+    const fsd = createClient({ userId: "u_probe", baseUrl: "http://in-process.invalid", fetcher: createInProcessFetch(served) } as Parameters<typeof createClient>[0]);
+    const sessionId = (await fsd.flow("model-probe").createSession()).id;
+    return ((await act(fsd, "model-probe", sessionId, "which", {})) as { model: string }).model;
+  } finally {
+    await app?.dispose();
+  }
 }
+const resolvedLateRouter = await routerResolvesHaiku(false);
+const resolvedImportRouter = await routerResolvesHaiku(true);
 const modelRules: [string, boolean, boolean][] = [
   ["switch off: the apps answer on their own models", closureModel({ MY_ANTHROPIC_API_KEY: KEY }) === APP_MODELS, true],
   ["switch on: the apps answer on Haiku", closureModel({ GOAL_HAIKU: "1", MY_ANTHROPIC_API_KEY: KEY }) === HAIKU, true],
@@ -262,7 +292,9 @@ const modelRules: [string, boolean, boolean][] = [
   ["on with no --config: refused", throwsNaming(() => servedModel(HAIKU, ["--port", "1"], { MY_ANTHROPIC_API_KEY: KEY }), "--config"), true],
   ["on: a Claude Code run in the repository is set to Haiku", JSON.parse(claudeCodeSettings(HAIKU)[".claude/settings.json"] ?? "{}").model === HAIKU_ID, true],
   ["off: the repository sets no Claude Code model", Object.keys(claudeCodeSettings(APP_MODELS)).length === 0, true],
-  ["on: the wrapper swaps the served app's resolver", await wrapperSwapsTheResolver(), true],
+  ["on: a router built on first request resolves Haiku", resolvedLateRouter === HAIKU, true],
+  // Shift Manager builds its router while its config is imported: a swap after the import misses it.
+  ["on: a router the app built while it was imported resolves Haiku", resolvedImportRouter === HAIKU, true],
 ];
 
 /**

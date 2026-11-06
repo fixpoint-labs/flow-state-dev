@@ -9,8 +9,9 @@
  *   `MY_ANTHROPIC_API_KEY`): every generator and evaluator in every app
  *   resolves to {@link HAIKU} on Anthropic directly (`@ai-sdk/anthropic`),
  *   whatever model it names. The app is served through {@link HAIKU_CONFIG},
- *   which loads the app's own config and swaps the resolver its runtime hands
- *   the router and the worker ({@link answerOnHaiku}). The served process gets
+ *   which loads the app's own config with the resolver already swapped on
+ *   every FlowState it builds, before any of them builds a router
+ *   ({@link serveOnHaiku}). The served process gets
  *   the key as `ANTHROPIC_API_KEY`, which every app's Claude Code pass-list
  *   hands its runs, and no gateway key, so nothing reaches the gateway
  *   unnoticed. Claude Code runs on Haiku through the project's own settings
@@ -26,7 +27,7 @@ import { join } from "node:path";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createModelResolver } from "@flow-state-dev/core";
 import type { ModelResolver } from "@flow-state-dev/core/types";
-import type { FlowState } from "@flow-state-dev/engine";
+import type { FlowState, FlowStateRuntime, createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 
 /** Haiku's id on Anthropic, as Claude Code and `@ai-sdk/anthropic` take it. */
 export const HAIKU_ID = "claude-haiku-5-5";
@@ -66,16 +67,67 @@ export function haikuResolver(apiKey: string, provider: unknown = createAnthropi
   return haiku;
 }
 
+/** The served tree's engine: the two exports it takes to reach the FlowState class an app config builds. */
+export interface ServedEngine {
+  createFlowState: typeof createFlowState;
+  inMemoryStores: typeof inMemoryStores;
+}
+
+/** The FlowState class's prototype, as far as the swap reads it. */
+type FlowStatePrototype = {
+  getRuntime(this: FlowState): Promise<FlowStateRuntime>;
+  getRouter(this: FlowState): Promise<unknown>;
+  ready(this: FlowState): Promise<void>;
+  [HAIKU_RESOLVER]?: ModelResolver;
+};
+
+/** Where the prototype holds the resolver it swaps in, once patched. */
+const HAIKU_RESOLVER = Symbol.for("fsd-goal-closure.haiku-resolver");
+
 /**
- * Serve `app` on `resolver`: the runtime `getRuntime()` hands back is the one
- * the router and the worker are built on (engine `FlowState.getRuntime`), so
- * its resolver, swapped before the server asks for the router, is the one
- * every request resolves through.
+ * Load an app config (`loadApp`) with `resolver` in place of every model
+ * resolver its FlowStates would use.
+ *
+ * The swap has to be in place before an app builds its router: the router
+ * copies the runtime config when it is built (`createFlowApiRouter`), and
+ * Shift Manager builds its router while its config is still being imported
+ * (`openLab`). So it is installed first, on the class `engine` builds every
+ * FlowState from. On any FlowState, the first `getRuntime`, `getRouter` or
+ * `ready` puts `resolver` on the runtime config (the one the router and the
+ * worker are built from) before it goes on. Those three are the only ways in
+ * to a FlowState's runtime and router, in this tree and in the control's.
+ *
+ * `engine` must be the served tree's own (`haiku.config.mts` resolves it from
+ * the app's config), so the class is the one the app's FlowState is built from.
  */
-export async function answerOnHaiku(app: FlowState, resolver: ModelResolver): Promise<FlowState> {
-  const { runtimeConfig } = await app.getRuntime();
-  runtimeConfig.modelResolver = resolver;
-  return app;
+export async function serveOnHaiku(engine: ServedEngine, loadApp: () => Promise<FlowState>, resolver: ModelResolver): Promise<FlowState> {
+  // A FlowState builds nothing until first use, so this one only hands over the class.
+  const prototype = Object.getPrototypeOf(engine.createFlowState({ flows: {}, stores: { default: { primary: engine.inMemoryStores() } } })) as FlowStatePrototype;
+  if (prototype[HAIKU_RESOLVER] === undefined) {
+    const { getRuntime, getRouter, ready } = prototype;
+    const swapped = new WeakSet<FlowState>();
+    const onHaiku = async (state: FlowState): Promise<FlowStateRuntime> => {
+      const runtime = await getRuntime.call(state);
+      if (!swapped.has(state)) {
+        swapped.add(state);
+        runtime.runtimeConfig.modelResolver = prototype[HAIKU_RESOLVER];
+      }
+      return runtime;
+    };
+    prototype.getRuntime = function (this: FlowState) {
+      return onHaiku(this);
+    };
+    prototype.getRouter = async function (this: FlowState) {
+      await onHaiku(this);
+      return getRouter.call(this);
+    };
+    prototype.ready = async function (this: FlowState) {
+      await onHaiku(this);
+      return ready.call(this);
+    };
+  }
+  prototype[HAIKU_RESOLVER] = resolver;
+  return loadApp();
 }
 
 /**
