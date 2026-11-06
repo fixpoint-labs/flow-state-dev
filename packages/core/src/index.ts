@@ -399,6 +399,7 @@ export type {
   ActionConfig,
   ReadConfig,
   ActionCore,
+  UserMessageEcho,
   ActionMcpConfig,
   ClientDataComputeFn,
   ClientDataContext,

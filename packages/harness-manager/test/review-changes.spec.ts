@@ -281,6 +281,16 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
   /** The run session's pull request record (FIX-2268), as a reader of the session reads it. */
   const pullRequests = async (sessionId: string) =>
     Object.keys(await (await runtime()).stores.resourceState.getByPrefix("session", sessionId, `${OBSERVED_PULL_REQUESTS}/`));
+  /** The message items of the run's session, oldest first, as a screen reads them. */
+  const runMessages = async (): Promise<Array<{ role?: string; text: string }>> => {
+    const sessionId = (await row()).run!.sessionId;
+    const requests = await (await runtime()).stores.request.list({ sessionId, withItems: true });
+    return (requests as Array<{ createdAt: number; items?: any[] }>)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .flatMap((request) => request.items ?? [])
+      .filter((item) => item.type === "message")
+      .map((item) => ({ role: item.role, text: (item.content ?? []).map((part: { text?: string }) => part.text ?? "").join("") }));
+  };
   return {
     act,
     row,
@@ -297,6 +307,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     sourceRepo,
     remote,
     pullRequests,
+    runMessages,
     dispose: () => state.dispose(),
   };
 }
@@ -416,6 +427,12 @@ describe("a coding run that made changes waits for a person's review", () => {
       expect(done).toMatchObject({ attempts: 1, output: expect.objectContaining({ review: "accepted", commits: 2 }) });
       expect(h.seen).toHaveLength(2);
       expect(done.steers).toEqual([expect.objectContaining({ message: "Keep the old flag name.", from: "user", takenBy: 1 })]);
+      // The words show in the run's session as the person's own line, as typed,
+      // never as a line of the run's (FIX-2574).
+      const lines = await h.runMessages();
+      expect(lines.filter((line) => line.text.includes("Keep the old flag name."))).toEqual([
+        { role: "user", text: "Keep the old flag name." },
+      ]);
     } finally {
       await h.dispose();
     }

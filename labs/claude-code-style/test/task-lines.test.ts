@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { noticeMetadata, noticeText, type TaskNotice } from "@flow-state-dev/orchestration/tasks";
-import { delegateAnswerMetadata } from "@flow-state-dev/workforce/browser";
+import { delegateAnswerMetadata, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 import { entriesOf, type Item } from "../src/adapter";
 
 const task = { goal: "Review the theme toggle", title: "Theme review", assignee: "desk.reviewer" };
@@ -67,5 +67,27 @@ describe("a delegate's answer that landed in the conversation as written", () =>
 
   it("is the session's own words when nothing marks it, whatever its author's name", () => {
     expect(entriesOf([said("i1", "Ship it.", undefined, "desk.reviewer")])[0]).toMatchObject({ kind: "assistant" });
+  });
+});
+
+describe("a task's brief in its session", () => {
+  const userLine = (id: string, text: string, metadata?: Record<string, unknown>): Item => ({
+    id,
+    type: "message",
+    role: "user",
+    requestId: "r1",
+    content: [{ type: "output_text", text }],
+    ...(metadata === undefined ? {} : { metadata }),
+  });
+
+  it("is one folded brief, not your line, when its item marks it", () => {
+    const brief = "Fix session title generation\n\nSince this task was filed, you were also sent the messages below about it.";
+    expect(entriesOf([userLine("i1", brief, taskBriefMetadata({ taskId: "task_7" }))])).toEqual([
+      { kind: "brief", id: "i1", text: brief, requestId: "r1" },
+    ]);
+  });
+
+  it("leaves a line you typed as yours, and a review's words with it", () => {
+    expect(entriesOf([userLine("i1", "Fall back to what we have now.")])[0]).toMatchObject({ kind: "user", text: "Fall back to what we have now." });
   });
 });

@@ -91,3 +91,5 @@ export {
   delegateAnswerOf,
   type DelegateAnswer
 } from "./conversation-board/delegate-answer";
+// A task's brief, as its session's `user` line marks it: what the session was handed, not the user's words.
+export { taskBriefMetadata, taskBriefOf, type TaskBrief } from "./conversation-board/task-brief";

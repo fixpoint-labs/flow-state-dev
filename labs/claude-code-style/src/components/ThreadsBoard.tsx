@@ -4,12 +4,8 @@ import { COLUMNS, columnOf, type Column } from "../lib/columns";
 import { age, useMissing, useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
-import { HarnessTag, statusLine, ThreadIcon } from "./ThreadStatus";
+import { HarnessTag, rowNote, ThreadIcon } from "./ThreadStatus";
 import { ThreadView } from "./ThreadView";
-
-/** A row's note: the group already says the status, so only what it's on, or why it failed. */
-const rowNote = (task: TaskRow) =>
-  task.status === "errored" || task.status === "cancelled" ? statusLine(task) : (task.waitingOn?.prompt ?? task.statusNote ?? "");
 
 /**
  * Threads mode's right pane: the status board, titled *Tasks*. Every row is

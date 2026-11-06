@@ -15,6 +15,7 @@
  * |                     | via `client.subscribe`                                                     |
  * | `watchConnection`   | the same feed's connection state: `live`, `lapsed` once a retry has failed…  |
  * | `answerApproval`    | the request's `answer`: approve or reject a `user_approval` stop             |
+ * | `retry`             | the request's `retry()` on the conversation's flow: a failed turn again      |
  * | `watchTalk`         | the user's message log (`workforceMessages`), as `sendMessage` writes it     |
  * | `watchActivity`     | `listSessionRequests` on the worker's conversation, on each request notice   |
  * | `watchWindow`       | the last answering request's `historyStart`, and the session's `historySummary` |
@@ -257,8 +258,14 @@ export interface SessionStep {
 /** One entry of a worker's conversation, in the order it happened. */
 export type ConversationEntry =
   | { kind: "user"; id: string; text: string; queued?: boolean }
-  /** `streaming` while the answer is still being written. */
-  | { kind: "assistant"; id: string; text: string; streaming?: boolean }
+  /** `streaming` while the answer is still being written; `incomplete` when its turn failed before it was finished. */
+  | { kind: "assistant"; id: string; text: string; streaming?: boolean; incomplete?: boolean }
+  /**
+   * A turn that failed, from the engine's `error` item: its reason, its request, and `retryable`
+   * when Retry is offered on it: it is the conversation's newest turn, and one the engine will run
+   * again for you (a worker's message it was answering is not).
+   */
+  | { kind: "failed"; id: string; requestId: string; reason: string; code?: string; details?: Record<string, unknown>; retryable: boolean }
   /** The worker messaged another worker (`sendMessage`). */
   | { kind: "sent"; id: string; messageId: string; to: string; text: string }
   /** A message another worker sent, as the `receive` turn that read it. */
@@ -382,6 +389,8 @@ export interface LabAdapter {
   watchConnection(sessionId: string, onChange: (state: SessionConnectionState) => void): Unsubscribe;
   /** Say yes or no to what an approval entry asks; the worker's turn carries on. */
   answerApproval(sessionId: string, approval: { requestId: string; suspensionId: string }, approve: boolean): Promise<void>;
+  /** Run a failed turn of the conversation again, as a new request the engine links to `requestId`. */
+  retry(sessionId: string, requestId: string): Promise<void>;
   /** Every message to or from `worker`, oldest first. */
   watchTalk(worker: string, onChange: (rows: TalkRow[]) => void): Unsubscribe;
   watchActivity(worker: string, onChange: (activity: Activity) => void): Unsubscribe;
@@ -412,6 +421,13 @@ export interface LabAdapter {
   /** What a run is doing now, live: read only while a task's feed shows it running. */
   watchWorking(run: { sessionId: string; requestId?: string }, onChange: (now: WorkingNow) => void): Unsubscribe;
 }
+
+/**
+ * The request sources the engine retries for a caller (`PUBLIC_REENTRY_SOURCES`): a turn that came
+ * in another way, such as a worker's message (`internal`) or a task's run (`task`), it refuses.
+ * A copy, since the page can't import the engine; a test pins it to the engine's.
+ */
+export const RETRYABLE_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "scheduled"]);
 
 /** How often the reads with no stream are read again. */
 const POLL_MS = 1_500;
@@ -849,15 +865,36 @@ function harnessAndModel(spend: TaskSpendView | null, setting: string | undefine
 /**
  * A conversation's items as the entries the screen draws. `ended` names the
  * requests the server lists as over: a step their turn left running (a turn
- * that crashed mid-call) reads failed, not running for good.
+ * that crashed mid-call) reads failed, not running for good. A failed turn's
+ * `error` item is a failed entry, `retryable` when it is the newest turn that drew one and one of
+ * `retryableTurns`, the requests the engine will retry.
  */
-export function toEntries(items: readonly Item[], workers: ReadonlySet<string>, ended: readonly string[] = []): ConversationEntry[] {
+export function toEntries(
+  items: readonly Item[],
+  workers: ReadonlySet<string>,
+  ended: readonly string[] = [],
+  retryableTurns: ReadonlySet<string> = new Set(),
+): ConversationEntry[] {
   const rows = boardRows(items);
   const entries: ConversationEntry[] = [];
   /** The turn the last run of steps belongs to: a run never spans two. */
   let runTurn: unknown;
-  for (const item of items) {
-    if (item.type === "message" && item.role === "user") {
+  // A turn that failed; its reply, if it never finished, is marked incomplete.
+  const failedTurns = new Set(items.filter((item) => item.type === "error").map((item) => item.requestId));
+  /** The newest turn that drew an entry: a board pass that drew none is not a turn you saw. Retry is offered on it only. */
+  let newestTurn: unknown;
+  const drawEntry = (item: Item): void => {
+    if (item.type === "error") {
+      entries.push({
+        kind: "failed",
+        id: item.id,
+        requestId: item.requestId,
+        reason: typeof item.message === "string" ? item.message : "",
+        ...(typeof item.code === "string" ? { code: item.code } : {}),
+        ...(item.details === undefined ? {} : { details: item.details }),
+        retryable: false,
+      });
+    } else if (item.type === "message" && item.role === "user") {
       entries.push({ kind: "user", id: item.id, text: textOf(item) });
     } else if (item.type === "message" && item.role === "assistant" && workers.has(item.agentName)) {
       // A task it filed ended: the board's line under the worker that ran it, which names its task
@@ -882,7 +919,9 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>, 
       });
     } else if (item.type === "message" && item.role === "assistant") {
       const text = textOf(item);
-      if (text.trim() !== "") entries.push({ kind: "assistant", id: item.id, text, ...(item.status === "in_progress" ? { streaming: true } : {}) });
+      const incomplete = failedTurns.has(item.requestId) && item.status !== "completed";
+      if (text.trim() !== "")
+        entries.push({ kind: "assistant", id: item.id, text, ...(incomplete ? { incomplete: true } : item.status === "in_progress" ? { streaming: true } : {}) });
     } else if (item.type === "tool_output" && item.toolCall?.name === SEND_MESSAGE_TOOL && sentTo(item) !== undefined) {
       const args = parseArgs(item);
       entries.push({ kind: "sent", id: item.id, messageId: item.output.sent, to: String(args.to), text: String(args.text ?? "") });
@@ -909,8 +948,15 @@ export function toEntries(items: readonly Item[], workers: ReadonlySet<string>, 
       const { id, from, text, inReplyTo, noAnswer } = item.data ?? {};
       entries.push({ kind: "received", id: item.id, messageId: id, from, text, ...(inReplyTo === undefined ? {} : { inReplyTo }), ...(noAnswer === true ? { noAnswer: true } : {}) });
     }
+  };
+  for (const item of items) {
+    const drawn = entries.length;
+    drawEntry(item);
+    if (entries.length !== drawn) newestTurn = item.requestId;
   }
-  return entries;
+  return entries.map((entry) =>
+    entry.kind === "failed" && entry.requestId === newestTurn && retryableTurns.has(entry.requestId) ? { ...entry, retryable: true } : entry,
+  );
 }
 
 /**
@@ -1141,6 +1187,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
       await client.flow(flow).request(approval.requestId).answer({ suspensionId: approval.suspensionId, action: approve ? "approve" : "reject" });
     },
+    async retry(sessionId, requestId) {
+      const flow = flowOfSession.get(sessionId) ?? (await client.sessions.get(sessionId)).flowKind;
+      await client.flow(flow).request(requestId).retry();
+    },
     watchConnection(sessionId, onChange) {
       return feeds(sessionId).watchState(onChange);
     },
@@ -1149,6 +1199,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       let items: Item[] = [];
       let inProgress: string[] = [];
       let ended: string[] = [];
+      let retryable = new Set<string>();
       let shown: ConversationView | undefined;
       // Unchanged entries keep their objects, so a streamed chunk redraws only the growing one.
       const reuse = stableList<ConversationEntry>((next) => {
@@ -1166,7 +1217,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       };
       const stopFeed = watchFeed(sessionId, (next) => next, (next) => {
         items = next;
-        reuse(toEntries(items, workerIds, ended));
+        reuse(toEntries(items, workerIds, ended, retryable));
         emit();
       });
       const stopPoll = onNotice(
@@ -1178,8 +1229,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
           inProgress = answering.filter((r) => r.status === "in_progress").map((r) => r.id);
           ended = requests.filter((r) => r.status !== "in_progress").map((r) => r.id);
+          // The turns the engine would retry: a record with no source predates it, and came in over http.
+          retryable = new Set(requests.filter((r) => RETRYABLE_SOURCES.has(r.source ?? "http")).map((r) => r.id));
           // A turn that ended with a call still marked running reads that call failed.
-          reuse(toEntries(items, workerIds, ended));
+          reuse(toEntries(items, workerIds, ended, retryable));
           emit();
         },
       );
