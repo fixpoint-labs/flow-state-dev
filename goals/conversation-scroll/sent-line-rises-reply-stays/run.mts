@@ -70,13 +70,17 @@ type Signal = "a.short" | "a.long" | "b" | "c" | "d" | "e" | "f" | "f.empty" | "
 /**
  * Each control serves the hook patched (`build.mts`), or the registry items as on `main`, and must fail exactly
  * these signals, on every surface that has them. `only`: the control changes only the surfaces whose id starts with it.
+ * `ungraded`: signals whose outcome the control does not fix, reported but held to neither colour.
  */
-const CONTROLS: Record<string, { why: string; fails: Signal[]; only?: string }> = {
+const CONTROLS: Record<string, { why: string; fails: Signal[]; only?: string; ungraded?: Signal[] }> = {
   // The registry's own rule: ScrollOnNewRequest goes to the end on any new request, over a 70dvh last group.
   "main-registry": {
     why: `the registry items as on main (${REGISTRY_BEFORE}): ScrollOnNewRequest, the 50px rule and the 70dvh last group`,
     fails: ["a.short", "a.long", "d", "g"],
     only: "registry/",
+    // main's registry never follows a stream, but with no hook holding the view the browser's layout sometimes
+    // nudges it up to 3px as the reply grows, and sometimes not at all: run to run, the same code reads either.
+    ungraded: ["b"],
   },
   "main-rule": { why: "useJumpToLatest as it was before this change (581142fb): a send goes to the end", fails: ["a.short", "a.long", "f", "f.empty", "g"] },
   // The person's line lands before its reply starts, so with no space it can't reach the top under either length.
@@ -457,7 +461,8 @@ await runGoal(async (failures) => {
         const line = `${surface.id} ${signal} ${v.pass ? "PASS" : "FAIL"} ${v.note}`;
         lines.push(line);
         say(line);
-        if (!v.pass && expected.has(signal)) failures.push(`(expected under ${CONTROL}) ${line}`);
+        if (CONTROLS[CONTROL]?.ungraded?.includes(signal)) say(`${surface.id} ${signal}: not graded under ${CONTROL}`);
+        else if (!v.pass && expected.has(signal)) failures.push(`(expected under ${CONTROL}) ${line}`);
         else if (!v.pass) failures.push(`${CONTROL === "" ? "" : "WRONG: "}${line}`);
         else if (expected.has(signal)) failures.push(`WRONG: stayed green under ${CONTROL}: ${line}`);
       }
