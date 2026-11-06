@@ -672,6 +672,8 @@ describe("claudeCodeAgent", () => {
       expect(caught).toBeInstanceOf(ClaudeCodeAgentAbortedError);
       expect((caught as ClaudeCodeAgentAbortedError).sessionId).toBe("sess_seen_before_abort");
       expect((caught as ClaudeCodeAgentAbortedError).reason).toBe(controller.signal.reason);
+      // The stable code a host that must branch without the class reads.
+      expect((caught as ClaudeCodeAgentAbortedError).code).toBe("CLAUDE_CODE_AGENT_ABORTED");
     });
 
     it("still writes the session id observed before the abort into session state", async () => {
