@@ -243,6 +243,7 @@ const sidebars: SidebarsConfig = {
         "workforce/worker-usage",
         "workforce/durable-hire",
         "workforce/shift-coordinator",
+        "workforce/error-reporter",
         "workforce/ui",
       ],
     },

@@ -131,7 +131,7 @@ A worker on the built-in `agent` flow runs a task as one turn: its own instructi
 
 Filing a task for a worker that isn't one of the filer's delegates, or that takes no tasks, is refused, and the refusal names the worker. A task whose worker was removed or fired before it ran fails, and the conversation that filed it hears so. No other worker picks it up.
 
-[Handing out tasks](./coordinators.md#handing-out-tasks) has the details: filing, retries, questions and follow-ups.
+[Handing out tasks](./coordinators.md#handing-out-tasks) shows filing, and [Following a filed task](./delegating-work.md#following-a-filed-task) has the rest: retries, questions and follow-ups.
 
 ## Serving it to your users
 
@@ -205,6 +205,8 @@ Actions run as the user and organization your resolver returns; the client's `us
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
 - [Packages on disk](./packages-on-disk) — a folder of instructions and the blocks a worker needs to follow them.
 - [Coordinators](./coordinators) — a worker that hands each message to its delegates, and files tasks for them on its conversation's board.
+- [Delegating work](./delegating-work) — how any worker files tasks for its delegates, and how a filed task reports back.
+- [Messaging other workers](./messaging-workers) — asking another worker something without handing it work.
 - [Projects](./projects) — private or shared, with workstreams that each have one owner.
 - [Inventory](./inventory) — a record of every worker registered in an organization, readable by a block.
 - [Worker usage](./worker-usage) — the tokens each worker used for a user, by model and coding agent, per UTC day.

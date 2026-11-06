@@ -40,7 +40,7 @@ A change or remove whose quoted text doesn't match the rule with that number is 
 
 Every worker on the built-in `agent` flow and every [coordinator](./coordinators.md) has these tools. A `tools:` line in `WORKER.md` doesn't need to list them, and doesn't take them away.
 
-They are offered only on a turn a user's own message started. A task turn, a coordinator's post to a delegate, and a delegate's answer get no rule tools. A task the worker runs for you follows your rules but can't change them.
+They are offered only on a turn a user's own message started. A task turn, a coordinator's routed task to a delegate, and a delegate's answer get no rule tools. A task the worker runs for you follows your rules but can't change them.
 
 ## Where they apply
 

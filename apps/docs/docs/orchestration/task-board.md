@@ -991,7 +991,7 @@ The in-process runner applies that policy, and so do queue workers that share a 
 
 A task keeps its session for its whole life. If its worker [asks a question](#a-tasks-questions), the answer brings it back to that same session for its next turn, so it carries on with everything it did before. When the task is done, the session stays open, and the task stays as it ended.
 
-To correct or extend a finished task, add a follow-up task with `followUpOf`. A follow-up runs in the same session when the assignee dispatches `per-task` or the task is on a Workforce conversation's board. A `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by. The original's output never changes: `getTask` on it shows the latest completed follow-up as `current`, with that follow-up's output, and `listTasks` names it by id. On a Workforce conversation's board, a line typed in a finished task's session is [answered from the session](../workforce/coordinators.md#after-a-task-finishes) and changes nothing.
+To correct or extend a finished task, add a follow-up task with `followUpOf`. A follow-up runs in the same session when the assignee dispatches `per-task` or the task is on a Workforce conversation's board. A `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by. The original's output never changes: `getTask` on it shows the latest completed follow-up as `current`, with that follow-up's output, and `listTasks` names it by id. On a Workforce conversation's board, a line typed in a finished task's session is [answered from the session](../workforce/delegating-work.md#after-a-task-finishes) and changes nothing.
 
 ### Sending a task to a flow chosen per task
 
