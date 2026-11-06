@@ -1,5 +1,27 @@
 # @flow-state-dev/vercel
 
+## 0.2.2
+
+### Patch Changes
+
+- af95477: `vercelPostgresStores()` now backs the `bus` slot with the stores' Postgres bus. It has no tail pool, so it reports `crossesProcesses: false` and open session views across a deployment's instances keep their once-a-second read. A profile left without a bus would otherwise run the in-memory bus, which now reports that it crosses, since it is meant for an app that runs as one process. Each write also sends its change notice through `pg_notify` on the stores' pool (FIX-2545).
+- Updated dependencies [531bf32]
+- Updated dependencies [05a7022]
+- Updated dependencies [4d3f49e]
+- Updated dependencies [a1386ea]
+- Updated dependencies [46e4297]
+- Updated dependencies [d3eaa00]
+- Updated dependencies [f1e6315]
+- Updated dependencies [45c158b]
+- Updated dependencies [bc65135]
+- Updated dependencies [65ee4c5]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/engine@0.5.0
+  - @flow-state-dev/store-postgres@0.4.0
+  - @flow-state-dev/scheduled@0.3.2
+
 ## 0.2.1
 
 ### Patch Changes

@@ -114,7 +114,7 @@ spread it. No new page.
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | A per-flow merged schema per scope, internal on the flow instance | The flow's own `stateSchema`; `extendSchema` | The flow's schema has no block fields; `extendSchema` is last-wins and shallow. Composed: the walk unions declarations under the strict rule and keeps the result beside the flow's own schema |
-| A refusal at `defineFlow` | `mergeTargetsInto`'s error; `FlowConfigRefusalError` | Same rule as `mergeTargetsInto`, for scope state. Not a retired value, so not `refuseRetired`, and no tracker id ([ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what)) |
+| A refusal at `defineFlow` | `mergeTargetsInto`'s error; `FlowConfigRefusalError` | Same rule as `mergeTargetsInto`, for scope state. No tracker id ([ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what)) |
 | A refusal when a server admits its flows, user and org only | The flow registry's own admission checks | One more check at the same seam ([D3](DECISIONS.md#d3)) |
 
 | The debt | |
@@ -122,7 +122,7 @@ spread it. No new page.
 | **Removes** | The rule that a flow restates its blocks' fields; `roleStateProblem` and the spread it demands from manager flows; the docs paragraph that says block defaults don't apply; the kitchen-sink `thinkingStyle` mismatch |
 | **Adds** | A merge with its own rules beside `extendSchema`'s unread one. Permanent by design: it is the applied one, and `extendSchema` stays the type-level statement. Two refusals, both new failure modes on upgrade, named in the changeset (ER-7) |
 | **Leaves** | `extendSchema`'s runtime output, written and never read; `board.sessionStateShape` stays exported; once the board's blocks declare their own fields,
-spreading it only restates them. Removing a published name follows the epic's Q1; the coordinator files it or not |
+spreading it only restates them. Removing a published name would go with no alias (the epic's Q1, answered break); the coordinator files it or not |
 
 **Net: down.** A rule every flow author obeyed, a refusal and a doc caveat go; one internal merge
 and two refusals arrive.

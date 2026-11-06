@@ -39,7 +39,7 @@ import {
 import {
   getOrCreateTaskCollection,
   type TaskCollectionRef,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/tasks";
 import { testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { itemsByType } from "../helpers/assertions";

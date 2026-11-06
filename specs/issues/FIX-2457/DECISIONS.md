@@ -117,6 +117,8 @@ Spec-set review round 1 (Nov 5), recorded, not folded.
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). `LooseBlockContext`'s eventual removal would go with no alias. Direction unchanged.
 - **Draft** — the issue blamed state schemas; the probe showed they pass and found the
   capability `targets` default and the loose preset ctx instead, so FIX-2091 folds in and the
   sweep rests on two core type changes, plus declared targets so one helper type serves every block.

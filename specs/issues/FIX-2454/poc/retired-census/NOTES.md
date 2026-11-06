@@ -21,3 +21,7 @@ on the flipped `row-questions` entry, as it must.
 of the seven, plus core's `waitForUser` resume map and ten refused keys no published version
 accepted. The implementer moves its refusal shape and totality scan into the vocabulary sweep
 (DECISIONS.md); the 19 become leg b's `shims.unpublished-shapes` scope.
+
+**Amended 2026-11-06.** Under epic D4 (no backward-compat code) nothing moves into the sweep, and
+the ten published entries are deleted too, not kept through a helper. The census's verdicts stand;
+only the "kept" column's fate changed. The cell is named `shims.never-published` in FIX-2564's grid.

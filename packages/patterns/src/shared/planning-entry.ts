@@ -23,7 +23,7 @@ import {
   getOrCreateTaskCollection,
   type TaskInit,
   type TaskCapOptions,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/tasks";
 import {
   TASK_BOARD_META_COMPONENT_TYPE,
   type TaskContextSupply,

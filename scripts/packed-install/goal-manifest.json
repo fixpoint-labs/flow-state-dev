@@ -25,12 +25,24 @@
     {
       "id": "onepath",
       "title": "One path",
-      "assertions": []
+      "assertions": [
+        "onepath.output-read",
+        "onepath.answer-task-stop"
+      ]
     },
     {
       "id": "first-hour",
       "title": "First hour",
-      "assertions": []
+      "assertions": [
+        "first-hour.quickstart",
+        "first-hour.example.hello-chat.typecheck",
+        "first-hour.example.hello-chat.test",
+        "first-hour.example.hello-chat.fsdev",
+        "first-hour.example.hello-chat.build",
+        "first-hour.example.knowledge-base.typecheck",
+        "first-hour.example.knowledge-base.test",
+        "first-hour.example.knowledge-base.fsdev"
+      ]
     },
     {
       "id": "leakage",
@@ -51,7 +63,10 @@
     {
       "id": "types",
       "title": "Types",
-      "assertions": []
+      "assertions": [
+        "types.typed-handler",
+        "types.fresh-session-default"
+      ]
     }
   ],
   "expect": {
@@ -70,10 +85,22 @@
     "surface.root.workforce": "fail",
     "surface.collisions": "fail",
     "surface.core-installed-dts": "fail",
+    "onepath.output-read": "fail",
+    "first-hour.quickstart": "fail",
+    "first-hour.example.hello-chat.typecheck": "fail",
+    "first-hour.example.hello-chat.test": "fail",
+    "first-hour.example.hello-chat.fsdev": "fail",
+    "first-hour.example.hello-chat.build": "fail",
+    "first-hour.example.knowledge-base.typecheck": "fail",
+    "first-hour.example.knowledge-base.test": "fail",
+    "first-hour.example.knowledge-base.fsdev": "fail",
+    "onepath.answer-task-stop": "fail",
     "leakage.tracker-ids": "fail",
     "shims.never-published": "pass",
     "shims.human-approval-throws": "pass",
-    "shims.stored-human-approval": "pass"
+    "shims.stored-human-approval": "pass",
+    "types.typed-handler": "fail",
+    "types.fresh-session-default": "fail"
   },
   "ratchets": {
     "export-check": null,

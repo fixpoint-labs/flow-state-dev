@@ -8,11 +8,8 @@
  * because the components fence their reads on the client's identity and a
  * fresh object every render would read as a rebuilt client.
  */
-import type {
-  FlowNavigatorProps,
-  PanelItemSource,
-  PanelRowSource,
-} from "@flow-state-dev/react";
+import type { FlowNavigatorProps } from "@flow-state-dev/react";
+import type { PanelItemSource, PanelRowSource } from "@flow-state-dev/react/workforce";
 
 type NavigatorClient = NonNullable<FlowNavigatorProps["client"]>;
 type FlowSource = Pick<NavigatorClient, "flows">;

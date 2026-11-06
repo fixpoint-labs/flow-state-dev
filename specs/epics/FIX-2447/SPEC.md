@@ -10,7 +10,7 @@
 | **autocompletes a package root** | 549 names in core and 367 in engine, with harness, wait-gate and PR-parsing vocabulary. Core 0.4.0's `.d.ts` hovers carry 272 `FIX-`/`LAB-` ids | The names an app author needs, and no tracker ids. Framework seams sit behind subpaths that say who they are for |
 | **answers a user's stop from React** | React calls `resume`, which refuses a stop raised in a task-board run | One call, in React and the client |
 | **reads an action's output, or unit-tests an approval step** | Polls, then lists session requests and searches the pages. `testFlow` has no durability, so it can't test `ctx.suspendForUser` | One client call returns the output. `testFlow` runs a suspension |
-| **upgrades across a rename** | Three migration policies. Old code that passes `human_approval` compiles and silently loses its Inbox item | A deprecation or a loud refusal names the new home, never silence |
+| **upgrades across a rename** | Three migration policies. Old code that passes `human_approval` compiles and silently loses its Inbox item | One policy: the old name is gone, and the changeset names its new home. No alias, refusal or reader of an old shape ([D4](DECISIONS.md#d4), the owner's, Nov 6). A retired runtime value such as `human_approval` is still not stopped: that is D4's price |
 
 **Why now.** 0.4.0 of core, engine, client and react went to npm on Nov 3 with this debt on it,
 and orchestration is already at 0.5.0. Each minor that ships it turns more internal names into
@@ -34,7 +34,7 @@ internal process vocabulary. The first-hour path runs as written.**
 
 The review's table had five rows, scoped to core and engine and to 0.4.0. *Surface* now covers
 the roots the set owns and holds every other published root at its baseline (narrowed by the spec set, pending the owner), *One path* covers output reads, *Shims* names the next minor (0.4.0 has
-shipped, [Q1](DECISIONS.md#q1)), and *Types* is new, for FIX-2457 and FIX-2554.
+shipped; [Q1](DECISIONS.md#q1) answered break, so no alias is exempt), and *Types* is new, for FIX-2457 and FIX-2554.
 
 ```mermaid
 flowchart LR
@@ -92,7 +92,7 @@ PR after this one merges.
 | FIX-2451 | One runtime file in the quick start, the bare route, first snippets that compute something | *First hour* | Backlog · **direct** (Bug) |
 | FIX-2452 | Stores shorthand, no no-op slots, a warning for a silent generator, one store factory family | *First hour*: the ceremony comes from defaults | Backlog · spec route |
 | FIX-2453 | A lint that keeps tracker ids out of exported JSDoc, error strings and conformance titles, and the sweep | *Leakage* | Backlog · spec route |
-| FIX-2454 | [D3](DECISIONS.md#d3)'s rule in BP-030 and one refusal helper that absorbs today's retired-name refusals, the never-published shims deleted, a removal version on every refusal | *Shims*, and every child that retires a value follows its rule | Backlog · spec route · **builds first** |
+| FIX-2454 | The never-published shims deleted (the census's 19), and, under [D4](DECISIONS.md#d4), the published names' refusals with them. No helper, rule or removal version (amended Nov 6) | *Shims* | Backlog · spec route |
 | **P2** | | | |
 | FIX-2455 | `sent.result()` returns an action's output, and the server read by request id behind it; the polling copies go, workforce's `runIn` among them; a React read | *One path* for output. Overlaps FIX-2043 ([noted](DECISIONS.md#decided-not-asked)) | Backlog · spec route |
 | FIX-2456 | The registry Conversation on FIX-2360's scroll rule, one jump button, UI chrome out of the hooks root | *One path*, and *Surface* for react | Backlog · spec route |
@@ -110,15 +110,16 @@ PR after this one merges.
 18 children and the closure FIX-2562: 16 on the spec route, 2 bugs on the direct route. The
 owner confirmed the review's 17; FIX-2564 is the goal check's first half, split out so it can
 land first. FIX-2463's and FIX-2462's triggers both fired in the spec set: FIX-2462 folds into
-FIX-2459, and FIX-2463 stays narrowed, pending the owner ([D1](DECISIONS.md#d1)). If Q1 takes the alias with its own removal child, a 19th joins:
-`FIX-XXX · remove the deprecated aliases`, which blocks the closure.
+FIX-2459, and FIX-2463 stays narrowed, pending the owner ([D1](DECISIONS.md#d1)). Q1 was answered break on
+Nov 6, so no alias-removal child joins.
 
 **Sequencing.** FIX-2564 is the first build step: its cells exist before any child flips one, so
 the lead measure counts from day one. A child that merges before it finds its cells written
 `expect: pass` when the manifest lands, which is why FIX-2564 blocks only the closure. The owner
 asked that FIX-2454 land before 0.4.0 publishes. 0.4.0 published on Nov 3, so that can no longer
-happen. FIX-2454 still builds early, and its rule is decided here ([D3](DECISIONS.md#d3)) so no
-child waits on it. FIX-2448's first PR is the export check, as a ratchet on today's roots. How the moved names reach adopters is [Q1](DECISIONS.md#q1), open.
+happen, and since [D4](DECISIONS.md#d4) withdrew its helper no child waits on it. FIX-2448's first
+PR is the export check, as a ratchet on today's roots. A moved name breaks in whatever minor
+follows its child, with no alias ([Q1](DECISIONS.md#q1), answered Nov 6).
 
 ## How the issues flow into each other
 
@@ -143,8 +144,7 @@ flowchart LR
 
 An edge is what one issue hands the next; a dashed input is consumed, not owned. FIX-2564's
 dashed edge is a cell each cell-owning child flips, not a block: it reaches the P1 and P2 nodes
-too. FIX-2454 is in the group because its rule travels at spec time; it blocks only the two PRs
-that call its helper (FIX-2452's slot refusals, FIX-2459's claim-order refusal). Inside the group,
+too. FIX-2454 is in the group: under D4 it hands nothing on and blocks only the closure. Inside the group,
 FIX-2455's by-id status read is what FIX-2460's answer helper settles through. Every child also
 blocks the closure in Linear.
 
@@ -169,8 +169,8 @@ blocks the closure in Linear.
 | `scripts/mechanism-exports.mjs`'s `packageExports` (public exports, read from source), and FIX-2162's caller census | **Extended** by FIX-2448 (consumer or README, through an import census) and FIX-2449 (collisions). No third walker; Fallow keeps its dead-code jobs ([ER-4](DECISIONS.md#who-owns-what)) |
 | `eslint.config.mjs`, with no custom rules yet | **Extended**: one custom rule (tracker ids) and one `no-restricted-syntax` entry (`ctx as never`) |
 | `client/./internal` (published, read by our packages) and orchestration's `./inbox/check` (hidden by `publishConfig`) | **Named** by [D2](DECISIONS.md#d2) as the two kinds of hidden surface |
-| Ad-hoc refusal helpers (`defineFlow.ts`, `runner.ts`), the `retired-name-refusal` sites (`core/src/blocks/generator.ts`), FIX-2151's planned `RETIRED` set, and BP-030 | **Replaced** by one helper and one rule ([D3](DECISIONS.md#d3)). The retired-enum coercion in `normalize-resource-state.ts` is D3's dual-read case, not a third policy |
-| BP-034: re-export a moved type from every documented path | **Amended** to match [Q1](DECISIONS.md#q1)'s answer |
+| Ad-hoc refusal helpers (`defineFlow.ts`, `runner.ts`), the `retired-name-refusal` sites (`core/src/blocks/generator.ts`), FIX-2151's planned `RETIRED` set, and BP-030 | **Removed, not replaced** ([D4](DECISIONS.md#d4), amending [D3](DECISIONS.md#d3)): FIX-2454 deletes the refusals with their names; BP-030 is waived for this epic. Code whose absence would silently corrupt data is raised first. The `RETIRED` vocabulary list stays. The retired-enum coercion in `normalize-resource-state.ts` is untouched unless a child removes it under that guard |
+| BP-034: re-export a moved type from every documented path | **Kept as written**: the documented paths are the ones after the move. The old path goes, with no re-export ([Q1](DECISIONS.md#q1), answered break) |
 | [FIX-2129 D2](../../issues/FIX-2129/DECISIONS.md): an answer route beside resume | **Kept** for the routes. A user's stop is answered through `answer` in React and the client ([decided](DECISIONS.md#decided-not-asked)) |
 | [FIX-2360 D1](../../issues/FIX-2360/DECISIONS.md): the conversation scroll rule | **Kept.** FIX-2456 brings the registry Conversation to it |
 | [FIX-2367](../FIX-2367/SPEC.md)'s *not done if*: no two hooks watching one scope | **Kept.** FIX-2455's React read builds on `useAction` |
@@ -178,9 +178,9 @@ blocks the closure in Linear.
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | Public subpaths: `core/harness`, `engine/host`, `testing/benchmark`, `patterns/benchmark`, `react/workforce`, each store's `./host` | Each package's `exports` map; core already has 13 subpaths. Orchestration's `./tasks`, already the browser-safe entry | Extends the maps. No new package, and no second browser entry for orchestration |
-| `/internal` in core, engine, orchestration, react, contracts | `client/./internal`; core's `./items/internal` | Reuse of that kind ([D2](DECISIONS.md#d2)); one hidden entry per package |
+| `/internal` in core, engine, orchestration, react | `client/./internal`; core's `./items/internal` | Reuse of that kind ([D2](DECISIONS.md#d2)); one hidden entry per package |
 | An export-surface check (FIX-2448, FIX-2449) | `mechanism-exports.mjs`'s `packageExports`; FIX-2162's caller census | Extends both; not Fallow, whose graph is workspace dead code, not outside consumers |
-| A tracker-id rule (FIX-2453), a `ctx as never` ban (FIX-2457), a refusal-expiry check (FIX-2454) | ESLint's `no-restricted-syntax`; the ad-hoc refusal helpers | One custom rule; the ban is config; the expiry lives in the shared refusal helper |
+| A tracker-id rule (FIX-2453), a `ctx as never` ban (FIX-2457) | ESLint's `no-restricted-syntax` | One custom rule; the ban is config |
 | `sent.result()` and a read of one request's output (FIX-2455) | `sent.wait()`; the status route, which returns no output; `withListedResult`; `useAction` | Extends the handle, keeping one wait on it; the server read is one request by id from the status route (the owner's answer), sharing only the list's result projection; the React read builds on `useAction` |
 | A shared jump button (FIX-2456) | The registry's `ConversationScrollButton`; Shift Manager's `JumpToLatestButton` | Extends the registry's button onto `useJumpToLatest`; the copies go |
 | Legs a to c and the closure manifest (FIX-2564) | `scripts/packed-install/run.mjs`, its `runChecks`/`CHECKS` and `--control=<name>` form | Extends them; the manifest is one file beside it, deleted at the wrap |
@@ -190,11 +190,11 @@ blocks the closure in Linear.
 | The debt | |
 |---|---|
 | **Removes** | The harness vertical and seams on core's root, engine's `export *`, four output-polling copies, the hand-copied jump buttons, two claim orders, a second copy of 38 collection methods, 196 casts, about 20 default fallbacks and 5 helpers, the never-published shims, four package markers, the hand sync of Kitchen Sink's 43 registry copies, which stay and gain one refresh command (FIX-2461; an adopter's installed components are owned copies by design), the ad-hoc refusal helpers |
-| **Adds** | Seven public subpaths (`core/harness`, `engine/host`, `testing/benchmark`, `patterns/benchmark`, `react/workforce`, two stores' `./host`) and five `/internal` ones, each an entry to keep; one export check and one lint rule; three packed-install legs and their manifest, until the wrap; `sent.result()`. With Q1's alias option, deprecated aliases for a minor or two |
+| **Adds** | Seven public subpaths (`core/harness`, `engine/host`, `testing/benchmark`, `patterns/benchmark`, `react/workforce`, two stores' `./host`) and four `/internal` ones, each an entry to keep; one export check and one lint rule; three packed-install legs and their manifest, until the wrap; `sent.result()`. No deprecated aliases or refusals ([D4](DECISIONS.md#d4)) |
 | **Leaves** | The unfiled review items above, and the eleven published roots outside the set, held at their ratchet baseline |
 
 **Net: down.** The adopter surface shrinks and four duplicated mechanisms become one each. The
-price is one breaking round of moves, and how it reaches adopters is [Q1](DECISIONS.md#q1).
+price is one breaking round of moves, met with no alias ([Q1](DECISIONS.md#q1), answered break).
 
 ## Sign off
 
@@ -208,11 +208,13 @@ wrong: adopters pay a breaking minor for names they never used.
    the goal's legs land first as expected-fail rows. If wrong: a long epic slot on internal tidying.
 2. [D2](DECISIONS.md#d2) · Two kinds of hidden surface. If wrong: a published package imports a
    path its tarball doesn't have.
-3. [D3](DECISIONS.md#d3) · A retired value fails loudly with a removal version. If wrong: an
-   adopter's code silently misbehaves after an upgrade.
+3. [D3](DECISIONS.md#d3) · A retired value fails loudly with a removal version. **Amended Nov 6
+   by D4.**
+4. [D4](DECISIONS.md#d4) · No backward-compat code: no alias, refusal, reader of an old shape or
+   shim; what would silently corrupt data is raised first. The owner's call, Nov 6. If wrong: an
+   adopter's code silently misbehaves after an upgrade, as `human_approval` does today.
 
-**Open:** [Q1](DECISIONS.md#q1) · 0.4.0 has shipped; how adopters meet the moved names. I
-recommend a deprecated alias, then one removal minor.
+**Open:** none. [Q1](DECISIONS.md#q1) was answered on Nov 6: break, no alias.
 
 **Pending the owner, from the spec set:** the *Surface* row narrowed to the roots the set owns
 ([the goal](#the-goal-and-how-well-know-its-met)), and FIX-2463 staying narrowed after its

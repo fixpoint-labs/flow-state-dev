@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 446" role="img" aria-label="Before and after, three rows. The runtime file: today an engine import that names inMemoryStores and the line stores: default, primary, inMemoryStores; after, neither, and startup says it runs in memory. A profile's slots: today primary, bus, blobs, queue and scheduler, the last three doing nothing; after primary, bus and blobs, reserved for attachments, and naming queue or scheduler is refused. A store package root: today 20 names in store-sqlite, the adapter factory, the registry factory and 10 per-store constructors among them; after the adapter factory, its options and the schedule index, with the other 17 under store-sqlite/host."
+<svg viewBox="0 0 940 446" role="img" aria-label="Before and after, three rows. The runtime file: today an engine import that names inMemoryStores and the line stores: default, primary, inMemoryStores; after, neither, and startup says it runs in memory. A profile's slots: today primary, bus, blobs, queue and scheduler, the last three doing nothing; after primary, bus and blobs, reserved for attachments, and queue and scheduler are gone from the type. A store package root: today 20 names in store-sqlite, the adapter factory, the registry factory and 10 per-store constructors among them; after the adapter factory, its options and the schedule index, with the other 17 under store-sqlite/host."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -60,7 +60,7 @@
     <rect class="chipn" x="570" y="196" width="62" height="24" rx="4"/><text class="t-c" x="580" y="212">primary</text>
     <rect class="chipn" x="638" y="196" width="40" height="24" rx="4"/><text class="t-c" x="648" y="212">bus</text>
     <rect class="chipr" x="684" y="196" width="50" height="24" rx="4"/><text class="t-c" x="692" y="212">blobs</text>
-    <text class="t-s" x="570" y="242">blobs reserved for attachments; queue or scheduler refused</text>
+    <text class="t-s" x="570" y="242">blobs reserved for attachments; queue and scheduler gone</text>
   </g>
 
   <g id="row-store-root">

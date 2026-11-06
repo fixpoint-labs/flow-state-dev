@@ -23,6 +23,7 @@ import type { ResumeAction, SuspensionStatus } from "@flow-state-dev/core/types"
 import { useFlowContext } from "../context/FlowContext";
 import { useClient } from "../internal/useClient";
 import { useSuspensionResolver } from "../context/SuspensionResolver";
+import { answerStop } from "../internal/answerStop";
 import { resolveApprovalOutcome, type ApprovalOutcome } from "./useApproval";
 
 // ---------------------------------------------------------------------------
@@ -301,7 +302,7 @@ export function useSuspensionForm(
   options: UseSuspensionFormOptions = {}
 ): UseSuspensionFormResult {
   const { isResolved = false, resolution } = options;
-  const { flowKind, userId } = useFlowContext();
+  const { flowKind } = useFlowContext();
   const fsd = useClient();
   const streamingResolve = useSuspensionResolver();
 
@@ -368,11 +369,10 @@ export function useSuspensionForm(
               "Cannot resume without flowKind on <FlowProvider> or a SuspensionResolverProvider."
             );
           }
-          await fsd.flow(flowKind).request(item.requestId).resume({
+          await answerStop(fsd.flow(flowKind).request(item.requestId), item.reason, {
             suspensionId: item.suspensionId,
             action,
-            data,
-            resumedBy: userId
+            data
           });
         }
         setLocalResolution(action === "skip" ? "skipped" : "submitted");
@@ -382,7 +382,7 @@ export function useSuspensionForm(
         setPending(null);
       }
     },
-    [isResolving, resolved, streamingResolve, flowKind, fsd, userId, item.suspensionId, item.requestId]
+    [isResolving, resolved, streamingResolve, flowKind, fsd, item.suspensionId, item.requestId, item.reason]
   );
 
   const submit = useCallback(async () => {

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3, how many claim orders. Chosen: one, fifo, with topological refusing and naming fifo. Instead of: keeping topological as an alias of fifo, the issue’s defaultClaimOrder option. It comes down to the first row: a reader comparing claim orders sees two that differ under the chosen option, and three names with two identical under the alias. The price is the second row: callers that pass topological, 15 sites in the repo, change one string, where the alias changes nothing. Third row is a tie: a board that passes no claim order sees no change either way. Locks in fifo as the board&#x27;s default and a refusal until its removal version. Flips if topological ordering becomes real, ordering by dependency depth."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3, how many claim orders. Chosen: one, fifo, with topological refusing and naming fifo. Instead of: keeping topological as an alias of fifo, the issue’s defaultClaimOrder option. It comes down to the first row: a reader comparing claim orders sees two that differ under the chosen option, and three names with two identical under the alias. The price is the second row: callers that pass topological, 15 sites in the repo, change one string, where the alias changes nothing. Third row is a tie: a board that passes no claim order sees no change either way. Locks in fifo as the board&#x27;s default and topological removed from the type, with no refusal. Flips if topological ordering becomes real, ordering by dependency depth."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">One: fifo, topological refuses</text>
+    <text class="t-h c-code" x="228" y="112">One: fifo; topological removed</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Keep topological as an alias</text>
@@ -66,8 +66,8 @@
     <text class="t-lbl" x="32" y="222">PASSES</text>
     <text class="t-lbl" x="32" y="235">&quot;topological&quot;</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">A loud refusal</text>
-    <text class="t-s" x="248" y="241">names &quot;fifo&quot;; change one string</text>
+    <text class="t-b" x="248" y="223">Fails to compile</text>
+    <text class="t-s" x="248" y="241">change one string to &quot;fifo&quot;</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Keeps working</text>
     <text class="t-s" x="612" y="241">no caller changes</text>
@@ -89,7 +89,7 @@
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
     <text class="t-b" x="32" y="371">&quot;fifo&quot; is the default name</text>
-    <text class="t-s" x="32" y="389">a refusal for topological until its version</text>
+    <text class="t-s" x="32" y="389">topological gone from the type</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>

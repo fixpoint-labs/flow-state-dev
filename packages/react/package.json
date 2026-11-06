@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/react",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "React hooks and renderers for flow-state-dev.",
   "keywords": [
     "ai",
@@ -30,6 +30,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./workforce": {
+      "types": "./dist/workforce/index.d.ts",
+      "default": "./src/workforce/index.ts"
     }
   },
   "license": "MIT",
@@ -45,6 +49,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./workforce": {
+        "types": "./dist/workforce/index.d.ts",
+        "default": "./dist/workforce/index.js"
       }
     }
   },

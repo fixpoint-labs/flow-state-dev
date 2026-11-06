@@ -367,7 +367,9 @@ describe("the teammates screen", () => {
   it("shows a coding run as plain steps, the same on every harness: what it said as text, the result last, and no bare tool name", async () => {
     // Each harness reports its own tools (Claude Code's Bash and Edit, Codex's command_execution and file_change, Cursor's shell and edit).
     const BARE = /^(Bash|Read|Edit|Write|command_execution|file_change|shell|read|edit)$/;
-    render(<App adapter={fast({ speed: 0.3 })} />);
+    // Each run holds before its first step until the popup has shown what it starts on: that line lasts only until the run reports.
+    const lab = fast({ speed: 0.3, held: true });
+    render(<App adapter={lab} />);
     for (const [ask, harness, check] of [
       ["Have Claude Code fix the typo in the README's first line.", "Claude Code", "Run the docs check"],
       ["Have Codex fix the typo in the README's first line.", "Codex", "pnpm docs:check"],
@@ -381,6 +383,7 @@ describe("the teammates screen", () => {
       const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
       // The first signal: what it starts on, before its run reports a step.
       await waitFor(() => expect(popup.textContent).toContain(`Starting on ${harness}…`), { timeout: 2000 });
+      lab.startRuns();
       await waitFor(() => expect(line.querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 4000 });
       await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 });
 

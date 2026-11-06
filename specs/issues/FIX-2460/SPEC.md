@@ -29,7 +29,7 @@ root offers only what testing an app needs.**
 | **The real need** | *"An adopter cannot unit-test a `ctx.suspendForUser` approval step, even though durable-by-default and suspendForUser shipped this window"* (the issue), and the epic's *Surface* row for every published root |
 | **Smaller, and rejected** | "`testFlow` accepts a durability provider" (the issue's *runtimeConfig passthrough*). Leaves the answer to the adopter, who would wire a router, a registry and a provider by hand: the 40 lines our own engine test needs. `testFlow` builds that config itself instead; no general passthrough is added |
 | **Bigger, and not this issue's** | A test helper that spawns or messages other sessions (FIX-1293). The Inbox's answer path for a task-board run, which FIX-2450 owns |
-| **Not done if** | The answer or `resume` reaches the run by some route other than the engine's answer or resume route · `run.answer` learns the outcome from a wait loop or a store read of its own, not the engine's request stream and by-id status read · a generator after the answer reaches a real model · the README example passes only in the workspace, not from the installed tarball · a benchmark, scanner or folded-helper name is still on the testing, core or patterns root, outside Q1's alias window · the benchmark names were deleted rather than moved, or `fsdev benchmark` stops running · a timer outlives `testFlow` and holds the test process open |
+| **Not done if** | The answer or `resume` reaches the run by some route other than the engine's answer or resume route · `run.answer` learns the outcome from a wait loop or a store read of its own, not the engine's request stream and by-id status read · a generator after the answer reaches a real model · the README example passes only in the workspace, not from the installed tarball · a benchmark, scanner or folded-helper name is still on the testing, core or patterns root, an alias included · the benchmark names were deleted rather than moved, or `fsdev benchmark` stops running · a timer outlives `testFlow` and holds the test process open |
 
 ```mermaid
 flowchart LR
@@ -80,8 +80,9 @@ each name lives, with the fence marking what adopters never see.
 + import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns/benchmark";
 ```
 
-How a moved name reaches an adopter on 0.4.0 or testing 0.3.x is ER-3 / Q1's answer
-([DECISIONS → Decided](DECISIONS.md#decided-not-asked)).
+A moved name reaches an adopter on 0.4.0 or testing 0.3.x as a compile error, with no alias,
+and the changeset names its new home (ER-3; Q1 answered break;
+[DECISIONS → Decided](DECISIONS.md#decided-not-asked)).
 
 **Docs:** update the testing README (an approval-step example, `answer` and `resume`, the
 `durable` option, the subpaths) and the patterns README's benchmark section; update
@@ -151,7 +152,7 @@ engine code; the POC ran the answer and resume half ([Settled](DECISIONS.md#sett
 | The debt | |
 |---|---|
 | **Removes** | 21 benchmark and 3 scanner names from the testing root, 6 `Benchmark*` types from core's root, 8 benchmark names from patterns' root, `testSequencer` and `testRouter` and their result types |
-| **Adds** | Two public subpaths to keep. Patterns' new optional peer dependency on testing, for `patterns/benchmark`'s types. Under Q1's alias option, deprecated aliases until the removal minor, owned by that removal |
+| **Adds** | Two public subpaths to keep. Patterns' new optional peer dependency on testing, for `patterns/benchmark`'s types. No deprecated aliases (Q1 answered break) |
 | **Leaves** | A test helper with no request host for spawning or messaging (FIX-1293). The testing package marker, which the epic gives FIX-2449 with the other three |
 
 **Net: down.** The testing root loses 28 of its 90 names, two other roots lose their benchmark names,

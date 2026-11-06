@@ -6,7 +6,7 @@
  * and the P&E schemas.
  */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import type { TaskCapOptions } from "@flow-state-dev/orchestration";
+import type { TaskCapOptions } from "@flow-state-dev/orchestration/tasks";
 import {
   createPlanningEntry,
   type TaskContextSupply,

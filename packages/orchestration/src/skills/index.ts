@@ -142,7 +142,6 @@ export {
   showTakenSteers,
   takeRunningSteers,
   STEERED_WHILE_RUNNING,
-  type ShownSteer,
   type RunningTask,
   type SteerContextOptions,
 } from "./steer-context";

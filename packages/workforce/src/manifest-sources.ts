@@ -46,7 +46,7 @@
 
 import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { resolveResourceCollection } from "@flow-state-dev/orchestration";
+import { resolveResourceCollection } from "@flow-state-dev/orchestration/tasks";
 import type { WorkerManifest } from "./manifest";
 import type { WorkerInventoryRow } from "./inventory/collections";
 

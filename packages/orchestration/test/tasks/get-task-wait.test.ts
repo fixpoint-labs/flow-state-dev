@@ -15,14 +15,14 @@ import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core"
 import type { BlockContext, FlowInstance, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { z } from "zod";
+import { createTaskToolsCapability } from "../../src";
 import {
-  createTaskToolsCapability,
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
   type TaskClaimTicket,
   type TaskCollectionRef
-} from "../../src";
+} from "../../src/tasks";
 import { payOwedResumes } from "../../src/tasks/helpers/wait-on-task";
 import { openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 import { act, statusOf, stepModel, toolResults, until, type StepFn } from "./wait-fixture";
