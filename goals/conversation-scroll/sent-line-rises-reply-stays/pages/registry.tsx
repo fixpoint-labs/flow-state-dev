@@ -27,8 +27,8 @@ import { exposeGoal, script, useConversation, useOpen, type Line } from "./scrip
 
 const { Conversation, ConversationContent, ConversationScrollButton } = conversation;
 /** `main`'s items: the rule is `ScrollOnNewRequest`, placed in the content. */
-const ScrollOnNewRequest = (conversation as unknown as { ScrollOnNewRequest?: (p: { items: OutputItem[] }) => null }).ScrollOnNewRequest;
-const legacy = ScrollOnNewRequest !== undefined;
+const MainScrollRule = (conversation as unknown as { ScrollOnNewRequest?: (p: { items: OutputItem[] }) => null }).ScrollOnNewRequest;
+const legacy = MainScrollRule !== undefined;
 
 const surface = new URLSearchParams(location.search).get("surface");
 type Goal = { background(): void; unmarked?: () => void };
@@ -61,7 +61,7 @@ function Feed({ open, feed }: { open: string; feed?: JumpToLatest }) {
   return (
     <Conversation className="min-h-0 flex-1" {...wiring}>
       <ConversationContent className="mx-auto w-full max-w-3xl">
-        {ScrollOnNewRequest !== undefined && <ScrollOnNewRequest items={items} />}
+        {MainScrollRule !== undefined && <MainScrollRule items={items} />}
         <RequestGroupRenderer items={items} isStreaming={c.running} />
       </ConversationContent>
       {/* `main`'s button has no name; the reader finds the arrow by this one. */}
