@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import type { BoardTask, LabAdapter, TalkRow, WorkerRow, WorkingNow } from "../adapter";
+import { commandsRun, runSummaryLine, type BoardTask, type LabAdapter, type SessionStep, type TalkRow, type WorkerRow, type WorkingNow } from "../adapter";
+import type { RecordedWork } from "@flow-state-dev/harness-manager/browser";
 import { harnessName } from "../lib/harness";
+import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
 import { Avatar } from "./Avatar";
@@ -63,8 +65,22 @@ export const answerIn = (talk: readonly TalkRow[], messageId: string): AnswerSta
   return "working";
 };
 
+/**
+ * Who to ask to follow up on an ended task: the worker whose conversation
+ * filed it, and how to hand that conversation's composer the words.
+ */
+export interface FollowUp {
+  /** The filer's name, as the button says it. */
+  name: string;
+  /** Close the popup, open the filer's conversation, and add `text` to its composer, unsent. */
+  ask: (text: string) => void;
+}
+
+/** What a follow-up puts in the filer's composer: the task by its title, and room for what to do next. */
+const followUpText = (task: Pick<BoardTask, "title">) => `Follow up on "${task.title}": `;
+
 /** The open popup, live: it reads what it shows by itself, so it stays current while the work goes on. */
-export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, onMissing }: {
+export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Popup;
   nameOf: (id: string) => string;
@@ -72,13 +88,15 @@ export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, on
   isCoding: (id: string) => boolean;
   /** The roster's coding workers: a failed or cancelled coding task can be re-run on another's harness. */
   coders: readonly WorkerRow[];
+  /** For a task popup, who filed it, to ask for a follow-up once it ended; absent when its conversation isn't on the roster. */
+  followUp?: FollowUp;
   onClose: () => void;
   /** A task popup's conversation holds no such task, once its tasks are read: a link to a task that is gone. */
   onMissing?: () => void;
 }) {
   return popup.kind === "task" ? (
     // Keyed by conversation: a switch never judges the task against the last conversation's rows.
-    <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} onClose={onClose} onMissing={onMissing} />
+    <TaskPopup key={popup.sessionId} adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} isCoding={isCoding} coders={coders} followUp={followUp} onClose={onClose} onMissing={onMissing} />
   ) : (
     <MessagePopup adapter={adapter} popup={popup} nameOf={nameOf} lookOf={lookOf} onClose={onClose} />
   );
@@ -91,13 +109,14 @@ export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, on
  * Release while held, Retry and a Re-run per other harness once it failed or
  * was cancelled. The board decides each; the row shows its words.
  */
-function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, onMissing }: {
+function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp, onClose, onMissing }: {
   adapter: LabAdapter;
   popup: Extract<Popup, { kind: "task" }>;
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   coders: readonly WorkerRow[];
+  followUp?: FollowUp;
   onClose: () => void;
   onMissing?: () => void;
 }) {
@@ -146,6 +165,9 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
   return (
     <SessionPopup label={line} title={title} status={status} onClose={onClose} pinned={pinned}>
       {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
+      {/* What a coding task's run changed, what it ran and how long it took, without opening a step. */}
+      {task && isCoding(task.to) ? <TaskSummary adapter={adapter} task={task} steps={steps} /> : null}
+      {task && task.status !== "running" ? <TaskOutcomeActions task={task} followUp={followUp} /> : null}
       {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
       {task?.spend && isCoding(task.to) ? (
         <div data-task-spend>
@@ -174,7 +196,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
       })}
       {/* The run's result is its last entry. */}
       {task?.result || task?.landed ? (
-        <section aria-label="Result" data-step="result" className="rounded-md border border-dashed border-success/60 bg-success/5 px-3 py-2 text-sm">
+        <section aria-label="Result" data-step="result" data-tone={task.status} className={cn("rounded-md border border-dashed px-3 py-2 text-sm", RESULT_TONE[task.status])}>
           {task.result ? <MarkdownText text={task.result} /> : null}
           {task.landed === undefined ? null : <LandedOutcome landed={task.landed} />}
         </section>
@@ -189,6 +211,113 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
         <WorkingLine adapter={adapter} task={task} runSessionId={task.runSessionId} />
       ) : null}
     </SessionPopup>
+  );
+}
+
+/** The result box's colour, by how the task ended: a failed task's result is never a success's green. */
+const RESULT_TONE: Record<BoardTask["status"], string> = {
+  done: "border-success/60 bg-success/5",
+  running: "border-success/60 bg-success/5",
+  failed: "border-destructive/60 bg-destructive/5",
+  cancelled: "border-border bg-muted/40",
+};
+
+/** How many file chips show before the rest fold into "+N more". */
+const CHIPS_SHOWN = 8;
+
+/**
+ * What a run's harness recorded touching, read through harness-manager's
+ * reader by the run's session and request; read again when the task's status
+ * changes, so an ended task shows all of it. `undefined` until read, or when
+ * the read fails: the line then goes without files rather than say a wrong count.
+ */
+export function useRecordedFiles(adapter: LabAdapter, task: BoardTask): RecordedWork["files"] | undefined {
+  const { runSessionId: sessionId, runRequestId: requestId, status } = task;
+  // Kept with the run it was read for: a retry's new run never shows the last attempt's files.
+  const run = sessionId === undefined || requestId === undefined ? undefined : `${sessionId}\n${requestId}`;
+  const [read, setRead] = useState<{ run: string; files: RecordedWork["files"] }>();
+  useEffect(() => {
+    if (run === undefined || sessionId === undefined || requestId === undefined) return;
+    let live = true;
+    adapter
+      .recordedWork({ sessionId, requestId })
+      .then((work) => {
+        if (live) setRead({ run, files: work.files });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [adapter, run, sessionId, requestId, status]);
+  return read !== undefined && read.run === run ? read.files : undefined;
+}
+
+/** "Edited 2 files · ran 5 commands", and a chip per file the run recorded, named by its file name. */
+function TaskSummary({ adapter, task, steps }: { adapter: LabAdapter; task: BoardTask; steps: readonly SessionStep[] }) {
+  const files = useRecordedFiles(adapter, task) ?? null;
+  // One per path (a steer or a review's changes record the path again), and only a path an edit landed on:
+  // one whose every attempt failed was tried, not edited.
+  const rows = [...new Map((files?.rows ?? []).filter((row) => row.applied !== 0).map((row) => [row.path, row])).values()];
+  // A retry runs in the same session: only this run's commands.
+  const line = runSummaryLine({
+    files: files === null ? null : { count: rows.length, truncated: files.truncated },
+    commands: commandsRun(steps, task.runRequestId),
+  });
+  if (line === "") return null;
+  const shown = rows.slice(0, CHIPS_SHOWN);
+  const more = rows.length - shown.length;
+  return (
+    <div data-task-summary className="flex flex-col gap-1.5">
+      <p data-summary-line className="text-xs text-muted-foreground">
+        {line}
+      </p>
+      {shown.length === 0 ? null : (
+        <ul aria-label="Files changed" className="flex flex-wrap gap-1">
+          {shown.map(({ path }) => (
+            <li key={path} title={path} data-file-chip className="rounded-sm border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              {path.split("/").filter((part) => part !== "").pop() ?? path}
+            </li>
+          ))}
+          {more > 0 ? <li className="px-1 py-0.5 font-mono text-[10px] text-muted-foreground">+{more} more</li> : null}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Once a task ended: Copy its result (else its error), and ask the worker that filed it to follow up. */
+function TaskOutcomeActions({ task, followUp }: { task: BoardTask; followUp?: FollowUp }) {
+  const text = task.result ?? task.error;
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const reset = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(reset);
+  }, [copied]);
+  if (text === undefined && followUp === undefined) return null;
+  const copy = async () => {
+    if (text === undefined || typeof navigator === "undefined" || !navigator.clipboard?.writeText) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      // A refused clipboard leaves the text to select by hand.
+    }
+  };
+  const button = "rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground";
+  return (
+    <div data-outcome-actions className="flex flex-wrap gap-1.5">
+      {text === undefined ? null : (
+        <button type="button" onClick={() => void copy()} className={button}>
+          {copied ? "Copied" : "Copy"}
+        </button>
+      )}
+      {followUp === undefined ? null : (
+        <button type="button" onClick={() => followUp.ask(followUpText(task))} className={button}>
+          Ask {followUp.name} to follow up
+        </button>
+      )}
+    </div>
   );
 }
 

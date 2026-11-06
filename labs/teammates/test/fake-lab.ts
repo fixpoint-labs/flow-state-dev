@@ -258,6 +258,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       status: "running",
       boardStatus: "in_progress",
       runSessionId: `run:${id}`,
+      runRequestId: `req:${id}`,
       sessionId: w.sessionId,
       harness: HARNESS[harness]!.name,
     };
@@ -646,6 +647,20 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       return watch(() => onChange(reviews.get(runSessionId)));
     },
 
+    /**
+     * What a run recorded, as harness-manager's reader returns it: a Claude Code run's edited
+     * files, one row per path; `files: null` on Codex and Cursor, whose blocks record none.
+     */
+    async recordedWork({ sessionId }) {
+      const task = tasks.find((t) => t.runSessionId === sessionId);
+      if (task?.harness !== HARNESS["claude-code"]!.name) return { plan: null, files: null, pullRequests: null };
+      const edited = (runs.get(task.id) ?? []).flatMap((item) => {
+        const call = (item as { toolCall?: { name?: string; arguments?: string } }).toolCall;
+        return call?.name === "Edit" ? [JSON.parse(call.arguments ?? "{}").file_path as string] : [];
+      });
+      return { plan: null, files: { rows: [...new Set(edited)].map((path) => ({ path, kind: "edited" as const, applied: 1 })), truncated: false }, pullRequests: null };
+    },
+
     async answerTask(_sessionId, taskId, answer) {
       const go = waits.get(taskId);
       if (go === undefined) throw new Error(`This task isn't waiting on you.`);
@@ -702,6 +717,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
             status: "running",
             boardStatus: "in_progress",
             runSessionId: `run:${id}`,
+            runRequestId: `req:${id}`,
             sessionId,
             harness: HARNESS[harness]!.name,
           };
