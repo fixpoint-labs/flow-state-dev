@@ -15,7 +15,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, InitialSkill } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
-import { formatAllowedToolsIntentNote } from "@flow-state-dev/orchestration";
+import { formatAllowedToolsIntentNote } from "@flow-state-dev/orchestration/internal";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";

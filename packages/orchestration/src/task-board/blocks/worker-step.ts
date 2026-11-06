@@ -42,14 +42,14 @@ import { utility } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
-  shownSteer,
   taskSchema,
   type Task,
   type TaskCollectionRef,
   type TaskWorker,
   type TaskWorkerInput,
-  type TaskWorkerRegistry,
 } from "../../tasks";
+import { shownSteer } from "../../tasks/steers";
+import type { TaskWorkerRegistry } from "../../tasks/workers/types";
 
 /**
  * True when `workers` is a single block (carries the substrate `run`

@@ -8,11 +8,11 @@
  */
 import { describe, expect, it, beforeEach } from "vitest";
 import {
-  createStateBackedTaskCollection,
-  createResourceBackedTaskCollection,
   type TaskCollectionRef,
-  type TaskChangeEvent,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import {
   createCapturedChanges,
   createFakeResourceCollection,

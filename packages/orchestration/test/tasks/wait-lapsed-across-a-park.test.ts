@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { inMemoryStores, type StoreAdapter } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { TaskSettledInput } from "../../src";
-import { NOTICE_DUE_MS } from "../../src/tasks";
+import { NOTICE_DUE_MS } from "../../src/tasks/notice/task-notice";
 import { lapsedSlotsHeldInProcess } from "../../src/tasks/helpers/wait-on-task";
 import {
   act,

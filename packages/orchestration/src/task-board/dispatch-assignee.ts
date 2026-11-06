@@ -43,7 +43,8 @@
  */
 import { getBaseCapability, type DispatchHandle } from "@flow-state-dev/core";
 import type { BlockDefinition, DispatchAddress, TaskDispatchInput } from "@flow-state-dev/core/types";
-import type { DefinedTaskCollection, TaskWorker, TaskWorkerRegistry } from "../tasks";
+import type { DefinedTaskCollection, TaskWorker } from "../tasks";
+import type { TaskWorkerRegistry } from "../tasks/workers/types";
 import type { TaskBoardBacking } from "./index";
 
 /** The address a `dispatcher({ type: "task" })` assignee carries: its entry and session policy. */

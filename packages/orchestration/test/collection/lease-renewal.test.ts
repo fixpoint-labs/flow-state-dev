@@ -17,16 +17,15 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
-  createStateBackedTaskCollection,
   startLeaseRenewal,
   ticketForClaim,
   withLeaseRenewal,
-  MIN_RENEWAL_DELAY_MS,
-  RENEWAL_DIVISOR,
   type RenewalTimer,
   type Task,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { MIN_RENEWAL_DELAY_MS, RENEWAL_DIVISOR } from "../../src/tasks/lease-renewal";
 import {
   withLeaseRenewalScope,
   stampLeaseRenewal,

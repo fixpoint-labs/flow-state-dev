@@ -20,9 +20,9 @@
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, ConcurrencyConfig } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { runningTaskOf } from "@flow-state-dev/orchestration";
-import { afterTaskCheck, taskRequestAdmission, type TaskEndRules } from "@flow-state-dev/orchestration/task-board";
-import { filedWorkKeepsOpen, keepsFilerOpen, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import { runningTaskOf, afterTaskCheck, keepsFilerOpen } from "@flow-state-dev/orchestration/internal";
+import { taskRequestAdmission, type TaskEndRules } from "@flow-state-dev/orchestration/task-board";
+import { filedWorkKeepsOpen, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { boardAboveOf } from "./board-above";
 import { CHECK_TASK_ENTRY, PIECE_OF, STEER_TURN_ENTRY } from "./board-entries";
 import { conversationLedgerAt, conversationLedgerResources, ledgerAboveOf, ownConversationLedger } from "./ledger";

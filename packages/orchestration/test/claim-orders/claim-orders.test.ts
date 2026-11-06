@@ -8,11 +8,11 @@ import { describe, expect, it, beforeEach } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import * as tasksEntry from "../../src/tasks/index";
 import {
-  createStateBackedTaskCollection,
   fifoClaimOrder,
   priorityClaimOrder,
   type TaskCollectionRef,
 } from "../../src/tasks/index";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import {
   createCapturedChanges,
   createFakeSequencerState,

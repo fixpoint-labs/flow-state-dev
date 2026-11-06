@@ -7,7 +7,7 @@
  * door (`./steer`), which reads the board.
  */
 import { dispatchThroughSeam, type BlockContext } from "@flow-state-dev/core/types";
-import { STEER_TURN_DUE_MS } from "@flow-state-dev/orchestration/task-board";
+import { STEER_TURN_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { STEER_TURN_ENTRY } from "./board-entries";
 

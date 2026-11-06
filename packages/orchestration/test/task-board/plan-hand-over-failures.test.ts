@@ -35,11 +35,11 @@ import {
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
-  MIN_LEASE_DURATION_MS,
   type ClaimOrder,
   type TaskWorker,
   type TaskWorkerInput
 } from "../../src/tasks";
+import { MIN_LEASE_DURATION_MS } from "../../src/tasks/collection/internal";
 import { createTaskToolsCapability, taskSettledEntry } from "../../src";
 
 /**

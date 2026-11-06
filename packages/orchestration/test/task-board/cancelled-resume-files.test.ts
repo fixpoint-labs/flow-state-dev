@@ -24,8 +24,10 @@ import {
 import { createMockModelResolver, runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createTaskToolsCapability } from "../../src/skills";
-import { createTaskGate, taskWorkerInputSchema } from "../../src/task-board";
-import { createResourceBackedTaskCollection, type TaskWorkerInput } from "../../src/tasks";
+import { taskWorkerInputSchema } from "../../src/task-board";
+import { createTaskGate } from "../../src/task-board/task-entry";
+import type { TaskWorkerInput } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
 import { createFakeResourceCollection } from "../helpers";
 
 const USER_ID = "u_cancelled_resume";

@@ -35,14 +35,16 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  hasFrozenLedgerAssignee,
   resolveResourceCollection,
   type TaskCollectionRef,
   type TaskPartitionContext,
   type TaskSettingsSupport,
-  taskLedgerResources,
-  withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
+import {
+  hasFrozenLedgerAssignee,
+  taskLedgerResources,
+  withoutNoticeMarkers,
+} from "@flow-state-dev/orchestration/internal";
 import { FILED_HOP, FILED_MARKER, FILED_PROJECT, PIECE_OF, SPLIT_MARKER } from "./board-entries";
 import { filedCascadeOver } from "./cascade";
 import { filingSessionIdOf } from "./filing-session";

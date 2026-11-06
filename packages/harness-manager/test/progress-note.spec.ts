@@ -4,7 +4,7 @@
  * real board is `progress-from-a-run.spec.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { STATUS_NOTE_LIMIT } from "@flow-state-dev/orchestration";
+import { STATUS_NOTE_LIMIT } from "@flow-state-dev/orchestration/internal";
 import { PROGRESS_NOTE_MS, progressNoteOf } from "../src";
 import { throttledNotes } from "../src/progress-note";
 

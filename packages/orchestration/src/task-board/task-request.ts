@@ -55,18 +55,18 @@ import { dispatchThroughSeam, isUserSuspension, onRequestEnded, readRequestSpend
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
-  DEFAULT_LEASE_DURATION_MS,
-  MAX_QUESTION_PROMPT,
   filedWorkKeepsOpen,
-  readCommittedTask,
   ticketForClaim,
-  untakenSteers,
   type SuspensionHold,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskKeptOpenBy,
 } from "../tasks";
+import { DEFAULT_LEASE_DURATION_MS } from "../tasks/collection/internal";
+import { MAX_QUESTION_PROMPT } from "../tasks/schema/hold";
+import { readCommittedTask } from "../tasks/collection/read-committed";
+import { untakenSteers } from "../tasks/steers";
 import { ticketClaimsRow } from "../tasks/collection/internal";
 import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
 import { advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";

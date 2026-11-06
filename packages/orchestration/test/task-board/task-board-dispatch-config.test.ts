@@ -28,10 +28,10 @@ import {
   type TaskWorker,
 } from "../../src/tasks";
 import {
-  isTaskDispatcher,
   taskBoard,
   taskWorkerInputSchema,
 } from "../../src/task-board";
+import { isTaskDispatcher } from "../../src/task-board/dispatch-assignee";
 import { heard } from "../fixtures/heard";
 
 function worker(name: string, extra?: Record<string, unknown>): TaskWorker {

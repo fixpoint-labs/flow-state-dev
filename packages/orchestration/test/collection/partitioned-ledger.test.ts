@@ -13,12 +13,12 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  taskClaimTicketSchema,
   ticketForClaim,
   type DefinedTaskCollection,
   type Task,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { taskClaimTicketSchema } from "../../src/tasks/claim-ticket";
 import { resolveTaskPartition } from "../../src/tasks/collection/partition";
 import { createFakeResourceCollection } from "../helpers";
 

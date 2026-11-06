@@ -19,7 +19,7 @@
  * ended without one.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { hasEnded, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
+import { hasEnded, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
 import type { WorkerInstallation } from "../workers/installation";
 import { WORKER_REPLIES_OWED_STATE } from "./keys";

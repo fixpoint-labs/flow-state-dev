@@ -5,7 +5,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineTaskCollection, isDefinedTaskCollection } from "../../src/tasks";
+import { defineTaskCollection } from "../../src/tasks";
+import { isDefinedTaskCollection } from "../../src/tasks/collection/define-task-collection";
 import { taskEnvelopeSchema } from "../../src/tasks/collection/define-task-collection";
 
 describe("defineTaskCollection", () => {

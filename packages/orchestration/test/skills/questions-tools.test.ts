@@ -12,7 +12,8 @@ import { describe, expect, it } from "vitest";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
 import { buildTaskToolsList, taskToolActions } from "../../src/skills/task-tools-capability";
-import { MAX_STEERS, openHolds, ticketForClaim, type Task } from "../../src/tasks";
+import { openHolds, ticketForClaim, type Task } from "../../src/tasks";
+import { MAX_STEERS } from "../../src/tasks/schema/steer";
 import { buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 
 function toolNamed(tools: readonly unknown[], name: string): GeneratorTool {

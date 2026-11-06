@@ -62,30 +62,28 @@ import {
   taskSpendView,
   taskSpendViewSchema,
   TaskCapExceededError,
-  TaskWriteRefusedError,
   TaskFilingRefusedError,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskEditField,
-  type TaskUpdateField,
   type TaskInit,
   type TaskSettingsPatch,
   type TaskStatus,
   type TaskWriteOutcome,
   type TaskWriteDeclineReason,
-  withoutNoticeMarkers,
-  cancelledDependents,
-  MAX_STEERS,
-  MAX_QUESTION_PROMPT,
-  isRowHold,
   openHolds,
-  steerPlacesTaken,
   taskHoldSchema,
   type QuestionAnswer,
   type QuestionInit,
   type RowHold,
 } from "../tasks";
+import { TaskWriteRefusedError } from "../tasks/collection/refused-write";
+import type { TaskUpdateField } from "../tasks/collection/field-rules";
+import { withoutNoticeMarkers, cancelledDependents } from "../tasks/notice/task-notice";
+import { MAX_STEERS } from "../tasks/schema/steer";
+import { MAX_QUESTION_PROMPT } from "../tasks/schema/hold";
+import { isRowHold, steerPlacesTaken } from "../tasks/collection/holds";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
 // the task-board's public API to advertise it.

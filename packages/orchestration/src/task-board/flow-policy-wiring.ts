@@ -30,14 +30,13 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { generateId } from "../tasks/generate-id";
 import {
-  createObservationLedger,
   flowPolicy as builtinFlowPolicy,
-  type ObservationLedger,
   type ObservationLedgerView,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskFlowPolicy,
 } from "../tasks";
+import { createObservationLedger, type ObservationLedger } from "../tasks/flow-policy/index";
 import type { TaskBoardToolCacheConfig } from "./index";
 
 /**

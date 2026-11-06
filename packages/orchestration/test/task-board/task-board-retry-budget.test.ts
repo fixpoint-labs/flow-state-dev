@@ -22,14 +22,14 @@ import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
-  DEFAULT_MAX_TOTAL_RETRIES,
   getOrCreateTaskCollection,
   type Task,
   type TaskCollectionRef,
   type TaskWorker,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { DEFAULT_MAX_TOTAL_RETRIES } from "../../src/tasks/collection/task-caps";
 import { createBoardMetaCompleted } from "../../src/task-board/blocks/board-meta";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";

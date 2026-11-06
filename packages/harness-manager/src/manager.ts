@@ -60,23 +60,27 @@ import type {
   HarnessSteerHook,
   HarnessUsageHook,
 } from "@flow-state-dev/core/types";
-import { renderSteers, showTakenSteers, STEERED_WHILE_RUNNING } from "@flow-state-dev/orchestration";
-import { TaskEndsForGoodError, currentWorkerClaim, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
+  renderSteers,
+  showTakenSteers,
+  STEERED_WHILE_RUNNING,
   answerOf,
-  getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
   isRowHold,
   MAX_STEERS,
   readCommittedTask,
-  resolveResourceCollection,
   shownSteer,
   steersTakenIn,
   taskClaimTicketSchema,
-  ticketForClaim,
   untakenSteers,
-  type DefinedTaskCollection,
   type ShownSteer,
+} from "@flow-state-dev/orchestration/internal";
+import { TaskEndsForGoodError, currentWorkerClaim, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import {
+  getOrCreateTaskCollection,
+  resolveResourceCollection,
+  ticketForClaim,
+  type DefinedTaskCollection,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,

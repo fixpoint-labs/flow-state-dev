@@ -9,9 +9,9 @@
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
-  createStateBackedTaskCollection,
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
+import { createStateBackedTaskCollection } from "@flow-state-dev/orchestration/internal";
 import { HARNESS_RUN_OWNER_KEY, runOwnerClaimOrder } from "../src";
 
 /** A minimal in-memory sequencer state: read, and serialized atomic writes. */

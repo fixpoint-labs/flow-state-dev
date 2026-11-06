@@ -8,13 +8,13 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
   lockedFields,
   TASK_FIELD_RULES,
   ticketForClaim,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 const BACKINGS: Array<[string, () => Promise<TaskCollectionRef>]> = [

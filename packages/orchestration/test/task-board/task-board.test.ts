@@ -25,22 +25,22 @@ import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   defineTaskCollection,
-  extractTaskItemWindows,
   fifoClaimOrder,
   getOrCreateTaskCollection,
   type TaskWorker,
 } from "../../src/tasks";
+import { extractTaskItemWindows } from "../../src/tasks/items/extract-window";
 
 import {
   taskBoard,
-  taskBoardStateSchema,
   taskWorkerInputSchema,
-  createSelectNextReadyTask,
-  createClaimTask,
   createRecordSuccess,
-  createSeedCollection,
   type TaskBoardClaimOrderInput,
 } from "../../src/task-board";
+import { taskBoardStateSchema } from "../../src/task-board/schemas";
+import { createSelectNextReadyTask } from "../../src/task-board/blocks/select-next-ready-task";
+import { createClaimTask } from "../../src/task-board/blocks/claim-task";
+import { createSeedCollection } from "../../src/task-board/blocks/seed-collection";
 
 // ---------------------------------------------------------------------------
 // Schemas + helpers

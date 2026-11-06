@@ -10,7 +10,8 @@
  */
 import { execFileSync } from "node:child_process";
 import { afterAll, describe, expect, it } from "vitest";
-import { openRowHolds, ticketForClaim, untakenSteers } from "@flow-state-dev/orchestration/tasks";
+import { ticketForClaim } from "@flow-state-dev/orchestration/tasks";
+import { openRowHolds, untakenSteers } from "@flow-state-dev/orchestration/internal";
 import { ALICE, CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
 afterAll(cleanUpHosts);

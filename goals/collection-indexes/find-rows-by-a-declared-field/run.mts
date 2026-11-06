@@ -46,11 +46,10 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import type { ResourceStateSetOptions, StoreRegistry } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
-  findTaskPartitions,
   getOrCreateTaskCollection,
-  taskLedgerResources,
   taskSchema
 } from "@flow-state-dev/orchestration/tasks";
+import { findTaskPartitions, taskLedgerResources } from "@flow-state-dev/orchestration/internal";
 import { createPostgresStores } from "@flow-state-dev/store-postgres";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { resolveTaskPartition } from "../../../packages/orchestration/src/tasks/collection/partition.ts";

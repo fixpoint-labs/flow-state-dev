@@ -1,15 +1,15 @@
 /** `steer` and `takeSteers` on both backings (FIX-2086). */
 import { describe, expect, it } from "vitest";
 import {
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
-  MAX_STEERS,
   ticketForClaim,
-  untakenSteers,
   type Task,
-  type TaskChangeEvent,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { MAX_STEERS } from "../../src/tasks/schema/steer";
+import { untakenSteers } from "../../src/tasks/steers";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 type Backing = { tasks: TaskCollectionRef; events: TaskChangeEvent[]; setNow: (at: number) => void };
