@@ -1,0 +1,126 @@
+<svg viewBox="0 0 940 636" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The arc: twelve lanes from Apr 15 to Oct 31, bars running from filed to wrapped. The Plan/Task series landed Apr 28 to May 1. The delegation substrate ran Jul 23 to Jul 29, durable jobs Jul 24 to Aug 12, the honest task substrate Jul 29 to Oct 10, flow instances Sep 7 to Oct 6 and the dispatch protocol Sep 5 to Oct 12, all done. dispatchTask, FIX-1870, ran Oct 11 to Oct 21 and was canceled, superseded by FIX-2056. One task primitive, FIX-2056, ran Oct 15 to Oct 24 and is done, wrapped Oct 24. One Inbox, FIX-2058, filed Oct 15, ran to Oct 27 and is done, wrapped Oct 27. Messages (FIX-2070, filed Oct 21) is in flight with its closure running. Coordination renames (FIX-2071, filed Oct 21) is done, wrapped Oct 30. Phased workflows (FIX-2092, filed Oct 21) is in flight with its epic spec in review. The now line is Oct 30.">
+  <style>
+    :root { --surface:#FCFCFA; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .axis   { stroke:var(--rule); stroke-width:1; }
+    .tick   { stroke:var(--rule); stroke-width:1; stroke-dasharray:2 4; }
+    .done   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .flight { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .cxl    { fill:none; stroke:var(--ink-3); stroke-width:1.4; }
+    .now    { stroke:var(--gone); stroke-width:1.6; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-lane { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-now  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
+  </style>
+
+  <!-- x = 180 + (720/199) * (days since Apr 15 2026). Axis ends Oct 31 = 900. Now Oct 30 = 896.4 -->
+  <g id="axis">
+    <text class="t-lbl" x="16" y="20">EPIC</text>
+    <text class="t-lbl" x="180" y="20">APR 15</text>
+    <text class="t-lbl" x="237.9" y="20">MAY</text>
+    <text class="t-lbl" x="350.1" y="20">JUN</text>
+    <text class="t-lbl" x="458.6" y="20">JUL</text>
+    <text class="t-lbl" x="570.8" y="20">AUG</text>
+    <text class="t-lbl" x="682.9" y="20">SEP</text>
+    <text class="t-lbl" x="791.5" y="20">OCT</text>
+    <path class="axis" d="M180 30 H900"/>
+    <path class="tick" d="M237.9 30 V604 M350.1 30 V604 M458.6 30 V604 M570.8 30 V604 M682.9 30 V604 M791.5 30 V604"/>
+  </g>
+
+  <g id="plan-task">
+    <text class="t-lane" x="16" y="56">Plan/Task series</text>
+    <text class="t-s"    x="16" y="70">FIX-443–448 · done</text>
+    <rect class="done" x="227" y="42" width="10.9" height="26" rx="3"/>
+    <text class="t-s" x="246" y="59">Task, TaskCollection, task board; patterns reshaped</text>
+  </g>
+
+  <g id="delegation">
+    <text class="t-lane" x="16" y="104">delegation substrate</text>
+    <text class="t-s"    x="16" y="118">FIX-930 · done</text>
+    <rect class="done" x="538.2" y="90" width="21.7" height="26" rx="3"/>
+    <text class="t-s" x="530.2" y="107" text-anchor="end">roster, default worker, context supply</text>
+  </g>
+
+  <g id="durable">
+    <text class="t-lane" x="16" y="152">durable jobs</text>
+    <text class="t-s"    x="16" y="166">FIX-939 · done</text>
+    <rect class="done" x="541.8" y="138" width="68.8" height="26" rx="3"/>
+    <text class="t-s" x="533.8" y="155" text-anchor="end">detached tasks, claim ticket</text>
+  </g>
+
+  <g id="honest">
+    <text class="t-lane" x="16" y="200">honest task substrate</text>
+    <text class="t-s"    x="16" y="214">FIX-980 · done</text>
+    <rect class="done" x="559.9" y="186" width="264.1" height="26" rx="3"/>
+    <text class="t-s" x="551.9" y="203" text-anchor="end">versioned writes, park/unpark</text>
+  </g>
+
+  <g id="instances">
+    <text class="t-lane" x="16" y="248">flow instances</text>
+    <text class="t-s"    x="16" y="262">FIX-1320 · done</text>
+    <rect class="done" x="704.6" y="234" width="104.9" height="26" rx="3"/>
+    <text class="t-s" x="696.6" y="251" text-anchor="end">address a flow by global id</text>
+  </g>
+
+  <g id="dispatch-protocol">
+    <text class="t-lane" x="16" y="296">dispatch protocol</text>
+    <text class="t-s"    x="16" y="310">FIX-1312 · done</text>
+    <rect class="done" x="697.4" y="282" width="133.9" height="26" rx="3"/>
+    <text class="t-s" x="689.4" y="299" text-anchor="end">reply to whoever dispatched me</text>
+  </g>
+
+  <g id="dispatch-task">
+    <text class="t-lane" x="16" y="344">dispatchTask</text>
+    <text class="t-s"    x="16" y="358">FIX-1870 · canceled</text>
+    <rect class="cxl" x="827.6" y="330" width="36.2" height="26" rx="3"/>
+    <text class="t-s" x="819.6" y="347" text-anchor="end">superseded by FIX-2056, Oct 21</text>
+  </g>
+
+  <g id="task-primitive">
+    <text class="t-lane" x="16" y="392">one task primitive</text>
+    <text class="t-s"    x="16" y="406">FIX-2056 · done</text>
+    <rect class="done" x="842.1" y="378" width="32.6" height="26" rx="3"/>
+    <text class="t-s" x="834.1" y="395" text-anchor="end">filed Oct 15 · wrapped Oct 24</text>
+  </g>
+
+  <g id="one-inbox">
+    <text class="t-lane" x="16" y="440">one Inbox</text>
+    <text class="t-s"    x="16" y="454">FIX-2058 · done</text>
+    <rect class="done" x="842.1" y="426" width="43.4" height="26" rx="3"/>
+    <text class="t-s" x="834.1" y="443" text-anchor="end">filed Oct 15 · wrapped Oct 27</text>
+  </g>
+
+  <g id="messages">
+    <text class="t-lane" x="16" y="488">messages</text>
+    <text class="t-s"    x="16" y="502">FIX-2070 · in flight</text>
+    <rect class="flight" x="863.8" y="474" width="32.6" height="26" rx="3"/>
+    <text class="t-s" x="855.8" y="491" text-anchor="end">filed Oct 21 · closure running</text>
+  </g>
+
+  <g id="renames">
+    <text class="t-lane" x="16" y="536">coordination renames</text>
+    <text class="t-s"    x="16" y="550">FIX-2071 · done</text>
+    <rect class="done" x="863.8" y="522" width="32.6" height="26" rx="3"/>
+    <text class="t-s" x="855.8" y="539" text-anchor="end">filed Oct 21 · wrapped Oct 30</text>
+  </g>
+
+  <g id="phased">
+    <text class="t-lane" x="16" y="584">phased workflows</text>
+    <text class="t-s"    x="16" y="598">FIX-2092 · in flight</text>
+    <rect class="flight" x="863.8" y="570" width="32.6" height="26" rx="3"/>
+    <text class="t-s" x="855.8" y="587" text-anchor="end">filed Oct 21 · epic spec in review</text>
+  </g>
+
+  <g id="now">
+    <path class="now" d="M896.4 30 V608"/>
+    <text class="t-now" x="890.4" y="624" text-anchor="end">now · Oct 30</text>
+  </g>
+</svg>
