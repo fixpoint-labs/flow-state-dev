@@ -15,13 +15,13 @@ import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
-  cancelAndResume,
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
   type SuspensionHold,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
+import { cancelAndResume } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { ALLOW_FOR_RUN, harnessManager, harnessStub, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds, type HarnessStubOptions, type StubToolCall } from "../src";
 import { harnessTaskId } from "../src/workspace";

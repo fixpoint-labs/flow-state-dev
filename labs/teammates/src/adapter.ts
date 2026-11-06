@@ -821,9 +821,10 @@ function runOf(row: Record<string, any>): Pick<BoardTask, "run"> {
   return Object.keys(run).length === 0 ? {} : { run };
 }
 
-/** When a row's run started: the row's own start, else its run's (rows before either carry neither, BP-030). */
+/** When this attempt's run started: its run link's start, else the task's own (rows before either carry neither, BP-030). */
 function startedAtOf(row: Record<string, any>): { startedAt?: number } {
-  const at = typeof row.startedAt === "number" ? row.startedAt : row.run?.startedAt;
+  // This attempt's start: a retry keeps the task's own `startedAt` (its first start), so the run's comes first.
+  const at = typeof row.run?.startedAt === "number" ? row.run.startedAt : row.startedAt;
   return typeof at === "number" ? { startedAt: at } : {};
 }
 

@@ -17,11 +17,12 @@ import {
   goalSeekLoop,
   mapToVerdict,
   taskWorkerInputSchema,
-  GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
   type Verdict,
   type TaskBoardHandle,
 } from "../../src/task-board";
-import { getOrCreateTaskCollection, openRowHolds } from "../../src/tasks";
+import { GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE } from "../../src/task-board/goal-seek-loop";
+import { getOrCreateTaskCollection } from "../../src/tasks";
+import { openRowHolds } from "../../src/tasks/collection/holds";
 import { setNextDrainUnseeded } from "../../src/task-board/blocks/seed-collection";
 
 // ---------------------------------------------------------------------------

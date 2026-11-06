@@ -9,9 +9,6 @@
 import { describe, expect, it } from "vitest";
 import type { BlockContext, ResumeWaitInput, ResumeWaitResult } from "@flow-state-dev/core/types";
 import {
-  cancelAndResume,
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
   openHolds,
   ticketForClaim,
   TaskFilingRefusedError,
@@ -19,6 +16,9 @@ import {
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { cancelAndResume } from "../../src/tasks/helpers/user-stop";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { payOwedResumes } from "../../src/tasks/helpers/wait-on-task";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 

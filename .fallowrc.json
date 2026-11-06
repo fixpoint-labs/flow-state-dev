@@ -129,6 +129,13 @@
     // The Teammates lab's byte copy of the registry's connection screen; its
     // backoff export is for apps that time their own retries.
     "labs/teammates/src/components/flow-state/connection-screen.tsx",
+    // Both labs' byte copies of the registry's conversation, installed with session-overlay:
+    // the overlay draws its ConversationScrollButton; the rest is for apps that draw a conversation.
+    "labs/claude-code-style/src/components/flow-state/conversation.tsx",
+    "labs/teammates/src/components/flow-state/conversation.tsx",
+    // The Teammates lab's byte copy of the registry's session-overlay: it draws the modal only,
+    // so the sheet's provider and area are for apps like the Claude Code-style lab.
+    "labs/teammates/src/components/flow-state/session-overlay.tsx",
     // Kitchen Sink's byte copy of the registry's request-recovery: its failed-turn
     // line draws `RequestRecovery`; `INTERRUPTED_REASON` is for apps that word their own.
     "apps/kitchen-sink/components/flow-state/request-recovery.tsx",

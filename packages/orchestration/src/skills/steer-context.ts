@@ -7,16 +7,13 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { currentWorkerClaim } from "../task-board/flow-policy-wiring";
 import { isTaskTurn } from "../task-board/task-turn";
 import {
-  readCommittedTask,
-  shownSteer,
-  steersTakenIn,
   ticketForClaim,
-  untakenSteers,
-  type ShownSteer,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "../tasks";
+import { readCommittedTask } from "../tasks/collection/read-committed";
+import { shownSteer, steersTakenIn, untakenSteers, type ShownSteer } from "../tasks/steers";
 
 export type { ShownSteer };
 

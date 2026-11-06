@@ -21,7 +21,8 @@ vi.mock("../../src/tasks/collection/field-rules", async (importOriginal) => {
   return { ...real, TASK_FIELD_RULES, lockedFields };
 });
 
-const { createResourceBackedTaskCollection, createStateBackedTaskCollection, ticketForClaim } = await import("../../src/tasks");
+const { createResourceBackedTaskCollection, createStateBackedTaskCollection } = await import("../../src/internal");
+const { ticketForClaim } = await import("../../src/tasks");
 const { createFakeResourceCollection, createFakeSequencerState } = await import("../helpers");
 
 const BACKINGS = [

@@ -76,8 +76,8 @@ import {
   activeSkillsArraySchema,
   createSkillActivator,
   createSkillsLibrary,
-  pushActiveSkill
 } from "@flow-state-dev/orchestration";
+import { pushActiveSkill } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { doorTask, RESPOND_ACTION } from "./worker-door";

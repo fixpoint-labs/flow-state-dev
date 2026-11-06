@@ -19,9 +19,9 @@
  * turn generation, never a ticket minted from the row as it stands now.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { currentLeaseRenewal } from "@flow-state-dev/orchestration";
+import { currentLeaseRenewal, MAX_QUESTION_PROMPT } from "@flow-state-dev/orchestration/internal";
 import { askMidway } from "@flow-state-dev/orchestration/task-board";
-import { MAX_QUESTION_PROMPT, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import type { TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 
 /** What the ask step did: the task is held on the question, or this turn no longer holds its row. */
 export type AskStepOutcome = "held" | "superseded";

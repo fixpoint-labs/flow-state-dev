@@ -53,17 +53,19 @@ import { subscriptionResources } from "../subscriptions/rows";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { taskSettledEntry as orchestrationTaskSettledEntry } from "@flow-state-dev/orchestration";
 import {
-  clearNotice,
-  decideNotice,
   isTerminalStatus,
-  noticeKey,
   noticeMetadata,
   noticeText,
-  type NoticePolicy,
   type Task,
   type TaskCollectionRef,
   type TaskNotice
 } from "@flow-state-dev/orchestration/tasks";
+import {
+  clearNotice,
+  decideNotice,
+  noticeKey,
+  type NoticePolicy,
+} from "@flow-state-dev/orchestration/internal";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { filedByTurn, routedBriefOf, routedBriefSchema } from "../coordinator/routed-brief";

@@ -2,7 +2,7 @@
  * A task as a worker reads it (FIX-1794 S6): a leaf module, so the task entry
  * (`./task-entry`) and the plan (`./plan`) read a task with one spelling.
  */
-import { renderSteers } from "@flow-state-dev/orchestration";
+import { renderSteers } from "@flow-state-dev/orchestration/internal";
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { routedBriefOf, routedMessage } from "../coordinator/routed-brief";
 

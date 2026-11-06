@@ -6,7 +6,7 @@ import { useDraftSend } from "../lib/use-draft-send";
 import { Entry } from "./Entry";
 import { LoadEarlier } from "./LoadEarlier";
 import { ReviewCard } from "./ReviewCard";
-import { Sheet } from "./Sheet";
+import { SessionOverlay } from "./flow-state/session-overlay";
 import { WorkingLine } from "./WorkingLine";
 import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
@@ -82,7 +82,8 @@ export function ThreadView({
   };
 
   return (
-    <Sheet
+    <SessionOverlay
+      variant="sheet"
       label={`Task: ${task.title}`}
       feed={feed}
       onClose={onClose}
@@ -192,6 +193,6 @@ export function ThreadView({
       {task.status === "in_progress" && task.waitingOn === undefined ? (
         <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
-    </Sheet>
+    </SessionOverlay>
   );
 }

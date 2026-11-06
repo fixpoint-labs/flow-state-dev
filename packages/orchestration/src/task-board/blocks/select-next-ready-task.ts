@@ -27,12 +27,12 @@ export interface SelectNextReadyTaskOptions {
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
 }
 
-export const selectNextReadyTaskOutputSchema = z.object({
+const selectNextReadyTaskOutputSchema = z.object({
   ready: z.boolean(),
   task: taskSchema.optional(),
 });
 
-export type SelectNextReadyTaskOutput = z.infer<
+type SelectNextReadyTaskOutput = z.infer<
   typeof selectNextReadyTaskOutputSchema
 >;
 

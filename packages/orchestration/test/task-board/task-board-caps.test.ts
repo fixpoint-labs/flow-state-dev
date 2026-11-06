@@ -18,20 +18,20 @@ import { handler } from "@flow-state-dev/core";
 import { runForTest, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createStateBackedTaskCollection,
-  DEFAULT_MAX_TOTAL_RETRIES,
   defineTaskCollection,
   getOrCreateTaskCollection,
   TaskCapExceededError,
   type TaskCollectionRef,
   type TaskWorker,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { DEFAULT_MAX_TOTAL_RETRIES } from "../../src/tasks/collection/task-caps";
 import {
   createApplyReplan,
-  createSeedCollection,
   taskBoard,
   taskWorkerInputSchema,
 } from "../../src/task-board";
+import { createSeedCollection } from "../../src/task-board/blocks/seed-collection";
 import { createFakeSequencerState } from "../helpers";
 
 const noopWorker = handler({

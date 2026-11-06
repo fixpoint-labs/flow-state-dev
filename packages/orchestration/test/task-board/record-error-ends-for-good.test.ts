@@ -11,12 +11,12 @@ import { z } from "zod";
 import { createRecordError, TaskEndsForGoodError } from "../../src/task-board/blocks/record-result";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 import {
-  createStateBackedTaskCollection,
   isTerminalStatus,
   ticketForClaim,
   type TaskCollectionRef,
   type TaskWorker,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { createFakeSequencerState } from "../helpers";
 
 /** A claimed row with attempts to spare, and the recorder's context holding its claim. */

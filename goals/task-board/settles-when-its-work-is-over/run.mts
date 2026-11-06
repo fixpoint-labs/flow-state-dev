@@ -42,7 +42,8 @@ import { dispatchThroughSeam, markDispatcher, type BlockContext } from "@flow-st
 import { continueRequest, createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
-import { isSuspensionHold, openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
+import { openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
+import { isSuspensionHold } from "@flow-state-dev/orchestration/internal";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import {
   createWorkerInstallation,

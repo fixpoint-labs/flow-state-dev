@@ -18,7 +18,6 @@ import type { FlowStateRuntime, StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createResourceBackedTaskCollection,
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
@@ -26,6 +25,7 @@ import {
   type TaskCollectionRef,
   type TaskWorkerInput,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
 import { createFakeResourceCollection } from "../helpers";
 import { taskBoard, taskLedgers, taskWorkerInputSchema } from "../../src/task-board";
 import { heard } from "../fixtures/heard";

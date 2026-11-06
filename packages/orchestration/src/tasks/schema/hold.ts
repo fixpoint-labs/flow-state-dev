@@ -91,7 +91,6 @@ export const taskHoldSchema = z.union([suspensionHoldSchema, rowHoldSchema]);
 export type SuspensionHold = z.infer<typeof suspensionHoldSchema>;
 export type RowHold = z.infer<typeof rowHoldSchema>;
 export type TaskHold = z.infer<typeof taskHoldSchema>;
-export type HoldCloser = z.infer<typeof releaserSchema>;
 
 /** What a confirm's No does: cancel the task (the default), or let the work go on. */
 export type ConfirmOnNo = "cancel" | "continue";

@@ -19,14 +19,8 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
   isClaimable,
-  isReady,
-  MAX_STEERS,
-  NO_ANSWER_CAME,
   openHolds,
-  steerFromLine,
   ticketForClaim,
   TaskFilingRefusedError,
   type QuestionInit,
@@ -34,6 +28,12 @@ import {
   type Task,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { isReady } from "../../src/tasks/collection/internal";
+import { MAX_STEERS } from "../../src/tasks/schema/steer";
+import { NO_ANSWER_CAME } from "../../src/tasks/collection/holds";
+import { steerFromLine } from "../../src/tasks/steers";
 import { packWorkerInput } from "../../src/task-board/blocks/worker-step";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 

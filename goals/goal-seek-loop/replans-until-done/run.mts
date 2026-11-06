@@ -30,10 +30,10 @@ import {
   goalSeekLoop,
   taskBoard,
   taskWorkerInputSchema,
-  GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
   type TaskBoardHandle,
   type Verdict,
 } from "@flow-state-dev/orchestration/task-board";
+import { GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
 import type { TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { z } from "zod";

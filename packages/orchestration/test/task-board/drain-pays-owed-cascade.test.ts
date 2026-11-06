@@ -21,8 +21,10 @@ import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import type { JsonObject } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { CASCADE_DUE_MS, defineTaskCollection, type Task, type TaskCollectionRef, type TaskWorker } from "../../src/tasks";
-import { taskBoard, taskBoardStateSchema, taskWorkerInputSchema } from "../../src/task-board";
+import { defineTaskCollection, type Task, type TaskCollectionRef, type TaskWorker } from "../../src/tasks";
+import { CASCADE_DUE_MS } from "../../src/tasks/collection/internal";
+import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
+import { taskBoardStateSchema } from "../../src/task-board/schemas";
 
 const IDLE_POLL_MS = 5;
 const MAX_ITERATIONS = 30;

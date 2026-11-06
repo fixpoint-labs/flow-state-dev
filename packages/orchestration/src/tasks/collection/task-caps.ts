@@ -216,10 +216,10 @@ export interface TaskCapOptions {
 }
 
 /** Default lifetime ceiling applied where a board/library constructs a collection. */
-export const DEFAULT_MAX_TOTAL_TASKS = 500;
+const DEFAULT_MAX_TOTAL_TASKS = 500;
 
 /** Default enqueue-burst ceiling applied where a board/library constructs a collection. */
-export const DEFAULT_MAX_ENQUEUED_TASKS = 100;
+const DEFAULT_MAX_ENQUEUED_TASKS = 100;
 
 /**
  * Default cumulative retry budget applied where a board/pattern constructs a

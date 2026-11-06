@@ -21,9 +21,9 @@ import { z } from "zod";
 import { runAction } from "@flow-state-dev/engine";
 import {
   taskBoard,
-  taskBoardStateSchema,
   taskWorkerInputSchema,
 } from "@flow-state-dev/orchestration/task-board";
+import { taskBoardStateSchema } from "@flow-state-dev/orchestration/internal";
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import {
   durableStores,

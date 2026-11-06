@@ -11,7 +11,8 @@ import { Spend } from "./flow-state/spend";
 import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
-import { SessionPopup, Steps } from "./SessionPopup";
+import { SessionOverlay } from "./flow-state/session-overlay";
+import { Steps } from "./Steps";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
 export type Popup =
@@ -24,6 +25,12 @@ const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1
 /** A task's line, the same in the thread and on the popup: a coding task, or what was asked of whom. */
 export function taskLine(task: { title: string; to: string }, coding: boolean, nameOf: (id: string) => string): string {
   return coding ? `Coding task: ${task.title}` : `Asked ${nameOf(task.to)} to ${lowerFirst(task.title)}`;
+}
+
+/** A failed or cancelled task's reason, its first line only; the popup has the whole. */
+export function reasonLine(task: Pick<BoardTask, "error">): string | undefined {
+  const line = task.error?.split("\n").find((l) => l.trim() !== "")?.trim();
+  return line === "" ? undefined : line;
 }
 
 /** What a coding task runs on, as its line names it: the harness, and the model when its run reported one. */
@@ -144,7 +151,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
     ) : null;
   const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : task?.status;
   return (
-    <SessionPopup label={line} title={title} status={status} onClose={onClose} pinned={pinned}>
+    <SessionOverlay variant="modal" label={line} title={title} status={status} onClose={onClose} footer={pinned}>
       {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
       {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
       {task?.spend && isCoding(task.to) ? (
@@ -188,7 +195,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
       {task?.status === "running" && task.waiting === undefined && task.runSessionId !== undefined && steps.length > 0 ? (
         <WorkingLine adapter={adapter} task={task} runSessionId={task.runSessionId} />
       ) : null}
-    </SessionPopup>
+    </SessionOverlay>
   );
 }
 
@@ -319,12 +326,12 @@ function MessagePopup({ adapter, popup, nameOf, lookOf, onClose }: {
   const to = nameOf(popup.to);
   const line = `Messaged ${to}`;
   return (
-    <SessionPopup label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} onClose={onClose}>
+    <SessionOverlay variant="modal" label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} onClose={onClose}>
       <p className="font-mono text-xs text-muted-foreground">
         {nameOf(popup.from)} → {to}
       </p>
       <Steps steps={steps} nameOf={nameOf} empty={`${popup.text}\n\n${to} hasn't read it yet.`} />
-    </SessionPopup>
+    </SessionOverlay>
   );
 }
 

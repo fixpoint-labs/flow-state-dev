@@ -35,7 +35,8 @@
  * own, so that strip went with the drain.)
  */
 
-import { hasOpenHold, isClaimable, leaseLapsed, type Task } from "@flow-state-dev/orchestration/tasks";
+import { isClaimable, leaseLapsed, type Task } from "@flow-state-dev/orchestration/tasks";
+import { hasOpenHold } from "@flow-state-dev/orchestration/internal";
 
 /** One row as a column carries it — what a reader of the queue needs and no more. */
 export interface QueueRow {

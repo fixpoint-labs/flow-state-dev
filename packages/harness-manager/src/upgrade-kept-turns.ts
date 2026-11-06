@@ -20,7 +20,8 @@
  * topic leads with (`runBoardSegment`).
  */
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { isTerminalStatus, steerWrite, type Task } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, type Task } from "@flow-state-dev/orchestration/tasks";
+import { steerWrite } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { runBoardSegment } from "./workspace";
 

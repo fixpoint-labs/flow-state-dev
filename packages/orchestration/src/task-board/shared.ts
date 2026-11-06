@@ -9,7 +9,6 @@
  */
 import {
   fifoClaimOrder,
-  hasOpenHold,
   isClaimable,
   leaseLapsed,
   priorityClaimOrder,
@@ -18,6 +17,7 @@ import {
   type ClaimOrder,
   type TaskStatus,
 } from "../tasks";
+import { hasOpenHold } from "../tasks/collection/holds";
 
 /**
  * Accepted shapes for the Task Board's `claimOrder` config: either a

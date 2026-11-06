@@ -18,11 +18,10 @@
  */
 import type { BlockContext, SessionView } from "@flow-state-dev/core/types";
 import {
-  findTaskPartitions,
   isTerminalStatus,
-  rowsInSession,
   type TaskCollectionRef
 } from "@flow-state-dev/orchestration/tasks";
+import { findTaskPartitions, rowsInSession } from "@flow-state-dev/orchestration/internal";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-board/ledger";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";

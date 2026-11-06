@@ -10,7 +10,7 @@ import type {
   StateRef,
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core";
-import type { TaskChangeEvent } from "../src/tasks";
+import type { TaskChangeEvent } from "../src/tasks/collection/change-event";
 
 /** Captured `onChange` events for assertions in tests. */
 export interface CapturedChanges {

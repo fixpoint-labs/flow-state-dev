@@ -5,10 +5,10 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { createCapturedChanges, createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 async function sequencerBacking(): Promise<TaskCollectionRef> {

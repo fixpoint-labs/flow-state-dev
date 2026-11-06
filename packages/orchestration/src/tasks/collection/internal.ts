@@ -327,7 +327,6 @@ export interface TaskSettingsPatch {
   assignee?: string;
 }
 
-export { hasStarted };
 
 /**
  * A release and nothing else, of a row stored `blocked` before FIX-2080
@@ -1121,7 +1120,7 @@ export const MIN_LEASE_DURATION_MS = 1_000;
  * would rebuild the renewal write storm the floor exists to prevent — out of a
  * lease nobody would call invalid. About 74.5 days.
  */
-export const MAX_LEASE_DURATION_MS = 2_147_483_647 * 3;
+const MAX_LEASE_DURATION_MS = 2_147_483_647 * 3;
 
 /**
  * Refuse a lease duration outside its permissible domain (FIX-1005).

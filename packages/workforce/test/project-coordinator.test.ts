@@ -34,7 +34,7 @@ import {
 import type { WorkerManifest } from "../src/manifest";
 import { ROSTER_FLOW } from "../src/workers/keys";
 import { askMidway, currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
-import { findTaskPartitions } from "@flow-state-dev/orchestration/tasks";
+import { findTaskPartitions } from "@flow-state-dev/orchestration/internal";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../src/conversation-board/ledger";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
 import { messageReceivedEntry } from "../src/messages/message-received-entry";

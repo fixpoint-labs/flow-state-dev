@@ -75,7 +75,8 @@ import {
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
-import { assertDispatchEntrySupported, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { assertDispatchEntrySupported } from "@flow-state-dev/orchestration/internal";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,

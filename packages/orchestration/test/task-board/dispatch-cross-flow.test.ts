@@ -25,13 +25,13 @@ import { z } from "zod";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  MIN_LEASE_DURATION_MS,
   resolveResourceCollection,
   type Task,
   type ClaimOrder,
   type TaskWorkerInput,
-  openRowHolds,
 } from "../../src/tasks";
+import { MIN_LEASE_DURATION_MS } from "../../src/tasks/collection/internal";
+import { openRowHolds } from "../../src/tasks/collection/holds";
 import { askMidway, taskBoard, taskToolActions, taskWorkerInputSchema } from "../../src/task-board";
 import { currentLeaseRenewal } from "../../src/tasks/lease-renewal-scope";
 import { heard } from "../fixtures/heard";

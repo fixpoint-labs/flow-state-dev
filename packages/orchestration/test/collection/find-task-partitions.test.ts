@@ -24,11 +24,11 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import {
   defineTaskCollection,
-  findTaskPartitions,
   getOrCreateTaskCollection,
-  taskLedgerResources,
   taskSchema,
 } from "../../src/tasks";
+import { findTaskPartitions } from "../../src/tasks/collection/find-task-partitions";
+import { taskLedgerResources } from "../../src/tasks/collection/define-task-collection";
 import { resolveTaskPartition } from "../../src/tasks/collection/partition";
 
 const LEDGER = "convo-tasks";

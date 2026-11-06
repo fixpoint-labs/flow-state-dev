@@ -15,7 +15,7 @@
  */
 import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
 import type { BlockContext, ReadConfig } from "@flow-state-dev/core/types";
-import { rowsInSession } from "@flow-state-dev/orchestration/tasks";
+import { rowsInSession } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { readRunChanges, runChangesSchema, type RunChanges } from "./commits";
 import { readRunRow, RUNS, runRecordCollection, runTopic } from "./run-record";

@@ -22,11 +22,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createStateBackedTaskCollection,
-  DEFAULT_LEASE_DURATION_MS,
   ticketForClaim,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { DEFAULT_LEASE_DURATION_MS } from "../../src/tasks/collection/internal";
 import { boardQuiescence, type BoardQuiescence } from "../../src/task-board/quiescence";
 import { whenBoardClaimable } from "../../src/task-board/predicates";
 import { runsElsewhereFor } from "../../src/task-board/board-mode";

@@ -48,13 +48,13 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  taskLedgerResources,
   isTerminalStatus,
   resolveResourceCollection,
   type Task,
   type TaskCollectionRef,
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
+import { taskLedgerResources } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { filingSessionIdOf } from "./filing-session";
 import { CONVERSATION_BOARD_CLIENT_FIELDS, conversationPartition } from "./ledger";

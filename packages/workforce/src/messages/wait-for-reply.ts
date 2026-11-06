@@ -8,8 +8,7 @@
  */
 import { waitOnRequest } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { checkWaitable, toolCallOf } from "@flow-state-dev/orchestration/task-board";
-import { hasEnded } from "@flow-state-dev/orchestration/tasks";
+import { checkWaitable, toolCallOf, hasEnded } from "@flow-state-dev/orchestration/internal";
 import type { WorkerInstallation } from "../workers/installation";
 import { messageLogOf, newMessageId, type WorkerMessageRow } from "./message-log";
 import { sendMessage, type SendMessageInput } from "./send-message";

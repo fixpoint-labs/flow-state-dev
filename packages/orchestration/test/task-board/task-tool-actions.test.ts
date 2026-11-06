@@ -29,7 +29,8 @@ import {
   type TaskCollectionRef,
   type TaskWorker,
 } from "../../src/tasks";
-import { taskBoard, taskToolActions, taskToolSuffix } from "../../src/task-board";
+import { taskBoard, taskToolActions } from "../../src/task-board";
+import { taskToolSuffix } from "../../src/skills/task-tool-suffix";
 import { openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 import { heard } from "../fixtures/heard";
 
