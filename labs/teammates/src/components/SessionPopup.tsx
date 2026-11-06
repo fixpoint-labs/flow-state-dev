@@ -3,7 +3,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { stepRun, type SessionStep } from "../adapter";
 import { MarkdownText } from "./flow-state/message-response";
-import { JumpToLatestButton } from "./JumpToLatest";
+import { ConversationScrollButton } from "./flow-state/conversation";
 import { ToolRun } from "./ToolRun";
 
 // Framed after the Claude Code-style lab's `Sheet`; one overlay both labs share is FIX-2340.
@@ -65,7 +65,7 @@ export function SessionPopup({ label, title, status, onClose, children, pinned }
         </header>
         <div ref={feed.ref} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
           {children}
-          <JumpToLatestButton feed={feed} />
+          <ConversationScrollButton feed={feed} className="size-8" />
         </div>
         {pinned ? <div className="max-h-[60%] shrink-0 overflow-y-auto border-t border-border px-5 py-3">{pinned}</div> : null}
       </section>

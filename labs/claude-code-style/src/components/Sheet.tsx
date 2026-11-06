@@ -3,7 +3,7 @@ import { XIcon } from "lucide-react";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Clamp } from "./Clamp";
-import { JumpToLatestButton } from "./JumpToLatest";
+import { ConversationScrollButton } from "./flow-state/conversation";
 
 /** Where a sheet draws, and how `SheetArea` names that place. */
 const SheetHost = createContext<{ host: HTMLElement | null; setHost: (host: HTMLElement | null) => void }>({
@@ -109,7 +109,7 @@ export function Sheet({ label, title, meta, subtitle, toolbar, onClose, feed: sh
         {toolbar ? <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-5 py-2">{toolbar}</div> : null}
         <div ref={feed.ref} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4 [&>*]:shrink-0">
           {children}
-          <JumpToLatestButton feed={feed} />
+          <ConversationScrollButton feed={feed} className="size-8" />
         </div>
         {footer ? <footer className="shrink-0 border-t border-border px-5 py-3">{footer}</footer> : null}
       </section>

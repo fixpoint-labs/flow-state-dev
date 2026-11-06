@@ -8,7 +8,7 @@ import { Composer } from "./Composer";
 import { PaneHeader } from "./PaneHeader";
 import { WorkingDots } from "./WorkingLine";
 import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
-import { JumpToLatestButton } from "./JumpToLatest";
+import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { ThreadCard } from "./ThreadCard";
@@ -130,7 +130,7 @@ export function Thread({
             ) : null}
           </div>
         )}
-        <JumpToLatestButton feed={feed} />
+        <ConversationScrollButton feed={feed} className="size-8" />
       </div>
       {session.projectId === null ? (
         <div role="note" className="border-t border-border px-6 py-4 text-sm">
