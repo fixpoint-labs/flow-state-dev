@@ -28,6 +28,15 @@
   --radius-xl: 1rem;
 }
 
+/*
+ * Dark theme's rules, softened: the design system's #57544a drawn at about
+ * half strength, so the many nested borders sit back from the content.
+ * Same specificity as the theme's own and after its import, so it wins.
+ */
+html[data-theme="dark"] {
+  --border: #57544a78;
+}
+
 @theme inline {
   --color-sidebar: var(--sidebar);
   --color-inspector: var(--inspector);
