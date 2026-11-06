@@ -19,7 +19,7 @@ import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { fsReader } from "./mechanism-exports.mjs";
 import { ROOT, compare, render, rootReport } from "./check-root-exports.mjs";
-import { importsIn } from "./import-census.mjs";
+import { importCensus, importsIn, importsInCode } from "./import-census.mjs";
 
 const real = fsReader(ROOT);
 
@@ -58,6 +58,10 @@ export const zzAfterComment = 1;
 export const zzChangesetDoc = 1;
 export const zzChangesetElsewhere = 1;
 export const zzWasUsed = 1;
+export const zzTemplateTail = 1;
+export const zzInStringLiteral = 1;
+export const zzAfterRegex = 1;
+export const zzAfterTemplate = 1;
 export interface ZzOptions { a: number }
 export interface ZzBodyOnly { b: number }
 export function zzSigned(options: ZzOptions): void { const x: ZzBodyOnly = { b: options.a }; void x; }
@@ -70,6 +74,19 @@ export function zzSigned(options: ZzOptions): void { const x: ZzBodyOnly = { b: 
   "apps/kitchen-sink/zz-plant.ts": `import { zzAppUsed, zzSigned } from "@flow-state-dev/core";\nimport type { Seam } from "@flow-state-dev/core/internal";\n`,
   // A commented-out import is not a use, and a comment inside a brace list doesn't hide the name after it.
   "apps/kitchen-sink/zz-comments.ts": `// import { zzCommentedOut } from "@flow-state-dev/core";\n/* import { zzBlockCommented } from "@flow-state-dev/core"; */\nimport {\n  // a note\n  zzAfterComment,\n} from "@flow-state-dev/core";\nconst url = "https://example.com"; // import { zzInString } from "@flow-state-dev/core"\n`,
+  // Comments are found in parser context: a template's tail or a regex literal is not a comment,
+  // so a `/*` or `//` inside one must not blank the code after it, and a comment after a
+  // template is still a comment. Text inside a string literal is never an import.
+  "labs/zz-plant/template.ts": "const glob = `${dir}/*.ts`;\nconst o = require(\"@flow-state-dev/core/internal\");\n",
+  "examples/zz-plant/regex.js": `const re = /https?:\\/\\//; const s = require("@flow-state-dev/react/internal");\nconst re2 = /^\\/*$/;\nimport { zzAfterRegex } from "@flow-state-dev/core";\n`,
+  "apps/kitchen-sink/zz-template.ts":
+    "const u = `${base}//x`; import { zzAfterTemplate } from \"@flow-state-dev/core\";\n" +
+    "const m = `hi ${name}`;\n// import { zzTemplateTail } from \"@flow-state-dev/core\";\n" +
+    "const said = \"import { zzInStringLiteral } from '@flow-state-dev/core'\";\n",
+  // The two reviewer repros, verbatim.
+  "apps/kitchen-sink/zz-probe.ts":
+    "const m = `hi ${name}`;\n// import { zzUnused } from \"@flow-state-dev/probe\";\n" +
+    "const message = \"import { zzUnused } from '@flow-state-dev/probe'\";\n",
   "labs/zz-plant/dynamic.ts": `const seams = await import("@flow-state-dev/engine/internal");\n`,
   "examples/zz-plant/require.js": `const o = require("@flow-state-dev/orchestration/internal");\n`,
   // Only a code-form mention names an export: a bare word in prose (zzProseOnly, zzReadmeDump)
@@ -106,9 +123,11 @@ describe("the export check", () => {
       "@flow-state-dev/core zzChangesetElsewhere", // its changeset's Docs: line doesn't list the README
       "@flow-state-dev/core zzCommentedOut",
       "@flow-state-dev/core zzGoalOnly", // goals are ours
+      "@flow-state-dev/core zzInStringLiteral", // an import's text inside a string literal is not an import
       "@flow-state-dev/core zzNobody",
       "@flow-state-dev/core zzProseOnly", // a bare word in README prose is not the README naming it
       "@flow-state-dev/core zzReadmeDump",
+      "@flow-state-dev/core zzTemplateTail", // a comment after a template literal is still a comment
       "@flow-state-dev/core zzWasUsed",
       "@flow-state-dev/engine zzSiblingOnly", // a sibling package's import is not a use
       "@flow-state-dev/shift-manager zzShiftRoot", // a root outside src/ is read too
@@ -120,6 +139,9 @@ describe("the export check", () => {
     const core = planted.roots.get("@flow-state-dev/core");
     assert.equal(core.get("zzAppUsed").why, "adopter");
     assert.equal(core.get("zzAfterComment").why, "adopter");
+    // A regex literal or a template holding `/*` or `//` does not hide the import after it.
+    assert.equal(core.get("zzAfterRegex").why, "adopter");
+    assert.equal(core.get("zzAfterTemplate").why, "adopter");
     assert.equal(core.get("ZzOptions").why, "reached");
     for (const n of ["zzTicked", "zzCalled", "zzImported", "zzChangesetDoc"]) assert.equal(core.get(n).why, "readme", n);
   });
@@ -143,13 +165,20 @@ describe("the export check", () => {
   it("names every new adopter import of an /internal path, in each form, and not a goal's", () => {
     assert.deepEqual(result.newInternal.map((i) => `${i.file} ${i.form} ${i.spec}`).sort(), [
       "apps/kitchen-sink/zz-plant.ts import type @flow-state-dev/core/internal",
+      "examples/zz-plant/regex.js require() @flow-state-dev/react/internal",
       "examples/zz-plant/require.js require() @flow-state-dev/orchestration/internal",
       "labs/zz-plant/dynamic.ts import() @flow-state-dev/engine/internal",
+      "labs/zz-plant/template.ts require() @flow-state-dev/core/internal",
     ]);
   });
 });
 
 describe("the import census", () => {
+  it("counts neither a commented import after a template nor an import's text in a string", () => {
+    const { uses } = importCensus(overlay(plants));
+    assert.equal(uses.get("@flow-state-dev/probe"), undefined);
+  });
+
   it("reads every import form and the names each takes", () => {
     const text = [
       `import def, { a, type B, c as d } from "@flow-state-dev/core";`,
@@ -160,7 +189,10 @@ describe("the import census", () => {
       `type T = typeof import("@flow-state-dev/engine/internal");`,
       `const m = require("@flow-state-dev/memory");`,
     ].join("\n");
-    assert.deepEqual(importsIn(text).map((i) => `${i.form} ${i.pkg}${i.sub} [${i.names.join(",")}]`), [
+    const show = (imports) => imports.map((i) => `${i.form} ${i.pkg}${i.sub} [${i.names.join(",")}]`);
+    // A code file is read from its syntax tree, Markdown as text: both must read every form alike.
+    assert.deepEqual(show(importsInCode(text, "x.ts")), show(importsIn(text)));
+    assert.deepEqual(show(importsIn(text)), [
       "import @flow-state-dev/core [a,B,c,default]",
       "import type @flow-state-dev/core/types [E]",
       "export from @flow-state-dev/react [f]",

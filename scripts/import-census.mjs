@@ -16,8 +16,9 @@
  * Retained history (`specs/`, `docs/internal/`, `.changeset/`, CHANGELOGs) is never read.
  *
  * Every import form counts: `import`, `import type`, `export … from`, a side-effect
- * `import "…"`, `import()` (including `typeof import()`), and `require()`. In a code file an
- * import inside a comment does not; in Markdown every code block's imports do.
+ * `import "…"`, `import()` (including `typeof import()`), and `require()`. A code file is read
+ * from its parsed syntax tree, so an import's text inside a comment or a string is not an
+ * import; in Markdown every code block's imports are matched as text.
  */
 import ts from "typescript";
 
@@ -60,30 +61,13 @@ const SIDE_EFFECT_RE = new RegExp(String.raw`\bimport\s*["']` + PKG + `["']`, "g
 // import("…"), typeof import("…"), require("…"), import x = require("…").
 const CALL_RE = new RegExp(String.raw`\b(import|require)\s*\(\s*["']` + PKG + String.raw`["']\s*\)`, "g");
 
-/**
- * `text` with its comments blanked to spaces (offsets kept), read by the TypeScript scanner so
- * a `//` inside a string survives. For code files only: in Markdown a `//` is prose.
- */
-export function stripComments(text) {
-  const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.JSX, text);
-  let out = "";
-  let at = 0;
-  for (let k = scanner.scan(); k !== ts.SyntaxKind.EndOfFileToken; k = scanner.scan()) {
-    if (k !== ts.SyntaxKind.SingleLineCommentTrivia && k !== ts.SyntaxKind.MultiLineCommentTrivia) continue;
-    const start = scanner.getTokenStart?.() ?? scanner.getTokenPos();
-    out += text.slice(at, start) + text.slice(start, scanner.getTextPos()).replace(/[^\n]/g, " ");
-    at = scanner.getTextPos();
-  }
-  return out + text.slice(at);
-}
-
 const isCode = (f) => /\.[mc]?[jt]sx?$/.test(f);
 
 const bindingNames = (list) =>
   (list ?? "").split(",").map((s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0].trim()).filter(Boolean);
 
 /**
- * Every `@flow-state-dev/*` import in `text`: { pkg, sub, names, form }. `sub` is `""` for a
+ * Every `@flow-state-dev/*` import in Markdown `text`, matched as text: { pkg, sub, names, form }. `sub` is `""` for a
  * root import. `names` are the root's names the import takes: the brace list, `default` for
  * a default binding, and each `ns.name` the file reads off a namespace import. A bare `export *`,
  * a side-effect import and a call form take no names.
@@ -102,6 +86,60 @@ export function importsIn(text) {
   return out;
 }
 
+const SPEC_RE = /^(@flow-state-dev\/[\w.-]+)(\/[^"'\s]*)?$/;
+const nameOf = (el) => (el.propertyName ?? el.name).text;
+
+/**
+ * Every `@flow-state-dev/*` import in the code file `file`, read from its syntax tree: the same
+ * `{ pkg, sub, names, form }` records as `importsIn`. Only real import syntax counts, so text
+ * inside a comment, a string, a template or a regex literal is never an import.
+ */
+export function importsInCode(text, file) {
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, false);
+  const out = [];
+  const namespaces = new Map();
+  const add = (spec, names, form) => {
+    const m = spec && ts.isStringLiteralLike(spec) && SPEC_RE.exec(spec.text);
+    if (!m) return null;
+    const rec = { pkg: m[1], sub: m[2] ?? "", names, form };
+    out.push(rec);
+    return rec;
+  };
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node)) {
+      const clause = node.importClause;
+      const names = clause?.name ? ["default"] : [];
+      const bindings = clause?.namedBindings;
+      if (bindings && ts.isNamedImports(bindings)) names.unshift(...bindings.elements.map(nameOf));
+      const rec = add(node.moduleSpecifier, names, clause?.isTypeOnly ? "import type" : "import");
+      if (rec && bindings && ts.isNamespaceImport(bindings)) namespaces.set(bindings.name.text, rec);
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+      const names = node.exportClause && ts.isNamedExports(node.exportClause) ? node.exportClause.elements.map(nameOf) : [];
+      add(node.moduleSpecifier, names, node.isTypeOnly ? "import type" : "export from");
+    } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      add(node.moduleReference.expression, [], "require()");
+    } else if (ts.isCallExpression(node) && node.arguments.length > 0) {
+      const callee = node.expression;
+      if (callee.kind === ts.SyntaxKind.ImportKeyword) add(node.arguments[0], [], "import()");
+      else if (ts.isIdentifier(callee) && callee.text === "require") add(node.arguments[0], [], "require()");
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      add(node.argument.literal, [], "import()");
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  if (namespaces.size) {
+    // Each `ns.name`, in value or type position, the file reads off a namespace import.
+    const reads = (node) => {
+      const pair = ts.isPropertyAccessExpression(node) ? [node.expression, node.name] : ts.isQualifiedName(node) ? [node.left, node.right] : null;
+      if (pair && ts.isIdentifier(pair[0]) && namespaces.has(pair[0].text)) namespaces.get(pair[0].text).names.push(pair[1].text);
+      ts.forEachChild(node, reads);
+    };
+    reads(sf);
+  }
+  return out;
+}
+
 /**
  * Who imports each package root's names, and which adopter or docs files import an
  * `/internal` subpath. Reads only the adopter and docs files that mention the scope.
@@ -117,10 +155,8 @@ export function importCensus(read) {
   for (const file of files) {
     const raw = read(file);
     if (raw == null) continue;
-    // A commented-out import is not a use (and must not hide the name after it in a brace list).
-    const text = isCode(file) ? stripComments(raw) : raw;
     const area = areaOf(file);
-    for (const { pkg, sub, names, form } of importsIn(text)) {
+    for (const { pkg, sub, names, form } of isCode(file) ? importsInCode(raw, file) : importsIn(raw)) {
       if (isInternalSubpath(sub)) internalImports.push({ file, spec: pkg + sub, form });
       if (sub) continue;
       if (!uses.has(pkg)) uses.set(pkg, new Map());
