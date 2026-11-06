@@ -7,7 +7,9 @@
  *
  * The normalized `tier` maps to `search_context_size` (fast → "low", deep →
  * "high"); `balanced` omits the field and takes Perplexity's default. Domain
- * filters map to `search_domain_filter` (see `perplexityDomainFilter`).
+ * filters map to `search_domain_filter`, an allowlist or a denylist: with
+ * include domains the excludes are dropped, so an exclude inside an included
+ * domain is not applied (see `perplexityDomainFilter`).
  */
 
 import type { SearchProviderAdapter, SearchOutput } from "../types";

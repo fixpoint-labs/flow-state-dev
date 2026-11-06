@@ -98,14 +98,8 @@ describe("a running task's view ends in a live working line", () => {
 
 /** Session mode's opened background task: the same line, in the sheet the tasks pane opens. */
 function openInPane(task: TaskRow) {
-  let showTasks: (rows: TaskRow[]) => void = () => {};
   let showWork: (work: TaskWork) => void = () => {};
   const adapter = {
-    watchTasks: (_: string, onChange: (rows: TaskRow[]) => void) => {
-      showTasks = onChange;
-      onChange([task]);
-      return () => {};
-    },
     watchTaskWork: (_: string, __: string, onChange: (work: TaskWork) => void) => {
       showWork = onChange;
       onChange({ entries: DONE_SO_FAR });
@@ -113,13 +107,16 @@ function openInPane(task: TaskRow) {
     },
     taskActions: () => ({}),
   } as unknown as LabAdapter;
-  render(
+  // The app reads the rows and hands them to the pane (FIX-2399 E1): a row change is a new `tasks` prop.
+  const pane = (rows: TaskRow[]) => (
     <SheetProvider>
       <SheetArea>
-        <TasksPane adapter={adapter} sessionId="s-1" openId={task.id} onOpen={() => {}} onMissing={() => {}} />
+        <TasksPane adapter={adapter} sessionId="s-1" tasks={rows} openId={task.id} onOpen={() => {}} onMissing={() => {}} />
       </SheetArea>
-    </SheetProvider>,
+    </SheetProvider>
   );
+  const { rerender } = render(pane([task]));
+  const showTasks = (rows: TaskRow[]) => rerender(pane(rows));
   const sheet = () => screen.getByRole("dialog", { name: `Work: ${task.title}` });
   return {
     line: () => within(sheet()).queryByTestId("streaming-indicator"),

@@ -180,6 +180,10 @@
     { "file": "packages/shift-manager/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] },
     // and the Claude Code-style lab's copy of it, for the same reason.
     { "file": "labs/claude-code-style/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] },
+    // The labs' byte copies of the registry's task-signals: each draws TaskTime and the
+    // counts; the rest of the item's exports are for apps that format or read a signal apart.
+    { "file": "labs/claude-code-style/src/components/flow-state/task-signals.tsx", "exports": ["agoText", "taskSignal", "TaskSignal"] },
+    { "file": "labs/teammates/src/components/flow-state/task-signals.tsx", "exports": ["agoText"] },
     // The Teammates lab's byte copy of the registry's message-response: its cards draw
     // `MarkdownText`; `MessageResponse` is what the registry's `message` imports, which the lab doesn't install.
     { "file": "labs/teammates/src/components/flow-state/message-response.tsx", "exports": ["MessageResponse", "MessageResponseProps"] },

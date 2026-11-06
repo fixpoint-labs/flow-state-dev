@@ -393,3 +393,34 @@ describe("a coding task's hold, while it runs", () => {
     errors.mockRestore();
   });
 });
+
+describe("the board read's freshness", () => {
+  it("says stale while the board's read fails, keeping the last rows, and fresh once one succeeds", async () => {
+    let failing = false;
+    const { client, push } = clientWith(filed("in_progress"));
+    const flow = (client as unknown as { flow: (f: string) => { read: (a: string) => Promise<unknown> } }).flow;
+    (client as unknown as { flow: unknown }).flow = (name: string) => ({
+      read: async (action: string) => {
+        if (failing) throw new Error("the board is down");
+        return flow(name).read(action);
+      },
+    });
+    let tasks: BoardTask[] = [];
+    const stale: boolean[] = [];
+    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next), (next) => stale.push(next));
+    await until(() => tasks.length === 1);
+    expect(stale).toEqual([]);
+
+    failing = true;
+    push.hear({ kind: "resource" } as WireNotice);
+    await until(() => stale.length === 1);
+    expect(stale).toEqual([true]);
+    expect(tasks).toHaveLength(1);
+
+    failing = false;
+    push.hear({ kind: "resource" } as WireNotice);
+    await until(() => stale.length === 2);
+    stop();
+    expect(stale).toEqual([true, false]);
+  });
+});
