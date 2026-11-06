@@ -69,7 +69,9 @@ the operator.
 and refuses on another bind unless the operator started the lab with a flag. *Whatever the bind:*
 Settings always adds.
 
-**The trade-off.** On the one-person loopback lab the two are the same. They differ when the lab
+**The trade-off.** The bind is what the process was started with, never a request's address or
+`Host` header (BP-031); a port the operator forwards past loopback is their own act. On the
+one-person loopback lab the two are the same. They differ when the lab
 is shared: *whatever the bind* lets any signed-in user point runs at any local repository.
 *Loopback only* costs a check of the bind and one flag.
 
@@ -127,8 +129,8 @@ Every rule has one owner. Read a row to see where it is decided and where it is 
 |---|---|---|---|
 | ER-1 | **One list of admitted repositories**, kept by the host and persisted in its root, as the fetch pins are; `CLAUDE_CODE_STYLE_REPOSITORIES` seeds the same list. A project row only points at one. Nothing is admitted by being named in a row, because anyone can write one (BP-031). The lab keeps no second list | FIX-2593 | FIX-2594's spec review; the closure's restart leg |
 | ER-2 | A repository added later passes every check one named at start passes, in the same words. Settings asks the host's `checkRepository` and copies none | FIX-2593 | FIX-2594's spec review; the closure |
-| ER-3 | Removal is refused while git lists any worktree of the repository under the host's root, a run waiting for review included, since it still needs `land`. The refusal says how many. No retire state; a restart changes nothing. One removal path stays (FIX-2369 ER-5) | FIX-2593 | The closure's leg a |
-| ER-4 | Admitting a repository is decided by the transport, never by a request field (BP-031): Settings' add is on while the lab is bound to loopback, and refused on another bind unless the operator turned it on ([Q1](#q1)) | FIX-2594 | FIX-2594's spec review; the lab's README |
+| ER-3 | Removal is refused while git lists any worktree of the repository under the host's root, a run waiting for review included, since it still needs `land`. The refusal says how many. A worktree git lists whose directory is gone is pruned first and not counted, so a crashed run cannot block removal for good. No worktree is made in a repository between the check and the unregistering, and a repository being removed takes no new run: one exclusion covers both, whose shape is FIX-2593's. No retire state; a restart changes nothing. One removal path stays (FIX-2369 ER-5) | FIX-2593 | The closure's leg a |
+| ER-4 | Admitting a repository is decided by the host's own construction and the transport, never by a request field (BP-031). **The package:** registration refuses unless the host was built to allow it, default off, so no host app gains the door by upgrading. **The lab:** builds the host to allow it only while bound to loopback, or when the operator turned it on ([Q1](#q1)), read from the bind the process started with | FIX-2593 | FIX-2594's spec review, which sets it; the lab's README |
 | ER-5 | The lab says *repository*. `project` survives only where it names the workforce row or a package call (`listProjects`, `setWorkProject`, `readProjectSource`), inside the adapter and flow files. *Workspace* is never the person's word for it | FIX-2594 | Each lab child's review; the closure's sweep |
 | ER-6 | No default repository; a session's type is read from its main worker, never stored (FIX-2152 ER-8) | FIX-2594 | The closure's leg b |
 | ER-7 | Settings' add keeps FIX-2403: the check as the field is left, the *what happens to your repo* line, Create off while the server says no, the server's `repository-unusable` refusal | FIX-2594 | `checks-the-repository-first`, re-run at the closure |
@@ -172,6 +174,9 @@ README). FIX-2593, FIX-2597 and FIX-2595 start together.
 - **FIX-2152 is not amended.** Its objective is extended. Two lines read as the old shape: the
   graph edge *the app, its mode switch and its task reads* in its `SPEC.md`, and the *app's mode
   switch* seams row in its `DECISIONS.md`. A wording amendment is the owner's call.
+- **The gate sits in the package, the decision in the lab (review).** A published call that grants
+  operator access should not depend on every host app remembering to gate it, so the option is the
+  package's and defaults off; the lab only turns it on.
 - **Model lists** are FIX-2458's. FIX-2598 settles per-session or not, the default and the worker
   ids, inside [ER-10](#who-owns-what).
 - **Plan mode starts from a reproduction**, from FIX-2585, and files package support as a child
@@ -185,7 +190,9 @@ FIX-2595. **Harness, model and plan mode:** FIX-2597, FIX-2598, FIX-2599. They s
 no decision. A split gives each half its own closure with the matching legs. Recommended: every
 input to the harness half is outside the set (FIX-2458 is another project's epic, FIX-2585 is
 unscheduled), and FIX-2599's reproduction takes as long as it takes, so the repository half,
-buildable now, would wait on it. Not done: the owner placed both in this set.
+buildable now, would wait on it. Short of a split, the closure reports each leg by itself, so leg d's need for a signed-in Claude Code
+never hides a pass of the others. Not done: the owner placed both in this set; a second review
+recommended the split, and FIX-2595 as a quick fix, and neither is decided here.
 
 ## What the end-state POC showed
 
@@ -217,5 +224,7 @@ analyst ran `reuse-review` and the seven objectives, with the `adhd` frames inli
 - **Name held (Nov 6)** — the coordinator group's name made open; Q2 added.
 - **Scope grew (Nov 6)** — harness and model, plan mode and a harness-package child added; the split line recorded.
 - **Analysis (Nov 6)** — the host keeps the list of admitted repositories; removal is refused while a worktree exists; FIX-2597 shrank behind FIX-2458; the choice's carrier became ER-10; Q1 follows the bind; Q2 gained *Coordinators*.
+
+- **Review (Nov 6)** — ER-4's owner moved to FIX-2593, the package refusing unless built to allow it; ER-3 prunes a crashed run's worktree and excludes a concurrent add; the closure reports each leg by itself; the debt read slightly up; FIX-2597's graph edge and figure no longer carry model lists.
 
 **Open: 2.** Q1 and Q2.

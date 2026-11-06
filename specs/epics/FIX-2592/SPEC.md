@@ -14,7 +14,7 @@
 
 **Why now.** The lab is the app we use to build FSD, and the owner's pass over it found these
 gaps together. The pieces exist: FIX-2403's repository checks are merged, FIX-2369 ER-5 already
-puts a coding run in a worktree, and FIX-2458 gives all three harness packages a model list.
+puts a coding run in a worktree, and FIX-2458's merged spec gives all three harness packages a model list.
 
 ## The goal, and how we'll know it's met
 
@@ -28,7 +28,7 @@ the plan off before work starts; every run works in a git worktree of the real r
 | **The real need** | An app we can live in, which FIX-2369 asks of the labs. Today it teaches a wrong word, hides half its sessions, cannot add a repository without a restart, loses its status line and cannot pick a model |
 | **Smaller, and rejected** | "Rename and one sidebar." It meets the look, but the list cannot take a repository added later, so it misleads. **Two epics**, repositories and sidebar apart from harness, model and plan, is a real smaller goal; the owner's scope puts them in one set. The split line is in [DECISIONS](DECISIONS.md#split-line) |
 | **Bigger, and not this epic's** | Workstreams, members, MCP or checks in any screen · the lab's own trusted-repository flag · sessions joining live (FIX-2552) · rename, archive, search (FIX-2402) · a live-checkout opt-out (FIX-2251) |
-| **Not done if** | The closure check has not run · a run lands in a repository nobody chose · Settings accepts a repository the server refuses · removal strands a held worktree · a second list of repositories exists · *project* still names a repository in the lab · `?view=` is still read · the line scrolls out of view · the lab keeps a model list a package could give · plan mode is offered on a harness without one, or work starts before sign-off · a closure bug is open |
+| **Not done if** | The closure check has not run · a run lands in a repository nobody chose · Settings accepts a repository the server refuses · a host not built to allow it accepts a registration · removal strands a held worktree · a second list of repositories exists · *project* still names a repository in the lab · `?view=` is still read · the line scrolls out of view · the lab keeps a model list a package could give · plan mode is offered on a harness without one, or work starts before sign-off · a closure bug is open |
 
 ```mermaid
 flowchart LR
@@ -49,9 +49,9 @@ repository's own git, never from the lab's state.
 
 | How we verify | |
 |---|---|
-| **Goal check** | The closure issue, [FIX-2596](https://linear.app/fixpoint-labs/issue/FIX-2596), on one `main` commit after every other child merges, in the browser. Legs a and b use the scripted coder. Leg c stays scripted only if the scripted harness reports the model id it was given; leg d needs a real signed-in Claude Code |
-| **Signal** | **a:** the run's worktree is in the new repository's own `git worktree list`; an unusable repository is refused with its reason; removal with a run holding a worktree leaves it intact; the list survives a restart. **b:** both types in one list, ⌘K and Alt+↑/↓ cross them, `?session=` reopens one, and in a conversation taller than the view the working line is inside it. **c:** a harness change swaps the model list, and the run's tag shows what was chosen. **d:** a plan shows, a request for changes revises it, sign-off starts work; a harness without plan mode does not offer it |
-| **Input** | A repository made per run, a held-out prompt long enough to overflow the view, models read from the list at run time |
+| **Goal check** | The closure issue, [FIX-2596](https://linear.app/fixpoint-labs/issue/FIX-2596), on one `main` commit after every other child merges, in the browser. Legs a and b use the scripted coder. Leg c stays scripted only if the scripted harness reports the model id it was given; leg d needs a real signed-in Claude Code. **Each leg is reported by itself**, so a leg d that cannot run names its environment and does not hide a pass of a, b and c. The goal is met only when all four pass |
+| **Signal** | **a:** the run's worktree is in the new repository's own `git worktree list` and the operator's own checkout is unchanged; an unusable repository is refused with its reason; removal with a run holding a worktree leaves it intact; the list survives a restart. **b:** both types in one list, ⌘K and Alt+↑/↓ cross them, `?session=` reopens one, and in a conversation taller than the view the working line is inside it. **c:** a harness change swaps the model list, and the run's tag shows what was chosen. **d:** a plan shows, a request for changes revises it, sign-off starts work; a harness without plan mode does not offer it |
+| **Input** | A repository made per run and left dirty on a branch, as an operator leaves one; a held-out prompt long enough to overflow the view, models read from the list at run time |
 | **Anti-game** | Read the repository's git, the run's own report and the browser's geometry. Never the chip, the adapter or a stubbed package call |
 | **Control that must fail** | Today's `main`: every leg. A host that ignores runtime registration: leg a. A plan that does not wait for sign-off: leg d |
 
@@ -59,10 +59,11 @@ repository's own git, never from the lab's state.
 
 ## What's in the box
 
-![In the box: the lab's sidebar, dialog, Settings, repository wording, working line, harness and model choice and plan mode; the packages' runtime registration and each harness's models and plan mode. A fence: admission follows the transport's bind. Composed in by the app: which repositories the host admits. Replaced: the view switch and the environment variable as the only door. Not built: workstreams and members in any screen, the trust flag, live join, rename and search, a live-checkout opt-out, any workforce package change](figures/end-state.svg)
+![In the box: the lab's sidebar, dialog, Settings, repository wording, working line, harness and model choice and plan mode; the packages' runtime registration and each harness's plan mode (its models are FIX-2458's). A fence: the package refuses registration unless the host is built to allow it, and the lab allows it by the bind. Composed in by the app: which repositories the host admits. Replaced: the view switch and the environment variable as the only door. Not built: workstreams and members in any screen, the trust flag, live join, rename and search, a live-checkout opt-out, any workforce package change](figures/end-state.svg)
 
 The fence is the cost of the worktree: a run in an admitted repository acts with the operator's
-own access to it, so only the operator's door admits one ([ER-4](DECISIONS.md#who-owns-what)).
+own access to it, so only the operator's door admits one: the package refuses unless the host is built
+to allow it, and the lab allows it by the bind ([ER-4](DECISIONS.md#who-owns-what)).
 
 **Docs:** no `apps/docs` page. FIX-2594 publishes the story in the lab's README (one sidebar,
 Settings, *repository*); FIX-2598 and FIX-2599 update its *Coder* and plan sections. FIX-2593 and
@@ -74,7 +75,7 @@ The reviewed snapshot; live state is in Linear.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-2593](https://linear.app/fixpoint-labs/issue/FIX-2593) · package | The workspace host registers and removes repositories while it runs, with start-up's checks | Without it a repository added later gets a clone | Backlog · spec in the spec set |
+| [FIX-2593](https://linear.app/fixpoint-labs/issue/FIX-2593) · package | The workspace host registers and removes repositories while it runs, with start-up's checks, and refuses unless it was built to allow it | Without it a repository added later gets a clone | Backlog · spec in the spec set |
 | [FIX-2594](https://linear.app/fixpoint-labs/issue/FIX-2594) · lab | One sidebar, the new-session dialog, Settings, *repository* for *project* | The visible half of the repository goal | Backlog · blocked by FIX-2593 |
 | [FIX-2595](https://linear.app/fixpoint-labs/issue/FIX-2595) · lab | The working line pinned at the bottom while a turn runs | Independent; the one the set could cut | Backlog |
 | [FIX-2597](https://linear.app/fixpoint-labs/issue/FIX-2597) · package | Each harness package says whether it has a plan mode; the model-choice shape (default, reason) lifts out of Kitchen Sink | Plan mode cannot be offered per harness without it, and the lab would copy Kitchen Sink's picker shape | Backlog |
@@ -92,7 +93,7 @@ it stays one. FIX-2598 and FIX-2599 may each grow a package child that blocks th
 ```mermaid
 flowchart LR
   A["FIX-2593 · workspace host: repositories at runtime"] -->|"the registration call and its refusals"| B["FIX-2594 · sidebar, dialog, Settings"]
-  P["FIX-2597 · harness packages: models and plan mode"] -->|"the model lists and the capability"| D["FIX-2598 · harness and model selector"]
+  P["FIX-2597 · harness packages: plan mode and the choice shape"] -->|"the plan capability and the model-choice shape"| D["FIX-2598 · harness and model selector"]
   D -->|"the selector and the capability read"| E["FIX-2599 · plan mode with sign-off"]
   M["FIX-2458 · model lists · consumed"] -.->|"the model lists, Cursor's too"| D
   R["FIX-2585 · plan-first failure · consumed"] -.->|"the filed symptom"| E
@@ -129,19 +130,19 @@ issues share files, and how their merges order, is in
 |---|---|
 | FIX-2153 D1: the mode comes from the view (`specs/issues/FIX-2153/DECISIONS.md#d1`); FIX-2157's *Projects view* wording | **Superseded** by [D1](DECISIONS.md#d1). A session's mode is still read from its main worker |
 | FIX-2152's objective, and the *mode switch* in its graph edge and seams row | **Extended, not contradicted.** Not amended here |
-| FIX-2152 ER-8 and FIX-2369 ER-5 (a run works in a project's worktree, never the developer's checkout) | **Kept.** The dialog's list carries the first; ER-5 is why the worktree wins over FIX-2251 ([D2](DECISIONS.md#d2)) |
+| [FIX-2152 ER-8](../FIX-2152/DECISIONS.md#who-owns-what) and [FIX-2369 ER-5](../FIX-2369/DECISIONS.md#who-owns-what) (a run works in a project's worktree, never the developer's checkout) | **Kept.** The dialog's list carries the first; ER-5 is why the worktree wins over FIX-2251 ([D2](DECISIONS.md#d2)) |
 | FIX-2403: the picker's repository check, disclosure and harness chips | **Moved** to Settings, behaviour kept ([ER-7](DECISIONS.md#who-owns-what)) |
 | `localRepositories` and its start-up pins (`packages/workspace/src/local-host.ts`) | **Extends** (FIX-2593) |
-| `checkRepository`, `repositoryIdentity`, the host's in-use lock; `setRepository` on a project | **Reuses**: the one check, the one identity rule, the one occupancy signal, and *Remove* |
+| `checkRepository`, `repositoryIdentity`; git's own worktree list under the host's root | **Reuses**: the one check, the one identity rule, and git's worktree list as the occupancy signal that refuses *Remove* ([ER-3](DECISIONS.md#who-owns-what)). *Remove* unregisters from the host's list; no `setRepository(null)`. The in-use lock is not the signal: it does not survive a restart or a review wait |
 | FIX-2458: `HarnessModelList` on `core/harness`, `listCursorModels`, Kitchen Sink's Cursor list removed | **Builds on.** FIX-2458 owns the model lists; this set consumes them |
-| FIX-2152 ER-9 and FIX-2157 D5: a harness is chosen in config, per worker | **Amended** by [ER-10](DECISIONS.md#who-owns-what): it is the person's per-run choice. Worker config stays the default |
-| FIX-2585: a plan-first task cannot exit plan mode | **Consumed** as FIX-2599's filed symptom; it keeps its parent |
+| [FIX-2152 ER-9](../FIX-2152/DECISIONS.md#who-owns-what) and `specs/issues/FIX-2157/DECISIONS.md#d5`: a harness is chosen in config, per worker | **Amended** by [ER-10](DECISIONS.md#who-owns-what): it is the person's per-run choice. Worker config stays the default |
+| [FIX-2585](https://linear.app/fixpoint-labs/issue/FIX-2585), a Linear bug with no spec: a plan-first task cannot exit plan mode | **Consumed** as FIX-2599's filed symptom; it keeps its parent |
 | The lab's *Plan first* worker and plan manager | **Replaces** with plan as a harness option (FIX-2599) |
 | The review stop (*Resolve*, *Request changes*) and harness-manager's tool-approval hold | **Considered** as the sign-off; FIX-2599's spec picks one, with no new kind of hold |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| Register and remove a repository on a running host (FIX-2593) | `localRepositories`, `pinFetchSettings`, `checkRepository`, the in-use lock | Extends the same set and guards. A second host per repository drops live claims; an app-side list is a second list ([ER-1](DECISIONS.md#who-owns-what)) |
+| Register and remove a repository on a running host (FIX-2593) | `localRepositories`, `pinFetchSettings`, `checkRepository`, git's worktree list | Extends the same set and guards. A second host per repository drops live claims; an app-side list is a second list ([ER-1](DECISIONS.md#who-owns-what)) |
 | Plan mode asked of each harness package; the model-choice shape lifted from Kitchen Sink (FIX-2597) | FIX-2458's lists, `harnessReadiness`, `apps/kitchen-sink/lib/harness-models.ts` | Extends the same ask-with-no-run shape. Models are FIX-2458's; only the plan question and the shape lift are new |
 | Settings and the new-session dialog (FIX-2594) | `ProjectPicker`, `HarnessReadiness`, the ⌘K `Dialog` | Moves and recomposes them; adds the list and *Remove* |
 | A harness and model selector (FIX-2598) | The *Coder* chip; the block-level `model` resolver on all three harness blocks | Extends the chip. The choice rides the task to the resolver; no structured path does today |
@@ -150,18 +151,19 @@ issues share files, and how their merges order, is in
 | The debt | |
 |---|---|
 | **Removes** | The view switch and `?view=` · the environment variable as the only door, and `listed()` in the lab's config · the centre-screen picker · *project* as the lab's word · the *Plan first* worker |
-| **Adds** | Runtime registration, kept across restarts, on a published package; a plan-mode question on three more. Permanent by design |
+| **Adds** | Runtime registration, kept across restarts, behind a host option that is off by default, on a published package; a plan-mode question on three more. Permanent by design |
 | **Leaves** | A project row for every repository ever added, since workforce has no delete verb: a workforce issue if wanted, not filed. Two stale lines in FIX-2152 |
 
-**Net: about flat.** The lab sheds a switch, a private list, a hand-kept list and a plan worker;
-the packages gain two entries, one with a persisted list.
+**Net: slightly up.** The lab sheds a switch, a private list, a hand-kept list and a plan worker;
+the packages gain two entries, one a public registration call with a persisted list. A public call
+is permanent, so the package side outweighs what the lab sheds.
 
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** four legs, in the browser.
 If wrong: a lab that adds repositories and still cannot pick a model, or the reverse.
 
-**[The set's debt](#whats-already-here-and-the-debt), about flat.** If wrong: project rows
+**[The set's debt](#whats-already-here-and-the-debt), slightly up.** If wrong: project rows
 nobody can delete, which workforce's own issue would pay.
 
 **The objective, at its size.** It serves goal 1 of `docs/objectives.md` (validate through real
