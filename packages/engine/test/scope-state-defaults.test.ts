@@ -669,6 +669,21 @@ describe("reading one stored record always gives one value", () => {
     expect(Object.keys((flow.scopeStateSchemas?.session as z.AnyZodObject).shape).sort()).toEqual(["a", "b"]);
   });
 
+  it("refuses a default factory in a record's key schema a block declares, or in user state", () => {
+    const keyed = z.record(z.string().default(() => "k"), z.number());
+    const block = handler({ name: "keyed", inputSchema: z.object({}), sessionStateSchema: z.object({ r: keyed }), execute: () => ({}) });
+    expect(() => defineFlow({ kind: "keyed-block", actions: { a: { inputSchema: z.object({}), block } } })).toThrow(
+      /session\.state\.r has a default factory declared by block "keyed"/
+    );
+    expect(() =>
+      defineFlow({
+        kind: "keyed-user",
+        user: { stateSchema: z.object({ r: keyed }) },
+        actions: { a: { inputSchema: z.object({}), block: handler({ name: "n", inputSchema: z.object({}), execute: () => ({}) }) } }
+      })
+    ).toThrow(/user\.state\.r has a default factory declared by flow "keyed-user"/);
+  });
+
   it("refuses a lazy a block declares, and a lazy in user or org state, the flow's own included", () => {
     const node = (): z.ZodTypeAny => z.object({ name: z.string(), children: z.array(z.lazy(node)).default([]) });
     const lazyBlock = handler({ name: "lazy-block", inputSchema: z.object({}), sessionStateSchema: z.object({ tree: node() }), execute: () => ({}) });
@@ -1079,6 +1094,17 @@ describe("applyScopeStateDefaults", () => {
       tree: { name: "a", children: [{ name: "b" }] },
       other: 1
     });
+  });
+
+  it("leaves a record whose key schema declares a factory as stored", () => {
+    let calls = 0;
+    const key = z.string().default(() => `k-${++calls}`);
+    const schema = z.object({ r: z.record(key, z.object({ v: z.number().default(1) })) });
+    // Without the key factory seen, the value's static default would fill.
+    expect(applyScopeStateDefaults(schema, { r: { a: {} } })).toEqual({ r: { a: {} } });
+    const map = z.object({ m: z.map(key, z.number()) });
+    expect(applyScopeStateDefaults(map, {})).toEqual({});
+    expect(calls).toBe(0);
   });
 
   it("never runs a factory inside a lazy on a read", () => {
