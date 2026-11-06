@@ -25,7 +25,9 @@
     {
       "id": "onepath",
       "title": "One path",
-      "assertions": []
+      "assertions": [
+        "onepath.answer-task-stop"
+      ]
     },
     {
       "id": "first-hour",
@@ -70,6 +72,7 @@
     "surface.root.workforce": "fail",
     "surface.collisions": "fail",
     "surface.core-installed-dts": "fail",
+    "onepath.answer-task-stop": "fail",
     "leakage.tracker-ids": "fail",
     "shims.never-published": "fail",
     "shims.human-approval-throws": "fail",
