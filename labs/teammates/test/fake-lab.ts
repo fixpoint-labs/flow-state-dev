@@ -52,6 +52,12 @@ export interface FixtureOptions {
   asks?: boolean;
   /** A coding run that committed waits for your review: Accept completes it, Ask for changes runs it once more. */
   review?: boolean;
+  /**
+   * The review offers both ways to land an accept, Open a PR and Merge locally,
+   * as harness-manager's does on a host that can land. A merge conflicts the
+   * first time, and the review is asked again with the error.
+   */
+  lands?: boolean;
   /** How many roster reads fail as an unreachable server would, before one lands. */
   unreachableReads?: number;
   /** Board rows already there when the lab opens, each filed by the conversation of the worker `filer` names. */
@@ -296,6 +302,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       if (!live()) throw new Error("left behind");
     };
     /** The task waits on you for `waiting`, until you answer. */
+    let holdCount = 0;
     const waitOn = (waiting: NonNullable<BoardTask["waiting"]>) =>
       new Promise<TaskAnswer>((resolve) => {
         waits.set(task.id, (answer) => {
@@ -303,7 +310,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
           updateTask(task.id, { waiting: undefined });
           resolve(answer);
         });
-        updateTask(task.id, { waiting });
+        updateTask(task.id, { waiting: { ...waiting, holdId: `hold-${++holdCount}` } });
       });
     void (async () => {
       await sleep(600);
@@ -322,22 +329,38 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       call("check")();
       // What the run spent, as the row's folded view reads it once the run has reported.
       if (spent !== undefined) updateTask(task.id, { spend: { harness, model: model ?? null, ...spent, unreported: false, live: false } });
+      let landFailed: ReviewDetail["landFailed"] = null;
+      let landed: BoardTask["landed"];
       for (let commits = 1; options.review; commits++) {
+        const branch = `teammates/${task.id}--change`;
         reviews.set(task.runSessionId!, {
-          branch: `teammates/${task.id}--change`,
+          branch,
           commits,
           subjects: Array.from({ length: commits }, (_, i) => (i === 0 ? "docs: fix the README typo" : "docs: keep the old wording")).reverse(),
           judge: { verdict: "done", confidence: 0.91, reason: "The typo on line 1 is fixed." },
           checks: null,
+          lands: options.lands ? ["pull-request", "merge"] : [],
+          landFailed,
         });
         notify();
-        const answer = await waitOn({ kind: "review", prompt: `${commits} commit${commits === 1 ? "" : "s"} on teammates/${task.id}--change`, unanswerable: null });
-        if ("verdict" in answer && answer.verdict === "accepted") break;
+        const answer = await waitOn({ kind: "review", prompt: `${commits} commit${commits === 1 ? "" : "s"} on ${branch}`, unanswerable: null });
+        if ("verdict" in answer && answer.verdict === "accepted" && answer.land === "merge") {
+          // Every merge conflicts, the same way each time: asked again, nothing changed.
+          landFailed = { land: "merge", message: "Merging conflicts in README.md, so it was stopped." };
+          commits--;
+          continue;
+        }
+        if ("verdict" in answer && answer.verdict === "accepted") {
+          if (answer.land === "pull-request") landed = { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch, base: "main" };
+          if (answer.land === "merge") landed = { kind: "merge", branch: "main", commit: "c15d6f098abc", checkout: "/work/relay", from: branch };
+          break;
+        }
         report(task.id, harness, said(`Revising: ${"words" in answer ? answer.words : ""}`))();
         await sleep(600);
         call("edit")();
       }
       await sleep(400);
+      if (landed !== undefined) updateTask(task.id, { landed });
       end("done", "Fixed the typo in README.md, line 1.")();
     })().catch(() => {});
   };

@@ -90,6 +90,7 @@ import {
   type TaskRowView,
 } from "@flow-state-dev/orchestration/inbox";
 import { readRecordedWork, reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
 import {
@@ -175,6 +176,8 @@ export interface BoardTask {
   spend?: TaskSpendView;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
+  /** For an accepted coding task, where its work went: the pull request opened, or the merge into your checkout. */
+  landed?: LandedWork;
   /** The row as orchestration's `taskRowView` reads it, once per read: its state and times, for its time signal and the panel's counts. */
   view?: TaskRowView;
   /**
@@ -206,6 +209,8 @@ export interface TaskWaiting {
   kind: "question" | "review" | "other";
   prompt: string;
   unanswerable: string | null;
+  /** The hold's id (a stop's suspension id): a review asked again is a new hold. */
+  holdId?: string;
 }
 
 /** A coding run's review: its branch, commits and the judge's verdict. */
@@ -233,8 +238,8 @@ export interface TaskActions {
   rerun(task: BoardTask, worker: string): Promise<string>;
 }
 
-/** Your answer to what a task waits on: the words to a question, or a review's verdict. */
-export type TaskAnswer = { text: string } | { verdict: "accepted" } | { verdict: "revise"; words: string };
+/** Your answer to what a task waits on: the words to a question, or a review's verdict, an accept naming how its work lands. */
+export type TaskAnswer = { text: string } | { verdict: "accepted"; land?: ReviewLand } | { verdict: "revise"; words: string };
 
 /**
  * One step of a session as a popup draws it: a line given to the worker (a
@@ -790,7 +795,21 @@ export function toBoardTask(
     ...waitingOf(view),
     ...(view === null ? {} : { view }),
     ...runOf(row),
+    ...landedOf(row.output?.landed),
   };
+}
+
+/** Where an accepted run's work went, from harness-manager's output, or nothing when it names none readable. */
+function landedOf(value: unknown): { landed?: LandedWork } {
+  if (typeof value !== "object" || value === null) return {};
+  const v = value as Record<string, unknown>;
+  if (v.kind === "pull-request" && typeof v.url === "string" && typeof v.number === "number" && typeof v.branch === "string" && typeof v.base === "string") {
+    return { landed: { kind: "pull-request", url: v.url, number: v.number, branch: v.branch, base: v.base } };
+  }
+  if (v.kind === "merge" && typeof v.branch === "string" && typeof v.commit === "string" && typeof v.checkout === "string" && typeof v.from === "string") {
+    return { landed: { kind: "merge", branch: v.branch, commit: v.commit, checkout: v.checkout, from: v.from } };
+  }
+  return {};
 }
 
 /** A row's run start and lease deadline, each only when the row has it. */
@@ -829,7 +848,7 @@ function waitingOf(view: TaskRowView | null): { waiting?: TaskWaiting } {
   const hold = view?.hold ?? null;
   if (hold === null) return {};
   const kind = hold.ask.kind === "question" || hold.ask.kind === "review" ? hold.ask.kind : "other";
-  return { waiting: { kind, prompt: hold.ask.prompt, unanswerable: hold.unanswerable } };
+  return { waiting: { kind, prompt: hold.ask.prompt, unanswerable: hold.unanswerable, holdId: hold.id } };
 }
 
 /**
@@ -862,7 +881,8 @@ export function reviewOf(items: readonly Item[]): ReviewDetail | undefined {
 /** A {@link TaskAnswer} as the Inbox client's answer for the hold it answers. */
 function inboxAnswerOf(answer: TaskAnswer): InboxAnswer {
   if ("text" in answer) return { text: answer.text };
-  return { value: answer.verdict === "accepted" ? { verdict: "accepted" } : { verdict: "revise", words: answer.words } };
+  if (answer.verdict === "revise") return { value: { verdict: "revise", words: answer.words } };
+  return { value: answer.land === undefined ? { verdict: "accepted" } : { verdict: "accepted", land: answer.land } };
 }
 
 /** The harness by its name (the run's, else the worker's), and the run's model. */

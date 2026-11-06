@@ -90,6 +90,7 @@ import {
 import { createHostPlace } from "./host-place";
 import { acquireLock, HOST_LOCK_BOUNDS, releaseLock, tryAcquireLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
+import { landRun, type Landed, type LandRequest, type LandTarget } from "./land";
 import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, withoutCredential, type AllowedRemote } from "./remotes";
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import {
@@ -555,6 +556,18 @@ export interface WorkspaceHost {
     target: { place: readonly string[] },
     options: { worktrees: WorktreeCollection; by?: WorktreeOwner },
   ): Promise<CheckoutSnapshot | null>;
+  /**
+   * Land a run's accepted branch (`./land`): push it to the repository's
+   * pinned remote and open a pull request through the host's `gh`, or merge
+   * it into the base branch where the person has it checked out. Only for a
+   * run in a repository listed in `localRepositories`; the run's branch and
+   * checkout are never changed, whatever fails. Optional, as `remove` is.
+   *
+   * Rejects with a `WorkspaceRefusedError` saying what happened: a checkout
+   * not in a listed repository is `land-unsupported`, and the rest are
+   * `landRun`'s.
+   */
+  land?(target: LandTarget, request: LandRequest): Promise<Landed>;
 }
 
 /**
@@ -2148,6 +2161,26 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     return (await attachToWorktree(attachOptions.worktrees, key, attachOptions.by)) ? key : null;
   }
 
+  /** `WorkspaceHost.land`: the run's checkout must be a worktree of a listed repository. */
+  async function land(target: LandTarget, request: LandRequest): Promise<Landed> {
+    const common = async (cwd: string) =>
+      realpathSync(await git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"], GIT_TIMEOUT_MS));
+    let runCommon: string;
+    try {
+      runCommon = await common(target.cwd);
+    } catch (error) {
+      throw new WorkspaceRefusedError("land-unsupported", `${target.cwd} is not a git checkout this host can land: ${firstLine(error)}.`);
+    }
+    for (const repo of localRepositories) {
+      const listed = await common(repo).catch(() => undefined);
+      if (listed === runCommon) return await landRun({ repo, pins: fetchPins.get(repo), env }, target, request);
+    }
+    throw new WorkspaceRefusedError(
+      "land-unsupported",
+      `${target.cwd} is not a worktree of a repository listed in localRepositories, so this host can't push or merge it.`,
+    );
+  }
+
   async function recordCheckout(
     target: { place: readonly string[] },
     recordOptions: { worktrees: WorktreeCollection; by?: WorktreeOwner },
@@ -2310,6 +2343,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     remove,
     attach,
     recordCheckout,
+    land,
     async checkpoint(place, recorded) {
       const holding = place.holding;
       if (heldWork === undefined || holding === undefined || place.kind !== "repo") return null;

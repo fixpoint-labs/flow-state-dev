@@ -336,7 +336,7 @@ describe("a coding task's hold, while it runs", () => {
     const stop = createLabAdapter(clientWithRunRow()).watchTasks("wks_1", (next) => (tasks = next));
     await until(() => tasks[0]?.waiting !== undefined);
     stop();
-    expect(tasks[0]?.waiting).toEqual({ kind: "review", prompt: "1 commit on b", unanswerable: null });
+    expect(tasks[0]?.waiting).toEqual({ kind: "review", prompt: "1 commit on b", unanswerable: null, holdId: "susp-1" });
   });
 
   it("follows no run for a task that has ended, and lets go of a run once its task ends", async () => {

@@ -540,7 +540,7 @@ export const KEEP = [
     why: "WR-5: two actions that ask a desk a question; not a wait"
   },
   {
-    path: /^packages\/workspace\/src\/local-host\.ts$/,
+    path: /^packages\/workspace\/src\/(local-host|land)\.ts$/,
     line: /core\.askPass/,
     rules: ["ask-symbol"],
     why: "git's own setting name"
