@@ -22,6 +22,8 @@ import {
   runAction
 } from "../src";
 import { applyScopeStateDefaults } from "../src/context/scope-state-defaults";
+import { createRequestHost } from "../src/context/create-request-host";
+import { createRequestSessions } from "../src/context/request-sessions";
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 
 const ORG = "org_defaults";
@@ -465,6 +467,64 @@ describe("a readonly session field a block declares is protected like the flow's
     // owner reads "alice".
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error?: string }).error).toContain('"owner"');
+  });
+});
+
+describe("a decision on stored state reads it as a run reads it, defaults filled", () => {
+  // The block owns `owner`, readonly and defaulted; the flow restates nothing,
+  // so a child born with no state stores `{}` and reads `{ owner: "alice" }`.
+  const childBlock = handler({
+    name: "child-work",
+    inputSchema: z.object({}),
+    sessionStateSchema: z.object({ owner: z.string().readonly().default("alice") }),
+    execute: () => ({})
+  });
+  const childFlow = defineFlow({
+    kind: "effective-child",
+    actions: { noop: { inputSchema: z.object({}), block: childBlock } },
+    internal: { actions: { work: { inputSchema: z.object({}), block: childBlock } } }
+  })();
+  const parentFlow = defineFlow({
+    kind: "effective-parent",
+    actions: { noop: { inputSchema: z.object({}), block: handler({ name: "p", inputSchema: z.object({}), execute: () => ({}) }) } }
+  })();
+  const seam = (stores: ReturnType<typeof createInMemoryStores>) =>
+    createRequestHost({
+      stores,
+      flow: parentFlow,
+      identity: { userId: USER, tenantId: undefined, orgId: ORG, sessionId: "parent", lineageId: "lin_parent" },
+      dispatchOperation: async () => ({ requestId: "req_child" }),
+      liveness: { staleThresholdMs: 60_000, heartbeatIntervalMs: 10_000, staleSweepIntervalMs: 30_000 },
+      resolveFlow: (id) => (id === childFlow.id ? childFlow : undefined)
+    });
+  const send = (stores: ReturnType<typeof createInMemoryStores>, state?: Record<string, unknown>) =>
+    seam(stores).seam({
+      type: "internal",
+      action: "work",
+      flowKind: "effective-child",
+      session: { key: "k", ...(state === undefined ? {} : { state }) },
+      payload: {},
+      from: "test"
+    });
+
+  it("adopts a child for a dispatch naming the readonly value it reads, and refuses another", async () => {
+    const stores = createInMemoryStores();
+    expect(await send(stores)).toMatchObject({ ok: true, adopted: false });
+    expect(await send(stores, { owner: "alice" })).toMatchObject({ ok: true, adopted: true });
+    expect(await send(stores, { owner: "bob" })).toMatchObject({ ok: false, refused: "key-occupied" });
+  });
+
+  it("shows another session's readonly field as it reads, default included", async () => {
+    const stores = createInMemoryStores();
+    const born = (await send(stores)) as { sessionId: string };
+    expect((await stores.session.get(born.sessionId))?.state).toEqual({});
+    const sessions = createRequestSessions({
+      sessions: stores.session,
+      identity: { userId: USER, tenantId: undefined, orgId: ORG },
+      flow: parentFlow,
+      resolveFlow: (address) => (address === childFlow.id ? childFlow : undefined)
+    });
+    expect((await sessions.read(born.sessionId))?.state).toEqual({ owner: "alice" });
   });
 });
 

@@ -59,7 +59,7 @@
  * - the liveness gate refused → `livenessOf` is **absent from the bundle**
  */
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
-import { scopeStateSchema } from "./scope-state-defaults";
+import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
 import type {
   DispatchOutcome,
   DispatchRefusal,
@@ -498,7 +498,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     const differs = readonlyStateMismatch(
       getReadonlyStateKeys(scopeStateSchema(targetFlow, "session")),
       initialState,
-      current!.state as Readonly<Record<string, unknown>> | undefined
+      // As the child reads it: a readonly field a block defaults is `{}` in
+      // the store and its default to every run.
+      applyScopeStateDefaults(scopeStateSchema(targetFlow, "session"), current!.state)
     );
     if (differs !== undefined) {
       return refuse(

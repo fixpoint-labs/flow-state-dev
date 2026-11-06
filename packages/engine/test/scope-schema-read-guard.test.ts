@@ -57,3 +57,46 @@ describe("scope state schema reads go through scopeStateSchema", () => {
     expect(directReads("  // reads flow.session?.stateSchema, which is fine in a comment")).toHaveLength(0);
   });
 });
+
+/** A stored record's raw state: `record.state`, `current!.state`, `stored.state`, … */
+const RAW_STORED_STATE = /\b(?:record|current!?|stored|existing|held)\.state\b/;
+/** How far after a readonly-key read a decision on that state is looked for. */
+const DECISION_WINDOW = 10;
+
+/**
+ * Raw stored state read near a readonly-key decision. Stored state holds only
+ * what was written; a field a block defaults is `{}` there and its default to
+ * every run, so a decision on it reads `applyScopeStateDefaults(...)` instead.
+ */
+export function rawStateDecisions(text: string): string[] {
+  const lines = text.split("\n");
+  const hits: string[] = [];
+  lines.forEach((line, i) => {
+    if (/^\s*(\*|\/\/|\/\*)/.test(line) || !line.includes("getReadonlyStateKeys(")) return;
+    for (const next of lines.slice(i, i + DECISION_WINDOW)) {
+      if (/^\s*(\*|\/\/|\/\*)/.test(next)) continue;
+      if (RAW_STORED_STATE.test(next) && !next.includes("applyScopeStateDefaults(")) hits.push(next.trim());
+    }
+  });
+  return hits;
+}
+
+describe("a decision on stored state reads the effective state", () => {
+  it("no readonly-key decision in engine source compares raw stored state", () => {
+    const found: Record<string, string[]> = {};
+    for (const file of sources(SRC)) {
+      const hits = rawStateDecisions(readFileSync(file, "utf8"));
+      if (hits.length > 0) found[relative(SRC, file)] = hits;
+    }
+    expect(found).toEqual({});
+  });
+
+  it("control: a planted raw comparison is caught, and a filled one is not", () => {
+    const planted = [
+      "const keys = getReadonlyStateKeys(scopeStateSchema(flow, \"session\"));",
+      "const differs = readonlyStateMismatch(keys, requested, current!.state);"
+    ].join("\n");
+    expect(rawStateDecisions(planted)).toHaveLength(1);
+    expect(rawStateDecisions(planted.replace("current!.state", "applyScopeStateDefaults(schema, current!.state)"))).toHaveLength(0);
+  });
+});
