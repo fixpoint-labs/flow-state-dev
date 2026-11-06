@@ -198,10 +198,7 @@ outputTokens, costUsd, unreported, live }`, the shape `listTasks` returns from
 never 0. `costUsd` is the sum of the charges vendors reported (an API-key harness
 run), or `null` when none did; a subscription run reports none, and nothing estimates
 one. If you implement `TaskCollectionRef` yourself, implement `recordSpend` too, or
-the board writes no spend. The same action's rows also carry each task's times, epoch ms:
-`updatedAt` and `createdAt` always, `startedAt` once a run started and `completedAt` once
-it ended, so a screen can show how long a task has run and order ended tasks by when they
-ended. The model's tool carries none of them.
+the board writes no spend.
 
 `rowsInSession(ledger, sessionId)` returns the rows that run in a session, in ledger
 order: each row whose run link names it, with every row of its follow-up chain. Follow-ups
