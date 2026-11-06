@@ -14,7 +14,7 @@
  * the task tools do, and reads what it asserts back from the store.
  */
 import { describe, expect, it } from "vitest";
-import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import { chainEntryKey, DEFAULT_TASK_CHAIN_LIMIT } from "../src/conversation-board/chain";
 import { bootSplitHost, type SplitHost } from "./split-harness";
 

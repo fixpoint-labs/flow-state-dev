@@ -8,7 +8,7 @@
  * always the latest, so a long run writes the row a bounded number of times.
  */
 import type { HarnessActivity } from "@flow-state-dev/core/types";
-import { STATUS_NOTE_LIMIT } from "@flow-state-dev/orchestration";
+import { STATUS_NOTE_LIMIT } from "@flow-state-dev/orchestration/internal";
 
 /** The least time between two progress-note writes of one step, in ms. */
 export const PROGRESS_NOTE_MS = 30_000;

@@ -25,9 +25,9 @@ import {
   type TaskCapOptions,
 } from "@flow-state-dev/orchestration/tasks";
 import {
-  TASK_BOARD_META_COMPONENT_TYPE,
   type TaskContextSupply,
 } from "@flow-state-dev/orchestration/task-board";
+import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
 
 export interface PlanningEntryStateShape {
   goal?: string;

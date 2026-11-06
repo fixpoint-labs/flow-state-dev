@@ -35,12 +35,12 @@ import type { BlockDefinition, DefinedCapability } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
-  SKIPPED_LABEL,
   TaskFilingRefusedError,
   type Task,
   type TaskCollectionRef,
   type TaskInit,
 } from "../tasks";
+import { SKIPPED_LABEL } from "../tasks/collection/cascade";
 import { skippedFor } from "../tasks/collection/cascade";
 import { generateId } from "../tasks/generate-id";
 

@@ -31,7 +31,7 @@
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { getBaseCapability, type CapabilityRef } from "@flow-state-dev/core";
 import { dispatchThroughSeam, type BlockContext, type DispatchOutcome, type DispatchRefusal, type ResourceRef } from "@flow-state-dev/core/types";
-import { decideTake, hasEnded, nextResendAt, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
+import { decideTake, hasEnded, nextResendAt, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
 import type { WorkerInstallation } from "../workers/installation";

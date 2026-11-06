@@ -7,7 +7,8 @@
  */
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { CASCADE_DUE_MS, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import type { Task, TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import { CASCADE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import { FILED_MARKER, PIECE_OF } from "../src/conversation-board/board-entries";
 import { filedCascadeOver } from "../src/conversation-board/cascade";
 

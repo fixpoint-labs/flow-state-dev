@@ -41,8 +41,6 @@ export interface ClaimTaskOptions {
   workerId: (ctx: BlockContext) => string;
 }
 
-export type ClaimTaskOutput = ClaimResult;
-
 export function createClaimTask(options: ClaimTaskOptions) {
   const { name, collection: collectionFactory, claimOrder, workerId } = options;
   return handler({

@@ -33,7 +33,7 @@ import {
   toolResultOutputForModel
 } from "@flow-state-dev/core/models";
 import type { BlockContext, LLMMessage } from "@flow-state-dev/core/types";
-import { readTaskView } from "@flow-state-dev/orchestration";
+import { readTaskView } from "@flow-state-dev/orchestration/internal";
 import type { Task, TaskCollectionRef, TaskNotice } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 

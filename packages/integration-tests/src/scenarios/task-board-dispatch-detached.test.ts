@@ -56,9 +56,9 @@ import {
 import {
   taskBoard,
   taskWorkerInputSchema,
-  TASK_BOARD_META_COMPONENT_TYPE,
-  type TaskSessionPolicy,
 } from "@flow-state-dev/orchestration/task-board";
+import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
+import type { TaskSessionPolicy } from "@flow-state-dev/core/types";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { heard } from "../helpers/heard";

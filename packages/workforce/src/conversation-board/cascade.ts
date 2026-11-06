@@ -26,15 +26,17 @@
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
-  endsFiledWork,
   isTerminalStatus,
-  parentCancelledRefusal,
-  readCommittedTask,
   type DeclaredFiledCascade,
-  cascadeEndedAt,
   type Task,
   type TaskCollectionRef
 } from "@flow-state-dev/orchestration/tasks";
+import {
+  endsFiledWork,
+  parentCancelledRefusal,
+  readCommittedTask,
+  cascadeEndedAt,
+} from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { boardAboveOf } from "./board-above";
 import { FILED_MARKER, PIECE_OF } from "./board-entries";

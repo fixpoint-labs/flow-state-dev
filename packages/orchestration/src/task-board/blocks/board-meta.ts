@@ -67,7 +67,8 @@ import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
 import { isDispatched, waitsOnUser, type RunsElsewhere } from "../shared";
-import { hasOpenHold, leaseLapsed } from "../../tasks";
+import { leaseLapsed } from "../../tasks";
+import { hasOpenHold } from "../../tasks/collection/holds";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";

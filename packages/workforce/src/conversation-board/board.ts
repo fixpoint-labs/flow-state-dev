@@ -81,19 +81,16 @@
  *   pass only when something is startable or past due; it resends nothing.
  */
 import {
-  payBoardDebts,
-  settlePassWake,
-  taskToolsForTurn,
-  taskToolActions,
-  taskToolReads,
   type TaskCollectionResolver,
   type AssigneeRoster,
   type AssigneeRosterSource
 } from "@flow-state-dev/orchestration";
-import { afterTaskCheck, currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
-  TaskCapExceededError,
-  TaskFilingRefusedError,
+  payBoardDebts,
+  settlePassWake,
+  taskToolsForTurn,
+  taskToolReads,
+  afterTaskCheck,
   TaskWriteRefusedError,
   assertDepsFileable,
   assertFilingCallerContext,
@@ -102,13 +99,18 @@ import {
   assertIdsFree,
   assertUniqueIds,
   hasStarted,
-  isClaimable,
-  isTerminalStatus,
   nextHoldDue,
   NOTICE_DUE_MS,
   noticeDueAt,
   filerResolver,
   resendNowPatch,
+} from "@flow-state-dev/orchestration/internal";
+import { taskToolActions, currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/task-board";
+import {
+  TaskCapExceededError,
+  TaskFilingRefusedError,
+  isClaimable,
+  isTerminalStatus,
   type Task,
   type TaskCollectionRef,
   type ClaimOrder,

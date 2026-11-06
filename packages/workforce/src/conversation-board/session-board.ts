@@ -44,7 +44,7 @@
  * ```
  */
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
-import type { NoticePolicy } from "@flow-state-dev/orchestration/tasks";
+import type { NoticePolicy } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { PLAN_WAITING_STATE } from "./plan";
 import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";

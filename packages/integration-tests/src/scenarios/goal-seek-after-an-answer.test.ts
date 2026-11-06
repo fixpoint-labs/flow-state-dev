@@ -14,13 +14,16 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
-import { defineTaskCollection, openRowHolds } from "@flow-state-dev/orchestration/tasks";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+import {
+  openRowHolds,
+  GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
+} from "@flow-state-dev/orchestration/internal";
 import {
   askMidway,
   goalSeekLoop,
   taskBoard,
   taskWorkerInputSchema,
-  GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
   type TaskBoardHandle,
   type Verdict,
 } from "@flow-state-dev/orchestration/task-board";

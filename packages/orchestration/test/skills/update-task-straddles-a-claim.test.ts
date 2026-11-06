@@ -11,11 +11,11 @@ import type { GeneratorTool } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
 import { buildTaskToolsList } from "../../src/skills/task-tools-capability";
 import {
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
   type Task,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 import { buildDelegationCtx } from "./delegation-ctx";
 

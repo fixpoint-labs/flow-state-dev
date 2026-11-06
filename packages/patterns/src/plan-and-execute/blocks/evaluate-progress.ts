@@ -29,7 +29,7 @@ import {
   iterationOutputSchema,
   planAndExecuteStateSchema,
 } from "../schemas";
-import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/task-board";
+import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
 
 export const evaluatorOutputSchema = z
   .object({

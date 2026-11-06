@@ -24,10 +24,10 @@ import {
 } from "../../src/task-board/blocks/record-result";
 import { TaskBoardRecorderFailureError } from "../../src/task-board/blocks/recorder-failure";
 import {
-  createStateBackedTaskCollection,
   ticketForClaim,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { createFakeSequencerState } from "../helpers";
 
 const ANNOUNCE_ERROR = "change announcement blew up";

@@ -9,11 +9,11 @@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
-  hasFrozenLedgerAssignee,
   resolveResourceCollection,
   type DefinedTaskCollection,
   type TaskCollectionRef,
 } from "../tasks";
+import { hasFrozenLedgerAssignee } from "../tasks/collection/define-task-collection";
 import { resolveTaskPartition } from "../tasks/collection/partition";
 
 export async function resolveResourceTaskCollection<TInput = unknown, TOutput = unknown>(

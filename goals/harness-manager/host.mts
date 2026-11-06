@@ -15,10 +15,10 @@ import { z } from "zod";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowHolds,
   resolveResourceCollection,
 } from "@flow-state-dev/orchestration/tasks";
-import { taskBoard, taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration/task-board";
+import { openRowHolds, taskToolSuffix } from "@flow-state-dev/orchestration/internal";
+import { taskBoard, taskToolActions } from "@flow-state-dev/orchestration/task-board";
 import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import {
   assertBaseRefExists,

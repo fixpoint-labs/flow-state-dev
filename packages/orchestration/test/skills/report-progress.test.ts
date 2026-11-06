@@ -14,11 +14,11 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { runForTest, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createStateBackedTaskCollection,
   ticketForClaim,
   type TaskCollectionRef,
   type TaskWorker,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 import { createReportProgress } from "../../src/skills/task-tools-capability";
 import { createFakeSequencerState } from "../helpers";

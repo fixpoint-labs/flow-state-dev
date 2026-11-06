@@ -13,7 +13,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, sequencer } from "@flow-state-dev/core";
-import { openRowHolds } from "@flow-state-dev/orchestration/tasks";
+import { openRowHolds } from "@flow-state-dev/orchestration/internal";
 import { harnessJudgeInputSchema, type HarnessJudgeInput } from "../src";
 import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 

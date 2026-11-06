@@ -24,15 +24,15 @@
  */
 import { describe, expect, it, beforeEach } from "vitest";
 import {
-  createStateBackedTaskCollection,
-  createResourceBackedTaskCollection,
-  MIN_LEASE_DURATION_MS,
   ticketForClaim,
   type TaskClaimTicket,
   type TaskCollectionRef,
-  type TaskChangeEvent,
   type TaskStatus,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { MIN_LEASE_DURATION_MS } from "../../src/tasks/collection/internal";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import { transitionDeclineReason } from "../../src/tasks/collection/internal";
 import {
   advisoryComplete,

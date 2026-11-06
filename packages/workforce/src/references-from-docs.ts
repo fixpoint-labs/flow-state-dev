@@ -56,7 +56,7 @@
  */
 
 import { defineResource, type DeclaredResources } from "@flow-state-dev/core";
-import { splitFrontmatter } from "@flow-state-dev/orchestration";
+import { splitFrontmatter } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { emptyMap } from "./empty-map";
 import {

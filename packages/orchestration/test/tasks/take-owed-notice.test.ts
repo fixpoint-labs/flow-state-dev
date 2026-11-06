@@ -26,15 +26,15 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { takeOwedNotice, taskSettledEntry, type TaskSettledInput } from "../../src";
+import { taskSettledEntry, type TaskSettledInput } from "../../src";
+import { takeOwedNotice } from "../../src/tasks/notice/task-settled-entry";
 import {
-  clearNotice,
   defineTaskCollection,
   getOrCreateTaskCollection,
-  isNoticeOwed,
   resolveResourceCollection,
   type TaskCollectionRef
 } from "../../src/tasks";
+import { clearNotice, isNoticeOwed } from "../../src/tasks/notice/task-notice";
 
 const BOARD = "conv-board";
 const USER = "u_filer";
