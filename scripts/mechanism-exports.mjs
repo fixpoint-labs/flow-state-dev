@@ -90,7 +90,11 @@ function resolveRelative(read, fromFile, spec) {
   return null;
 }
 
-/** name → { file, type }: the declaring file, and whether the name is type-only. `w` is { read, memo, bare, dirs }. */
+/**
+ * name → { file, type, decl }: the declaring file, whether the name is type-only, and the name
+ * it is declared under in that file (`impl` for `export { impl as used }`; unset for
+ * `export * as ns`). `w` is { read, memo, bare, dirs }.
+ */
 function moduleExports(w, file) {
   if (w.memo.has(file)) return w.memo.get(file);
   const out = new Map();
@@ -126,15 +130,15 @@ function moduleExports(w, file) {
           const local = (el.propertyName ?? el.name).text;
           const src = mod ? [mod, local] : imports.get(local);
           // A name its source module doesn't export is not exported here either.
-          const found = src ? moduleExports(w, src[0]).get(src[1]) : { file, type: false };
-          if (found) out.set(el.name.text, { file: found.file, type: found.type || node.isTypeOnly || el.isTypeOnly });
+          const found = src ? moduleExports(w, src[0]).get(src[1]) : { file, type: false, decl: local };
+          if (found) out.set(el.name.text, { file: found.file, type: found.type || node.isTypeOnly || el.isTypeOnly, decl: found.decl });
         }
       }
     } else if (node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
       const isDefault = node.modifiers.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword);
       const names = ts.isVariableStatement(node) ? node.declarationList.declarations.map((d) => d.name.text) : [isDefault ? "default" : node.name?.text];
       const type = ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node);
-      for (const n of names) out.set(n, { file, type });
+      for (const n of names) out.set(n, { file, type, decl: n });
     }
   }
   return out;

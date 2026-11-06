@@ -140,16 +140,19 @@ export function rootReport(read) {
     const readmePath = `packages/${dir}/README.md`;
     const readme = (read(readmePath) ?? "") + (pending.get(readmePath) ?? "");
     const out = new Map();
-    for (const [name, { file }] of exp) {
+    const declOf = new Map();
+    for (const [name, { file, decl }] of exp) {
       const u = uses.get(pkg)?.get(name);
       const why = u?.has("adopter") ? "adopter" : u?.has("docs") ? "docs" : names(readme, name) ? "readme" : "failing";
       out.set(name, { file, why });
+      declOf.set(name, decl);
     }
-    // A name a used name's declaration mentions is met through that signature.
+    // A name a used name's declaration mentions is met through that signature. The declaration
+    // is found by the name it is declared under, which an aliased re-export changes.
     const queue = [...out].filter(([, v]) => v.why !== "failing").map(([n]) => n);
     while (queue.length) {
       const n = queue.pop();
-      for (const m of typeMentions(read, memo, out.get(n).file, n)) {
+      for (const m of typeMentions(read, memo, out.get(n).file, declOf.get(n) ?? n)) {
         if (out.get(m)?.why === "failing") { out.get(m).why = "reached"; queue.push(m); }
       }
     }

@@ -62,6 +62,12 @@ export const zzTemplateTail = 1;
 export const zzInStringLiteral = 1;
 export const zzAfterRegex = 1;
 export const zzAfterTemplate = 1;
+export const zzDestructured = 1;
+export const zzRequired = 1;
+export const zzDynamicNs = 1;
+export const zzThen = 1;
+export const zzComputed = 1;
+export { impl as used, type Options } from "./zz-plant/impl";
 export interface ZzOptions { a: number }
 export interface ZzBodyOnly { b: number }
 export function zzSigned(options: ZzOptions): void { const x: ZzBodyOnly = { b: options.a }; void x; }
@@ -87,6 +93,17 @@ export function zzSigned(options: ZzOptions): void { const x: ZzBodyOnly = { b: 
   "apps/kitchen-sink/zz-probe.ts":
     "const m = `hi ${name}`;\n// import { zzUnused } from \"@flow-state-dev/probe\";\n" +
     "const message = \"import { zzUnused } from '@flow-state-dev/probe'\";\n",
+  // An aliased re-export: the adopter imports `used`, and `impl`'s signature names `Options`.
+  "packages/core/src/zz-plant/impl.ts": "export interface Options { a: number }\nexport function impl(o: Options): void { void o; }\n",
+  "apps/kitchen-sink/zz-alias.ts": `import { used } from "@flow-state-dev/core";\nused({ a: 1 });\n`,
+  // Names taken through import() and require(): destructured, read off the module, or via .then.
+  // A computed read (`m[k]`) names nothing the census can know, so zzComputed stays failing.
+  "apps/kitchen-sink/zz-dynamic.ts":
+    `const { zzUsed } = await import("@flow-state-dev/probe");\n` +
+    `const { zzDestructured } = await import("@flow-state-dev/core");\n` +
+    `const { zzRequired } = require("@flow-state-dev/core");\n` +
+    `const m = await import("@flow-state-dev/core");\nm.zzDynamicNs();\nconst k = "zzComputed";\nm[k];\n` +
+    `import("@flow-state-dev/core").then(({ zzThen }) => zzThen);\n`,
   "labs/zz-plant/dynamic.ts": `const seams = await import("@flow-state-dev/engine/internal");\n`,
   "examples/zz-plant/require.js": `const o = require("@flow-state-dev/orchestration/internal");\n`,
   // Only a code-form mention names an export: a bare word in prose (zzProseOnly, zzReadmeDump)
@@ -122,6 +139,7 @@ describe("the export check", () => {
       "@flow-state-dev/core zzBlockCommented", // an import inside a comment is not a use
       "@flow-state-dev/core zzChangesetElsewhere", // its changeset's Docs: line doesn't list the README
       "@flow-state-dev/core zzCommentedOut",
+      "@flow-state-dev/core zzComputed", // read only as m[k]: no name the census can know
       "@flow-state-dev/core zzGoalOnly", // goals are ours
       "@flow-state-dev/core zzInStringLiteral", // an import's text inside a string literal is not an import
       "@flow-state-dev/core zzNobody",
@@ -142,6 +160,11 @@ describe("the export check", () => {
     // A regex literal or a template holding `/*` or `//` does not hide the import after it.
     assert.equal(core.get("zzAfterRegex").why, "adopter");
     assert.equal(core.get("zzAfterTemplate").why, "adopter");
+    // Names taken through import() and require() are uses too.
+    for (const n of ["zzDestructured", "zzRequired", "zzDynamicNs", "zzThen"]) assert.equal(core.get(n).why, "adopter", n);
+    // An aliased re-export is reached through the declaration it names, not its alias.
+    assert.equal(core.get("used").why, "adopter");
+    assert.equal(core.get("Options").why, "reached");
     assert.equal(core.get("ZzOptions").why, "reached");
     for (const n of ["zzTicked", "zzCalled", "zzImported", "zzChangesetDoc"]) assert.equal(core.get(n).why, "readme", n);
   });
@@ -176,7 +199,12 @@ describe("the export check", () => {
 describe("the import census", () => {
   it("counts neither a commented import after a template nor an import's text in a string", () => {
     const { uses } = importCensus(overlay(plants));
-    assert.equal(uses.get("@flow-state-dev/probe"), undefined);
+    assert.equal(uses.get("@flow-state-dev/probe")?.has("zzUnused"), false);
+  });
+
+  it("counts a name destructured from an import() call", () => {
+    const { uses } = importCensus(overlay(plants));
+    assert.deepEqual([...uses.get("@flow-state-dev/probe").get("zzUsed")], ["adopter"]);
   });
 
   it("reads every import form and the names each takes", () => {

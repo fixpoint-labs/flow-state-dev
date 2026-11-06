@@ -95,7 +95,7 @@ const nameOf = (el) => (el.propertyName ?? el.name).text;
  * inside a comment, a string, a template or a regex literal is never an import.
  */
 export function importsInCode(text, file) {
-  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, false);
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const out = [];
   const namespaces = new Map();
   const add = (spec, names, form) => {
@@ -104,6 +104,31 @@ export function importsInCode(text, file) {
     const rec = { pkg: m[1], sub: m[2] ?? "", names, form };
     out.push(rec);
     return rec;
+  };
+  // The names an `import()` or `require()` call's module is read through: `const { a } = …`,
+  // `const m = …` and then `m.a`, `(…).a`, and `.then(({ a }) => …)` or `.then((m) => …)`.
+  // Any other read (`m[k]`, a `...rest`, the module passed on) names nothing the census can
+  // know, so it records no name and a root name used only that way reads failing.
+  const bindCall = (call, rec) => {
+    if (!rec) return;
+    let e = call;
+    while (ts.isAwaitExpression(e.parent) || ts.isParenthesizedExpression(e.parent)) e = e.parent;
+    const p = e.parent;
+    let target = null;
+    if (ts.isVariableDeclaration(p) && p.initializer === e) target = p.name;
+    else if (ts.isPropertyAccessExpression(p) && p.expression === e) {
+      if (p.name.text !== "then") return void rec.names.push(p.name.text);
+      const cb = p.parent;
+      const fn = ts.isCallExpression(cb) && cb.expression === p ? cb.arguments[0] : null;
+      if (fn && (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) target = fn.parameters[0]?.name ?? null;
+    }
+    if (target && ts.isIdentifier(target)) namespaces.set(target.text, rec);
+    else if (target && ts.isObjectBindingPattern(target)) {
+      for (const el of target.elements) {
+        const key = el.propertyName ?? el.name;
+        if (!el.dotDotDotToken && (ts.isIdentifier(key) || ts.isStringLiteral(key))) rec.names.push(key.text);
+      }
+    }
   };
   const visit = (node) => {
     if (ts.isImportDeclaration(node)) {
@@ -120,10 +145,13 @@ export function importsInCode(text, file) {
       add(node.moduleReference.expression, [], "require()");
     } else if (ts.isCallExpression(node) && node.arguments.length > 0) {
       const callee = node.expression;
-      if (callee.kind === ts.SyntaxKind.ImportKeyword) add(node.arguments[0], [], "import()");
-      else if (ts.isIdentifier(callee) && callee.text === "require") add(node.arguments[0], [], "require()");
+      if (callee.kind === ts.SyntaxKind.ImportKeyword) bindCall(node, add(node.arguments[0], [], "import()"));
+      else if (ts.isIdentifier(callee) && callee.text === "require") bindCall(node, add(node.arguments[0], [], "require()"));
     } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
-      add(node.argument.literal, [], "import()");
+      // `import("…").Foo` takes `Foo`; a bare `typeof import("…")` takes no name.
+      let q = node.qualifier;
+      while (q && ts.isQualifiedName(q)) q = q.left;
+      add(node.argument.literal, q ? [q.text] : [], "import()");
     }
     ts.forEachChild(node, visit);
   };
