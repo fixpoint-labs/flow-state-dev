@@ -162,7 +162,13 @@
     "packages/shift-manager/src/components/flow-state/review-hold.tsx",
     // Shift Manager's byte copy of the registry's spend: it draws the line and the
     // charge; the copy's other formatters are for apps that show them apart.
-    "packages/shift-manager/src/components/flow-state/spend.tsx"
+    "packages/shift-manager/src/components/flow-state/spend.tsx",
+    // Shift Manager's and the labs' byte copies of the registry's conversation: they
+    // draw `ConversationScrollButton` on their own feeds; the scrolling element,
+    // its content and the download are for apps that take the whole item.
+    "packages/shift-manager/src/components/flow-state/conversation.tsx",
+    "labs/claude-code-style/src/components/flow-state/conversation.tsx",
+    "labs/teammates/src/components/flow-state/conversation.tsx"
   ],
 
   // One named export, not a whole file. Kitchen Sink's and Shift Manager's byte
