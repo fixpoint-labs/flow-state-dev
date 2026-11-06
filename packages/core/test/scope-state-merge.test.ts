@@ -188,3 +188,32 @@ describe("defineFlow's merged scope state", () => {
     expect(flow().session?.stateSchema).toBe(own);
   });
 });
+
+describe("a fingerprint has no delimiter ambiguity", () => {
+  // Each pair accepts different values, so it must fingerprint apart.
+  const pairs: Array<[string, z.ZodTypeAny, z.ZodTypeAny]> = [
+    ["an enum value holding the separator", z.enum(["read|write"]), z.enum(["read", "write"])],
+    // In an array, so the object is a leaf the fingerprint reads (a field's own object merges by field).
+    [
+      "an object key holding the separators",
+      z.array(z.object({ "a:string,b": z.string() })),
+      z.array(z.object({ a: z.string(), b: z.string() }))
+    ],
+    [
+      "a union option holding the separator",
+      z.union([z.literal("x"), z.literal("y"), z.literal("z")]),
+      z.union([z.literal("x"), z.union([z.literal("y"), z.literal("z")])])
+    ],
+    ["a record's key type holding the separator", z.record(z.enum(["a,b"]), z.string()), z.record(z.enum(["a", "b"]), z.string())]
+  ];
+  for (const [name, a, b] of pairs) {
+    it(`refuses ${name}`, () => {
+      expect(() =>
+        mergeScopeStateSchemas("Flow \"f\"", "session", [
+          decl(z.object({ f: a }), "block \"a\""),
+          decl(z.object({ f: b }), "block \"b\"")
+        ])
+      ).toThrow(/session\.state\.f is declared twice with different types/);
+    });
+  }
+});

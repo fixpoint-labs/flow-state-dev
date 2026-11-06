@@ -411,7 +411,8 @@ function hasNoChecks(def: { checks?: unknown[]; coerce?: unknown }): boolean {
  * constrained primitive, a refinement or transform, a lazy, an intersection, a
  * brand, a pipe, a catch, an author's default factory) is fingerprinted by
  * reference, so it matches only the same object. No default factory is ever
- * called.
+ * called. Every composite part is JSON-encoded, so a value or key holding a
+ * separator can't make two signatures collide.
  */
 export function zodSchemaSignature(schema: ZodTypeAny): string {
   const def = (schema as any)._def;
@@ -430,41 +431,41 @@ export function zodSchemaSignature(schema: ZodTypeAny): string {
     case "ZodUndefined":
       return name.slice(3).toLowerCase();
     case "ZodEnum":
-      return `enum(${[...(def.values as string[])].sort().join("|")})`;
+      return `enum${JSON.stringify([...(def.values as string[])].sort())}`;
     case "ZodNativeEnum":
-      return `native(${JSON.stringify(def.values)})`;
+      return `native${JSON.stringify(def.values)}`;
     case "ZodLiteral":
-      return `literal(${JSON.stringify(def.value)})`;
+      return `literal${JSON.stringify([def.value])}`;
     case "ZodArray":
       return def.minLength === null && def.maxLength === null && def.exactLength === null
-        ? `${zodSchemaSignature(def.type)}[]`
+        ? `array${JSON.stringify([zodSchemaSignature(def.type)])}`
         : `opaque${identityOf(schema)}`;
     case "ZodRecord":
-      return `record<${zodSchemaSignature(def.keyType)},${zodSchemaSignature(def.valueType)}>`;
+      return `record${JSON.stringify([zodSchemaSignature(def.keyType), zodSchemaSignature(def.valueType)])}`;
     case "ZodTuple":
       return def.rest === null || def.rest === undefined
-        ? `[${(def.items as ZodTypeAny[]).map(zodSchemaSignature).join(",")}]`
+        ? `tuple${JSON.stringify((def.items as ZodTypeAny[]).map(zodSchemaSignature))}`
         : `opaque${identityOf(schema)}`;
     case "ZodObject": {
       if (!isPlainZodObject(schema)) return `opaque${identityOf(schema)}`;
       const shape = getZodObjectShape(schema) ?? {};
-      return `{${Object.keys(shape).sort().map((k) => `${k}:${zodSchemaSignature(shape[k]!)}`).join(",")}}`;
+      return `object${JSON.stringify(Object.keys(shape).sort().map((k) => [k, zodSchemaSignature(shape[k]!)]))}`;
     }
     case "ZodUnion":
     case "ZodDiscriminatedUnion": {
       const options = def.options instanceof Map ? [...def.options.values()] : (def.options as ZodTypeAny[]);
-      return `(${options.map(zodSchemaSignature).sort().join(" | ")})`;
+      return `union${JSON.stringify(options.map(zodSchemaSignature).sort())}`;
     }
     case "ZodOptional":
-      return `(${zodSchemaSignature(def.innerType)})?`;
+      return `optional${JSON.stringify([zodSchemaSignature(def.innerType)])}`;
     case "ZodNullable":
-      return `(${zodSchemaSignature(def.innerType)})|null`;
+      return `nullable${JSON.stringify([zodSchemaSignature(def.innerType)])}`;
     case "ZodReadonly":
-      return `readonly(${zodSchemaSignature(def.innerType)})`;
+      return `readonly${JSON.stringify([zodSchemaSignature(def.innerType)])}`;
     case "ZodDefault": {
       const declared = getZodDeclaredDefault(schema)!;
       const value = declared.kind === "static" ? JSON.stringify(declared.value()) : `fn${identityOf(declared.factory)}`;
-      return `(${zodSchemaSignature(def.innerType)})=${value}`;
+      return `default${JSON.stringify([zodSchemaSignature(def.innerType), value])}`;
     }
     default:
       return `opaque${identityOf(schema)}`;

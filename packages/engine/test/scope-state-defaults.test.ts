@@ -509,7 +509,7 @@ describe("declarations that disagree are refused before anything runs", () => {
         session: { stateSchema: z.object({ mode: z.enum(["a", "b"]) }) },
         actions: { a: { inputSchema: z.object({}), block: leaf("loose", z.object({ mode: z.string() })) } }
       })
-    ).toThrow(/flow "flow-and-block" types it as enum\(a\|b\) and block "loose" as string/);
+    ).toThrow(/flow "flow-and-block" types it as enum\["a","b"\] and block "loose" as string/);
   });
 
   it("two capabilities on one block that disagree name the capabilities", () => {
