@@ -403,7 +403,7 @@ const RATCHET_CELLS = [
 /** The TypeScript the consumer project reads core's `.d.ts` with: the workspace's own. */
 const TYPESCRIPT_SPEC = "typescript@npm:@typescript/typescript6@6.0.2";
 
-/** FIX-2448's frozen list of moved core names. */
+/** The export census's frozen list of moved core names. */
 const MOVED_TSV = join(ROOT, "specs/issues/FIX-2448/poc/export-census/moved.tsv");
 
 /**

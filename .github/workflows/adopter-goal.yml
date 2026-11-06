@@ -16,9 +16,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Every push to main gets its own reading, so main runs queue rather than
+# cancel. A dispatch on a child branch supersedes the one before it.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   adopter-goal:
@@ -63,5 +65,7 @@ jobs:
 
       # Every admitted assertion must fail against the published tarballs the
       # manifest pins by integrity. One that passes there cannot show progress.
+      # Runs even when the goal step is red: that is the run that needs both.
       - name: Control fails against the pinned published tarballs
+        if: ${{ !cancelled() }}
         run: node scripts/packed-install/run.mjs --control=adopter-goal

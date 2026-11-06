@@ -1,7 +1,9 @@
 /**
  * Runs inside the consumer project for `shims.human-approval-throws`: a handler
  * on the installed tarballs calls `ctx.suspend({ reason: "human_approval" })`,
- * the 0.2 spelling, and the call must throw, naming `user_approval`.
+ * the 0.2 spelling, and the call must refuse it, naming `user_approval`. A
+ * suspension (a `SuspensionError`, or any error carrying `suspensionId`) is a
+ * FAIL, even one naming `user_approval`: that is the old spelling mapped.
  *
  * The flow runs on a real server (`@flow-state-dev/node` over
  * `@flow-state-dev/engine`), as `serve.mjs` does. The handler records what the
@@ -35,7 +37,12 @@ const flow = defineFlow({
             await ctx.suspend({ reason: "human_approval" });
             seen = { kind: "returned" };
           } catch (err) {
-            seen = { kind: "threw", name: err?.name ?? typeof err, message: String(err?.message ?? err) };
+            seen = {
+              kind: "threw",
+              name: err?.name ?? typeof err,
+              message: String(err?.message ?? err),
+              suspended: err?.name === "SuspensionError" || err?.suspensionId != null,
+            };
             throw err;
           }
           return { ok: true };
@@ -71,6 +78,10 @@ try {
   for (let i = 0; i < 100 && !seen; i += 1) await new Promise((r) => setTimeout(r, 50));
   if (!seen) verdict("human-approval: FAIL at call: the handler never reported what ctx.suspend did");
   if (seen.kind === "returned") verdict("human-approval: FAIL at call: ctx.suspend returned for human_approval");
+  // A durable `ctx.suspend` always throws: the throw is the suspension. One that
+  // names user_approval is the old spelling silently mapped, not refused.
+  if (seen.suspended)
+    verdict(`human-approval: FAIL at call: ctx.suspend suspended on human_approval instead of refusing it: ${seen.message.slice(0, 200)}`);
   if (!/user_approval/.test(seen.message))
     verdict(`human-approval: FAIL at call: threw ${seen.name} without naming user_approval: ${seen.message.slice(0, 200)}`);
   verdict("human-approval: ok");

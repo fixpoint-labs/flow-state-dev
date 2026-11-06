@@ -33,12 +33,23 @@ const manifest = (expect) => ({
 });
 const outcomes = (entries) => new Map(Object.entries(entries).map(([id, outcome]) => [id, { outcome, detail: [] }]));
 
-test("the committed manifest is well formed and starts every assertion at fail", () => {
+// The committed manifest moves: each child flips its own lines to "pass" as its
+// fix lands. So this checks only what never moves (shape, six rows, 28 pinned
+// controls). The all-fail starting state is pinned on a fixed fixture below.
+test("the committed manifest is well formed and pins the 28 control tarballs", () => {
   const m = readManifest();
   assert.equal(m.rows.length, 6);
-  assert.ok(Object.values(m.expect).every((e) => e === "fail"));
+  assert.ok(Object.values(m.expect).every((e) => e === "fail" || e === "pass"));
   assert.equal(m.control.packages.length, 28);
   assert.ok(m.control.packages.every((p) => /^sha512-/.test(p.integrity)));
+});
+
+test("the all-fail starting state is green with 0 rows, and the control accepts it", () => {
+  const start = manifest({ "a.one": "fail", "a.two": "fail", "b.one": "fail" });
+  const run = outcomes({ "a.one": "fail", "a.two": "pending", "b.one": "fail" });
+  const v = judge(start, run);
+  assert.deepEqual([v.ok, v.rowsPassing], [true, 0]);
+  assert.equal(judgeControl(start, run).ok, true);
 });
 
 test("an outcome that matches its expectation is green, and a row with no passing cell does not count", () => {

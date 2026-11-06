@@ -227,9 +227,8 @@ export function ratchetFailures(violations, { package: pkg, names }) {
 // ── shims.never-published ───────────────────────────────────────────────────
 
 /**
- * The 19 retired names no published version accepted or wrote, from FIX-2454's
- * census (`specs/issues/FIX-2454/poc/retired-census/census.mjs`, its `never`
- * entries). Each is a name the installed packages must neither read nor
+ * The 19 retired names no published version accepted or wrote, from the
+ * retired-names census's `never` entries (its `retired-census/census.mjs`). Each is a name the installed packages must neither read nor
  * refuse. `pkg` is the package (or packages) whose `dist` is scanned; `file`
  * narrows the scan where the name alone is a common word.
  */

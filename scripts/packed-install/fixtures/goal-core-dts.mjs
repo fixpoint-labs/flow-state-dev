@@ -2,7 +2,7 @@
  * Runs inside the consumer project for `surface.core-installed-dts`: reads the
  * INSTALLED core tarball's declarations through the TypeScript compiler (most
  * moved names are types, which a runtime import cannot see) and checks them
- * against FIX-2448's frozen moved list.
+ * against the export census's frozen moved list.
  *
  * Inputs, from the environment:
  *   FSD_MOVED_TSV  — path to `moved.tsv` (`<move>\t<name>` per line);
