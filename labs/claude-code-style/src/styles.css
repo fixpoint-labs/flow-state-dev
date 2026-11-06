@@ -14,9 +14,52 @@
 @source "../node_modules/streamdown/dist/*.js";
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Corners: the design system draws square ones, but this lab nests a lot of
+ * boxes (a card in a sheet, a button in a card), and square-in-square reads as
+ * one pile of lines. Rounding lets the nesting show: containers and your own
+ * lines take the large steps, controls and tags the small ones. Unlayered and
+ * after the import, so it wins over the design system's values.
+ */
+:root {
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
 @theme inline {
   --color-sidebar: var(--sidebar);
   --color-inspector: var(--inspector);
+}
+
+/* Three dots that rise in turn (`WorkingDots`). */
+@keyframes working-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+.working-dots > span {
+  animation: working-dot 1.2s ease-in-out infinite;
+}
+.working-dots > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.working-dots > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .working-dots > span {
+    animation: none;
+    opacity: 0.7;
+  }
 }
 
 @layer base {
