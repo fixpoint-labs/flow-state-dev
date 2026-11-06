@@ -23,6 +23,10 @@
  * failure, as what the screen would show.
  *
  * Prints `answer-task-stop: ok`, or `answer-task-stop: FAIL at <step>: …`.
+ * A leg that could not ask (the board's start refused, no stop raised, the
+ * hook never rendered, a record it cannot read) prints no verdict and exits 1,
+ * so the runner reports `error` and a broken fixture never reads as the
+ * expected fail.
  */
 import { JSDOM } from "jsdom";
 
@@ -50,6 +54,11 @@ const verdict = (line, detail = []) => {
   console.log(line);
   for (const l of detail) console.log(`  ${l}`);
   process.exit(0);
+};
+/** The leg could not ask: no verdict, so the runner reports `error`. */
+const broken = (why) => {
+  console.error(why);
+  process.exit(1);
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(check, ms) {
@@ -116,10 +125,7 @@ const started = await fetcher(`http://localhost/api/flows/${KIND}/actions/start`
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ userId: USER, sessionId: SESSION, input: {} }),
 });
-if (!started.ok) {
-  console.error(`the board's start was refused: ${started.status} ${(await started.text()).slice(0, 300)}`);
-  process.exit(1);
-}
+if (!started.ok) broken(`the board's start was refused: ${started.status} ${(await started.text()).slice(0, 300)}`);
 
 const taskRuns = async () =>
   (await runtime.stores.request.list({ flowKind: KIND, withItems: true })).filter((r) => r.source === "task");
@@ -127,14 +133,10 @@ const suspended = await until(async () => (await taskRuns()).find((r) => r.statu
 if (!suspended) {
   // No stop to answer is a broken fixture, not a fail: the leg could not ask.
   const seen = (await taskRuns()).map((r) => `${r.id} ${r.status}`).join(", ") || "none";
-  console.error(`the task run never stopped for the user; task runs: ${seen}`);
-  process.exit(1);
+  broken(`the task run never stopped for the user; task runs: ${seen}`);
 }
 const item = (suspended.items ?? []).find((i) => i.type === "suspension");
-if (!item) {
-  console.error(`the suspended task run ${suspended.id} carries no suspension item`);
-  process.exit(1);
-}
+if (!item) broken(`the suspended task run ${suspended.id} carries no suspension item`);
 
 // The screen: useApproval alone, under the provider an app wraps its tree in.
 let latest = null;
@@ -148,7 +150,10 @@ function Approver() {
 const root = createRoot(document.getElementById("root"));
 root.render(createElement(FlowProvider, { flowKind: KIND, userId: USER, sessionId: suspended.sessionId, fetcher }, createElement(Approver)));
 await until(() => latest !== null, 5_000);
-if (!latest?.canApprove) verdict("answer-task-stop: FAIL at render: useApproval offers no approve for the stop");
+// Never rendered (the provider or the hook threw, or React never committed) is
+// a broken fixture: only a hook that rendered and offers no approve is a fail.
+if (latest === null) broken("the Approver never rendered within 5s, so useApproval was never read");
+if (!latest.canApprove) verdict("answer-task-stop: FAIL at render: useApproval offers no approve for the stop");
 latest.approve();
 // Settled: the click's call came back, answered or refused.
 await until(() => latest.isResolving === false && (latest.resolved || latest.error !== null), 10_000);
@@ -160,16 +165,21 @@ const run = await until(async () => {
   const r = await runtime.stores.request.get(suspended.id);
   return r && r.status !== "suspended" && r.status !== "running" ? r : null;
 }, 10_000) ?? (await runtime.stores.request.get(suspended.id));
+if (!run) broken(`the task run ${suspended.id} is gone from the request store`);
 const runItems = (await taskRuns()).find((r) => r.id === suspended.id)?.items ?? [];
 const resume = runItems.find((i) => i.type === "suspension_resume" && i.suspensionId === item.suspensionId);
-const kept = await runtime.durabilityProvider?.loadSuspension?.(suspended.id, item.suspensionId).catch(() => null);
+// The suspension store the durability provider reads. A store that throws is
+// a record the leg cannot read: it crashes to `error` rather than defaulting
+// the stop to "pending".
+const kept = resume ? null : await runtime.stores.suspensions.get(suspended.id, item.suspensionId);
 // `resolution` is the stop's own status vocabulary; the item's `status` is the item's.
-const stopStatus = resume?.resolution ?? kept?.status ?? "pending";
+if (!resume && !kept) broken(`the stop ${item.suspensionId} has neither a resume item nor a suspension record`);
+const stopStatus = resume ? resume.resolution : kept.status;
 
 root.unmount();
 const failures = [];
 if (stopStatus !== "approved") failures.push(`the stop reads ${JSON.stringify(stopStatus)}, not "approved"`);
-if (run?.status !== "completed") failures.push(`the task run is ${JSON.stringify(run?.status)}, not "completed"`);
+if (run.status !== "completed") failures.push(`the task run is ${JSON.stringify(run.status)}, not "completed"`);
 if (!answers.some((a) => a?.approved === true)) failures.push("the task's handler never got an approved answer back from suspendForUser");
 if (failures.length > 0)
   verdict(`answer-task-stop: FAIL at answer: ${failures[0]}`, [...failures.slice(1), `the hook shows: ${hookError ?? "no error"}`]);
