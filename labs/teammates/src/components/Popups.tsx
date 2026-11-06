@@ -27,7 +27,6 @@ export function taskLine(task: { title: string; to: string }, coding: boolean, n
   return coding ? `Coding task: ${task.title}` : `Asked ${nameOf(task.to)} to ${lowerFirst(task.title)}`;
 }
 
-/** What a coding task runs on, as its line names it: the harness, and the model when its run reported one. */
 /** A task's word and the class that colours it. */
 export interface TaskRowPresentation {
   word: string;
@@ -56,6 +55,7 @@ export function reasonLine(task: Pick<BoardTask, "error">): string | undefined {
   return line === "" ? undefined : line;
 }
 
+/** What a coding task runs on, as its line names it: the harness, and the model when its run reported one. */
 export function runsOn(task: { harness?: string; model?: string }): string | undefined {
   if (task.harness === undefined) return undefined;
   return task.model === undefined ? task.harness : `${task.harness} · ${task.model}`;
