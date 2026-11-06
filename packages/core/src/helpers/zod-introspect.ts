@@ -388,6 +388,50 @@ export function getZodDeclaredDefault(schema: ZodTypeAny): ZodDeclaredDefault | 
   return Object.is(first, second) ? { kind: "static", factory, value: () => first } : { kind: "dynamic", factory };
 }
 
+/**
+ * Whether `schema` declares an author's default factory anywhere a read could
+ * fill from it: under its wrappers, in an object's fields, an array's or a
+ * set's items, a record's or a map's values, a tuple, a union, an
+ * intersection, a lazy. Never calls a factory.
+ */
+export function containsDynamicDefault(schema: ZodTypeAny, seen: Set<ZodTypeAny> = new Set()): boolean {
+  if (seen.has(schema)) return false;
+  seen.add(schema);
+  const def = (schema as any)._def;
+  const walk = (child: unknown) => child !== undefined && child !== null && containsDynamicDefault(child as ZodTypeAny, seen);
+  switch (getZodTypeName(schema)) {
+    case "ZodDefault":
+      return getZodDeclaredDefault(schema)!.kind === "dynamic" || walk(def.innerType);
+    case "ZodObject":
+      return Object.values(getZodObjectShape(schema) ?? {}).some(walk) || walk(def.catchall);
+    case "ZodArray":
+    case "ZodSet":
+      return walk(def.type ?? def.valueType);
+    case "ZodRecord":
+    case "ZodMap":
+      return walk(def.valueType);
+    case "ZodTuple":
+      return (def.items as ZodTypeAny[]).some(walk) || walk(def.rest);
+    case "ZodUnion":
+    case "ZodDiscriminatedUnion":
+      return [...(def.options instanceof Map ? def.options.values() : def.options)].some(walk);
+    case "ZodIntersection":
+      return walk(def.left) || walk(def.right);
+    case "ZodLazy":
+      return walk(def.getter());
+    case "ZodBranded":
+      return walk(def.type);
+    case "ZodPipeline":
+      return walk(def.in) || walk(def.out);
+    case "ZodCatch":
+      return walk(def.innerType);
+    default: {
+      const inner = getZodInnerType(schema);
+      return inner !== undefined && walk(inner);
+    }
+  }
+}
+
 /** `true` for a `z.object` with no catchall, no strict or passthrough mode and no refinement. */
 export function isPlainZodObject(schema: ZodTypeAny): boolean {
   if (!isZodObject(schema)) return false;

@@ -35,6 +35,7 @@
 import { z, type ZodTypeAny } from "zod";
 import { deepEqual } from "./deep-equal";
 import {
+  containsDynamicDefault,
   getZodDeclaredDefault,
   getZodInnerType,
   getZodObjectShape,
@@ -97,6 +98,58 @@ export class ScopeStateSchemaConflictError extends Error {
  */
 export function isMergeableScopeStateSchema(schema: ZodTypeAny): boolean {
   return isZodObject(peel(schema, true).core);
+}
+
+/**
+ * Refuse a default factory on a field the flow's own schema doesn't declare.
+ *
+ * Only the flow's own schema shapes what is stored: a new session is born
+ * with its defaults, and writes validate against it. A field only a block or
+ * a capability declares is filled at read time and never stored, so a factory
+ * default there (`() => crypto.randomUUID()`, a counter) would run on every
+ * read of the same record and give a new value each time. A static default is
+ * the same on every read, and is allowed.
+ *
+ * Walks `declaration` beside `flowOwn` field by field. Where the flow declares
+ * a field, it owns what is stored there, and the walk descends only while both
+ * are objects. Where the flow declares none, the declaration's field is
+ * refused if a factory default sits anywhere inside it.
+ *
+ * @throws Error naming the field path, the declarer and the fix.
+ */
+export function refuseUndeclaredFactoryDefaults(
+  owner: string,
+  scope: string,
+  flowOwn: ZodTypeAny | undefined,
+  declaration: ScopeStateDeclaration
+): void {
+  const shapeOf = (schema: ZodTypeAny | undefined, root: boolean): Record<string, ZodTypeAny> | undefined => {
+    if (schema === undefined) return undefined;
+    const core = peel(schema, root).core;
+    return root || isPlainZodObject(core) ? getZodObjectShape(core) : undefined;
+  };
+  const walk = (own: ZodTypeAny | undefined, declared: ZodTypeAny, path: string, root: boolean): void => {
+    const declaredShape = shapeOf(declared, root);
+    if (declaredShape === undefined) return;
+    const ownShape = shapeOf(own, root) ?? {};
+    for (const [key, field] of Object.entries(declaredShape)) {
+      const ownField = ownShape[key];
+      const at = `${path}.${key}`;
+      if (ownField !== undefined) {
+        walk(ownField, field, at, false);
+        continue;
+      }
+      if (containsDynamicDefault(field)) {
+        throw new Error(
+          `${owner}: ${at} has a default factory declared by ${declaration.source}, and the flow ` +
+            `doesn't declare the field. A field only a block or a capability declares is filled when it ` +
+            `is read and never stored, so its factory would give a new value on every read of the same ` +
+            `record. To keep it, declare the field on the flow's ${scope} stateSchema, or give it a static default.`
+        );
+      }
+    }
+  };
+  walk(flowOwn, declaration.schema, `${scope}.state`, true);
 }
 
 type WrapperKind = "optional" | "nullable" | "readonly" | "default";

@@ -470,6 +470,81 @@ describe("a readonly session field a block declares is protected like the flow's
   });
 });
 
+describe("reading one stored record always gives one value", () => {
+  // A factory default on a field the flow doesn't declare is never stored:
+  // the fill would call it on every read and give a new value each time.
+  let counter = 0;
+  const factoryBlock = (name: string, scope: "session" | "user" | "org", field: z.ZodTypeAny) =>
+    handler({
+      name,
+      inputSchema: z.object({}),
+      [`${scope}StateSchema`]: z.object({ id: field }),
+      execute: (_input: unknown, ctx: { session: { state: unknown } }) => ({ id: (ctx.session.state as { id?: unknown }).id })
+    } as never);
+  const flowWith = (kind: string, block: ReturnType<typeof factoryBlock>, session?: z.AnyZodObject) =>
+    defineFlow({
+      kind,
+      ...(session === undefined ? {} : { session: { stateSchema: session } }),
+      actions: { read: { inputSchema: z.object({}), block } }
+    });
+
+  it("refuses a block-only readonly field with a factory default, by name, at defineFlow", () => {
+    expect(() =>
+      flowWith("counter-ro", factoryBlock("counts", "session", z.number().readonly().default(() => ++counter)))
+    ).toThrow(/Flow "counter-ro": session\.state\.id has a default factory declared by block "counts"[\s\S]*declare the field on the flow/);
+  });
+
+  it("refuses a block-only id with a factory default in every scope", () => {
+    for (const scope of ["session", "user", "org"] as const) {
+      expect(() => flowWith(`ids-${scope}`, factoryBlock("ids", scope, z.string().default(() => crypto.randomUUID())))).toThrow(
+        new RegExp(`${scope}\\.state\\.id has a default factory declared by block "ids"`)
+      );
+    }
+  });
+
+  it("refuses a capability-only factory default, naming the capability", () => {
+    const cap = defineCapability({ name: "stamps", sessionStateSchema: z.object({ at: z.number().default(() => Date.now()) }) });
+    const block = handler({ name: "uses-stamps", inputSchema: z.object({}), uses: [cap], execute: () => ({}) });
+    expect(() => defineFlow({ kind: "stamps-flow", actions: { a: { inputSchema: z.object({}), block } } })).toThrow(
+      /session\.state\.at has a default factory declared by capability "stamps" \(used by block "uses-stamps"\)/
+    );
+  });
+
+  it("refuses a factory default nested in a block-only object, and in a block-only array's items", () => {
+    const nested = z.object({ meta: z.object({ id: z.string().default(() => "x") }).default({}) });
+    expect(() => flowWith("nested-f", factoryBlock("n", "session", nested))).toThrow(/session\.state\.id has a default factory/);
+    const items = z.array(z.object({ id: z.string().default(() => "x") }));
+    expect(() => flowWith("items-f", factoryBlock("i", "session", items))).toThrow(/session\.state\.id has a default factory/);
+  });
+
+  it("accepts it once the flow declares the field, and a session reads one value however often it is read", async () => {
+    const field = z.string().default(() => `id-${++counter}`);
+    const flow = flowWith("ids-declared", factoryBlock("ids", "session", field), z.object({ id: field }))();
+    const stores = createInMemoryStores();
+    const read = async () =>
+      (
+        await runAction({
+          orgId: ORG,
+          flow,
+          actionName: "read",
+          input: {},
+          userId: USER,
+          sessionId: "sess_ids",
+          stores,
+          responseEmitter: createResponseEmitter({ requestId: `req_ids_${Math.random()}` }),
+          runtimeConfig: {}
+        })
+      ).output as { id?: string };
+    const first = await read();
+    expect(first.id).toMatch(/^id-/);
+    expect(await read()).toEqual(first);
+  });
+
+  it("accepts a static default on a block-only field: it is the same on every read", () => {
+    expect(() => flowWith("static-ok", factoryBlock("s", "session", z.string().default("plan")))).not.toThrow();
+  });
+});
+
 describe("a decision on stored state reads it as a run reads it, defaults filled", () => {
   // The block owns `owner`, readonly and defaulted; the flow restates nothing,
   // so a child born with no state stores `{}` and reads `{ owner: "alice" }`.
@@ -626,15 +701,16 @@ describe("declarations that disagree are refused before anything runs", () => {
   });
 
   it("two flows that share one block's dynamic user default, each merging its own fields too, are not refused", () => {
-    // The shared block defaults `visitorId`; each flow's own block types it
-    // without one, so each flow's merge has two declarations of the field.
+    // The shared block defaults `visitorId` with a factory, so each flow
+    // declares that field too (a factory on a block-only field is refused);
+    // each flow's own block types it without one, so each flow's merge has
+    // several declarations of the field.
+    const visitorId = z.string().default(() => crypto.randomUUID());
+    const at = z.string().default(() => new Date().toISOString());
     const sharedId = handler({
       name: "shared-id",
       inputSchema: z.object({}),
-      userStateSchema: z.object({
-        visitorId: z.string().default(() => crypto.randomUUID()),
-        prefs: z.object({ at: z.string().default(() => new Date().toISOString()) }).default({})
-      }),
+      userStateSchema: z.object({ visitorId, prefs: z.object({ at }).default({}) }),
       execute: () => ({})
     });
     const own = (kind: string) =>
@@ -653,6 +729,7 @@ describe("declarations that disagree are refused before anything runs", () => {
       registry.register(
         defineFlow({
           kind,
+          user: { stateSchema: z.object({ visitorId, prefs: z.object({ at }) }) },
           actions: { a: { inputSchema: z.object({}), block: sharedId }, b: { inputSchema: z.object({}), block: own(kind) } }
         })()
       );

@@ -46,7 +46,11 @@ import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
 import { hasZodObjectCatchall, introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
 import { walkBlockGraph } from "../helpers/block-graph";
-import { mergeScopeStateSchemas, type ScopeStateDeclaration } from "../helpers/scope-state-merge";
+import {
+  mergeScopeStateSchemas,
+  refuseUndeclaredFactoryDefaults,
+  type ScopeStateDeclaration
+} from "../helpers/scope-state-merge";
 import { getBaseCapability } from "../capability/merge";
 import type { CapabilityRef } from "../capability/types";
 import {
@@ -772,9 +776,13 @@ function mergeFlowScopeStateSchemas(
   const merged: { session?: ZodTypeAny; user?: ZodTypeAny; org?: ZodTypeAny } = {};
   for (const scope of STATE_SCOPES) {
     const own = scopes[scope]?.stateSchema;
+    const declared = blockScopeStateDeclarations(scope, reachable);
+    for (const declaration of declared) {
+      if (declaration.schema !== own) refuseUndeclaredFactoryDefaults(`Flow "${kind}"`, scope, own, declaration);
+    }
     const schema = mergeScopeStateSchemas(`Flow "${kind}"`, scope, [
       ...(own === undefined ? [] : [{ schema: own, source: `flow "${kind}"` }]),
-      ...blockScopeStateDeclarations(scope, reachable)
+      ...declared
     ]);
     if (schema !== undefined) merged[scope] = schema;
   }
