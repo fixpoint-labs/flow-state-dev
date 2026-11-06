@@ -12,11 +12,12 @@ session. This issue makes the task still be open, and able to act, when they arr
 
 | Someone who… | Today | After |
 |---|---|---|
-| **has a coding task whose run opened a PR** (the Claude Code-style lab, #4798) | The run says it finished, the task completes, the thread says *This task is finished.* and the composer goes | The task stays open. Its card on the board and its thread say **PR open · #4798**, with the link, and the composer stays |
+| **has a coding task whose run opened a PR** (the Claude Code-style lab, #4798) | When the run passes its checks, the task completes, the thread says *This task is finished.* and the composer goes. (#4798's own task ended as Failed instead: its agent pushed to a branch it named itself, which the manager does not watch. FIX-2579 owns that) | The task stays open. Its card on the board and its thread say **PR open · #4798**, with the link, and the composer stays |
 | **types in that thread while the PR is open** ("fix the lint", a reviewer's point pasted in) | The line is talk: a harness turn outside the task, which never reopens it | The line is a steer: one more run on the same attempt and coding session, then the task waits on the PR again |
 | **merges the PR, then types or a GitHub event arrives** | Nothing changes; the task was already done | The task reads the PR as merged and completes, with no harness run |
 | **closes the PR without merging** | Nothing changes | On the next wake the task is cancelled: *its pull request was closed without merging* ([D2](DECISIONS.md#d2)) |
 | **accepts a review with Open a PR** (Teammates, Shift Manager, FIX-2543) | The task completes once the PR is open | The task waits on that PR the same way |
+| **opens the PR from a branch it named itself**, not the run's branch | The PR record never sees it | **Not here.** The record lists PRs on the run's branch only, so the task does not wait. FIX-2579 owns runs that leave their branch; once the manager follows that branch, this wait covers its PR with no change |
 | **gets a review on the PR** | It reaches a finished task's session as talk, once FIX-2535 lands | **Not until FIX-2535 or FIX-2536 is on main.** Then the review wakes the task the way a typed line does, and the run takes its words. Before that, you paste it in ([D3](DECISIONS.md#d3)) |
 
 ## The goal, and how we'll know it's met
