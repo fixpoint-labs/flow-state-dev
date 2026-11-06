@@ -5,7 +5,7 @@
  * scratch copy as `src/goal/claude-code.tsx`.
  *
  *   ?surface=thread        the main thread and its composer
- *   ?surface=task-thread   a task's thread and its composer
+ *   ?surface=task-thread   a task's thread and its composer, in the sheet it opens in
  *   ?surface=task-panel    the task panel's sheet, which never sends
  */
 import { StrictMode } from "react";
@@ -40,14 +40,18 @@ const adapter: LabAdapter = {
   watchSessions: () => () => undefined,
   listProjects: async () => [],
   createProject: async () => ({ id: "p", name: "P" }),
+  checkRepository: async () => undefined as never,
+  readHarnesses: async () => [],
   openSession: async () => session("a"),
   send: (key, text) => script.send(key, text),
   interrupt: async () => undefined,
+  retry: async () => undefined,
   watchThread: (key, emit) => follow(key, emit, (entries, running) => ({ entries, running, connection: "live", ...(running ? { turnStartedAt: Date.now() } : {}) })),
   watchTasks: () => () => undefined,
   watchTaskWork: (_session, taskId, emit) => follow(taskId, emit, (entries) => ({ entries })),
   sayInThread: (_session, taskId, line) => script.send(taskId, line),
   resolve: async () => undefined,
+  taskActions: () => ({ cancel: async () => undefined, steer: async () => undefined, release: async () => undefined, retry: async () => undefined }) as never,
   requestChanges: (_session, taskId, words) => script.send(taskId, words),
   watchPins: () => () => undefined,
   pin: async () => undefined,
@@ -63,9 +67,14 @@ function Page() {
   const conversation = useConversation(open);
   if (surface === "task-thread") {
     return (
-      <div style={{ height: "100vh", width: 420 }} className="bg-background text-foreground">
-        <ThreadView adapter={adapter} sessionId="a" task={task(open)} pinned={false} onBack={() => undefined} />
-      </div>
+      <SheetProvider>
+        <div style={{ height: "100vh" }} className="grid bg-background text-foreground">
+          <SheetArea>
+            <div style={{ height: "100vh" }} />
+          </SheetArea>
+        </div>
+        <ThreadView key={open} adapter={adapter} sessionId="a" task={task(open)} pinned={false} onClose={() => undefined} />
+      </SheetProvider>
     );
   }
   return (
