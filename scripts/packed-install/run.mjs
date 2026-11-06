@@ -433,7 +433,6 @@ function exampleCopy(project, example) {
         dir: join(dir, example),
         repoRoot: ROOT,
         tarballs: project.tarballs,
-        versions: project.versions,
         log,
       }),
     );
@@ -501,7 +500,6 @@ export const GOAL_CHECKS = [
           dir: join(dir, "app"),
           repoRoot: ROOT,
           tarballs: project.tarballs,
-          versions: project.versions,
           log,
         });
       } finally {
@@ -845,8 +843,10 @@ function runLinkControl(work, dir) {
 /**
  * A goal run's project: the consumer install plus what goal checks read. The
  * tree under test, the manifest, a cache of ratchet runs and example copies,
- * and each tarball by package name, for legs that install into a folder of
- * their own.
+ * and each tarball with its version by package name, for legs that install
+ * into a folder of their own.
+ *
+ * @param {{ tarballs: { name: string, tarball: string, version: string }[] }} opts
  */
 function goalProject({ dir, packages, tree, manifest, tarballs }) {
   return {
@@ -857,8 +857,7 @@ function goalProject({ dir, packages, tree, manifest, tarballs }) {
     ratchetRuns: new Map(),
     exampleRuns: new Map(),
     cleanup: [],
-    tarballs: new Map(tarballs.map((t) => [t.name, t.tarball])),
-    versions: new Map(tarballs.map((t) => [t.name, { version: t.manifest.version }])),
+    tarballs: new Map(tarballs.map(({ name, tarball, version }) => [name, { tarball, version }])),
   };
 }
 
@@ -881,7 +880,8 @@ function runGoal(work, dir) {
   log("installing into an empty ESM project…");
   npmInstall(dir, packed.map((p) => p.tarball));
   const outcomes = new Map();
-  const project = goalProject({ dir, packages: packed, tree: ROOT, manifest, tarballs: packed });
+  const tarballs = packed.map((p) => ({ name: p.name, tarball: p.tarball, version: p.manifest.version }));
+  const project = goalProject({ dir, packages: packed, tree: ROOT, manifest, tarballs });
   try {
     runChecks(project, GOAL_CHECKS, outcomes);
   } finally {
@@ -931,7 +931,7 @@ function runGoalControl(work, dir) {
   sh("tar", ["xf", archive, "-C", tree], ROOT);
   log(`the tree under test is a checkout of ${manifest.control.commit.slice(0, 8)}`);
   const outcomes = new Map();
-  const pinned = pins.map((pin, i) => ({ name: pin.name, tarball: tarballs[i], manifest: { version: pin.version } }));
+  const pinned = pins.map((pin, i) => ({ name: pin.name, tarball: tarballs[i], version: pin.version }));
   const project = goalProject({ dir, packages, tree, manifest, tarballs: pinned });
   try {
     runChecks(project, GOAL_CHECKS, outcomes);

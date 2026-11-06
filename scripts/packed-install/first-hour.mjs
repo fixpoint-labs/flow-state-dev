@@ -9,9 +9,12 @@
  * block; every install line's `@flow-state-dev/*` names map to their
  * tarballs; `pnpm dev` is skipped, because it serves forever and the page's
  * `fsdev run` is the answer this checks. The selection rule is the leg's,
- * never the page's: no marker in the page steers it. The only thing the leg
- * adds is model access: a placeholder `OPENAI_API_KEY` and `OPENAI_BASE_URL`
- * pointing at a local stub (`fixtures/stub-model.mjs`). The cell passes when
+ * never the page's: no marker in the page steers it. The leg adds two things,
+ * neither in a file the page writes: model access (a placeholder
+ * `OPENAI_API_KEY` and `OPENAI_BASE_URL` pointing at a local stub,
+ * `fixtures/stub-model.mjs`), and the override map below, in a
+ * `pnpm-workspace.yaml`, so the folder has no `package.json` until the page
+ * makes one and a page that opens with `pnpm init` runs. The cell passes when
  * every block succeeds and the page's `fsdev run` prints the stub's answer.
  * Each block is its own shell, so an `export` in one does not reach the next;
  * the leg's own placeholder key covers the page's `export … sk-...` lines.
@@ -29,12 +32,20 @@
  * resolve inside the folder at its tarball's version; otherwise the run
  * throws, which the judge reports as `error`, never as an expected fail.
  * Transitive `@flow-state-dev/*` dependencies map to the tarballs through the
- * package manager's overrides, written into the folder's `package.json`: the
- * leg's stand-in for a registry that serves the versions under test.
+ * package manager's overrides (pnpm's in `pnpm-workspace.yaml`, npm's in the
+ * copied example's `package.json`): the leg's stand-in for a registry that
+ * serves the versions under test.
+ *
+ * A run that could not happen throws too, so it is `error` and never passes
+ * the control as an expected fail: a step that would not start, timed out or
+ * was killed, and an install the registry or network broke ({@link
+ * infrastructureFailure}). An install that fails on what the tarballs ask for
+ * (a version no registry has, a peer conflict) is the leg's finding, a `fail`.
  */
 
 import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { delimiter, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { STUB_ANSWER } from "./fixtures/stub-model.mjs";
@@ -49,6 +60,12 @@ const DEV_SERVER = /^\s*(pnpm|npm|yarn)\s+(run\s+)?dev\s*$/;
 
 /** An install line, whose `@flow-state-dev/*` names map to tarballs. */
 const INSTALL_LINE = /^\s*(pnpm\s+(add|install|i)|npm\s+(install|i|add)|yarn\s+add)\b/;
+
+/**
+ * A block holding an install line. Only such a block's failure is read for a
+ * registry or network cause: any other block's failure is the page's.
+ */
+const INSTALL_LINE_ANYWHERE = new RegExp(INSTALL_LINE.source, "m");
 
 /** A `@flow-state-dev/*` package name, with an optional version or range. */
 const FSD_NAME = /(?<![\w/.-])(@flow-state-dev\/[a-z0-9][a-z0-9-]*)(@[^\s'"]+)?/g;
@@ -88,7 +105,7 @@ export function quickstartPlan(markdown) {
  * Map every `@flow-state-dev/*` name on an install line to its tarball. Lines
  * that are not install lines come back unchanged.
  *
- * @param {Map<string, string>} tarballs — package name → tarball path
+ * @param {Tarballs} tarballs
  * @returns {{ script: string, unknown: string[] }} `unknown`: names with no tarball.
  */
 export function mapInstallLines(script, tarballs) {
@@ -99,12 +116,12 @@ export function mapInstallLines(script, tarballs) {
       if (!INSTALL_LINE.test(line)) return line;
       const code = line.replace(/\s#.*$/, "");
       return code.replace(FSD_NAME, (_m, name) => {
-        const tarball = tarballs.get(name);
-        if (!tarball) {
+        const packed = tarballs.get(name);
+        if (!packed) {
           unknown.push(name);
           return name;
         }
-        return shellQuote(tarball);
+        return shellQuote(packed.tarball);
       });
     })
     .join("\n");
@@ -116,6 +133,7 @@ export function mapInstallLines(script, tarballs) {
  * becomes its tarball, and every tarball is an npm override, so a transitive
  * `@flow-state-dev/*` dependency gets the version under test too.
  *
+ * @param {Tarballs} tarballs
  * @returns {{ manifest: object, unknown: string[] }} `unknown`: `workspace:` names with no tarball.
  */
 export function rewriteExampleManifest(manifest, tarballs) {
@@ -124,8 +142,8 @@ export function rewriteExampleManifest(manifest, tarballs) {
   for (const field of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
     for (const [name, range] of Object.entries(out[field] ?? {})) {
       if (typeof range !== "string" || !range.startsWith("workspace:")) continue;
-      const tarball = tarballs.get(name);
-      if (tarball) out[field][name] = `file:${tarball}`;
+      const packed = tarballs.get(name);
+      if (packed) out[field][name] = `file:${packed.tarball}`;
       else unknown.push(name);
     }
   }
@@ -133,9 +151,70 @@ export function rewriteExampleManifest(manifest, tarballs) {
   return { manifest: out, unknown };
 }
 
+/**
+ * The tarballs under test, by package name.
+ *
+ * @typedef {Map<string, { tarball: string, version: string }>} Tarballs
+ */
+
 /** Every tarball as a `file:` override. */
 function overrides(tarballs) {
-  return Object.fromEntries([...tarballs].map(([name, path]) => [name, `file:${path}`]));
+  return Object.fromEntries([...tarballs].map(([name, { tarball }]) => [name, `file:${tarball}`]));
+}
+
+/**
+ * pnpm's override map as a `pnpm-workspace.yaml`, which pnpm reads with no
+ * `package.json` beside it. Keys and values are JSON strings, which YAML reads
+ * as the same strings.
+ */
+export function pnpmWorkspaceYaml(tarballs) {
+  const lines = Object.entries(overrides(tarballs)).map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`);
+  return lines.length === 0 ? "overrides: {}\n" : `overrides:\n${lines.join("\n")}\n`;
+}
+
+/**
+ * What in a failed install's output says the registry or the network broke
+ * it, rather than what the tarballs asked for: a socket or DNS error, a 5xx,
+ * pnpm's fetch failures, npm's `network` lines. A 4xx, a missing version or a
+ * peer conflict is not here: those come from the tarballs' own dependencies.
+ */
+const INFRASTRUCTURE = [
+  /\b(ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|ENOTFOUND|ENETUNREACH|EHOSTUNREACH)\b/,
+  /\bERR_PNPM_(META_FETCH_FAIL|FETCH_5\d\d)\b/,
+  /\bERR_SOCKET_TIMEOUT\b/,
+  /^npm (ERR!|error) network\b/m,
+  /^npm (ERR!|error) code E5\d\d\b/m,
+  /\b5\d\d (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)\b/i,
+];
+
+/**
+ * The registry or network failure in an install's output, or null.
+ *
+ * @returns {string | null} the matched text
+ */
+export function infrastructureFailure(output) {
+  for (const re of INFRASTRUCTURE) {
+    const m = re.exec(output);
+    if (m) return m[0];
+  }
+  return null;
+}
+
+/**
+ * Throw when a step did not run to an exit code of its own: it would not
+ * start, timed out, or was killed. `spawnSync` reports a timeout as an
+ * `ETIMEDOUT` error with the kill signal.
+ */
+function assertRan(res, what) {
+  if (res.error?.code === "ETIMEDOUT") throw new Error(`${what}: timed out, killed with ${res.signal}`);
+  if (res.error) throw new Error(`${what}: could not run (${res.error.code ?? res.error.message})`);
+  if (res.status == null) throw new Error(`${what}: killed by ${res.signal}`);
+}
+
+/** Throw when a failed install's output names a registry or network failure. */
+function assertNotInfrastructure(res, what) {
+  const hit = res.status !== 0 ? infrastructureFailure(`${res.stderr ?? ""}\n${res.stdout ?? ""}`) : null;
+  if (hit) throw new Error(`${what}: the registry or network failed the install (${hit}):\n${tail(res)}`);
 }
 
 /**
@@ -188,29 +267,62 @@ export function assertIsolated(dir) {
   }
 }
 
+const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
+
+/** The `@flow-state-dev/*` names a `package.json` depends on, in any field. */
+function fsdDependencies(pkg) {
+  return DEP_FIELDS.flatMap((f) => Object.keys(pkg[f] ?? {})).filter((n) => n.startsWith("@flow-state-dev/"));
+}
+
 /**
- * The resolution guard for a copied-out folder: every installed
- * `@flow-state-dev/*` resolves inside the folder, at its tarball's version.
+ * Where Node loads package `name` from when code in `fromDir` imports it: the
+ * first of Node's own lookup paths (`require.resolve.paths`) that holds it,
+ * real path. Null when none does.
+ */
+function resolvePackageDir(fromDir, name) {
+  for (const base of createRequire(join(fromDir, "noop.js")).resolve.paths(name) ?? []) {
+    const at = join(base, name);
+    if (existsSync(join(at, "package.json"))) return realpathSync(at);
+  }
+  return null;
+}
+
+/**
+ * The resolution guard for a folder after install: every `@flow-state-dev/*`
+ * its code can load resolves inside the folder, at its tarball's version.
+ * The walk starts from what the folder's `package.json` names and what its
+ * top-level scope holds, and follows each resolved package's own
+ * `@flow-state-dev/*` dependencies from where that package sits, so a copy
+ * nested under another package is checked like a top-level one.
  *
- * @param {Map<string, { version: string }>} versions — package name → packed version
+ * @param {Tarballs} tarballs
  * @returns {string[]} violations
  */
-export function installedOutsideTarballs(dir, versions) {
+export function installedOutsideTarballs(dir, tarballs) {
   const violations = [];
-  const scope = join(dir, "node_modules", "@flow-state-dev");
-  if (!existsSync(scope)) return violations;
   const inside = `${realpathSync(dir)}${sep}`;
-  for (const entry of readdirSync(scope)) {
-    const name = `@flow-state-dev/${entry}`;
-    const real = realpathSync(join(scope, entry));
+  const scope = join(dir, "node_modules", "@flow-state-dev");
+  const manifest = join(dir, "package.json");
+  const roots = new Set([
+    ...(existsSync(manifest) ? fsdDependencies(JSON.parse(readFileSync(manifest, "utf8"))) : []),
+    ...(existsSync(scope) ? readdirSync(scope).map((e) => `@flow-state-dev/${e}`) : []),
+  ]);
+  const queue = [...roots].map((name) => ({ name, from: dir, via: "the folder" }));
+  const seen = new Set();
+  while (queue.length > 0) {
+    const { name, from, via } = queue.shift();
+    const real = resolvePackageDir(from, name);
+    if (real == null || seen.has(real)) continue;
+    seen.add(real);
     if (!real.startsWith(inside)) {
-      violations.push(`${name} resolves to ${real}, outside the folder`);
+      violations.push(`${name} (from ${via}) resolves to ${real}, outside the folder`);
       continue;
     }
-    const want = versions.get(name)?.version;
-    const got = JSON.parse(readFileSync(join(real, "package.json"), "utf8")).version;
-    if (want == null) violations.push(`${name}@${got} is installed and is not one of the tarballs`);
-    else if (got !== want) violations.push(`${name} installed ${got}, the tarball is ${want}`);
+    const pkg = JSON.parse(readFileSync(join(real, "package.json"), "utf8"));
+    const want = tarballs.get(name)?.version;
+    if (want == null) violations.push(`${name}@${pkg.version} (from ${via}) is installed and is not one of the tarballs`);
+    else if (pkg.version !== want) violations.push(`${name} (from ${via}) installed ${pkg.version}, the tarball is ${want}`);
+    for (const dep of fsdDependencies(pkg)) queue.push({ name: dep, from: real, via: name });
   }
   return violations;
 }
@@ -219,7 +331,10 @@ export function installedOutsideTarballs(dir, versions) {
  * A bare `fsdev` on the reader's `PATH` must be the folder's own install: a
  * globally linked workspace CLI would run the repository's code and call it
  * the tarball. Not on `PATH` at all is the reader's problem, and the block
- * fails as it would for them.
+ * fails as it would for them. Checked before every shell block, not only
+ * those that look like they call `fsdev`: a command can sit anywhere in a
+ * shell line (`A=b fsdev`, `x && fsdev`, `$(fsdev …)`), and no pattern
+ * over the block finds them all.
  */
 export function assertFsdevFromFolder(dir, env) {
   const res = spawnSync("bash", ["-c", "command -v fsdev"], { cwd: dir, env, encoding: "utf8" });
@@ -260,24 +375,26 @@ function startStub(work) {
 /**
  * Run the quick start in `dir`, an empty folder. Returns the cell's failures;
  * throws when the run itself is broken (the stub would not start, the folder
- * is not isolated, a package resolved outside the folder).
+ * is not isolated, a package resolved outside the folder, a block would not
+ * run to an exit code, the registry or network failed an install block).
  *
- * @param {{ markdown: string, dir: string, repoRoot: string, tarballs: Map<string, string>, versions: Map<string, { version: string }>, log?: (s: string) => void }} opts
+ * @param {{ markdown: string, dir: string, repoRoot: string, tarballs: Tarballs, timeout?: number, log?: (s: string) => void }} opts
  */
-export function runQuickstart({ markdown, dir, repoRoot, tarballs, versions, log = () => {} }) {
+export function runQuickstart({ markdown, dir, repoRoot, tarballs, timeout = STEP_TIMEOUT, log = () => {} }) {
   assertIsolated(dir);
   const steps = quickstartPlan(markdown);
   if (!steps.some((s) => s.kind === "shell" && /\bfsdev\s+run\b/.test(s.script)))
     return ["the quick start has no `fsdev run` block, so it never shows an answer"];
-  // pnpm overrides map transitive @flow-state-dev/* dependencies to the tarballs.
-  writeFileSync(join(dir, "package.json"), `${JSON.stringify({ pnpm: { overrides: overrides(tarballs) } }, null, 2)}\n`);
+  // pnpm overrides map transitive @flow-state-dev/* dependencies to the
+  // tarballs; pnpm-workspace.yaml, so the folder has no package.json yet.
+  writeFileSync(join(dir, "pnpm-workspace.yaml"), pnpmWorkspaceYaml(tarballs));
   const stub = startStub(dirname(dir));
   try {
     const env = readerEnv(process.env, repoRoot, stub.url);
     // The guard runs before any verdict, pass or fail: a run that installed a
     // package from outside the folder is broken, not an expected fail.
     const guard = () => {
-      const violations = installedOutsideTarballs(dir, versions);
+      const violations = installedOutsideTarballs(dir, tarballs);
       if (violations.length > 0) throw new Error(`resolution guard: ${violations.join("; ")}`);
     };
     let answered = null;
@@ -294,9 +411,12 @@ export function runQuickstart({ markdown, dir, repoRoot, tarballs, versions, log
         guard();
         return [`quickstart: FAIL at block ${n + 1} (${first}): installs ${unknown.join(", ")}, which has no tarball`];
       }
-      if (/^\s*fsdev\b/m.test(step.script)) assertFsdevFromFolder(dir, env);
-      const res = spawnSync("bash", ["-e", "-c", script], { cwd: dir, env, encoding: "utf8", timeout: STEP_TIMEOUT, maxBuffer: 64 * 1024 * 1024 });
+      assertFsdevFromFolder(dir, env);
+      const res = spawnSync("bash", ["-e", "-c", script], { cwd: dir, env, encoding: "utf8", timeout, maxBuffer: 64 * 1024 * 1024 });
       log(`    ran ${first} · exit ${res.status ?? res.signal}`);
+      const what = `quickstart block ${n + 1} (${first})`;
+      assertRan(res, what);
+      if (INSTALL_LINE_ANYWHERE.test(step.script)) assertNotInfrastructure(res, what);
       if (res.status !== 0) {
         guard();
         return [`quickstart: FAIL at block ${n + 1} (${first}): exit ${res.status ?? res.signal}`, ...tail(res).split("\n").slice(-12)];
@@ -316,18 +436,22 @@ export function runQuickstart({ markdown, dir, repoRoot, tarballs, versions, log
  * One example's copy-out run, step by step on demand: `step(name)` runs the
  * recipe up to and including that step once and returns its failures.
  * Install runs first and once; a later step after a failed install fails as
- * not reached.
+ * not reached. A step that would not run to an exit code, or an install the
+ * registry or network broke, throws, and so does every later step after a
+ * broken install: none of them ran.
  *
- * @param {{ src: string, dir: string, repoRoot: string, tarballs: Map<string, string>, versions: Map<string, { version: string }>, log?: (s: string) => void }} opts
+ * @param {{ src: string, dir: string, repoRoot: string, tarballs: Tarballs, timeout?: number, log?: (s: string) => void }} opts
  */
-export function exampleRun({ src, dir, repoRoot, tarballs, versions, log = () => {} }) {
+export function exampleRun({ src, dir, repoRoot, tarballs, timeout = STEP_TIMEOUT, log = () => {} }) {
   const results = new Map();
   const env = readerEnv(process.env, repoRoot, null);
   const run = (step) => {
     const [cmd, args] = EXAMPLE_STEPS[step];
-    const res = spawnSync(cmd, args, { cwd: dir, env, encoding: "utf8", timeout: STEP_TIMEOUT, maxBuffer: 64 * 1024 * 1024 });
+    const res = spawnSync(cmd, args, { cwd: dir, env, encoding: "utf8", timeout, maxBuffer: 64 * 1024 * 1024 });
     log(`    ${step}: ${[cmd, ...args].join(" ")} · exit ${res.status ?? res.signal}`);
-    return res.status === 0 ? [] : [`${step}: exit ${res.status ?? res.signal}`, ...tail(res).split("\n").slice(-12)];
+    assertRan(res, step);
+    if (step === "install") assertNotInfrastructure(res, step);
+    return res.status === 0 ? [] : [`${step}: exit ${res.status}`, ...tail(res).split("\n").slice(-12)];
   };
   let broken = null;
   const install = () => {
@@ -349,7 +473,7 @@ export function exampleRun({ src, dir, repoRoot, tarballs, versions, log = () =>
     writeFileSync(join(dir, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
     const failures = unknown.length > 0 ? [`install: ${unknown.join(", ")} has no tarball`] : run("install");
     if (failures.length === 0) {
-      const violations = installedOutsideTarballs(dir, versions);
+      const violations = installedOutsideTarballs(dir, tarballs);
       if (violations.length > 0) throw new Error(`resolution guard: ${violations.join("; ")}`);
     }
     return failures;
