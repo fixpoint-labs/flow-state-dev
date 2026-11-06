@@ -69,6 +69,8 @@ export const zzThen = 1;
 export const zzComputed = 1;
 export { impl as used, type Options as UsedOptions } from "./zz-plant/impl";
 export type { Options } from "./zz-plant/other";
+export { zzViaImport } from "./zz-plant/uses-import";
+export type { ZzImportedOpts as ZzRootOpts } from "./zz-plant/types";
 export interface ZzOptions { a: number }
 export interface ZzBodyOnly { b: number }
 export function zzSigned(options: ZzOptions): void { const x: ZzBodyOnly = { b: options.a }; void x; }
@@ -99,6 +101,11 @@ export function zzSigned(options: ZzOptions): void { const x: ZzBodyOnly = { b: 
   // declaration nothing reaches, so the shared bare name must not clear it.
   "packages/core/src/zz-plant/impl.ts": "export interface Options { a: number }\nexport function impl(o: Options): void { void o; }\n",
   "packages/core/src/zz-plant/other.ts": "export interface Options { z: string }\n",
+  // A signature type imported from a sibling file, published at the root under another name:
+  // the mention resolves through the import to its declaration.
+  "packages/core/src/zz-plant/types.ts": "export interface ZzImportedOpts { a: number }\n",
+  "packages/core/src/zz-plant/uses-import.ts": `import type { ZzImportedOpts } from "./types";\nexport function zzViaImport(o: ZzImportedOpts): void { void o; }\n`,
+  "apps/kitchen-sink/zz-via-import.ts": `import { zzViaImport } from "@flow-state-dev/core";\nzzViaImport({ a: 1 });\n`,
   "apps/kitchen-sink/zz-alias.ts": `import { used } from "@flow-state-dev/core";\nused({ a: 1 });\n`,
   // Names taken through import() and require(): destructured, read off the module, or via .then.
   // A computed read (`m[k]`) names nothing the census can know, so zzComputed stays failing.
@@ -170,6 +177,8 @@ describe("the export check", () => {
     // An aliased re-export is reached through the declaration it names, not its alias.
     assert.equal(core.get("used").why, "adopter");
     assert.equal(core.get("UsedOptions").why, "reached");
+    // A mention imported from another file is reached through that import, under its root name.
+    assert.equal(core.get("ZzRootOpts").why, "reached");
     assert.equal(core.get("ZzOptions").why, "reached");
     for (const n of ["zzTicked", "zzCalled", "zzImported", "zzChangesetDoc"]) assert.equal(core.get(n).why, "readme", n);
   });
