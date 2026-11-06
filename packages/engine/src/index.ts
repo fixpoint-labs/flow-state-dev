@@ -276,6 +276,3 @@ export type {
   ResourceOwnerFlow as unstable_ResourceOwnerFlow,
   ResourcePersistenceContext as unstable_ResourcePersistenceContext
 } from "./resources/internal";
-
-// PLANT (FIX-2448): shows the export check red in CI; reverted in the next commit.
-export const zzExportCheckPlant = 1;
