@@ -272,7 +272,17 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     await until((t) => t.status === "pending", "the failed try back on the board");
     await act("drain");
   };
-  return { act, row, until, review, stop, reviewData, readChanges, waiting, answer, start, retry, seen, dispose: () => state.dispose() };
+  /** The message items of the run's session, oldest first, as a screen reads them. */
+  const runMessages = async (): Promise<Array<{ role?: string; text: string }>> => {
+    const sessionId = (await row()).run!.sessionId;
+    const requests = await (await runtime()).stores.request.list({ sessionId, withItems: true });
+    return (requests as Array<{ createdAt: number; items?: any[] }>)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .flatMap((request) => request.items ?? [])
+      .filter((item) => item.type === "message")
+      .map((item) => ({ role: item.role, text: (item.content ?? []).map((part: { text?: string }) => part.text ?? "").join("") }));
+  };
+  return { act, row, until, review, stop, reviewData, readChanges, waiting, answer, start, retry, seen, runMessages, dispose: () => state.dispose() };
 }
 
 describe("a coding run that made changes waits for a person's review", () => {
@@ -381,6 +391,12 @@ describe("a coding run that made changes waits for a person's review", () => {
       expect(done).toMatchObject({ attempts: 1, output: expect.objectContaining({ review: "accepted", commits: 2 }) });
       expect(h.seen).toHaveLength(2);
       expect(done.steers).toEqual([expect.objectContaining({ message: "Keep the old flag name.", from: "user", takenBy: 1 })]);
+      // The words show in the run's session as the person's own line, as typed,
+      // never as a line of the run's (FIX-2574).
+      const lines = await h.runMessages();
+      expect(lines.filter((line) => line.text.includes("Keep the old flag name."))).toEqual([
+        { role: "user", text: "Keep the old flag name." },
+      ]);
     } finally {
       await h.dispose();
     }

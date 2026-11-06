@@ -56,6 +56,7 @@ import {
   createWorkforceClient,
   delegateAnswerOf,
   parseProjectRef,
+  taskBriefOf,
   projectRef,
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
@@ -106,6 +107,8 @@ export type ThreadEntry = (
       /** Threads mode: the lead's turn filed threads for this line. */
       sentToThread?: boolean;
     }
+  /** What a task's session was handed: its brief, as filed or re-queued. One folded line, never your line. */
+  | { kind: "brief"; id: string; text: string }
   /** `incomplete` when its turn failed before the reply was finished. */
   | { kind: "assistant"; id: string; text: string; incomplete?: boolean }
   /** A run of consecutive tool calls in one turn, in words (`toolRun`): one line that opens to a line per call. */
@@ -450,7 +453,9 @@ function filedTaskOf(item: Item): string | undefined {
  */
 export function entriesOf(items: readonly Item[], threads = false, retryableTurns: ReadonlySet<string> = new Set()): ThreadEntry[] {
   // A turn a user's line started holds that line; a notice's own turn holds none.
-  const userTurns = new Set(items.filter((item) => item.type === "message" && item.role === "user").map((item) => item.requestId));
+  const userTurns = new Set(
+    items.filter((item) => item.type === "message" && item.role === "user" && taskBriefOf(item) === undefined).map((item) => item.requestId),
+  );
   const filingTurns = new Set(items.filter((item) => filedTaskOf(item) !== undefined).map((item) => item.requestId));
   // A turn that failed; its reply, if it never finished, is marked incomplete. Retry is offered on the newest turn only.
   const failedTurns = new Set(items.filter((item) => item.type === "error").map((item) => item.requestId));
@@ -487,6 +492,11 @@ export function entriesOf(items: readonly Item[], threads = false, retryableTurn
       continue;
     }
     const text = textOf(item);
+    // A task's brief is a `user` line for its model's history, but you never typed it.
+    if (item.role === "user" && taskBriefOf(item) !== undefined) {
+      entries.push({ kind: "brief", id: item.id, text, requestId });
+      continue;
+    }
     if (item.role === "user") {
       entries.push({ kind: "user", id: item.id, text, requestId, ...(threads && filingTurns.has(requestId) ? { sentToThread: true } : {}) });
       continue;

@@ -1785,7 +1785,9 @@ async function runActionAttempt<
     // dedups by block ownership — cannot remove the duplicate; the only correct
     // place to prevent it is here, at the source.
     if (action.userMessage !== undefined && !isReplayMode) {
-      const text = action.userMessage(parsedInput);
+      const echo = action.userMessage(parsedInput);
+      const text = typeof echo === "string" ? echo : echo.text;
+      const metadata = typeof echo === "string" ? undefined : echo.metadata;
       const userItem: MessageItem = {
         id: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         type: "message",
@@ -1797,7 +1799,8 @@ async function runActionAttempt<
         provenance: RUNTIME_PROVENANCE,
         ts: Date.now(),
         ...requestTaskStamp(requestTaskId),
-        content: [{ type: "output_text", text }]
+        content: [{ type: "output_text", text }],
+        ...(metadata !== undefined ? { metadata } : {})
       };
       await response.emitItemAdded(userItem);
       await response.emitItemDone(userItem);

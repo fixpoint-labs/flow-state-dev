@@ -27,7 +27,8 @@ function AgentMarkdown({ text, className }: { text: string; className?: string }
 /**
  * One entry of a thread. Your lines sit in a box on the right; the main
  * session's text is Markdown; a run of tool calls is one line in plain words
- * that opens to a line per call (`ToolRunLine`); a background result is one collapsed line at the point the main
+ * that opens to a line per call (`ToolRunLine`); a task's brief is one folded line (`BriefLine`), never your
+ * line; a background result is one collapsed line at the point the main
  * session took it, which opens to the task's reply; a thread in threads mode is
  * a card (`ThreadCard`, which the main thread draws). A failed turn is the
  * registry's `request-recovery` line, with its reason; `onRetry` draws its
@@ -55,6 +56,8 @@ export function Entry({ entry, mark, onRetry }: { entry: ThreadEntry; mark?: Sen
           {entry.incomplete ? <span className="mt-1 block text-xs text-muted-foreground">Incomplete</span> : null}
         </div>
       );
+    case "brief":
+      return <BriefLine text={entry.text} />;
     case "tool":
       return <ToolRunLine run={entry} />;
     case "result":
@@ -113,6 +116,23 @@ function ToolRunLine({ run }: { run: ToolRun }) {
           ))}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * What a task's session was handed, as filed or re-queued: one folded line,
+ * which opens to the brief's text. It is not your line, so it never sits in
+ * your box.
+ */
+function BriefLine({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="font-mono text-xs text-muted-foreground" data-entry="brief">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="text-left hover:text-foreground">
+        {open ? "▾" : "▸"} Task brief
+      </button>
+      {open ? <div className="mt-1 ml-3 font-sans whitespace-pre-wrap">{text}</div> : null}
     </div>
   );
 }
