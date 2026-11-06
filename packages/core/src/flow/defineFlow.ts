@@ -44,7 +44,7 @@ import { isCollectionConfig, resourceStorageKeys } from "../types/storage-identi
 import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } from "../types/schedules";
 import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
-import { hasZodObjectCatchall, introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
+import { getReadonlyStateKeys, hasZodObjectCatchall, introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
 import { walkBlockGraph } from "../helpers/block-graph";
 import {
   mergeScopeStateSchemas,
@@ -780,8 +780,15 @@ function mergeFlowScopeStateSchemas(
       ...(own === undefined ? [] : [{ schema: own, source: `flow "${kind}"` }]),
       ...blockScopeStateDeclarations(scope, reachable)
     ];
-    refuseUnstoredFactoryDefaults(`Flow "${kind}"`, scope, own, declarations);
     const schema = mergeScopeStateSchemas(`Flow "${kind}"`, scope, declarations);
+    // A session born with state its schema refuses is refused, rather than
+    // stored as sent, when the flow binds its sessions (the engine's
+    // `bindsSessions`): a create check, or a readonly field in the merged schema.
+    const binds =
+      scope === "session" &&
+      ((scopes.session as { createCheck?: unknown } | undefined)?.createCheck !== undefined ||
+        getReadonlyStateKeys(schema).length > 0);
+    refuseUnstoredFactoryDefaults(`Flow "${kind}"`, scope, own, declarations, binds);
     if (schema !== undefined) merged[scope] = schema;
   }
   return merged;

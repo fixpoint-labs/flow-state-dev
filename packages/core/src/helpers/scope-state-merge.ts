@@ -104,30 +104,42 @@ export function isMergeableScopeStateSchema(schema: ZodTypeAny): boolean {
  * Refuse a default factory whose value would not be stored, so that reading
  * the same stored record always gives the same value.
  *
- * A factory default (`() => crypto.randomUUID()`, a counter) is stored only
- * when a session is born, by parsing the flow's own session schema. So it is
- * allowed only there: in session scope, on a field whose own declaration on
- * the flow carries that same factory (a block or capability may restate it,
- * compared by identity). Everywhere else the fill would run the factory on
- * every read of a record that lacks the field and give a new value each
- * time, so these are refused:
+ * A scope write stores its value as given: nothing parses it through the
+ * flow's schema. The one parse that stores defaults is a session's birth
+ * (`parseInitialSessionState` in the engine), and it stores the parsed value
+ * only when the whole parse succeeds; for a flow that doesn't bind its
+ * sessions, a refused initial state is stored as sent. So a factory default
+ * (`() => crypto.randomUUID()`, a counter) is stable only where that parse is
+ * sure to reach it from nothing:
  *
- * - a factory on a field only a block or a capability declares;
- * - a session factory where the flow declares the field without it;
- * - any factory in user or org scope, the flow's own included: those records
- *   are stored as written, never parsed at creation.
+ * - in session scope, on the flow's own declaration;
+ * - with a default on the field and on every field enclosing it, so a birth
+ *   that names none of them still creates each one;
+ * - not inside an array item, a record value or a union: a session is never
+ *   born with those, and a later write's item is stored as given;
+ * - on a flow whose birth parse can't fall back to the state as sent: it
+ *   binds its sessions (a readonly field or a create check, so a refused
+ *   state is refused), or every top-level field of its schema accepts a
+ *   missing value.
  *
- * Static defaults are allowed everywhere: they are the same on every read.
- * No factory is called.
+ * A block or capability may restate such a factory, compared by identity.
+ * Every other factory default is refused, by name, with advice that holds
+ * where it sits; in user and org scope that is every factory, the flow's own
+ * included, since those records are never parsed at creation. Static
+ * defaults are allowed everywhere. The check walks the declarations; no
+ * factory is called.
  *
  * @param declarations Every declaration of the scope, the flow's own included.
+ * @param bindsSessions Whether the flow refuses a session born with state its
+ *   schema refuses (it declares a readonly session field or a create check).
  * @throws Error naming the field path, the declarer and a fix that holds there.
  */
 export function refuseUnstoredFactoryDefaults(
   owner: string,
   scope: string,
   flowOwn: ZodTypeAny | undefined,
-  declarations: readonly ScopeStateDeclaration[]
+  declarations: readonly ScopeStateDeclaration[],
+  bindsSessions = false
 ): void {
   const shapeOf = (schema: ZodTypeAny | undefined, root: boolean): Record<string, ZodTypeAny> | undefined => {
     if (schema === undefined) return undefined;
@@ -169,43 +181,93 @@ export function refuseUnstoredFactoryDefaults(
     return;
   }
 
-  const refuse = (at: string, source: string, flowDeclares: boolean): never => {
+  const fillOf = (schema: ZodTypeAny, root: boolean) => flagsOf(peel(schema, root).chain).fill;
+  const ownRoot = shapeOf(flowOwn, true);
+  // The birth parse succeeds from a stateless create, or a refused one is refused.
+  const birthParses =
+    ownRoot !== undefined &&
+    (bindsSessions || Object.values(ownRoot).every((field) => fillOf(field, false).kind !== "required"));
+
+  // Every (path, factory) the birth parse stores: reached from the root through
+  // defaults alone, on the flow's own declaration.
+  const stored = new Map<string, Set<() => unknown>>();
+  const collect = (shape: Record<string, ZodTypeAny>, path: string): void => {
+    for (const [key, field] of Object.entries(shape)) {
+      const fill = fillOf(field, false);
+      if (fill.kind !== "default") continue;
+      const at = `${path}.${key}`;
+      if (fill.declared.kind === "dynamic") stored.set(at, new Set([fill.declared.factory]));
+      const inner = shapeOf(field, false);
+      if (inner !== undefined) collect(inner, at);
+    }
+  };
+  if (birthParses) collect(ownRoot!, base);
+
+  const blockOnly = (at: string, source: string): never => {
     throw new Error(
-      flowDeclares
-        ? `${owner}: ${at} has a default factory declared by ${source}, and the flow declares the field ` +
-            `without it. Only the flow's own declaration is stored when a session is born, so this factory ` +
-            `would run on every read of a record that lacks the field and give a new value each time. Give ` +
-            `the flow's declaration the same factory (share one schema), or use a static default.`
-        : `${owner}: ${at} has a default factory declared by ${source}, and the flow doesn't declare the ` +
-            `field. A field only a block or a capability declares is filled when it is read and never stored, ` +
-            `so its factory would give a new value on every read of the same record. To keep it, declare the ` +
-            `field on the flow's session stateSchema with the same factory (share one schema), or give it a ` +
-            `static default.`
+      `${owner}: ${at} has a default factory declared by ${source}, and the flow doesn't declare the ` +
+        `field. A field only a block or a capability declares is filled when it is read and never stored, ` +
+        `so its factory would give a new value on every read of the same record. To keep it, declare the ` +
+        `field on the flow's session stateSchema with the same factory (share one schema), or give it a ` +
+        `static default.`
     );
   };
-  const walk = (own: ZodTypeAny | undefined, declared: ZodTypeAny, path: string, root: boolean, source: string): void => {
+  const notStored = (at: string, source: string, why: string): never => {
+    throw new Error(
+      `${owner}: ${at} has a default factory declared by ${source}, and a new session doesn't store it: ` +
+        `${why}. A session's state is stored as written after birth, so the factory would run on every read ` +
+        `of a record that lacks the field and give a new value each time. Use a static default, or set the ` +
+        `value when you write it.`
+    );
+  };
+  const whyNotStored = (undefaultedAncestor: string | undefined, flowCarriesIt: boolean): string =>
+    !birthParses
+      ? `the flow's sessions can be born from state its schema refuses (a top-level field is required with ` +
+        `no default, and nothing binds the sessions), and that state is stored as sent`
+      : undefaultedAncestor !== undefined
+        ? `the enclosing field "${undefaultedAncestor}" has no default, so a new session isn't born with it`
+        : flowCarriesIt
+          ? `the flow's declaration of the field has no default before its factory`
+          : `the flow declares the field without it (give the flow's declaration the same factory, or share one schema)`;
+
+  const walk = (
+    declared: ZodTypeAny,
+    own: ZodTypeAny | undefined,
+    path: string,
+    root: boolean,
+    source: string,
+    undefaultedAncestor: string | undefined
+  ): void => {
     const declaredShape = shapeOf(declared, root);
     if (declaredShape === undefined) return;
-    const ownShape = shapeOf(own, root) ?? {};
+    const ownShape = shapeOf(own, root);
     for (const [key, field] of Object.entries(declaredShape)) {
-      const ownField = ownShape[key];
+      const ownField = ownShape?.[key];
       const at = `${path}.${key}`;
       if (ownField === undefined) {
-        if (dynamicDefaultFactories(field).size > 0) refuse(at, source, false);
+        if (dynamicDefaultFactories(field).size > 0) blockOnly(at, source);
         continue;
       }
-      const bothObjects = shapeOf(field, false) !== undefined && shapeOf(ownField, false) !== undefined;
-      if (bothObjects) {
-        if (!subset(ownFactories(field, false), ownFactories(ownField, false))) refuse(at, source, true);
-        walk(ownField, field, at, false, source);
-      } else if (!subset(dynamicDefaultFactories(field), dynamicDefaultFactories(ownField))) {
-        refuse(at, source, true);
+      const ownFill = fillOf(ownField, false);
+      const factoriesHere = ownFactories(field, false);
+      for (const factory of factoriesHere) {
+        if (stored.get(at)?.has(factory)) continue;
+        const flowCarriesIt = ownFactories(ownField, false).has(factory);
+        notStored(at, source, whyNotStored(undefaultedAncestor, flowCarriesIt));
+      }
+      if (shapeOf(field, false) !== undefined) {
+        const ancestor = undefaultedAncestor ?? (ownFill.kind === "default" ? undefined : key);
+        walk(field, ownField, at, false, source, ancestor);
+        continue;
+      }
+      const inside = [...dynamicDefaultFactories(field)].filter((factory) => !factoriesHere.has(factory));
+      if (inside.length > 0) {
+        notStored(at, source, `it sits inside an array item, a record value or a union, which a session is never born with and a later write stores as given`);
       }
     }
   };
   for (const declaration of declarations) {
-    if (declaration.schema === flowOwn) continue;
-    walk(flowOwn, declaration.schema, base, true, declaration.source);
+    walk(declaration.schema, flowOwn, base, true, declaration.source, undefined);
   }
 }
 
@@ -468,7 +530,15 @@ export function mergeScopeStateSchemas(
     seen.add(declaration.schema);
     distinct.push(declaration);
   }
-  if (distinct.length <= 1) return distinct[0]?.schema;
+  // A scope record is always an object, read as `{}` when absent, so a root
+  // `.default()` / `.optional()` / `.readonly()` / refinement on a state schema
+  // means nothing to a read. The merged schema is the bare object under them:
+  // a wrapped root would hide its readonly keys from every reader.
+  const bareRoot = (schema: ZodTypeAny): ZodTypeAny => {
+    const { core } = peel(schema, true);
+    return isZodObject(core) ? core : schema;
+  };
+  if (distinct.length <= 1) return distinct[0] === undefined ? undefined : bareRoot(distinct[0].schema);
 
   let merged: MergeNode | undefined;
   for (const { schema, source } of distinct) {
@@ -481,5 +551,8 @@ export function mergeScopeStateSchemas(
     const node = toNode(schema, source, true);
     merged = merged === undefined ? node : mergeNodes(owner, merged, node, `${scope}.state`, true);
   }
-  return toSchema(merged!);
+  const root = merged!;
+  return root.declared !== undefined
+    ? bareRoot(root.declared)
+    : toSchema({ ...root, flags: { nullable: 0, readonly: false, fill: { kind: "required" } } });
 }

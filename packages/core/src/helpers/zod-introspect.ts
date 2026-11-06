@@ -75,18 +75,29 @@ function zodKind(schema: unknown): string | undefined {
   return typeof def?.type === "string" ? def.type : undefined;
 }
 
+/** The wrappers {@link getReadonlyStateKeys} reads a root object through (zod 4 spellings; zod 3 normalized). */
+const ROOT_WRAPPER_KINDS = new Set(["optional", "nullable", "default", "readonly", "effects", "pipe"]);
+
 /**
  * The top-level keys of an object schema declared `.readonly()`: on a session
  * `stateSchema`, the fields set when a session is created that never change.
  *
- * Only a plain `z.object({...})` at the top is read; anything else (a union,
- * an intersection, a lazy or wrapped root) has no readonly keys, rather than
- * a guess. A key counts when a readonly wrapper sits anywhere in its own
+ * The top is a `z.object({...})`, read through any `.optional()`,
+ * `.nullable()`, `.default()`, `.readonly()` or refinement wrapped around it:
+ * a scope record is always that object, so a wrapper there must not hide its
+ * readonly keys. Anything else (a union, an intersection, a lazy) has no
+ * readonly keys, rather than a guess. A key counts when a readonly wrapper sits anywhere in its own
  * wrapper chain (`.readonly().default(x)` and `.default(x).readonly()` both
  * count). `.readonly()` deeper inside a field's value doesn't make the field
  * readonly. Reads zod 3 and zod 4 schemas alike.
  */
 export function getReadonlyStateKeys(schema: ZodTypeAny | undefined): string[] {
+  const seenRoot = new Set<unknown>();
+  while (schema !== undefined && !seenRoot.has(schema) && ROOT_WRAPPER_KINDS.has(zodKind(schema) ?? "")) {
+    seenRoot.add(schema);
+    const def = (schema as { _def?: { innerType?: ZodTypeAny; schema?: ZodTypeAny } })._def;
+    schema = def?.innerType ?? def?.schema;
+  }
   if (schema === undefined || zodKind(schema) !== "object") return [];
   const shape = (schema as unknown as { shape?: unknown }).shape;
   if (typeof shape !== "object" || shape === null) return [];
