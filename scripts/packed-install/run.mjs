@@ -91,6 +91,7 @@ import {
   readManifest,
   runRatchet,
 } from "./goal.mjs";
+import { exampleRun, QUICKSTART_PAGE, runQuickstart } from "./first-hour.mjs";
 import { runSuite } from "./suite.mjs";
 import { runVitestJson } from "./vitest-json.mjs";
 
@@ -400,6 +401,45 @@ const RATCHET_CELLS = [
   },
 ];
 
+/**
+ * The admitted `first-hour.example.<name>.<step>` cells: each example under
+ * `examples/` copied out and run by the copy-out recipe (`first-hour.mjs`),
+ * one cell per step. Only a step that fails under the control is admitted:
+ * `install` passes there for both examples, so it runs as every step's
+ * prerequisite and is no cell of its own. The examples under
+ * `examples/guides/` are not cells yet; the copy-out work that writes the
+ * recipe in `examples/README.md` admits them, by the same rule.
+ */
+const FIRST_HOUR_EXAMPLE_CELLS = [
+  ["hello-chat", "typecheck"],
+  ["hello-chat", "test"],
+  ["hello-chat", "fsdev"],
+  ["hello-chat", "build"],
+  ["knowledge-base", "typecheck"],
+  ["knowledge-base", "test"],
+  ["knowledge-base", "fsdev"],
+];
+
+/** One copy-out run per example per goal run, shared by its cells. */
+function exampleCopy(project, example) {
+  if (!project.exampleRuns.has(example)) {
+    const dir = mkdtempSync(join(tmpdir(), `fsd-first-hour-${example}-`));
+    mkdirSync(join(dir, example));
+    project.cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+    project.exampleRuns.set(
+      example,
+      exampleRun({
+        src: join(project.tree, "examples", example),
+        dir: join(dir, example),
+        repoRoot: ROOT,
+        tarballs: project.tarballs,
+        log,
+      }),
+    );
+  }
+  return project.exampleRuns.get(example);
+}
+
 /** The TypeScript the consumer project reads core's `.d.ts` with: the workspace's own. */
 const TYPESCRIPT_SPEC = "typescript@npm:@typescript/typescript6@6.0.2";
 
@@ -455,6 +495,30 @@ export const GOAL_CHECKS = [
       });
     },
   },
+  {
+    id: "first-hour.quickstart",
+    name: "the quick start's own blocks, in order, in an empty folder, then its fsdev run returns an answer",
+    run(project) {
+      const dir = mkdtempSync(join(tmpdir(), "fsd-first-hour-quickstart-"));
+      mkdirSync(join(dir, "app"));
+      try {
+        return runQuickstart({
+          markdown: readFileSync(join(project.tree, QUICKSTART_PAGE), "utf8"),
+          dir: join(dir, "app"),
+          repoRoot: ROOT,
+          tarballs: project.tarballs,
+          log,
+        });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  },
+  ...FIRST_HOUR_EXAMPLE_CELLS.map(([example, step]) => ({
+    id: `first-hour.example.${example}.${step}`,
+    name: `examples/${example}, copied to an empty folder by the copy-out recipe: ${step}`,
+    run: (project) => exampleCopy(project, example).step(step),
+  })),
   {
     id: "shims.never-published",
     name: "the installed packages read or refuse none of the 19 names no published version accepted",
@@ -791,6 +855,27 @@ function runLinkControl(work, dir) {
   return 1;
 }
 
+/**
+ * A goal run's project: the consumer install plus what goal checks read. The
+ * tree under test, the manifest, a cache of ratchet runs and example copies,
+ * and each tarball with its version by package name, for legs that install
+ * into a folder of their own.
+ *
+ * @param {{ tarballs: { name: string, tarball: string, version: string }[] }} opts
+ */
+function goalProject({ dir, packages, tree, manifest, tarballs }) {
+  return {
+    dir,
+    packages,
+    tree,
+    manifest,
+    ratchetRuns: new Map(),
+    exampleRuns: new Map(),
+    cleanup: [],
+    tarballs: new Map(tarballs.map(({ name, tarball, version }) => [name, { tarball, version }])),
+  };
+}
+
 /** Write lines to the log and, under GitHub Actions, to the job summary. */
 function report(lines) {
   for (const l of lines) log(l);
@@ -810,7 +895,13 @@ function runGoal(work, dir) {
   log("installing into an empty ESM project…");
   npmInstall(dir, packed.map((p) => p.tarball));
   const outcomes = new Map();
-  runChecks({ dir, packages: packed, tree: ROOT, manifest, ratchetRuns: new Map() }, GOAL_CHECKS, outcomes);
+  const tarballs = packed.map((p) => ({ name: p.name, tarball: p.tarball, version: p.manifest.version }));
+  const project = goalProject({ dir, packages: packed, tree: ROOT, manifest, tarballs });
+  try {
+    runChecks(project, GOAL_CHECKS, outcomes);
+  } finally {
+    for (const done of project.cleanup) done();
+  }
   const verdict = judge(manifest, outcomes);
   log("");
   report([`adopter goal: ${verdict.ok ? "outcomes match the manifest" : "OUTCOMES DO NOT MATCH THE MANIFEST"}`, ...formatVerdict(verdict)]);
@@ -846,19 +937,22 @@ function runGoalControl(work, dir) {
     name: pin.name,
     manifest: JSON.parse(readFileSync(join(dir, "node_modules", pin.name, "package.json"), "utf8")),
   }));
-  // Ratchets read the tree as it was at the pinned commit; only materialised
-  // once a ratchet is wired, since an unwired cell reads nothing.
-  let tree = ROOT;
-  if (Object.values(manifest.ratchets ?? {}).some((s) => s != null)) {
-    tree = join(work, "control-tree");
-    const archive = join(work, "control-tree.tar");
-    sh("git", ["archive", "--format=tar", "-o", archive, manifest.control.commit], ROOT);
-    mkdirSync(tree);
-    sh("tar", ["xf", archive, "-C", tree], ROOT);
-    log(`ratchets read a checkout of ${manifest.control.commit.slice(0, 8)}`);
-  }
+  // Ratchets and the First hour leg read the tree as it was at the pinned
+  // commit: its ratchet scripts' input, its quick start page, its examples.
+  const tree = join(work, "control-tree");
+  const archive = join(work, "control-tree.tar");
+  sh("git", ["archive", "--format=tar", "-o", archive, manifest.control.commit], ROOT);
+  mkdirSync(tree);
+  sh("tar", ["xf", archive, "-C", tree], ROOT);
+  log(`the tree under test is a checkout of ${manifest.control.commit.slice(0, 8)}`);
   const outcomes = new Map();
-  runChecks({ dir, packages, tree, manifest, ratchetRuns: new Map() }, GOAL_CHECKS, outcomes);
+  const pinned = pins.map((pin, i) => ({ name: pin.name, tarball: tarballs[i], version: pin.version }));
+  const project = goalProject({ dir, packages, tree, manifest, tarballs: pinned });
+  try {
+    runChecks(project, GOAL_CHECKS, outcomes);
+  } finally {
+    for (const done of project.cleanup) done();
+  }
   const v = judgeControl(manifest, outcomes);
   const lines = [
     v.ok

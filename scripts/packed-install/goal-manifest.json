@@ -32,7 +32,16 @@
     {
       "id": "first-hour",
       "title": "First hour",
-      "assertions": []
+      "assertions": [
+        "first-hour.quickstart",
+        "first-hour.example.hello-chat.typecheck",
+        "first-hour.example.hello-chat.test",
+        "first-hour.example.hello-chat.fsdev",
+        "first-hour.example.hello-chat.build",
+        "first-hour.example.knowledge-base.typecheck",
+        "first-hour.example.knowledge-base.test",
+        "first-hour.example.knowledge-base.fsdev"
+      ]
     },
     {
       "id": "leakage",
@@ -72,6 +81,14 @@
     "surface.root.workforce": "fail",
     "surface.collisions": "fail",
     "surface.core-installed-dts": "fail",
+    "first-hour.quickstart": "fail",
+    "first-hour.example.hello-chat.typecheck": "fail",
+    "first-hour.example.hello-chat.test": "fail",
+    "first-hour.example.hello-chat.fsdev": "fail",
+    "first-hour.example.hello-chat.build": "fail",
+    "first-hour.example.knowledge-base.typecheck": "fail",
+    "first-hour.example.knowledge-base.test": "fail",
+    "first-hour.example.knowledge-base.fsdev": "fail",
     "onepath.answer-task-stop": "fail",
     "leakage.tracker-ids": "fail",
     "shims.never-published": "fail",
