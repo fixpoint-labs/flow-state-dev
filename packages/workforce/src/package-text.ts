@@ -16,7 +16,7 @@
  * Node-free, so it sits on the package root beside the records.
  */
 
-import { parseFrontmatterYaml, splitFrontmatter } from "@flow-state-dev/orchestration";
+import { parseFrontmatterYaml, splitFrontmatter } from "@flow-state-dev/orchestration/internal";
 import { PACKAGE_MD } from "./manifest";
 
 /** The one key a `PACKAGE.md`'s frontmatter may hold. */

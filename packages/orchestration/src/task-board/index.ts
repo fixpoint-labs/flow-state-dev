@@ -87,13 +87,9 @@ import type {
   StateRef,
 } from "@flow-state-dev/core/types";
 import {
-  freezeLedgerAssignee,
   getOrCreateTaskCollection,
-  isDefinedTaskCollection,
   onTaskChangeFor,
-  resolveTaskCapDefaults,
   startLeaseRenewal,
-  taskLedgerResources,
   ticketForClaim,
   type DefinedTaskCollection,
   type TaskCapOptions,
@@ -101,8 +97,14 @@ import {
   type ClaimOrder,
   type TaskInit,
   type TaskWorker,
-  type TaskWorkerRegistry,
 } from "../tasks";
+import {
+  freezeLedgerAssignee,
+  isDefinedTaskCollection,
+  taskLedgerResources,
+} from "../tasks/collection/define-task-collection";
+import { resolveTaskCapDefaults } from "../tasks/collection/task-caps";
+import type { TaskWorkerRegistry } from "../tasks/workers/types";
 // The Node-only async-context seam — see `tasks/lease-renewal-scope`.
 import {
   currentLeaseRenewal,
@@ -166,39 +168,9 @@ import { recordBoardResolver } from "./board-resolver";
 // ---------------------------------------------------------------------------
 
 export {
-  taskBoardStateSchema,
-  taskBoardWorkerStateSchema,
-  taskBoardWorkerBodyStateSchema,
-  claimResultSchema,
   taskWorkerInputSchema,
-  checkBoardOutputSchema,
-} from "./schemas";
-export type {
-  TaskBoardState,
-  TaskBoardWorkerState,
-  TaskBoardWorkerBodyState,
-  ClaimResult,
-  CheckBoardOutput,
 } from "./schemas";
 export type { TaskBoardClaimOrderInput } from "./shared";
-export { createSeedCollection } from "./blocks/seed-collection";
-export type { SeedCollectionOptions } from "./blocks/seed-collection";
-export {
-  createSelectNextReadyTask,
-  selectNextReadyTaskOutputSchema,
-} from "./blocks/select-next-ready-task";
-export type {
-  SelectNextReadyTaskOptions,
-  SelectNextReadyTaskOutput,
-} from "./blocks/select-next-ready-task";
-export { createClaimTask } from "./blocks/claim-task";
-export type { ClaimTaskOptions, ClaimTaskOutput } from "./blocks/claim-task";
-export {
-  buildWorkerStep,
-  isUniformWorker,
-  packWorkerInput,
-} from "./blocks/worker-step";
-export type { BuildWorkerStepOptions } from "./blocks/worker-step";
 export {
   createRecordSuccess,
   createRecordError,
@@ -211,7 +183,6 @@ export type {
 } from "./blocks/record-result";
 // FIX-963 — a board that saved a result and could not announce it.
 export {
-  TASK_BOARD_RECORDER_FAILURE_COMPONENT_TYPE,
   TaskBoardRecorderFailureError,
   TaskBoardReportFailureError,
 } from "./blocks/recorder-failure";
@@ -220,14 +191,11 @@ export type {
   RecorderKind,
   RecorderWriteVerdict,
 } from "./blocks/recorder-failure";
-export { createCheckBoard } from "./blocks/check-board";
-export type { CheckBoardOptions } from "./blocks/check-board";
 export { createApplyReplan } from "./apply-replan";
 export type { ApplyReplanOptions, TaskContextSupply } from "./apply-replan";
 export {
   goalSeekLoop,
   mapToVerdict,
-  GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
 } from "./goal-seek-loop";
 export type {
   GoalSeekLoopConfig,
@@ -237,43 +205,20 @@ export type {
   VerdictMapping,
 } from "./goal-seek-loop";
 export {
-  createBoardMetaActive,
-  createBoardMetaCompleted,
-  TASK_BOARD_META_COMPONENT_TYPE,
-} from "./blocks/board-meta";
-export type { BoardMetaOptions } from "./blocks/board-meta";
-export {
-  createTaskBoardCapability,
-  type TaskBoardCapabilityOptions,
   type TaskBoardCapabilityAccessor,
 } from "./capability";
 export { currentWorkerClaim, type WorkerClaimReader } from "./flow-policy-wiring";
 // The wait on a task (FIX-1816; one wait since FIX-2082): under `getTask({ wait })`
 // and a plan board's drain on a row it handed to another session, and whether
 // this request's host can hold one. Node-only, like the claim seam it reads.
-// `checkWaitable` and `toolCallOf` are the checks every wait shares, a
-// worker's call too (FIX-2239).
 export {
   waitOnTask,
   canHoldWait,
-  checkWaitable,
-  toolCallOf,
   waitGateId,
-  type WaitableOptions,
-  type WaitableRefusal,
   type TaskWaitRefusal,
   type TaskWaitResult,
   type WaitOnTaskOptions,
 } from "../tasks/helpers/wait-on-task";
-export { isTaskTurn, TASK_SESSION_TASK_KEY } from "./task-turn";
-export type { BoardRunFlowState } from "./flow-policy-wiring";
-export {
-  assertDispatchEntrySupported,
-  assertDispatchBoardSupported,
-  isTaskDispatcher,
-  resolveWorkerSlot,
-  resolveWorkerSlots,
-} from "./dispatch-assignee";
 export type {
   DispatchingAssignee,
   TaskDispatcherBlock,
@@ -281,27 +226,21 @@ export type {
   TaskAssigneeAddress,
   TaskAssigneeRegistry,
 } from "./dispatch-assignee";
-export type { TaskSessionPolicy } from "@flow-state-dev/core/types";
-export { assertBoardModeSupported } from "./board-mode";
 export type { TaskBoardMode } from "./board-mode";
 export {
   StaleTaskClaimError,
   UnknownTaskLedgerError,
-  createTaskGate,
   taskDispatchInputSchema,
   taskLedgers,
   type TaskLedgersOptions,
 } from "./task-entry";
-export type { TaskGateOptions, TaskDispatchInput } from "./task-entry";
-export { afterTaskCheck, askMidway, noteTaskAnswer, taskRequestAdmission, SPEND_TICK_MS, STEER_TURN_DUE_MS, TaskAdmissionLost } from "./task-request";
+export type { TaskDispatchInput } from "./task-entry";
+export { askMidway, noteTaskAnswer, taskRequestAdmission, SPEND_TICK_MS } from "./task-request";
 export type { MidwayAsk, TaskEndRules, TaskRequestAdmissionOptions } from "./task-request";
-export { createRowDispatch } from "./blocks/dispatch-row";
-export type { RowDispatchOptions } from "./blocks/dispatch-row";
 // A durable board's eight task tools as flow actions (FIX-1629). Defined with
-// the tools; re-exported here because a board's author reaches for it here.
+// the tools; its one home is this entry, where a board's author reaches for it.
 export {
   taskToolActions,
-  taskToolSuffix,
   type TaskToolActionsBoard,
 } from "../skills/task-tools-capability";
 

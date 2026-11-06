@@ -120,6 +120,20 @@
       "categories": ["ai", "chat"]
     },
     {
+      "name": "session-overlay",
+      "title": "Session overlay",
+      "type": "registry:component",
+      "description": "A session over the thread, live: a header, the scrolling feed with the conversation's jump-to-latest arrow, and optional toolbar and footer rows. A sheet covers one area and leaves the page beside it live; a modal covers the page and holds Tab. Both close by Esc, the close button or a click on the backdrop, and give focus back.",
+      "dependencies": ["@flow-state-dev/react", "lucide-react"],
+      "registryDependencies": ["conversation"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/session-overlay.tsx",
+        "target": "components/flow-state/session-overlay.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
       "name": "message-response",
       "title": "Message Response",
       "type": "registry:component",

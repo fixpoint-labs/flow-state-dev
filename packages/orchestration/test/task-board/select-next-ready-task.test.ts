@@ -21,12 +21,12 @@ import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { runForTest } from "@flow-state-dev/testing";
 import {
-  createStateBackedTaskCollection,
   DEFAULT_MAX_ABANDONMENTS,
-  MIN_LEASE_DURATION_MS,
   type TaskCollectionRef,
 } from "../../src/tasks";
-import { createSelectNextReadyTask } from "../../src/task-board";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { MIN_LEASE_DURATION_MS } from "../../src/tasks/collection/internal";
+import { createSelectNextReadyTask } from "../../src/task-board/blocks/select-next-ready-task";
 import { createFakeSequencerState } from "../helpers";
 
 const fakeCtx = {} as BlockContext;

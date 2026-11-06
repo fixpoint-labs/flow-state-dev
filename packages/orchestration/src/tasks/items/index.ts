@@ -6,7 +6,4 @@
  * consumer that wants the same algorithm without going through a
  * `TaskCollection`.
  */
-export {
-  extractTaskItems,
-  extractTaskItemWindows,
-} from "./extract-window";
+export { extractTaskItems } from "./extract-window";

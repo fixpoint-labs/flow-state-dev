@@ -16,13 +16,13 @@ import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/c
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
-  cancelAndResume,
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
   type SuspensionHold,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
+import { cancelAndResume } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type CompletionRunContext, type HarnessFeeds, type PhaseSpec } from "../src";
 import { harnessTaskId } from "../src/workspace";

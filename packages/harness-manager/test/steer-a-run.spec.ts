@@ -30,7 +30,7 @@ import {
   STEER_POLL_MS,
   type HarnessFeeds,
 } from "../src";
-import { MAX_STEERS } from "@flow-state-dev/orchestration/tasks";
+import { MAX_STEERS } from "@flow-state-dev/orchestration/internal";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 

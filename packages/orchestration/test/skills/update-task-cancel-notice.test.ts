@@ -16,7 +16,8 @@ import {
   taskToolActions,
   taskToolSuffix,
 } from "../../src/skills/task-tools-capability";
-import { createResourceBackedTaskCollection, type TaskCollectionRef } from "../../src/tasks";
+import type { TaskCollectionRef } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
 import { createFakeResourceCollection } from "../helpers";
 import { buildDelegationCtx } from "./delegation-ctx";
 

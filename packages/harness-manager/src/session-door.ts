@@ -24,13 +24,15 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import {
   isTerminalStatus,
+  type Task,
+  type TaskCollectionRef,
+} from "@flow-state-dev/orchestration/tasks";
+import {
   LINE_STEER_REFUSALS,
   rowsInSession,
   steerFromLine,
   type LineSteerRefusal,
-  type Task,
-  type TaskCollectionRef,
-} from "@flow-state-dev/orchestration/tasks";
+} from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { resolveOwnership, type HarnessSlot } from "./manager";
 import { readRunRow, RUNS, runRecordCollection, runTopic } from "./run-record";

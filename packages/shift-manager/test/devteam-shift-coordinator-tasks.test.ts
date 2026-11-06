@@ -27,7 +27,7 @@ import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/c
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, resolveUserStorageKey, runAction } from "@flow-state-dev/engine";
 import { runBoardSegment } from "@flow-state-dev/harness-manager";
-import { openRowHolds } from "@flow-state-dev/orchestration/tasks";
+import { openRowHolds } from "@flow-state-dev/orchestration/internal";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";

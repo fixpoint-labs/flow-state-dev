@@ -29,13 +29,14 @@ import type { ActionCore } from "@flow-state-dev/core/types";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { createTaskGate, taskWorkerInputSchema } from "../../src/task-board";
+import { taskWorkerInputSchema } from "../../src/task-board";
+import { createTaskGate } from "../../src/task-board/task-entry";
 import {
-  createResourceBackedTaskCollection,
-  type TaskChangeEvent,
   type TaskCollectionRef,
   type TaskWorkerInput,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import { createFakeResourceCollection } from "../helpers";
 
 const USER_ID = "u_run_link_gate";

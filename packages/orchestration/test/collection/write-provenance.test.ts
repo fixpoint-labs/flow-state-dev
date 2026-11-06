@@ -29,15 +29,15 @@ import { z } from "zod";
 import type { JsonObject } from "@flow-state-dev/core";
 import {
   beginTaskWrite,
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
   didWriteLand,
   ticketForClaim,
   type Task,
-  type TaskChangeEvent,
   type TaskCollectionRef,
   type TaskWriteToken,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import { taskEnvelopeSchema } from "../../src/tasks/collection/define-task-collection";
 import { stampWrite } from "../../src/tasks/write-provenance";
 import {

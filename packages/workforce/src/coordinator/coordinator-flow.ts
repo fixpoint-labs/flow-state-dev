@@ -112,7 +112,8 @@ import {
   workstreamDelegateEntry,
   workstreamDelegateSeed
 } from "../projects/project-coordinator";
-import { isTerminalStatus, TaskWriteRefusedError, type Task, type TaskInit } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, type Task, type TaskInit } from "@flow-state-dev/orchestration/tasks";
+import { TaskWriteRefusedError } from "@flow-state-dev/orchestration/internal";
 import { conversationLedgerAt } from "../conversation-board/ledger";
 import { defineSessionBoard, WORKER_MESSAGE_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { workerTaskEntry } from "../conversation-board/task-entry";

@@ -49,13 +49,13 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  NOTICE_DUE_MS,
   resolveResourceCollection,
   type Task,
   type TaskInit,
   type TaskWorker,
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import {
   createWorkerInstallation,
   defineSessionBoard,

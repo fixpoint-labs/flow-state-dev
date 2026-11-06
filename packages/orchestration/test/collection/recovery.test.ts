@@ -20,16 +20,16 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
-  DEFAULT_LEASE_DURATION_MS,
   DEFAULT_MAX_ABANDONMENTS,
   isClaimable,
   ticketForClaim,
   type Task,
-  type TaskChangeEvent,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { DEFAULT_LEASE_DURATION_MS } from "../../src/tasks/collection/internal";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import { hasClaimableTask } from "../../src/task-board/shared";
 import {
   createCapturedChanges,

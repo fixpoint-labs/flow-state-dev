@@ -57,7 +57,8 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { hasOpenHold, owesTurn, type TaskCollectionRef, type TaskInit } from "../tasks";
+import type { TaskCollectionRef, TaskInit } from "../tasks";
+import { hasOpenHold, owesTurn } from "../tasks/collection/holds";
 import type { TaskBoardHandle } from "./index";
 import { createApplyReplan, type TaskContextSupply } from "./apply-replan";
 import { setNextDrainUnseeded } from "./blocks/seed-collection";

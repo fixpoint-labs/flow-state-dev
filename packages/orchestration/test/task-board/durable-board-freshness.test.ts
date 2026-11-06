@@ -39,9 +39,9 @@ import {
 } from "../../src/tasks";
 import {
   taskBoard,
-  taskBoardStateSchema,
   taskWorkerInputSchema,
 } from "../../src/task-board";
+import { taskBoardStateSchema } from "../../src/task-board/schemas";
 
 const IDLE_POLL_MS = 2;
 const MAX_ITERATIONS = 20;

@@ -62,30 +62,28 @@ import {
   taskSpendView,
   taskSpendViewSchema,
   TaskCapExceededError,
-  TaskWriteRefusedError,
   TaskFilingRefusedError,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskEditField,
-  type TaskUpdateField,
   type TaskInit,
   type TaskSettingsPatch,
   type TaskStatus,
   type TaskWriteOutcome,
   type TaskWriteDeclineReason,
-  withoutNoticeMarkers,
-  cancelledDependents,
-  MAX_STEERS,
-  MAX_QUESTION_PROMPT,
-  isRowHold,
   openHolds,
-  steerPlacesTaken,
   taskHoldSchema,
   type QuestionAnswer,
   type QuestionInit,
   type RowHold,
 } from "../tasks";
+import { TaskWriteRefusedError } from "../tasks/collection/refused-write";
+import type { TaskUpdateField } from "../tasks/collection/field-rules";
+import { withoutNoticeMarkers, cancelledDependents } from "../tasks/notice/task-notice";
+import { MAX_STEERS } from "../tasks/schema/steer";
+import { MAX_QUESTION_PROMPT } from "../tasks/schema/hold";
+import { isRowHold, steerPlacesTaken } from "../tasks/collection/holds";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
 // the task-board's public API to advertise it.
@@ -1789,6 +1787,16 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
              * row from another source too keeps the newer copy. Board action only.
              */
             updatedAt: z.number().optional(),
+            /**
+             * When the task was filed, when its run first started, and when it
+             * ended (epoch ms), as the row records them, so a reader can show
+             * how long a task has run and order tasks by when they ended. On
+             * the board's action only, like `spend`; the last two are absent
+             * until they happen.
+             */
+            createdAt: z.number().optional(),
+            startedAt: z.number().optional(),
+            completedAt: z.number().optional(),
             /** A request is waiting on this task's ending (`getTask` with `wait`). */
             waitedOn: z.literal(true).optional(),
             /**
@@ -1830,7 +1838,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
           // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
-          ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt } : {}),
+          ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt, createdAt: t.createdAt } : {}),
+          ...(claimless && t.startedAt !== undefined ? { startedAt: t.startedAt } : {}),
+          ...(claimless && t.completedAt !== undefined ? { completedAt: t.completedAt } : {}),
           ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
           ...(claimless && t.leaseUntil != null ? { leaseUntil: t.leaseUntil } : {}),
           ...waitingOf(t),

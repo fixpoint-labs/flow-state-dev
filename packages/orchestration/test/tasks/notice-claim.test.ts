@@ -25,7 +25,8 @@ import { dispatcher, handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import type { TaskSettledInput } from "../../src";
-import { defineTaskCollection, NOTICE_DUE_MS, type TaskCollectionRef, type TaskWorker } from "../../src/tasks";
+import { defineTaskCollection, type TaskCollectionRef, type TaskWorker } from "../../src/tasks";
+import { NOTICE_DUE_MS } from "../../src/tasks/notice/task-notice";
 import { taskBoard } from "../../src/task-board";
 import {
   approve,

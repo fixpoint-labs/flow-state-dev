@@ -103,7 +103,8 @@ import {
   observedPullRequestsCollection,
   type HarnessSteering,
 } from "@flow-state-dev/core/harness";
-import { requestSpendView, taskSpendViewSchema, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { taskSpendViewSchema, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
+import { requestSpendView } from "@flow-state-dev/orchestration/internal";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type {

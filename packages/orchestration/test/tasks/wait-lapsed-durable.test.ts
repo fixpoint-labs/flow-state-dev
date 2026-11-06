@@ -14,7 +14,7 @@ import { createRequestWaits } from "../../../engine/src/durability/wait-chain";
 import type { JsonObject } from "@flow-state-dev/core";
 import { REQUEST_END_SEAM, type BlockContext, type ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { defineTaskCollection, getOrCreateTaskCollection, type TaskCollectionRef } from "../../src/tasks";
-import { payBoardDebts } from "../../src";
+import { payBoardDebts } from "../../src/tasks/notice/pass";
 import { deliverHeldEnding, lapsedSlotsHeldInProcess, releaseEndedWaits, waitOnTask } from "../../src/tasks/helpers/wait-on-task";
 import { LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_CHECK_MS } from "../../src/tasks/notice/task-notice";
 import { createFakeResourceCollection } from "../helpers";

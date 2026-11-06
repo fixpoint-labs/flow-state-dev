@@ -3,26 +3,20 @@ import { ChevronRightIcon, TerminalIcon } from "lucide-react";
 import type { BoardTask, LabAdapter, WorkerRow } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useNow, useStale, useWatch } from "../lib/use-watch";
+import { taskRowPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
 import { costAmount, tokenCount } from "./flow-state/spend";
-import { TaskTime, taskCounts, taskSignal, type TaskSignalKind } from "./flow-state/task-signals";
-import { runsOn, taskLabel, taskLine, type Popup } from "./Popups";
+import { TaskTime, taskCounts, taskSignal } from "./flow-state/task-signals";
+import { reasonLine, runsOn, taskLabel, taskLine, type Popup } from "./Popups";
 import { InstructionsForm } from "./TeammateForms";
 
 /** The heading over each of the panel's sections. */
 const HEADING = "font-mono text-[10px] tracking-widest text-muted-foreground uppercase";
 
-/** A task's time signal's colour: a run that stopped answering (*quiet*) in the warning colour; the rest keep their row's. */
-const signalTone = (kind: TaskSignalKind) => (kind === "quiet" ? "text-warning" : "");
-
-/** The ended groups, in the order the panel draws them, each collapsed to its count until opened. */
-const ENDED = [
-  { status: "done", label: "Done" },
-  { status: "failed", label: "Failed" },
-  { status: "cancelled", label: "Cancelled" },
-] as const;
+/** How many of *Done*'s rows show before *Show all*: the newest few answer "what just finished?". */
+const DONE_SHOWN = 5;
 
 /** The dot's fill for each status; a task waiting on you overrides it with `bg-warning`. */
 const STATUS_DOT = {
@@ -32,11 +26,41 @@ const STATUS_DOT = {
   cancelled: "border border-muted-foreground/60",
 } satisfies Record<BoardTask["status"], string>;
 
-/** A teammate's tasks, split for the panel: the running ones, then each ending's, in filing order. */
+/**
+ * Newest first: by when it ended, else when it first started, else when it
+ * was filed, as the row's view reads them. A retry keeps the first start, so a
+ * retried task holds its place. A row with no time keeps its board order,
+ * after the timed ones.
+ */
+function newestFirst(tasks: readonly BoardTask[]): BoardTask[] {
+  const at = (t: BoardTask) => t.view?.times.completedAt ?? t.view?.times.startedAt ?? t.view?.times.createdAt ?? undefined;
+  return tasks
+    .map((t, i) => ({ t, i }))
+    .sort((a, b) => {
+      const x = at(a.t);
+      const y = at(b.t);
+      if (x === undefined || y === undefined) return x === y ? a.i - b.i : x === undefined ? 1 : -1;
+      return y - x || a.i - b.i;
+    })
+    .map(({ t }) => t);
+}
+
+/**
+ * A teammate's tasks, split for the panel, each group newest first: the
+ * running ones (those waiting on you first), the failed ones (open: a failure
+ * is something to act on), then *Done* and *Cancelled*, each collapsed to its
+ * count until opened.
+ */
 function groupTasks(tasks: readonly BoardTask[]) {
+  const of = (status: BoardTask["status"]) => newestFirst(tasks.filter((t) => t.status === status));
+  const running = of("running");
   return {
-    active: tasks.filter((t) => t.status === "running"),
-    ended: ENDED.map(({ status, label }) => ({ status, label, tasks: tasks.filter((t) => t.status === status) })).filter((g) => g.tasks.length > 0),
+    running: [...running.filter((t) => t.waiting !== undefined), ...running.filter((t) => t.waiting === undefined)],
+    failed: of("failed"),
+    ended: [
+      { status: "done", label: "Done", tasks: of("done") },
+      { status: "cancelled", label: "Cancelled", tasks: of("cancelled") },
+    ].filter((g) => g.tasks.length > 0),
   };
 }
 
@@ -45,13 +69,14 @@ function groupTasks(tasks: readonly BoardTask[]) {
  * name and role) and *Edit instructions*, which opens the instructions form
  * for a teammate you hired; the teammates from the files can't be edited
  * here. Under it, the tasks its conversation filed, coding tasks and
- * teammates' jobs alike: the running ones first, then *Done*, *Failed* and
- * *Cancelled*, each one line with its count that opens to its rows. A task
- * that ends moves to its group as its row changes. Each row opens the task
- * in a popup, and carries its time: a running one's clock on this attempt,
- * *quiet* once its run stopped answering, an ended one's age. The heading
- * counts the tasks by state. At the foot, a place for its routines, empty
- * for now.
+ * teammates' jobs alike, newest first in each group: the running ones
+ * (those waiting on you first); the failed ones, open, each with its reason;
+ * then *Done* (its newest five, and *Show all*) and *Cancelled*, each one line
+ * with its count that opens to its rows. A task that ends moves to its group
+ * as its row changes. Each row opens the task in a popup, and carries its
+ * time: a running one's clock on this attempt, *quiet* once its run stopped
+ * answering, an ended one's age. The heading gives the total and the counts
+ * by state. At the foot, a place for its routines, empty for now.
  */
 export function TeammatePanel({
   adapter,
@@ -85,17 +110,21 @@ export function TeammatePanel({
   );
   const tasks = useWatch(watchTasks, sessionId) ?? [];
   const stale = useStale(adapter, sessionId) || boardStale;
-  const { active, ended } = groupTasks(tasks);
+  const { running, failed, ended } = groupTasks(tasks);
   // A running clock ticks each second; it holds while the feed is stale, as the status line's age does.
   const now = useNow(1_000, !stale);
   const counts = taskCounts(tasks.flatMap((t) => (t.view === undefined ? [] : [t.view])));
   const [editing, setEditing] = useState(false);
   // Every ended group starts collapsed; a click opens it.
   const [opened, setOpened] = useState<Record<string, boolean>>({});
+  // *Done* shows its newest few until *Show all*.
+  const [allDone, setAllDone] = useState(false);
 
   const row = (t: BoardTask) => {
     const coding = isCoding(t.to);
     const line = taskLine(t, coding, nameOf);
+    const state = taskRowPresentation(t);
+    const reason = t.status === "failed" || t.status === "cancelled" ? reasonLine(t) : undefined;
     return (
       <li key={t.id}>
         <button
@@ -117,8 +146,9 @@ export function TeammatePanel({
               {coding ? <TerminalIcon aria-hidden className="mr-1 mb-0.5 inline size-3 text-muted-foreground" /> : null}
               {line}
             </span>
-            <span className={cn("block truncate text-xs", t.status === "failed" ? "text-destructive" : "text-muted-foreground", stale && STALE_CLASS)} data-status>
-              {t.waiting ? "waiting on you" : <StatusWords task={t} now={now} stale={stale} />}
+            <span className={cn("block truncate text-xs", state.tone, stale && STALE_CLASS)} data-status>
+              {t.waiting ? state.word : <StatusWords task={t} now={now} stale={stale} />}
+              {reason ? ` · ${reason}` : ""}
               {runsOn(t) ? ` · ${runsOn(t)}` : ""}
             </span>
           </span>
@@ -169,14 +199,27 @@ export function TeammatePanel({
       <div className="flex-1 overflow-y-auto pb-4">
         <section aria-labelledby="tasks-heading">
           <div id="tasks-heading" className={cn(HEADING, "px-4 pt-4 pb-2")}>
-            Tasks{counts === "" ? "" : ` · ${counts}`}
+            Tasks{tasks.length > 0 ? ` (${tasks.length})` : ""}{counts === "" ? "" : ` · ${counts}`}
           </div>
           {tasks.length === 0 ? <p className="px-4 text-xs text-muted-foreground">{worker.name} hasn't started any tasks yet.</p> : null}
           <CodingSpend tasks={tasks.filter((t) => isCoding(t.to))} />
           <div className="space-y-1">
-          {active.length > 0 ? <ul aria-label="Active" className="space-y-px px-2">{active.map(row)}</ul> : null}
+          {running.length > 0 ? <ul aria-label="Running" className="space-y-px px-2">{running.map(row)}</ul> : null}
+          {failed.length > 0 ? (
+            <div>
+              <div className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium">
+                <span className="text-destructive">Failed</span>
+                <span aria-hidden className="rounded-full bg-destructive/15 px-1.5 text-[10px] leading-4 text-destructive tabular-nums">
+                  {failed.length}
+                </span>
+              </div>
+              <ul aria-label="Failed" className="space-y-px px-2 pb-1">{failed.map(row)}</ul>
+            </div>
+          ) : null}
           {ended.map((group) => {
             const open = opened[group.status] ?? false;
+            const capped = group.status === "done" && !allDone && group.tasks.length > DONE_SHOWN;
+            const shown = capped ? group.tasks.slice(0, DONE_SHOWN) : group.tasks;
             return (
               <div key={group.status}>
                 <button
@@ -187,15 +230,17 @@ export function TeammatePanel({
                   className="flex w-full items-center gap-1.5 px-4 py-1.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
                 >
                   <ChevronRightIcon aria-hidden className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
-                  <span className={cn(group.status === "failed" && "text-destructive")}>{group.label}</span>
-                  <span
-                    aria-hidden
-                    className={cn("rounded-full px-1.5 text-[10px] leading-4 tabular-nums", group.status === "failed" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground")}
-                  >
+                  <span>{group.label}</span>
+                  <span aria-hidden className="rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground tabular-nums">
                     {group.tasks.length}
                   </span>
                 </button>
-                {open ? <ul aria-label={group.label} className="space-y-px px-2 pb-1">{group.tasks.map(row)}</ul> : null}
+                {open ? <ul aria-label={group.label} className="space-y-px px-2 pb-1">{shown.map(row)}</ul> : null}
+                {open && capped ? (
+                  <button type="button" onClick={() => setAllDone(true)} className="px-4 py-1 text-left text-xs text-muted-foreground underline-offset-2 hover:underline">
+                    Show all {group.tasks.length}
+                  </button>
+                ) : null}
               </div>
             );
           })}
@@ -219,7 +264,7 @@ export function TeammatePanel({
  */
 function StatusWords({ task, now, stale }: { task: BoardTask; now: number; stale: boolean }) {
   if (task.view === undefined) return <>{task.status}</>;
-  const time = <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={signalTone} fallback={task.status} />;
+  const time = <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={(kind) => taskRowPresentation(task, kind).tone} fallback={task.status} />;
   if (task.status === "running" || taskSignal(task.view, task.run, now, { stale }) === null) return time;
   return (
     <>

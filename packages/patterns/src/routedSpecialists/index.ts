@@ -37,7 +37,11 @@ import type {
   UsesSlot,
 } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
-import { currentLeaseRenewal, stampLeaseRenewal, withLeaseRenewalScope } from "@flow-state-dev/orchestration";
+import {
+  currentLeaseRenewal,
+  stampLeaseRenewal,
+  withLeaseRenewalScope,
+} from "@flow-state-dev/orchestration/internal";
 import {
   getOrCreateTaskCollection,
   startLeaseRenewal,

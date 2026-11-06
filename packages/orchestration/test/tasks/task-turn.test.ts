@@ -4,7 +4,8 @@
  * the task session's own field, and nothing a caller hands in.
  */
 import { describe, expect, it } from "vitest";
-import { isTaskTurn, TASK_SESSION_TASK_KEY } from "../../src";
+import { isTaskTurn } from "../../src";
+import { TASK_SESSION_TASK_KEY } from "../../src/task-board/task-turn";
 import {
   openWorkerClaimScope,
   stampCurrentClaim,

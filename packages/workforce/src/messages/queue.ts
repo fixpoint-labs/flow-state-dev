@@ -23,7 +23,7 @@
  */
 import { canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "@flow-state-dev/core";
 import type { BlockContext, WaitGateBinding } from "@flow-state-dev/core/types";
-import { findTaskPartitions, hasOpenHold, rowsInSession } from "@flow-state-dev/orchestration/tasks";
+import { findTaskPartitions, hasOpenHold, rowsInSession } from "@flow-state-dev/orchestration/internal";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-board/ledger";
 import { TASK_ID_STATE_KEY } from "../workers/keys";
 import { messageLogOf, type WorkerMessageRow } from "./message-log";

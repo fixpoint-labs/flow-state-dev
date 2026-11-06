@@ -139,7 +139,7 @@ describe("the teammates screen", () => {
     // Live: researcher's reading of the message, then the reply it sent, arrive while the popup is open.
     await waitFor(() => expect(popup.querySelector('[data-step="given"]')?.textContent).toMatch(/What's our launch date\?/), { timeout: 2000 });
     await waitFor(() => expect(popup.querySelector('[data-step="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
-    await waitFor(() => expect(popup.querySelector("[data-popup-status]")?.textContent).toBe("replied"));
+    await waitFor(() => expect(popup.querySelector("[data-overlay-status]")?.textContent).toBe("replied"));
     expect(line.querySelector("[data-sent-status]")?.textContent).toBe("replied");
 
     // Modal: Tab can't leave it, and focus that strayed behind it comes back in.
@@ -151,13 +151,26 @@ describe("the teammates screen", () => {
     fireEvent.keyDown(document, { key: "Tab" });
     expect(popup.contains(document.activeElement)).toBe(true);
 
-    fireEvent.keyDown(document, { key: "Escape" });
+    // An input method's Esc ends its composition, not the popup.
+    fireEvent.keyDown(document, { key: "Escape", isComposing: true });
+    expect(screen.queryByRole("dialog")).not.toBeNull();
+    // The Esc that closes is spent, so nothing under the popup acts on it too.
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(false);
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(line);
 
+    // Its close button and a click outside close it the same way, and focus goes back to the line.
+    line.focus();
     fireEvent.click(line);
-    fireEvent.click(document.querySelector("[data-popup-backdrop]")!);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(line);
+
+    line.focus();
+    fireEvent.click(line);
+    fireEvent.click(document.querySelector("[data-overlay-backdrop]")!);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(line);
   });
 
   it("a pick from ⌘K over a popup closes the popup, so the picked conversation takes the keys", async () => {
@@ -242,31 +255,34 @@ describe("the teammates screen", () => {
     expect(await within(panel("writer")).findByText("writer hasn't started any tasks yet.")).toBeTruthy();
   });
 
-  it("puts the running tasks first, folds the ended ones into groups with their counts, and moves a task that ends into its group live", async () => {
+  it("puts the running tasks first, shows the failed ones, folds done and cancelled into groups with their counts, and moves a task that ends into its group live", async () => {
     const ended = (id: string, title: string, status: "done" | "failed" | "cancelled") => ({ filer: "teammates.chief-of-staff", id, to: "teammates.researcher", title, status });
     const tasks = [ended("t-1", "Look up the launch date", "done"), ended("t-2", "Check the beta numbers", "failed"), ended("t-3", "Find a customer quote", "done"), ended("t-4", "Pull the survey", "cancelled")];
     render(<App adapter={fast({ tasks })} />);
     const side = await screen.findByRole("complementary", { name: "Chief of Staff's panel" });
     const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-label"));
-    // Ended tasks are folded: their groups show counts, and none of their rows.
-    await waitFor(() => expect(groups()).toEqual(["Done (2)", "Failed (1)", "Cancelled (1)"]));
+    // Done and cancelled tasks are folded: their groups show counts, and none of their rows.
+    await waitFor(() => expect(groups()).toEqual(["Done (2)", "Cancelled (1)"]));
     const folded = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-expanded"));
-    expect(folded()).toEqual(["false", "false", "false"]);
+    expect(folded()).toEqual(["false", "false"]);
     expect(within(side).queryByRole("button", { name: "Asked researcher to look up the launch date" })).toBeNull();
+    // A failure is something to act on: its rows show without a click.
+    const failed = within(side).getByRole("list", { name: "Failed" });
+    expect(within(failed).getByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeTruthy();
     // Opening a group shows its rows, and only its own.
     fireEvent.click(within(side).getByRole("button", { name: /^Done \(2\)/ }));
-    expect(folded()).toEqual(["true", "false", "false"]);
+    expect(folded()).toEqual(["true", "false"]);
     const done = within(side).getByRole("list", { name: "Done" });
     expect(within(done).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Asked researcher to look up the launch date", "Asked researcher to find a customer quote"]);
-    expect(within(side).queryByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeNull();
+    expect(within(done).queryByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeNull();
 
     // A task filed now runs at the top, above the groups, and moves into Done when it ends, with no reload.
     await tell("Chief of Staff", "Fix the typo in the README's first line.");
-    const active = await within(side).findByRole("list", { name: "Active" }, { timeout: 2000 });
+    const active = await within(side).findByRole("list", { name: "Running" }, { timeout: 2000 });
     expect(within(active).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).toBeTruthy();
     expect(active.compareDocumentPosition(within(side).getByRole("button", { name: /^Done/ })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await waitFor(() => expect(within(side).getByRole("button", { name: /^Done \(3\)/ })).toBeTruthy(), { timeout: 4000 });
-    expect(within(side).queryByRole("list", { name: "Active" })).toBeNull();
+    expect(within(side).queryByRole("list", { name: "Running" })).toBeNull();
     expect(within(within(side).getByRole("list", { name: "Done" })).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).toBeTruthy();
   });
 

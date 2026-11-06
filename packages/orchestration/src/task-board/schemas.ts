@@ -18,7 +18,8 @@
  */
 import { z, type ZodTypeAny } from "zod";
 import { transientSlot } from "@flow-state-dev/core";
-import { taskClaimTicketSchema, type Task } from "../tasks";
+import type { Task } from "../tasks";
+import { taskClaimTicketSchema } from "../tasks/claim-ticket";
 
 /**
  * Default outer-sequencer state shape: a `tasks` record under the default key.
@@ -28,8 +29,7 @@ import { taskClaimTicketSchema, type Task } from "../tasks";
  * "excessively deep" guard and OOMs the typecheck. The framework persists
  * Task objects through the substrate's CAS-guarded mutation helpers, which
  * already validate task shape at every transition — the schema-level
- * validation here is redundant. `TaskBoardState` is hand-declared so
- * consumers stay strongly typed.
+ * validation here is redundant.
  */
 const tasksRecordSchema: ZodTypeAny = z
   .record(z.string(), z.unknown())
@@ -38,8 +38,6 @@ const tasksRecordSchema: ZodTypeAny = z
 export const taskBoardStateSchema: ZodTypeAny = z.object({
   tasks: tasksRecordSchema,
 });
-
-export type TaskBoardState = { tasks: Record<string, Task> };
 
 /**
  * Per-worker (outer) sequencer state.
@@ -60,8 +58,6 @@ export type TaskBoardState = { tasks: Record<string, Task> };
 export const taskBoardWorkerStateSchema = z.object({
   lastClaimed: transientSlot(z.boolean().default(false)),
 });
-
-export type TaskBoardWorkerState = z.infer<typeof taskBoardWorkerStateSchema>;
 
 /**
  * Worker-body sequencer state.
@@ -97,10 +93,6 @@ export const taskBoardWorkerBodyStateSchema = z.object({
    */
   currentLedger: transientSlot(z.string().optional()),
 });
-
-export type TaskBoardWorkerBodyState = z.infer<
-  typeof taskBoardWorkerBodyStateSchema
->;
 
 /**
  * Output of `claimTask`. Workers branch on `claimed`: when true, the

@@ -14,7 +14,7 @@
  * by the user, is what resumes the turn.
  */
 import { describe, expect, it } from "vitest";
-import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { runAction } from "@flow-state-dev/engine";

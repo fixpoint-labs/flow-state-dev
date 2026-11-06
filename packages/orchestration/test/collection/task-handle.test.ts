@@ -9,11 +9,11 @@ import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { ComponentItem, MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import {
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
   getOrCreateTaskCollection,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import {
   createCapturedChanges,
   createFakeResourceCollection,

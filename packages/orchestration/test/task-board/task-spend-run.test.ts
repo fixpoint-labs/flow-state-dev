@@ -22,9 +22,11 @@ import {
 import { reportHarnessSpend } from "@flow-state-dev/core/harness";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { createTaskGate, SPEND_TICK_MS, taskWorkerInputSchema } from "../../src/task-board";
+import { SPEND_TICK_MS, taskWorkerInputSchema } from "../../src/task-board";
+import { createTaskGate } from "../../src/task-board/task-entry";
 import { admitClaimedTask } from "../../src/task-board/task-request";
-import { createResourceBackedTaskCollection, taskSpendView, ticketForClaim, type Task, type TaskSpendView } from "../../src/tasks";
+import { taskSpendView, ticketForClaim, type Task, type TaskSpendView } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
 import { createFakeResourceCollection } from "../helpers";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

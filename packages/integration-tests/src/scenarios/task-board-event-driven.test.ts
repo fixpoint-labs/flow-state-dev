@@ -18,9 +18,9 @@ import { describe, expect, it } from "vitest";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import {
   taskBoard,
-  taskBoardStateSchema,
   taskWorkerInputSchema,
 } from "@flow-state-dev/orchestration/task-board";
+import { taskBoardStateSchema } from "@flow-state-dev/orchestration/internal";
 import { testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { itemsByType } from "../helpers/assertions";

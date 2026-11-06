@@ -26,13 +26,12 @@ import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
-  taskLedgerResources,
   getOrCreateTaskCollection,
-  openRowHolds,
   resolveResourceCollection,
   type Task,
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
+import { taskLedgerResources, openRowHolds } from "@flow-state-dev/orchestration/internal";
 import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,

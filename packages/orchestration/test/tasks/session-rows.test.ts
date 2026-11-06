@@ -7,7 +7,8 @@
  * a message resume the coding session the follow-up is about to resume.
  */
 import { describe, expect, it } from "vitest";
-import { rowsInSession, type Task, type TaskCollectionRef } from "../../src/tasks";
+import type { Task, TaskCollectionRef } from "../../src/tasks";
+import { rowsInSession } from "../../src/tasks/helpers/session-rows";
 
 const row = (id: string, over: Partial<Task> = {}) => ({ id, status: "completed", ...over }) as Task;
 const ledger = (rows: Task[]) => ({ list: () => rows }) as unknown as TaskCollectionRef;
