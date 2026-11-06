@@ -517,7 +517,8 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   /**
    * Claim order for ready-task selection. Either a `ClaimOrder`
    * instance or a string naming one of the standard claim orders
-   * (`"fifo"`, `"topological"`, `"priority"`). Default: `"topological"`.
+   * (`"fifo"`, `"priority"`). Default: `"fifo"`. Neither claims a task
+   * with unmet `deps`: the substrate's admission rule gates on them.
    */
   claimOrder?: TaskBoardClaimOrderInput;
 
@@ -730,7 +731,7 @@ export function taskBoard<
     defaultWorker: defaultWorkerConfig,
     newSession: newSessionConfig,
     concurrency = 4,
-    claimOrder: claimOrderInput = "topological",
+    claimOrder: claimOrderInput = "fifo",
     onIdle = "complete-or-blocked",
     initialTasks = [],
     onError = "skip",
@@ -759,7 +760,7 @@ export function taskBoard<
   if ((config as { dispatcher?: unknown }).dispatcher !== undefined) {
     throw new Error(
       `[task-board] "${name}" sets \`dispatcher\`, which is now \`claimOrder\`. Pass the same ` +
-        `claim order (or "fifo", "topological", "priority") as \`claimOrder\`.`
+        `claim order (or "fifo", "priority") as \`claimOrder\`.`
     );
   }
 

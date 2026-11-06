@@ -285,7 +285,6 @@ export { onTaskChangeFor } from "./collection/predicates";
 // Claim orders
 export type { ClaimOrder } from "./claim-orders/types";
 export { fifoClaimOrder } from "./claim-orders/fifo";
-export { topologicalClaimOrder } from "./claim-orders/topological";
 export { priorityClaimOrder } from "./claim-orders/priority";
 
 // Workers
