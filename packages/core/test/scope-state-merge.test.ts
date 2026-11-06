@@ -224,7 +224,15 @@ describe("a fingerprint has no delimiter ambiguity", () => {
       z.union([z.literal("x"), z.literal("y"), z.literal("z")]),
       z.union([z.literal("x"), z.union([z.literal("y"), z.literal("z")])])
     ],
-    ["a record's key type holding the separator", z.record(z.enum(["a,b"]), z.string()), z.record(z.enum(["a", "b"]), z.string())]
+    ["a record's key type holding the separator", z.record(z.enum(["a,b"]), z.string()), z.record(z.enum(["a", "b"]), z.string())],
+    // Values JSON can't round-trip: each encodes as `null`.
+    ["a literal undefined against a literal null", z.literal(undefined), z.literal(null)],
+    ["a literal NaN against a literal null", z.literal(Number.NaN), z.literal(null)],
+    [
+      "a nested static default JSON can't round-trip",
+      z.array(z.object({ n: z.number().nullable().default(Number.NaN) })),
+      z.array(z.object({ n: z.number().nullable().default(null) }))
+    ]
   ];
   for (const [name, a, b] of pairs) {
     it(`refuses ${name}`, () => {

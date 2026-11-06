@@ -6,6 +6,7 @@
  * The grep guard in `zod-introspect.test.ts` enforces this invariant.
  */
 import { z, type ZodTypeAny } from "zod";
+import { deepEqual } from "./deep-equal";
 
 // ---------------------------------------------------------------------------
 // Primitive accessors
@@ -392,6 +393,23 @@ function identityOf(value: object): string {
   return `#${id}`;
 }
 
+/**
+ * `value` as JSON when JSON reads it back exactly, else `undefined`. A value
+ * it can't round-trip (`undefined`, `NaN`, `Infinity`, a bigint, a symbol, a
+ * `Date`, a function) would encode like another (`NaN` and `null` both as
+ * `null`), so the caller fingerprints by identity instead.
+ */
+function exactJson(value: unknown): string | undefined {
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(value);
+  } catch {
+    return undefined;
+  }
+  if (json === undefined) return undefined;
+  return deepEqual(JSON.parse(json), value) ? json : undefined;
+}
+
 /** Whether a `_def.checks` list (a string's `.min()`, a number's `.int()`, …) is empty. */
 function hasNoChecks(def: { checks?: unknown[]; coerce?: unknown }): boolean {
   return (def.checks === undefined || def.checks.length === 0) && def.coerce !== true;
@@ -434,8 +452,10 @@ export function zodSchemaSignature(schema: ZodTypeAny): string {
       return `enum${JSON.stringify([...(def.values as string[])].sort())}`;
     case "ZodNativeEnum":
       return `native${JSON.stringify(def.values)}`;
-    case "ZodLiteral":
-      return `literal${JSON.stringify([def.value])}`;
+    case "ZodLiteral": {
+      const exact = exactJson(def.value);
+      return exact === undefined ? `opaque${identityOf(schema)}` : `literal${JSON.stringify([typeof def.value, exact])}`;
+    }
     case "ZodArray":
       return def.minLength === null && def.maxLength === null && def.exactLength === null
         ? `array${JSON.stringify([zodSchemaSignature(def.type)])}`
@@ -464,7 +484,8 @@ export function zodSchemaSignature(schema: ZodTypeAny): string {
       return `readonly${JSON.stringify([zodSchemaSignature(def.innerType)])}`;
     case "ZodDefault": {
       const declared = getZodDeclaredDefault(schema)!;
-      const value = declared.kind === "static" ? JSON.stringify(declared.value()) : `fn${identityOf(declared.factory)}`;
+      const exact = declared.kind === "static" ? exactJson(declared.value()) : undefined;
+      const value = exact ?? `fn${identityOf(declared.factory)}`;
       return `default${JSON.stringify([zodSchemaSignature(def.innerType), value])}`;
     }
     default:
