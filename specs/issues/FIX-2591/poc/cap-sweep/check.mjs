@@ -92,10 +92,11 @@ const { hits, files } = scan()
 const lost = keptProblems()
 console.log(`scanned ${files} tracked text files`)
 for (const k of ['cap', 'otherAxis', 'history']) {
-  console.log(`\n${k}: ${hits[k].length}`)
+  const fileCount = new Set(hits[k].map((h) => h.slice(0, h.indexOf(':')))).size
+  console.log(`\n${k}: ${hits[k].length} lines in ${fileCount} files`)
   for (const h of hits[k]) console.log(`  ${h}`)
 }
 console.log(`\nworker cap kept: ${lost.length === 0 ? 'yes' : 'NO — ' + lost.join('; ')}`)
 const ok = hits.cap.length === 0 && lost.length === 0
-console.log(ok ? '\nRESULT: PASS — no living doc states or enforces an epic cap' : `\nRESULT: FAIL — ${hits.cap.length} cap mention(s) remain`)
+console.log(ok ? '\nRESULT: PASS — no living doc states or enforces an epic cap' : `\nRESULT: FAIL — ${hits.cap.length} cap mention(s) remain in ${new Set(hits.cap.map((h) => h.slice(0, h.indexOf(':')))).size} file(s)`)
 process.exit(ok ? 0 : 1)

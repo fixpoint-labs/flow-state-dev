@@ -76,8 +76,8 @@ It comes down to the machine: without the worker cap, a busy wake can exhaust it
 ## Settled
 
 - **The inventory is complete** — **CONFIRMED** by `poc/cap-sweep/check.mjs` on `origin/main`
-  at this spec's base: 6,965 tracked text files, 20 cap lines in 6 files, 21 other-axis lines,
-  14 history lines. `--control` plants a cap line beside an allowlisted one, and it is reported.
+  at this spec's base: 6,965 tracked text files, 20 cap lines in 5 files, 21 other-axis lines
+  in 13 files, 14 history lines in 10 files. The script prints each count; quote its output. `--control` plants a cap line beside an allowlisted one, and it is reported.
 
 ## Analysis
 

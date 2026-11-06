@@ -47,7 +47,7 @@ runtime behaviour. The sweep is what proves the goal instead.
 | **Signal** | `cap: 0`, `worker cap kept: yes`, exit 0 |
 | **Input** | The whole tracked tree. An unclassified hit counts as a cap hit, so a new mention anywhere is caught |
 | **Anti-game** | No passing by new allowlist entries or narrower patterns. Any new `OTHER_AXIS` entry is named in the implementation PR body, with its reason |
-| **Control that must fail** | Today's `main`: FAIL with 20 cap lines in 6 files. And `--control`, which plants a cap line in a file that has an allowlisted line: it must be reported as cap |
+| **Control that must fail** | Today's `main`: FAIL with `cap: 20 lines in 5 files`. And `--control`, which plants a cap line in a file that has an allowlisted line: it must be reported as cap |
 
 ## What changes
 
@@ -122,4 +122,4 @@ is added. If wrong: nothing we can see; a removal has no shim.
 
 **Open: none.** Number 2 is the one to weigh: correct it if "the cap rule" meant both.
 
-Improvement · contributor docs and skills, no package · small: 6 files, 20 lines removed or reworded · no epic
+Improvement · contributor docs and skills, no package · small: 5 files, 20 lines removed or reworded · no epic
