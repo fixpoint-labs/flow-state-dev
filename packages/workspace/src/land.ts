@@ -145,17 +145,17 @@ export async function landWays(host: LandHost, target: LandTarget): Promise<Arra
 export async function landRun(host: LandHost, target: LandTarget, request: LandRequest): Promise<Landed> {
   const deadline = Date.now() + (request.timeoutMs ?? LAND_TIMEOUT_MS);
   const left = () => Math.max(1, deadline - Date.now());
-  const git = async (cwd: string, args: string[]) =>
-    (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: left(), env: host.env })).stdout.trim();
-  const restoreGit = async (cwd: string, args: string[]) =>
-    (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: host.env })).stdout.trim();
+  const git = async (cwd: string, args: string[], env: Record<string, string> = {}) =>
+    (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: left(), env: { ...host.env, ...env } })).stdout.trim();
+  const restoreGit = async (cwd: string, args: string[], env: Record<string, string> = {}) =>
+    (await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs: RESTORE_TIMEOUT_MS, env: { ...host.env, ...env } })).stdout.trim();
   const base = await resolveBase(git, host.repo, host.pins, target.baseRef);
   return request.kind === "merge"
-    ? await merge(git, restoreGit, host.repo, base, target.branch)
+    ? await merge(git, restoreGit, host.repo, base, target.branch, { ...process.env, ...host.env })
     : await openPullRequest(git, host, target, base, request, left);
 }
 
-type Git = (cwd: string, args: string[]) => Promise<string>;
+type Git = (cwd: string, args: string[], env?: Record<string, string>) => Promise<string>;
 
 /**
  * The base the run was cut from. `local` is the branch a merge lands on;
@@ -217,7 +217,14 @@ async function resolveBase(git: Git, repo: string, pins: KeptFetchPins | undefin
  * whatever the repository's merge config says (`--commit --no-squash`), never
  * overwriting an ignored file. A conflict aborts and says which files.
  */
-async function merge(git: Git, hostRestoreGit: Git, repo: string, resolved: Base, from: string): Promise<Landed> {
+async function merge(
+  git: Git,
+  hostRestoreGit: Git,
+  repo: string,
+  resolved: Base,
+  from: string,
+  inherited: Record<string, string | undefined>,
+): Promise<Landed> {
   const base = resolved.local;
   if (base === undefined) {
     throw new WorkspaceRefusedError(
@@ -241,10 +248,13 @@ async function merge(git: Git, hostRestoreGit: Git, repo: string, resolved: Base
     );
   }
   // From here every command runs in the person's checkout, whose config the run shares and can write:
-  // nothing in it that names a program is obeyed (`programsOff`).
-  const off = await programsOff(git, checkout);
-  const checkoutGit: Git = (cwd, args) => git(cwd, [...off, ...args]);
-  const restoreGit: Git = (cwd, args) => hostRestoreGit(cwd, [...off, ...args]);
+  // nothing in it that names a program is obeyed (`programsOff`). The overrides go through
+  // `GIT_CONFIG_COUNT`/`KEY`/`VALUE`, which keep a key and its value apart (a `-c key=value` splits a
+  // subsection holding `=`), and git reads those from 2.31 on: older, the merge is refused.
+  await requireGit(git, checkout, from);
+  const off = await programsOff(git, checkout, inherited);
+  const checkoutGit: Git = (cwd, args) => git(cwd, args, off);
+  const restoreGit: Git = (cwd, args) => hostRestoreGit(cwd, args, off);
   if ((await checkoutGit(checkout, ["status", "--porcelain", "--untracked-files=no"])) !== "") {
     throw new WorkspaceRefusedError(
       "checkout-dirty",
@@ -286,8 +296,9 @@ async function merge(git: Git, hostRestoreGit: Git, repo: string, resolved: Base
     }
     throw new WorkspaceRefusedError(
       "merge-failed",
-      `Merging "${from}" into "${base}" in ${checkout} failed: ${firstLine(error) ?? "git gave no reason"}. ` +
-        `The run's commits are still on "${from}".`,
+      `Merging "${from}" into "${base}" in ${checkout} failed: ` +
+        ((error as { killed?: unknown }).killed === true ? "it ran out of the landing's time" : (firstLine(error) ?? "git gave no reason")) +
+        `. Nothing changed in that checkout. The run's commits are still on "${from}".`,
     );
   }
   const commit = await checkoutGit(checkout, ["rev-parse", "HEAD"]);
@@ -310,17 +321,37 @@ async function merge(git: Git, hostRestoreGit: Git, repo: string, resolved: Base
  */
 const PROGRAM_KEYS = /^(core\.fsmonitor|core\.sshcommand|core\.askpass|gpg\.(.+\.)?program|gpg\.ssh\.defaultkeycommand|filter\..+\.(clean|smudge|process)|merge\..+\.driver)$/;
 
+/** The oldest git that reads `GIT_CONFIG_COUNT`, which {@link programsOff} hands its overrides through. */
+const GIT_CONFIG_ENV_SINCE = [2, 31] as const;
+
+/** Refuse a local merge on a git too old to take {@link programsOff}'s overrides. */
+async function requireGit(git: Git, cwd: string, from: string): Promise<void> {
+  const version = await git(cwd, ["version"]).catch(() => "");
+  const [major, minor] = (/(\d+)\.(\d+)/.exec(version) ?? []).slice(1).map(Number);
+  const [needMajor, needMinor] = GIT_CONFIG_ENV_SINCE;
+  if (major === undefined || minor === undefined || major < needMajor || (major === needMajor && minor < needMinor)) {
+    throw new WorkspaceRefusedError(
+      "git-too-old",
+      `Merging locally needs git ${needMajor}.${needMinor} or later, to keep the checkout's own config from running a program, ` +
+        `and this host has ${version || "a git that didn't say its version"}. Nothing was merged; open a pull request instead, ` +
+        `or update git. The run's commits are still on "${from}".`,
+    );
+  }
+}
+
 /**
- * `-c` pairs that keep a checkout's own config from running a program. That
- * config (`local`, `worktree`) is shared with every run's worktree, so a run
- * can write it; the person's `global` and `system` config can't be. Each key
- * that names a program and is set in the checkout's own config is put back to
- * its last `global`/`system` value, or else switched off: an empty filter
+ * Overrides, as `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, that
+ * keep a checkout's own config from running a program. That config (`local`,
+ * `worktree`) is shared with every run's worktree, so a run can write it; the
+ * person's `global` and `system` config, and the host's own (`command`), can't
+ * be. Each key that names a program and is set in the checkout's own config is
+ * put back to its last trusted value, or else switched off: an empty filter
  * leaves content as it is, an empty merge driver can't run and so stops on the
  * conflict, an empty signing program fails the merge. The fsmonitor is off
- * always, as it is for every read the host makes.
+ * always, as it is for every read the host makes. Appended after any
+ * `GIT_CONFIG_COUNT` entries `inherited` already holds, so the host's own stay.
  */
-async function programsOff(git: Git, cwd: string): Promise<string[]> {
+async function programsOff(git: Git, cwd: string, inherited: Record<string, string | undefined>): Promise<Record<string, string>> {
   // `-z --show-scope`: `<scope>\0<key>\n<value>\0` per entry.
   const fields = (await git(cwd, ["config", "-z", "--show-scope", "--includes", "--get-regexp", PROGRAM_KEYS.source]).catch(() => "")).split("\0");
   const trusted = new Map<string, string>();
@@ -331,15 +362,22 @@ async function programsOff(git: Git, cwd: string): Promise<string[]> {
     const newline = entry.indexOf("\n");
     const key = newline < 0 ? entry : entry.slice(0, newline);
     const value = newline < 0 ? "true" : entry.slice(newline + 1);
-    if (scope === "global" || scope === "system") trusted.set(key, value);
+    if (scope === "global" || scope === "system" || scope === "command") trusted.set(key, value);
     else untrusted.add(key);
   }
-  const pairs = ["-c", "core.fsmonitor=false"];
+  const overrides: Array<[string, string]> = [["core.fsmonitor", "false"]];
   for (const key of untrusted) {
     if (key === "core.fsmonitor") continue;
-    pairs.push("-c", `${key}=${trusted.get(key) ?? (key === "core.sshcommand" ? "ssh" : "")}`);
+    overrides.push([key, trusted.get(key) ?? (key === "core.sshcommand" ? "ssh" : "")]);
   }
-  return pairs;
+  const already = Number.parseInt(inherited.GIT_CONFIG_COUNT ?? "0", 10);
+  const start = Number.isInteger(already) && already > 0 ? already : 0;
+  const env: Record<string, string> = { GIT_CONFIG_COUNT: String(start + overrides.length) };
+  overrides.forEach(([key, value], i) => {
+    env[`GIT_CONFIG_KEY_${start + i}`] = key;
+    env[`GIT_CONFIG_VALUE_${start + i}`] = value;
+  });
+  return env;
 }
 
 /**

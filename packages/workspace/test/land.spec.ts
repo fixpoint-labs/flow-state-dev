@@ -315,6 +315,22 @@ describe("a merge never runs a program the run could have planted in the shared 
     expect(existsSync(marker)).toBe(false);
   });
 
+  it("runs no planted filter whose name holds an =, which a -c key=value would split", async () => {
+    const marker = join(tempDir("land-marker"), "ran");
+    const h = host();
+    const place = await h.provision({ kind: "repo", repo }, { place: ["run-1"], branch: "fsd/run-1" });
+    git(place.cwd, "config", "filter.a=b.smudge", planted(marker, "cat"));
+    writeFileSync(join(place.cwd, ".gitattributes"), "*.txt filter=a=b\n");
+    writeFileSync(join(place.cwd, "change.txt"), "the run's change\n");
+    git(place.cwd, "add", ".gitattributes", "change.txt");
+    git(place.cwd, "commit", "-q", "-m", "The run's change");
+
+    await h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge" });
+
+    expect(readFileSync(join(repo, "change.txt"), "utf8")).toBe("the run's change\n");
+    expect(existsSync(marker)).toBe(false);
+  });
+
   it("runs no planted merge driver on a conflict, and still stops on it", async () => {
     const marker = join(tempDir("land-marker"), "ran");
     // The attribute is on the base already; only the driver it names is the run's.
@@ -344,16 +360,18 @@ describe("a merge that runs out of the landing's time", () => {
     git(repo, "add", "other.txt");
     git(repo, "commit", "-q", "-m", "The person's other change");
     const before = git(repo, "rev-parse", "main");
+    // The person's own slow signer, in their global config: trusted, so the hardening leaves it on.
     const bin = tempDir("land-gpg");
     writeFileSync(join(bin, "slow-gpg"), "#!/bin/sh\nsleep 3\nexit 1\n");
     chmodSync(join(bin, "slow-gpg"), 0o755);
-    git(repo, "config", "commit.gpgSign", "true");
-    git(repo, "config", "gpg.format", "openpgp");
-    git(repo, "config", "gpg.program", join(bin, "slow-gpg"));
+    writeFileSync(join(bin, "gitconfig"), `[commit]\n\tgpgSign = true\n[gpg]\n\tformat = openpgp\n\tprogram = ${join(bin, "slow-gpg")}\n`);
+    vi.stubEnv("GIT_CONFIG_GLOBAL", join(bin, "gitconfig"));
 
     const landing = h.land!({ cwd: place.cwd, branch: "fsd/run-1" }, { kind: "merge", timeoutMs: 1000 });
 
-    await expect(landing).rejects.toMatchObject({ reason: "merge-failed" });
+    // It failed on the landing's deadline, not on anything else, and was still undone.
+    await expect(landing).rejects.toMatchObject({ reason: "merge-failed", message: expect.stringContaining("ran out of the landing's time") });
+    vi.unstubAllEnvs();
     expect(existsSync(join(repo, ".git", "MERGE_HEAD"))).toBe(false);
     expect(git(repo, "rev-parse", "main")).toBe(before);
     expect(git(repo, "status", "--porcelain", "--untracked-files=no")).toBe("");
