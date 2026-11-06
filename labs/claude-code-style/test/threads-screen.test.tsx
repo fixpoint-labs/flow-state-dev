@@ -278,6 +278,23 @@ describe("the threads-mode screen", () => {
     expect(screen.getByRole("dialog", { name: "Task: Vendor C · summary" })).toBeTruthy();
   });
 
+  it("widens the sessions list from its right edge and remembers the width", async () => {
+    localStorage.clear();
+    await startThreadsSession(0.01);
+    const edge = screen.getByRole("separator", { name: "Resize the sessions list" });
+    // The window here is narrow, so the list opens at the narrow default.
+    expect(edge.getAttribute("aria-valuenow")).toBe("240");
+    // Its edge is on its right, so Right widens it (the side panel's is the other way round).
+    fireEvent.keyDown(edge, { key: "ArrowRight" });
+    fireEvent.keyDown(edge, { key: "ArrowRight" });
+    expect(edge.getAttribute("aria-valuenow")).toBe("272");
+    expect(localStorage.getItem("claude-code-style:sidebar-width")).toBe("272");
+    cleanup();
+    await startThreadsSession(0.01);
+    expect(screen.getByRole("separator", { name: "Resize the sessions list" }).getAttribute("aria-valuenow")).toBe("272");
+    localStorage.clear();
+  });
+
   it("widens the side panel from its edge and remembers the width", async () => {
     localStorage.clear();
     await startThreadsSession(0.01);

@@ -10,7 +10,7 @@ import { TasksPane } from "./components/TasksPane";
 import { ThreadsBoard } from "./components/ThreadsBoard";
 import { Thread } from "./components/Thread";
 import { readAddress, writeAddress, type Address, type AddressWrite } from "./lib/address";
-import { paneColumn, usePaneWidth } from "./lib/pane-width";
+import { paneColumn, sidebarColumn, usePaneWidth, useSidebarWidth } from "./lib/pane-width";
 import { focusComposer, focusWhenDrawn, useLabKeys } from "./lib/keys";
 import { EMPTY_PANE } from "./lib/first-run";
 import { useWatch } from "./lib/use-watch";
@@ -20,8 +20,8 @@ import { modeById, modeOfWorker, type ModeId } from "./modes";
  * The screen: the view's sessions on the left, the open session's main thread
  * in the center, and its mode's right pane: background tasks in session mode,
  * the threads board in threads mode. A pane opens a task's work in a sheet
- * over the main thread (`SheetArea`). The right pane's width is yours to drag,
- * and stays across reloads (`usePaneWidth`). The app opens in the Sessions view on
+ * over the main thread (`SheetArea`). The widths of the sessions list and the right pane are yours to drag,
+ * and stay across reloads (`usePaneWidth`, `useSidebarWidth`). The app opens in the Sessions view on
  * *New session*, which asks for a project before the composer opens, unless
  * the page's address names what was open (`lib/address`): a reload, a link and
  * Back reopen the view, the session and the task open in its pane.
@@ -70,6 +70,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   };
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [paneWidth, setPaneWidth] = usePaneWidth();
+  const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   // Which coding harnesses can run here: read once for the picker, again on its Re-check.
   const [harnesses, setHarnesses] = useState<HarnessRow[]>();
   useEffect(() => {
@@ -170,17 +171,20 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     <SheetProvider>
       <div
         className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden"
-        style={{ gridTemplateColumns: `15rem minmax(0,1fr) ${paneColumn(paneWidth)}` }}
+        style={{ gridTemplateColumns: `${sidebarColumn(sidebarWidth)} minmax(0,1fr) ${paneColumn(paneWidth, sidebarWidth)}` }}
       >
-        <SessionsList
-          view={view}
-          modes={adapter.modes}
-          sessions={inView}
-          selectedId={selectedId}
-          onView={pickView}
-          onSelect={(id) => pick(view, id)}
-          onNew={() => pick(view, undefined)}
-        />
+        <div className="relative min-h-0 min-w-0">
+          <SessionsList
+            view={view}
+            modes={adapter.modes}
+            sessions={inView}
+            selectedId={selectedId}
+            onView={pickView}
+            onSelect={(id) => pick(view, id)}
+            onNew={() => pick(view, undefined)}
+          />
+          <PaneResizer side="right" width={sidebarWidth} onResize={setSidebarWidth} />
+        </div>
         <SheetArea>
           {selected ? (
             <Thread
