@@ -32,7 +32,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   ALLOW_FOR_RUN,

@@ -74,7 +74,7 @@ import {
   type PhaseSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { assertDispatchEntrySupported, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {

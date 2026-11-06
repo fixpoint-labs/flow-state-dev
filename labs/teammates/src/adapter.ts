@@ -63,7 +63,7 @@ import {
   type WireTopic,
 } from "@flow-state-dev/client";
 import { isSuspensionWait, type OutputItem } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/types";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   answerTextOf,

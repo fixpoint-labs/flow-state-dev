@@ -19,8 +19,8 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
-import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,

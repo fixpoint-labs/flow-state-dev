@@ -2,9 +2,11 @@
  * One coding flow with four static doors sharing the host-selected adapter.
  */
 import { realpathSync } from "node:fs";
-import { defineFlow, sequencer, type harnessRunInputSchema } from "@flow-state-dev/core";
+import { defineFlow, sequencer } from "@flow-state-dev/core";
+import type { harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { BlockDefinition, HarnessCallbackContext, HarnessRunHandle } from "@flow-state-dev/core/types";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { HarnessCallbackContext, HarnessRunHandle } from "@flow-state-dev/core/harness";
 import type { z } from "zod";
 import { claudeCodeAgent, containmentSandbox, type ClaudeCodeAgentOptions } from "@flow-state-dev/claude-code/sdk";
 import { codexAgent, type CodexAgentOptions } from "@flow-state-dev/codex";

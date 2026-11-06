@@ -13,7 +13,7 @@
  *     host that said its session has no branch.
  */
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { createInMemoryStores, runAction, runRead } from "@flow-state-dev/engine";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

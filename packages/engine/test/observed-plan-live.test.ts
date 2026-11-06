@@ -10,17 +10,15 @@
  * projected fields.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import {
-  DEFAULT_ORG_ID,
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
-  defineFlow,
-  handler,
   observedPlanCollection,
   observedPlanListCollection,
   replacePlanList,
   type PlanListCollection,
-} from "@flow-state-dev/core";
+} from "@flow-state-dev/core/harness";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { createExecutionContext, createInMemoryStores, createResponseEmitter } from "../src";

@@ -21,7 +21,7 @@
  * Every failure is a `WorkspaceRefusedError` whose message says what
  * happened and, where there is one, what clears it.
  */
-import { pullRequestRefFromUrl } from "@flow-state-dev/core";
+import { pullRequestRefFromUrl } from "@flow-state-dev/core/harness";
 import { existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { run } from "./exec";

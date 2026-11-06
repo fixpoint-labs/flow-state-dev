@@ -66,8 +66,13 @@
  */
 import { defineCapability, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import type { BlockContext, HarnessUsageReader, HarnessUsageReading, HarnessUsageReport } from "@flow-state-dev/core/types";
-import { harnessUsageWindowSchema } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type {
+  HarnessUsageReader,
+  HarnessUsageReading,
+  HarnessUsageReport,
+} from "@flow-state-dev/core/harness";
+import { harnessUsageWindowSchema } from "@flow-state-dev/core/harness";
 import { z } from "zod";
 import { assertSafeSegment, hashKeySegment } from "./workspace";
 

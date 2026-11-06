@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
-import type { HarnessReadiness, HarnessReadinessCheck } from "@flow-state-dev/core/types";
+import type { HarnessReadiness, HarnessReadinessCheck } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   formatHarnessReadiness,

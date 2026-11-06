@@ -20,8 +20,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
-import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { BlockContext, BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,

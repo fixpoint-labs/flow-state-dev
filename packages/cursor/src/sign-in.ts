@@ -11,7 +11,7 @@
  * `checkCursorReadiness` gives the same answer as core's neutral
  * `HarnessReadiness`, with the remedy the user follows.
  */
-import type { HarnessReadiness } from "@flow-state-dev/core/types";
+import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 
 /** The sign-in `cursorSignIn` found. */
 export type CursorSignIn = { readonly status: "key" | "login" } | { readonly status: "none"; readonly reason: string };

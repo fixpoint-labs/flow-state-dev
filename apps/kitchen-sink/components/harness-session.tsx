@@ -38,7 +38,7 @@ import {
   harnessConversationNamespace,
   planRowsPrefix,
   readPlanTarget,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/harness";
 
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import {

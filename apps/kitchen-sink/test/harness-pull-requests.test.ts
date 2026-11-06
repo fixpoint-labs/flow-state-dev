@@ -15,7 +15,7 @@ import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { OBSERVED_PULL_REQUESTS } from "@flow-state-dev/core";
+import { OBSERVED_PULL_REQUESTS } from "@flow-state-dev/core/harness";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import type { CursorSdkMessage, ResolveCursorClient } from "@flow-state-dev/cursor";

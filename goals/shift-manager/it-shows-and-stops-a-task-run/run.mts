@@ -78,7 +78,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { compareItemOrder, createClient } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, planRowsPrefix, readPlanTarget } from "@flow-state-dev/core/types";
+import {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
+  planRowsPrefix,
+  readPlanTarget,
+} from "@flow-state-dev/core/harness";
 import { DEFAULT_LEASE_DURATION_MS, RENEWAL_DIVISOR } from "@flow-state-dev/orchestration/tasks";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";

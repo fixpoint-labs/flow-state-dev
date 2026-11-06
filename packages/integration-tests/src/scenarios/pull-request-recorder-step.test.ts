@@ -10,7 +10,8 @@
  * the real engine (`runAction`), whose request-end seam stops the recorder.
  */
 import { describe, expect, it } from "vitest";
-import { OBSERVED_PULL_REQUESTS, defineFlow, generator, handler, pullRequestRecorder, sequencer } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { OBSERVED_PULL_REQUESTS, pullRequestRecorder } from "@flow-state-dev/core/harness";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";

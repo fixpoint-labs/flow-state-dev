@@ -74,13 +74,13 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, wr
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { handler, sequencer } from "@flow-state-dev/core";
 import {
-  handler,
   harnessRunHandleSchema,
   harnessRunInputSchema,
-  sequencer,
-} from "@flow-state-dev/core";
-import { encodeUserSegment, type FlowInstance, type HarnessBlock } from "@flow-state-dev/core/types";
+  type HarnessBlock,
+} from "@flow-state-dev/core/harness";
+import { encodeUserSegment, type FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "@flow-state-dev/engine";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";

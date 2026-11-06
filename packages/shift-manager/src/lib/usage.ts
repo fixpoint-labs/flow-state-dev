@@ -10,7 +10,7 @@
  * "rolled over" is the Lab's, worked out by its clock, never this page's.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { HarnessUsageLevel } from "@flow-state-dev/core/types";
+import type { HarnessUsageLevel } from "@flow-state-dev/core/harness";
 import { ActionRefused, runAction } from "./action";
 import { newSessionId, USAGE_SESSION_PREFIX } from "./ids";
 import { useLab } from "./lab-data";

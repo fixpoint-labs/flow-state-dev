@@ -15,7 +15,8 @@
  * reaches the session's record, and the page, as its call settles. The
  * background workers hold no bash tool, so their requests carry no recorder.
  */
-import { pullRequestRecorder, sequencer, utility } from "@flow-state-dev/core";
+import { sequencer, utility } from "@flow-state-dev/core";
+import { pullRequestRecorder } from "@flow-state-dev/core/harness";
 import {
   applyRequestedMode,
   applyFeatures,

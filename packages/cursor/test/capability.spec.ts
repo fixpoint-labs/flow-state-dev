@@ -12,14 +12,13 @@
  */
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
+import { defineCapability, defineResourceCollection } from "@flow-state-dev/core";
 import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
-  defineCapability,
-  defineResourceCollection,
   observedPlanCollection,
   observedPlanListCollection,
-} from "@flow-state-dev/core";
+} from "@flow-state-dev/core/harness";
 import { createCursorAgentCapability } from "../src/capability";
 import { INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import { TESTED_SDK_VERSION } from "../src/types";

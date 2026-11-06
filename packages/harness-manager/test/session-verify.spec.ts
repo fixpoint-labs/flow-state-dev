@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { afterAll, describe, expect, it } from "vitest";
 import { z } from "zod";

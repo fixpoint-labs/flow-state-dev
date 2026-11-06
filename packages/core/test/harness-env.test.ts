@@ -6,7 +6,7 @@
  * that was not named must never reach it.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { harnessEnv } from "../src";
+import { harnessEnv } from "../src/harness";
 
 afterEach(() => {
   vi.unstubAllEnvs();

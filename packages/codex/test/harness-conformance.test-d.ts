@@ -18,7 +18,7 @@
  * `tsconfig.test-d.json` compiles every `.test-d.ts` file here, and the
  * `typecheck` script runs it after the `src` pass.
  */
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 
 const agent = codexAgent({

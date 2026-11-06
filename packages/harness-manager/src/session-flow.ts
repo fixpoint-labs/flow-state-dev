@@ -95,20 +95,18 @@
  * found a gap in its own package. The flow writes no item of its own.
  */
 import { existsSync } from "node:fs";
+import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import {
   OBSERVED_PULL_REQUESTS,
-  defineFlow,
-  handler,
   harnessFailureKind,
   harnessSteering,
   observedPullRequestsCollection,
-  sequencer,
   type HarnessSteering,
-} from "@flow-state-dev/core";
+} from "@flow-state-dev/core/harness";
 import { requestSpendView, taskSpendViewSchema, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import { withOutcome } from "@flow-state-dev/core/helpers";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
-  BlockContext,
   HarnessBlock,
   HarnessCallbackContext,
   HarnessResolver,
@@ -117,7 +115,7 @@ import type {
   HarnessSteerHook,
   HarnessUsageHook,
   HarnessUsageReader,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/harness";
 import { readRequestTotalSpend } from "@flow-state-dev/core/types";
 import {
   checkedOutBranch,

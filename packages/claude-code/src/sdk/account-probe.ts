@@ -17,7 +17,7 @@
  * `checkClaudeCodeReadiness()` gives the same answer as core's neutral
  * `HarnessReadiness`, with the remedy the user follows.
  */
-import type { HarnessReadiness } from "@flow-state-dev/core/types";
+import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 import { runIdleQuery } from "./idle-query";
 import type { SdkImporter } from "./sdk-client";
 

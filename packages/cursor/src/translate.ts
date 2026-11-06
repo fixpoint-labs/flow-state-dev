@@ -25,7 +25,7 @@
  * unrecognised content block, becomes a **status note**. The wire moves; a run
  * should degrade before it breaks (BP-030).
  */
-import type { PlanListItem } from "@flow-state-dev/core/types";
+import type { PlanListItem } from "@flow-state-dev/core/harness";
 import type {
   CursorContentBlock,
   CursorRunUsage,

@@ -8,7 +8,7 @@
  * Every one of them is FATAL for the run that raised it. A turn the model
  * failed is not here: that is an outcome on the handle, not a throw (§9).
  */
-import type { ClassifiedHarnessError, HarnessFailureKind } from "@flow-state-dev/core/types";
+import type { ClassifiedHarnessError, HarnessFailureKind } from "@flow-state-dev/core/harness";
 
 /**
  * The optional `@openai/codex-sdk` peer dependency is not installed. Raised on

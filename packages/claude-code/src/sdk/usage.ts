@@ -17,7 +17,11 @@
  * Nothing here reads a credentials file, calls a usage endpoint, or uses the
  * SDK's experimental usage call.
  */
-import type { HarnessUsageLevel, HarnessUsageReading, HarnessUsageWindow } from "@flow-state-dev/core/types";
+import type {
+  HarnessUsageLevel,
+  HarnessUsageReading,
+  HarnessUsageWindow,
+} from "@flow-state-dev/core/harness";
 import { probeClaudeAccount, type ClaudeAccountProbe, type ProbeClaudeAccountOptions } from "./account-probe";
 
 /** The usage record's name for Claude Code. */

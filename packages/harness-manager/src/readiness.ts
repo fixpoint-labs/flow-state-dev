@@ -31,7 +31,7 @@
  *   none of it sees no difference.
  */
 import { defineCapability, handler } from "@flow-state-dev/core";
-import type { HarnessReadiness, HarnessReadinessCheck } from "@flow-state-dev/core/types";
+import type { HarnessReadiness, HarnessReadinessCheck } from "@flow-state-dev/core/harness";
 import { z } from "zod";
 
 /** How long a check may take before it reads as unanswered: 30 s, a cold Codex start. */

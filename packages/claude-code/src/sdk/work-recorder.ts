@@ -27,7 +27,8 @@
  */
 import { realpathSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
-import { harnessConversationNamespace, normalizeResourcePath } from "@flow-state-dev/core/types";
+import { normalizeResourcePath } from "@flow-state-dev/core/types";
+import { harnessConversationNamespace } from "@flow-state-dev/core/harness";
 import type {
   ObservedFileOpKind,
   ObservedGapKind,

@@ -17,7 +17,16 @@ import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, blockPathObserver, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
-import { REQUEST_SPEND_SEAM, SESSION_REQUEST_END_HOOK, onRequestEnded, type BackgroundFailure, type HarnessRunSpend, type RequestEnding, type RequestSpendSeam, type TaskEntry } from "@flow-state-dev/core/types";
+import {
+  REQUEST_SPEND_SEAM,
+  SESSION_REQUEST_END_HOOK,
+  onRequestEnded,
+  type BackgroundFailure,
+  type RequestEnding,
+  type RequestSpendSeam,
+  type TaskEntry,
+} from "@flow-state-dev/core/types";
+import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";

@@ -7,7 +7,7 @@
  * task row: the first at once, then at most one per {@link PROGRESS_NOTE_MS},
  * always the latest, so a long run writes the row a bounded number of times.
  */
-import type { HarnessActivity } from "@flow-state-dev/core/types";
+import type { HarnessActivity } from "@flow-state-dev/core/harness";
 import { STATUS_NOTE_LIMIT } from "@flow-state-dev/orchestration";
 
 /** The least time between two progress-note writes of one step, in ms. */
