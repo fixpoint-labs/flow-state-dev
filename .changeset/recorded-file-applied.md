@@ -3,3 +3,5 @@
 ---
 
 `readRecordedWork` file rows now carry `applied`: how many of the run's operations on that path landed. `0` means every attempt failed, so a page can count edits without counting failed tries. `null` on rows recorded before the count was kept (FIX-2396).
+
+Docs: packages/harness-manager/README.md ("Reading what a run recorded, in a browser": say each file row carries `applied`, and show `applied: 1` in the example row)

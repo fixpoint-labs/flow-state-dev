@@ -347,13 +347,13 @@ import { WorkPlace } from "@/components/flow-state/work-place";
 
 ### Reading what a run recorded, in a browser
 
-`readRecordedWork(client, { sessionId, requestId })` returns what a coding run recorded: its plan steps, the files its file tools touched, and the pull requests it opened. It reads the run session's recorded collections through the API client, so any page can show the same rows without re-parsing the run's steps. It returns only the rows of that request, even when the session holds earlier runs. A section is `null` when the harness records none of it, and `truncated` is `true` when the list filled a page. A read that fails throws the client's own error, for the page to word. Each file row carries `applied`, how many of the run's operations on that path landed: `0` means the run tried the file and every attempt failed, so a page counting edits counts rows with `applied` above zero. It is `null` on a row recorded before the count was kept.
+`readRecordedWork(client, { sessionId, requestId })` returns what a coding run recorded: its plan steps, the files its file tools touched, and the pull requests it opened. It reads the run session's recorded collections through the API client, so any page can show the same rows without re-parsing the run's steps. It returns only the rows of that request, even when the session holds earlier runs. A section is `null` when the harness records none of it, and `truncated` is `true` when the list filled a page. A read that fails throws the client's own error, for the page to word.
 
 ```ts
 import { readRecordedWork, workPlace } from "@flow-state-dev/harness-manager/browser";
 
 const work = await readRecordedWork(client, { sessionId, requestId });
-work.files?.rows; // [{ path: "src/app.ts", kind: "edited", applied: 1 }, …]
+work.files?.rows; // [{ path: "src/app.ts", kind: "edited" }, …]
 ```
 
 `@flow-state-dev/harness-manager/browser` is the entry to import in a page. The package root reaches Node built-ins through `@flow-state-dev/workspace` and does not bundle for a browser. The browser entry carries `readRecordedWork`, its types, `workPlace` with `shellWord`, and `reviewDetail`, and a test keeps it free of Node built-ins.
