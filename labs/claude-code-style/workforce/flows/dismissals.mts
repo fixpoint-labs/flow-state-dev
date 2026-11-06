@@ -15,6 +15,9 @@ export const DISMISSALS_FLOW = "dismissals";
 const dismissedSchema = z.object({ dismissed: z.array(z.string()) });
 const dismissalsUserStateSchema = userMarksSchema;
 
+/** The task id a `dismissalKey` (`<task id>#<attempt>`) names. */
+const taskOfKey = (key: string) => key.slice(0, key.lastIndexOf("#") === -1 ? key.length : key.lastIndexOf("#"));
+
 /** Build the flow: list (a read) and dismiss, over your user state. */
 export function defineDismissalsFlow() {
   return defineFlow({
@@ -38,13 +41,15 @@ export function defineDismissalsFlow() {
         block: handler({
           name: "dismiss",
           inputSchema: z.object({ key: z.string().min(1) }),
-          outputSchema: dismissedSchema,
+          // The key alone: an action's return is recorded on its request, and the list only grows.
+          outputSchema: z.object({ key: z.string() }),
           userStateSchema: dismissalsUserStateSchema,
           execute: async (input, ctx) => {
-            const { dismissed: was } = ctx.user.state;
-            const dismissed = was.includes(input.key) ? was : [...was, input.key];
+            // One key per task: a newer attempt's dismissal replaces the older one's.
+            const task = taskOfKey(input.key);
+            const dismissed = [...ctx.user.state.dismissed.filter((key) => taskOfKey(key) !== task), input.key];
             await ctx.user.patchState({ dismissed });
-            return { dismissed };
+            return { key: input.key };
           },
         }),
       },

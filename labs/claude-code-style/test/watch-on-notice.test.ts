@@ -202,6 +202,22 @@ describe("watchSessions", () => {
     await until(() => seen.at(-1)!.find((row) => row.id === "s1")?.waiting === 0);
   });
 
+  it("reads no board again on a user-state notice that changed no dismissal, such as a pin", async () => {
+    listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
+    const h = host();
+    h.list([{ id: "t1", goal: "Fix it", status: "errored", attempts: 1 }]);
+    const seen: SessionRow[][] = [];
+    stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
+    await until(() => seen.at(-1)?.find((row) => row.id === "s1")?.waiting === 1);
+    const boards = h.count("/reads/listTasks_tasks");
+    const reads = h.count("/reads/listDismissed");
+    h.pin(["t1"]);
+    h.hear({ topic: { scope: "user" }, kind: "state" });
+    await until(() => h.count("/reads/listDismissed") > reads);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(h.count("/reads/listTasks_tasks")).toBe(boards);
+  });
+
   it("lists again on its own after a first listing that failed, with no notice to wake it", async () => {
     listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
     listings.failing = 1;

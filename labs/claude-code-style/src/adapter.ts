@@ -753,8 +753,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
    * is then the count `held` showed (none for a row not shown yet), and the list reads it again.
    */
   type SessionRowRead = { row: SessionRow; complete: boolean };
-  const rowOf = async (worker: string, sessionId: string, held?: SessionRow): Promise<SessionRowRead> => {
-    const [detail, turns, waiting] = await Promise.all([fsd.sessions.get(sessionId), runningTurns(sessionId), waitingCountFor(sessionId)]);
+  const rowOf = async (worker: string, sessionId: string, dismissed: ReadonlySet<string>, held?: SessionRow): Promise<SessionRowRead> => {
+    const [detail, turns, waiting] = await Promise.all([fsd.sessions.get(sessionId), runningTurns(sessionId), waitingCountFor(sessionId, dismissed)]);
     // The first message's first line is the fallback until the generated title lands.
     const firstLine = detail.title?.trim() ? undefined : await firstLineOf(sessionId);
     const project = (detail.state as Record<string, unknown> | undefined)?.[WORK_PROJECT_STATE_KEY];
@@ -778,10 +778,9 @@ export function createWiredLab(fsd: Client): LabAdapter {
    * read is `undefined`, not none: the row keeps the count it showed, and the list reads it again
    * ({@link SessionRowRead}), so the list never fails on it and never shows a guess as read.
    */
-  const waitingCountFor = async (sessionId: string): Promise<number | undefined> => {
+  const waitingCountFor = async (sessionId: string, dismissed: ReadonlySet<string>): Promise<number | undefined> => {
     try {
-      const [listed, dismissed] = await Promise.all([listedWithWaitingOn(sessionId), readDismissed()]);
-      return waitingOnYou(listed, new Set(dismissed));
+      return waitingOnYou(await listedWithWaitingOn(sessionId), dismissed);
     } catch (cause) {
       console.warn(`[claude-code-style] couldn't count what session ${sessionId} waits on you for:`, cause);
       return undefined;
@@ -987,6 +986,11 @@ export function createWiredLab(fsd: Client): LabAdapter {
       let subscribed: string | null = null;
       let relist = true;
       const dirty = new Set<string>();
+      // Your dismissals, read once per pass for every row's count; `marks` is a user-state notice,
+      // which a pin sends too, so the rows are counted again only when the dismissals changed.
+      let dismissed: ReadonlySet<string> = new Set();
+      let dismissedKey: string | null = null;
+      let marks = false;
       let running = false;
       // A failed listing or row read lists again on its own: with push up there may be no notice to wake it.
       const retry = retryAfterFailure(() => {
@@ -1013,7 +1017,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
             onChange: (notice) => {
               if (notice === null || notice.kind === "resync") relist = true;
               else if (notice.topic.scope === "session" && ROW_CHANGES.has(notice.kind)) dirty.add(notice.topic.id);
-              else if (notice.topic.scope === "user" && notice.kind === "state") relist = true;
+              else if (notice.topic.scope === "user" && notice.kind === "state") marks = true;
               else return;
               void pump();
             },
@@ -1027,16 +1031,32 @@ export function createWiredLab(fsd: Client): LabAdapter {
         // and the running loop checks both again before it stops.
         if (running) return;
         running = true;
-        while (live && (relist || dirty.size > 0)) {
+        while (live && (relist || dirty.size > 0 || marks)) {
           let complete = true;
           try {
+            marks = false;
+            const read = await readDismissed().then(
+              (keys) => keys,
+              (cause) => {
+                console.warn("[claude-code-style] couldn't read your dismissals:", cause);
+                complete = false;
+                return null;
+              },
+            );
+            if (read !== null) {
+              const key = JSON.stringify([...read].sort());
+              // Changed since the last pass: every shown row's count may have.
+              if (dismissedKey !== null && key !== dismissedKey) for (const id of rows.keys()) dirty.add(id);
+              dismissedKey = key;
+              dismissed = new Set(read);
+            }
             if (relist) {
               relist = false;
               dirty.clear();
               const next = new Map<string, SessionRow>();
               for (const mode of modes) {
                 const listed = await workforce.listWorkerSessions(mode.worker);
-                for (const read of await Promise.all(listed.map((entry) => rowOf(mode.worker, entry.session.id, rows.get(entry.session.id))))) {
+                for (const read of await Promise.all(listed.map((entry) => rowOf(mode.worker, entry.session.id, dismissed, rows.get(entry.session.id))))) {
                   next.set(read.row.id, read.row);
                   complete &&= read.complete;
                 }
@@ -1045,7 +1065,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
             } else {
               const ids = [...dirty];
               dirty.clear();
-              const reads = await Promise.all(ids.flatMap((id) => (rows.has(id) ? [rowOf(rows.get(id)!.worker, id, rows.get(id))] : [])));
+              const reads = await Promise.all(ids.flatMap((id) => (rows.has(id) ? [rowOf(rows.get(id)!.worker, id, dismissed, rows.get(id))] : [])));
               for (const read of reads) {
                 if (rows.has(read.row.id)) rows.set(read.row.id, read.row);
                 complete &&= read.complete;
