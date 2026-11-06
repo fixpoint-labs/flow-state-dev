@@ -402,8 +402,9 @@ export function getZodDeclaredDefault(schema: ZodTypeAny): ZodDeclaredDefault | 
 /**
  * Every author's default factory `schema` declares anywhere a read could fill
  * from it: under its wrappers, in an object's fields, an array's or a set's
- * items, a record's or a map's values, a tuple, a union, an intersection, a
- * lazy. Never calls a factory.
+ * items, a record's or a map's values, a tuple, a union, an intersection.
+ * A lazy is never expanded (a recursive one builds a fresh schema on each
+ * call), so no factory is found inside one. Never calls a factory.
  */
 export function dynamicDefaultFactories(
   schema: ZodTypeAny,
@@ -448,7 +449,8 @@ export function dynamicDefaultFactories(
       walk(def.right);
       break;
     case "ZodLazy":
-      walk(def.getter());
+      // Never expanded: a recursive lazy builds a fresh schema on each call.
+      // A lazy is an opaque leaf, with no factory found inside it.
       break;
     case "ZodBranded":
       walk(def.type);

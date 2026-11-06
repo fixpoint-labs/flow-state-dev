@@ -126,24 +126,59 @@ export function refuseUnstoredFactoryDefaults(
   flowOwn: ZodTypeAny | undefined,
   declarations: readonly ScopeStateDeclaration[]
 ): void {
-  const allowed = scope === "session" && flowOwn !== undefined ? dynamicDefaultFactories(flowOwn) : new Set<() => unknown>();
-  /** The path of the first factory in `schema` that isn't allowed, read field by field. */
-  const find = (schema: ZodTypeAny, path: string, root: boolean): string | undefined => {
-    const { chain, core } = peel(schema, root);
-    const shape = root || isPlainZodObject(core) ? getZodObjectShape(core) : undefined;
-    const disallowed = (factories: Iterable<() => unknown>) => [...factories].some((f) => !allowed.has(f));
-    if (shape === undefined) return disallowed(dynamicDefaultFactories(schema)) ? path : undefined;
-    const own = chain.flatMap((w) => (w.declared?.kind === "dynamic" ? [w.declared.factory] : []));
-    if (disallowed(own)) return path;
-    for (const [key, field] of Object.entries(shape)) {
-      const at = find(field, `${path}.${key}`, false);
-      if (at !== undefined) return at;
+  const objectShape = (schema: ZodTypeAny, root: boolean) => {
+    const { core } = peel(schema, root);
+    return root || isPlainZodObject(core) ? getZodObjectShape(core) : undefined;
+  };
+  /**
+   * The path of the first factory in `declared` that isn't a restatement of
+   * the flow's own, read field by field beside the flow's declaration (`own`).
+   * A factory on a field is a restatement when the flow declares that same
+   * function on the field at the same path, and the flow's declaration
+   * defaults the field and every field enclosing it: only then does a birth
+   * store it. A factory inside a field's value (an array item, say) is one
+   * when the flow's field at that path declares the same function.
+   */
+  const find = (
+    declared: ZodTypeAny,
+    own: ZodTypeAny | undefined,
+    path: string,
+    root: boolean,
+    ownDefaultedDown: boolean
+  ): string | undefined => {
+    const shape = objectShape(declared, root);
+    const ownShape = own === undefined ? undefined : objectShape(own, root);
+    for (const [key, field] of Object.entries(shape ?? {})) {
+      const at = `${path}.${key}`;
+      const ownField = ownShape?.[key];
+      const declaredFill = flagsOf(peel(field, false).chain).fill;
+      const ownFill = ownField === undefined ? undefined : flagsOf(peel(ownField, false).chain).fill;
+      const defaultedHere = ownDefaultedDown && ownFill?.kind === "default";
+      const onField = peel(field, false).chain.flatMap((w) => (w.declared?.kind === "dynamic" ? [w.declared.factory] : []));
+      for (const factory of onField) {
+        const restated =
+          defaultedHere &&
+          declaredFill.kind === "default" &&
+          ownFill?.kind === "default" &&
+          ownFill.declared.kind === "dynamic" &&
+          ownFill.declared.factory === factory;
+        if (!restated) return at;
+      }
+      if (objectShape(field, false) !== undefined) {
+        const deeper = find(field, ownField, at, false, defaultedHere);
+        if (deeper !== undefined) return deeper;
+        continue;
+      }
+      const inside = [...dynamicDefaultFactories(field)].filter((factory) => !onField.includes(factory));
+      if (inside.length === 0) continue;
+      const ownInside = ownField === undefined ? new Set<() => unknown>() : dynamicDefaultFactories(ownField);
+      if (inside.some((factory) => !ownInside.has(factory))) return at;
     }
     return undefined;
   };
   for (const declaration of declarations) {
     if (scope === "session" && declaration.schema === flowOwn) continue;
-    const at = find(declaration.schema, `${scope}.state`, true);
+    const at = find(declaration.schema, scope === "session" ? flowOwn : undefined, `${scope}.state`, true, true);
     if (at === undefined) continue;
     throw new Error(
       scope === "session"
@@ -225,7 +260,11 @@ type MergeNode = ObjectNode | LeafNode;
 
 /** Read one declared schema into a merge node. Only a plain `z.object` (any `z.object` at the root) is descended into. */
 function toNode(schema: ZodTypeAny, source: string, root: boolean): MergeNode {
-  const { chain, core } = peel(schema, root);
+  const peeled = peel(schema, root);
+  const core = peeled.core;
+  // A root wrapper means nothing to a scope record and is discarded, so it is
+  // not compared either: a root `.default({})` and a root `.nullable()` agree.
+  const chain = root ? [] : peeled.chain;
   const shape = root ? getZodObjectShape(core) : isPlainZodObject(core) ? getZodObjectShape(core) : undefined;
   if (shape !== undefined) {
     const fields = new Map<string, MergeNode>();

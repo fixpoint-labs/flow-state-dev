@@ -622,6 +622,53 @@ describe("reading one stored record always gives one value", () => {
     }
   });
 
+  it("defines and reads a flow whose state holds a generative recursive lazy schema", async () => {
+    const node = (): z.ZodTypeAny => z.object({ name: z.string(), children: z.array(z.lazy(node)).default([]) });
+    const reads = handler({
+      name: "reads-tree",
+      inputSchema: z.object({}),
+      sessionStateSchema: z.object({ count: z.number().default(0) }),
+      execute: (_input, ctx) => ({ tree: (ctx.session.state as { tree?: unknown }).tree })
+    });
+    const flow = defineFlow({
+      kind: "lazy-tree",
+      session: { stateSchema: z.object({ tree: node().default({ name: "root" }) }) },
+      actions: { a: { inputSchema: z.object({}), block: reads } }
+    })();
+    const result = await runAction({
+      orgId: ORG,
+      flow,
+      actionName: "a",
+      input: {},
+      userId: USER,
+      sessionId: "sess_lazy",
+      stores: createInMemoryStores(),
+      responseEmitter: createResponseEmitter({ requestId: "req_lazy" }),
+      runtimeConfig: {}
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ tree: { name: "root", children: [] } });
+  });
+
+  it("merges two declarations whose roots carry different wrappers: a root wrapper means nothing to a scope record", () => {
+    const flow = defineFlow({
+      kind: "root-wrappers",
+      session: { stateSchema: z.object({ a: z.string().default("x") }).default({}) },
+      actions: {
+        a: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "nullable-root",
+            inputSchema: z.object({}),
+            sessionStateSchema: z.object({ b: z.number().default(1) }).nullable(),
+            execute: () => ({})
+          })
+        }
+      }
+    })();
+    expect(Object.keys((flow.scopeStateSchemas?.session as z.AnyZodObject).shape).sort()).toEqual(["a", "b"]);
+  });
+
   it("allows a static default in user and org scope", () => {
     expect(() =>
       defineFlow({
@@ -706,18 +753,40 @@ describe("a read never runs a default factory: one stored record reads one value
     expect(second).toEqual(first);
   });
 
-  it("a factory under an optional parent, a block restating it, or in an array item reads stably", async () => {
-    const shapes: Array<[string, z.AnyZodObject, z.AnyZodObject | undefined]> = [
-      // The flow's `prefs` is optional; the block defaults it and restates the same `id` factory.
-      ["optional-parent", z.object({ prefs: z.object({ id }).optional() }), z.object({ prefs: z.object({ id }).default({}) })],
-      ["outer-optional", z.object({ id: id.optional() }), z.object({ id })],
-      ["array-item", z.object({ items: z.array(z.object({ id })).default([]) }), undefined]
+  it("a flow-only factory under an optional parent, under an outer optional, or in an array item reads stably", async () => {
+    const shapes: Array<[string, z.AnyZodObject]> = [
+      ["optional-parent", z.object({ prefs: z.object({ id }).optional() })],
+      ["outer-optional", z.object({ id: id.optional() })],
+      ["array-item", z.object({ items: z.array(z.object({ id })).default([]) })]
     ];
-    for (const [kind, own, block] of shapes) {
-      const flow = define(kind, own, reader(`${kind}-read`, block));
+    for (const [kind, own] of shapes) {
+      const flow = define(kind, own);
       const { first, second } = await readTwice(flow, createInMemoryStores(), `sess_${kind}`);
       expect(second, kind).toEqual(first);
     }
+  });
+
+  it("a block restating the flow's factory is allowed only at the same path, where the flow defaults all the way down", () => {
+    const refused = /has a default factory declared by block[\s\S]*would never take effect/;
+    // Under another key.
+    expect(() => define("other-key", z.object({ id }), reader("r1", z.object({ other: id })))).toThrow(
+      /session\.state\.other has a default factory declared by block "r1"/
+    );
+    // Under a parent only the block declares.
+    expect(() => define("block-parent", z.object({ id }), reader("r2", z.object({ wrap: z.object({ id }).default({}) })))).toThrow(
+      /session\.state\.wrap\.id has a default factory declared by block "r2"/
+    );
+    // At the same path, but the flow's parent is optional, so birth never creates it.
+    expect(() =>
+      define("optional-parent-restated", z.object({ prefs: z.object({ id }).optional() }), reader("r3", z.object({ prefs: z.object({ id }).default({}) })))
+    ).toThrow(refused);
+    // At the same path, but the flow's own field is wrapped in an outer optional.
+    expect(() => define("outer-optional-restated", z.object({ id: id.optional() }), reader("r4", z.object({ id })))).toThrow(refused);
+    // The same function at the same path, defaulted all the way down: a no-op, allowed.
+    expect(() =>
+      define("same-path", z.object({ prefs: z.object({ id }).default({}) }), reader("r5", z.object({ prefs: z.object({ id }).default({}) })))
+    ).not.toThrow();
+    expect(() => define("same-leaf", z.object({ id }), reader("r6", z.object({ id })))).not.toThrow();
   });
 
   it("a session born with the flow's factory stores its value, and reads it back unchanged", async () => {
@@ -952,6 +1021,44 @@ describe("declarations that disagree are refused before anything runs", () => {
 });
 
 describe("applyScopeStateDefaults", () => {
+  it("runs a field's refinement while validating it without its factory", () => {
+    let calls = 0;
+    const schema = z.object({
+      prefs: z
+        .object({ size: z.number(), id: z.string().default(() => `id-${++calls}`), theme: z.string().default("plain") })
+        .refine((value) => value.size > 0)
+    });
+    // Fails the refinement: left as stored.
+    expect(applyScopeStateDefaults(schema, { prefs: { size: -1 } })).toEqual({ prefs: { size: -1 } });
+    expect(applyScopeStateDefaults(schema, { prefs: { size: 2 } })).toEqual({ prefs: { size: 2, theme: "plain" } });
+    expect(calls).toBe(0);
+  });
+
+  it("reads a generative recursive lazy schema without expanding it", () => {
+    // A getter that builds a fresh schema on every call.
+    const node = (): z.ZodTypeAny => z.object({ name: z.string(), children: z.array(z.lazy(node)).default([]) });
+    const schema = z.object({ tree: node().default({ name: "root" }) });
+    expect(applyScopeStateDefaults(schema, {})).toEqual({ tree: { name: "root", children: [] } });
+    expect(applyScopeStateDefaults(schema, { tree: { name: "a", children: [{ name: "b" }] } })).toEqual({
+      tree: { name: "a", children: [{ name: "b" }] }
+    });
+  });
+
+  it("leaves a field that fails its schema as stored, though the field declares a factory, and runs no factory", () => {
+    let calls = 0;
+    const schema = z.object({
+      prefs: z.object({
+        mode: z.enum(["light", "dark"]),
+        id: z.string().default(() => `id-${++calls}`),
+        theme: z.string().default("plain")
+      })
+    });
+    expect(applyScopeStateDefaults(schema, { prefs: { mode: "bad" } })).toEqual({ prefs: { mode: "bad" } });
+    // A valid value still gets its static defaults, and never the factory's.
+    expect(applyScopeStateDefaults(schema, { prefs: { mode: "dark" } })).toEqual({ prefs: { mode: "dark", theme: "plain" } });
+    expect(calls).toBe(0);
+  });
+
   it("fills only what is missing and keeps present values as stored", () => {
     const schema = z.object({
       name: z.string().transform((s) => s.toUpperCase()).default("anon"),
