@@ -27,6 +27,7 @@ import {
   clearDraft,
   useDraft,
   useHarnessLines,
+  useJumpToLatest,
   useSession,
   SuspensionResolverProvider,
   type SessionView,
@@ -45,7 +46,6 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-  ScrollOnNewRequest,
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
@@ -151,6 +151,9 @@ function SessionBody({
   // Lines reach the run in the order they were typed, and the page stays on
   // the running turn while a line's turn waits behind it.
   const lines = useHarnessLines(session, { sendOne: sendLineOnce });
+  // The person's line rises when it lands: the composer says when they sent.
+  const feed = useJumpToLatest({ resetKey: sessionId });
+  const { sent } = feed;
   const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
@@ -165,6 +168,7 @@ function SessionBody({
         return;
       }
       try {
+        sent();
         const outcome = await lines.send(prompt);
         setLastLine(outcome);
         // The view may have closed (a session switch) while it ran: the stored draft goes only if it is still this line.
@@ -178,7 +182,7 @@ function SessionBody({
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [heldBy, lines, refresh, setMessage, sessionId],
+    [heldBy, lines, refresh, sent, setMessage, sessionId],
   );
   // A turn waiting on an answer has no stream to close: the session stops it by request id.
   const waiting = shown?.status === "waiting";
@@ -200,7 +204,7 @@ function SessionBody({
             {bound ?? "none yet"}
           </span>
         </div>
-        <Conversation className="min-h-0 flex-1" data-testid="conversation">
+        <Conversation className="min-h-0 flex-1" data-testid="conversation" feed={feed}>
           {/* An answer to a card goes through the session, so the turn it resumes streams in here. */}
           <SuspensionResolverProvider resolve={session.resumeSuspension}>
           <SessionItemsProvider value={session.items}>
@@ -209,7 +213,6 @@ function SessionBody({
                 <SessionConversationLoading />
               ) : (
                 <>
-                  <ScrollOnNewRequest items={session.items} />
                   {session.items.length === 0 && (
                     <ConversationEmptyState title={label} description={`Each turn continues the same ${label} conversation.`} />
                   )}

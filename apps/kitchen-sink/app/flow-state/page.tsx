@@ -10,6 +10,7 @@ import {
   clearDraft,
   useDraft,
   useFlow,
+  useJumpToLatest,
   useSession,
   useClientData,
   useResourceCollectionList,
@@ -28,7 +29,6 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-  ScrollOnNewRequest,
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
@@ -559,7 +559,8 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
         conversation={
           isCoordinatorFlow(picked.kind) ? null : (
           <FailedTurnRetryProvider value={pickedRetry.retryFor}>
-          <Conversation className="min-h-0 flex-1" data-testid="conversation">
+          {/* Stays mounted across picks: the key opens each picked session at its end. */}
+          <Conversation className="min-h-0 flex-1" data-testid="conversation" resetKey={picked.sessionId}>
             <ConversationBody
               items={pickedSession.items}
               isStreaming={pickedSession.isStreaming}
@@ -859,7 +860,6 @@ const ConversationBody = memo(function ConversationBody({
             <SessionConversationLoading />
           ) : (
             <>
-              <ScrollOnNewRequest items={items} />
               {items.length === 0 && (
                 <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
               )}
@@ -953,6 +953,16 @@ function ChatPanel({
   onSubmit,
 }: ChatPanelProps) {
   const { retryFor, shownError } = useFailedTurnRetry(session);
+  // The person's line rises when it lands: a send with a line says so as it goes out.
+  const feed = useJumpToLatest({ resetKey: session.snapshot?.sessionId ?? null });
+  const { sent } = feed;
+  const send = useCallback(
+    (msg: PromptInputMessage) => {
+      if (msg.text.trim().length > 0) sent();
+      return onSubmit(msg);
+    },
+    [sent, onSubmit],
+  );
   return (
     // Bridge the session's streaming resume to the inline approval cards
     // (the ui Approval renderer) so approving/rejecting a suspension streams the
@@ -960,7 +970,7 @@ function ChatPanel({
     <SuspensionResolverProvider resolve={session.resumeSuspension}>
     <FailedTurnRetryProvider value={retryFor}>
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <Conversation className="min-h-0 flex-1" data-testid="conversation">
+      <Conversation className="min-h-0 flex-1" data-testid="conversation" feed={feed}>
         <ConversationBody
           items={session.items}
           isStreaming={session.isStreaming}
@@ -995,7 +1005,7 @@ function ChatPanel({
             <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
-          <PromptInput onSubmit={onSubmit}>
+          <PromptInput onSubmit={send}>
             <PromptInputTextarea
               name="message"
               placeholder={

@@ -5,8 +5,12 @@
  *
  * Each app's own conversation views, built by the app's own Vite config from a
  * scratch copy of its source, run in headless Chromium on scripted reads
- * (`pages/script.ts`): no server, no model. One leg per surface:
+ * (`pages/script.ts`): no server, no model. The registry's are a fresh host the
+ * registry items are installed into with `fsdev ui add` (`goals/lib/registry-host.mts`).
+ * One leg per surface:
  *
+ *   registry/send                    the registry Conversation with the page's feed; its composer calls `sent()`
+ *   registry/read-only               the registry Conversation with no feed (b, d, e)
  *   devtool/stream                   DevTool's stream view
  *   devtool/first-send               a first request into an empty session, sent while the stream is its empty state (f.empty only)
  *   shift-manager/conversation       Shift Manager's conversation
@@ -29,11 +33,12 @@
  *   f        a first send that creates its conversation: the line lands near the top, and the long reply
  *            grows past the bottom edge with `scrollTop` moving no more than 1px, and the arrow shows
  *   f.empty  the same, for a first send made while the view draws an empty state in place of the feed
+ *   g        (registry/send) a send whose landing holds no line of the person's: `scrollTop` moves no more than 1px
  *
  * Run:     PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/conversation-scroll/sent-line-rises-reply-stays/run.mts
- * Control: GOAL_CONTROL=main-rule | no-reserve | key-reset, same command (goal.md → Controls).
+ * Control: GOAL_CONTROL=main-rule | no-reserve | key-reset | mount-history | main-registry, same command (goal.md → Controls).
  */
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { extname, join } from "node:path";
@@ -41,19 +46,39 @@ import { fileURLToPath } from "node:url";
 import type { Browser, Locator, Page } from "playwright";
 import { goalTmpDir, REPO_ROOT, repoPath, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
+import { installRegistryHost } from "../../lib/registry-host.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("sent-line-rises");
 const say = (s: string) => console.error(`[sent-line-rises] ${s}`);
 /** How far below the feed's top a risen line may sit. */
 const NEAR_TOP = 48;
+/** The commit before FIX-2456's registry change: what `main-registry` installs the registry items from. */
+const REGISTRY_BEFORE = "f459e5fce";
+/**
+ * What the registry surfaces install. The spec's input names `tokens` too; named, it is a theme and shadcn stops
+ * to ask before installing it, so it arrives as the items' dependency instead (`request-group` → `tool` → `tokens`),
+ * the way it does for any app, and the build checks the stylesheet holds it.
+ */
+const REGISTRY_ITEMS = ["conversation", "request-group", "prompt-input", "message"];
+/** The registry files `main-registry` puts back as they were. */
+const REGISTRY_CHANGED = ["conversation.tsx", "request-group.tsx", "prompt-input.tsx"];
 
 // ---- the controls ----------------------------------------------------------------
 
-type Signal = "a.short" | "a.long" | "b" | "c" | "d" | "e" | "f" | "f.empty";
-/** Each control serves the hook patched (`build.mts`) and must fail exactly these signals, on every surface that has them. */
-const CONTROLS: Record<string, { why: string; fails: Signal[] }> = {
-  "main-rule": { why: "useJumpToLatest as it was before this change (581142fb): a send goes to the end", fails: ["a.short", "a.long", "f", "f.empty"] },
+type Signal = "a.short" | "a.long" | "b" | "c" | "d" | "e" | "f" | "f.empty" | "g";
+/**
+ * Each control serves the hook patched (`build.mts`), or the registry items as on `main`, and must fail exactly
+ * these signals, on every surface that has them. `only`: the control changes only the surfaces whose id starts with it.
+ */
+const CONTROLS: Record<string, { why: string; fails: Signal[]; only?: string }> = {
+  // The registry's own rule: ScrollOnNewRequest goes to the end on any new request, over a 70dvh last group.
+  "main-registry": {
+    why: `the registry items as on main (${REGISTRY_BEFORE}): ScrollOnNewRequest, the 50px rule and the 70dvh last group`,
+    fails: ["a.short", "a.long", "d", "g"],
+    only: "registry/",
+  },
+  "main-rule": { why: "useJumpToLatest as it was before this change (581142fb): a send goes to the end", fails: ["a.short", "a.long", "f", "f.empty", "g"] },
   // The person's line lands before its reply starts, so with no space it can't reach the top under either length.
   "no-reserve": { why: "useJumpToLatest keeps no space under the sent line", fails: ["a.short", "a.long", "f"] },
   // The conversation's id arriving before its first line reopens the feed, as if switched to: the reply scrolls as history.
@@ -66,8 +91,10 @@ if (CONTROL !== "" && CONTROLS[CONTROL] === undefined) throw new Error(`unknown 
 
 // ---- the apps and their surfaces --------------------------------------------------
 
-type App = { name: string; dir: string; entry: string; aliases?: Record<string, string> };
+/** `registry`: not an app in the repo, but a fresh host the registry items are installed into. */
+type App = { name: string; dir: string; entry: string; aliases?: Record<string, string>; registry?: true };
 const APPS: App[] = [
+  { name: "registry", dir: repoPath("packages", "ui"), entry: "goal/registry.tsx", registry: true },
   { name: "devtool", dir: repoPath("apps", "devtool"), entry: "src/goal/devtool.tsx", aliases: { "@devtool-src": repoPath("packages", "devtool", "src") } },
   { name: "shift-manager", dir: repoPath("packages", "shift-manager"), entry: "src/goal/shift-manager/main.tsx" },
   { name: "claude-code-style", dir: repoPath("labs", "claude-code-style"), entry: "src/goal/claude-code.tsx" },
@@ -80,8 +107,11 @@ type Send = { composer: string; key: string } | "goal" | "none";
  * `first`: the send creates the conversation, so the feed's key arrives after the send and before its line.
  * `empty`: the text the view draws in place of the feed until its first line, so the send is made before the feed mounts.
  */
-type Surface = { id: string; app: string; query: string; feed: string; send: Send; first?: true; empty?: string };
+type Surface = { id: string; app: string; query: string; feed: string; send: Send; first?: true; empty?: string; unmarked?: true };
+/** `unmarked`: the page offers `goal.unmarked()`, a send whose landing has no line of the person's (signal g). */
 const SURFACES: Surface[] = [
+  { id: "registry/send", app: "registry", query: "send", feed: '[role="log"]', send: { composer: '[data-testid="message-input"]', key: "Enter" }, unmarked: true },
+  { id: "registry/read-only", app: "registry", query: "read-only", feed: '[role="log"]', send: "none" },
   { id: "devtool/stream", app: "devtool", query: "stream", feed: ".overflow-auto.bg-fs-surface", send: "goal" },
   { id: "devtool/first-send", app: "devtool", query: "first-send", feed: ".overflow-auto.bg-fs-surface", send: "goal", first: true, empty: "No requests yet" },
   { id: "shift-manager/conversation", app: "shift-manager", query: "conversation", feed: '[data-testid="conversation-feed"]', send: { composer: '[data-testid="conversation-composer-input"]', key: "Enter" } },
@@ -103,8 +133,40 @@ const SURFACES: Surface[] = [
 
 // ---- building and serving ----------------------------------------------------------
 
+/** Run `build.mts` for `root` in its own process, into `<scratch>/<name>/pages`. */
+function buildPages(app: App, root: string, host = false): string {
+  const pages = join(SCRATCH, app.name, "pages");
+  const built = spawnSync(repoPath("node_modules", ".bin", "tsx"), [join(HERE, "build.mts"), JSON.stringify({ repo: REPO_ROOT, root, outDir: pages, control: CONTROL, aliases: app.aliases ?? {}, host })], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, NODE_ENV: "production" },
+  });
+  if (built.status !== 0) throw new Error(`setup [${app.name}]: the page build failed: ${(built.stderr || built.stdout).slice(-2500)}`);
+  return pages;
+}
+
+/**
+ * The registry items installed into a fresh host with `fsdev ui add`, proven byte-equal to the registry, then
+ * (under `main-registry`) the changed files put back as on `main`; the goal's registry page at `goal/`.
+ */
+async function buildRegistry(app: App): Promise<string> {
+  const { host } = await installRegistryHost(join(SCRATCH, app.name), REGISTRY_ITEMS);
+  if (!/--attention:/.test(readFileSync(join(host, "app", "globals.css"), "utf8"))) throw new Error("setup [registry]: the install did not add the tokens item to the host's stylesheet");
+  if (CONTROL === "main-registry") {
+    for (const file of REGISTRY_CHANGED) {
+      const old = execFileSync("git", ["show", `${REGISTRY_BEFORE}:packages/ui/registry/components/${file}`], { cwd: REPO_ROOT, encoding: "utf8" });
+      writeFileSync(join(host, "components", "flow-state", file), old);
+    }
+  }
+  mkdirSync(join(host, "goal"), { recursive: true });
+  for (const file of ["script.ts", "registry.tsx"]) cpSync(join(HERE, "pages", file), join(host, "goal", file));
+  writeFileSync(join(host, "index.html"), `<!doctype html>\n<html lang="en">\n  <body>\n    <div id="root"></div>\n    <script type="module" src="/${app.entry}"></script>\n  </body>\n</html>\n`);
+  return buildPages(app, host, true);
+}
+
 /** The app copied to scratch with the goal's pages at `src/goal/`, built by its own config, into `<scratch>/<name>/pages`. */
-function build(app: App): string {
+async function build(app: App): Promise<string> {
+  if (app.registry) return await buildRegistry(app);
   const root = join(SCRATCH, app.name, "source");
   cpSync(app.dir, root, { recursive: true, filter: (src) => !/[/\\](node_modules|dist|dist-client|\.fsdev)$/.test(src) });
   symlinkSync(join(app.dir, "node_modules"), join(root, "node_modules"));
@@ -117,14 +179,7 @@ function build(app: App): string {
   cpSync(join(HERE, "pages"), join(root, "src", "goal"), { recursive: true, filter: (src) => app.name === "shift-manager" || !src.includes(`${join("pages", "shift-manager")}`) });
   const html = join(root, "index.html");
   writeFileSync(html, readFileSync(html, "utf8").replace(/src="\/src\/main\.tsx"/, `src="/${app.entry}"`));
-  const pages = join(SCRATCH, app.name, "pages");
-  const built = spawnSync(repoPath("node_modules", ".bin", "tsx"), [join(HERE, "build.mts"), JSON.stringify({ repo: REPO_ROOT, root, outDir: pages, control: CONTROL, aliases: app.aliases ?? {} })], {
-    cwd: root,
-    encoding: "utf8",
-    env: { ...process.env, NODE_ENV: "production" },
-  });
-  if (built.status !== 0) throw new Error(`setup [${app.name}]: the page build failed: ${(built.stderr || built.stdout).slice(-2500)}`);
-  return pages;
+  return buildPages(app, root);
 }
 
 const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf" };
@@ -317,6 +372,15 @@ async function runSurface(browser: Browser, origin: string, surface: Surface): P
     const bg = await settled(page, surface.feed, 200);
     grade("d", Math.abs(bg.top - before.top) <= 1 && bg.arrow, `scrollTop ${before.top.toFixed(0)} → ${bg.top.toFixed(0)}; arrow ${bg.arrow ? "shown" : "not shown"}`);
 
+    // g: the page says the person sent, and what lands has no line of theirs: nothing rises, nothing moves.
+    if (surface.unmarked) {
+      const was = await settled(page, surface.feed, 200);
+      await goal(page, "unmarked");
+      await page.waitForTimeout(600);
+      const now = await settled(page, surface.feed, 200);
+      grade("g", Math.abs(now.top - was.top) <= 1, `scrollTop ${was.top.toFixed(0)} → ${now.top.toFixed(0)} after a send with no marked line`);
+    }
+
     // e: switch, from scrolled up, and read every frame after.
     await page.evaluate((feed) => document.querySelector<HTMLElement>(feed)!.scrollTo({ top: 0, behavior: "instant" }), surface.feed);
     await settled(page, surface.feed, 200);
@@ -361,16 +425,20 @@ await runGoal(async (failures) => {
   say(`scratch ${SCRATCH}${CONTROL === "" ? "" : `; control ${CONTROL}: ${CONTROLS[CONTROL]!.why}`}`);
   mkdirSync(SCRATCH, { recursive: true });
   const served = new Map<string, { origin: string; server: Server }>();
-  for (const app of APPS.filter((a) => SURFACES.some((s) => s.app === a.name && s.id.startsWith(process.env.GOAL_ONLY ?? "")))) {
+  // GOAL_ONLY=<prefix>: only the surfaces whose id starts with it, while working on one. A control that changes
+  // only some surfaces runs only those: on the rest it changes nothing, so its reds could not show.
+  const only = process.env.GOAL_ONLY ?? "";
+  const scope = CONTROLS[CONTROL]?.only ?? "";
+  const surfaces = SURFACES.filter((s) => s.id.startsWith(only) && s.id.startsWith(scope));
+  for (const app of APPS.filter((a) => surfaces.some((s) => s.app === a.name))) {
     say(`building ${app.name}`);
-    served.set(app.name, await serve(build(app)));
+    served.set(app.name, await serve(await build(app)));
   }
   const lines: string[] = [];
   const expected = new Set(CONTROLS[CONTROL]?.fails ?? []);
   const browser = await launchChromium();
   try {
-    // GOAL_ONLY=<prefix>: only the surfaces whose id starts with it, while working on one.
-    for (const surface of SURFACES.filter((s) => s.id.startsWith(process.env.GOAL_ONLY ?? ""))) {
+    for (const surface of surfaces) {
       say(surface.id);
       let verdicts: Map<Signal, Verdict>;
       try {
@@ -379,7 +447,11 @@ await runGoal(async (failures) => {
         failures.push(`${surface.id} setup: ${(error as Error).message.slice(0, 600)}`);
         continue;
       }
-      const signals: Signal[] = surface.first ? [surface.empty === undefined ? "f" : "f.empty"] : surface.send === "none" ? ["b", "d", "e"] : ["a.short", "a.long", "b", "c", "d", "e"];
+      const signals: Signal[] = surface.first
+        ? [surface.empty === undefined ? "f" : "f.empty"]
+        : surface.send === "none"
+          ? ["b", "d", "e"]
+          : ["a.short", "a.long", "b", "c", "d", ...(surface.unmarked ? (["g"] as const) : []), "e"];
       for (const signal of signals) {
         const v = verdicts.get(signal) ?? { pass: false, note: "never ran" };
         const line = `${surface.id} ${signal} ${v.pass ? "PASS" : "FAIL"} ${v.note}`;

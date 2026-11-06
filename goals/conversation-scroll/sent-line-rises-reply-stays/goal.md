@@ -1,8 +1,8 @@
 # conversation-scroll › a sent line rises, and its reply stays in view
 
-**Issue:** FIX-2360
+**Issue:** FIX-2360; the registry surfaces FIX-2456
 
-**Outcome:** In DevTool, Shift Manager, the Claude Code-style lab and the Teammates lab, a line you send rises to near the top of the view and its reply streams in below it, where you can read it. After that, nothing you didn't do moves the view.
+**Outcome:** In DevTool, Shift Manager, the Claude Code-style lab, the Teammates lab and an app built from the registry's components, a line you send rises to near the top of the view and its reply streams in below it, where you can read it. After that, nothing you didn't do moves the view.
 
 **Input:** each app's own conversation views, built by the app's own Vite config from a scratch copy of its source, with the goal's page (`pages/`) as the entry. The page mounts the app's real components with the app's stylesheet, and replaces only the data source with a script (`pages/script.ts`): two conversations of 28 earlier lines each, a send that lands the person's line 150 ms later (as a server's echo does), then a reply that streams one sentence every 70 ms. A short reply is two chunks; a long one is 72 sentences, a few screens. A line that isn't the person's is a 30-sentence block.
 
@@ -10,6 +10,7 @@
 - **Shift Manager**: `Conversation` (sends through its own composer) and `TaskSession`. A second `Conversation` (`first-send`) has no conversation until its first line opens one: `ensure` sets the new session's id before the line lands, as the real one does. Its reads, the task and the send (`src/lib/{lab-data,conversation,send,task,run}`) are swapped at build time for `pages/shift-manager/fakes/`, which keep every other export of the real module. The task session's composer is the task frame's, so a send is counted in the task's `sent`, as that composer does.
 - **Claude Code-style**: `Thread` and `ThreadView` (send through their own composers) and `Sheet`, the task panel, which never sends.
 - **Teammates**: `Conversation` (sends through its own composer) and `SessionPopup`, which never sends.
+- **Registry**: not an app in the repo. The registry is built from this checkout and served, and `fsdev ui add conversation request-group prompt-input message` installs it into a fresh host shaped as `shadcn init` leaves one (`goals/lib/registry-host.mts`). Every installed copy must be its registry source byte for byte before anything runs. `tokens` comes in as the items' dependency: named on the command line it is a theme, and shadcn stops to ask. The page (`pages/registry.tsx`) is an adopter's chat page over the script's lines as items. `registry/send` makes the feed with `useJumpToLatest`, passes it to `Conversation`, and its `PromptInput` calls `feed.sent()`. `registry/read-only` is a `Conversation` with no feed, keyed by the open conversation, which never sends.
 
 **Signal:** read off rendered boxes and `scrollTop` in headless Chromium, per surface. The sent line is found by its text, never as "the last element".
 
@@ -22,18 +23,21 @@
 - **f** (Shift Manager's `first-send` only): a first line into a conversation the send creates, with a long reply: the line lands 0 to 48 px below the feed's top, then `scrollTop` moves no more than 1 px as the reply grows past the bottom edge, and the arrow shows.
 - **f.empty** (DevTool's `first-send` only): the same, for a first send made while the view draws its empty state, before the feed mounts. The first request is the feed's first element, so its top is near the feed's top in any case; the `scrollTop` drift is the part that can fail.
 
+- **g** (`registry/send` only): from where d left it, the page calls `sent()` and what lands is a line from someone else, so no line of the person's is marked: `scrollTop` moves no more than 1 px.
+
 The views that never send have b, d and e only; each `first-send` has f or f.empty only.
 
 **Anti-game:** nothing reads the hook's return values or counts `scrollTo` calls. The line is found by a fresh token in its text. Each app builds from its own config, so its own CSS lays the feed out. The page replaces data, not views.
 
 **Model:** n/a (scripted replies).
 
-**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/conversation-scroll/sent-line-rises-reply-stays/run.mts`. It builds the four pages itself, in its own scratch folder. About four minutes. `GOAL_ONLY=<surface prefix>` runs only the surfaces whose id starts with it.
+**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/conversation-scroll/sent-line-rises-reply-stays/run.mts`. It builds the five pages itself (the registry's after its install), in its own scratch folder. About five minutes. `GOAL_ONLY=<surface prefix>` runs only the surfaces whose id starts with it.
 
 **Controls:** `GOAL_CONTROL=<name>` on the same command. Each serves `useJumpToLatest` patched in every page's build (`build.mts`), and must fail exactly its own signals on every surface that has them; any other red, or one of its signals green, is reported as `WRONG:`.
 
-- `main-rule`: the hook as it was on `main` before this change (581142fb), plus a `mine` that only sets the attribute. A send goes to the end. Must fail **a.short** and **a.long** on all six surfaces that send, **f**: the first send's conversation reopens at its end and the reply scrolls the view, and **f.empty**: the reply scrolls the view.
-- `no-reserve`: the hook keeps no space under the sent line. Must fail **a.short** and **a.long** on all six surfaces that send. The spec expected the short reply only; the person's line lands before its reply starts, so with no space it can't rise under either length. Must fail **f** too: with no space under it, the first line can't rise (64 px down against 44 px).
+- `main-rule`: the hook as it was on `main` before this change (581142fb), plus a `mine` that only sets the attribute. A send goes to the end. Must fail **a.short** and **a.long** on all seven surfaces that send, **f**: the first send's conversation reopens at its end and the reply scrolls the view, **f.empty**: the reply scrolls the view, and **g**: the old `sent()` goes to the end on the next change, whatever lands.
+- `main-registry` (registry surfaces only): the host's `conversation`, `request-group` and `prompt-input` put back as on `main` (f459e5fce) after the byte-equal check, and the page wired as `main`'s docs show it (`ScrollOnNewRequest`, no feed, no `sent()`). Must fail **a.short** and **a.long** on `registry/send` (the line lands over the 70dvh last group), **d** on both (`ScrollOnNewRequest` scrolls for any new request), and **g** for the same reason. The spec named a.short, a.long and d; g is the signal added with these surfaces, and it fails for d's reason. b, c and e stay green: `main`'s registry never follows a stream, and opens at its end.
+- `no-reserve`: the hook keeps no space under the sent line. Must fail **a.short** and **a.long** on all seven surfaces that send. The spec expected the short reply only; the person's line lands before its reply starts, so with no space it can't rise under either length. Must fail **f** too: with no space under it, the first line can't rise (64 px down against 44 px).
 - `key-reset`: the hook reopens the feed when a key arrives where there was none after a send, as a switch does. Must fail **f**.
 - `mount-history`: the hook counts the person's lines a feed mounts with as already shown, even with a send waiting, so the line sent before the feed existed is opened on as history. Must fail **f.empty**: the reply scrolls the view as it grows.
 

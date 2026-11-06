@@ -109,8 +109,8 @@
       "name": "conversation",
       "title": "Conversation",
       "type": "registry:component",
-      "description": "Container for message threads with auto-scroll and session binding.",
-      "dependencies": ["@flow-state-dev/core", "lucide-react"],
+      "description": "The scrolling element of a conversation, on useJumpToLatest's scroll rule, with its jump-to-latest button.",
+      "dependencies": ["@flow-state-dev/react", "lucide-react"],
       "registryDependencies": ["button"],
       "files": [{
         "type": "registry:component",
@@ -233,7 +233,7 @@
       "title": "Prompt Input",
       "type": "registry:component",
       "description": "Smart input with auto-resize, file upload, and submit handling.",
-      "dependencies": ["lucide-react", "nanoid"],
+      "dependencies": ["@flow-state-dev/react", "lucide-react", "nanoid"],
       "registryDependencies": ["button", "command", "dropdown-menu", "hover-card", "input-group", "select", "spinner", "tooltip"],
       "files": [{
         "type": "registry:component",
@@ -503,7 +503,7 @@
       "type": "registry:component",
       "description": "Groups items by request ID with streaming indicator, source display, and collapsible tool-call summaries for consecutive calls.",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react"],
-      "registryDependencies": ["sources", "streaming-indicator", "tool", "task-plan"],
+      "registryDependencies": ["conversation", "sources", "streaming-indicator", "tool", "task-plan"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/request-group.tsx",
