@@ -826,6 +826,19 @@ export type FlowInstance<
    */
   flowLevelResourceKeys: ReadonlySet<string>;
   /**
+   * Internal, read by the engine: the schema each scope's reads fill missing
+   * defaults from. The flow's own `stateSchema` merged, at `defineFlow`, with
+   * every scope-state schema its reachable blocks and their capabilities
+   * declare; a scope nothing declares is absent. Writes still validate against
+   * the flow's own `stateSchema`. Absent on an instance not built by
+   * `defineFlow`, whose reads fall back to its own `stateSchema`.
+   */
+  scopeStateSchemas?: {
+    readonly session?: ZodTypeAny;
+    readonly user?: ZodTypeAny;
+    readonly org?: ZodTypeAny;
+  };
+  /**
    * Owner pin for an owner-pinned instance. Absent on shared flows. See {@link InstanceOwnerPin}.
    */
   ownerPin?: InstanceOwnerPin;
@@ -883,6 +896,8 @@ export type FlowType<
   isolateOrgState: boolean;
   /** Mirror of `FlowInstance.flowLevelResourceKeys` (FIX-688). */
   flowLevelResourceKeys: ReadonlySet<string>;
+  /** Mirror of `FlowInstance.scopeStateSchemas`. */
+  scopeStateSchemas?: FlowInstance["scopeStateSchemas"];
 
   (
     options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TResources, TConfigSchema>

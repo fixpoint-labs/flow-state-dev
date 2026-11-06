@@ -46,6 +46,9 @@ import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
 import { hasZodObjectCatchall, introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
 import { walkBlockGraph } from "../helpers/block-graph";
+import { mergeScopeStateSchemas, type ScopeStateDeclaration } from "../helpers/scope-state-merge";
+import { getBaseCapability } from "../capability/merge";
+import type { CapabilityRef } from "../capability/types";
 import {
   describeFlowConfigIssues,
   describeFlowConfigMismatch,
@@ -718,6 +721,64 @@ function collectBlockResources(
   return collected;
 }
 
+
+type StateScope = "session" | "user" | "org";
+const STATE_SCOPES: readonly StateScope[] = ["session", "user", "org"];
+
+/**
+ * Every scope-state schema the reachable blocks declare, for one scope: each
+ * block's own, then each capability it uses, named by the capability so a
+ * refusal points at what the author wrote. Dynamic `uses` and presets
+ * contribute none.
+ */
+function blockScopeStateDeclarations(
+  scope: StateScope,
+  reachable: readonly BlockDefinition[]
+): ScopeStateDeclaration[] {
+  const key = `${scope}StateSchema` as const;
+  const out: ScopeStateDeclaration[] = [];
+  for (const block of reachable) {
+    const config = block.config as Partial<Record<typeof key, ZodTypeAny>> & {
+      __resolvedCapabilities?: readonly CapabilityRef[];
+    };
+    const own = config[key];
+    if (own !== undefined) out.push({ schema: own, source: `block "${block.name}"` });
+    for (const ref of config.__resolvedCapabilities ?? []) {
+      const capability = getBaseCapability(ref);
+      const schema = capability[key];
+      if (schema !== undefined) {
+        out.push({ schema, source: `capability "${capability.name}" (used by block "${block.name}")` });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The schema each scope's reads fill defaults from: the flow's own
+ * `stateSchema` merged with every declaration its reachable blocks and their
+ * capabilities make (`mergeScopeStateSchemas`). The flow's own schema still
+ * validates writes; this one only fills defaults, so a block's declared
+ * default reads on a fresh record without the flow restating it.
+ *
+ * Throws when two declarations disagree on a field, naming both.
+ */
+function mergeFlowScopeStateSchemas(
+  kind: string,
+  scopes: Record<StateScope, { stateSchema?: ZodTypeAny } | undefined>,
+  reachable: readonly BlockDefinition[]
+): NonNullable<FlowInstance["scopeStateSchemas"]> {
+  const merged: { session?: ZodTypeAny; user?: ZodTypeAny; org?: ZodTypeAny } = {};
+  for (const scope of STATE_SCOPES) {
+    const own = scopes[scope]?.stateSchema;
+    const schema = mergeScopeStateSchemas(`Flow "${kind}"`, scope, [
+      ...(own === undefined ? [] : [{ schema: own, source: `flow "${kind}"` }]),
+      ...blockScopeStateDeclarations(scope, reachable)
+    ]);
+    if (schema !== undefined) merged[scope] = schema;
+  }
+  return merged;
+}
 
 /**
  * Read the entries of one typed map (`flow.internal` / `flow.task`), refusing
@@ -1419,7 +1480,12 @@ function normalizeFlowConfig(
   // `tools` array — so a block reached only as a tool still lands its
   // resources on `ctx.resources` (FIX-1578). A block reachable both ways is
   // merged twice under the same `defineResource()` reference, which dedupes.
-  const blockResources = collectBlockResources(walkBlockGraph(declaredBlocks));
+  const declaredReachable = walkBlockGraph(declaredBlocks);
+  const blockResources = collectBlockResources(declaredReachable);
+  // Off the same walk: every scope-state declaration the flow reaches, merged
+  // into the schema each scope's reads fill defaults from. Refuses here, at
+  // definition, when two of them disagree on a field.
+  const scopeStateSchemas = mergeFlowScopeStateSchemas(kind, { session, user, org }, declaredReachable);
   const flowOwnResources = options?.resources ?? definition.resources;
   // Accessor keys declared in the flow's OWN `resources` map, captured before
   // block-tree/capability resources bubble up and merge in (FIX-688). The
@@ -1491,7 +1557,8 @@ function normalizeFlowConfig(
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator,
     isolateUserState,
-    isolateOrgState
+    isolateOrgState,
+    scopeStateSchemas
   };
 }
 
@@ -1579,6 +1646,9 @@ export function defineFlow<
     costEstimator: baseInstance.costEstimator,
     isolateUserState: baseInstance.isolateUserState,
     isolateOrgState: baseInstance.isolateOrgState,
-    flowLevelResourceKeys: baseInstance.flowLevelResourceKeys
+    flowLevelResourceKeys: baseInstance.flowLevelResourceKeys,
+    // Mirrored so a blueprint the registry admits in place of an instance
+    // fills its blocks' defaults like a minted copy does.
+    scopeStateSchemas: baseInstance.scopeStateSchemas
   });
 }

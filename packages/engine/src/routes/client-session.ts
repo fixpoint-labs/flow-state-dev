@@ -19,7 +19,7 @@ import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { SessionRecord } from "../stores/types";
 import { resolveRecordOwner } from "../context/record-owner";
-import { applyScopeStateDefaults } from "../context/scope-state-defaults";
+import { applyScopeStateDefaults, scopeStateSchema } from "../context/scope-state-defaults";
 
 /**
  * The session record minus what never leaves the server: its `journal` and its
@@ -53,7 +53,7 @@ export function toClientSession(
       ]
     : [];
   // The fields read as a run reads them: with the schema's defaults.
-  const read = owner.ok ? applyScopeStateDefaults(owner.flow.session?.stateSchema, state) : state;
+  const read = owner.ok ? applyScopeStateDefaults(scopeStateSchema(owner.flow, "session"), state) : state;
   return { ...envelope, id: bareId, state: visibleState(read, visible) };
 }
 

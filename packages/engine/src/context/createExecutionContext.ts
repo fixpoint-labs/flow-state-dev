@@ -84,7 +84,7 @@ function waitedByStamp(source: string | undefined, metadata: unknown) {
   return waitedBy === undefined ? {} : { waitedBy };
 }
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
-import { applyScopeStateDefaults } from "./scope-state-defaults";
+import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
@@ -2496,15 +2496,16 @@ export async function createExecutionContext<
   );
   // Scope state reads with its schema's defaults filled in, so a
   // defaulted field is present on a fresh or older record, as the state's
-  // type promises. Nothing else of the stored blob changes. Every read of a
+  // type promises. The schema is the flow's merged one, so a default a block
+  // or capability declares fills too. Nothing else of the stored blob changes. Every read of a
   // stored record goes through these: the load here, and the records a write
   // or a conflict hands back (`createScopePersist`, `createScopeReread`).
   const readUserState = (state: unknown) =>
-    applyScopeStateDefaults(flow.user?.stateSchema, state) as TUserState;
+    applyScopeStateDefaults(scopeStateSchema(flow, "user"), state) as TUserState;
   const readSessionState = (state: unknown) =>
-    applyScopeStateDefaults(flow.session?.stateSchema, state) as TSessionState;
+    applyScopeStateDefaults(scopeStateSchema(flow, "session"), state) as TSessionState;
   const readOrgState = (state: unknown) =>
-    applyScopeStateDefaults(flow.org?.stateSchema, state) as TOrgState;
+    applyScopeStateDefaults(scopeStateSchema(flow, "org"), state) as TOrgState;
   const userContainer = createStateContainer<TUserState>(
     readUserState(userRef.current.state),
     userRef.current.version

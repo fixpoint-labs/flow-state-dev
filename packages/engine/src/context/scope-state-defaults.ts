@@ -4,6 +4,11 @@
  * `stateSchema` promises, a default for every defaulted field the stored
  * record lacks.
  *
+ * The schema a read fills from is {@link scopeStateSchema}: the flow's own
+ * `stateSchema` merged at `defineFlow` with what its blocks and capabilities
+ * declare, so a field only a block declares reads its default too. Every read
+ * of stored scope state takes its schema from there.
+ *
  * Defaults are filled in, nothing else changes. A user or org record is one
  * blob shared by every flow registered on the server, so keys this flow does
  * not declare, and keys inside a declared object another flow's compatible
@@ -27,9 +32,23 @@
  * transforms, refinements and default factories run on each read.
  */
 import type { ZodTypeAny } from "zod";
-import type { JsonObject } from "@flow-state-dev/core/types";
+import type { FlowInstance, JsonObject } from "@flow-state-dev/core/types";
 import { getZodInnerType, getZodObjectShape, getZodTypeName, isZodObject } from "@flow-state-dev/core/helpers";
 import { isJsonObject } from "../utils/json-helpers";
+
+/**
+ * The schema `scope`'s reads fill defaults from: the flow's merged one, which
+ * `defineFlow` builds from the flow's own `stateSchema` and every declaration
+ * its reachable blocks and their capabilities make. An instance built without
+ * `defineFlow` carries none, and reads its own `stateSchema`.
+ */
+export function scopeStateSchema(
+  flow: Pick<FlowInstance, "scopeStateSchemas" | "session" | "user" | "org">,
+  scope: "session" | "user" | "org"
+): ZodTypeAny | undefined {
+  if (flow.scopeStateSchemas !== undefined) return flow.scopeStateSchemas[scope];
+  return (flow[scope] as { stateSchema?: ZodTypeAny } | undefined)?.stateSchema;
+}
 
 /**
  * Return `state` with the defaults of `schema` filled in where `state` has no

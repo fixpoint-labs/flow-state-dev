@@ -31,6 +31,12 @@ export {
   compareZodSchemasStructurally,
   type ZodSchemaCompareResult,
 } from "./zod-introspect";
+export {
+  mergeScopeStateSchemas,
+  ScopeStateSchemaConflictError,
+  type ScopeStateDeclaration,
+  type ScopeStateConflictKind,
+} from "./scope-state-merge";
 export { shortId, tokenize, tokenOverlap, findBestOverlap } from "./text-match";
 export {
   withOutcome,

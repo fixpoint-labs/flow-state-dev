@@ -9,7 +9,7 @@
  * org record is one blob shared by every flow, so filling defaults must never
  * drop what another flow stored there.
  */
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -18,7 +18,8 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
-  createResponseEmitter
+  createResponseEmitter,
+  runAction
 } from "../src";
 import { applyScopeStateDefaults } from "../src/context/scope-state-defaults";
 
@@ -289,6 +290,237 @@ describe("the /state projection reads defaults too", () => {
       params: { path: ["sessions", "sess_proj", "state"] }
     });
     expect(((await state.json()) as { clientData: { user: { count: number } } }).clientData.user.count).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Defaults a block or capability declares, with nothing restated on the flow
+// ---------------------------------------------------------------------------
+
+/** A capability that declares a session field with a default, as the skills capability does. */
+const tagsCapability = defineCapability({
+  name: "tags-cap",
+  sessionStateSchema: z.object({ tags: z.array(z.string()).default(["new"]) })
+});
+
+/** Reads every field below; the flow itself declares none of them. */
+const reader = handler({
+  name: "reader",
+  inputSchema: z.object({}),
+  sessionStateSchema: z.object({ count: z.number().default(0) }),
+  userStateSchema: z.object({ theme: z.string().default("light") }),
+  orgStateSchema: z.object({ tier: z.string().default("free") }),
+  uses: [tagsCapability],
+  execute: (_input, ctx) => ({
+    count: (ctx.session.state as { count?: number }).count,
+    tags: (ctx.session.state as { tags?: string[] }).tags,
+    theme: (ctx.user.state as { theme?: string }).theme,
+    tier: (ctx.org?.state as { tier?: string } | undefined)?.tier
+  })
+});
+
+const blockDefaultsFlow = defineFlow({
+  kind: "block-defaults",
+  session: { client: { derived: { countSeen: ({ state }: { state: { count?: number } }) => state.count ?? "absent" } } },
+  actions: { read: { inputSchema: z.object({}), block: reader } }
+})();
+
+async function runRead(stores: ReturnType<typeof createInMemoryStores>, sessionId: string) {
+  const result = await runAction({
+    orgId: ORG,
+    flow: blockDefaultsFlow,
+    actionName: "read",
+    input: {},
+    userId: USER,
+    sessionId,
+    stores,
+    responseEmitter: createResponseEmitter({ requestId: `req_${sessionId}` }),
+    runtimeConfig: {}
+  });
+  expect(result.error).toBeUndefined();
+  return result.output as { count?: number; tags?: string[]; theme?: string; tier?: string };
+}
+
+describe("defaults a block or a capability declares", () => {
+  it("read on a fresh session, user and org with no restating on the flow", async () => {
+    expect(await runRead(createInMemoryStores(), "sess_block_fresh")).toEqual({
+      count: 0,
+      tags: ["new"],
+      theme: "light",
+      tier: "free"
+    });
+  });
+
+  it("fill a stored record that lacks the field, and keep what it holds", async () => {
+    const stores = createInMemoryStores();
+    // Stored before the block declared `count` and `theme`.
+    await stores.user.set(
+      USER_KEY,
+      { id: USER_KEY, userId: USER, state: { otherFlow: 1 }, version: 0, createdAt: 0, updatedAt: 0 },
+      "any"
+    );
+    await runRead(stores, "sess_block_stored");
+    const session = await stores.session.get("sess_block_stored");
+    await stores.session.set(
+      "sess_block_stored",
+      { ...session!, state: { tags: ["kept"] }, version: session!.version + 1 },
+      "any"
+    );
+
+    expect(await runRead(stores, "sess_block_stored")).toMatchObject({ count: 0, tags: ["kept"], theme: "light" });
+    expect((await stores.user.get(USER_KEY))?.state).toMatchObject({ otherFlow: 1 });
+  });
+
+  it("read from GET /sessions/:id/state too", async () => {
+    const registry = createFlowRegistry();
+    registry.register(blockDefaultsFlow);
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({ registry, stores });
+    const run = await router.POST(
+      new Request("http://localhost/api/flows/block-defaults/sess_block_route/actions/read", {
+        method: "POST",
+        body: JSON.stringify({ userId: USER, orgId: ORG, input: {} })
+      }),
+      { params: { path: ["block-defaults", "sess_block_route", "actions", "read"] } }
+    );
+    expect(run.status).toBe(202);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const state = await router.GET(new Request("http://localhost/api/flows/sessions/sess_block_route/state"), {
+      params: { path: ["sessions", "sess_block_route", "state"] }
+    });
+    const body = (await state.json()) as { clientData: { session: { countSeen: unknown } } };
+    expect(body.clientData.session.countSeen).toBe(0);
+  });
+});
+
+describe("declarations that disagree are refused before anything runs", () => {
+  const leaf = (name: string, session: z.ZodTypeAny) =>
+    handler({ name, inputSchema: z.object({}), sessionStateSchema: session, execute: () => ({}) });
+  const flowOf = (kind: string, a: ReturnType<typeof leaf>, b: ReturnType<typeof leaf>) =>
+    defineFlow({ kind, actions: { a: { inputSchema: z.object({}), block: a }, b: { inputSchema: z.object({}), block: b } } });
+
+  it("two blocks that default one field differently: defineFlow names the field and both", () => {
+    expect(() =>
+      flowOf(
+        "two-defaults",
+        leaf("planner", z.object({ mode: z.string().default("plan") })),
+        leaf("asker", z.object({ mode: z.string().default("ask") }))
+      )
+    ).toThrow(
+      // Named in the order the walk meets them; which is first decides nothing.
+      /^Flow "two-defaults": session\.state\.mode is declared twice with different defaults: (block "planner" defaults it to "plan" and block "asker" to "ask"|block "asker" defaults it to "ask" and block "planner" to "plan")\./
+    );
+  });
+
+  it("two blocks that type one field differently, at any depth", () => {
+    expect(() =>
+      flowOf(
+        "two-types",
+        leaf("a", z.object({ prefs: z.object({ size: z.string() }) })),
+        leaf("b", z.object({ prefs: z.object({ size: z.number() }) }))
+      )
+    ).toThrow(
+      /session\.state\.prefs\.size is declared twice with different types: (block "a" types it as string and block "b" as number|block "b" types it as number and block "a" as string)/
+    );
+    expect(() =>
+      flowOf("nullable", leaf("a", z.object({ x: z.string() })), leaf("b", z.object({ x: z.string().nullable() })))
+    ).toThrow(/session\.state\.x is declared twice with different types/);
+  });
+
+  it("the flow's own declaration and a block's are held to the same rule", () => {
+    expect(() =>
+      defineFlow({
+        kind: "flow-and-block",
+        session: { stateSchema: z.object({ mode: z.enum(["a", "b"]) }) },
+        actions: { a: { inputSchema: z.object({}), block: leaf("loose", z.object({ mode: z.string() })) } }
+      })
+    ).toThrow(/flow "flow-and-block" types it as enum\(a\|b\) and block "loose" as string/);
+  });
+
+  it("two capabilities on one block that disagree name the capabilities", () => {
+    const capA = defineCapability({ name: "cap-a", sessionStateSchema: z.object({ n: z.number().default(1) }) });
+    const capB = defineCapability({ name: "cap-b", sessionStateSchema: z.object({ n: z.number().default(2) }) });
+    const block = handler({ name: "both", inputSchema: z.object({}), uses: [capA, capB], execute: () => ({}) });
+    expect(() => defineFlow({ kind: "two-caps", actions: { a: { inputSchema: z.object({}), block } } })).toThrow(
+      'capability "cap-a" (used by block "both") defaults it to 1 and capability "cap-b" (used by block "both") to 2'
+    );
+  });
+
+  it("agree quietly: identical declarations, new fields, and a default on one side only", async () => {
+    const merged = flowOf(
+      "agreeing",
+      leaf("a", z.object({ mode: z.string().default("x"), only: z.number().default(1) })),
+      leaf("b", z.object({ mode: z.string().default("x"), prefs: z.object({ size: z.number().default(2) }).default({}) }))
+    );
+    const ctx = await createExecutionContext({
+      flow: defineFlow({
+        kind: "agreeing-plus",
+        session: { stateSchema: z.object({ mode: z.string() }) },
+        actions: merged.actions
+      })(),
+      actionName: "a",
+      requestId: "req_agree",
+      sessionId: "sess_agree",
+      userId: USER,
+      orgId: ORG,
+      stores: createInMemoryStores(),
+      response: createResponseEmitter({ requestId: "req_agree" }),
+      modelResolver: stubResolver((modelId) => ({ modelId, async generate() { return { text: "ok" }; } }))
+    });
+    expect(ctx.session.state).toEqual({ mode: "x", only: 1, prefs: { size: 2 } });
+  });
+
+  it("the same blocks in two flows on one server are not refused", () => {
+    const shared = leaf("shared", z.object({ mode: z.string().default("x") }));
+    const sharedUser = handler({
+      name: "shared-user",
+      inputSchema: z.object({}),
+      userStateSchema: z.object({ theme: z.string().default("light") }),
+      execute: () => ({})
+    });
+    const registry = createFlowRegistry();
+    for (const kind of ["shares-1", "shares-2"]) {
+      registry.register(
+        defineFlow({
+          kind,
+          actions: { a: { inputSchema: z.object({}), block: shared }, b: { inputSchema: z.object({}), block: sharedUser } }
+        })()
+      );
+    }
+    expect(registry.list().map((f) => f.id)).toEqual(["shares-1", "shares-2"]);
+  });
+
+  it("two flows on one server that type a shared user field differently: the second is refused, both named", () => {
+    const userFlow = (kind: string, theme: z.ZodTypeAny) =>
+      defineFlow({
+        kind,
+        actions: {
+          a: {
+            inputSchema: z.object({}),
+            block: handler({ name: `${kind}-block`, inputSchema: z.object({}), userStateSchema: z.object({ theme }), execute: () => ({}) })
+          }
+        }
+      })();
+    const registry = createFlowRegistry();
+    registry.register(userFlow("themes-string", z.string()));
+    expect(() => registry.register(userFlow("themes-number", z.number()))).toThrow(
+      /Flows "themes-string" and "themes-number" declare incompatible user\.stateSchema/
+    );
+
+    const defaults = createFlowRegistry();
+    defaults.register(userFlow("dark-default", z.string().default("dark")));
+    expect(() => defaults.register(userFlow("light-default", z.string().default("light")))).toThrow(
+      /incompatible user\.stateSchema\.theme schemas \(incompatible-default: flow "dark-default" defaults it to "dark" and flow "light-default" to "light"\)/
+    );
+  });
+
+  it("session fields are not compared across flows: each session belongs to one flow", () => {
+    const registry = createFlowRegistry();
+    registry.register(flowOf("sess-a", leaf("a1", z.object({ mode: z.string() })), leaf("a2", z.object({})))());
+    expect(() =>
+      registry.register(flowOf("sess-b", leaf("b1", z.object({ mode: z.number() })), leaf("b2", z.object({})))())
+    ).not.toThrow();
   });
 });
 

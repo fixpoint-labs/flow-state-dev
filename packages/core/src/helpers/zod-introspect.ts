@@ -335,3 +335,89 @@ export function introspectStateKeys(stateSchema: unknown): Set<string> | undefin
   if (shape === undefined || shape === null || typeof shape !== "object") return undefined;
   return new Set(Object.keys(shape));
 }
+
+// ---------------------------------------------------------------------------
+// Scope-state declaration reads (the merge in `scope-state-merge.ts`)
+// ---------------------------------------------------------------------------
+
+/**
+ * The declared default of a `.default()` as a thunk that returns a fresh value
+ * on each call, the way zod keeps it. `undefined` for any other schema.
+ */
+export function getZodDefaultFactory(schema: ZodTypeAny): (() => unknown) | undefined {
+  if (getZodTypeName(schema) !== "ZodDefault") return undefined;
+  const value = (schema as any)._def.defaultValue;
+  return typeof value === "function" ? (value as () => unknown) : () => value;
+}
+
+const opaqueSchemaIds = new WeakMap<object, number>();
+let nextOpaqueSchemaId = 0;
+
+/** A per-reference id for a schema whose structure {@link zodSchemaSignature} does not read. */
+function opaqueSignature(schema: ZodTypeAny): string {
+  let id = opaqueSchemaIds.get(schema);
+  if (id === undefined) {
+    id = nextOpaqueSchemaId++;
+    opaqueSchemaIds.set(schema, id);
+  }
+  return `opaque#${id}`;
+}
+
+/**
+ * A structural fingerprint of a schema: two schemas with one signature accept
+ * the same values and declare the same defaults.
+ *
+ * Read for primitives, enums, literals, arrays, records, tuples, objects,
+ * unions and the optional / nullable / default / readonly wrappers. Anything
+ * else (a refinement or transform, a lazy, an intersection, a brand, a pipe, a
+ * catch) is fingerprinted by reference, so two of them match only when they
+ * are the same object: what a refinement accepts can't be read off it. An
+ * object's unknown-keys mode is not part of its signature.
+ */
+export function zodSchemaSignature(schema: ZodTypeAny): string {
+  const def = (schema as any)._def;
+  const name = getZodTypeName(schema) ?? "?";
+  switch (name) {
+    case "ZodString":
+    case "ZodNumber":
+    case "ZodBoolean":
+    case "ZodAny":
+    case "ZodUnknown":
+    case "ZodDate":
+    case "ZodBigInt":
+    case "ZodNull":
+    case "ZodUndefined":
+      return name.slice(3).toLowerCase();
+    case "ZodEnum":
+      return `enum(${[...(def.values as string[])].sort().join("|")})`;
+    case "ZodNativeEnum":
+      return `native(${JSON.stringify(def.values)})`;
+    case "ZodLiteral":
+      return `literal(${JSON.stringify(def.value)})`;
+    case "ZodArray":
+      return `${zodSchemaSignature(def.type)}[]`;
+    case "ZodRecord":
+      return `record<${zodSchemaSignature(def.keyType)},${zodSchemaSignature(def.valueType)}>`;
+    case "ZodTuple":
+      return `[${(def.items as ZodTypeAny[]).map(zodSchemaSignature).join(",")}]`;
+    case "ZodObject": {
+      const shape = getZodObjectShape(schema) ?? {};
+      return `{${Object.keys(shape).sort().map((k) => `${k}:${zodSchemaSignature(shape[k]!)}`).join(",")}}`;
+    }
+    case "ZodUnion":
+    case "ZodDiscriminatedUnion": {
+      const options = def.options instanceof Map ? [...def.options.values()] : (def.options as ZodTypeAny[]);
+      return `(${options.map(zodSchemaSignature).sort().join(" | ")})`;
+    }
+    case "ZodOptional":
+      return `${zodSchemaSignature(def.innerType)}?`;
+    case "ZodNullable":
+      return `${zodSchemaSignature(def.innerType)}|null`;
+    case "ZodReadonly":
+      return `readonly ${zodSchemaSignature(def.innerType)}`;
+    case "ZodDefault":
+      return `${zodSchemaSignature(def.innerType)}=${JSON.stringify(getZodDefaultFactory(schema)!())}`;
+    default:
+      return opaqueSignature(schema);
+  }
+}
