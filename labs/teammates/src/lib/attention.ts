@@ -15,7 +15,7 @@ import type { BoardTask } from "../adapter";
 import { endedAt, type Need } from "./status";
 
 /** The page's own name, the title with nothing waiting. */
-export const TITLE = "Teammates";
+const TITLE = "Teammates";
 
 /** One thing worth a notification: its key (so it fires once) and what it says. */
 export interface Alert {
@@ -23,16 +23,22 @@ export interface Alert {
   text: string;
 }
 
-/** What one teammate's row reports up: it has something for you (an unread line or a need), and the alerts it holds now. */
+/**
+ * What one teammate's row reports up: it has something for you (an unread
+ * line or a need), the alerts it holds now, and whether its watches have
+ * loaded (until they have, its alerts are not yet known).
+ */
 export interface RowAttention {
   asks: boolean;
+  loaded: boolean;
   alerts: readonly Alert[];
 }
 
 /** A row's attention, from its name, its unread count, what it needs from you and its coding tasks that just ended. */
-export function rowAttention(name: string, unread: number, needs: readonly Need[], endings: readonly BoardTask[]): RowAttention {
+export function rowAttention(name: string, loaded: boolean, unread: number, needs: readonly Need[], endings: readonly BoardTask[]): RowAttention {
   return {
     asks: unread > 0 || needs.length > 0,
+    loaded,
     alerts: [
       ...needs.map((n) => ({ key: n.key, text: n.kind === "approval" ? `${name} needs your OK: ${n.text}` : `${name} is waiting on you: ${n.text}` })),
       ...endings.map((t) => ({ key: `ended:${t.id}:${endedAt(t)}`, text: `Coding task ${t.status === "failed" ? "failed" : "finished"}: ${t.title}` })),
@@ -49,15 +55,24 @@ export function titleFor(rows: Readonly<Record<string, RowAttention>>): string {
 /**
  * Fires each alert once, the first time it is seen, and only while `enabled()`
  * and the tab is hidden. An alert first seen with the tab in front is known
- * and never fires later: you saw it there.
+ * and never fires later: you saw it there. Nothing that was already there
+ * when the page loaded fires: each row's first loaded report is its
+ * baseline, taken as known without a notification. Rows load one by one, so
+ * the baseline is per row, not the first call.
  */
 export function createNotifier(io: { enabled: () => boolean; hidden: () => boolean; notify: (text: string) => void }) {
   const known = new Set<string>();
-  return (alerts: readonly Alert[]) => {
-    for (const alert of alerts) {
-      if (known.has(alert.key)) continue;
-      known.add(alert.key);
-      if (io.enabled() && io.hidden()) io.notify(alert.text);
+  const baselined = new Set<string>();
+  return (rows: Readonly<Record<string, RowAttention>>) => {
+    for (const [id, row] of Object.entries(rows)) {
+      if (!row.loaded) continue;
+      const first = !baselined.has(id);
+      baselined.add(id);
+      for (const alert of row.alerts) {
+        if (known.has(alert.key)) continue;
+        known.add(alert.key);
+        if (!first && io.enabled() && io.hidden()) io.notify(alert.text);
+      }
     }
   };
 }
@@ -131,6 +146,6 @@ export function useAttention(rows: Readonly<Record<string, RowAttention>>, notif
   }, [title]);
   useEffect(() => () => void (document.title = original), [original]);
   useEffect(() => {
-    observe(Object.values(rows).flatMap((r) => r.alerts));
+    observe(rows);
   }, [rows, observe]);
 }

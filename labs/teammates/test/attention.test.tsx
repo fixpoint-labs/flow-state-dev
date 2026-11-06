@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BoardTask, ConversationEntry } from "../src/adapter";
 import { App } from "../src/App";
 import { createNotifier, rowAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
-import { ENDING_SHOWN_MS, statusOf, type StatusInputs } from "../src/lib/status";
+import { ENDING_SHOWN_MS, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
 import { createFixtureLab } from "./fake-lab";
 
 const NOW = 1_000_000_000;
@@ -61,14 +61,14 @@ describe("the status line puts what needs you first", () => {
 describe("the tab's title", () => {
   it("counts the teammates that have something for you, each once", () => {
     expect(titleFor({})).toBe("Teammates");
-    expect(titleFor({ a: { asks: true, alerts: [{ key: "1", text: "" }, { key: "2", text: "" }] }, b: { asks: false, alerts: [{ key: "3", text: "" }] }, c: { asks: true, alerts: [] } })).toBe("(2) Teammates");
+    expect(titleFor({ a: { asks: true, loaded: true, alerts: [{ key: "1", text: "" }, { key: "2", text: "" }] }, b: { asks: false, loaded: true, alerts: [{ key: "3", text: "" }] }, c: { asks: true, loaded: true, alerts: [] } })).toBe("(2) Teammates");
   });
 
   it("counts a teammate with only unread lines, though it needs nothing and notifies nothing", () => {
     // D3: the title counts unread or needing you; the badge and notifications are needs only.
-    const unreadOnly = rowAttention("writer", 2, [], []);
-    expect(unreadOnly).toEqual({ asks: true, alerts: [] });
-    expect(titleFor({ writer: unreadOnly, researcher: rowAttention("researcher", 0, [], []) })).toBe("(1) Teammates");
+    const unreadOnly = rowAttention("writer", true, 2, [], []);
+    expect(unreadOnly).toEqual({ asks: true, loaded: true, alerts: [] });
+    expect(titleFor({ writer: unreadOnly, researcher: rowAttention("researcher", true, 0, [], []) })).toBe("(1) Teammates");
   });
 });
 
@@ -99,20 +99,43 @@ describe("Notify me", () => {
 });
 
 describe("the notifier", () => {
+  /** One loaded teammate holding these alerts. */
+  const row = (...keys: string[]) => ({ writer: { asks: true, loaded: true, alerts: keys.map((key) => ({ key, text: key })) } });
+
   it("fires once per new alert, only while on and with the tab hidden", () => {
     const sent: string[] = [];
     let on = false;
     let hidden = false;
     const observe = createNotifier({ enabled: () => on, hidden: () => hidden, notify: (text) => sent.push(text) });
-    observe([{ key: "a", text: "seen in front" }]);
+    observe(row());
+    observe(row("seen in front"));
     on = true;
-    observe([{ key: "a", text: "seen in front" }, { key: "b", text: "new, tab in front" }]);
+    observe(row("seen in front", "new, tab in front"));
     hidden = true;
-    observe([{ key: "a", text: "seen in front" }, { key: "c", text: "new, tab hidden" }]);
-    observe([{ key: "c", text: "new, tab hidden" }]);
+    observe(row("seen in front", "new, tab hidden"));
+    observe(row("new, tab hidden"));
     on = false;
-    observe([{ key: "d", text: "while off" }]);
+    observe(row("while off"));
     expect(sent).toEqual(["new, tab hidden"]);
+  });
+
+  it("never fires for what each teammate already held when the page loaded, though the tab loads hidden", () => {
+    const sent: string[] = [];
+    const observe = createNotifier({ enabled: () => true, hidden: () => true, notify: (text) => sent.push(text) });
+    // Rows report before their watches load, then load one by one.
+    observe({ writer: { asks: false, loaded: false, alerts: [] }, researcher: { asks: false, loaded: false, alerts: [] } });
+    observe({ writer: { asks: true, loaded: true, alerts: [{ key: "old-w", text: "old-w" }] }, researcher: { asks: false, loaded: false, alerts: [] } });
+    observe({ writer: { asks: true, loaded: true, alerts: [{ key: "old-w", text: "old-w" }] }, researcher: { asks: true, loaded: true, alerts: [{ key: "old-r", text: "old-r" }] } });
+    expect(sent).toEqual([]);
+    // What arrives after a teammate loaded is new.
+    observe({ writer: { asks: true, loaded: true, alerts: [{ key: "old-w", text: "old-w" }, { key: "new-w", text: "new-w" }] }, researcher: { asks: true, loaded: true, alerts: [{ key: "old-r", text: "old-r" }] } });
+    expect(sent).toEqual(["new-w"]);
+  });
+
+  it("a task's second hold on you is a new need, not the first one again", () => {
+    const hold = (holdId: string) => task("t1", { waiting: { kind: "question", prompt: "Which branch?", unanswerable: null, holdId } });
+    const keys = (t: BoardTask) => needsOf({ entries: [], tasks: [t] }).map((n) => n.key);
+    expect(keys(hold("h1"))).not.toEqual(keys(hold("h2")));
   });
 });
 

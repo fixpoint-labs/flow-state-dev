@@ -148,11 +148,14 @@ function WorkerItem({
   }, [count, selected, seen, onSeen]);
   const unread = count !== undefined && seen !== undefined ? Math.max(0, count - seen) : 0;
 
-  const tasks = useWatch(adapter.watchTasks, sessionId) ?? [];
+  const taskList = useWatch(adapter.watchTasks, sessionId);
+  const tasks = taskList ?? [];
+  // Loaded once its conversation and its tasks have arrived; a teammate with no conversation yet has nothing to load.
+  const loaded = sessionId === undefined || (view !== undefined && taskList !== undefined);
   const inputs = { activity, entries: view?.entries ?? [], talk, tasks, now };
   const status = statusOf(worker.id, inputs, nameOf, isCoding);
   // Reported up for the tab's title and the notifications; the same object while its content holds, so it reports only on change.
-  const attention = useStable(rowAttention(worker.name, unread, needsOf(inputs), freshEndings(tasks, now, isCoding)));
+  const attention = useStable(rowAttention(worker.name, loaded, unread, needsOf(inputs), freshEndings(tasks, now, isCoding)));
   useEffect(() => onReport(worker.id, attention), [onReport, worker.id, attention]);
   return (
     <button

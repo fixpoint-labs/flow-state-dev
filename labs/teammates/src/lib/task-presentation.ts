@@ -1,6 +1,6 @@
 /**
  * How a task stands, in one word and one colour. A leaf the components and
- * the status line both read, so `lib/` never imports from `components/`.
+ * the status line both read, so `lib/status` needn't import a component module.
  */
 import type { BoardTask } from "../adapter";
 import type { TaskSignalKind } from "../components/flow-state/task-signals";

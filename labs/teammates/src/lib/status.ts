@@ -43,7 +43,7 @@ const upperFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** An approval it asked for that you haven't answered yet. */
 const openApproval = (e: ConversationEntry): boolean => e.kind === "approval" && e.resolution === undefined;
 
-/** One thing a teammate needs from you: its key (stable, for the notifier), what it asks, and, for a task, the task. */
+/** One thing a teammate needs from you: its key (one per approval, or per hold of a task, for the notifier), what it asks, and, for a task, the task. */
 export type Need = { key: string; text: string } & ({ kind: "approval" } | { kind: "task"; task: BoardTask });
 
 /**
@@ -54,7 +54,7 @@ export type Need = { key: string; text: string } & ({ kind: "approval" } | { kin
 export function needsOf({ entries, tasks }: Pick<StatusInputs, "entries" | "tasks">): Need[] {
   return [
     ...entries.flatMap((e): Need[] => (e.kind === "approval" && openApproval(e) ? [{ key: `approval:${e.suspensionId}`, text: e.text, kind: "approval" }] : [])),
-    ...tasks.flatMap((t): Need[] => (t.status === "running" && t.waiting !== undefined ? [{ key: `waiting:${t.id}`, text: t.waiting.prompt, kind: "task", task: t }] : [])),
+    ...tasks.flatMap((t): Need[] => (t.status === "running" && t.waiting !== undefined ? [{ key: `waiting:${t.id}:${t.waiting.holdId ?? ""}`, text: t.waiting.prompt, kind: "task", task: t }] : [])),
   ];
 }
 
