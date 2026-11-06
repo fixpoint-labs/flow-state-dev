@@ -24,7 +24,7 @@
  */
 import { handler, generator, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import { getOrCreateTaskCollection, type Task } from "@flow-state-dev/orchestration";
+import { getOrCreateTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
 import {
   iterationOutputSchema,
   planAndExecuteStateSchema,

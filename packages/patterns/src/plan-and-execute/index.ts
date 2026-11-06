@@ -30,8 +30,8 @@
  * legacy status translation.
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
-import { flowPolicy } from "@flow-state-dev/orchestration";
-import type { TaskInit } from "@flow-state-dev/orchestration";
+import { flowPolicy } from "@flow-state-dev/orchestration/tasks";
+import type { TaskInit } from "@flow-state-dev/orchestration/tasks";
 import type {
   ItemVisibility,
   GeneratorHistoryConfig,

@@ -24,7 +24,7 @@ import {
   taskBoardStateSchema,
   taskWorkerInputSchema,
 } from "@flow-state-dev/orchestration/task-board";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import {
   durableStores,
   loadFixture,
