@@ -95,7 +95,7 @@ const SURFACES: Surface[] = [
   },
   { id: "shift-manager/task-session", app: "shift-manager", query: "task-session", feed: '[data-testid="session"]', send: "goal" },
   { id: "claude-code-style/thread", app: "claude-code-style", query: "thread", feed: 'main[aria-label="Main thread"] .overflow-y-auto', send: { composer: '[aria-label="Message the main session"]', key: "Enter" } },
-  { id: "claude-code-style/task-thread", app: "claude-code-style", query: "task-thread", feed: "aside .overflow-y-auto", send: { composer: '[aria-label="Message this task"]', key: "ControlOrMeta+Enter" } },
+  { id: "claude-code-style/task-thread", app: "claude-code-style", query: "task-thread", feed: '[role="dialog"] .overflow-y-auto', send: { composer: '[aria-label="Message this task"]', key: "ControlOrMeta+Enter" } },
   { id: "claude-code-style/task-panel", app: "claude-code-style", query: "task-panel", feed: '[role="dialog"] .overflow-y-auto', send: "none" },
   { id: "teammates/conversation", app: "teammates", query: "conversation", feed: "[data-scroller]", send: { composer: '[aria-label="Message Helper"]', key: "Enter" } },
   { id: "teammates/popup", app: "teammates", query: "popup", feed: '[role="dialog"] .overflow-y-auto', send: "none" },
