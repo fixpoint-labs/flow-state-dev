@@ -11,7 +11,8 @@ import { Spend } from "./flow-state/spend";
 import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
-import { SessionPopup, Steps } from "./SessionPopup";
+import { SessionOverlay } from "./flow-state/session-overlay";
+import { Steps } from "./Steps";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
 export type Popup =
@@ -150,7 +151,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
     ) : null;
   const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : task?.status;
   return (
-    <SessionPopup label={line} title={title} status={status} onClose={onClose} pinned={pinned}>
+    <SessionOverlay variant="modal" label={line} title={title} status={status} onClose={onClose} footer={pinned}>
       {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
       {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
       {task?.spend && isCoding(task.to) ? (
@@ -194,7 +195,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
       {task?.status === "running" && task.waiting === undefined && task.runSessionId !== undefined && steps.length > 0 ? (
         <WorkingLine adapter={adapter} task={task} runSessionId={task.runSessionId} />
       ) : null}
-    </SessionPopup>
+    </SessionOverlay>
   );
 }
 
@@ -325,12 +326,12 @@ function MessagePopup({ adapter, popup, nameOf, lookOf, onClose }: {
   const to = nameOf(popup.to);
   const line = `Messaged ${to}`;
   return (
-    <SessionPopup label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} onClose={onClose}>
+    <SessionOverlay variant="modal" label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} onClose={onClose}>
       <p className="font-mono text-xs text-muted-foreground">
         {nameOf(popup.from)} → {to}
       </p>
       <Steps steps={steps} nameOf={nameOf} empty={`${popup.text}\n\n${to} hasn't read it yet.`} />
-    </SessionPopup>
+    </SessionOverlay>
   );
 }
 

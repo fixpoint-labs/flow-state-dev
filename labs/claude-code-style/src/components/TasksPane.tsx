@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
 import { FINISHED, TASK_STATUS } from "../lib/task-status";
 import { useMissing, useNow, useWatch } from "../lib/use-watch";
+import { Clamp } from "./Clamp";
 import { PANE_TITLE } from "../modes";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
 import { LoadEarlier } from "./LoadEarlier";
 import { PaneHeader } from "./PaneHeader";
-import { Sheet } from "./Sheet";
+import { SessionOverlay } from "./flow-state/session-overlay";
 import { WorkingLine } from "./WorkingLine";
 import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
@@ -127,7 +128,8 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
   );
   const status = TASK_STATUS[task.status];
   return (
-    <Sheet
+    <SessionOverlay
+      variant="sheet"
       label={`Work: ${task.title}`}
       title={
         <span className="flex items-center gap-2">
@@ -139,8 +141,13 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
           </span>
         </span>
       }
-      meta={<Spend spend={task.spend} split harnessLabel={harnessLabelOf(task)} />}
-      subtitle={task.goal}
+      meta={
+        <>
+          <Spend spend={task.spend} split harnessLabel={harnessLabelOf(task)} />
+          {/* The goal, held to a few lines and opened with *Show more*. */}
+          {task.goal ? <Clamp className="mt-1 text-sm text-muted-foreground">{task.goal}</Clamp> : null}
+        </>
+      }
       onClose={onClose}
       footer={<TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer />}
     >
@@ -156,6 +163,6 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
       {task.status === "in_progress" && task.waitingOn === undefined ? (
         <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
-    </Sheet>
+    </SessionOverlay>
   );
 }
