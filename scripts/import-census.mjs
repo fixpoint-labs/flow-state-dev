@@ -63,8 +63,10 @@ const CALL_RE = new RegExp(String.raw`\b(import|require)\s*\(\s*["']` + PKG + St
 
 const isCode = (f) => /\.[mc]?[jt]sx?$/.test(f);
 
+// A brace list's names, comments dropped first: a docs block annotating an item with `// …`
+// must not hide the name on the next line.
 const bindingNames = (list) =>
-  (list ?? "").split(",").map((s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0].trim()).filter(Boolean);
+  (list ?? "").replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "").split(",").map((s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0].trim()).filter(Boolean);
 
 /**
  * Every `@flow-state-dev/*` import in Markdown `text`, matched as text: { pkg, sub, names, form }. `sub` is `""` for a

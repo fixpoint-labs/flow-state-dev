@@ -244,4 +244,20 @@ describe("the import census", () => {
       "require() @flow-state-dev/memory []",
     ]);
   });
+
+  it("reads the names in a brace list that carries comments", () => {
+    // Docs code blocks annotate their imports. A comment after an item must not swallow the
+    // name on the next line, or a docs-imported name reads as unused.
+    const text = [
+      "import {",
+      "  a,          // a line comment",
+      "  b,",
+      "  /* a block comment */ c,",
+      "  d, // the last item's comment",
+      `} from "@flow-state-dev/core";`,
+    ].join("\n");
+    const show = (imports) => imports.map((i) => `${i.form} ${i.pkg}${i.sub} [${i.names.join(",")}]`);
+    assert.deepEqual(show(importsInCode(text, "x.ts")), show(importsIn(text)));
+    assert.deepEqual(show(importsIn(text)), ["import @flow-state-dev/core [a,b,c,d]"]);
+  });
 });

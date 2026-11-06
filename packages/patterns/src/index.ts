@@ -14,7 +14,6 @@ export {
   PlanTaskSchema,
   planAndExecuteInputSchema,
   iterationOutputSchema,
-  evaluatorVerdictSchema,
   evaluatePlanProgress,
   createTaskEvaluator,
   createLLMEvaluator,
@@ -32,7 +31,6 @@ export type {
   Plan,
   PlanTask,
   IterationOutput,
-  EvaluatorVerdict,
 } from "./plan-and-execute";
 export {
   supervisor,
@@ -56,42 +54,17 @@ export type {
 export {
   routedSpecialists,
   createWorkspace,
-  routedSpecialistsControlSchema,
   controllerOutputSchema,
-  createDispatchSpecialist,
-  createCheckLoop,
 } from "./routedSpecialists";
 export type {
   RoutedSpecialistsConfig,
-  RoutedSpecialistsControlState,
-  ControllerOutput,
 } from "./routedSpecialists";
-export {
-  responseAuditor,
-  AnalyzerResultSchema,
-  AuditAnnotationSchema,
-  auditorInputSchema,
-  responseAuditorStateSchema,
-  captureContext,
-  aggregateResults,
-  applyThreshold,
-} from "./response-auditor";
-export type {
-  AnalyzerResult,
-  AuditAnnotation,
-  AuditorInput,
-  ResponseAuditorState,
-  ResponseAuditorConfig,
-  DisplayMode,
-} from "./response-auditor";
 export {
   eventActors,
   actor,
   createEventActorsWorkspace,
   matchTopic,
   compilePattern,
-  createEventActorsWorkspaceResource,
-  eventActorsWorkspaceStateSchema,
   createAppendEntry,
   normalizeToEntries,
 } from "./eventActors";
@@ -101,7 +74,6 @@ export type {
   EventActorsWorkspaceConfig,
   ActorConfig,
   Actor,
-  EventActorsWorkspaceState,
 } from "./eventActors";
 // The task-board primitive moved to `@flow-state-dev/orchestration/task-board`.
 // Import it from there directly; the wrapper patterns below build on it.
@@ -110,7 +82,6 @@ export {
   roundRobinInputSchema,
   roundRobinStateSchema,
   roundRobinContributionEntrySchema,
-  roundRobinContributionsStateSchema,
   roundRobinRefereeOutputSchema,
   roundRobinRefereeCritiqueSchema,
   createRoundRobinContributions,
@@ -124,12 +95,6 @@ export type {
   RoundRobinConfig,
   RosterEntry,
   RoundRobinInput,
-  RoundRobinState,
-  RoundRobinContributionEntry,
-  RoundRobinRefereeOutput,
-  RoundRobinRefereeCritique,
-  RoundRobinContributionsState,
-  RoundRobinFinalShape,
 } from "./round-robin";
 export {
   debate,
@@ -140,21 +105,11 @@ export {
   debateTranscriptStateSchema,
   createDebateTranscript,
   createDebater,
-  createJudge as createDebateJudge,
-  createSynthesize as createDebateSynthesize,
-  createInitTranscript as createDebateInitTranscript,
-  createRecordArgument as createDebateRecordArgument,
-  formatTranscriptForJudge as formatDebateTranscriptForJudge,
 } from "./debate";
 export type {
   DebateConfig,
   DebaterConfig,
   DebateInput,
-  DebateState,
-  DebateContributionEntry,
-  DebateVerdict,
-  DebateTranscriptState,
-  DebateRawOutput,
 } from "./debate";
 export {
   defaultBenchmarkRegistry,
