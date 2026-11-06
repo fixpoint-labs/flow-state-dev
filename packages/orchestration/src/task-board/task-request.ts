@@ -356,7 +356,7 @@ async function settleSpend(record: Admitted, spend: RequestSpend | undefined): P
  * write (another claim took the turn it was owed first, FIX-2133 D3). A
  * request admitted for a task while it waits admits nothing on it.
  */
-export class TaskAdmissionLost extends Error {
+class TaskAdmissionLost extends Error {
   constructor(
     readonly taskId: string,
     readonly reason: string

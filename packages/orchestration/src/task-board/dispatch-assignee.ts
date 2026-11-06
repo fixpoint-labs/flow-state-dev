@@ -100,7 +100,7 @@ export interface DispatchingAssignee {
  *
  * Anything else is refused, with what an assignee is.
  */
-export function resolveWorkerSlot(
+function resolveWorkerSlot(
   slot: unknown,
   where: string
 ): { block: TaskWorker; dispatch?: TaskAssigneeAddress } {

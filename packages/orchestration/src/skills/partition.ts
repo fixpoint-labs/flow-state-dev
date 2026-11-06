@@ -47,7 +47,7 @@ const views = new WeakMap<ResourceCollectionRef, Map<string, ResourceCollectionR
  * is a key inside the partition, and `list` returns only the partition's
  * entries.
  */
-export function partitionedSkillsCollection(
+function partitionedSkillsCollection(
   inner: ResourceCollectionRef,
   partition: string,
 ): ResourceCollectionRef {

@@ -20,7 +20,7 @@
  * file an author writes by hand so the two never drift apart.
  */
 
-import type { Skill, SkillState } from "@flow-state-dev/core";
+import type { SkillState } from "@flow-state-dev/core";
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import {
   parseFrontmatterYaml,
@@ -37,10 +37,10 @@ import {
 export const MAX_DESCRIPTION_LENGTH = 1024;
 
 /** Maximum allowed skill name length (Agent Skills spec). */
-export const MAX_NAME_LENGTH = 64;
+const MAX_NAME_LENGTH = 64;
 
 /** Maximum allowed `compatibility` length (Agent Skills spec). */
-export const MAX_COMPATIBILITY_LENGTH = 500;
+const MAX_COMPATIBILITY_LENGTH = 500;
 
 /** Names disallowed as skill names (reserved by the framework). */
 const RESERVED_NAMES = new Set(["_meta", ""]);
@@ -494,27 +494,4 @@ export function substitute(body: string, ctx: SubstitutionContext): string {
   }
 
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// Public: assemble Skill descriptor
-// ---------------------------------------------------------------------------
-
-/** Compose a Skill record from its name, parsed state, and body. */
-export function toSkill(name: string, state: SkillState, body: string): Skill {
-  validateSkillName(name);
-  return {
-    name,
-    body,
-    description: state.description,
-    license: state.license,
-    compatibility: state.compatibility,
-    metadata: state.metadata,
-    allowedTools: state.allowedTools,
-    contextMode: state.contextMode,
-    disableModelInvocation: state.disableModelInvocation,
-    whenToUse: state.whenToUse,
-    argumentHint: state.argumentHint,
-    keywords: state.keywords,
-  };
 }

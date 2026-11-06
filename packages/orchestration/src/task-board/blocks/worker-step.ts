@@ -58,7 +58,7 @@ import type { TaskWorkerRegistry } from "../../tasks/workers/types";
  * called `"run"` doesn't misroute. Updated for FIX-503 — the public
  * `BlockDefinition.run` was removed in favour of `BlockRuntime.run`.
  */
-export function isUniformWorker(
+function isUniformWorker(
   workers: TaskWorker | TaskWorkerRegistry
 ): workers is TaskWorker {
   return typeof (workers as { run?: unknown }).run === "function";

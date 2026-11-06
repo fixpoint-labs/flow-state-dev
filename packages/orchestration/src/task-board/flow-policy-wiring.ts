@@ -105,7 +105,7 @@ function getRequestResolverBag(ctx: BlockContext): Record<string, unknown> {
  * clobbering Worker A's claim mid-await and misattributing A's cache writes
  * and observation entries to B.
  */
-export interface BoardRunFlowState {
+interface BoardRunFlowState {
   cacheStore?: ToolCacheStore;
   ledger?: ObservationLedger;
   policy?: TaskFlowPolicy;
