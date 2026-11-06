@@ -78,9 +78,9 @@ describe("a running task's view ends in a live working line", () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     vi.setSystemTime(STARTED + 4 * 60_000 + 12_000);
     const view = open(RUNNING);
-    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("(4m 12s)");
+    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("4m 12s");
     act(() => vi.advanceTimersByTime(3_000));
-    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("(4m 15s)");
+    expect(within(view.pane).getByTestId("run-timer").textContent).toBe("4m 15s");
   });
 
   it.each(["completed", "errored", "cancelled"] as const)("is gone once the task is %s", (status) => {

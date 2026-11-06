@@ -53,7 +53,8 @@ async function openReviewThread() {
 describe("the threads-mode screen", () => {
   it("starts a session in the Projects view with the lead and the threads board", async () => {
     await startThreadsSession(0.01);
-    expect(within(thread()).getByText("Tasks")).toBeTruthy();
+    // The view switch names the mode once; the thread header carries no second, inert label for it.
+    expect(within(thread()).queryByText("Tasks")).toBeNull();
     expect(within(thread()).getByText("in project: vendor-notes")).toBeTruthy();
     expect(within(board()).getByRole("heading", { name: "Tasks" })).toBeTruthy();
     expect(screen.queryByRole("complementary", { name: "Background tasks" })).toBeNull();

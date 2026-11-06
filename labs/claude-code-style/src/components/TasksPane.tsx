@@ -5,10 +5,11 @@ import { useMissing, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
 import { LoadEarlier } from "./LoadEarlier";
+import { PaneHeader } from "./PaneHeader";
 import { Sheet } from "./Sheet";
+import { WorkingLine } from "./WorkingLine";
 import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
-import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
 import { harnessLabelOf } from "./ThreadStatus";
@@ -50,15 +51,15 @@ export function TasksPane({
 
   return (
     <aside aria-label="Background tasks" className="flex h-full min-h-0 flex-col bg-inspector">
-      <div className="px-4 pt-4 pb-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-        Background tasks · {active.length}
-      </div>
+      <PaneHeader>
+        <h2 className="text-sm font-semibold">Background tasks · {active.length}</h2>
+      </PaneHeader>
       {tasks.length === 0 ? (
-        <p className="px-4 text-xs text-muted-foreground">
+        <p className="px-4 pt-4 text-xs text-muted-foreground">
           None yet. The main session starts one when a piece of work would take a while.
         </p>
       ) : (
-        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-3">
+        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-3 py-3">
           {active.length > 0 ? (
             <ul className="flex flex-col gap-2">
               {active.map((task) => (
@@ -70,7 +71,7 @@ export function TasksPane({
           ) : null}
           {done.length > 0 ? (
             <details className="group">
-              <summary className="cursor-pointer list-none font-mono text-[10px] tracking-widest text-muted-foreground uppercase select-none hover:text-foreground">
+              <summary className="cursor-pointer list-none px-1 text-xs font-medium text-muted-foreground select-none hover:text-foreground">
                 <span className="inline-block transition-transform group-open:rotate-90">›</span> Done · {done.length}
               </summary>
               <ul className="mt-2 flex flex-col">
@@ -114,17 +115,13 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
           </span>
         </span>
       }
-      subtitle={
-        <>
-          {task.goal}
-          <Spend spend={task.spend} split harnessLabel={harnessLabelOf(task)} />
-        </>
-      }
+      meta={<Spend spend={task.spend} split harnessLabel={harnessLabelOf(task)} />}
+      subtitle={task.goal}
       onClose={onClose}
       footer={<TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer />}
     >
       {task.status === "errored" && task.error !== undefined ? (
-        <div role="alert" className="mb-3 flex flex-col gap-1 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div role="alert" className="mb-3 flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive [overflow-wrap:anywhere]">
           <ErrorBody message={task.error} />
         </div>
       ) : null}
@@ -133,7 +130,7 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
       {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
       {task.status === "in_progress" && task.waitingOn === undefined ? (
-        <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
+        <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
     </Sheet>
   );

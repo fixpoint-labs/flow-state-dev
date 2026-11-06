@@ -3,6 +3,7 @@ import type { SessionRow } from "../adapter";
 import { cn } from "../lib/utils";
 import { age, useNow } from "../lib/use-watch";
 import { MODES, type ModeId } from "../modes";
+import { PaneHeader } from "./PaneHeader";
 
 /**
  * The left pane: the view switch (Sessions or Projects) on top, then
@@ -48,42 +49,44 @@ export function SessionsList({
   };
   return (
     <nav aria-label="Sessions" className="flex h-full min-h-0 flex-col bg-sidebar">
-      <div role="tablist" aria-label="View" className="flex gap-1 px-3 pt-4 pb-3">
-        {MODES.map((mode) => {
-          const available = mode.available && modes.includes(mode.id);
-          return (
-          <button
-            key={mode.id}
-            type="button"
-            role="tab"
-            aria-selected={mode.id === view}
-            tabIndex={mode.id === view ? 0 : -1}
-            data-view={mode.id}
-            onKeyDown={onTabKey}
-            disabled={!available}
-            title={available ? undefined : "Coming soon"}
-            onClick={() => onView(mode.id)}
-            className={cn(
-              "flex-1 border border-transparent px-2 py-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase hover:bg-accent",
-              "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent",
-              mode.id === view && "border-border bg-background text-foreground",
-            )}
-          >
-            {mode.view}
-          </button>
-          );
-        })}
-      </div>
-      <div className="px-3 pb-3">
+      <PaneHeader className="px-3">
+        <div role="tablist" aria-label="View" className="flex flex-1 gap-1">
+          {MODES.map((mode) => {
+            const available = mode.available && modes.includes(mode.id);
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                role="tab"
+                aria-selected={mode.id === view}
+                tabIndex={mode.id === view ? 0 : -1}
+                data-view={mode.id}
+                onKeyDown={onTabKey}
+                disabled={!available}
+                title={available ? undefined : "Coming soon"}
+                onClick={() => onView(mode.id)}
+                className={cn(
+                  "flex-1 rounded-md border border-transparent px-2 py-1.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase transition-colors hover:bg-accent hover:text-foreground",
+                  "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent",
+                  mode.id === view && "border-border bg-background text-foreground",
+                )}
+              >
+                {mode.view}
+              </button>
+            );
+          })}
+        </div>
+      </PaneHeader>
+      <div className="px-3 py-3">
         <button
           type="button"
           onClick={onNew}
-          className="w-full border border-border bg-background px-3 py-2 text-left text-sm font-semibold hover:bg-accent"
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-accent"
         >
           + New session
         </button>
       </div>
-      <ul className="flex-1 overflow-y-auto px-2 pb-4">
+      <ul className="flex-1 overflow-y-auto px-2 pb-3">
         {sessions.map((row) => {
           const selected = row.id === selectedId;
           return (
@@ -93,8 +96,8 @@ export function SessionsList({
                 aria-current={selected ? "true" : undefined}
                 onClick={() => onSelect(row.id)}
                 className={cn(
-                  "flex w-full items-start gap-2 border border-transparent px-2 py-2 text-left hover:bg-accent",
-                  selected && "border-primary bg-accent",
+                  "flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent/60",
+                  selected && "bg-accent",
                 )}
               >
                 <span
@@ -105,7 +108,7 @@ export function SessionsList({
                   )}
                 />
                 <span className="min-w-0">
-                  <span className={cn("block truncate text-sm", selected && "font-semibold")}>{row.title}</span>
+                  <span className={cn("block truncate text-sm", selected && "font-medium")}>{row.title}</span>
                   <span className="block text-xs text-muted-foreground">
                     {row.running ? "running" : age(row.updatedAt, now)}
                     {row.waiting > 0 && <span className="text-foreground"> · {row.waiting} waiting on you</span>}
@@ -116,7 +119,6 @@ export function SessionsList({
           );
         })}
       </ul>
-      <div className="px-4 py-3 text-xs text-muted-foreground">One main worker, many sessions</div>
     </nav>
   );
 }

@@ -53,7 +53,8 @@ describe("the session-mode screen", () => {
     await pick("vendor-notes");
     expect(within(sessions).getByRole("button", { current: true }).textContent).toMatch(/New session/);
     expect(within(thread()).getByText("in project: vendor-notes")).toBeTruthy();
-    expect(within(thread()).getByText("Session")).toBeTruthy();
+    // The view switch names the mode once; the thread header carries no second, inert label for it.
+    expect(within(thread()).queryByText("Session")).toBeNull();
     expect(within(pane()).getByText(/Background tasks · 0/)).toBeTruthy();
   });
 
@@ -92,7 +93,8 @@ describe("the session-mode screen", () => {
     expect(screen.queryByLabelText("Message the main session")).toBeNull();
     await pick("onboarding-app");
     expect(within(thread()).getByText("in project: onboarding-app")).toBeTruthy();
-    expect(within(thread()).getByText("Session")).toBeTruthy();
+    // The view switch names the mode once; the thread header carries no second, inert label for it.
+    expect(within(thread()).queryByText("Session")).toBeNull();
   });
 
   it("asks for a project instead of opening the composer on a session that has none", async () => {
