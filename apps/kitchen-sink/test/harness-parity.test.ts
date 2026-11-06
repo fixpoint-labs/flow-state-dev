@@ -275,7 +275,7 @@ describe("the session flow, for every mode", () => {
  *
  * Read only as a host reads it: each package's public entry, imported as a
  * namespace when the cell runs (a missing name fails its own cell, not the
- * file), driven only through the seams the package documents, and judged
+ * file), driven only through the seams the package documents (an SDK importer or module, Codex's program), and judged
  * against core's shared shapes. No harness's internals are imported.
  *
  * Red under main at the merge base: the Cursor list cell (no `listCursorModels`),
@@ -351,18 +351,14 @@ describe("the contract every harness owes a host", () => {
       entry: () => import("@flow-state-dev/cursor") as Promise<Record<string, unknown>>,
       pass: "CURSOR_PASS",
       list: "listCursorModels",
-      // The SDK importer: Cursor's `Cursor.models.list()`, which marks no model default.
+      // The SDK module the asking process loads: Cursor's `Cursor.models.list()`, which marks no model default.
       seam: () => ({
-        importSdk: async () => ({
-          Cursor: {
-            models: {
-              list: async () => [
-                { id: "model-a", displayName: "Model A", description: "The first", variants: [{ params: [], displayName: "Model A", isDefault: true }] },
-                { id: "model-b", displayName: "Model B" },
-              ],
-            },
-          },
-        }),
+        sdkModule: `data:text/javascript,${encodeURIComponent(
+          `export const Cursor = { models: { list: async () => ${JSON.stringify([
+            { id: "model-a", displayName: "Model A", description: "The first", variants: [{ params: [], displayName: "Model A", isDefault: true }] },
+            { id: "model-b", displayName: "Model B" },
+          ])} } };`,
+        )}`,
       }),
     },
   ] as const;

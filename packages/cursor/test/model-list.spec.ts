@@ -4,34 +4,40 @@
  *
  * It matters because a host's model picker is this list: a hand-kept one ages
  * as Cursor ships and retires models, and is a different set for each account.
- * Scripted: the SDK's rows are fixed here, so what is pinned is the mapping
- * into core's shared shape (with Cursor's variants beside it), which key the
- * call is made with, and that every way the read fails is an answer, not a throw.
+ * Scripted: the SDK is a stand-in module the asking process loads, so what is
+ * pinned is the mapping into core's shared shape (with Cursor's variants
+ * beside it), which account is asked, and that every way the read fails is an
+ * answer, not a throw.
+ *
+ * Red state produced before the asking process was trusted: asked in this
+ * process, a run environment with no `CURSOR_API_KEY` listed with the
+ * server's own key (`listed-with-server-key`), an account the run can't use.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { listCursorModels } from "../src/index";
 
-/** A scripted SDK whose `Cursor.models.list` answers with `list`, recording the options it was called with. */
-function scriptedSdk(list: (options?: { apiKey?: string }) => Promise<unknown>) {
-  const seen: Array<{ apiKey?: string } | undefined> = [];
-  return {
-    seen,
-    importSdk: async () => ({
-      Cursor: {
-        models: {
-          list: (options?: { apiKey?: string }) => {
-            seen.push(options);
-            return list(options);
-          },
-        },
-      },
-    }),
-  };
+/**
+ * A stand-in `@cursor/sdk` whose `Cursor.models.list()` runs `body`, with the
+ * real SDK's key precedence: an explicit `apiKey`, then its own process's
+ * `CURSOR_API_KEY`. `key` is in scope in `body`.
+ */
+function sdk(body: string): string {
+  return `data:text/javascript,${encodeURIComponent(`export const Cursor = { models: { list: async (o) => {
+    const key = o?.apiKey ?? process.env.CURSOR_API_KEY ?? "none";
+    ${body}
+  } } };`)}`;
 }
+
+/** The asking process's environment beyond the key: none is needed. */
+const ENV = { PATH: process.env.PATH ?? "" };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("listCursorModels", () => {
   it("lists the account's models in core's shape, each with the variants Cursor runs it at", async () => {
-    const sdk = scriptedSdk(async () => [
+    const rows = [
       {
         id: "grok-4.7",
         displayName: "Grok 4.7",
@@ -42,8 +48,8 @@ describe("listCursorModels", () => {
         ],
       },
       { id: "composer-2.5", displayName: "Composer 2.5" },
-    ]);
-    const list = await listCursorModels({ env: {}, importSdk: sdk.importSdk });
+    ];
+    const list = await listCursorModels({ env: ENV, sdkModule: sdk(`return ${JSON.stringify(rows)};`) });
     expect(list).toEqual({
       status: "models",
       models: [
@@ -64,30 +70,46 @@ describe("listCursorModels", () => {
   });
 
   it("asks with the run's key, so the list is the account the run signs in as", async () => {
-    const sdk = scriptedSdk(async () => [{ id: "m", displayName: "M" }]);
-    await listCursorModels({ env: { CURSOR_API_KEY: "run-key" }, importSdk: sdk.importSdk });
-    await listCursorModels({ env: {}, importSdk: sdk.importSdk });
-    // No key in the run's environment: the SDK's stored login answers.
-    expect(sdk.seen).toEqual([{ apiKey: "run-key" }, {}]);
+    const list = await listCursorModels({
+      env: { ...ENV, CURSOR_API_KEY: "run-key" },
+      sdkModule: sdk(`return [{ id: "listed-with-" + key, displayName: key }];`),
+    });
+    expect(list).toMatchObject({ status: "models", models: [{ id: "listed-with-run-key" }] });
+  });
+
+  it("never lists with the server's key when the run's environment has none, as the run can't use it", async () => {
+    vi.stubEnv("CURSOR_API_KEY", "server-key");
+    const list = await listCursorModels({ env: ENV, sdkModule: sdk(`return [{ id: "listed-with-" + key, displayName: key }];`) });
+    expect(list).toMatchObject({ status: "models", models: [{ id: "listed-with-none" }] });
+  });
+
+  it("asks under the run's HOME, where the SDK keeps the stored login the run uses", async () => {
+    const list = await listCursorModels({
+      env: { ...ENV, HOME: "/run/home" },
+      sdkModule: sdk(`return [{ id: "home-" + process.env.HOME, displayName: "M" }];`),
+    });
+    expect(list).toMatchObject({ status: "models", models: [{ id: "home-/run/home" }] });
   });
 
   it("drops a row with no id and keeps one row per id", async () => {
-    const sdk = scriptedSdk(async () => [{ displayName: "No id" }, { id: "m", displayName: "M" }, { id: "m", displayName: "Again" }]);
-    const list = await listCursorModels({ env: {}, importSdk: sdk.importSdk });
+    const list = await listCursorModels({
+      env: ENV,
+      sdkModule: sdk(`return [{ displayName: "No id" }, { id: "m", displayName: "M" }, { id: "m", displayName: "Again" }];`),
+    });
     expect(list).toEqual({ status: "models", models: [{ id: "m", label: "M", isDefault: false, variants: [] }] });
   });
 
   it("answers every failure with a reason, and never throws", async () => {
-    const missing = await listCursorModels({ env: {}, importSdk: async () => Promise.reject(new Error("Cannot find module '@cursor/sdk'")) });
-    expect(missing).toEqual({ status: "failed", reason: expect.stringMatching(/Cursor SDK could not be loaded.*Cannot find module/) });
+    const missing = await listCursorModels({ env: ENV, sdkModule: "@cursor/no-such-sdk" });
+    expect(missing).toEqual({ status: "failed", reason: expect.stringMatching(/Cursor SDK could not be loaded.*no-such-sdk/) });
 
-    const thrown = await listCursorModels({ env: {}, importSdk: scriptedSdk(async () => Promise.reject(new Error("401 unauthorized"))).importSdk });
-    expect(thrown).toEqual({ status: "failed", reason: expect.stringMatching(/Cursor could not list its models: 401 unauthorized/) });
+    const thrown = await listCursorModels({ env: ENV, sdkModule: sdk(`throw new Error("401 unauthorized");`) });
+    expect(thrown).toEqual({ status: "failed", reason: "Cursor could not list its models: 401 unauthorized" });
 
-    const empty = await listCursorModels({ env: {}, importSdk: scriptedSdk(async () => []).importSdk });
+    const empty = await listCursorModels({ env: ENV, sdkModule: sdk(`return [];`) });
     expect(empty).toEqual({ status: "failed", reason: "Cursor listed no models" });
 
-    const slow = await listCursorModels({ env: {}, timeoutMs: 10, importSdk: scriptedSdk(() => new Promise(() => {})).importSdk });
-    expect(slow).toEqual({ status: "failed", reason: "Cursor did not list its models within 10 ms" });
+    const slow = await listCursorModels({ env: ENV, timeoutMs: 200, sdkModule: sdk(`return new Promise(() => setInterval(() => {}, 1000));`) });
+    expect(slow).toEqual({ status: "failed", reason: "Cursor did not list its models within 200 ms" });
   });
 });

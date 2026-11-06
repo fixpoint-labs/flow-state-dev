@@ -8,10 +8,15 @@
  * default variant within a model, never a default model, so no model is
  * `isDefault`.
  *
- * The key is the run's: `env.CURSOR_API_KEY` when it is set. Without one the
- * SDK answers from its stored login, read under this process's own `HOME`, as
- * `cursorSignIn` does.
+ * The SDK is asked in a process whose environment is exactly `env`
+ * (`runtime/cursor-models-child.mjs`), as a run with that `env` runs in one
+ * (`./child-runtime`). So the list is the account the run signs in as: its
+ * `CURSOR_API_KEY`, or else the stored login under its `HOME`, and never the
+ * server's own key, which such a run doesn't get.
  */
+import { spawn } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { HarnessModelInfo, HarnessModelList } from "@flow-state-dev/core/harness";
 import type { CursorModelSelection } from "./types";
 
@@ -29,16 +34,19 @@ export interface CursorModelVariant {
 
 /** Options for {@link listCursorModels}. */
 export interface ListCursorModelsOptions {
-  /** The environment a run gets. Only its `CURSOR_API_KEY` is read. */
+  /** The environment a run gets: the asking process's whole environment. Nothing else is inherited. */
   env: Readonly<Record<string, string>>;
   /** How long to wait for Cursor's answer. Default 10 000 ms. */
   timeoutMs?: number;
-  /** How the SDK module is loaded. A seam for tests; the default imports the installed `@cursor/sdk`. */
-  importSdk?: () => Promise<unknown>;
+  /** The module the asking process loads the SDK from. Default `@cursor/sdk`. A test seam. */
+  sdkModule?: string;
 }
 
-/** The SDK module path. A variable so bundlers don't eagerly resolve it. */
-const SDK_MODULE = "@cursor/sdk";
+/** The asking script, beside the runtime's child script (one directory up from `src/` or `dist/`). */
+const MODELS_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "..", "runtime", "cursor-models-child.mjs");
+
+/** What the asking script prints. */
+type Answer = { rows: unknown } | { loadError: string } | { listError: string };
 
 /** A row of `Cursor.models.list()`, as far as this reads it. */
 interface ModelRow {
@@ -56,11 +64,6 @@ interface VariantRow {
   isDefault?: unknown;
 }
 
-/** The part of the SDK this reads. */
-interface CursorStatics {
-  models?: { list?: (options?: { apiKey?: string }) => Promise<unknown> };
-}
-
 /**
  * Ask Cursor for the models the account can run, without a run.
  *
@@ -70,33 +73,51 @@ export async function listCursorModels(
   options: ListCursorModelsOptions,
 ): Promise<HarnessModelList<HarnessModelInfo & { variants: CursorModelVariant[] }>> {
   const timeoutMs = options.timeoutMs ?? 10_000;
-  const importSdk = options.importSdk ?? (() => import(/* @vite-ignore */ SDK_MODULE));
-  let list: NonNullable<NonNullable<CursorStatics["models"]>["list"]>;
-  try {
-    const mod = (await importSdk()) as { Cursor?: CursorStatics };
-    const found = mod.Cursor?.models?.list;
-    if (typeof found !== "function") throw new Error("it exports no Cursor.models.list");
-    list = found.bind(mod.Cursor!.models);
-  } catch (error) {
-    return { status: "failed", reason: `The Cursor SDK could not be loaded: ${messageOf(error)}` };
-  }
+  const answer = await ask(options.env, options.sdkModule ?? "@cursor/sdk", timeoutMs);
+  if ("failed" in answer) return { status: "failed", reason: answer.failed };
+  if ("loadError" in answer) return { status: "failed", reason: `The Cursor SDK could not be loaded: ${answer.loadError}` };
+  if ("listError" in answer) return { status: "failed", reason: `Cursor could not list its models: ${answer.listError}` };
+  const models = toModels(Array.isArray(answer.rows) ? (answer.rows as ModelRow[]) : []);
+  if (models.length === 0) return { status: "failed", reason: "Cursor listed no models" };
+  return { status: "models", models };
+}
 
-  const key = options.env.CURSOR_API_KEY ?? "";
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<"late">((resolve) => {
-    timer = setTimeout(() => resolve("late"), timeoutMs);
+/**
+ * Run the asking script with exactly `env`, and read its one line. A process
+ * that can't start, says nothing, or outlives `timeoutMs` is `failed`.
+ */
+function ask(env: Readonly<Record<string, string>>, sdkModule: string, timeoutMs: number): Promise<Answer | { failed: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [MODELS_SCRIPT, sdkModule], {
+      // A copy, so nothing a caller adds to its object later reaches the process.
+      env: { ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr = (stderr + chunk).slice(-500)));
+    let late = false;
+    const timer = setTimeout(() => {
+      late = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      resolve({ failed: `Cursor's model list could not be asked: ${error.message}` });
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      if (late) return resolve({ failed: `Cursor did not list its models within ${timeoutMs} ms` });
+      try {
+        return resolve(JSON.parse(stdout.trim().split("\n").at(-1) ?? "") as Answer);
+      } catch {
+        const how = signal !== null ? `was ended by ${signal}` : `exited with code ${String(code)}`;
+        const said = stderr.trim();
+        resolve({ failed: `Cursor's model list ${how} without an answer${said === "" ? "" : `: ${said}`}` });
+      }
+    });
   });
-  try {
-    const rows = await Promise.race([list(key === "" ? {} : { apiKey: key }), late]);
-    if (rows === "late") return { status: "failed", reason: `Cursor did not list its models within ${timeoutMs} ms` };
-    const models = toModels(Array.isArray(rows) ? (rows as ModelRow[]) : []);
-    if (models.length === 0) return { status: "failed", reason: "Cursor listed no models" };
-    return { status: "models", models };
-  } catch (error) {
-    return { status: "failed", reason: `Cursor could not list its models: ${messageOf(error)}` };
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /** Cursor's rows as models, one per id, in Cursor's order. */
@@ -137,9 +158,4 @@ function toVariant(row: VariantRow): CursorModelVariant {
 /** A non-empty string, or `undefined`. */
 function text(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
-}
-
-/** An error's message, or the thrown value as text. */
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
