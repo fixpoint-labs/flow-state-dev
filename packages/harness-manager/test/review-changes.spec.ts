@@ -10,6 +10,8 @@ import { heard } from "./heard";
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
 import { delimiter, join } from "node:path";
 import { z } from "zod";
 import { OBSERVED_PULL_REQUESTS, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -107,7 +109,7 @@ function scriptedJudge(verdict: HarnessJudgeVerdict) {
   };
 }
 
-function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number; remote?: boolean }) {
+function host(options: { script: Step[]; reviewChanges?: boolean; durable?: boolean; userDeadlineMs?: number; remote?: boolean; clone?: boolean }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-review-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -115,7 +117,7 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
   seedRepo(sourceRepo);
   // A bare repository on disk as `origin`, set before the host pins it, for an accept that pushes.
   const remote = join(dir, "origin.git");
-  if (options.remote === true) {
+  if (options.remote === true || options.clone === true) {
     execFileSync("git", ["clone", "-q", "--bare", sourceRepo, remote]);
     execFileSync("git", ["remote", "set-url", "origin", remote], { cwd: sourceRepo });
   }
@@ -127,7 +129,18 @@ function host(options: { script: Step[]; reviewChanges?: boolean; durable?: bool
     boardCollection: ledger,
     tenant: undefined,
     phase: { phase: PHASE, buildPrompt: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`, isDone: async () => true },
-    workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
+    // The bare `origin` stands for a GitHub repository, as an operator's mirror would.
+    workspace:
+      options.clone === true
+        ? // Each run a clone of the remote, not a worktree of a repository on this machine: nothing to land.
+          localWorkspaceHost({
+            root: join(dir, "checkouts"),
+            remotes: { allow: ["file"] },
+            source: () => ({ kind: "repo", repo: pathToFileURL(remote).href, baseRef: "main" }),
+            provisionTimeoutMs: 10_000,
+            pullRequestRepo: () => "github.com/acme/widgets",
+          })
+        : { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000, pullRequestRepo: () => "github.com/acme/widgets" },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script, seen),
@@ -624,6 +637,23 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
     process.env.PATH = PATH;
   });
 
+  it("offers no way to land a run cloned from a remote, so the review keeps its plain Accept, which completes it", async () => {
+    const h = host({ script: ["commits"], clone: true });
+    const calls = ghCalls().length;
+    try {
+      await h.start();
+      const held = await h.until(h.waiting, "the review");
+      expect(reviewDetail((await h.stop(h.review(held)!))?.data)).toMatchObject({ lands: [], landFailed: null });
+      expect((await h.answer({ verdict: "accepted" })).status).toBe(202);
+      const done = await h.until((t) => t.status === "completed", "the plain accept to complete it");
+      expect(done.output).toMatchObject({ landed: null });
+      // Nothing was pushed or opened (the run's own pull-request lookup may still ask GitHub).
+      expect(ghCalls().slice(calls).filter((call) => call.startsWith("pr "))).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("offers both ways on the review: open a pull request, or merge locally", async () => {
     const h = host({ script: ["commits"], remote: true });
     try {
@@ -647,7 +677,7 @@ process.stdout.write(args[0] === "pr" && args[1] === "create" ? ${JSON.stringify
       // pushed: the run's commit is on the remote's copy of its branch.
       expect(git(h.remote, "rev-parse", `refs/heads/${branch}`)).toBe(git(h.seen[0]!.cwd, "rev-parse", "HEAD"));
       // opened: gh was asked to open it from the run's branch into the base.
-      expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes(`--head ${branch}`) && call.includes("--base main"))).toBe(true);
+      expect(ghCalls().some((call) => call.startsWith("pr create") && call.includes(`--head acme:${branch}`) && call.includes("--repo github.com/acme/widgets") && call.includes("--base main"))).toBe(true);
       expect(done.output).toMatchObject({
         review: "accepted",
         landed: { kind: "pull-request", url: PR_URL, number: 42, branch, base: "main" },

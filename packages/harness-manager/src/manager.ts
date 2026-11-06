@@ -3443,8 +3443,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const reviewed = async (outcome: "accepted" | "deadline" | "revise" | "cancelled", landed: Landed | null = null) =>
         ctx.sequencer!.patchState({ decided: { ...decision, reviewed: outcome, landed } });
 
-      // The ways this host can land an accept; none on a host without `land`.
-      const lands: LandHow[] = host.land === undefined || decision.output.branch === null ? [] : ["pull-request", "merge"];
+      // The ways this host can land this run, as the host says (`landWays`): none where landing
+      // can't work, and then the review offers the plain accept. Asked once, so a replay offers the same.
+      const probe = async (): Promise<LandHow[]> =>
+        host.land === undefined || host.landWays === undefined || decision.output.branch === null || state.workspacePath == null || state.branch == null
+          ? []
+          : await host.landWays({ cwd: state.workspacePath, branch: state.branch, baseRef: state.baseRef }).catch(() => []);
+      const lands: LandHow[] = ctx.runOnce === undefined ? await probe() : await ctx.runOnce(`review:lands:${state.steerSteps ?? 0}`, probe);
       // The last landing that failed, shown on the review asked again, with a retry.
       let failed: { land: LandHow; message: string } | null = null;
       for (let round = 0; ; round++) {
