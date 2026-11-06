@@ -45,10 +45,10 @@ export function defineDismissalsFlow() {
           outputSchema: z.object({ key: z.string() }),
           userStateSchema: dismissalsUserStateSchema,
           execute: async (input, ctx) => {
-            // One key per task: a newer attempt's dismissal replaces the older one's.
+            // One key per task: a newer attempt's dismissal replaces the older one's. The updater
+            // form recomputes against the stored list, so two tabs dismissing at once both land.
             const task = taskOfKey(input.key);
-            const dismissed = [...ctx.user.state.dismissed.filter((key) => taskOfKey(key) !== task), input.key];
-            await ctx.user.patchState({ dismissed });
+            await ctx.user.patchState("dismissed", (dismissed) => [...dismissed.filter((key) => taskOfKey(key) !== task), input.key]);
             return { key: input.key };
           },
         }),
