@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Roster } from "@flow-state-dev/react";
+import { Roster } from "@flow-state-dev/react/workforce";
 
 import {
   failingRowsSource,

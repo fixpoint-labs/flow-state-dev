@@ -14,7 +14,13 @@ theme so it reads as the app it copies.
   saying what it is doing now (*Replying to you*, *Messaging writer*, *Running coding task: …*,
   *Idle*), and how many new entries its conversation has since you last looked. The same icon
   marks the teammate in the conversation's header, on message lines and in popups; the header
-  carries the same status line.
+  carries the same status line. A teammate that needs you says so first, in the attention colour
+  and with a badge, and keeps its place in the list: *Needs your OK: …* while it waits for your
+  yes, *Waiting on you: …* while one of its tasks does. For two minutes after a coding task of its
+  ends, the line says *Coding task finished: …* or *Coding task failed: …*. The tab's title counts
+  the teammates with something for you, *(2) Teammates*. *Notify me*, at the foot, asks the
+  browser's permission and then sends a desktop notification for each new need or ended coding
+  task while the tab is in the background; it is off until you turn it on.
 - **Center:** the chosen worker's one conversation. It goes on for weeks, past its history window
   of 50 turns: before a turn leaves the window, it is folded into a running summary that the worker
   reads with the turns it still has word for word. A divider marks where the word-for-word turns
@@ -34,10 +40,13 @@ theme so it reads as the app it copies.
   ends in a live line: the command or file it is on, else its plan step, else its last progress
   note, else "Working...", with how long it has been running.
 - **Right:** the open teammate's panel. At the top, its name and role, and *Edit instructions*.
-  Under that, the tasks its conversation started, coding tasks and teammates' jobs alike. Running
-  tasks come first. *Done*, *Failed* and *Cancelled* each fold into one line with a count, and a
-  click opens the rows. A task that ends moves into its group as it ends. Each row opens the task in
-  a popup. A *Routines* section sits at the foot, empty for now.
+  Under that, the tasks its conversation started, coding tasks and teammates' jobs alike, with
+  their count, newest first in each group. Running tasks come first; one waiting on you leads, in
+  the attention colour. Failed tasks follow, open, each with the first
+  line of its reason. *Done* and *Cancelled* each fold into one line with a count, and a click opens
+  the rows; *Done* opens to its newest five and a *Show all* button. A task that ends moves into
+  its group as it ends. Each row opens the task in a popup, and a task's line in the conversation
+  uses the same word and colour as its row. A *Routines* section sits at the foot, empty for now.
 - **Keys:** ⌘K (Ctrl+K) finds a teammate by its name or role, or opens *Hire a teammate*. Alt+↑
   and Alt+↓ move to the previous or next teammate. `/` puts the cursor in the composer, and `?`
   lists every key. Opening a teammate puts the cursor in its composer. Firing a teammate you hired

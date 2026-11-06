@@ -21,10 +21,10 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowHolds,
   resolveResourceCollection,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
+import { openRowHolds } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   fileHeldWorkStore,

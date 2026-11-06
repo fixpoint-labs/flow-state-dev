@@ -24,18 +24,17 @@ import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createStateBackedTaskCollection,
-  createResourceBackedTaskCollection,
   getOrCreateTaskCollection,
   taskSchema,
   toEmittedTask,
   IllegalTaskTransitionError,
-  SERVER_ONLY_TASK_FIELDS,
   type Task,
-  type TaskClaimIdentity,
   type TaskCollectionRef,
-  type TaskChangeEvent,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { SERVER_ONLY_TASK_FIELDS, type TaskChangeEvent } from "../../src/tasks/collection/change-event";
+import type { TaskClaimIdentity } from "../../src/tasks/schema/task";
 import {
   createCapturedChanges,
   createFakeResourceCollection,

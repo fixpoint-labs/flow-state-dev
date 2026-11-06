@@ -266,6 +266,27 @@ describe("request handle", () => {
     expect(calls(fetcher)).toEqual(["POST /api/flows/demo/requests/req_1/answer"]);
   });
 
+  it("answers with { stream: true } by returning the answer route's SSE response, so the continuation streams from the POST", async () => {
+    const sse = new Response("data: {}\n\n", { status: 200, headers: { "content-type": "text/event-stream" } });
+    const fetcher = routed({
+      "POST /answer": (init) => {
+        expect(new Headers(init?.headers).get("accept")).toContain("text/event-stream");
+        expect(JSON.parse(String(init?.body))).toEqual({ suspensionId: "sus_1", action: "approve" });
+        return sse;
+      }
+    });
+    const request = createClient({ userId: "u1", baseUrl: "", fetcher }).flow("demo").request("req_1");
+
+    expect(await request.answer({ suspensionId: "sus_1", action: "approve" }, { stream: true })).toBe(sse);
+    expect(calls(fetcher)).toEqual(["POST /api/flows/demo/requests/req_1/answer"]);
+  });
+
+  it("no longer types resumedBy on a resume body: who answered is set by the server", () => {
+    const request = createClient({ userId: "u1", baseUrl: "", fetcher: routed({}) }).flow("demo").request("req_1");
+    // @ts-expect-error resumedBy is gone from the resume body
+    void (() => request.resume({ suspensionId: "sus_1", action: "approve", resumedBy: "u1" }));
+  });
+
   it("waits past the status a request was carried on from while the server still holds its run", async () => {
     // The continue route answers once the run is registered, before it gets its
     // turn: the record still says `interrupted`, with a live heartbeat beside it.

@@ -3,6 +3,7 @@
  * streamed chunk; handing React the same object for an entry that didn't
  * change lets a memoized row skip its render, so only the growing one draws.
  */
+import { useState } from "react";
 import { looseDeepEqual } from "@flow-state-dev/core/helpers";
 
 /** `next`, with each value equal to the one `prev` had at its id swapped for that old object. */
@@ -21,4 +22,12 @@ export function stableList<T extends { id: string }>(onChange: (values: T[]) => 
     last = reuseById(last, values);
     onChange(last);
   };
+}
+
+/** `value`, kept as the same object for as long as it stays deep-equal, so an effect that depends on it runs only when it changes. */
+export function useStable<T>(value: T): T {
+  const [kept, setKept] = useState(value);
+  const same = looseDeepEqual(kept, value);
+  if (!same) setKept(value);
+  return same ? kept : value;
 }

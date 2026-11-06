@@ -20,11 +20,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createStateBackedTaskCollection,
-  createResourceBackedTaskCollection,
   type TaskCollectionRef,
-  type TaskChangeEvent,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import type { Task } from "../../src/tasks";
 import {
   createCapturedChanges,

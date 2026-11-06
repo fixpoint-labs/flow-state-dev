@@ -22,24 +22,24 @@ import {
 import { z } from "zod";
 import {
   askMidway,
-  createTaskGate,
   currentWorkerClaim,
   noteTaskAnswer,
   taskRequestAdmission,
   taskWorkerInputSchema,
 } from "../../src/task-board";
+import { createTaskGate } from "../../src/task-board/task-entry";
 import { runningTaskOf, takeRunningSteers, type ShownSteer } from "../../src/skills/steer-context";
 import { createHoldTaskForUser, createSuspendForUserTool } from "../../src/skills/task-tools-capability";
 import { runForTest } from "@flow-state-dev/testing";
 import {
-  createResourceBackedTaskCollection,
   filedWorkKeepsOpen,
   openHolds,
   type Task,
-  type TaskChangeEvent,
   type TaskCollectionRef,
   type TaskWriteOutcome,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import { createFakeResourceCollection } from "../helpers";
 // Not exported from the engine's entry: the stop of a parked turn, as its routes run it.
 import { createParkedStopDeps, stopSuspendedRequest } from "../../../engine/src/durability/stop-suspended";

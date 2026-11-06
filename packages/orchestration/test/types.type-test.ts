@@ -10,7 +10,8 @@ import type {
   TaskWorker,
   TaskWorkerInput,
 } from "../src/tasks";
-import { taskBoard, createTaskBoardCapability } from "../src/task-board";
+import { taskBoard } from "../src/task-board";
+import { createTaskBoardCapability } from "../src/task-board/capability";
 
 // TaskCollectionRef<TInput, TOutput> infers payload types through.
 declare const collection: TaskCollectionRef<{ q: string }, { a: number }>;

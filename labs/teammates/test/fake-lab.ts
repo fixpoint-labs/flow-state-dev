@@ -50,6 +50,8 @@ export interface FixtureOptions {
   notSetUp?: string[];
   /** A coding run asks which line has the typo before it edits, and waits for your answer. */
   asks?: boolean;
+  /** A coding run holds before its first step until `startRuns()`, so what shows before it reports anything can be read. */
+  held?: boolean;
   /** A coding run that committed waits for your review: Accept completes it, Ask for changes runs it once more. */
   review?: boolean;
   /**
@@ -72,6 +74,8 @@ export interface FixtureLab extends LabAdapter {
   failTurn(sessionId: string, reason: string): void;
   /** Each `retry` the screen made, in order. */
   readonly retries: { sessionId: string; requestId: string }[];
+  /** With `held`, every coding run waiting to start goes on to its first step. */
+  startRuns(): void;
 }
 
 /**
@@ -128,7 +132,8 @@ const DEFAULT_CODER = "teammates.cursor";
 type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: TalkRow } | { kind: "result"; task: BoardTask };
 
 /** A board row, and the conversation that filed it. `attempt` counts its runs, so a run a cancel or retry left behind stops. */
-type FixtureTask = BoardTask & { sessionId: string; attempt?: number };
+/** A fixture's row: the task, and the times the board keeps for it (its view reads them, as the adapter's does). */
+type FixtureTask = BoardTask & { sessionId: string; attempt?: number; createdAt?: number; completedAt?: number };
 
 /** The board's words for an action on a task that has ended or is still open, as `updateTask` and `retryTask` refuse. */
 const refusal = (task: FixtureTask, verb: string) => `${verb}: task "${task.title}" (${task.id}) is ${task.boardStatus}.`;
@@ -182,6 +187,8 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   let connection: SessionConnectionState = "live";
   /** What each run waiting on you is waiting for: the answer it goes on with. */
   const waits = new Map<string, (answer: TaskAnswer) => void>();
+  /** With `held`, the coding runs waiting on `startRuns()`. */
+  const held = new Set<() => void>();
   /** Each run's latest review, by its run session. */
   const reviews = new Map<string, ReviewDetail>();
   /** The worker each open approval belongs to, by suspension id. */
@@ -260,6 +267,8 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       runSessionId: `run:${id}`,
       sessionId: w.sessionId,
       harness: HARNESS[harness]!.name,
+      createdAt: Date.now(),
+      startedAt: Date.now(),
     };
     push(w, { kind: "task", id: nextId("k"), taskId: task.id, title, to });
     setTimeout(() => {
@@ -282,7 +291,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     const end = (status: "done" | "failed", text: string) => () => {
       if (!live()) return;
       const ending = status === "done" ? { result: text } : { error: text };
-      updateTask(task.id, { status, boardStatus: status === "done" ? "completed" : "errored", ...ending });
+      updateTask(task.id, { status, boardStatus: status === "done" ? "completed" : "errored", completedAt: Date.now(), ...ending });
       w.queue.push({ kind: "result", task: { ...task, status, ...ending } });
       startNext(w);
     };
@@ -313,6 +322,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
         updateTask(task.id, { waiting: { ...waiting, holdId: `hold-${++holdCount}` } });
       });
     void (async () => {
+      if (options.held) await new Promise<void>((resolve) => held.add(resolve));
       await sleep(600);
       // The run reports its model, if its harness reports one, once it starts.
       if (model !== undefined) updateTask(task.id, { model });
@@ -501,6 +511,10 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       notify();
     },
     retries,
+    startRuns() {
+      for (const start of [...held]) start();
+      held.clear();
+    },
     failTurn(sessionId, reason) {
       const w = bySession(sessionId);
       if (!w) throw new Error(`no conversation ${sessionId}`);
@@ -637,7 +651,10 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
         onChange(
           tasks
             .filter((t) => t.sessionId === sessionId)
-            .map(({ sessionId: _, ...card }) => ({ ...card, view: taskRowView({ id: card.id, status: card.boardStatus, title: card.title, goal: card.goal, board: sessionId }) })),
+            .map(({ sessionId: _, createdAt, completedAt, ...card }) => ({
+              ...card,
+              view: taskRowView({ id: card.id, status: card.boardStatus, title: card.title, goal: card.goal, board: sessionId, createdAt, startedAt: card.startedAt, completedAt }),
+            })),
         ),
       );
     },
@@ -665,7 +682,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
           const task = filed(taskId);
           if (!open(task)) throw new Error(refusal(task, "finished"));
           waits.delete(taskId);
-          updateTask(taskId, { status: "cancelled", boardStatus: "cancelled", waiting: undefined });
+          updateTask(taskId, { status: "cancelled", boardStatus: "cancelled", waiting: undefined, completedAt: Date.now() });
           return [];
         },
         async steer(taskId, message) {
@@ -682,7 +699,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
         async retry(taskId) {
           const task = filed(taskId);
           if (task.boardStatus !== "errored" && task.boardStatus !== "cancelled") throw new Error(refusal(task, "not_ended"));
-          updateTask(taskId, { status: "running", boardStatus: "in_progress", error: undefined, result: undefined });
+          updateTask(taskId, { status: "running", boardStatus: "in_progress", error: undefined, result: undefined, completedAt: undefined });
           runTask(filer(), filed(taskId));
         },
         async rerun(task, to) {
@@ -704,6 +721,8 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
             runSessionId: `run:${id}`,
             sessionId,
             harness: HARNESS[harness]!.name,
+            createdAt: Date.now(),
+            startedAt: Date.now(),
           };
           tasks = [...tasks, next];
           notify();

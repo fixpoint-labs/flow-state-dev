@@ -20,7 +20,8 @@ import {
   type TaskCollectionRef,
   type TaskWorkerInput,
 } from "../../src/tasks";
-import { createTaskGate, taskLedgers, taskWorkerInputSchema } from "../../src/task-board";
+import { taskLedgers, taskWorkerInputSchema } from "../../src/task-board";
+import { createTaskGate } from "../../src/task-board/task-entry";
 import { createFakeResourceCollection } from "../helpers";
 import { heard } from "../fixtures/heard";
 

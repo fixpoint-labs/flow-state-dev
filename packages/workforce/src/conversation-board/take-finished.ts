@@ -37,15 +37,17 @@
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
-import { takeOwedNotice } from "@flow-state-dev/orchestration";
 import {
+  takeOwedNotice,
   decideNotice,
-  isTerminalStatus,
-  noticeMetadata,
-  noticeText,
   owedNotices,
   owesAnyNotice,
   readCommittedTask,
+} from "@flow-state-dev/orchestration/internal";
+import {
+  isTerminalStatus,
+  noticeMetadata,
+  noticeText,
   type TaskNotice
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";

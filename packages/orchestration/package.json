@@ -48,6 +48,10 @@
     "./inbox/check": {
       "types": "./dist/inbox/check.d.ts",
       "default": "./src/inbox/check.ts"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "default": "./src/internal.ts"
     }
   },
   "license": "MIT",
@@ -75,6 +79,10 @@
       "./inbox": {
         "types": "./dist/inbox/index.d.ts",
         "default": "./dist/inbox/index.js"
+      },
+      "./internal": {
+        "types": "./dist/internal.d.ts",
+        "default": "./dist/internal.js"
       }
     }
   },

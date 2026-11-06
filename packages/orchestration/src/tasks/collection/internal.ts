@@ -327,7 +327,6 @@ export interface TaskSettingsPatch {
   assignee?: string;
 }
 
-export { hasStarted };
 
 /**
  * A release and nothing else, of a row stored `blocked` before FIX-2080
@@ -759,29 +758,6 @@ export function ticketClaimsRow(ticket: TaskClaimTicket, collectionId: string, t
 }
 
 /**
- * Refuse a removed option loudly rather than ignoring it (BP-030).
- *
- * `expectAttempt` was replaced by `claim` in FIX-981. TypeScript catches the
- * migration for a typed caller, but an untyped one — plain JS, a `as any`, an
- * options object assembled from config — would otherwise have its guard
- * silently dropped and its write proceed unguarded. Silence is the exact shape
- * of the defect the ticket exists to close, so a leftover key throws.
- *
- * `in` rather than a value check on purpose: `{ expectAttempt: undefined }` is
- * still a caller that thinks it is passing this guard.
- */
-function assertNoRemovedGuards(options: TaskTransitionOptions): void {
-  if ("expectAttempt" in options) {
-    throw new Error(
-      `[tasks] "expectAttempt" was removed — pass "claim" instead. A bare attempt ` +
-        `number names no task, so it is satisfied by any task on the same attempt. ` +
-        `Mint a ticket from the task \`claim()\` returned: ` +
-        `\`ticketForClaim(collection.collectionId, claimedTask)\`.`
-    );
-  }
-}
-
-/**
  * Decide whether an advisory write should decline, and say **why**
  * (FIX-951; reason reporting added by FIX-976; target binding by FIX-981).
  *
@@ -875,7 +851,6 @@ export function transitionDeclineReason(
     return "open-question";
   }
   if (options === undefined) return undefined;
-  assertNoRemovedGuards(options);
   const claim = options.claim;
   if (options.ifAllowed === true && isTerminalStatus(task.status)) return "terminal";
   // FIX-2133: a confirm's No cancels only while its confirm is open, on the committed row.
@@ -1145,7 +1120,7 @@ export const MIN_LEASE_DURATION_MS = 1_000;
  * would rebuild the renewal write storm the floor exists to prevent — out of a
  * lease nobody would call invalid. About 74.5 days.
  */
-export const MAX_LEASE_DURATION_MS = 2_147_483_647 * 3;
+const MAX_LEASE_DURATION_MS = 2_147_483_647 * 3;
 
 /**
  * Refuse a lease duration outside its permissible domain (FIX-1005).

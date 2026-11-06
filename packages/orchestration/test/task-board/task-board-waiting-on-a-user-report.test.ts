@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { createStateBackedTaskCollection, type Task, type TaskCollectionRef, type TaskInit, type TaskWorker } from "../../src/tasks";
+import type { Task, TaskCollectionRef, TaskInit, TaskWorker } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { askMidway, taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 import { createBoardMetaCompleted } from "../../src/task-board/blocks/board-meta";
 import { createFakeSequencerState } from "../helpers";
@@ -168,7 +169,7 @@ describe("the completion reason over stored rows", () => {
         id: "reviewing",
         status: "in_progress",
         leaseUntil: NOW - 1,
-        questions: [
+        holds: [
           {
             id: "susp-1",
             actor: "user",
@@ -197,7 +198,7 @@ describe("the completion reason over stored rows", () => {
         status: "pending",
         attempts: 0,
         deps: ["missing"],
-        questions: [STORED_QUESTION],
+        holds: [STORED_QUESTION],
       },
     ]);
     expect(await reasonOf(collection)).toBe("blocked-by-failures");
@@ -209,7 +210,7 @@ describe("the completion reason over stored rows", () => {
         id: "held-status",
         status: "held",
         attempts: 0,
-        questions: [STORED_QUESTION],
+        holds: [STORED_QUESTION],
       },
     ]);
     expect(await reasonOf(collection)).toBe("blocked-by-failures");
@@ -220,7 +221,7 @@ describe("the completion reason over stored rows", () => {
     id,
     status: "pending",
     attempts: 0,
-    questions: [STORED_QUESTION],
+    holds: [STORED_QUESTION],
   });
 
   it("reports waiting-on-a-user, not blocked-by-failures, with a dispatched row beside the question row", async () => {

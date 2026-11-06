@@ -5,9 +5,8 @@
  * the drain's exit, a filing's wake, an assign's wake, a touch's wake.
  * `updateTask({ status: "pending" })` releases one, and `createTask` files a
  * new row ready, starting it at once (FIX-2083). Some rows are
- * seeded in the shape an older build stored a recorded row in (`undispatched`,
- * FIX-1875), which the board reads as held (FIX-2080); every leg reads the
- * store, never the action's own say-so.
+ * seeded held, as the store holds them; every leg reads the store, never the
+ * action's own say-so.
  */
 import { describe, expect, it } from "vitest";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
@@ -20,16 +19,15 @@ const act = async (host: BoardHost, conv: string, action: string, input: Record<
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
 
-/** A row recorded for `assignee` and not dispatched, written as the store holds it. */
+/** A row filed held for `assignee`, written as the store holds it. */
 function recorded(id: string, assignee: string | undefined, goal = "Audit licenses"): Task {
   return {
     id,
     goal,
-    status: "pending",
+    status: "held",
     attempts: 0,
     maxAttempts: 2,
     ...(assignee === undefined ? {} : { assignee }),
-    undispatched: true,
     createdAt: Date.now(),
     updatedAt: Date.now()
   } as Task;
@@ -58,9 +56,7 @@ describe("a recorded row on a conversation's board (V4)", () => {
       await host.settled();
 
       const row = await host.row("alice", filing, "task_recorded");
-      // The assign's write stored the row as it is read now: held, no mark.
       expect(row).toMatchObject({ status: "held", attempts: 0, assignee: "eng.writer" });
-      expect(row).not.toHaveProperty("undispatched");
       expect(host.runs.map((run) => run.taskId)).toEqual([other.taskId]);
     } finally {
       await host.dispose();
@@ -72,7 +68,7 @@ describe("a recorded row on a conversation's board (V4)", () => {
     try {
       const conv = await host.conversation("alice", "desk");
       const filing = await host.filingOf("alice", conv);
-      const { undispatched: _drop, ...old } = recorded("task_old", "eng.tasker");
+      const old = { ...recorded("task_old", "eng.tasker"), status: "pending" };
       await host.writeRow("alice", filing, old as Task);
       await act(host, conv, "listTasks_tasks", {});
       await host.settled();
@@ -129,7 +125,7 @@ describe("createTask held and updateTask on a conversation's board (FIX-1875 S7,
       const conv = await host.conversation("alice", "pm");
       const filing = await host.filingOf("alice", conv);
       // Ready (no mark) with nobody to run it: flow code filed it unassigned.
-      const { undispatched: _drop, ...ready } = recorded("task_ready", undefined);
+      const ready = { ...recorded("task_ready", undefined), status: "pending" };
       await host.writeRow("alice", filing, ready as Task);
       await act(host, conv, "listTasks_tasks", {});
       await host.settled();
@@ -358,7 +354,7 @@ describe("retryTask on a conversation's board (FIX-2383)", () => {
       const conv = await host.conversation("alice", "pm");
       const filing = await host.filingOf("alice", conv);
       const base = (id: string, createdAt: number) =>
-        ({ ...recorded(id, "eng.tasker", id), undispatched: undefined, session: "ongoing", attempts: 1, startedAt: createdAt, createdAt, updatedAt: createdAt }) as Task;
+        ({ ...recorded(id, "eng.tasker", id), status: "pending", session: "ongoing", attempts: 1, startedAt: createdAt, createdAt, updatedAt: createdAt }) as Task;
       // A runs in the delegate's ongoing session; its worker died, so its lease lapsed.
       await host.writeRow("alice", filing, { ...base("task_running", 1000), status: "in_progress", claimedBy: "conversation-tasks", leaseUntil: Date.now() - 1_000 } as Task);
       // B ran once in the same session before, and was cancelled.
@@ -385,7 +381,7 @@ describe("retryTask on a conversation's board (FIX-2383)", () => {
       const filing = await host.filingOf("alice", conv);
       // Two rows that each ran once in the delegate's ongoing session, and were cancelled.
       const ran = (id: string, createdAt: number): Task =>
-        ({ ...recorded(id, "eng.tasker", id), undispatched: undefined, session: "ongoing", status: "cancelled", attempts: 1, startedAt: createdAt, completedAt: createdAt, createdAt, updatedAt: createdAt }) as Task;
+        ({ ...recorded(id, "eng.tasker", id), session: "ongoing", status: "cancelled", attempts: 1, startedAt: createdAt, completedAt: createdAt, createdAt, updatedAt: createdAt }) as Task;
       await host.writeRow("alice", filing, ran("task_first", 1000));
       await host.writeRow("alice", filing, ran("task_second", 2000));
       // A third row holds the session while both are retried.

@@ -10,16 +10,13 @@
  * Two halves:
  *
  * 1. **Ledger** — `createObservationLedger` (in-memory store +
- *    `ObservationLedgerView`) and `createObservationLedgerCapability`
- *    for installing as a capability on standalone generators. The
- *    board wires its own per-run ledger directly via the bind helpers.
+ *    `ObservationLedgerView`). The board wires its own per-run ledger.
  *
  * 2. **Policies** — `flowPolicy.none()`, `declaredDepsOnly()`,
  *    `ancestors()`, `recentTrajectory()`, `allCompleted()`, `compact()`,
  *    `custom(fn)`. All return a `TaskFlowPolicy` shape the board calls
  *    once per dispatch.
  */
-import { defineCapability } from "@flow-state-dev/core/capability";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
@@ -173,112 +170,6 @@ export function createObservationLedger(opts: {
       entries.length = 0;
     },
     size: () => entries.length,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Capability
-// ---------------------------------------------------------------------------
-
-export type ObservationLedgerAccessor = {
-  view: () => ObservationLedgerView;
-  stats: () => { entries: number };
-} & Record<string, (...args: any[]) => any>;
-
-export interface CreateObservationLedgerCapabilityOptions {
-  name?: string;
-  maxEntries?: number;
-}
-
-/**
- * Capability that installs an observation ledger on the active context.
- * Task Board wiring binds its own ledger directly via
- * `bindObservationLedger`; the capability path is for standalone
- * generators that want flow-policy semantics without a board.
- */
-export function createObservationLedgerCapability(
-  options: CreateObservationLedgerCapabilityOptions = {},
-) {
-  const name = options.name ?? "observationLedger";
-  const maxEntries = options.maxEntries ?? 10_000;
-  return defineCapability({
-    name,
-    fns: (ctx: BlockContext): ObservationLedgerAccessor => {
-      const ledger = resolveOrCreateLedger(ctx, name, maxEntries);
-      bindObservationLedger(ctx, ledger);
-      return {
-        view: () => ledger.view(),
-        stats: () => ({ entries: ledger.size() }),
-      };
-    },
-  });
-}
-
-// Hidden bag on `ctx.request` for the same reason described in the
-// tool-cache module: the ledger carries function properties, so it
-// can't go through `ctx.request.state` (which gets structured-cloned
-// for snapshots). The request handle is shared by reference across
-// every nested ctx, so a bag attached here is reachable from any
-// block executing in the request.
-const LEDGER_BAG_KEY = "__fsd_observationLedgers";
-
-function resolveOrCreateLedger(
-  ctx: BlockContext,
-  name: string,
-  maxEntries: number,
-): ObservationLedger {
-  const req = ctx.request as unknown as Record<string, unknown>;
-  let bag = req[LEDGER_BAG_KEY] as Record<string, ObservationLedger> | undefined;
-  if (bag === undefined) {
-    bag = {};
-    Object.defineProperty(req, LEDGER_BAG_KEY, {
-      value: bag,
-      enumerable: false,
-      writable: true,
-      configurable: true,
-    });
-  }
-  const existing = bag[name];
-  if (existing !== undefined) return existing;
-  const ledger = createObservationLedger({ maxEntries });
-  bag[name] = ledger;
-  return ledger;
-}
-
-/**
- * Bind a ledger to the active context's tool-observation hook so the
- * substrate writes every cacheable tool call into it. Used by Task
- * Board wiring to attach the per-run ledger to the worker subtree.
- *
- * The substrate's `_writeToolObservation` slot accepts a normalised
- * payload; this binder fills in the board attribution (collectionId,
- * taskId, workerId) when available.
- */
-export function bindObservationLedger(
-  ctx: BlockContext,
-  ledger: ObservationLedger,
-  attribution?: { collectionId: string; getTaskId?: () => string | undefined; getWorkerId?: () => string | undefined },
-): void {
-  (ctx as {
-    _writeToolObservation?: (e: {
-      toolName: string;
-      args: unknown;
-      result?: unknown;
-      error?: string;
-      cached: boolean;
-    }) => void;
-  })._writeToolObservation = (e) => {
-    ledger.append({
-      collectionId: attribution?.collectionId ?? "",
-      taskId: attribution?.getTaskId?.(),
-      workerId: attribution?.getWorkerId?.(),
-      toolName: e.toolName,
-      args: e.args,
-      ...(e.result !== undefined ? { result: e.result } : {}),
-      ...(e.error !== undefined ? { error: e.error } : {}),
-      cached: e.cached,
-      ts: Date.now(),
-    });
   };
 }
 

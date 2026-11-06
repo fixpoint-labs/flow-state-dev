@@ -46,16 +46,6 @@ afterEach(() => {
 });
 
 describe("createFlowState — construction validation", () => {
-  it("fails closed when removed middleware is passed", () => {
-    expect(() =>
-      createFlowState({
-        flows: flows(),
-        stores: { dev: { primary: inMemoryStores() } },
-        middleware: vi.fn()
-      } as any)
-    ).toThrow(/removed `middleware` option/);
-  });
-
   it("throws synchronously when stores declares no profile", () => {
     expect(() =>
       createFlowState({ flows: flows(), stores: {} })

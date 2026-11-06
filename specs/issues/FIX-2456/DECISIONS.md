@@ -60,7 +60,7 @@ It comes down to a fix to the send rule: copied, it stops at each install.
 |---|---|
 | **Instead of** | `@flow-state-dev/react/panels`, the issue's name. The registry was ruled out by FIX-1477 D1, and still is: the panels read through react's fenced, coalesced reads, which don't leave the package |
 | **Because** | The epic's root rule is that a subpath says who it is for. `workforce` tells a chat-app author to skip it. `panels` names a shape, and `FlowNavigator` has that shape and stays on the root, so the path would be half true |
-| **Locks in** | A documented, semver-covered public subpath. Only components that draw workforce records join it. How old root imports reach adopters is Q1's answer, per ER-3 |
+| **Locks in** | A documented, semver-covered public subpath. Only components that draw workforce records join it. Old root imports fail to compile, with no alias, and the changeset names `react/workforce` (ER-3; Q1 answered break) |
 
 ![D3, which subpath the panels move to. react/workforce, chosen, beside react/panels. Decides it: what the path tells a reader, who it is for against what shape it has. Price: only workforce records can join it. Flips if a second panel family ships that is not workforce](figures/d3-workforce-subpath.svg)
 
@@ -93,8 +93,8 @@ It comes down to what the path says: who it's for, which is the epic's rule.
   imports it from there. The issue left this open; it is derivable.
 - **E6 · The subpath carries what has a consumer or a README entry.** The `Panel*Source` types go
   there (the ui stories' fixtures import them). The three `*PropNames` lists have neither, so they
-  leave public surface (ER-1). They shipped in 0.4.0, so their removal reaches adopters the way
-  Q1's answer says, like the moved names. The implementer settles each against the export check.
+  leave public surface (ER-1). They shipped in 0.4.0, and go with no alias, like the moved names
+  (Q1 answered break). The implementer settles each against the export check.
 - **E7 · Changesets:** `minor` for react, `patch` for Shift Manager and DevTool. The registry is private.
 - **E8 · Kitchen Sink:** its two pages move to the new Conversation API and its copies of
   `conversation.tsx`, `request-group.tsx` and `prompt-input.tsx` stay byte-equal to the registry,
@@ -128,6 +128,9 @@ whole set.
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). The panels' old root names go with no `@deprecated` alias, which the
+  *Not done if* row no longer allows; the `*PropNames` lists likewise. Direction unchanged.
 - **Draft** — framed as bringing the registry to FIX-2360's rule through the hook, with the app
   saying when it sent; the registry's existing button extended and the four copies removed; the
   panels to a `workforce` subpath, and the key rules kept on the root against the issue's proposal.

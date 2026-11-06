@@ -76,8 +76,8 @@ import {
   activeSkillsArraySchema,
   createSkillActivator,
   createSkillsLibrary,
-  pushActiveSkill
 } from "@flow-state-dev/orchestration";
+import { pushActiveSkill } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { doorTask, RESPOND_ACTION } from "./worker-door";
@@ -437,9 +437,6 @@ export interface AgentWorkerFlowOptions {
   installation?: WorkerInstallation;
 }
 
-/** The coordinator's tool that once handed a message on, refused by name at load. */
-const RETIRED_HAND_OFF = "handOff"; // retired-name-refusal
-
 /**
  * What one worker on this flow configures, in its file.
  *
@@ -488,18 +485,6 @@ function settingsSchema(
         const known = Object.keys(catalog);
         for (const name of names ?? []) {
           if (Object.hasOwn(catalog, name)) continue;
-          // A coordinator hands a message on with `createTask` and the routing settings now.
-          if (name === RETIRED_HAND_OFF) { // retired-name-refusal: FIX-1872
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message:
-                `names tool "${RETIRED_HAND_OFF}", which no longer exists. A coordinator hands the message it is ` + // retired-name-refusal
-                `routing to a delegate with \`createTask\` and the routing settings (\`session: "ongoing"\`, ` +
-                `\`resultTo: "conversation"\`), which every coordinator turn carries: drop "${RETIRED_HAND_OFF}" ` + // retired-name-refusal
-                `from this worker's \`tools:\` line, and name \`createTask\` in its instructions instead.`
-            });
-            continue;
-          }
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message:

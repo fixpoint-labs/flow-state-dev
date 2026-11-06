@@ -30,14 +30,13 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { generateId } from "../tasks/generate-id";
 import {
-  createObservationLedger,
   flowPolicy as builtinFlowPolicy,
-  type ObservationLedger,
   type ObservationLedgerView,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskFlowPolicy,
 } from "../tasks";
+import { createObservationLedger, type ObservationLedger } from "../tasks/flow-policy/index";
 import type { TaskBoardToolCacheConfig } from "./index";
 
 /**
@@ -106,7 +105,7 @@ function getRequestResolverBag(ctx: BlockContext): Record<string, unknown> {
  * clobbering Worker A's claim mid-await and misattributing A's cache writes
  * and observation entries to B.
  */
-export interface BoardRunFlowState {
+interface BoardRunFlowState {
   cacheStore?: ToolCacheStore;
   ledger?: ObservationLedger;
   policy?: TaskFlowPolicy;

@@ -37,14 +37,16 @@ import type {
 import { z, type ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
-  resolveTaskCapDefaults,
-  RETRY_BUDGET_NOT_APPLICABLE,
   type TaskCapOptions,
   type TaskCollectionRef,
   type TaskInit,
   type TaskWorkerInput,
+} from "@flow-state-dev/orchestration/tasks";
+import {
+  resolveTaskCapDefaults,
+  RETRY_BUDGET_NOT_APPLICABLE,
   type TaskWorkerRegistry,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/internal";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { matchTopic } from "./match-topic";
 import {

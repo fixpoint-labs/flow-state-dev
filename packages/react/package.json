@@ -30,6 +30,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./workforce": {
+      "types": "./dist/workforce/index.d.ts",
+      "default": "./src/workforce/index.ts"
     }
   },
   "license": "MIT",
@@ -45,6 +49,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./workforce": {
+        "types": "./dist/workforce/index.d.ts",
+        "default": "./dist/workforce/index.js"
       }
     }
   },

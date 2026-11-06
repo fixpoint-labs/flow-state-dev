@@ -39,15 +39,17 @@ import type {
 import { z, type ZodTypeAny } from "zod";
 import {
   currentLeaseRenewal,
-  getOrCreateTaskCollection,
   stampLeaseRenewal,
-  startLeaseRenewal,
   withLeaseRenewalScope,
+} from "@flow-state-dev/orchestration/internal";
+import {
+  getOrCreateTaskCollection,
+  startLeaseRenewal,
   ticketForClaim,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/tasks";
 import {
   routedSpecialistsControlSchema,
   controllerOutputSchema,

@@ -15,7 +15,8 @@ import {
   createHoldTaskForUser,
   taskToolsForTurn,
 } from "../../src/skills/task-tools-capability";
-import { createResourceBackedTaskCollection, ticketForClaim, type Task, type TaskCollectionRef } from "../../src/tasks";
+import { ticketForClaim, type Task, type TaskCollectionRef } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
 import { createCapturedChanges, createFakeResourceCollection } from "../helpers";
 import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 

@@ -111,8 +111,8 @@ new id fails from day one. The sweep empties the file ([decided](DECISIONS.md#de
 - `//` and `/* */` pointers, changelogs, `.changeset/` (which `validate-changeset-refs.mjs`
   requires to cite issues), `specs/`, `docs/internal/`, Kitchen Sink and `goals/`. Tests outside
   `src` aren't linted; BP-006 already keeps ticket labels out of their titles.
-- What an error *means*: wording changes, never a code or a behaviour. A retired-value
-  refusal's text is FIX-2454's helper's.
+- What an error *means*: wording changes, never a code or a behaviour. Retired-value
+  refusals are FIX-2454's to delete (epic D4), not this issue's to reword.
 
 ## What's already here, and the debt
 

@@ -134,7 +134,7 @@ new page.
 |---|---|
 | **Removes** | 196 `ctx as never` and about 25 `ctx as [unknown as] BlockContext` casts in `packages/*/src`; five `@ts-expect-error` lines in harness-manager's tests; the MCP filter's `request` casts in `tools` |
 | **Adds** | One lint entry. A breaking type change to a published name, `CapabilityPresetCtx` ([D2](DECISIONS.md#d2)), with a changeset (ER-7) |
-| **Leaves** | `LooseBlockContext`, whose job this absorbs. Removing a published name follows the epic's Q1; the epic-agent files it or not |
+| **Leaves** | `LooseBlockContext`, whose job this absorbs. Removing a published name would go with no alias (the epic's Q1, answered break); the epic-agent files it or not |
 
 **Net: down.** About 220 casts and a documented workaround go; a lint entry and a stricter type arrive.
 

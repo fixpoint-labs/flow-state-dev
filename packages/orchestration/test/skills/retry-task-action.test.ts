@@ -12,7 +12,8 @@ import { describe, expect, it } from "vitest";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
 import { buildTaskToolsList, taskToolActions, taskToolSuffix } from "../../src/skills/task-tools-capability";
-import { createResourceBackedTaskCollection, type Task, type TaskCollectionRef } from "../../src/tasks";
+import type { Task, TaskCollectionRef } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
 import { createFakeResourceCollection } from "../helpers";
 import { buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 

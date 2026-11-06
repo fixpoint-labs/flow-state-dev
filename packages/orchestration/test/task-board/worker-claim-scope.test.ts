@@ -9,14 +9,15 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { createMockModelResolver, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createStateBackedTaskCollection,
   defineTaskCollection,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskWorker,
   type TaskWorkerInput,
 } from "../../src/tasks";
-import { currentWorkerClaim, isTaskTurn, taskBoard, taskWorkerInputSchema } from "../../src/task-board";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { currentWorkerClaim, taskBoard, taskWorkerInputSchema } from "../../src/task-board";
+import { isTaskTurn } from "../../src/task-board/task-turn";
 import { createFakeSequencerState } from "../helpers";
 import { heard } from "../fixtures/heard";
 

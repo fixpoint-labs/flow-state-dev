@@ -196,11 +196,6 @@ describe("one firing per scheduled time", () => {
       expect((await fire(a!, { nominalFireTime: LATEST })).status).toBe(202);
     });
   });
-
-  it("refuses the removed idempotencyWindowMs option at construction", () => {
-    expect(() => createScheduledTransportAdapter({ idempotencyWindowMs: 60_000 } as never)).toThrow(/idempotencyWindowMs/);
-    expect(() => createScheduledTransportAdapter({ idempotencyOptions: {} } as never)).toThrow(/idempotencyOptions/);
-  });
 });
 
 /** The first of the month before `iso`'s month, at midnight UTC. */

@@ -4,18 +4,16 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { script } from "../../script";
 import { itemsOf } from "../shared";
 
-export async function readSessionItems(_client: unknown, sessionId: string) {
-  return { items: itemsOf(sessionId), truncated: false };
+/** The session feed: the script's lines now, then again on each change to them. */
+export function followSessionItems(_client: unknown, sessionId: string, to: { onRead(read: { items: OutputItem[]; truncated: boolean }): void }) {
+  const read = () => to.onRead({ items: itemsOf(sessionId), truncated: false });
+  read();
+  return script.subscribe(read);
 }
 
-/** The run's own request streams every change to its session; a request a send started adds nothing more. */
-export function followRequest(_client: unknown, run: { sessionId?: string }, handlers: { onItem: (item: OutputItem) => void }) {
-  const sessionId = run.sessionId;
-  if (sessionId === undefined) return { close: () => undefined };
-  const stop = script.subscribe(() => {
-    for (const item of itemsOf(sessionId)) handlers.onItem(item);
-  });
-  return { close: stop };
+/** The run's request stream reports only its status, which the script never moves. */
+export function followRequest() {
+  return { close: () => undefined };
 }
 
 export function taskItems(items: OutputItem[]) {

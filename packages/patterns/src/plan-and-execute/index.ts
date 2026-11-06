@@ -30,8 +30,8 @@
  * legacy status translation.
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
-import { flowPolicy } from "@flow-state-dev/orchestration";
-import type { TaskInit } from "@flow-state-dev/orchestration";
+import { flowPolicy } from "@flow-state-dev/orchestration/tasks";
+import type { TaskInit } from "@flow-state-dev/orchestration/tasks";
 import type {
   ItemVisibility,
   GeneratorHistoryConfig,
@@ -716,7 +716,7 @@ export function planAndExecute<
     ...pickTaskCapOverrides(config),
     workers: adaptedWorker,
     concurrency: maxConcurrency,
-    claimOrder: "topological",
+    claimOrder: "fifo",
     onError: "skip",
     // FIX-610: plan-shaped patterns benefit most from seeing prior
     // tool traffic from anywhere in the run, not just declared deps.

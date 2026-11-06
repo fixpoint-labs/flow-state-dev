@@ -12,7 +12,7 @@
  * and again after a later touch, so a second copy shows.
  */
 import { describe, expect, it } from "vitest";
-import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";

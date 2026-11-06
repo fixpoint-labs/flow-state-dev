@@ -9,27 +9,22 @@
  */
 import {
   fifoClaimOrder,
-  hasOpenHold,
   isClaimable,
   leaseLapsed,
   priorityClaimOrder,
-  topologicalClaimOrder,
   type Task,
   type TaskCollectionRef,
   type ClaimOrder,
   type TaskStatus,
 } from "../tasks";
+import { hasOpenHold } from "../tasks/collection/holds";
 
 /**
  * Accepted shapes for the Task Board's `claimOrder` config: either a
  * `ClaimOrder` instance, or a string naming one of the substrate's
  * standard claim orders.
  */
-export type TaskBoardClaimOrderInput =
-  | ClaimOrder
-  | "fifo"
-  | "topological"
-  | "priority";
+export type TaskBoardClaimOrderInput = ClaimOrder | "fifo" | "priority";
 
 /** Resolve a `TaskBoardClaimOrderInput` to a concrete claim order. */
 export function resolveClaimOrder(
@@ -39,8 +34,6 @@ export function resolveClaimOrder(
   switch (input) {
     case "fifo":
       return fifoClaimOrder;
-    case "topological":
-      return topologicalClaimOrder;
     case "priority":
       return priorityClaimOrder;
     default: {

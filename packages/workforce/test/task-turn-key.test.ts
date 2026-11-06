@@ -6,7 +6,7 @@
  * session that claims to work a task.
  */
 import { describe, expect, it } from "vitest";
-import { TASK_SESSION_TASK_KEY } from "@flow-state-dev/orchestration";
+import { TASK_SESSION_TASK_KEY } from "@flow-state-dev/orchestration/internal";
 import { TASK_ID_STATE_KEY } from "../src/workers/keys";
 import { bootBoardHost } from "./conversation-board-harness";
 

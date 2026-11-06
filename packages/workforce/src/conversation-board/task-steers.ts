@@ -6,7 +6,7 @@
  */
 import { defineCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { createSteerContext } from "@flow-state-dev/orchestration";
+import { createSteerContext } from "@flow-state-dev/orchestration/internal";
 import { boardAboveOf } from "./board-above";
 import { conversationLedgerAt, conversationLedgerResources } from "./ledger";
 

@@ -4,19 +4,12 @@
  * in the delegate's ongoing session for the conversation, its result to the
  * conversation, one attempt, carrying the message as written in its
  * server-written brief. Read through the public task actions as Alice.
- *
- * Also the parts of FIX-1872 that still stand: a conversation saved with the
- * old delivery ledger reads as if it had none, and a worker naming `handOff` (retired-name-refusal)
- * fails to load, naming what replaced it.
  */
 import { describe, expect, it } from "vitest";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
-import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
-import { createWorkerInstallation } from "../src/workers/installation";
-import { hireWorkforce } from "../src/workers/register";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../src/workers/keys";
-import { ORG, SLOW_MS, bootHost, messageOf, standardWorkers } from "./coordinator-harness";
+import { SLOW_MS, bootHost, messageOf, standardWorkers } from "./coordinator-harness";
 
 type Host = ReturnType<typeof bootHost>;
 
@@ -411,65 +404,6 @@ describe("a routed task that fails out", () => {
   }, 20_000);
 });
 
-describe("a post row stored before the upgrade", () => {
-  it("is worked once, as a routed task, and its answer lands once", async () => {
-    const host = bootHost();
-    const id = await host.conversation("alice", "desk");
-    // Seed the board as a coordinator before FIX-2083 left it: one post row, pending.
-    await post(host, id, "warm up [route:eng.em]");
-    const runtime = await host.state.getRuntime();
-    const scope = `alice:~org:${ORG}`;
-    const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
-    const [key, entry] = Object.entries(entries).find(([, value]) => (value.state as { sealed?: unknown }).sealed !== undefined)!;
-    const stored = entry.state as Record<string, any>;
-    const now = Date.now();
-    // The row's key ends in its id, as the store writes it, encoded or not.
-    const legacyKey = key.includes(encodeURIComponent(stored.id))
-      ? key.replace(encodeURIComponent(stored.id), encodeURIComponent("post:legacy:0:eng.coder"))
-      : key.replace(stored.id, "post:legacy:0:eng.coder");
-    expect(legacyKey).not.toBe(key);
-    const legacy = {
-      ...stored,
-      id: "post:legacy:0:eng.coder",
-      title: "Post for eng.coder",
-      goal: "alice, through desk: an old post",
-      status: "pending",
-      assignee: "eng.coder",
-      attempts: 0,
-      maxAttempts: 1,
-      createdAt: now,
-      updatedAt: now,
-      incarnationId: "legacy-incarnation",
-      sealed: {
-        kind: "post",
-        messageRequestId: "legacy",
-        round: 0,
-        delegate: { worker: "eng.coder" },
-        session: { key: 'delegate:["eng.coder",null]' },
-        body: "an old post",
-        from: "alice",
-        coordinator: "desk"
-      }
-    };
-    for (const field of ["session", "resultTo", "run", "output", "startedAt", "completedAt", "leaseUntil", "claimedBy", "metadata"]) {
-      delete legacy[field];
-    }
-    expect((await runtime.stores.resourceState.set("user", scope, legacyKey, legacy, "any")).ok).toBe(true);
-
-    // The next message touches the board, which starts the stored row.
-    await post(host, id, "next [route:eng.em]");
-    await until(async () => (await lines(host, id)).some((m: any) => m.text.includes("an old post")), "the old post's answer landed");
-    await host.settled();
-
-    expect(host.heard.filter((h) => h.message.includes("an old post")).map((h) => [h.worker, h.message])).toEqual([
-      ["eng.coder", "alice, through desk: an old post"]
-    ]);
-    expect((await lines(host, id)).filter((m: any) => m.text.includes("an old post"))).toEqual([
-      { agentName: "eng.coder", text: "eng.coder heard: alice, through desk: an old post" }
-    ]);
-  });
-});
-
 describe("a routed task's ending, landed", () => {
   it("stays owed when landing it fails, and lands once at the board's next touch", async () => {
     // The write that lands the coder's answer loses to another writer every time it is
@@ -501,41 +435,5 @@ describe("a routed task's ending, landed", () => {
     await host.settled();
     const said = (await lines(host, id)).filter((m: any) => m.text.includes("first"));
     expect(said).toEqual([{ agentName: "eng.coder", text: expect.stringContaining("first") }]);
-  });
-});
-
-describe("a conversation saved before messages were tasks (FIX-1872 BR-13)", () => {
-  it("reads a saved delivery ledger as none, and drops it at its next write", async () => {
-    const host = bootHost();
-    const id = await host.conversation("alice", "desk");
-    const runtime = await host.state.getRuntime();
-    for (let written = false; !written; ) {
-      const session = (await runtime.stores.session.get(id))!;
-      const deliveries = [{ token: "t-old", messageRequestId: "p-old", round: 0, delegate: { worker: "eng.coder" }, answered: false }];
-      written = (await runtime.stores.session.set(id, { ...session, state: { ...session.state, deliveries } } as never, session.version as never))
-        .ok;
-    }
-    await post(host, id, "hello [route:eng.coder]");
-    expect(host.heard.map((h) => h.worker)).toEqual(["eng.coder"]);
-    expect((await lines(host, id)).map((m: any) => m.agentName)).toEqual(["eng.coder"]);
-    expect((await host.sessionState(id)).deliveries).toBeUndefined();
-  });
-});
-
-describe("a worker naming handOff (FIX-1872 BR-18)", () => { // retired-name-refusal
-  it("fails to load, and names createTask with the routing settings in its place", () => {
-    let flows: Record<string, unknown> = {};
-    const installation = createWorkerInstallation({
-      standardWorkers: [{ id: "old.chief", declared: { flow: "agent", tools: ["handOff"] }, body: "Hands posts on." }], // retired-name-refusal
-      workerFlows: () => flows as never
-    });
-    flows = { agent: defineAgentWorkerFlow({ installation }) };
-    expect(() => hireWorkforce(installation)).toThrow(
-      /worker "old\.chief"[\s\S]*names tool "handOff", which no longer exists[\s\S]*`createTask` and the routing settings/ // retired-name-refusal
-    );
-  });
-
-  it("is in no standard coordinator's tools", () => {
-    for (const worker of standardWorkers()) expect(JSON.stringify(worker.declared)).not.toContain("handOff"); // retired-name-refusal
   });
 });

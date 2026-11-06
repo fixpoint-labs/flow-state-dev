@@ -11,9 +11,9 @@
  */
 import { defineResource } from "@flow-state-dev/core";
 import {
-  taskClaimTicketSchema,
   type TaskClaimTicket,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/tasks";
+import { taskClaimTicketSchema } from "@flow-state-dev/orchestration/internal";
 import { z, type ZodTypeAny } from "zod";
 
 /**

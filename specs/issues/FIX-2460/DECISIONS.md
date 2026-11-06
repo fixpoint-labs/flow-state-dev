@@ -60,7 +60,7 @@ It comes down to vocabulary: on a core subpath, the framework's base package sti
 |---|---|
 | **Instead of** | Three block helpers, two of them `testBlock` plus extra result fields |
 | **Because** | `testSequencer` is `testBlock` plus step traces and side-chain results read from the items; `testRouter` is `testBlock` plus the route a hook saw. They differ only in what the caller gets back, which `issue-spec` question 7 says is a parameter on the closest entry, not a second helper |
-| **Locks in** | One helper per unit an adopter tests: `testBlock` for a block, `testFlow` for an action. `testBlock`'s result type depends on the block's kind. The two names retire per ER-3 / Q1's answer; four test files, four docs pages and four repo guides (`AGENTS.md`, two skills, `development-setup.md`) change |
+| **Locks in** | One helper per unit an adopter tests: `testBlock` for a block, `testFlow` for an action. `testBlock`'s result type depends on the block's kind. The two names go with no alias (ER-3; Q1 answered break); four test files, four docs pages and four repo guides (`AGENTS.md`, two skills, `development-setup.md`) change |
 
 **What would change my mind:** `testBlock` unable to type `steps` and `selectedRoute` by the
 block's kind without a cast in the adopter's test. Then keep the two as typed wrappers.
@@ -98,8 +98,8 @@ It comes down to the pick: three names for one job is the choice the epic exists
   status read that follows the stream's close.
 - **The scanners** (`findImportsFromEntry`, `findNodeBuiltinsFromEntry`) move to a `./bundle`
   entry hidden by `publishConfig`, epic D2's second kind. All four importers are repo tests.
-- **The moves Q1's answer covers here:** the benchmark names, the core types, the patterns
-  adapters, the scanners and the two folded helpers. The direction holds under each answer.
+- **The moves that go with no alias here** (Q1, answered break): the benchmark names, the core
+  types, the patterns adapters, the scanners and the two folded helpers.
 - **The goal check is this issue's own, not a manifest cell.** No *Not done if* in the epic's
   *One path* row names `testFlow`, so the manifest carries no stop-answer cell. The leg c
   assertion and the subpath-presence check run under `run.mjs --goal`, with
@@ -149,6 +149,9 @@ Run by the epic-agent over the whole spec set, with `reuse-review` on *Builds on
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). The moved benchmark, scanner and helper names go with no alias; the
+  *Not done if* row's alias window is removed. Direction unchanged.
 - **Draft** — framed as the epic's fourth team: a step that waits for a person can't be tested,
   and the testing root mixes benchmark and repo tooling into adopter helpers. The answer goes
   through the engine's own route in process, built on checkpoint durability; benchmark and

@@ -35,14 +35,16 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  hasFrozenLedgerAssignee,
   resolveResourceCollection,
   type TaskCollectionRef,
   type TaskPartitionContext,
   type TaskSettingsSupport,
-  taskLedgerResources,
-  withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
+import {
+  hasFrozenLedgerAssignee,
+  taskLedgerResources,
+  withoutNoticeMarkers,
+} from "@flow-state-dev/orchestration/internal";
 import { FILED_HOP, FILED_MARKER, FILED_PROJECT, PIECE_OF, SPLIT_MARKER } from "./board-entries";
 import { filedCascadeOver } from "./cascade";
 import { filingSessionIdOf } from "./filing-session";
@@ -95,8 +97,6 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   // What holds a task for the user (FIX-2133): the Inbox lists the task's item from its open holds,
   // and a question is open while no steer carries its id.
   "holds",
-  // A row stored before FIX-2317 keeps its holds as `questions`; a reader maps it with `withRetiredShapes` (BP-030).
-  "questions",
   "steers",
   // What its runs spent (FIX-2398): the stored ledger, which a reader folds with `taskRowView`.
   "spend",

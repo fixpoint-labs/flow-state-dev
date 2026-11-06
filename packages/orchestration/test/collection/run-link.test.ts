@@ -17,18 +17,18 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
   taskSchema,
   ticketForClaim,
   toEmittedTask,
   type Task,
-  type TaskChangeEvent,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskInit,
   type TaskRunLink,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import { taskEnvelopeSchema } from "../../src/tasks/collection/define-task-collection";
 import { applyClaimToTask } from "../../src/tasks/collection/internal";
 import {

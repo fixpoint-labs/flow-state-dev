@@ -75,12 +75,14 @@ It comes down to a hover that reads *"per BP-030"*: FIX-and-LAB-only leaves 249 
   no hover: its strings are UI copy, and one rule over every published `src` is cheaper than an
   exception.
 - **No allow-list option.** Ids stored as data are moved, not
-  excepted: `RetiredShapeEntry.owner`'s seven values become `//` comments and the unread field
-  goes (an exported type change, noted in its changeset). A real exception takes a reasoned
+  excepted: `RetiredShapeEntry.owner`'s values become `//` comments and the unread field
+  goes (an exported type change, noted in its changeset), for whichever entries FIX-2454 has not
+  already deleted under epic D4. A real exception takes a reasoned
   `eslint-disable-next-line`; the tarball scan still reads it.
 - **An error names the fix**, and links a docs page only where one explains it (none does for
-  FIX-735's case). A retired-value refusal (*"which was removed (FIX-918)"*) takes its text from
-  FIX-2454's helper: a removal version, never an issue.
+  FIX-735's case). A retired-value refusal (*"which was removed (FIX-918)"*) is deleted by
+  FIX-2454 under [epic D4](../../epics/FIX-2447/DECISIONS.md#d4); one that is still there when this lands is swept like any
+  other string.
 - **The rule is `fsd/no-tracker-ids`**, its file `scripts/eslint-rules/no-tracker-ids.mjs`
   beside the other repo checks, its tests run by `node --test` in the existing lint job.
 
@@ -115,6 +117,10 @@ and `reuse-review` over the whole set.
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). A retired-value refusal no longer takes its text from FIX-2454's
+  helper, which is not built: FIX-2454 deletes those refusals. `RetiredShapeEntry.owner` applies
+  to whichever entries remain. Direction unchanged.
 - **Draft** — framed as what an adopter reads, measured on the published tarballs rather than
   the workspace; one lexical ESLint rule over JSDoc and literals, landed as a bulk-suppression
   ratchet, building on the existing lint step and the publish set.

@@ -519,7 +519,7 @@ function toSteerAnswers(value: unknown): Array<{ id: string; answers?: string }>
  * a title only when it differs from `goal`.
  */
 export function toBoardRow(boardRef: string, ownerSessionId: string, topic: string, stored: unknown): BoardRow {
-  // A row stored in an older shape (its holds under `questions`, say) reads in the current one (BP-030).
+  // A row stored `blocked` (orchestration 0.5.0 and earlier) reads as `held`.
   const data = withRetiredShapes(stored);
   return {
     boardRef,

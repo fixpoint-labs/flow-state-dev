@@ -3,23 +3,38 @@
 [Spec](SPEC.md) · **Decisions**
 
 The calls that sit above any single child: what was chosen, what lost, and what each locks in for
-the 18 children and the closure. D1 to D3 are the sign-off. Q1 is open, and it is the owner's.
+the 18 children and the closure. D1 and D2 are the sign-off. On Nov 6 the owner answered Q1
+(break) and added D4 (no backward-compat code), which amends D3. Nothing is open.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  E["FIX-2447"] --> Q1["Q1 · open · how adopters meet the moved names"]
+  E["FIX-2447"] --> Q1["Q1 · answered Nov 6 · break · no alias"]
   E --> D1["D1 · all 17 review children and a closure, now · legs first"]
   D1 -.->|"rejected"| X1["the seven P1s only"]
   E --> D2["D2 · two kinds of hidden surface"]
   D2 -.->|"rejected"| X2["each child names its own subpath rule"]
-  E --> D3["D3 · a loud refusal for a retired value"]
+  E --> D3["D3 · a loud refusal for a retired value · amended by D4"]
   D3 -.->|"rejected"| X3["each child picks a policy"]
+  E --> D4["D4 · no backward-compat code · the owner, Nov 6"]
+  D4 -.->|"rejected"| X4["aliases · refusals · readers of old shapes"]
 ```
 
 <a name="q1"></a>
-## Q1 · Open · 0.4.0 has shipped: how do adopters meet the names this epic moves?
+## Q1 · Answered (Nov 6): break. A moved name loses its old path, with no alias
+
+**The answer.** The owner, on [#4836](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303): "Remove the aliases, we don't need backward
+compat." A moved or renamed published export loses its old path, with no `@deprecated` alias,
+and ships in whatever minor follows its child. The changeset names the new home (ER-7). The
+removal child and the *Shims* exemption the alias needed are not built. The same day the owner
+widened it to every kind of compat code: [D4](#d4).
+
+**What it costs.** What the ask priced under *break as each lands*: an adopter's upgrade fails
+with "no exported member", up to once per moving child, and only the changeset names the new
+home. The fifth team's *after* is amended to match ([the goal](SPEC.md#five-teams-before-and-after)).
+
+**As asked (Nov 5).** Kept as the record of the fork the owner decided.
 
 **In plain terms.** The brief said FIX-2454 must land before 0.4.0 publishes. Core, engine,
 client and react 0.4.0 went to npm on Nov 3, and orchestration is at 0.5.0. So every root name
@@ -63,9 +78,9 @@ and skip the aliases.
 child. Hold, wrongly: every package's merged work waits for the slowest P1. Break as each lands,
 wrongly: adopters pay several breaking upgrades, which is the debt this epic exists to clear.
 
-![Q1: alias then one removal, recommended, beside holding the next minor and breaking as each lands. Decides it: how many times an adopter's upgrade breaks. Price: old names autocomplete, struck out, until the removal minor. Flips if adopters on 0.4.0 are few enough to ignore](figures/open-release-target.svg)
+![Q1, as asked on Nov 5, before the owner chose break: alias then one removal, recommended, beside holding the next minor and breaking as each lands. Decides it: how many times an adopter's upgrade breaks. Price: old names autocomplete, struck out, until the removal minor. Flips if adopters on 0.4.0 are few enough to ignore](figures/open-release-target.svg)
 
-It comes down to breaking once, warned first: only the alias does both.
+It came down to breaking once, warned first. The owner chose breaking as each lands, unwarned.
 
 <a name="d1"></a>
 ## D1 · All 17 review children and a closure, now, with exit triggers on FIX-2463 and FIX-2462
@@ -98,7 +113,7 @@ It comes down to the duplicates: they are all in P2, so P1 alone can't meet the 
 | **Instead of** | Each child naming its own rule. FIX-2448 asks for a published, undocumented `core/internal`; FIX-2459 asks for an *unpublished* orchestration `./internal` |
 | **Because** | Workforce imports orchestration's filing helpers at runtime (`conversation-board/board.ts`), so an unpublished subpath would be missing from workforce's tarball and its first install would fail. Both kinds already exist: `client/./internal` is published and read by our packages; orchestration's `./inbox/check` is hidden by `publishConfig` and read only by repo tests |
 | **Locks in** | `/internal` is published, undocumented and outside semver, only `@flow-state-dev/*` packages import it, and a package has at most one (core folds `./items/internal` under it or keeps it as that one). Safe only while sibling packages pin each other exactly, as `workspace:*` publishes today. A `publishConfig`-hidden entry is for repo tests and tools. A named public subpath is documented and semver-covered. `/internal` is a plain published subpath and may appear in an editor's completions. It is held by the exports map, the export check's import census (no app, example or docs page imports an `/internal` path) and the path name, not by hiding it ([settled below](#d2-completions)). `stripInternal` is out: sibling packages compile against the published `.d.ts` |
-| **The set's `/internal` entries** (spec set, Nov 5) | Five new, one per package: core (FIX-2448), engine (FIX-2449), orchestration (FIX-2459), react (FIX-2455), contracts (FIX-2454, home of the shared refusal helper), beside client's. Each is a plain published subpath; none ships a completions fix. **Five per-package entries, not one shared seams entry** (settled after the refuted POC): a shared entry has to live in one package and re-export the others' seams, so it would import upward (contracts or core reaching engine and orchestration) or need a new package that depends on all of them. Hiding is equal either way, since the fence is the path name and the census, so the shared shape buys nothing. FIX-2448, 2449, 2454, 2455 and 2459 each add their own package's entry |
+| **The set's `/internal` entries** (spec set, Nov 5; amended Nov 6) | Four new, one per package: core (FIX-2448), engine (FIX-2449), orchestration (FIX-2459), react (FIX-2455), beside client's. Contracts' entry, planned as the home of the shared refusal helper, is not built: [D4](#d4) withdrew the helper. Each is a plain published subpath; none ships a completions fix. **Five per-package entries, not one shared seams entry** (settled after the refuted POC): a shared entry has to live in one package and re-export the others' seams, so it would import upward (contracts or core reaching engine and orchestration) or need a new package that depends on all of them. Hiding is equal either way, since the fence is the path name and the census, so the shared shape buys nothing. FIX-2448, 2449, 2455 and 2459 each add their own package's entry |
 | <a name="d2-completions"></a>**Settled: hiding `/internal` from completions** (Nov 5, the coordinator's POC) | **REFUTED** for `typesVersions` and the exports `types` condition: under `bundler` and `node16` resolution, path completions read the exports map, and neither hides an entry while a sibling package still resolves it. The only mechanism that worked, a custom export condition read through `customConditions`, would break an adopter's bundler resolving published workforce's runtime import of `orchestration/internal`, so it is **not adopted**. The fence is the exports map, the import census and the path name. No child ships a completions fix, and the closure has no completions assertion |
 
 ![D2: two kinds of hidden surface, chosen, beside each child naming its own rule. Decides it: a published package that imports a hidden path. Price: internal subpaths ship in the tarball. Flips if no published package imported another's internals](figures/d2-hidden-surface.svg)
@@ -108,6 +123,11 @@ It comes down to workforce's tarball: an unpublished `./internal` breaks its fir
 <a name="d3"></a>
 ## D3 · A retired value gets a loud refusal with a removal version; only published shapes are dual-read
 
+> **Amended (Nov 6) by [D4](#d4).** Neither half stands. A retired value is not refused, and no
+> shape is dual-read, published or not; the helper, its tables, removal versions and the expiry
+> check are not built. What survives is the half both cards share: code for names no published
+> version carried is deleted (FIX-2454's 19). The card below is the history.
+
 | | |
 |---|---|
 | **Instead of** | Each child picking, as the window's three renames did: a throw, a permanent map, and nothing |
@@ -116,7 +136,27 @@ It comes down to workforce's tarball: an unpublished `./internal` breaks its fir
 
 ![D3: a loud refusal with a removal version, chosen, beside each child picking. Decides it: old code that still passes a retired value. Price: one refusal per value until its version. Flips if we reach 1.0](figures/d3-rename-rule.svg)
 
-It comes down to `human_approval`: without a refusal, old code loses its Inbox item silently.
+It came down to `human_approval`: without a refusal, old code loses its Inbox item silently. D4
+accepts that price.
+
+<a name="d4"></a>
+## D4 · No backward-compat code in this epic (the owner, Nov 6)
+
+| | |
+|---|---|
+| **Instead of** | [D3](#d3)'s loud refusal with a removal version and its dual-read of published shapes, and [Q1](#q1)'s recommended alias |
+| **Because** | The owner, in the coordinating session on Nov 6: "We are not worried about backwards compatibility, all PRs can streamline themselves further if there is an opportunity to not have additional code to support older versions." And on Q1: "Remove the aliases" ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). Pre-1.0 every minor is breaking already, and compat code is surface this epic exists to shrink |
+| **Locks in** | No child adds, and each may delete where it streamlines: a `@deprecated` alias or re-export at an old path; a reader of an old stored or persisted shape; a retired-name table, refusal or friendly error; a migration shim. **BP-030 is waived for this epic**, not rewritten. BP-034's re-export rule reads the paths the docs name after a move, not the old ones. The changeset names each moved or retired name's replacement (ER-7) |
+| **The one guard** | Code whose absence would *silently corrupt data*, not merely fail, is raised to the coordinator before it is removed. A compile error, a thrown error, an ignored option or an unanswerable stop is failing, not corrupting |
+| **The price** | `ctx.suspend({ reason: "human_approval" })` still runs as a custom reason with no Inbox item, as on 0.4.0, and a stored 0.2.0 `human_*` stop is not read as a user's stop. A moved import fails with "no exported member", and only the changeset names its home |
+
+![D4: no backward-compat code, chosen, beside D3's refusals and Q1's aliases. Decides it: how much code the packages carry for older versions. Price: old code that passes a retired value isn't stopped, and a moved import's error names nothing. Flips if adopters must keep running across upgrades](figures/d4-no-compat.svg)
+
+It comes down to the code: every alias, refusal and reader is surface an adopter autocompletes or
+a maintainer carries, and the owner chose to carry none.
+
+**What would change my mind:** an adopter base that must keep running across upgrades, at 1.0 or
+for a paying adopter on a pinned minor. Then D3's refusal and an alias window come back.
 
 ## Who owns what
 
@@ -128,8 +168,8 @@ Each rule has one owner. A *uses* cell is a place where a child must not decide 
 |---|---|---|---|
 | ER-1 | Pending the owner, the recommended reading: every root export of a package the set owns has an outside consumer or a README entry, and every other published root is held at its ratchet baseline, for [FIX-2568](https://linear.app/fixpoint-labs/issue/FIX-2568) (workforce's wider root and memory) and [FIX-2569](https://linear.app/fixpoint-labs/issue/FIX-2569) (the other nine), related issues, not children. No app, example or docs page imports an `/internal` path. An outside consumer is adopter code (`apps/` except the DevTool, `examples/`, `labs/`) or the docs site. Another `@flow-state-dev/*` package's import does not count, and neither does `goals/`, which is ours and may import `/internal`. A README passage written for framework authors moves to `docs/architecture/`. One import census, FIX-2448's, is read by every check that needs it. The check lands first, as a ratchet on today's baseline, so the roots stop growing while the set is specced. It holds every published root from its first day, and the set cleans the roots it owns (the goal's *Surface* row). Blocks and resources stay public library API; Workforce's app-level flows are Shadcn-style copies and are not root surface | FIX-2448 builds it, its first PR · FIX-2449 adds collisions | CI, gating every PR; leg b for installed-name collisions |
 | ER-2 | Hidden surface is one of D2's two kinds | FIX-2448 | Each spec in the spec set; packed-install |
-| ER-3 | Every retired value follows D3; every moved export follows Q1's answer | FIX-2454 | Each spec in the spec set; closure leg b |
-| ER-4 | A new check extends what exists: the export check reads `mechanism-exports.mjs`'s `packageExports`, split per entry once, plus an import census, FIX-2162's caller-census pattern, not Fallow, which keeps its dead-code jobs; collisions are one workspace assertion over every published root; `ctx as never` is a `no-restricted-syntax` entry; the tracker-id rule is the one custom ESLint rule; the retired-name expiry check extends the vocabulary sweep; the goal's judge extends `run.mjs`'s `CHECKS` | FIX-2453 decides the lint shape at spec time | Cross-spec review |
+| ER-3 | Every moved or retired name follows [D4](#d4) and Q1's answer: no alias, refusal, reader of an old shape or shim; the changeset names the new home (ER-7). What would silently corrupt data is raised first | FIX-2454 | Implementation review; closure leg b (`shims.never-published`) |
+| ER-4 | A new check extends what exists: the export check reads `mechanism-exports.mjs`'s `packageExports`, split per entry once, plus an import census, FIX-2162's caller-census pattern, not Fallow, which keeps its dead-code jobs; collisions are one workspace assertion over every published root; `ctx as never` is a `no-restricted-syntax` entry; the tracker-id rule is the one custom ESLint rule; the goal's judge extends `run.mjs`'s `CHECKS` | FIX-2453 decides the lint shape at spec time | Cross-spec review |
 | ER-5 | Nothing an adopter reads carries a tracker or process id: JSDoc, error and log strings, conformance titles, copied registry and example files, including each child's own new ones. A `//` comment is not read, so it may keep a pointer | FIX-2453 | The lint |
 | ER-6 | No second way to do a job. FIX-2463 shows capabilities and the existing bundles can't carry a flow part. FIX-2455's React read builds on `useAction`, and its server read is one request by id from the existing status route (the owner's answer), sharing only the list's result projection; the handle keeps one wait, and `testFlow` settles through that same read. FIX-2456 extends the registry's `ConversationScrollButton`. FIX-2459 keeps `./tasks` as the one browser-safe entry. FIX-2460's answer helper goes through the engine's answer path | Each child | `reuse-review` in the spec set |
 | ER-7 | One changeset per published package a child changes, one line, naming each moved name's new home | FIX-2454 | Implementation review |
@@ -148,13 +188,12 @@ Each rule has one owner. A *uses* cell is a place where a child must not decide 
 | Orchestration's exports | FIX-2459 (with FIX-2462's design as [its appendix](../../issues/FIX-2459/appendix-method-table.md)) | FIX-2459 moves names to `./internal`, then rewrites the methods in its own follow-on method-table PR |
 | Benchmark entries | FIX-2459, 2460 | FIX-2460 owns `testing/benchmark` and `patterns/benchmark`; FIX-2459 leaves patterns' benchmark export block to it |
 | `eslint.config.mjs` | FIX-2453, 2457 | The custom rule and the `no-restricted-syntax` entry; whichever lands second rebases |
-| The shared refusal helper | FIX-2454 × FIX-2452, 2459 (and FIX-2535, outside the set) | FIX-2454 blocks only the PRs that call `refuseRetired` |
 | The status route | FIX-2455 × FIX-2460 | FIX-2460's `testFlow` settles through FIX-2455's by-id read |
 | Outside the set | FIX-2551 × FIX-2455 (react internals); FIX-2540 × FIX-2456 (`useJumpToLatest`) | Whichever lands second rebases |
 | The quick start | FIX-2451, 2452 | FIX-2451 fixes it now; FIX-2452 updates the snippet when the shorthand ships |
 | Kitchen Sink | FIX-2554, 2450, 2452, 2458, 2456, 2461 | Each edits only its own files; FIX-2461 last |
 | Task-collection storage primitives | FIX-2459's method-table PR × FIX-2532 (`findBy`, #4757, outside the set) | `findBy` is written on the method table's storage primitives; whichever lands second rebases. FIX-2459's `./internal` move also takes `orchestration/src/tasks/collection/partition.ts`, which #4757 edits |
-| Scope-state defaults | FIX-2457 × FIX-2576 | FIX-2576's runtime merge of block- and capability-declared state defaults (FIX-2554 shipped the flow `stateSchema` fill) matches the type-level `extendSchema` in `core/src/capability/merge.ts`. One field declared in two places with a different type or default is refused at flow definition, and the error names the field and both declaring blocks; identical declarations merge silently. That error is not a retired value, so it doesn't use `refuseRetired` and carries no tracker id ([ER-5](#who-owns-what)) |
+| Scope-state defaults | FIX-2457 × FIX-2576 | FIX-2576's runtime merge of block- and capability-declared state defaults (FIX-2554 shipped the flow `stateSchema` fill) matches the type-level `extendSchema` in `core/src/capability/merge.ts`. One field declared in two places with a different type or default is refused at flow definition, and the error names the field and both declaring blocks; identical declarations merge silently. That error carries no tracker id ([ER-5](#who-owns-what)) |
 | The closure manifest | FIX-2564 and every cell-owning child | FIX-2564 owns the assertions and [the grid](../../issues/FIX-2564/SPEC.md#what-changes); each child flips only its own cells |
 
 ## Decided, not asked
@@ -164,8 +203,9 @@ Each rule has one owner. A *uses* cell is a place where a child must not decide 
 - **Overlaps:** FIX-2455 and FIX-2043 both read an action's result by request id; FIX-2457 sits
   beside FIX-2197, which scopes this assignability gap out.
 - **Linear sequencing:** FIX-2448 blocks FIX-2449 and FIX-2458; FIX-2450 blocks FIX-2460, and
-  FIX-2455 blocks the PR where FIX-2460's answer helper settles; FIX-2454 blocks the two PRs that
-  call its helper; every child blocks FIX-2562. FIX-2564 blocks only the closure: a child that merges first has its rows
+  FIX-2455 blocks the PR where FIX-2460's answer helper settles; every child blocks FIX-2562.
+  FIX-2454 no longer blocks FIX-2452's or FIX-2459's PRs: [D4](#d4) withdrew the helper they
+  would have called. FIX-2564 blocks only the closure: a child that merges first has its rows
   written `expect: pass`.
 - **The goal's legs land first, in their own child.** FIX-2562 can't carry an early PR: it is
   blocked by every other child, and its one PR opens on a clean run
@@ -174,7 +214,7 @@ Each rule has one owner. A *uses* cell is a place where a child must not decide 
 - **Verification is consolidated, not stacked.** Workspace ratchets gate PRs; the legs run
   non-gating on `main`; the manifest maps each row to one place it is checked, which is also the
   closure's skip list for item 3.
-- **Outside the set:** client-writable resource state, for a sibling issue. FIX-2454's rule travels as D3; its only blocks relations are to the two PRs that call its helper (FIX-2452's slot refusals, FIX-2459's claim-order refusal).
+- **Outside the set:** client-writable resource state, for a sibling issue. FIX-2535 (GitHub webhooks' `sessionId`) planned to call FIX-2454's helper; under D4 there is none, which the coordinator tells it.
 - **Kitchen Sink's registry copies stay** (spec set, decided by the epic-agent). There are 43, byte-identical and drift-tested in CI. FIX-2461 adds one refresh command, and the hand sync goes. Deleting them would make Kitchen Sink build in a way no adopter's app can, while an install leaves owned copies in the adopter's app.
 - **FIX-2451 and FIX-2554 take the direct route** as bugs. FIX-2554 joined the set on Nov 4.
 - **The `scheduler` slot** is FIX-2452's to remove or keep. R-11, which would make it real, is
@@ -239,5 +279,13 @@ Spec-set review round 1 (Nov 5), recorded, not folded.
   conflict covers a different type as well as a different default, names the field and both
   declaring blocks, and lets identical declarations merge (seam row, FIX-2564's cell, FIX-2562's
   row). D2 records five per-package `/internal` entries over one shared seams entry.
+- **Owner amendment (Nov 6), a follow-up PR from `main`.** The owner answered Q1 on
+  [#4836](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303), break, and in the coordinating session ruled out compat code of any kind, now
+  [D4](#d4). Q1 closed; D3 amended by D4; ER-3 and ER-4 re-derived; the refusal-helper seam
+  dropped and FIX-2454's blocks relations with it; D2's `/internal` entries down to four (no
+  `contracts/internal`); the ownership figure's ER-3 label and the box's fence relabelled. In
+  `SPEC.md`: the fifth team's *after*, the FIX-2454 row, sequencing, the debt and the sign-off.
+  Every child spec was swept for aliases, refusals, readers of old shapes and shims; the PR body
+  lists each one touched. Original review: [#4772](https://github.com/fixpoint-labs/flow-state-dev/pull/4772).
 
-**Open:** [Q1](#q1).
+**Open:** none. Q1 was answered on Nov 6 ([above](#q1)).

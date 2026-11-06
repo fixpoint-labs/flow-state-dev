@@ -138,43 +138,6 @@ type AnyFlowInstanceOptions = FlowInstanceOptions<
   Record<string, DeclaredResourceEntry>, ZodTypeAny
 >;
 
-function rejectRemovedMiddleware(value: object | undefined, location: string): void {
-  if (value !== undefined && Object.hasOwn(value, "middleware")) {
-    throw new Error(
-      `${location} uses the removed "middleware" option. ` +
-      "Middleware is not executed; move policy checks to the HTTP authentication layer or block logic."
-    );
-  }
-}
-
-/**
- * Reject the removed flow-level `work` option.
- *
- * `work` declared four lifecycle hooks (`onStarted` / `onCompleted` /
- * `onErrored` / `onFinished`) that the engine never invoked — nothing read
- * `flow.work` to dispatch them. They are gone from `FlowDefinition` and
- * `FlowInstanceOptions` (FIX-766), so a TypeScript caller passing a fresh
- * object literal now fails to compile; this is the runtime half, for plain JS
- * and for a non-fresh object TypeScript lets through.
- *
- * Failing loudly matters even though the hooks never fired. Silently dropping
- * the key would take the resource declarations with it: the hooks WERE walked
- * for declaration discovery, so a resource declared only on one of them was
- * registered, and after the removal it is not. That is a real behaviour change
- * hiding behind a dead contract, and it is exactly the case BP-030 has in mind
- * when it says to reject removed keys loudly.
- */
-function rejectRemovedWork(value: object | undefined, location: string): void {
-  if (value !== undefined && Object.hasOwn(value, "work")) {
-    throw new Error(
-      `${location} uses the removed "work" option. ` +
-      "Its four hooks were never invoked, so no lifecycle behaviour is lost — but they were walked for " +
-      "resource declaration, so any resource declared only there is no longer registered. " +
-      "Move those declarations onto a block that runs, and dispatch background steps with `.sideChain()`."
-    );
-  }
-}
-
 /** The definition-only options {@link rejectDefinitionOnlyOptions} refuses. */
 const DEFINITION_ONLY_INSTANCE_OPTIONS = [
   "resourceVisibility",
@@ -1366,10 +1329,6 @@ function normalizeFlowConfig(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
 ): NormalizedFlowConfig {
-  rejectRemovedMiddleware(definition, `Flow "${definition.kind}"`);
-  rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
-  rejectRemovedWork(definition, `Flow "${definition.kind}"`);
-  rejectRemovedWork(options, `Flow "${definition.kind}" instance options`);
   rejectDefinitionOnlyOptions(options, definition.kind);
   rejectInstanceCardinality(options, definition.kind);
   rejectInstanceConfigSchema(options, definition.kind);

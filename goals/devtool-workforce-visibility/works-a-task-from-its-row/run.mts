@@ -33,7 +33,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Locator, Page } from "playwright";
-import { SERVER_ONLY_TASK_FIELDS, taskToolSuffix } from "@flow-state-dev/orchestration";
+import { taskToolSuffix, SERVER_ONLY_TASK_FIELDS } from "@flow-state-dev/orchestration/internal";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";

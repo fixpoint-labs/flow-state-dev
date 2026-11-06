@@ -92,6 +92,13 @@ export interface WorkspaceConfig {
    * `provisionTimeoutMs`. Absent, nothing runs.
    */
   setup?: WorkspaceSetup;
+  /**
+   * The GitHub repository (`host/owner/name`) the source repository's pinned
+   * remote URL stands for, for an accept that opens a pull request. Passed to
+   * the workspace host as its `pullRequestRepo`. Absent, it is read from a
+   * GitHub-shaped URL, and a remote that names none offers no pull request.
+   */
+  pullRequestRepo?: (url: string) => string | undefined;
 }
 
 /** One provisioned checkout. */
@@ -651,6 +658,7 @@ export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.
     source: () => ({ kind: "repo", repo: sourceRepo, baseRef: config.baseRef }),
     ...(config.provisionTimeoutMs !== undefined ? { provisionTimeoutMs: config.provisionTimeoutMs } : {}),
     ...(config.setup !== undefined ? { setup: config.setup } : {}),
+    ...(config.pullRequestRepo !== undefined ? { pullRequestRepo: config.pullRequestRepo } : {}),
     now,
   });
 }

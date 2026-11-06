@@ -60,7 +60,7 @@ describe("a coding task's popup has its buttons", () => {
     // Cancel asks once, then the row reads cancelled, and the buttons follow it.
     fireEvent.click(within(popup).getByRole("button", { name: "Cancel" }));
     fireEvent.click(within(popup).getByRole("button", { name: "Yes" }));
-    await waitFor(() => expect(popup.querySelector("[data-popup-status]")?.textContent).toBe("cancelled"));
+    await waitFor(() => expect(popup.querySelector("[data-overlay-status]")?.textContent).toBe("cancelled"));
     expect(buttons(popup)).toEqual(["Retry", "Re-run on Claude Code", "Re-run on Codex"]);
   });
 

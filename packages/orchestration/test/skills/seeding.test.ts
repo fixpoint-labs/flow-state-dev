@@ -154,27 +154,3 @@ describe("ensureSeeded", () => {
     expect(restored.contextMode).toBeUndefined();
   });
 });
-
-describe("ensureSeeded — a source that still declares `agents:`", () => {
-  // A catalog resolved per execution has no construction step to refuse at,
-  // so seeding is where such a skill meets the refusal. It is not written, and
-  // the log says why — seeding never blocks a turn on one bad source.
-  it("does not seed it, and logs that `agents:` was removed, naming the skill", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const c = createMockSkillsCollection();
-      await ensureSeeded(c, [
-        {
-          name: "team-skill",
-          skillMd: `---\ndescription: Team skill\nagents:\n  briefer:\n    prompt: You write briefs.\n---\n\nPlan with createTask, then runBoard.`,
-        },
-      ]);
-      expect(c._store.has("skills/team-skill/SKILL.md")).toBe(false);
-      expect(warn.mock.calls.map((call) => String(call[0])).join("\n")).toMatch(
-        /failed to seed "team-skill": SKILL\.md `agents:` was removed from skills/,
-      );
-    } finally {
-      warn.mockRestore();
-    }
-  });
-});

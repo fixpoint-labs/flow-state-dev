@@ -137,11 +137,10 @@ describe("the Inbox against a real Lab", () => {
     expect(reconcileInbox(items, truth)).toMatchObject({ green: true });
   });
 
-  // FIX-2317: a row stored before the rename keeps its holds as `questions`. The server's claim
-  // still reads them, so a browser list that dropped them would leave the task waiting on a
-  // question nobody could answer. A run's stop would still list from its session; a question
-  // kept on the row lists only from the row, so the check is on one.
-  it("a row stored with its holds under questions still lists its question, answerable, through the resource route", async () => {
+  // A run's stop would still list from its session; a question kept on the row lists only
+  // from the row, so a browser list that missed it would leave the task waiting on a question
+  // nobody could answer.
+  it("a question kept on a row's holds lists, answerable, through the resource route", async () => {
     const { client, flowState } = await labWithState();
     await client.flow(COORDINATOR_FLOW).send("respond", { message: "ship it" }, { sessionId: "ops.desk" });
     await settled(client, 2);
@@ -151,13 +150,13 @@ describe("the Inbox against a real Lab", () => {
     expect(stored).toHaveLength(2);
     const [key, value] = stored[0]!;
     const { holds, ...rest } = value.state as Record<string, unknown>;
-    const question = { id: "q_legacy", actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which region?" } };
-    expect((await store.set("user", cell, key, { ...rest, questions: [...(holds as unknown[]), question] } as never, value.version)).ok).toBe(true);
-    const legacy = await eventually(async () => {
+    const question = { id: "q_row", actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which region?" } };
+    expect((await store.set("user", cell, key, { ...rest, holds: [...(holds as unknown[]), question] } as never, value.version)).ok).toBe(true);
+    const kept = await eventually(async () => {
       const snapshot = (await createLabReader(client).read()) as Loaded;
-      const listed = (snapshot.inbox?.ok ? snapshot.inbox.value : []).flatMap((item) => item.holds).find((hold) => hold.id === "q_legacy");
+      const listed = (snapshot.inbox?.ok ? snapshot.inbox.value : []).flatMap((item) => item.holds).find((hold) => hold.id === "q_row");
       return listed?.answerable === true ? listed : undefined;
-    }, "the legacy row's question listed, answerable");
-    expect(legacy).toMatchObject({ source: { kind: "row" }, ask: { kind: "question", prompt: "Which region?" } });
+    }, "the row's question listed, answerable");
+    expect(kept).toMatchObject({ source: { kind: "row" }, ask: { kind: "question", prompt: "Which region?" } });
   });
 });

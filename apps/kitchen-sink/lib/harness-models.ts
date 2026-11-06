@@ -10,8 +10,8 @@
  * restarts, and asks again on the next page load after one that wasn't.
  * Browser code imports only the types.
  *
- * Kitchen Sink never checks a picked id against the list: the harness judges
- * what it runs.
+ * The frame drops a pick the list no longer holds (falling back to the
+ * default); beyond that, the harness judges what it runs.
  */
 import { claudeCodeModelChoices } from "./claude-code-mode";
 import { codexModelChoices } from "./codex-mode";

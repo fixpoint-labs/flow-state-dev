@@ -3,7 +3,8 @@
 [Spec](SPEC.md) · **Decisions**
 
 What was considered, what was chosen, and what each choice locks in. D1 to D3 are the sign-off
-surface. Moves off a root follow ER-3 and Q1's answer; retired keys follow the epic's D3.
+surface. Moves off a root follow ER-3 with no alias (Q1, answered break); retired keys follow
+the epic's [D4](../../epics/FIX-2447/DECISIONS.md#d4): no refusal. D2 is amended to match.
 
 ## The tree
 
@@ -11,7 +12,7 @@ surface. Moves off a root follow ER-3 and Q1's answer; retired keys follow the e
 flowchart TD
   I["FIX-2452"] --> D1["D1 · no stores runs in memory · said at startup"]
   D1 -.->|"rejected · the first file still writes a store line"| X1["stores required · a bare adapter accepted"]
-  I --> D2["D2 · queue and scheduler leave · naming one is refused · blobs stays reserved"]
+  I --> D2["D2 · queue and scheduler leave · naming one fails to compile · blobs stays reserved"]
   D2 -.->|"rejected · the type promises what nothing delivers"| X2["kept as reserved no-ops"]
   D2 -.->|"rejected · FIX-824 backs blobs · flip taken"| X2b["blobs refused too"]
   I --> D3["D3 · the adapter factory on the root · the rest in ./host"]
@@ -40,16 +41,21 @@ refuses when `NODE_ENV` is `production`, a one-line fix at boot.
 <a name="d2"></a>
 ## D2 · `queue` and `scheduler` leave the profile; naming one is refused. `blobs` stays reserved
 
+> **Amended (Nov 6) by [epic D4](../../epics/FIX-2447/DECISIONS.md#d4).** The slots still leave, but naming one is not refused
+> at runtime: there is no `refuseRetired` and no removal version. With the keys gone from
+> `CapabilitySlotMap`, a typed profile that names one fails to compile, and the changeset names
+> where each job lives. The slot PR no longer waits on FIX-2454.
+
 | | |
 |---|---|
 | **Instead of** | Keeping them as reserved slots that construct and do nothing; or refusing `blobs` too |
-| **Because** | Each is a promise nothing keeps, and none has a store coming. Queues come from a worker adapter and schedules from the schedule index, and three docs pages explain the gap. Old code that names one gets the epic's D3: a loud refusal naming the replacement and a removal version, through FIX-2454's `refuseRetired` |
+| **Because** | Each is a promise nothing keeps, and none has a store coming. Queues come from a worker adapter and schedules from the schedule index, and three docs pages explain the gap. Old code that names one fails to compile once the keys leave `CapabilitySlotMap` (amended: epic D4 replaced D3's loud refusal) |
 | **Locks in** | A slot arrives with the store that backs it, and is reserved only while that store is in flight. `blobs` is: FIX-824 (epic FIX-2516) backs it with attachment bytes, so this flip is taken for `blobs` alone (EM call on #4772, Nov 5). It stays in `CapabilitySlotMap` and in `FORWARD_COMPATIBLE_SLOTS`'s skip branch until FIX-824 fills it, and the docs keep it as reserved. Kitchen Sink's `scheduler: pgStores` is the one repo caller, and goes with this change. `CapabilitySlot` is the map's keys, so Vercel's adapter drops `scheduler` from its `capabilities` and its test changes. At runtime an unknown name in an adapter's list, from an older adapter, is ignored, not refused |
 
-![D2: what happens to queue and scheduler, the slots with no store coming. Removed and refused, chosen, beside kept as reserved no-ops. Decides it: every slot a reader can name does something or has its store coming; blobs stays reserved for attachments. Price: code that names one fails at construction. Adding a real one later is the same work either way. Flips if a store for one of them is in the next minor, already taken for blobs](figures/d2-retired-slots.svg)
+![D2: what happens to queue and scheduler, the slots with no store coming. Removed from the type, chosen, beside kept as reserved no-ops. Decides it: every slot a reader can name does something or has its store coming; blobs stays reserved for attachments. Price: code that names one fails to compile. Adding a real one later is the same work either way. Flips if a store for one of them is in the next minor, already taken for blobs](figures/d2-retired-slots.svg)
 
 It comes down to what a reader learns: `queue` and `scheduler` teach two things that don't exist
-and aren't coming. `blobs` is coming, so refusing it now would have FIX-824 un-refuse it and walk
+and aren't coming. `blobs` is coming, so removing it now would have FIX-824 add it back and walk
 back goal check (c).
 
 <a name="d3"></a>
@@ -59,14 +65,14 @@ back goal check (c).
 |---|---|
 | **Instead of** | Both families on the root, as today; or deleting the 21 per-store constructors no outside package imports |
 | **Because** | The root is what autocomplete shows, and the docs teach one factory. The registry factories have real callers (the CLI, Vercel's adapter, a migration script, 14 goals), and the per-store constructors are documented in each README. Moving keeps every capability one import away. The entry is `./host` because its reader is `engine/host`'s: engine moves its own registry factory and per-store constructors there, and the store packages' callers are hosts and adapters. An adopter meeting both sees one rule |
-| **Locks in** | `@flow-state-dev/store-sqlite/host` and `@flow-state-dev/store-postgres/host` are public, documented and semver-covered. Root names that move reach adopters per Q1's answer. Engine's registry factories and per-store constructors move under FIX-2449's `engine/host` |
+| **Locks in** | `@flow-state-dev/store-sqlite/host` and `@flow-state-dev/store-postgres/host` are public, documented and semver-covered. Root names that move go with no alias (Q1, answered break). Engine's registry factories and per-store constructors move under FIX-2449's `engine/host` |
 
 ![D3: what a store package's root shows. The adapter factory and schedule index, rest in ./host, chosen, beside both families on the root and beside deleting the per-store constructors. Decides it: autocomplete shows 3 or 4 names, not 20 or 22. Price: a caller changes one import, and ./host is one more entry to keep. Flips if the constructors stay unused for a minor](figures/d3-store-roots.svg)
 
 It comes down to autocomplete: today's root shows two families before the one we teach.
 
 **What would change my mind:** `./host`'s per-store constructors still unused a minor after
-the move. Then delete them in the minor that removes Q1's aliases, if Q1 takes that option.
+the move. Then delete them in the next minor: Q1 was answered break, so no alias minor waits.
 
 ## Decided, not asked
 
@@ -74,13 +80,12 @@ the move. Then delete them in the minor that removes Q1's aliases, if Q1 takes t
 - **One normalisation point for `stores`.** The `createFlowState` constructor turns a bare
   adapter or nothing into `{ default: { primary } }` before anything reads it, replacing the raw options it keeps. Every reader goes
   through it: profile keys, the `defaultProfile` and `FSD_ENV` checks, `collectAdapters`,
-  `meta.declaredSlots`, runtime resolution. The retired-slot refusal runs there too. An object
+  `meta.declaredSlots`, runtime resolution. An object
   with a `resolve` function and a `capabilities` array is an adapter; a slot map never has one.
 - **Order and owners.** The engine half of D3 (its registry factories and per-store constructors to
   `engine/host`) is this issue's, per the epic's seam, and lands after FIX-2449 creates that subpath
-  and its explicit root list; until then it waits as its own PR. The slot refusals call FIX-2454's
-  `refuseRetired`, which carries the removal version, so their PR is blocked by FIX-2454; the rest
-  of the change does not wait. Kitchen Sink's `fsdev.config.ts` edit (dropping `scheduler: pgStores`)
+  and its explicit root list; until then it waits as its own PR. Nothing waits on FIX-2454: the
+  slot removal adds no refusal (epic D4). Kitchen Sink's `fsdev.config.ts` edit (dropping `scheduler: pgStores`)
   is this issue's, on the epic's Kitchen Sink seam, and FIX-2461 lands after it. It edits the two
   stores' rows on FIX-2448's root page.
 - **The bare form is exactly the one-profile map.** `FSD_ENV` naming another profile still
@@ -132,6 +137,11 @@ whole set.
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). D2 keeps removing `queue` and `scheduler` but drops their runtime
+  refusal through `refuseRetired`: a typed profile naming one fails to compile. Signal (c), the
+  flow figure, the two figures' labels and the debt follow. The slot PR no longer waits on
+  FIX-2454; the per-store constructors' deletion no longer waits on an alias minor.
 - **Draft** — framed as defaults that leak into the first file; the `stores` entry widened and
   normalised at one point, the three no-op slots refused, each store root down to its adapter
   factory, and a dev warning on `warnOnceDev`.

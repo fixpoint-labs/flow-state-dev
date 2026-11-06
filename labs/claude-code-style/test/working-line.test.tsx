@@ -10,7 +10,7 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LabAdapter, TaskRow, TaskWork } from "../src/adapter";
-import { SheetArea, SheetProvider } from "../src/components/Sheet";
+import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadView } from "../src/components/ThreadView";
 import { toolRun } from "../src/lib/tool-steps";
@@ -42,11 +42,11 @@ function open(task: TaskRow) {
   } as unknown as LabAdapter;
   // The view is a sheet, which draws into the area a provider hosts.
   const shown = (current: TaskRow) => (
-    <SheetProvider>
-      <SheetArea>
+    <SessionOverlayProvider>
+      <SessionOverlayArea>
         <ThreadView adapter={adapter} sessionId="s-1" task={current} pinned={false} onClose={() => {}} />
-      </SheetArea>
-    </SheetProvider>
+      </SessionOverlayArea>
+    </SessionOverlayProvider>
   );
   const view = render(shown(task));
   const pane = screen.getByRole("dialog", { name: `Task: ${task.title}` });
@@ -109,11 +109,11 @@ function openInPane(task: TaskRow) {
   } as unknown as LabAdapter;
   // The app reads the rows and hands them to the pane (FIX-2399 E1): a row change is a new `tasks` prop.
   const pane = (rows: TaskRow[]) => (
-    <SheetProvider>
-      <SheetArea>
+    <SessionOverlayProvider>
+      <SessionOverlayArea>
         <TasksPane adapter={adapter} sessionId="s-1" tasks={rows} openId={task.id} onOpen={() => {}} onMissing={() => {}} />
-      </SheetArea>
-    </SheetProvider>
+      </SessionOverlayArea>
+    </SessionOverlayProvider>
   );
   const { rerender } = render(pane([task]));
   const showTasks = (rows: TaskRow[]) => rerender(pane(rows));

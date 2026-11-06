@@ -24,10 +24,9 @@
 import path from "node:path";
 import type { InitialSkill } from "@flow-state-dev/core";
 import {
-  parseFrontmatterYaml,
   readSkillsDirectory,
-  splitFrontmatter,
 } from "@flow-state-dev/orchestration";
+import { parseFrontmatterYaml, splitFrontmatter } from "@flow-state-dev/orchestration/internal";
 import {
   REFUSED_SKILL_SCOPE_KEY,
   REFUSED_SKILL_SCOPE_KEY_MESSAGE,
