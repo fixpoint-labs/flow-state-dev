@@ -33,10 +33,8 @@ export {
 } from "./account-probe";
 export { CLAUDE_CODE_PASS } from "./env-pass";
 export {
-  listClaudeModels,
-  type ClaudeModelInfo,
-  type ClaudeModelList,
-  type ListClaudeModelsOptions,
+  listClaudeCodeModels,
+  type ListClaudeCodeModelsOptions,
 } from "./model-list";
 export {
   createClaudeAgentSessionProvider,

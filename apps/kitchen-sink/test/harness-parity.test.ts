@@ -267,3 +267,140 @@ describe("the session flow, for every mode", () => {
     }
   });
 });
+
+/**
+ * The contract every harness owes a HOST (FIX-2458): the jobs an app does with
+ * a harness before and around a run, done the same way for all three, so an
+ * app that offers more than one coding agent writes each job once.
+ *
+ * Read only as a host reads it: each package's public entry, imported as a
+ * namespace when the cell runs (a missing name fails its own cell, not the
+ * file), driven only through the seams the package documents, and judged
+ * against core's shared shapes. No harness's internals are imported.
+ *
+ * Red under main at the merge base: the Cursor list cell (no `listCursorModels`),
+ * the Claude Code list cell (its list was `listClaudeModels`), the base-list
+ * cell (no `HARNESS_BASE_PASS`) and the no-hand-list cell; the Codex list cell
+ * and the pass-list cells pass there, which shows the block reaches the code.
+ */
+describe("the contract every harness owes a host", () => {
+  /** The models every scripted SDK below answers with, in the shared shape they come back in. */
+  const LISTED = [
+    { id: "model-a", label: "Model A", description: "The first", isDefault: true },
+    { id: "model-b", label: "Model B", isDefault: false },
+  ];
+
+  /** A stand-in Codex program answering `model/list` with {@link LISTED}, in the app-server's own rows. */
+  function scriptedCodexProgram(): { path: string; pathDirs: string[] } {
+    const path = join(scratch, "scripted-codex-app-server.mjs");
+    const rows = LISTED.map((m) => ({ id: m.id, model: m.id, displayName: m.label, ...(m.description ? { description: m.description } : {}), hidden: false, isDefault: m.isDefault }));
+    writeFileSync(
+      path,
+      [
+        "#!/usr/bin/env node",
+        'import { createInterface } from "node:readline";',
+        'const say = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");',
+        "for await (const line of createInterface({ input: process.stdin })) {",
+        '  if (line.trim() === "") continue;',
+        "  const m = JSON.parse(line);",
+        '  if (m.method === "initialize") say({ id: m.id, result: {} });',
+        `  else if (m.method === "model/list") say({ id: m.id, result: { data: ${JSON.stringify(rows)}, nextCursor: null } });`,
+        "}",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    return { path, pathDirs: [] };
+  }
+
+  /** Each harness as a host meets it: its entry, its pass-list's name, and its model list driven through its own seam. */
+  const HOSTED = [
+    {
+      mode: "claude-code",
+      entry: () => import("@flow-state-dev/claude-code/sdk") as Promise<Record<string, unknown>>,
+      pass: "CLAUDE_CODE_PASS",
+      list: "listClaudeCodeModels",
+      // The SDK importer: Claude Code's `supportedModels()`, the default as its own row.
+      seam: () => ({
+        importSdk: async () => ({
+          query: (args: { prompt: AsyncIterable<unknown> }) => {
+            void (async () => {
+              for await (const _ of args.prompt);
+            })();
+            return {
+              supportedModels: async () => [
+                { value: "default", resolvedModel: "model-a", displayName: "Default", description: "The first" },
+                { value: "model-a", displayName: "Model A", description: "The first" },
+                { value: "model-b", displayName: "Model B" },
+              ],
+              close: () => {},
+            };
+          },
+        }),
+      }),
+    },
+    {
+      mode: "codex",
+      entry: () => import("@flow-state-dev/codex") as Promise<Record<string, unknown>>,
+      pass: "CODEX_PASS",
+      list: "listCodexModels",
+      // The program option: Codex's app-server, answering `model/list`.
+      seam: () => ({ program: scriptedCodexProgram() }),
+    },
+    {
+      mode: "cursor",
+      entry: () => import("@flow-state-dev/cursor") as Promise<Record<string, unknown>>,
+      pass: "CURSOR_PASS",
+      list: "listCursorModels",
+      // The SDK importer: Cursor's `Cursor.models.list()`, which marks no model default.
+      seam: () => ({
+        importSdk: async () => ({
+          Cursor: {
+            models: {
+              list: async () => [
+                { id: "model-a", displayName: "Model A", description: "The first", variants: [{ params: [], displayName: "Model A", isDefault: true }] },
+                { id: "model-b", displayName: "Model B" },
+              ],
+            },
+          },
+        }),
+      }),
+    },
+  ] as const;
+
+  it("core holds one environment base: the 13 names every harness's child needs", async () => {
+    const { HARNESS_BASE_PASS } = (await import("@flow-state-dev/core/harness")) as Record<string, unknown>;
+    expect(Array.isArray(HARNESS_BASE_PASS), "core/harness exports HARNESS_BASE_PASS").toBe(true);
+    expect([...(HARNESS_BASE_PASS as string[])].sort()).toEqual(
+      ["PATH", "HOME", "USER", "SHELL", "TMPDIR", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"].sort(),
+    );
+  });
+
+  describe.each(HOSTED)("$mode", (harness) => {
+    it("its pass-list holds every name of core's environment base", async () => {
+      const { HARNESS_BASE_PASS } = (await import("@flow-state-dev/core/harness")) as Record<string, unknown>;
+      const pass = (await harness.entry())[harness.pass] as readonly string[] | undefined;
+      expect(pass, `${harness.mode} exports ${harness.pass}`).toBeDefined();
+      for (const name of (HARNESS_BASE_PASS as string[] | undefined) ?? []) expect(pass, name).toContain(name);
+    });
+
+    it("lists its models as core's HarnessModelList, from what its SDK answered", async () => {
+      const list = (await harness.entry())[harness.list] as
+        | ((options: Record<string, unknown>) => Promise<{ status: string; models?: Array<Record<string, unknown>> }>)
+        | undefined;
+      expect(typeof list, `${harness.mode} exports ${harness.list}`).toBe("function");
+      const found = await list!({ env: { PATH: process.env.PATH ?? "" }, timeoutMs: 10_000, ...harness.seam() });
+      expect(found.status, JSON.stringify(found)).toBe("models");
+      // The shared fields, compared alike for all three; Cursor's variants ride beside them.
+      const shared = found.models!.map(({ id, label, description, isDefault }) => ({ id, label, ...(description === undefined ? {} : { description }), isDefault }));
+      // Cursor's catalog marks no model default: a list with no default is a valid answer.
+      const expected = harness.mode === "cursor" ? LISTED.map((m) => ({ ...m, isDefault: false })) : LISTED;
+      expect(shared).toEqual(expected);
+    });
+  });
+
+  it("Kitchen Sink keeps no hand list of Cursor's models", () => {
+    const source = readFileSync(join(import.meta.dirname, "..", "lib/cursor-mode.ts"), "utf8");
+    expect(source).not.toMatch(/CURSOR_MODELS\s*[:=]/);
+    expect(source).toMatch(/listCursorModels/);
+  });
+});

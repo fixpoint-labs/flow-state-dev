@@ -59,6 +59,9 @@ describe("core/harness — the one home of the harness vocabulary", () => {
       "OBSERVED_PULL_REQUESTS",
       "recordPullRequests",
       "harnessEnv",
+      "HARNESS_BASE_PASS",
+      "HarnessModelInfo",
+      "HarnessModelList",
       "harnessSteering",
       "formatRunDuration",
     ]) {

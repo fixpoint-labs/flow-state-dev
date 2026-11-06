@@ -57,7 +57,6 @@ import {
   TESTED_SDK_VERSION,
   type CodexAgentOptions,
   type CodexClientOptions,
-  type CodexModelList,
   type CodexThreadOptions,
   type InstalledSdkVersionReader,
   type ResolveCodexClient,
@@ -67,7 +66,7 @@ import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/harness";
+import type { HarnessBlock, HarnessModelList, HarnessReadiness } from "@flow-state-dev/core/harness";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
@@ -90,10 +89,10 @@ const SCRIPTED_CODEX_MODEL = "scripted-codex";
  * own. The next load asks again. `list` is a seam for tests.
  */
 export async function codexModelChoices(
-  list: (env: Record<string, string>) => Promise<CodexModelList> = (env) => listCodexModels({ env }),
+  list: (env: Record<string, string>) => Promise<HarnessModelList> = (env) => listCodexModels({ env }),
 ): Promise<ModelChoices> {
   if (codexIsScripted()) {
-    return { models: [{ id: SCRIPTED_CODEX_MODEL, label: "Scripted Codex" }], defaultId: SCRIPTED_CODEX_MODEL, reason: null, fallbackId: null };
+    return { models: [{ id: SCRIPTED_CODEX_MODEL, label: "Scripted Codex", isDefault: true }], defaultId: SCRIPTED_CODEX_MODEL, reason: null, fallbackId: null };
   }
   const found = await list(codexEnv());
   if (found.status === "failed") {
@@ -105,7 +104,7 @@ export async function codexModelChoices(
     };
   }
   const preselected = found.models.find((model) => model.isDefault) ?? found.models[0]!;
-  return { models: found.models.map(({ id, label }) => ({ id, label })), defaultId: preselected.id, reason: null, fallbackId: null };
+  return { models: found.models, defaultId: preselected.id, reason: null, fallbackId: null };
 }
 
 /**
@@ -232,7 +231,7 @@ export interface CodexSeams {
   /** Replaces the SDK (and the scripted one test mode picks). */
   readonly resolveCodexClient?: ResolveCodexClient;
   /** Replaces Codex's model list, read for a session that names no model. */
-  readonly listCodexModels?: (env: Record<string, string>) => Promise<CodexModelList>;
+  readonly listCodexModels?: (env: Record<string, string>) => Promise<HarnessModelList>;
 }
 
 /** The Codex block's options, built from the session flow's feeds. */

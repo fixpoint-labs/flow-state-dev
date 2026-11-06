@@ -36,6 +36,8 @@
  *   read a host registers per harness.
  * - {@link HarnessReadiness} and {@link HarnessReadinessCheck} — whether a
  *   harness can run on this machine, and the check a host registers per harness.
+ * - {@link HarnessModelInfo} and {@link HarnessModelList} — the models a
+ *   harness offers, as each package's model-list function answers.
  * - {@link HarnessRunSpend}, {@link HarnessBilling} and
  *   {@link reportHarnessSpend} — what one run spent, reported into the
  *   running request as the run goes and when it ends (FIX-2145, FIX-2288).
@@ -458,6 +460,33 @@ export type HarnessReadiness =
  * process ends it then, or the process outlives the caller's timeout.
  */
 export type HarnessReadinessCheck = (options?: { signal?: AbortSignal }) => Promise<HarnessReadiness>;
+
+/** One model a harness offers, as its package's model-list function reports it. */
+export interface HarnessModelInfo {
+  /** The id a run takes. Pass it as the block's `model`. */
+  id: string;
+  /** The harness's name for it, for a person. */
+  label: string;
+  /** The harness's description of it, when it gave one. */
+  description?: string;
+  /**
+   * Whether this is the model the harness runs when none is named. A list
+   * may mark none: a vendor whose catalog names no default.
+   */
+  isDefault: boolean;
+}
+
+/**
+ * What a harness's model-list function found (`listClaudeCodeModels`,
+ * `listCodexModels`, `listCursorModels`). The function asks with no run and
+ * never throws: a list it can't read is `failed` with the reason. `M` is the
+ * harness's own extension of a model, where it has one (Cursor's variants).
+ */
+export type HarnessModelList<M extends HarnessModelInfo = HarnessModelInfo> =
+  /** The harness's models, its default first when it marks one. */
+  | { status: "models"; models: M[] }
+  /** No list: the SDK or program missing, an error, no answer in time, or an empty list. `reason` is for a person. */
+  | { status: "failed"; reason: string };
 
 /**
  * One window a harness heard about during a run: what a {@link HarnessUsageHook}
