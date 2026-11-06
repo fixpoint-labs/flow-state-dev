@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The territory of Kitchen Sink: Harness Mode. Inside the project: a harness picker in Kitchen Sink and one lane per harness, Flow State, Codex, Claude Code and Cursor, each with its own sessions, session sync and task sync. Below a fence sits the substrate the project exercises but does not own: the harness packages, core's neutral harness handle, the shared task-scope reader FIX-1701, Claude Code item streaming FIX-1735, and the Kitchen Sink app itself. To the right, outside the project: orchestration across harnesses, which stays in Shift Manager, and any harness beyond the four. The fence asks whether the work is one person using one harness directly in Kitchen Sink.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-own  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-ep   { fill:var(--surface); stroke:var(--accent); stroke-width:1.2; }
+    .n-sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-out  { fill:none; stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-out  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:6 4; fill:none; }
+    .t-fence{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+
+  <g id="owned">
+    <rect class="n-own" x="16" y="16" width="620" height="206" rx="6"/>
+    <text class="t-lbl" x="32" y="36">THIS PROJECT · ONE PERSON, ONE HARNESS, USED DIRECTLY IN KITCHEN SINK</text>
+    <g id="picker">
+      <rect class="n-ep" x="32" y="48" width="588" height="44" rx="5"/>
+      <text class="t-lbl" x="44" y="66">THE ENTRY</text>
+      <text class="t-b"  x="44" y="84">harness picker</text>
+      <text class="t-s"  x="160" y="84">choose Flow State, Codex, Claude Code or Cursor, then work in its sessions</text>
+    </g>
+    <g id="lane-fsd">
+      <rect class="n-ep" x="32" y="102" width="141" height="104" rx="5"/>
+      <text class="t-lbl" x="44" y="120">HARNESS</text>
+      <text class="t-b"  x="44" y="140">Flow State</text>
+      <text class="t-s"  x="44" y="162">sessions</text>
+      <text class="t-s"  x="44" y="178">session sync</text>
+      <text class="t-s"  x="44" y="194">task sync</text>
+    </g>
+    <g id="lane-codex">
+      <rect class="n-ep" x="181" y="102" width="141" height="104" rx="5"/>
+      <text class="t-lbl" x="193" y="120">HARNESS</text>
+      <text class="t-b"  x="193" y="140">Codex</text>
+      <text class="t-s"  x="193" y="162">sessions</text>
+      <text class="t-s"  x="193" y="178">session sync</text>
+      <text class="t-s"  x="193" y="194">task sync</text>
+    </g>
+    <g id="lane-claude">
+      <rect class="n-ep" x="330" y="102" width="141" height="104" rx="5"/>
+      <text class="t-lbl" x="342" y="120">HARNESS</text>
+      <text class="t-b"  x="342" y="140">Claude Code</text>
+      <text class="t-s"  x="342" y="162">sessions</text>
+      <text class="t-s"  x="342" y="178">session sync</text>
+      <text class="t-s"  x="342" y="194">task sync</text>
+    </g>
+    <g id="lane-cursor">
+      <rect class="n-ep" x="479" y="102" width="141" height="104" rx="5"/>
+      <text class="t-lbl" x="491" y="120">HARNESS</text>
+      <text class="t-b"  x="491" y="140">Cursor</text>
+      <text class="t-s"  x="491" y="162">sessions</text>
+      <text class="t-s"  x="491" y="178">session sync</text>
+      <text class="t-s"  x="491" y="194">task sync</text>
+    </g>
+  </g>
+
+  <g id="not-here">
+    <rect class="n-out" x="656" y="16" width="268" height="206" rx="6"/>
+    <text class="t-lbl" x="672" y="36">NOT HERE</text>
+    <text class="t-out" x="672" y="62">orchestration across harnesses</text>
+    <text class="t-s"   x="672" y="78">stays in Shift Manager</text>
+    <text class="t-out" x="672" y="108">a harness beyond the four</text>
+    <text class="t-s"   x="672" y="124">a new integration is its own work</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M16 248 H924"/>
+    <text class="t-fence" x="16" y="242">Is it one person using one harness directly in Kitchen Sink?  Yes → above.  Across harnesses → Shift Manager.</text>
+  </g>
+
+  <g id="substrate">
+    <rect class="n-sub" x="16" y="264" width="908" height="92" rx="6"/>
+    <text class="t-lbl" x="32" y="284">SUBSTRATE · EXERCISED BY THIS PROJECT, OWNED ELSEWHERE</text>
+    <text class="t-b"  x="32" y="308">the harness packages (claude-code · codex · cursor) · core's neutral harness handle</text>
+    <text class="t-b"  x="32" y="330">FIX-1701 shared task-scope reader · FIX-1735 Claude Code item streaming · the Kitchen Sink app</text>
+    <text class="t-s"  x="32" y="348">the test bed shows whether these are tight · it does not own them</text>
+  </g>
+</svg>
