@@ -7,7 +7,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { JsonObject, ModelUsageEntry } from "@flow-state-dev/core/types";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
-import type { ExpectedVersion as SharedExpectedVersion } from "@flow-state-dev/core/helpers";
+import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
   BlockTraceItem,
   RequestStreamEvent,
@@ -616,9 +616,9 @@ export type OrgListOptions = {
  *    is meaningless there and **throws** rather than conflicting.
  *
  * Defined once in `@flow-state-dev/contracts` beside the write-version guards
- * that consume it; this is the same type under the engine's name.
+ * that consume it, and re-exported here: one declaration, not an alias.
  */
-export type ExpectedVersion = SharedExpectedVersion;
+export type { ExpectedVersion };
 
 /**
  * Outcome of a CAS-aware `Store.set`. Encodes conflict as data rather than

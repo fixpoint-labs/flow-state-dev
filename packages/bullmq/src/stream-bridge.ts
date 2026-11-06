@@ -12,7 +12,7 @@ import type {
   StreamBridge,
   StreamPublisher,
   StreamSubscriber,
-  StreamEvent,
+  StreamBridgeEvent,
   ExecutionResult,
 } from "@flow-state-dev/engine";
 
@@ -55,7 +55,7 @@ export function createRedisStreamBridge(
       let closed = false;
 
       return {
-        async publishEvent(event: StreamEvent) {
+        async publishEvent(event: StreamBridgeEvent) {
           if (closed) return;
           await pub.publish(channel, JSON.stringify(event));
         },
@@ -82,9 +82,9 @@ export function createRedisStreamBridge(
       let closed = false;
       let aborted = false;
 
-      const eventBuffer: StreamEvent[] = [];
+      const eventBuffer: StreamBridgeEvent[] = [];
       let pendingResolve:
-        | ((value: IteratorResult<StreamEvent>) => void)
+        | ((value: IteratorResult<StreamBridgeEvent>) => void)
         | null = null;
       let terminalResult: ExecutionResult | undefined;
       let terminalResolve: ((result: ExecutionResult) => void) | undefined;
@@ -106,7 +106,7 @@ export function createRedisStreamBridge(
           return;
         }
         try {
-          const parsed = JSON.parse(message) as StreamEvent;
+          const parsed = JSON.parse(message) as StreamBridgeEvent;
           if (parsed.event === "terminal") {
             terminalResult = JSON.parse(parsed.data) as ExecutionResult;
             terminalResolve?.(terminalResult);
@@ -133,11 +133,11 @@ export function createRedisStreamBridge(
       });
 
       return {
-        events(): AsyncIterable<StreamEvent> {
+        events(): AsyncIterable<StreamBridgeEvent> {
           return {
             [Symbol.asyncIterator]() {
               return {
-                next(): Promise<IteratorResult<StreamEvent>> {
+                next(): Promise<IteratorResult<StreamBridgeEvent>> {
                   if (
                     (terminalResult !== undefined || aborted) &&
                     eventBuffer.length === 0
@@ -153,7 +153,7 @@ export function createRedisStreamBridge(
                       done: false,
                     });
                   }
-                  return new Promise<IteratorResult<StreamEvent>>((res) => {
+                  return new Promise<IteratorResult<StreamBridgeEvent>>((res) => {
                     pendingResolve = res;
                   });
                 },

@@ -6,7 +6,7 @@
  * `docs/architecture/inbound-transports.md` for the full reference.
  */
 export type {
-  DispatchHandle,
+  InboundDispatchHandle,
   InboundRequestEnvelope,
   InboundSource,
   InboundTransportAdapter,
@@ -24,7 +24,7 @@ export type {
   FlowRunner,
   LeaseTurn,
   StreamBridge,
-  StreamEvent,
+  StreamBridgeEvent,
   StreamPublisher,
   StreamSubscriber
 } from "./runner";

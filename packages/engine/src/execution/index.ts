@@ -2,11 +2,7 @@
  * Public execution runtime API surface for engine package consumers.
  */
 export { executeBlock } from "./executeBlock";
-export {
-  isRetryableError,
-  mergeRetryPolicy,
-  retryWithPolicy
-} from "./retry";
+export { mergeRetryPolicy, retryWithPolicy } from "./retry";
 export { applyRetentionPolicy, resolveRetentionPolicy } from "./retention";
 export type { ResolvedRetentionPolicy } from "./retention";
 export { runAction } from "./runAction";

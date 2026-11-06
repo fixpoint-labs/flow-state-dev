@@ -8,7 +8,7 @@
  * principal is, from a trusted record, never from a request's input (BP-031).
  */
 import { INTERNAL_SOURCE } from "../execution/transport-sources";
-import type { DispatchHandle, InboundTransportHost } from "../transports/types";
+import type { InboundDispatchHandle, InboundTransportHost } from "../transports/types";
 
 /** Who an internal run is, as its caller resolved it. */
 export interface InternalPrincipal {
@@ -30,7 +30,7 @@ export interface InternalDispatch {
 }
 
 /** Start `run` through `host` as `run.as`, fire-and-forget. */
-export function dispatchInternalAs(host: Pick<InboundTransportHost, "dispatch">, run: InternalDispatch): DispatchHandle {
+export function dispatchInternalAs(host: Pick<InboundTransportHost, "dispatch">, run: InternalDispatch): InboundDispatchHandle {
   const { userId, orgId, tenantId } = run.as;
   return host.dispatch({
     source: INTERNAL_SOURCE,

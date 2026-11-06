@@ -282,7 +282,7 @@ export interface RequestWaits {
  * A session of the running principal as {@link RequestSessions.read} answers it:
  * which flow it runs and its readonly state, and nothing else of its record.
  */
-export type SessionView = {
+export type PeerSessionView = {
   /** The definition kind of the session's flow. */
   readonly flowKind: string;
   /** The flow instance the session belongs to; absent on a record written before instances had ids. */
@@ -344,7 +344,7 @@ export interface RequestSessions {
    * not an existence oracle. Any flow's session answers; the caller checks the
    * flow it needs.
    */
-  read(sessionId: string): Promise<SessionView | undefined>;
+  read(sessionId: string): Promise<PeerSessionView | undefined>;
 
   /**
    * The settled turns of the session `sessionId`, when it is the running

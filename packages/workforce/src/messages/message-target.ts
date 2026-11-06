@@ -16,7 +16,7 @@
  * {@link checkTargetSession} is the check on its own, for a send that already
  * knows the session: a resend reruns it on the session its row names.
  */
-import type { BlockContext, SessionView } from "@flow-state-dev/core/types";
+import type { BlockContext, PeerSessionView } from "@flow-state-dev/core/types";
 import {
   isTerminalStatus,
   type TaskCollectionRef
@@ -60,7 +60,7 @@ export async function checkTargetSession(
     : `no_session: no conversation "${sessionId}" of yours.`;
   const sessions = ctx.requestHost?.sessions;
   if (sessions === undefined) return refuse(`${notFound} (This host can't check a session, so only a worker's name reaches one.)`);
-  const view: SessionView | undefined = await sessions.read(sessionId);
+  const view: PeerSessionView | undefined = await sessions.read(sessionId);
   if (view === undefined) return refuse(notFound);
 
   const state = view.state;

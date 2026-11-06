@@ -10,7 +10,6 @@
 export {
   Roster,
   type RosterProps,
-  type RosterWorker,
   type RosterWorkerRow,
   type RosterSlots
 } from "./Roster";

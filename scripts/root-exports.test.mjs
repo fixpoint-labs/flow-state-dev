@@ -18,7 +18,7 @@ import { spawnSync } from "node:child_process";
 import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { fsReader } from "./mechanism-exports.mjs";
-import { ROOT, compare, render, rootReport } from "./check-root-exports.mjs";
+import { ROOT, collisions, compare, render, rootReport } from "./check-root-exports.mjs";
 import { importCensus, importsIn, importsInCode } from "./import-census.mjs";
 
 const real = fsReader(ROOT);
@@ -139,7 +139,7 @@ const failingNames = () => result.newFailing.map((f) => `${f.pkg} ${f.name}`).so
 
 describe("the export check", () => {
   it("passes this commit against itself, through the CLI CI runs", () => {
-    assert.deepEqual(compare(base, base), { newFailing: [], newInternal: [], readmeCleared: [] });
+    assert.deepEqual(compare(base, base), { newFailing: [], newInternal: [], readmeCleared: [], newCollisions: [] });
     const run = spawnSync(process.execPath, [fileURLToPath(new URL("./check-root-exports.mjs", import.meta.url)), "HEAD"], { encoding: "utf8" });
     assert.equal(run.status, 0, run.stderr + run.stdout);
   });
@@ -207,6 +207,73 @@ describe("the export check", () => {
       "labs/zz-plant/dynamic.ts import() @flow-state-dev/engine/internal",
       "labs/zz-plant/template.ts require() @flow-state-dev/core/internal",
     ]);
+  });
+});
+
+/**
+ * The collision assertion: no two entries in scope export one name from different declarations.
+ * Scope is every published root plus every public entry of the six foundation packages;
+ * `/internal` entries and other packages' subpaths are out of it.
+ */
+const collisionPlants = {
+  // One name, two roots, two declarations: the planted collision.
+  "packages/react/src/index.ts": real("packages/react/src/index.ts") + "\nexport type ZzTwoRoots = { a: 1 };\nexport type ZzOutOfScope = 1;\n",
+  "packages/client/src/index.ts": real("packages/client/src/index.ts") + "\nexport type ZzTwoRoots = { b: 1 };\nexport type ZzInternalOnly = 1;\n",
+  // Two subpaths of one foundation package, two declarations: an adopter importing both sees two.
+  "packages/core/src/models/index.ts": real("packages/core/src/models/index.ts") + "\nexport type ZzTwoSubpaths = { a: 1 };\n",
+  "packages/core/src/types/index.ts": real("packages/core/src/types/index.ts") +
+    "\nexport type ZzTwoSubpaths = { b: 1 };\nexport type { ZzShared } from \"./zz-shared\";\n",
+  // One declaration on two entries is a shared re-export, not a collision.
+  "packages/core/src/types/zz-shared.ts": "export type ZzShared = { a: 1 };\n",
+  "packages/core/src/index.ts": real("packages/core/src/index.ts") + "\nexport type { ZzShared } from \"./types/zz-shared\";\n",
+  // A type alias of the shared type is its own declaration: a second meaning under one name.
+  "packages/engine/src/zz-alias.ts": `import type { ZzShared as Base } from "@flow-state-dev/core/types";\nexport type ZzShared = Base;\n`,
+  "packages/engine/src/index.ts": real("packages/engine/src/index.ts") + "\nexport type { ZzShared } from \"./zz-alias\";\n",
+  // Out of scope: an /internal entry, and a subpath of a package outside the six.
+  "packages/client/src/internal.ts": real("packages/client/src/internal.ts") + "\nexport type ZzInternalOnly = 2;\n",
+  "packages/patterns/src/supervisor/index.ts": real("packages/patterns/src/supervisor/index.ts") + "\nexport type ZzOutOfScope = 2;\n",
+};
+
+describe("the collision assertion", () => {
+  let found;
+  let verdict;
+  before(() => {
+    found = collisions(overlay(collisionPlants));
+    verdict = compare(base, { ...rootReport(overlay(collisionPlants)) });
+  });
+
+  it("names a name two entries in scope export from different declarations, with each entry", () => {
+    assert.deepEqual(found.get("ZzTwoRoots")?.map((e) => e.entry).sort(), ["@flow-state-dev/client", "@flow-state-dev/react"]);
+    assert.deepEqual(found.get("ZzTwoSubpaths")?.map((e) => e.entry).sort(), ["@flow-state-dev/core/models", "@flow-state-dev/core/types"]);
+  });
+
+  it("fails a type alias of a shared type, and not the shared re-export itself", () => {
+    // core's root and core/types re-export one declaration; engine's alias is a second one.
+    assert.deepEqual(found.get("ZzShared")?.map((e) => `${e.entry} ${e.file}`).sort(), [
+      "@flow-state-dev/core packages/core/src/types/zz-shared.ts",
+      "@flow-state-dev/core/types packages/core/src/types/zz-shared.ts",
+      "@flow-state-dev/engine packages/engine/src/zz-alias.ts",
+    ]);
+  });
+
+  it("leaves /internal entries and other packages' subpaths out of scope", () => {
+    assert.equal(found.has("ZzInternalOnly"), false);
+    assert.equal(found.has("ZzOutOfScope"), false);
+  });
+
+  it("fails on a collision the base lacks, naming both sides, and only on those", () => {
+    assert.deepEqual(verdict.newCollisions.map((c) => c.name).sort(), ["ZzShared", "ZzTwoRoots", "ZzTwoSubpaths"]);
+    const { ok, lines } = render(verdict);
+    assert.equal(ok, false);
+    assert.ok(lines.includes("`ZzShared` means different things: packages/core/src/types/zz-shared.ts (on @flow-state-dev/core, @flow-state-dev/core/types) and packages/engine/src/zz-alias.ts (on @flow-state-dev/engine)."), lines.join("\n"));
+  });
+
+  it("strict run: prints every collision as a violation, in the goal judge's protocol", () => {
+    const run = spawnSync(process.execPath, [fileURLToPath(new URL("./check-collisions.mjs", import.meta.url)), "--strict", "--json", "--root", ROOT], { encoding: "utf8" });
+    const { violations } = JSON.parse(run.stdout.trim().split("\n").pop());
+    const names = new Set(violations.map((v) => v.name));
+    assert.deepEqual([...names].sort(), [...collisions(real).keys()].sort());
+    for (const v of violations) assert.match(v.package, /^@flow-state-dev\//);
   });
 });
 

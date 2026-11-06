@@ -80,7 +80,7 @@ import {
   type InProcessRunner
 } from "./in-process-runner";
 import type {
-  DispatchHandle,
+  InboundDispatchHandle,
   HostContinueRequestOptions,
   InboundRequestEnvelope,
   InboundTransportHost,
@@ -426,7 +426,7 @@ export async function resolveInProcessPrincipal(
  *
  * `dispatch` resolves the flow, registers a live-stream for SSE consumers,
  * and starts `runAction` in fire-and-forget mode. The returned
- * `DispatchHandle` lets the adapter consume the live stream synchronously
+ * `InboundDispatchHandle` lets the adapter consume the live stream synchronously
  * (HTTP+SSE) or await `finished` for a final result (webhook, schedule).
  */
 export function createInboundTransportHost(
@@ -682,7 +682,7 @@ export function createInboundTransportHost(
     await stores.activeRequests.register({ ...entry, flowKind: flow.kind, flowId: flow.id });
   };
 
-  const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
+  const dispatch = (envelope: InboundRequestEnvelope): InboundDispatchHandle => {
     // Exact instance address: a singleton's kind, or a collection member's
     // explicit id. The address travels on `flowKind` unchanged; the records
     // written below carry the resolved instance's actual kind and its id.
@@ -881,8 +881,8 @@ export function createInboundTransportHost(
       throw error;
     };
 
-    let liveStream: DispatchHandle["liveStream"] = null;
-    let responseEmitter: DispatchHandle["responseEmitter"];
+    let liveStream: InboundDispatchHandle["liveStream"] = null;
+    let responseEmitter: InboundDispatchHandle["responseEmitter"];
     let finished: Promise<ExecutionResult>;
     // Resolves once the request is accepted. Every branch sets it, and each
     // means "discoverable" in the terms its own path can honour: enqueue-time

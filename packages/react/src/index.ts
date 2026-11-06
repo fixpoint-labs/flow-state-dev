@@ -1,12 +1,6 @@
 /**
  * Public React-facing wrappers, render helpers, and context utilities.
  */
-export type {
-  CoreItemImportProof,
-  CoreTypeImportProof
-} from "./_core-import-smoke";
-export { coreItemImportProof } from "./_core-import-smoke";
-
 export {
   useFlow,
   type UseFlowOptions,
@@ -236,5 +230,3 @@ export {
   type UseVoiceOptions,
   type VoiceState
 } from "./voice";
-
-export const reactPackageMarker = "@flow-state-dev/react";

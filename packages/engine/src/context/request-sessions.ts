@@ -22,7 +22,7 @@ import type {
   RequestSessions,
   SessionHistory,
   SessionHistoryQuery,
-  SessionView,
+  PeerSessionView,
   TokenCounter
 } from "@flow-state-dev/core/types";
 import type { DurabilityProvider } from "../durability/types";
@@ -112,7 +112,7 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
   };
 
   return {
-    async read(sessionId: string): Promise<SessionView | undefined> {
+    async read(sessionId: string): Promise<PeerSessionView | undefined> {
       const record = await owned(sessionId);
       if (record === undefined) return undefined;
       // The owner as `record-owner` reads it: the stored instance id, or, on a

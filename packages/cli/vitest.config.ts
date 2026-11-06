@@ -29,7 +29,7 @@ export default defineConfig({
       "@flow-state-dev/core/errors/unresolved-intent-error": resolve(root, "packages/core/src/errors/unresolved-intent-error.ts"),
       "@flow-state-dev/core/capability": resolve(root, "packages/core/src/capability/index.ts"),
       "@flow-state-dev/core/blocks/handler": resolve(root, "packages/core/src/blocks/handler.ts"),
-      "@flow-state-dev/core/blocks/sequencer": resolve(root, "packages/core/src/blocks/sequencer.ts"),
+      "@flow-state-dev/core/blocks/sequencer": resolve(root, "packages/core/src/blocks/sequencer-builder.ts"),
       "@flow-state-dev/core": resolve(root, "packages/core/src/index.ts"),
       "@flow-state-dev/engine": resolve(root, "packages/engine/src/index.ts"),
       "@flow-state-dev/testing": resolve(root, "packages/testing/src/index.ts"),

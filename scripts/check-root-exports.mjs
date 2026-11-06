@@ -32,6 +32,14 @@
  * name are not listed separately: a type a documented signature names is met through it, and
  * the reviewer rules on the signature.
  *
+ * It also holds one name to one meaning (FIX-2449 D2). Across every published root, and every
+ * public entry of the six foundation packages (contracts, core, engine, client, react, testing),
+ * no two entries may export one name from different declarations: an adopter who imports both
+ * would see two things under one name. One declaration re-exported from several entries is
+ * fine; a type alias of it is a second declaration and collides. `/internal` entries and entries
+ * the package does not publish are out of scope. The ratchet fails a collision the base lacks;
+ * `check-collisions.mjs` runs it strict, for the adopter goal's `surface.collisions` cell.
+ *
  * A name is keyed by package and name, so one renamed or moved to another package reads as new.
  * CI compares with `HEAD^1` of the PR's merge commit; the local default is the merge base with
  * `origin/main`, which can differ when `origin/main` is stale, so a local PASS is not CI's answer.
@@ -47,7 +55,7 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { importCensus } from "./import-census.mjs";
+import { importCensus, isInternalSubpath } from "./import-census.mjs";
 import { fsReader, gitReader, packageEntryExports } from "./mechanism-exports.mjs";
 
 export const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -76,6 +84,40 @@ function publishedPackages(read) {
     if (!text) continue;
     const pkg = JSON.parse(text);
     if (!pkg.private) out.set(pkg.name, dir);
+  }
+  return out;
+}
+
+/** The foundation packages whose every public entry, not only the root, is in the collision scope. */
+export const FOUNDATION = ["contracts", "core", "engine", "client", "react", "testing"].map((p) => `@flow-state-dev/${p}`);
+
+/**
+ * Every collision in scope: name → [{ entry, file, decl }], one per entry exporting it, for each
+ * name two entries export from different declarations (`file#decl`). Scope: every published
+ * root, and every public entry of a {@link FOUNDATION} package, which excludes `/internal`
+ * entries and any entry missing from the package's `publishConfig.exports`.
+ * Reads only package files, so it runs on any tree, git checkout or not.
+ */
+export function collisions(read, entries = packageEntryExports(read)) {
+  const owners = new Map();
+  for (const [pkg, dir] of publishedPackages(read)) {
+    const { publishConfig } = JSON.parse(read(`packages/${dir}/package.json`));
+    const published = publishConfig?.exports
+      ? Object.keys(publishConfig.exports).map((k) => new RegExp(`^${k.replace(/[.]/g, "\\.").replace("*", ".+")}$`))
+      : null;
+    for (const [sub, names] of entries.get(pkg) ?? []) {
+      if (sub !== "." && (!FOUNDATION.includes(pkg) || isInternalSubpath(sub))) continue;
+      if (published && !published.some((re) => re.test(sub))) continue;
+      const entry = sub === "." ? pkg : `${pkg}${sub.slice(1)}`;
+      for (const [name, { file, decl }] of names) {
+        if (!owners.has(name)) owners.set(name, []);
+        owners.get(name).push({ entry, file, decl: decl ?? name });
+      }
+    }
+  }
+  const out = new Map();
+  for (const [name, list] of [...owners].sort(([a], [b]) => a.localeCompare(b))) {
+    if (new Set(list.map((e) => `${e.file}#${e.decl}`)).size > 1) out.set(name, list);
   }
   return out;
 }
@@ -144,7 +186,8 @@ function typeMentions(read, memo, resolve, file, name) {
 /**
  * Every published root's names and why each passes or fails, read through `read`.
  *
- * Returns `{ roots, internalImports }`:
+ * Returns `{ roots, internalImports, collisions }`:
+ *   collisions       name → [{ entry, file, decl }], from {@link collisions}
  *   roots            package → Map(name → { file, why }), `why` one of
  *                    "adopter" | "docs" | "readme" | "reached" | "failing"
  *   internalImports  [{ file, spec, form }] from the import census
@@ -185,7 +228,7 @@ export function rootReport(read) {
     }
     roots.set(pkg, out);
   }
-  return { roots, internalImports };
+  return { roots, internalImports, collisions: collisions(read, entries) };
 }
 
 const failing = (report) =>
@@ -194,7 +237,8 @@ const internalKey = (i) => `${i.file}\t${i.spec}`;
 
 /**
  * Compare a head report with a base report. Returns
- * `{ newFailing: [{ pkg, name, file }], newInternal: [{ file, spec, form }], readmeCleared: [{ pkg, name }] }`.
+ * `{ newFailing: [{ pkg, name, file }], newInternal: [{ file, spec, form }], readmeCleared: [{ pkg, name }],
+ *   newCollisions: [{ name, entries }] }`; a collision is new when the base has none under that name.
  * `readmeCleared` is advisory: a name a README or changeset mention is the only thing clearing,
  * where the base did not clear it that way (the mention itself may predate the change).
  */
@@ -210,11 +254,22 @@ export function compare(base, head) {
   }
   const had = new Set(base.internalImports.map(internalKey));
   const newInternal = head.internalImports.filter((i) => !had.has(internalKey(i)));
-  return { newFailing, newInternal, readmeCleared };
+  const newCollisions = [...head.collisions].filter(([name]) => !base.collisions.has(name)).map(([name, entries]) => ({ name, entries }));
+  return { newFailing, newInternal, readmeCleared, newCollisions };
+}
+
+/** One collision as a line: the name, then each declaration and the entries that export it. */
+export function describeCollision(name, entries) {
+  const byDecl = new Map();
+  for (const e of entries) {
+    const at = e.decl === name ? e.file : `${e.file} as ${e.decl}`;
+    byDecl.set(at, [...(byDecl.get(at) ?? []), e.entry]);
+  }
+  return `\`${name}\` means different things: ${[...byDecl].map(([at, on]) => `${at} (on ${on.join(", ")})`).join(" and ")}.`;
 }
 
 /** The ratchet's verdict as printable lines; `ok` is false when anything is new. */
-export function render({ newFailing, newInternal, readmeCleared }) {
+export function render({ newFailing, newInternal, readmeCleared, newCollisions = [] }) {
   const out = [];
   for (const { pkg, name, file } of newFailing) {
     out.push(`${pkg}: \`${name}\` (${file}) is on the root, and no app, example, lab or docs page imports it and the README doesn't name it.`);
@@ -223,12 +278,16 @@ export function render({ newFailing, newInternal, readmeCleared }) {
     out.push("  A name only FSD packages use belongs on the package's /internal subpath. A name adopters need is imported by an app or");
     out.push("  documented: a `Docs:` line in the PR's changeset naming the package README, with the name in the fragment. Otherwise stop exporting it.");
   }
+  for (const { name, entries } of newCollisions) out.push(describeCollision(name, entries));
+  if (newCollisions.length) {
+    out.push("  One meaning declared twice: declare it once and re-export it (in contracts for a wire shape). Two meanings: rename the side an app author doesn't import.");
+  }
   for (const { file, spec, form } of newInternal) out.push(`${file}: ${form} of ${spec}. /internal paths are for FSD's own packages; use a public entry.`);
   if (readmeCleared.length) {
     out.push(`Cleared only by a README or changeset mention, with no import (for the reviewer, not a failure; check the mention documents the name):`);
     for (const { pkg, name } of readmeCleared) out.push(`  ${pkg}: ${name}`);
   }
-  return { ok: newFailing.length === 0 && newInternal.length === 0, lines: out };
+  return { ok: newFailing.length === 0 && newInternal.length === 0 && newCollisions.length === 0, lines: out };
 }
 
 function defaultBase() {
@@ -253,6 +312,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const ref = args[0] ?? defaultBase();
   const result = render(compare(rootReport(gitReader(ROOT, ref)), rootReport(fsReader(ROOT))));
   for (const l of result.lines) console.log(l);
-  console.log(result.ok ? `PASS: no published root gained a failing name and no adopter code gained an /internal import since ${ref}` : `FAIL: against ${ref}`);
+  console.log(result.ok ? `PASS: no published root gained a failing name or a collision, and no adopter code gained an /internal import since ${ref}` : `FAIL: against ${ref}`);
   process.exit(result.ok ? 0 : 1);
 }

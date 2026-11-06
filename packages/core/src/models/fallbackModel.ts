@@ -4,7 +4,7 @@ import type {
   GeneratorModelStreamChunk,
   GeneratorSearchConfig,
 } from "../types";
-import type { ModelGroupDefaults, RetryPolicy } from "./types";
+import type { ModelGroupDefaults, ModelRetryPolicy } from "./types";
 import { deepMerge } from "../helpers/deep-merge";
 
 // ---------------------------------------------------------------------------
@@ -22,7 +22,7 @@ interface FallbackModelConfig {
   groupName: string;
   models: FallbackModelEntry[];
   defaults?: ModelGroupDefaults;
-  retryPolicy: Required<RetryPolicy>;
+  retryPolicy: Required<ModelRetryPolicy>;
   /**
    * Fires when a candidate succeeds — once per `generate` call, and once
    * per `stream` call (after the candidate's stream yielded a first chunk
@@ -127,7 +127,7 @@ function mergeDefaults<T extends Record<string, unknown>>(
 
 async function executeWithFallback<T>(
   models: FallbackModelEntry[],
-  retryPolicy: Required<RetryPolicy>,
+  retryPolicy: Required<ModelRetryPolicy>,
   groupName: string,
   fn: (model: GeneratorModel, entry: FallbackModelEntry) => Promise<T>,
   onResolved?: (entry: FallbackModelEntry) => void

@@ -39,7 +39,7 @@ export type {
   RequestSessions,
   SessionHistory,
   SessionHistoryQuery,
-  SessionView,
+  PeerSessionView,
   RequestWakes,
   SettleParentTaskInput,
   SettleParentTaskResult,

@@ -11,9 +11,10 @@
  * rows is the part worth asserting on its own.
  */
 import type { FlowListEntry } from "@flow-state-dev/client";
+import type { FlowCardinality } from "@flow-state-dev/core/types";
 
-/** How a flow kind is addressed, and therefore how deep its rows go. */
-export type FlowCardinality = FlowListEntry["cardinality"];
+/** How a flow kind is addressed, and therefore how deep its rows go: core's own type. */
+export type { FlowCardinality };
 
 /**
  * A label and the kind names it covers. There is nothing else in a section,

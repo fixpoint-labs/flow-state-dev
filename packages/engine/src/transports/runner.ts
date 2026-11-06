@@ -128,7 +128,7 @@ export interface FlowRunner {
  * events emitted by the response emitter so the web process can forward
  * them to SSE clients without transformation.
  */
-export interface StreamEvent {
+export interface StreamBridgeEvent {
   id?: string;
   event: string;
   data: string;
@@ -138,7 +138,7 @@ export interface StreamEvent {
  * Publisher side of the bridge — used by the worker to push events.
  */
 export interface StreamPublisher {
-  publishEvent(event: StreamEvent): Promise<void>;
+  publishEvent(event: StreamBridgeEvent): Promise<void>;
   publishTerminal(result: ExecutionResult): Promise<void>;
   close(): Promise<void>;
 }
@@ -147,7 +147,7 @@ export interface StreamPublisher {
  * Subscriber side of the bridge — used by the web process to receive events.
  */
 export interface StreamSubscriber {
-  events(): AsyncIterable<StreamEvent>;
+  events(): AsyncIterable<StreamBridgeEvent>;
   completed: Promise<ExecutionResult>;
   abort(): void;
   close(): Promise<void>;

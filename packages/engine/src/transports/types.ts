@@ -189,7 +189,7 @@ export interface InboundRequestEnvelope {
  * their response (HTTP SSE Response, webhook 202 ack, schedule completion
  * log) without awaiting the full action pipeline.
  */
-export interface DispatchHandle {
+export interface InboundDispatchHandle {
   readonly requestId: string;
   /** ResponseEmitter the runtime writes items to. Always present. */
   readonly responseEmitter: ResponseEmitter;
@@ -316,7 +316,7 @@ export interface InboundTransportHost {
 
   /**
    * Dispatch an action-execution envelope. Fire-and-forget: returns a
-   * synchronous `DispatchHandle` whose `liveStream` and `requestId` are
+   * synchronous `InboundDispatchHandle` whose `liveStream` and `requestId` are
    * available immediately, while `finished` resolves when the action
    * completes.
    *
@@ -328,7 +328,7 @@ export interface InboundTransportHost {
    * Scope: action-execution only. Session/state/resource routes are
    * adapter-owned and use `host.stores` / `host.registry` directly.
    */
-  dispatch(envelope: InboundRequestEnvelope): DispatchHandle;
+  dispatch(envelope: InboundRequestEnvelope): InboundDispatchHandle;
 
   /**
    * Continue a suspended request under its OWN id (FIX-811). Unlike `dispatch`,

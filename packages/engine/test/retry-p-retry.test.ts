@@ -9,9 +9,9 @@ import { SuspensionError } from "@flow-state-dev/core";
 import {
   NetworkError,
   ValidationError,
-  isRetryableError,
   retryWithPolicy
 } from "../src";
+import { isRetryableError } from "../src/execution/retry";
 
 describe("retryWithPolicy (p-retry backed)", () => {
   it("does not retry non-retryable FlowErrors (AbortError mapping)", async () => {

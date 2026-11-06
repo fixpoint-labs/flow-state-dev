@@ -138,10 +138,6 @@ export * from "./transports";
 export type { RuntimeConfig } from "./runtime-config";
 // Model infrastructure — re-exported from core.
 // Prefer importing from @flow-state-dev/core or @flow-state-dev/core/models.
-// Note: core's `isRetryableError` is intentionally NOT re-exported here — it
-// would collide with the policy-aware `isRetryableError` from `./execution`,
-// which has a different signature (`(error, policy)`) and serves a different
-// purpose. Import core's helper from `@flow-state-dev/core/models` directly.
 export {
   createAiSdkModelResolver,
   wrapAiSdkModel,
@@ -156,7 +152,7 @@ export type {
   IntentDefaults,
   ModelGroupDefaults,
   GatewayConfig,
-  RetryPolicy,
+  ModelRetryPolicy,
   GatewayType,
   ProviderName,
   ProviderAvailability,
@@ -254,8 +250,6 @@ export {
   type RoutedOwnerRun,
   type RoutedServiceEvent
 } from "./durability/owner-runs";
-
-export const enginePackageMarker = "@flow-state-dev/engine";
 
 // ---------------------------------------------------------------------------
 // Internal resource helpers exposed for sibling-package consumption

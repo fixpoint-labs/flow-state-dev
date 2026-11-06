@@ -89,8 +89,8 @@
       "default": "./src/blocks/handler.ts"
     },
     "./blocks/sequencer": {
-      "types": "./dist/blocks/sequencer.d.ts",
-      "default": "./src/blocks/sequencer.ts"
+      "types": "./dist/blocks/sequencer-builder.d.ts",
+      "default": "./src/blocks/sequencer-builder.ts"
     }
   },
   "license": "MIT",
@@ -164,8 +164,8 @@
         "default": "./dist/blocks/handler.js"
       },
       "./blocks/sequencer": {
-        "types": "./dist/blocks/sequencer.d.ts",
-        "default": "./dist/blocks/sequencer.js"
+        "types": "./dist/blocks/sequencer-builder.d.ts",
+        "default": "./dist/blocks/sequencer-builder.js"
       }
     }
   },
