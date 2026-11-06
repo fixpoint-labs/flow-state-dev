@@ -1,0 +1,228 @@
+{
+  "$comment": "The adopter goal (scripts/packed-install/goal.mjs, run.mjs --goal). A child flips its own assertion's expect line; a ratchet owner also sets its ratchets entry to its strict-run script. Assertions, rows and the control pins change only in the issue that owns them.",
+  "rows": [
+    {
+      "id": "surface",
+      "title": "Surface",
+      "assertions": [
+        "surface.root.core",
+        "surface.root.engine",
+        "surface.root.client",
+        "surface.root.react",
+        "surface.root.testing",
+        "surface.root.orchestration",
+        "surface.root.patterns",
+        "surface.root.claude-code",
+        "surface.root.codex",
+        "surface.root.cursor",
+        "surface.root.store-sqlite",
+        "surface.root.store-postgres",
+        "surface.root.workforce",
+        "surface.collisions",
+        "surface.core-installed-dts"
+      ]
+    },
+    {
+      "id": "onepath",
+      "title": "One path",
+      "assertions": []
+    },
+    {
+      "id": "first-hour",
+      "title": "First hour",
+      "assertions": []
+    },
+    {
+      "id": "leakage",
+      "title": "Leakage",
+      "assertions": [
+        "leakage.tracker-ids"
+      ]
+    },
+    {
+      "id": "shims",
+      "title": "Shims",
+      "assertions": [
+        "shims.never-published",
+        "shims.human-approval-throws",
+        "shims.stored-human-approval"
+      ]
+    },
+    {
+      "id": "types",
+      "title": "Types",
+      "assertions": []
+    }
+  ],
+  "expect": {
+    "surface.root.core": "fail",
+    "surface.root.engine": "fail",
+    "surface.root.client": "fail",
+    "surface.root.react": "fail",
+    "surface.root.testing": "fail",
+    "surface.root.orchestration": "fail",
+    "surface.root.patterns": "fail",
+    "surface.root.claude-code": "fail",
+    "surface.root.codex": "fail",
+    "surface.root.cursor": "fail",
+    "surface.root.store-sqlite": "fail",
+    "surface.root.store-postgres": "fail",
+    "surface.root.workforce": "fail",
+    "surface.collisions": "fail",
+    "surface.core-installed-dts": "fail",
+    "leakage.tracker-ids": "fail",
+    "shims.never-published": "fail",
+    "shims.human-approval-throws": "fail",
+    "shims.stored-human-approval": "fail"
+  },
+  "ratchets": {
+    "export-check": null,
+    "collision-check": null,
+    "tracker-id-lint": null
+  },
+  "control": {
+    "commit": "ebec5326b1a1fbb8090705154de1ef58fb0be59a",
+    "packages": [
+      {
+        "name": "@flow-state-dev/bullmq",
+        "version": "0.3.1",
+        "integrity": "sha512-9GvMJ+dCLatGrkU8GYMnw4rCZQTxuiiHiI9N8PgpxMcJHwiX5hSl9oO/8cZbN3M2D7Tl+ZHC+x92A811JE25zg=="
+      },
+      {
+        "name": "@flow-state-dev/claude-code",
+        "version": "0.3.0",
+        "integrity": "sha512-mzM71E07SXZfPiGT1FXeUtp6kh5gLnOVANyrccXkVF03FrQQxdavLT8k702VmZYoQ56eJ08SbNG0rwqOBtXNcg=="
+      },
+      {
+        "name": "@flow-state-dev/client",
+        "version": "0.4.0",
+        "integrity": "sha512-uwHSVylE2eQly92qhpcOEyL/vze3ByRKM9mMPpjer8lMUWZHhcE6tTA5CzkWzTS1bLLHwJLuAot08dnIY9P47g=="
+      },
+      {
+        "name": "@flow-state-dev/codex",
+        "version": "0.2.0",
+        "integrity": "sha512-1JL6gLxPVrB5x8yJnpZt/36+arOJ5Wmr1OgrD4R0D/ejreeTL2InOS+TI1fG9eAfsPLfUOxe1OU2n1O/OFzKLg=="
+      },
+      {
+        "name": "@flow-state-dev/contracts",
+        "version": "0.3.0",
+        "integrity": "sha512-/KVgq9mh3vM7p+2NTR9ZqQqU9K8HHA+J34wRuDMWFdcEoV0KJx6Aedshjv+I4i61vwl/tXFEX38vHWB6QIEOUA=="
+      },
+      {
+        "name": "@flow-state-dev/core",
+        "version": "0.4.0",
+        "integrity": "sha512-alnx1BShH2ZzRnY6V0khU8yZTvvSE4e1qhCqxKD9l/9HRmxrbywZ5tgVHGgD++hg8ire59v9Du2dugZyrGovbw=="
+      },
+      {
+        "name": "@flow-state-dev/cursor",
+        "version": "0.2.0",
+        "integrity": "sha512-36lx9amuHseoT1Nm58iH810hIR5Iv1W0QWmjNA4UUGTcb9vWj9MkH4A1NJsMYhs4IjtXS8UaJctUmSmLLduX4w=="
+      },
+      {
+        "name": "@flow-state-dev/devtool",
+        "version": "0.3.1",
+        "integrity": "sha512-gA0gloJInLDv3k5BxXC9PZ0aP11ADddJ7RqS+ui4xMm0iqloG90l2lNQpXK8gBnqKLUFLvLZzBaimt3PJJpBcg=="
+      },
+      {
+        "name": "@flow-state-dev/engine",
+        "version": "0.4.0",
+        "integrity": "sha512-oujslUm8XtfIHuQAT5+1pUNLce0xCR+/8mo7dpIF2GkEFxwIeEk7YAyRTTWNoTDwBtwR0abA1+Nz5Bh4/Wk7gg=="
+      },
+      {
+        "name": "@flow-state-dev/fsdev",
+        "version": "0.4.0",
+        "integrity": "sha512-IyxtwkZ65xFcO3hQ/W2+pMfEwILh3IHPmajcjZ+no3Ailgw+koiTBFgsrhQvPy1O/kPfMDCnymGLroGHCAsuZw=="
+      },
+      {
+        "name": "@flow-state-dev/harness-manager",
+        "version": "0.4.0",
+        "integrity": "sha512-uyhbol77k8HNhCjq/KbzaUFCA6Ba/AtWZ0e7iT4tnt9D3FVEJ0wk57zxSOostKpgLiVPmdTP94HRkbNlu3ZEww=="
+      },
+      {
+        "name": "@flow-state-dev/mcp",
+        "version": "0.1.5",
+        "integrity": "sha512-f8zTEGKMzv9yjBBMR33tKLkTns4M/tcdP6VvQ600kC59Yp86Nj4IWAKlD0R2KviwzP8EKTfsrx8KMtuFnNWH5w=="
+      },
+      {
+        "name": "@flow-state-dev/memory",
+        "version": "0.2.1",
+        "integrity": "sha512-HfVUVJJeuPZJexnXDldaTQAr1qjKFwJ6eH+OybuzPapTHp6qWAnODXgdG5WH/5Ua0THRIGNhUvjvfBHuyUjD0g=="
+      },
+      {
+        "name": "@flow-state-dev/next",
+        "version": "0.1.5",
+        "integrity": "sha512-WNmBdYLUTxwnXyjMZ+zqHkhkNrWwEjNcVXRCTUpemk9m8dkDNdnpmffqyf5Sn6TAGLNX3/uvcYPMH8CDT+7QDg=="
+      },
+      {
+        "name": "@flow-state-dev/node",
+        "version": "0.2.1",
+        "integrity": "sha512-LN7+k4SeChQHjR4iA4lhGw/0RrHJMFt57oCduLQIC5BxNxdGlVcL+COAl5an8lddGwfFaQkM4PFjoABXN3SQHg=="
+      },
+      {
+        "name": "@flow-state-dev/orchestration",
+        "version": "0.5.0",
+        "integrity": "sha512-4gpINV4sIOuwBO+o7+up0S9Yf0qATSKg+fxCL3s+dFMkRIptdr2pvj9MiS7rZSmJgyS8zzxDoaQPbEdJtwsCdA=="
+      },
+      {
+        "name": "@flow-state-dev/patterns",
+        "version": "0.2.1",
+        "integrity": "sha512-f/EWzml/1/UdSn0aP+727UVfo7pDC5ZoyyXozDlA0m5FEX386GyTLyi6anUZMsxhARjZAWegyHXLg0XBg/UZEA=="
+      },
+      {
+        "name": "@flow-state-dev/react",
+        "version": "0.4.0",
+        "integrity": "sha512-h+AJmf2nTRVf+LBQp+mnX0/IqBnKsrzCaES+YcsNjFw/W2FnqibIkVPxpVKEkeYutmSU+XJhukUFGcvYUjEDBQ=="
+      },
+      {
+        "name": "@flow-state-dev/scheduled",
+        "version": "0.3.1",
+        "integrity": "sha512-RIWVEHLNqXNNCXFStqGr9PbwawfmibI+hLIi5WSCM0e/9nI9RleBDNcZ+nyVBR8RNbPXMhfeix78/bUtYYs8VQ=="
+      },
+      {
+        "name": "@flow-state-dev/shift-manager",
+        "version": "0.2.0",
+        "integrity": "sha512-VFRbIGnu4JAv/+Tst3UtRO3+NFyEGOBHYdn3uQNUrkdiLxYhy0r+z3IKKgyCMfAAjVT2yHUuDtaszr7sbUtK7Q=="
+      },
+      {
+        "name": "@flow-state-dev/store-postgres",
+        "version": "0.3.1",
+        "integrity": "sha512-L2Llx7Ism5qBJ3pIUWfHbtp+1xxXGxuF//u/S7mLjEAxY9qkajreBHKEqzAMsVv6w8bjuPnf9KGrI7RgeWpy0A=="
+      },
+      {
+        "name": "@flow-state-dev/store-sqlite",
+        "version": "0.3.1",
+        "integrity": "sha512-6gdtHk6KifpxroXZpijvvhqqC6wXLLCsrB0DJs3vN3VzpLMQFwoYSM44ozp0XloYJHdyVI1EWkiJAr32J6xWAA=="
+      },
+      {
+        "name": "@flow-state-dev/testing",
+        "version": "0.3.1",
+        "integrity": "sha512-VF6EutI9+Dlgf0W2GRRLXJH3S/OR0AJc3Q48JpqDUJ3DsI2DlJYrWyh/vS5EUo8JgRK62WGfMKcrdsl5TehvOQ=="
+      },
+      {
+        "name": "@flow-state-dev/tools",
+        "version": "0.2.1",
+        "integrity": "sha512-u7RYiM/D8Swk7nnwywAdB8VFQEeBIo0v7/KltWU3WrUB0Oh0CS0cCCIqftSOGSHvX5y8+Qy6WVsmwgsYt0gT1Q=="
+      },
+      {
+        "name": "@flow-state-dev/vercel",
+        "version": "0.2.1",
+        "integrity": "sha512-WgqtWC3AHpHsoRtbnnLKUjhLB6feEbKWP/9FIj5RCMNslh7K0dlb2HMSHki+dz04+nYSdzSL3HGKtdK5N1vROg=="
+      },
+      {
+        "name": "@flow-state-dev/voice-openai",
+        "version": "0.1.5",
+        "integrity": "sha512-Eq+XRJF6bnID0B+inM8coB1RI5UNp8dtG4KjrvHcFMJB9cP0Y46Ec7Ou5dJKJXrH8aGH0S8bskw0+WVnjIcH8A=="
+      },
+      {
+        "name": "@flow-state-dev/workforce",
+        "version": "0.4.1",
+        "integrity": "sha512-hovIkE9UmT+dLE4si3sjKfziEQB3Geq0/ZXFzkZOb27r2oH7A+ewOwsOdnMZrehdBOafW0NiFsWRybOfRDXMdQ=="
+      },
+      {
+        "name": "@flow-state-dev/workspace",
+        "version": "0.3.0",
+        "integrity": "sha512-FbxOSQ/KIYtAYlIHPvMZkINL+MEc1oVhvw0yD2RSd5g56ESSuMmaF/f7OyV479nN5WxqcgqMW1Aghbg9NCj2nA=="
+      }
+    ]
+  }
+}

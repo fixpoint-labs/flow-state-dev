@@ -1,0 +1,67 @@
+name: Adopter goal
+
+# The epic's adopter goal: how many of its six "Not done if" rows hold for
+# someone who installs FSD from npm, read off every push to main. It is not a
+# gate. Most assertions are expected to fail until the child that owns them
+# lands, so it never runs on a pull request (an expected fail would block
+# unrelated work) and never on release. A child dispatches it on its own branch
+# to show its cell pass before it flips its line in
+# scripts/packed-install/goal-manifest.json.
+#
+# Red means an outcome no longer matches the manifest, in either direction, or
+# an assertion could not run. Green means outcomes agree with the manifest, not
+# that the epic is done: the row count is in the job summary.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  adopter-goal:
+    name: Adopter goal on installed tarballs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # Full history: the control reads the ratchets against a checkout of the
+      # pinned control commit.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Restore Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ github.job }}-
+
+      # The judge's rules (what turns the job red, how a row is derived),
+      # pinned against fixtures before the slow steps.
+      - name: Goal judge rules
+        run: node --test scripts/packed-install/goal.test.mjs
+
+      - name: Release build
+        run: pnpm release:build
+
+      - name: Rows passing on this checkout's tarballs
+        run: node scripts/packed-install/run.mjs --goal
+
+      # Every admitted assertion must fail against the published tarballs the
+      # manifest pins by integrity. One that passes there cannot show progress.
+      - name: Control fails against the pinned published tarballs
+        run: node scripts/packed-install/run.mjs --control=adopter-goal

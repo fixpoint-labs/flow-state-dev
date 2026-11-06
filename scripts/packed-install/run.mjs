@@ -35,12 +35,29 @@
  * package: a guard never seen to fail could be reading a repository copy and
  * calling it the install.
  *
+ * `--goal` is the epic's adopter goal, not a gate: the same pack and install,
+ * then {@link GOAL_CHECKS} (one entry per assertion in `goal-manifest.json`)
+ * through the same `runChecks`, judged by `goal.mjs` against the manifest's
+ * expectations. It prints how many of the six rows hold, and exits 0 when every
+ * outcome matches its expectation and none is an `error`. It runs in its own
+ * workflow (`adopter-goal.yml`), on pushes to `main` and by dispatch, never on a
+ * PR, because most assertions are expected to fail until their child lands.
+ *
+ * `--control=adopter-goal` runs {@link GOAL_CHECKS} against the published
+ * tarballs the manifest pins by integrity (every package as npm served it on
+ * the day of the control commit), with ratchets reading a checkout of that
+ * commit. It exits 0 only when every admitted assertion reports `fail`; a
+ * `pending` ratchet cell is listed, not red, until its check is wired.
+ *
  * **Adding a check.** Append to {@link CHECKS}: `{ name, run(project) }`, where
  * `run` returns a list of failure strings (empty on pass). `project` carries the
  * consumer directory and the packed packages with their manifests. Checks run
- * against the installed copy only; never import from the repository.
+ * against the installed copy only; never import from the repository. A goal
+ * check also carries its manifest `id`, may return `{ pending: reason }`, and
+ * reads `project.tree` (the repository tree under test) for a ratchet. A check
+ * that throws reports `error`.
  *
- * Usage: `node scripts/packed-install/run.mjs [--control | --control=workspace-link] [--keep]`.
+ * Usage: `node scripts/packed-install/run.mjs [--control | --control=workspace-link | --goal | --control=adopter-goal] [--keep]`.
  * `--keep` leaves the temporary project on disk and prints its path.
  * Needs network access to the npm registry for third-party dependencies, and
  * `REDIS_URL` pointing at a live Redis for the suite's queue case.
@@ -49,8 +66,10 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  appendFileSync,
   copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -62,6 +81,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { publishableDists } from "../add-esm-extensions.mjs";
+import {
+  formatVerdict,
+  judge,
+  judgeControl,
+  outcomeOf,
+  probeNeverPublished,
+  ratchetFailures,
+  readManifest,
+  runRatchet,
+} from "./goal.mjs";
 import { runSuite } from "./suite.mjs";
 import { runVitestJson } from "./vitest-json.mjs";
 
@@ -307,6 +336,136 @@ function runFixture(project, file, stem) {
 }
 
 /**
+ * The goal's version of {@link runFixture}: the fixture's `<stem>: ok` is a
+ * pass and its `<stem>: FAIL …` line (with the indented lines after it) a
+ * fail. No verdict at all (a crash, a timeout, a missing dependency) throws,
+ * which `runChecks` reports as `error`, so a broken leg cannot read as an
+ * expected fail.
+ */
+function goalFixture(project, file, stem, env = {}) {
+  copyFileSync(join(FIXTURES, file), join(project.dir, file));
+  const res = spawnSync(process.execPath, [file], {
+    cwd: project.dir,
+    encoding: "utf8",
+    timeout: 120_000,
+    env: { ...process.env, ...env },
+  });
+  const lines = (res.stdout ?? "").split("\n");
+  if (lines.some((l) => l.startsWith(`${stem}: ok`))) return [];
+  const at = lines.findIndex((l) => l.startsWith(`${stem}: FAIL`));
+  if (at >= 0) {
+    const rest = lines.slice(at + 1).filter((l) => l.startsWith("  ")).map((l) => l.trim());
+    return [lines[at], ...rest.slice(0, 40), ...(rest.length > 40 ? [`… ${rest.length - 40} more`] : [])];
+  }
+  throw new Error(`${file} gave no verdict (exit ${res.status ?? res.signal}): ${`${res.stderr ?? ""}\n${res.stdout ?? ""}`.trim().slice(-800)}`);
+}
+
+/** The roots the epic owns, one `surface.root.<name>` ratchet cell each. */
+const OWNED_ROOTS = [
+  "core", "engine", "client", "react", "testing", "orchestration", "patterns",
+  "claude-code", "codex", "cursor", "store-sqlite", "store-postgres",
+];
+
+/**
+ * Ratchet cells: each reads one workspace check's strict run over
+ * `project.tree` (see `runRatchet` in goal.mjs for the protocol), and reports
+ * `pending` while the manifest's `ratchets` entry for that check is `null`.
+ * One strict run serves every cell that reads it.
+ */
+const RATCHET_CELLS = [
+  ...OWNED_ROOTS.map((root) => ({
+    id: `surface.root.${root}`,
+    name: `the export check finds nothing on @flow-state-dev/${root}'s root, baseline set aside`,
+    ratchet: "export-check",
+    package: `@flow-state-dev/${root}`,
+  })),
+  {
+    id: "surface.root.workforce",
+    name: "the export check finds nothing among workforce's *_ENTRY names, baseline set aside",
+    ratchet: "export-check",
+    package: "@flow-state-dev/workforce",
+    names: /_ENTRY$/,
+  },
+  {
+    id: "surface.collisions",
+    name: "the collision check, strict over every published root, finds no two roots exporting one name for different declarations",
+    ratchet: "collision-check",
+    package: "*",
+  },
+  {
+    id: "leakage.tracker-ids",
+    name: "the tracker-id lint, suppressions set aside, finds nothing",
+    ratchet: "tracker-id-lint",
+    package: "*",
+  },
+];
+
+/** The TypeScript the consumer project reads core's `.d.ts` with: the workspace's own. */
+const TYPESCRIPT_SPEC = "typescript@npm:@typescript/typescript6@6.0.2";
+
+/** FIX-2448's frozen list of moved core names. */
+const MOVED_TSV = join(ROOT, "specs/issues/FIX-2448/poc/export-census/moved.tsv");
+
+/**
+ * The goal's checks, one per assertion in `goal-manifest.json`, run by
+ * `runChecks` against the installed project. `project` also carries `tree`
+ * (the repository tree ratchets read) and `manifest`.
+ *
+ * @type {{ id: string, name: string, run: (project: Project & { tree: string, manifest: object, ratchetRuns: Map<string, unknown> }) => string[] | { pending: string } }[]}
+ */
+export const GOAL_CHECKS = [
+  ...RATCHET_CELLS.map((cell) => ({
+    id: cell.id,
+    name: cell.name,
+    run(project) {
+      const script = project.manifest.ratchets?.[cell.ratchet];
+      if (script == null) return { pending: `${cell.ratchet} is not wired in the manifest yet` };
+      if (!project.ratchetRuns.has(cell.ratchet)) {
+        let run;
+        try {
+          run = { violations: runRatchet(ROOT, script, project.tree).violations };
+        } catch (err) {
+          run = { error: err };
+        }
+        project.ratchetRuns.set(cell.ratchet, run);
+      }
+      const run = project.ratchetRuns.get(cell.ratchet);
+      if (run.error) throw run.error;
+      return ratchetFailures(run.violations, cell);
+    },
+  })),
+  {
+    id: "surface.core-installed-dts",
+    name: "installed core's .d.ts: no moved name on the root or core/types, each on its entry, no requestHost on BlockContext",
+    run(project) {
+      npmInstall(project.dir, [TYPESCRIPT_SPEC]);
+      const installed = join(project.dir, "node_modules", "@flow-state-dev/core");
+      const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
+      const { specs } = importSpecifiers(manifest, packageFiles(installed));
+      return goalFixture(project, "goal-core-dts.mjs", "core-dts", {
+        FSD_MOVED_TSV: MOVED_TSV,
+        FSD_CORE_SPECS: JSON.stringify(specs),
+      });
+    },
+  },
+  {
+    id: "shims.never-published",
+    name: "the installed packages read or refuse none of the 19 names no published version accepted",
+    run: (project) => probeNeverPublished(join(project.dir, "node_modules")),
+  },
+  {
+    id: "shims.human-approval-throws",
+    name: 'ctx.suspend({ reason: "human_approval" }) throws on the installed tarballs, naming user_approval',
+    run: (project) => goalFixture(project, "goal-human-approval.mjs", "human-approval"),
+  },
+  {
+    id: "shims.stored-human-approval",
+    name: "a stored human_approval suspension reads as a user's stop",
+    run: (project) => goalFixture(project, "goal-stored-approval.mjs", "stored-approval"),
+  },
+];
+
+/**
  * Import again, with their optional peers now installed, the subpaths the first
  * pass excused. Every one must now import cleanly: an evaluation error, a crash
  * or a hang (a spec the probe never reported) is a failure.
@@ -480,18 +639,31 @@ function packAll(dest) {
  * @typedef {{ dir: string, packages: { name: string, manifest: object }[] }} Project
  */
 
-function runChecks(project, checks) {
+/**
+ * Run each check against the project and log it. Returns how many did not
+ * pass; `outcomes`, when given, receives each check's outcome by its `id` (or
+ * its name), for the goal judge. A check that throws reports `error`.
+ */
+function runChecks(project, checks, outcomes = new Map()) {
   let failed = 0;
   for (const check of checks) {
-    log(`\n• ${check.name}`);
-    const failures = check.run(project);
-    if (failures.length === 0) {
+    log(`\n• ${check.id ? `${check.id} · ` : ""}${check.name}`);
+    let result;
+    try {
+      result = check.run(project);
+    } catch (err) {
+      result = { error: err?.stack ?? String(err) };
+    }
+    const { outcome, detail } = outcomeOf(result);
+    outcomes.set(check.id ?? check.name, { outcome, detail });
+    if (outcome === "pass") {
       log("  ✓ pass");
       continue;
     }
     failed += 1;
-    log(`  ✗ ${failures.length} failure(s):`);
-    for (const f of failures) log(`    ${f}`);
+    if (outcome === "fail") log(`  ✗ ${detail.length} failure(s):`);
+    else log(`  ${outcome === "pending" ? "…" : "!"} ${outcome}:`);
+    for (const f of detail) log(`    ${f}`);
   }
   return failed;
 }
@@ -499,12 +671,16 @@ function runChecks(project, checks) {
 function main() {
   const control = process.argv.includes("--control");
   const linkControl = process.argv.includes("--control=workspace-link");
+  const goal = process.argv.includes("--goal");
+  const goalControl = process.argv.includes("--control=adopter-goal");
   const keep = process.argv.includes("--keep");
   const work = mkdtempSync(join(tmpdir(), "fsd-packed-tarballs-"));
   const dir = emptyProject();
   try {
     if (control) return runControl(work, dir);
     if (linkControl) return runLinkControl(work, dir);
+    if (goal) return runGoal(work, dir);
+    if (goalControl) return runGoalControl(work, dir);
 
     log("packing publishable packages…");
     const packed = packAll(work);
@@ -598,6 +774,91 @@ function runLinkControl(work, dir) {
   log(`\n✗ control: the resolution guard did not name ${LINK_CONTROL}; it cannot tell the repository from the install`);
   for (const f of failures.slice(0, 20)) log(`    ${f}`);
   return 1;
+}
+
+/** Write lines to the log and, under GitHub Actions, to the job summary. */
+function report(lines) {
+  for (const l of lines) log(l);
+  if (process.env.GITHUB_STEP_SUMMARY)
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\`\`\`\n${lines.join("\n")}\n\`\`\`\n`);
+}
+
+/**
+ * The adopter goal on this checkout's tarballs. Returns 0 when every outcome
+ * matches the manifest and none is an error, whatever the row count.
+ */
+function runGoal(work, dir) {
+  const manifest = readManifest();
+  log("packing publishable packages…");
+  const packed = packAll(work);
+  log(`  ${packed.length} tarball(s)`);
+  log("installing into an empty ESM project…");
+  npmInstall(dir, packed.map((p) => p.tarball));
+  const outcomes = new Map();
+  runChecks({ dir, packages: packed, tree: ROOT, manifest, ratchetRuns: new Map() }, GOAL_CHECKS, outcomes);
+  const verdict = judge(manifest, outcomes);
+  log("");
+  report([`adopter goal: ${verdict.ok ? "outcomes match the manifest" : "OUTCOMES DO NOT MATCH THE MANIFEST"}`, ...formatVerdict(verdict)]);
+  return verdict.ok ? 0 : 1;
+}
+
+/**
+ * The goal's control: every published package at its pinned version, checked
+ * by integrity, and ratchets reading a checkout of the pinned commit. Returns
+ * 0 only when every admitted assertion reports `fail`.
+ */
+function runGoalControl(work, dir) {
+  const manifest = readManifest();
+  const pins = manifest.control.packages;
+  log(`control: fetching ${pins.length} pinned tarball(s)…`);
+  const tarballs = [];
+  for (const pin of pins) {
+    const file = sh("npm", ["pack", `${pin.name}@${pin.version}`, "--pack-destination", work, "--silent"], work)
+      .trim()
+      .split("\n")
+      .pop();
+    const tarball = join(work, file);
+    const integrity = `sha512-${createHash("sha512").update(readFileSync(tarball)).digest("base64")}`;
+    if (integrity !== pin.integrity) {
+      log(`✗ control tarball ${pin.name}@${pin.version} is not the pinned bytes (got ${integrity})`);
+      return 1;
+    }
+    tarballs.push(tarball);
+  }
+  log("installing into an empty ESM project…");
+  npmInstall(dir, tarballs);
+  const packages = pins.map((pin) => ({
+    name: pin.name,
+    manifest: JSON.parse(readFileSync(join(dir, "node_modules", pin.name, "package.json"), "utf8")),
+  }));
+  // Ratchets read the tree as it was at the pinned commit; only materialised
+  // once a ratchet is wired, since an unwired cell reads nothing.
+  let tree = ROOT;
+  if (Object.values(manifest.ratchets ?? {}).some((s) => s != null)) {
+    tree = join(work, "control-tree");
+    const archive = join(work, "control-tree.tar");
+    sh("git", ["archive", "--format=tar", "-o", archive, manifest.control.commit], ROOT);
+    mkdirSync(tree);
+    sh("tar", ["xf", archive, "-C", tree], ROOT);
+    log(`ratchets read a checkout of ${manifest.control.commit.slice(0, 8)}`);
+  }
+  const outcomes = new Map();
+  runChecks({ dir, packages, tree, manifest, ratchetRuns: new Map() }, GOAL_CHECKS, outcomes);
+  const v = judgeControl(manifest, outcomes);
+  const lines = [
+    v.ok
+      ? `✓ control failed as it must: ${v.failedAsTheyMust.length} admitted assertion(s) report fail on the pinned tarballs`
+      : "✗ control: an admitted assertion did not fail on the pinned tarballs",
+  ];
+  for (const id of v.failedAsTheyMust) lines.push(`  fail (as it must): ${id}`);
+  for (const id of v.pending) lines.push(`  pending, not yet seen to fail: ${id}`);
+  for (const id of v.passed) lines.push(`  PASSED under the control: ${id}; it cannot show progress and is not admitted`);
+  for (const e of v.errors) lines.push(`  error: ${e.id}: ${e.detail.join(" | ")}`);
+  for (const id of v.missing) lines.push(`  error: ${id} is in the manifest and reported no outcome`);
+  for (const id of v.unlisted) lines.push(`  error: ${id} reported an outcome the manifest does not list`);
+  log("");
+  report(lines);
+  return v.ok ? 0 : 1;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
