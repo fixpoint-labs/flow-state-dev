@@ -495,19 +495,19 @@ By default `ItemRenderer` renders a built-in approval card (`ApprovalRenderer`) 
 
 When a suspension item reaches `ItemRenderer`, the card shows `item.message`, Approve and Reject buttons, and optional `item.data` in a collapsible details section.
 
-With just `flowKind` set, the inline card resolves with a non-streaming answer — it works, but the continuation's output only shows after the session refetches. To make the inline card stream like `useSuspensions` does, wrap the item list in `<SuspensionResolverProvider>` and hand it the session's `answerSuspension`:
+With just `flowKind` set, the inline card resolves with a non-streaming resume — it works, but the continuation's output only shows after the session refetches. To make the inline card stream like `useSuspensions` does, wrap the item list in `<SuspensionResolverProvider>` and hand it the session's `resumeSuspension`:
 
 ```tsx
 import { SuspensionResolverProvider } from "@flow-state-dev/react";
 
 <FlowProvider flowKind="my-flow">
-  <SuspensionResolverProvider resolve={session.answerSuspension}>
+  <SuspensionResolverProvider resolve={session.resumeSuspension}>
     <ItemsRenderer items={session.items} />
   </SuspensionResolverProvider>
 </FlowProvider>
 ```
 
-Now approving or rejecting from the inline card streams the continuation back into `session.items` — the chat view updates in place. `session.answerSuspension` is the same streaming answer `useSuspensions` calls under the hood, so the two paths behave identically. Both work on a stop in any run, including one a task board or a webhook started.
+Now approving or rejecting from the inline card streams the continuation back into `session.items` — the chat view updates in place. `session.resumeSuspension` is the same streaming resume `useSuspensions` calls under the hood, so the two paths behave identically.
 
 ### Beyond approval: questions, forms, and selections
 
@@ -548,7 +548,7 @@ const clarify = handler({
 
 ```tsx
 // Client: ItemsRenderer auto-picks the form card for this user_input gate.
-<SuspensionResolverProvider resolve={session.answerSuspension}>
+<SuspensionResolverProvider resolve={session.resumeSuspension}>
   <ItemsRenderer items={session.items} />
 </SuspensionResolverProvider>
 ```

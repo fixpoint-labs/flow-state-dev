@@ -150,7 +150,7 @@ function ReviewSurface() {
   const session = useSession(flow.activeSessionId);
 
   return (
-    <SuspensionResolverProvider resolve={session.answerSuspension}>
+    <SuspensionResolverProvider resolve={session.resumeSuspension}>
       <SessionItemsProvider value={session.items}>
         <Conversation>
           <ItemsRenderer items={session.items} />
@@ -177,7 +177,7 @@ Submitting runs the flow until the gate. The `Approval` card appears in the conv
 
 Two pieces make the live, in-place update work:
 
-- **`SuspensionResolverProvider`** hands the card the session's streaming answer (`session.answerSuspension`). Without it, the card still resolves, but the continuation only appears after the session refetches. With it, the output after the stop streams onto the same request the user is watching. This matters most on serverless, where the continuation runs in a different invocation than the original stream.
+- **`SuspensionResolverProvider`** hands the card the session's streaming resume (`session.resumeSuspension`). Without it, the card still resolves, but the continuation only appears after the session refetches. With it, the resumed output streams onto the same request the user is watching. This matters most on serverless, where the continuation runs in a different invocation than the original stream.
 - **`SessionItemsProvider`** lets the card see the `suspension_resume` item that records the outcome, so it shows the receipt on resolve and after a reload. It's the same context `TaskPlan` and other stream-aware components use.
 
 ### Without the ui registry
@@ -412,10 +412,9 @@ To expire a gate that no one answers, pass `timeoutMs` to `ctx.suspend()`. Once 
 
 ## Resolving without a browser
 
-The React layer wraps two plain HTTP endpoints. A server-to-server resolver (a Slack action handler, an admin script) can POST to them directly. A user's stop (`ctx.suspendForUser`, or a `user_approval` / `user_input` gate) goes to `answer`, which works whatever started the run; your own `ctx.suspend` with a custom reason goes to `resume`:
+The React layer wraps a plain HTTP endpoint. A server-to-server resolver (a Slack action handler, an admin script) can POST to it directly:
 
 ```
-POST /:flowKind/requests/:requestId/answer
 POST /:flowKind/requests/:requestId/resume
 ```
 
@@ -423,11 +422,12 @@ POST /:flowKind/requests/:requestId/resume
 {
   "suspensionId": "susp_abc123",
   "action": "approve",
-  "data": { "approved": true, "feedback": null }
+  "data": { "approved": true, "feedback": null },
+  "resumedBy": "user_xyz"
 }
 ```
 
-`data` is the payload `ctx.suspend()` returns. Who resolved it is the signed-in caller, set by the server and recorded on the audit item. `action` is one of `"approve"`, `"reject"`, `"submit"`, or `"skip"`; `submit` carries the validated `data`, `skip` carries none. The server rejects an action outside the gate's `allow` set with a `409`.
+`data` is the payload `ctx.suspend()` returns. `resumedBy` is recorded on the audit item. `action` is one of `"approve"`, `"reject"`, `"submit"`, or `"skip"`; `submit` carries the validated `data`, `skip` carries none. The server rejects an action outside the gate's `allow` set with a `409`.
 
 ## Related
 

@@ -545,7 +545,7 @@ export type SessionView = {
   // the end of `useSession`) is the whole removal.
   // -------------------------------------------------------------------------
 
-  /** @deprecated Renamed: use `answerSuspension`. Removed in 0.6.0. */
+  /** @deprecated Renamed: use `answerSuspension`. Removed in a future minor. */
   resumeSuspension: SessionView["answerSuspension"];
 };
 
@@ -2606,9 +2606,12 @@ export function useSession(
       action: ResumeAction;
       data?: unknown;
     }): Promise<void> => {
+      // A suspension id is unique within its request only, so match both.
       const stop = itemsRef.current.find(
         (item): item is SuspensionItem =>
-          item.type === "suspension" && (item as SuspensionItem).suspensionId === args.suspensionId
+          item.type === "suspension" &&
+          item.requestId === args.requestId &&
+          (item as SuspensionItem).suspensionId === args.suspensionId
       );
       // Streamed from the POST: essential on serverless, where a separate GET
       // stream can't reach the in-flight continuation.

@@ -26,12 +26,12 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 
 import { useSession } from "../src/hooks/useSession";
 
-function suspensionItem(suspensionId: string, reason: string) {
+function suspensionItem(suspensionId: string, reason: string, requestId = "req1") {
   return {
-    id: `item_${suspensionId}`,
+    id: `item_${requestId}_${suspensionId}`,
     type: "suspension",
     status: "completed",
-    requestId: "req1",
+    requestId,
     itemIndex: 0,
     provenance: { blockName: "ask", blockInstanceId: "b1", phase: "main" },
     ts: 0,
@@ -98,5 +98,19 @@ describe("session.answerSuspension", () => {
       await result.current.answerSuspension({ suspensionId: "sus_unseen", requestId: "req1", action: "approve" });
     });
     expect(requestMock.answer).toHaveBeenCalledWith("req1", { suspensionId: "sus_unseen", action: "approve" });
+  });
+
+  it("reads the reason from the answered request's stop when another request reused its id", async () => {
+    // Suspension ids are unique within a request only. An earlier run's custom
+    // stop must not send a task's user stop with the same id through resume (404).
+    const { result } = await mountWith([
+      suspensionItem("sus_1", "budget_check", "req1"),
+      suspensionItem("sus_1", "user_approval", "req2")
+    ]);
+    await act(async () => {
+      await result.current.answerSuspension({ suspensionId: "sus_1", requestId: "req2", action: "approve" });
+    });
+    expect(requestMock.answer).toHaveBeenCalledWith("req2", { suspensionId: "sus_1", action: "approve" });
+    expect(requestMock.resume).not.toHaveBeenCalled();
   });
 });

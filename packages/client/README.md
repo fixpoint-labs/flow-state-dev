@@ -109,8 +109,8 @@ A request handle comes from `send`, from `flow(address).request(id)`, or from
 | `abort()` | Ask the server to stop it. On a server with durable execution this also stops a `suspended` request, which ends `aborted`. An `interrupted` request nothing will carry on ends `aborted` too, and leaves the interrupted list. A 409 means it already finished, or was resumed before the stop reached it. |
 | `continue()` | Carry on a crash-interrupted request under its own id. Finished blocks replay from the durable log; the one in flight runs again. Resolves to the same handle. `{ stream: true }` returns the continuation's SSE `Response`. |
 | `retry({ input? })` | Run it again as a new request in the same session, with its original input or `input`. Resolves to the new request. Only an `interrupted` or `failed` request can be retried. |
-| `resume({ suspensionId, action, data? })` | Answer a pending suspension your own `ctx.suspend` raised with a custom reason. The run carries on under the same id, and the server records the signed-in caller as who answered. `{ stream: true }` returns its SSE `Response`. |
-| `answer({ suspensionId, action, data? })` | Answer a stop that waits for a user, in any run, a task board's or a webhook's included (below). Resolves to the same handle. `{ stream: true }` returns its SSE `Response`. |
+| `resume({ suspensionId, action, data? })` | Answer a pending suspension. The run carries on under the same id, and the server records the signed-in caller as who answered. `{ stream: true }` returns its SSE `Response`. |
+| `answer({ suspensionId, action, data? })` | Answer a stop that waits for a user, in any run, a task board's included, which `resume` refuses (below). Resolves to the same handle. |
 | `stream(callbacks)` | Follow the request's events (below). |
 
 `continue` and `retry` need the request's session. A handle from `send` or
@@ -123,12 +123,10 @@ the suspension's `resumeSchema` (an invalid payload is a 400 with path-keyed
 `validationErrors`). `skip` declines an optional step. An action outside the
 suspension's `allow` set is a 409.
 
-One rule picks the call: a user's stop is `answer`, your own `ctx.suspend`
-is `resume`. A user's stop is a `ctx.suspendForUser`, or a `user_approval` /
-`user_input` stop. `answer` works whatever started the run; `resume` refuses a
-run a task board or a webhook started. The server checks the caller owns the
-stop's request before it reads the stop, and records the signed-in caller as
-who answered:
+To answer a stop that waits for a user from an inbox (a `ctx.suspendForUser`, or a
+`user_approval` / `user_input` stop), use `answer`. The server checks the
+caller owns the stop's request before it reads the stop, and records the
+signed-in caller as who answered, so there is no `resumedBy`:
 
 ```ts
 await fsd.flow(flowId).request(item.requestId).answer({
@@ -137,9 +135,6 @@ await fsd.flow(flowId).request(item.requestId).answer({
   data: "eu-west",
 });
 ```
-
-Pass `{ stream: true }` to get the route's SSE `Response`, so the run's output
-after the stop streams from the POST itself, as with `resume` and `continue`.
 
 It rejects on a refusal: `404` for a stop that isn't the caller's or isn't a
 user's, `409` for one already resolved (an answer, a cancel, a deadline or a

@@ -113,15 +113,13 @@ A `RequestHandle` comes from `send`, from `flow(address).request(id)`, or from `
 | `abort()` | `void` | Asks the server to stop it. On a server with durable execution this also stops a `suspended` request, which ends `aborted`. A request that already finished answers `409`. |
 | `continue()` | the same handle | Carries on a crash-interrupted request under its own id. Finished blocks replay from the durable log; the one in flight runs again. `continue({ stream: true, includeTrace? })` resolves to the continuation's SSE `Response`. |
 | `retry({ input? })` | a new `RequestHandle` | Runs the request again as a new request in the same session, with its original input or `input`. Only an `interrupted` or `failed` request can be retried; any other answers `409`. |
-| `resume(body)` | the same handle | Answers a pending suspension your own `ctx.suspend` raised with a custom reason. The run carries on under the same id. `resume(body, { stream: true })` resolves to its SSE `Response`. |
-| `answer(body)` | the same handle | Answers a stop that waits for a user, in any run, including one a task board or a webhook started. `answer(body, { stream: true })` resolves to its SSE `Response`. See [`answer(body)`](#answerbody). |
+| `resume(body)` | the same handle | Answers a pending suspension. The run carries on under the same id. `resume(body, { stream: true })` resolves to its SSE `Response`. |
+| `answer(body)` | the same handle | Answers a stop that waits for a user, in any run, including one a task board started. See [`answer(body)`](#answerbody). |
 | `stream(options)` | `RequestStreamHandle` | Follows the request's events. See [Streams](#streams). |
 
 `continue` and `retry` need the request's session. A handle from `send` or `interrupted()` already knows it; one from `request(id)` reads it from one `status()` call and keeps it. A request with no session rejects with a `ClientHttpError` of status `0` before anything is sent.
 
 ### `resume(body)`
-
-Use `resume` for a stop your own code raised with `ctx.suspend` and a custom reason. A stop that waits for a user goes through [`answer(body)`](#answerbody) instead.
 
 ```ts
 await fsd.flow("chat").request("req_1").resume({
@@ -142,6 +140,8 @@ Server errors:
 - **409**: the request isn't suspended, the suspension is already resolved, a concurrent resume is in progress, or the action is outside the suspension's `allow` set.
 - **410**: the suspension expired.
 
+The React layer (`useSession().resumeSuspension`, `useSuspensions`) wires this up for you.
+
 ### `answer(body)`
 
 An [Inbox](/docs/orchestration/task-board#building-an-inbox) answers a stop that waits for a user (a `ctx.suspendForUser`, or a `user_approval` / `user_input` suspension) with `answer`. Unlike `resume`, it works on any run, including one a task board started, because it takes only where the stop is and the answer:
@@ -154,9 +154,7 @@ await fsd.flow(flowId).request(item.requestId).answer({
 });
 ```
 
-The server checks that the signed-in caller owns the stop's request before it reads the stop, and records that caller as who answered. A stop resolves once: whichever of an answer, a cancel, a deadline or a stop comes first wins.
-
-`answer(body, { stream: true })` resolves to the route's SSE `Response`, so the run's output after the stop streams from the POST itself. The React layer (`useSession().answerSuspension`, `useSuspensions`, and the default approval card) picks between `answer` and `resume` from the stop's reason and streams for you.
+The server checks that the signed-in caller owns the stop's request before it reads the stop, and records that caller as who answered, so there is no `resumedBy`. A stop resolves once: whichever of an answer, a cancel, a deadline or a stop comes first wins.
 
 Server errors:
 

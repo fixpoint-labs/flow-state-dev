@@ -334,7 +334,7 @@ const { items, messages, status, isStreaming } = useRequestStream({
 
 ### `useSuspensions(session, options?)`
 
-Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` by `suspensionId` and exposes `approve`/`reject` callbacks. `approve`/`reject` stream the continuation back into `session.items` (via `session.answerSuspension`), so the resolution renders live — no page refresh, even on serverless.
+Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` by `suspensionId` and exposes `approve`/`reject` callbacks. `approve`/`reject` stream the resumed continuation back into `session.items` (via `session.resumeSuspension`), so the resolution renders live — no page refresh, even on serverless.
 
 ```tsx
 const { pending, approve, reject, error } = useSuspensions(session, {
@@ -401,9 +401,7 @@ function MyApproval({ item }) {
 }
 ```
 
-Returns `{ approve, reject, approveWith, rejectWith, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming call through the provider's client.
-
-Every way React answers a stop picks the call from the stop's reason. A user's stop (`ctx.suspendForUser`, or a raw `user_approval` / `user_input`) goes through the client's `answer`, which works whatever started the run, a task board's or a webhook's included. Your own `ctx.suspend` with a custom reason goes through `resume`. Who answered is the signed-in caller, set by the server.
+Returns `{ approve, reject, approveWith, rejectWith, pendingAction, isResolving, error, resolved, resolvedStatus, outcome, canApprove, canReject }`. Resolution goes through `onApprove`/`onReject` if given, else the nearest `<SuspensionResolverProvider>` (streaming), else a non-streaming resume through the provider's client.
 
 `approve` and `reject` take no argument, so they wire straight to `onClick`. `approveWith(data)` and `rejectWith(data)` send `data` with the answer (handed to `onApprove`/`onReject` too). A stop that offers more than one yes lists them under `data.approveOptions`, each `{ label, data }`; `approveOptionsOf(item)` reads them, and a card draws one button per option:
 
@@ -434,19 +432,17 @@ import { ApprovalRenderer } from "@flow-state-dev/react";
 
 ### `<SuspensionResolverProvider>`
 
-Bridges the session's streaming answer to the inline default `<ApprovalRenderer>`. Wrap the subtree that renders `session.items`; the inline card then streams the continuation into the chat view on approve/reject, instead of a non-streaming answer that only shows output after a refetch.
+Bridges the session's streaming resume to the inline default `<ApprovalRenderer>`. Wrap the subtree that renders `session.items`; the inline card then streams the continuation into the chat view on approve/reject, instead of a non-streaming resume that only shows output after a refetch.
 
 ```tsx
 import { SuspensionResolverProvider } from "@flow-state-dev/react";
 
-<SuspensionResolverProvider resolve={session.answerSuspension}>
+<SuspensionResolverProvider resolve={session.resumeSuspension}>
   <ItemsRenderer items={session.items} />
 </SuspensionResolverProvider>
 ```
 
-Explicit `onApprove`/`onReject` props still take precedence; with neither a provider nor handlers, the card falls back to a self-contained non-streaming answer (requires `flowKind` on `<FlowProvider>`).
-
-`session.resumeSuspension` is the old name of `session.answerSuspension`. It still works, marked `@deprecated`, and is removed in 0.6.0.
+Explicit `onApprove`/`onReject` props still take precedence; with neither a provider nor handlers, the card falls back to a self-contained non-streaming resume (requires `flowKind` on `<FlowProvider>`).
 
 ### `useJumpToLatest(options?)`
 
