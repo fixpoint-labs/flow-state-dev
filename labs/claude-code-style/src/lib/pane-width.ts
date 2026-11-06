@@ -24,7 +24,7 @@ export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 440;
 
 /** The collapsed sessions list's rail, and the collapsed pane's strip, in px. */
-export const RAIL_WIDTH = 48;
+const RAIL_WIDTH = 48;
 export const STRIP_WIDTH = 43;
 
 /**

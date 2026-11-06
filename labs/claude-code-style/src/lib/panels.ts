@@ -19,7 +19,7 @@ const KEY = "claude-code-style:panels";
 const EXPANDED: Collapsed = { nav: false, pane: false };
 
 /** What was kept, or both columns expanded when nothing was kept or it doesn't read. */
-export function readCollapsed(): Collapsed {
+function readCollapsed(): Collapsed {
   try {
     const kept = localStorage.getItem(KEY);
     if (kept === null) return EXPANDED;
