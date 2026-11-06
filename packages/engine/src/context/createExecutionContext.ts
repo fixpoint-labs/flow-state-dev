@@ -48,7 +48,6 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { BlockValueInternal, RuntimeItem, ReplayLog } from "@flow-state-dev/core/internal";
 import {
-  resolveBlockValueInternal,
   resolveAllowedActions,
   BOARD_NOTICE_SEAM,
   DISPATCH_SEAM,
