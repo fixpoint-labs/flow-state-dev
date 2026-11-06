@@ -34,7 +34,7 @@ import { z } from "zod";
 import {
   getOrCreateTaskCollection,
   type TaskWorkerInput,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/tasks";
 import { reviewerVerdictSchema, type ReviewerInput } from "../schemas";
 
 type SupervisorReviewState = {

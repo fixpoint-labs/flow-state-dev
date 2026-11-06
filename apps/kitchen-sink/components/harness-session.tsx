@@ -27,6 +27,7 @@ import {
   clearDraft,
   useDraft,
   useHarnessLines,
+  useJumpToLatest,
   useSession,
   SuspensionResolverProvider,
   type SessionView,
@@ -45,7 +46,6 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-  ScrollOnNewRequest,
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
@@ -150,7 +150,23 @@ function SessionBody({
   }, [heldBy]);
   // Lines reach the run in the order they were typed, and the page stays on
   // the running turn while a line's turn waits behind it.
-  const lines = useHarnessLines(session, { sendOne: sendLineOnce });
+  // The user's line rises when it lands. Only a line that goes out as a turn of its own lands as one: a
+  // line the running turn takes joins it, and a send left waiting for it would raise the next user line
+  // shown, which may not be this user's.
+  const feed = useJumpToLatest({ resetKey: sessionId });
+  const { sent } = feed;
+  const sendOne = useCallback(
+    (prompt: string, running: boolean, sender: LineSender) =>
+      sendLineOnce(prompt, running, {
+        ...sender,
+        turn: async (text) => {
+          sent();
+          return await sender.turn(text);
+        },
+      }),
+    [sent],
+  );
+  const lines = useHarnessLines(session, { sendOne });
   const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
@@ -200,16 +216,15 @@ function SessionBody({
             {bound ?? "none yet"}
           </span>
         </div>
-        <Conversation className="min-h-0 flex-1" data-testid="conversation">
+        <Conversation className="min-h-0 flex-1" data-testid="conversation" feed={feed}>
           {/* An answer to a card goes through the session, so the turn it resumes streams in here. */}
-          <SuspensionResolverProvider resolve={session.resumeSuspension}>
+          <SuspensionResolverProvider resolve={session.answerSuspension}>
           <SessionItemsProvider value={session.items}>
             <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
               {session.isLoading ? (
                 <SessionConversationLoading />
               ) : (
                 <>
-                  <ScrollOnNewRequest items={session.items} />
                   {session.items.length === 0 && (
                     <ConversationEmptyState title={label} description={`Each turn continues the same ${label} conversation.`} />
                   )}

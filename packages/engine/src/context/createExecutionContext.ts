@@ -4145,6 +4145,12 @@ export async function createExecutionContext<
             return resumeCtx.data;
           }
         }
+        // A new stop under an old `human_*` reason is refused before it is written;
+        // a stop core 0.2.0 stored under one was answered above.
+        if (suspendOpts.reason === "human_approval" || suspendOpts.reason === "human_input") { // retired-name-refusal: the old reasons
+          const renamed = suspendOpts.reason === "human_approval" ? "user_approval" : "user_input"; // retired-name-refusal: the old reasons
+          throw new Error(`ctx.suspend: reason "${suspendOpts.reason}" was renamed. Use "${renamed}".`);
+        }
         // A run whose task was cancelled asks nobody again (FIX-2129): a
         // later wait for a user resolves `cancelled` at once and opens no
         // item. Read off this continuation's resolution, or off the log when

@@ -95,8 +95,6 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   // What holds a task for the user (FIX-2133): the Inbox lists the task's item from its open holds,
   // and a question is open while no steer carries its id.
   "holds",
-  // A row stored before FIX-2317 keeps its holds as `questions`; a reader maps it with `withRetiredShapes` (BP-030).
-  "questions",
   "steers",
   // What its runs spent (FIX-2398): the stored ledger, which a reader folds with `taskRowView`.
   "spend",

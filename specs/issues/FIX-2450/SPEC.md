@@ -108,7 +108,7 @@ Every React caller passes one pick, on the predicate `contracts` already owns. T
 | [FIX-2129 D2](../FIX-2129/DECISIONS.md#d2): every screen answers a person's stop through the answer route | **Kept**, and completed for React and the DevTool |
 | FIX-2195 (client 0.3.0 changelog): a body `resumedBy` is ignored | **Kept** on the wire; finished on the types |
 | FIX-811: the continuation streams from the POST, under the same id | **Kept**, through `answer`'s stream option |
-| Epic [D3](../../epics/FIX-2447/DECISIONS.md#d3), ER-3 | **Applied**; no refusal, as `resumedBy` changes no behaviour ([decided](DECISIONS.md#decided-not-asked)) |
+| Epic [D4](../../epics/FIX-2447/DECISIONS.md#d4) (amending D3), ER-3 | **Applied**: no refusal or reader for `resumedBy`, and no alias for `resumeSuspension` ([decided](DECISIONS.md#decided-not-asked)) |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
@@ -119,7 +119,7 @@ Every React caller passes one pick, on the predicate `contracts` already owns. T
 | The debt | |
 |---|---|
 | **Removes** | React's and the DevTool's `resume` calls for a user's stop · `resumedBy` on five argument types and its plumbing · the which-verb paragraph |
-| **Adds** | The stream option on `answer`, permanent by design. The old name `resumeSuspension`, for as long as [Q1](../../epics/FIX-2447/DECISIONS.md#q1)'s answer keeps moved names |
+| **Adds** | The stream option on `answer`, permanent by design. No alias for `resumeSuspension` ([Q1](../../epics/FIX-2447/DECISIONS.md#q1) answered break) |
 | **Leaves** | The resume route still answers a user's stop in a user's run; the epic keeps the routes, and nothing we ship calls it for one |
 
 **Net: down.** One verb per job, five types lose a dead field; the addition is an option.
@@ -136,9 +136,9 @@ DevTool; `answer` gains a stream option. If wrong: a dead field and a second ver
 1. **[D1](DECISIONS.md#d1) · React picks the verb from the stop: a user's stop through `answer`, a
    developer's own `ctx.suspend` through `resume`.** If wrong: React keeps a second verb that
    only custom stops use.
-2. **[D2](DECISIONS.md#d2) · React's session call is renamed `answerSuspension`, meeting adopters
-   as Q1 decides.** If wrong: one more moved name and five docs pages, for a name nobody misread.
+2. **[D2](DECISIONS.md#d2) · React's session call is renamed `answerSuspension`, with no alias
+   for the old name.** If wrong: one more moved name and five docs pages, for a name nobody misread.
 
-**Open: none.** D1 is the one to weigh. The moved names follow ER-3 and Q1's answer.
+**Open: none.** D1 is the one to weigh. The moved names follow ER-3: Q1 answered break, no alias.
 
 Improvement · `react` + `client` + `devtool` · small: 3 packages, 2 public names changed, 1 option added · epic FIX-2447

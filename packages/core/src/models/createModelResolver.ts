@@ -683,8 +683,8 @@ function applyOverrides(
  * - `"intent/name"` — resolve a configured intent to a fallback model
  *   (e.g., `"intent/chat"`)
  *
- * The removed `gateway/provider/model` form throws, naming its colon spelling:
- * at construction for config strings, on first resolve for any other.
+ * Any other shape (a three-part slash string, say) throws as an invalid
+ * format: at construction for config strings, on first resolve for any other.
  */
 export function createModelResolver(
   options?: CreateModelResolverOptions

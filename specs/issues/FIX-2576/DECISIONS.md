@@ -39,7 +39,7 @@ It comes down to the leak: a registry has no idea which flow a session belongs t
 |---|---|
 | **Instead of** | The last declaration wins, as `extendSchema` does at the type level; or a narrower declaration wins when it is assignable to the wider one |
 | **Because** | A silent winner is picked by import order, so the value a block reads depends on code it never sees. `mergeTargetsInto` already refuses a different schema under one name. The one real conflict the POC found, `thinkingStyle` in chat-agent, is a block declaring a looser read view of the flow's enum, and the fix is one line. "Narrower wins" is more code and harder to explain for a case seen once |
-| **Locks in** | Identical declarations merge quietly; new fields union at any depth; a default on one side and none on the other is not a conflict; `.nullable()` is part of the type. A flow that defines today can throw after the upgrade, and the changeset says so (ER-7). The error is not a retired value: no `refuseRetired`, no tracker id ([ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what)) |
+| **Locks in** | Identical declarations merge quietly; new fields union at any depth; a default on one side and none on the other is not a conflict; `.nullable()` is part of the type. A flow that defines today can throw after the upgrade, and the changeset says so (ER-7). The error carries no tracker id ([ER-5](../../epics/FIX-2447/DECISIONS.md#who-owns-what)) |
 
 ![D2: refused at defineFlow with both named, chosen, beside the last declaration wins. Decides it: two blocks that default one field differently. Price: chat-agent's thinkingStyle line. Flips if wider read views are common](figures/d2-strict.svg)
 
@@ -128,5 +128,9 @@ refusal's fields may not all be declared by board blocks today; covered by the r
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). The conflict error no longer names `refuseRetired`, which is not built.
+  The two refusals are conflict checks on today's input, not compat code, and stay. Removing
+  `hireWorkforce`'s role-state refusal, already in the direction, fits D4.
 - **Draft** — framed as finishing FIX-2554's promise for blocks and capabilities; built as the
   owner's option B from #4788 on the existing `walkBlockGraph` and the unchanged fill.

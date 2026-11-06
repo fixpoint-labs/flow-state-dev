@@ -2,10 +2,14 @@
  * Build one app's goal page, in its own process (several Vite builds in one
  * process run out of heap). Called by `run.mts` with one JSON argument:
  *
- *   { repo, root, outDir, control, aliases }
+ *   { repo, root, outDir, control, aliases, host? }
  *
  * `root` is the app's scratch copy, already holding the goal's pages at
- * `src/goal/`. The build is the app's own Vite config plus one plugin that:
+ * `src/goal/`. With `host`, `root` is instead a fresh host the registry items
+ * were installed into (`goals/lib/registry-host.mts`), which has no Vite config
+ * of its own: it builds the way a Vite app on the registry does, with React,
+ * Tailwind and the `@/` alias. The build is the app's own Vite config (or that
+ * one) plus one plugin that:
  *
  * - swaps each `src/lib/<name>.ts(x)` that has a `src/goal/shift-manager/fakes/<name>.ts`
  *   for it, except where the fake itself imports the real module;
@@ -17,12 +21,13 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const { repo: REPO, root, outDir, control, aliases } = JSON.parse(process.argv[2]!) as {
+const { repo: REPO, root, outDir, control, aliases, host } = JSON.parse(process.argv[2]!) as {
   repo: string;
   root: string;
   outDir: string;
   control: string;
   aliases: Record<string, string>;
+  host?: boolean;
 };
 const HOOK = join(REPO, "packages", "react", "src", "hooks", "useJumpToLatest.ts");
 /** The commit before this change: what "today's main" is for the `main-rule` control. */
@@ -72,15 +77,18 @@ if (existsSync(fakes)) {
 }
 let served = false;
 
-const vite = (await import(pathToFileURL(createRequire(join(root, "package.json")).resolve("vite")).href)) as {
-  build(config: Record<string, unknown>): Promise<unknown>;
-};
+const load = async (name: string) => (await import(pathToFileURL(createRequire(join(root, "package.json")).resolve(name)).href)) as Record<string, any>;
+const vite = (await load("vite")) as { build(config: Record<string, unknown>): Promise<unknown> };
+// A registry host: a plain Vite app with React, Tailwind and the `@/` alias its components.json names.
+const hostPlugins = host ? [(await load("@vitejs/plugin-react")).default(), (await load("@tailwindcss/vite")).default()] : [];
+const alias = { ...aliases, ...(host ? { "@": root } : {}) };
 await vite.build({
   root,
-  configFile: join(root, "vite.config.ts"),
+  configFile: host ? false : join(root, "vite.config.ts"),
   logLevel: "error",
-  resolve: { alias: Object.entries(aliases).map(([find, replacement]) => ({ find, replacement })) },
+  resolve: { alias: Object.entries(alias).map(([find, replacement]) => ({ find, replacement })) },
   plugins: [
+    ...hostPlugins,
     {
       name: "goal-swaps",
       enforce: "pre",

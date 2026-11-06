@@ -30,7 +30,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { defineTaskCollection, type TaskWorker } from "@flow-state-dev/orchestration";
+import { defineTaskCollection, type TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   taskBoard,
   taskBoardStateSchema,

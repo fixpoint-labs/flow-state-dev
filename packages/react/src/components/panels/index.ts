@@ -9,7 +9,6 @@
  */
 export {
   Roster,
-  rosterPropNames,
   type RosterProps,
   type RosterWorker,
   type RosterWorkerRow,
@@ -20,7 +19,6 @@ export { WorkerDetail, type WorkerDetailProps } from "./WorkerDetail";
 
 export {
   BoardColumns,
-  boardColumnsPropNames,
   groupIntoColumns,
   BOARD_STATUS_COLUMNS,
   type BoardColumn,
@@ -33,7 +31,6 @@ export type { BoardCard, BoardCardRow } from "./cards";
 
 export {
   BoardList,
-  boardListPropNames,
   type BoardListProps,
   type BoardListSlots
 } from "./BoardList";

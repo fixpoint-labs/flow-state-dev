@@ -741,18 +741,6 @@ export function taskBoard<
     flowPolicy: flowPolicyConfig,
   } = config;
 
-  // The park exit is gone (FIX-2131): a task waiting on a person holds on its
-  // row or suspends its run, and the board exits `blocked` around it. Refused
-  // by name (BP-030), so a board still built with it fails at construction.
-  if ("onReview" in (config as object)) { // retired-name-refusal: the board refuses the removed option by name
-    throw new Error(
-      `[task-board] "${name}" sets \`onReview\`, which was removed (FIX-2131). A task waiting on a person ` + // retired-name-refusal
-        `no longer parks: a worker's question keeps the task waiting (\`holdTaskForUser\`) and a review suspends its run ` +
-        `(\`ctx.suspendForUser({ kind: "review" })\`), and a board whose only open rows wait on a person exits ` +
-        `\`blocked\` on its own. Remove the option.`
-    );
-  }
-
   // The claim order's option was `dispatcher` (FIX-2245), the word the block
   // keeps. Refused by name, so a board built with it does not quietly drop its
   // claim order, and with it a guard such as `runOwnerClaimOrder()`.

@@ -95,16 +95,6 @@ describe("updateTask's answers", () => {
     expect(read.task.holds.map((hold: { id: string }) => hold.id)).toEqual([b.column]);
   });
 
-  it("refuses the old question field by name, so an answer sent with it is never kept as a plain message", async () => {
-    const b = await held();
-    expect(await b.call("updateTask", { id: b.id, question: b.csv, message: "The March export" })).toMatchObject({
-      ok: false,
-      error: expect.stringMatching(/^answers_not_question:/),
-    });
-    expect(b.get(b.id)!.steers ?? []).toEqual([]);
-    expect(openHolds(b.get(b.id)!).map((hold) => hold.id)).toEqual([b.csv, b.column]);
-  });
-
   it("a retried answer is a success; other words are refused as answered", async () => {
     const b = await held();
     await b.act("updateTask", { id: b.id, answers: b.csv, message: "The March export" });

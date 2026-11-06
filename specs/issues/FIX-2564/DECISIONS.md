@@ -72,8 +72,9 @@ It comes down to the gate: inside the PR job, an expected fail blocks unrelated 
   already met can't show progress. That cut a check on `@deprecated` names: both of 0.4.0's
   (`resumedBy`, `dynamic`) were in 0.3.0. *Shims*' never-published scope is FIX-2454's census, 19 names
   no published version accepted (among them `queued`, `suspendedWait`, `questions`, which 0.4.0
-  dual-reads), not the three the issue named. Its two `human_approval` cells fail on 0.4.0, which
-  runs that reason as a custom one.
+  dual-reads), not the three the issue named. FIX-2454's two `human_approval` cells left the grid
+  with the owner's no-compat call ([epic D4](../../epics/FIX-2447/DECISIONS.md#d4)): nothing
+  refuses that value or reads a stored one now, so there is nothing to assert.
 - **Under the control, every row fails.** Probed on the published tarballs: core 0.4.0 carries 272
   tracker ids in its `.d.ts` and orchestration 0.5.0 ships `retired-shapes`. FIX-2457's probe
   shows a handler with state schemas alone already compiles on `main`, so `types.typed-handler`'s
@@ -118,5 +119,15 @@ Skipped in spec-set member mode: `epic-agent` runs `analysis` and `reuse-review`
   `first-hour.example.*`; renamed the output read to FIX-2455's `onepath.output-read` with its
   two cases; `types.typed-handler` now declares `uses` and calls a helper that stays public. The
   judge is `runChecks`; the closure is the manifest's last writer.
+- **Owner amendment (Nov 6).** [Epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1),
+  and [epic D4, no backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4)
+  ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)).
+  `shims.human-approval-throws` and `shims.stored-human-approval` are dropped from the grid and
+  the figure: FIX-2454 no longer refuses `human_approval` or reads a stored one. *Shims* is now
+  `shims.never-published` alone. `types.fresh-session-default` no longer names `refuseRetired`,
+  which is not built.
+  The merged manifest (`scripts/packed-install/goal-manifest.json`) and its two fixtures
+  (`goal-human-approval.mjs`, `goal-stored-approval.mjs`) still carry both cells; removing them
+  is a code change, outside this spec amendment, without which *Shims* can never pass.
 
 **Open: none.**

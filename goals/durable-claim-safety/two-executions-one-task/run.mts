@@ -41,7 +41,7 @@ import {
   type Task,
   type TaskCollectionRef,
   type TaskWriteOutcome,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/tasks";
 import {
   taskBoard,
   taskWorkerInputSchema,

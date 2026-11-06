@@ -72,7 +72,7 @@ and 18 per-store constructors): this PR creates the subpath, and FIX-2452's PR m
 **Client's root** fails on three names: `clientPackageMarker` is deleted, `ExecuteActionRequestBody`
 has no reader and is unexported, and `CollectionItemHandle` stays, documented in client's README.
 
-**Renamed and re-homed** ([D2](DECISIONS.md#d2)), reaching 0.4.0 adopters per ER-3 and Q1's answer:
+**Renamed and re-homed** ([D2](DECISIONS.md#d2)), reaching 0.4.0 adopters as a compile error, with the changeset naming each new home (ER-3, ER-7; Q1 answered break, no alias):
 
 | Name today | After |
 |---|---|
@@ -120,7 +120,7 @@ the import lines in `server/host-adapters.md`, `advanced/inbound-transports.md`,
 | The debt | |
 |---|---|
 | **Removes** | Five `export *` lines; 215 root exports with no outside consumer; 26 re-exported core and contracts names, `unstable_isCollectionConfig` included; the `unstable_` prefix; twelve collisions; four package markers and react's import proof; client's unread request body and its copy of the child-session wire types; leg b's collision copy |
-| **Adds** | Two engine entries to keep; one assertion; six renames. Under Q1's alias answer, deprecated aliases until the removal minor |
+| **Adds** | Two engine entries to keep; one assertion; six renames. No deprecated aliases (Q1 answered break) |
 | **Leaves** | The other side of ten collisions (FIX-2458, FIX-2452, FIX-2459); five subpath collisions outside the six packages (patterns, workforce), held by ER-1's ratchet; core's root (FIX-2448); store factory names (FIX-2452) |
 
 **Net: down.** 383 names on one root become three entries by reader; twelve collisions become none.
@@ -140,6 +140,6 @@ If wrong: adapter authors pay a breaking move for a split they didn't need.
    foundation's public subpaths; the side off the app author's path renames. If wrong: renames
    adopters didn't need.
 
-**Open: none.** Q1 is the epic's; this spec reads either answer.
+**Open: none.** The epic's [Q1](../../epics/FIX-2447/DECISIONS.md#q1) was answered break on Nov 6.
 
 Improvement · engine, client, core, contracts, react, testing, vercel, and the first-party adapters' imports · M · epic [FIX-2447](../../epics/FIX-2447/SPEC.md)

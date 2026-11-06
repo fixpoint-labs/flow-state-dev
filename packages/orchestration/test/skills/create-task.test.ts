@@ -106,13 +106,10 @@ describe("createTask only files: it refuses a wait field by name (BR-21, FIX-208
       waits: { deadlines: { defaultMs: 300_000, minMs: 1_000, maxMs: 86_400_000 }, depth: async () => 1 }
     }
   };
-  // retired-name-refusal: the old field is sent on purpose, to be refused.
   for (const [label, fields] of [
     ["wait", { wait: true }],
     ["deadline", { deadline: 60_000 }],
-    ["waitForResponse", { waitForResponse: true }], // retired-name-refusal
-    ["timeoutMs", { timeoutMs: 60_000 }],
-    ["waitForResponse: false", { waitForResponse: false }] // retired-name-refusal
+    ["timeoutMs", { timeoutMs: 60_000 }]
   ] as const) {
     for (const dispatches of [true, false]) {
       it(`refuses ${label} and files nothing, on a board that ${dispatches ? "dispatches" : "a drain runs"}`, async () => {

@@ -4,12 +4,13 @@
  */
 import { handler, router, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig } from "@flow-state-dev/core/types";
-import { renderSteers, runningTaskOf, takeRunningSteers, type ShownSteer } from "@flow-state-dev/orchestration";
+import { renderSteers, runningTaskOf, takeRunningSteers } from "@flow-state-dev/orchestration";
 import { afterTaskCheck, noteTaskAnswer, packWorkerInput } from "@flow-state-dev/orchestration/task-board";
 import {
   isTerminalStatus,
   LINE_STEER_REFUSALS,
   steerFromLine,
+  type ShownSteer,
   type Task,
   type TaskCollectionRef
 } from "@flow-state-dev/orchestration/tasks";

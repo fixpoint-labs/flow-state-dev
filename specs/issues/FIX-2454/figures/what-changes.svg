@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="A grid of retired names. Rows: a value, a config key, a stored shape. Columns: never on npm, and on npm. Today the never-on-npm column holds 10 refusals of keys and 9 readers of stored shapes that no adopter could reach; after, it is empty, deleted. On npm, today a retired value such as human_approval runs silently as a custom reason, six keys are refused each in its own words, and one task-row shape is read while a stored human_approval stop is not. After, all ten go through one helper and one table per package, each with its replacement and a removal version, and the stored stop is read as a user's stop."
+<svg viewBox="0 0 940 400" role="img" aria-label="A grid of retired names. Rows: a value, a config key, a stored shape. Columns: never on npm, and on npm. Today the never-on-npm column holds 10 refusals of keys and 9 readers of stored shapes that no adopter could reach; after, it is empty, deleted. On npm, today a retired value such as human_approval runs silently as a custom reason, six keys are refused each in its own words, and one task-row shape is read while a stored human_approval stop is not. After, amended by the owner's no-compat call: human_approval stays as it is, the other refusals are deleted with their names, and the one stored-shape reader, blocked, is raised under the data-corruption guard before it goes; a stored human_approval stop stays unread."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,10 +42,11 @@
     <text class="t-b" x="502" y="106">human_* runs silently</text>
     <text class="t-s" x="502" y="124">a custom reason, no Inbox item</text>
     <text class="t-s" x="502" y="140">the other two: own wording</text>
-    <rect class="after" x="714" y="68" width="210" height="94" rx="5"/>
-    <text class="t-c" x="728" y="86">AFTER</text>
-    <text class="t-b" x="728" y="106">Refused by the helper</text>
-    <text class="t-s" x="728" y="124">replacement and removal version</text>
+    <rect class="cell" x="714" y="68" width="210" height="94" rx="5"/>
+    <text class="t-lbl" x="728" y="86">AFTER · EPIC D4</text>
+    <text class="t-b" x="728" y="106">human_* stays as it is</text>
+    <text class="t-s" x="728" y="124">no refusal, by the owner's call</text>
+    <text class="t-s" x="728" y="140">the other two: refusals deleted</text>
   </g>
 
   <g id="row-key">
@@ -63,8 +64,9 @@
     <text class="t-s" x="502" y="232">agents, catalog: literal types</text>
     <rect class="after" x="714" y="176" width="210" height="94" rx="5"/>
     <text class="t-c" x="728" y="194">AFTER</text>
-    <text class="t-b" x="728" y="214">One error, one table</text>
-    <text class="t-s" x="728" y="232">no literal types</text>
+    <text class="t-b" x="728" y="214">Refusals deleted</text>
+    <text class="t-s" x="728" y="232">gone from the types, too</text>
+    <text class="t-s" x="728" y="248">the changeset names the new one</text>
   </g>
 
   <g id="row-shape">
@@ -80,10 +82,10 @@
     <text class="t-lbl" x="502" y="302">TODAY · 1</text>
     <text class="t-b" x="502" y="322">blocked reads as held</text>
     <text class="t-s" x="502" y="340">a stored human_* stop: unread</text>
-    <rect class="after" x="714" y="284" width="210" height="100" rx="5"/>
-    <text class="t-c" x="728" y="302">AFTER</text>
-    <text class="t-b" x="728" y="322">Read through the table</text>
-    <text class="t-s" x="728" y="340">the stored stop is a user's (D1)</text>
-    <text class="t-s" x="728" y="356">each with a removal version</text>
+    <rect class="cell" x="714" y="284" width="210" height="100" rx="5"/>
+    <text class="t-lbl" x="728" y="302">AFTER · THE GUARD</text>
+    <text class="t-b" x="728" y="322">blocked: raised, then removed</text>
+    <text class="t-s" x="728" y="340">if it can't corrupt a stored row</text>
+    <text class="t-s" x="728" y="356">a stored human_* stop: unread</text>
   </g>
 </svg>

@@ -155,7 +155,6 @@ import {
   COORDINATOR_SERVER_OWNED,
   coordinatorSessionStateSchema,
   coordinatorStateShape,
-  dropRetiredLedger,
   roundAnswerSchema,
   roundRobinCursorSchema,
   turnOrder,
@@ -273,21 +272,9 @@ const postStateSchema = z.object({
   evaluationFailed: z.string().optional()
 });
 
-export type PostState = z.infer<typeof postStateSchema>;
+type PostState = z.infer<typeof postStateSchema>;
 
 const requestStateSchema = z.object({ [POST_STATE]: postStateSchema.optional() });
-
-/**
- * A request opened while `dispatches` had its old name, and resumed since, reads it as
- * `dispatches` (BP-030). Request state is not parsed on read, so this is the one reader.
- *
- * @internal Exported for its test.
- */
-export function withDispatches(post: PostState): PostState {
-  const { handOffs: legacy, ...rest } = post as PostState & { handOffs?: PostState["dispatches"] }; // retired-name-refusal: BP-030
-  if (legacy === undefined) return post;
-  return { ...rest, dispatches: rest.dispatches ?? legacy };
-}
 
 /** One routed task to file. */
 const deliveryRequestSchema = z.object({
@@ -559,7 +546,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         const rounds = roundsIn(state);
         const deadline = roundDeadline(rounds, request.messageRequestId, request.round, now, deadlineMs);
         return {
-          state: { ...(deadline.deadlineAt === undefined ? {} : { [ROUNDS_STATE]: deadline.rounds }), ...dropRetiredLedger(state) },
+          state: { ...(deadline.deadlineAt === undefined ? {} : { [ROUNDS_STATE]: deadline.rounds }) },
           result: deadline.deadlineAt
         };
       }
@@ -639,7 +626,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const post = (ctx.request.state as Record<string, unknown>)[POST_STATE] as PostState | undefined;
     if (post === undefined) throw new Error("No message is being routed in this request.");
     // A request opened before posts carried their lines, and resumed since, reads as having none (BP-030).
-    return withDispatches(post.recent === undefined ? { ...post, recent: [] } : post);
+    return post.recent === undefined ? { ...post, recent: [] } : post;
   };
 
   /** A delegate record as a delivery names it: its worker, and its target when it has one. */
@@ -839,7 +826,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         ? { routed: { worker: init.assignee, outcome: "skipped" as const, reason: judged.refused } }
         : await routeTask(ctx, judged, init);
     await ctx.request.patchState(POST_STATE as never, ((state: PostState) => {
-      const current = withDispatches(state);
+      const current = state;
       // A replayed call's delivery is recorded once: a delegate takes the message once a round.
       const again = filed.routed.outcome === "delivered" && current.dispatches.some((entry) => entry.outcome === "delivered" && sameDelegate(entry, filed.routed));
       return again ? current : { ...current, dispatches: [...current.dispatches, filed.routed] };

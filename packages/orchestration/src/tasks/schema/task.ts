@@ -9,7 +9,6 @@
 import { z } from "zod";
 import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
 import { taskSteerSchema } from "./steer";
-import { QUEUED_WAIT, SUSPENDED_WAIT } from "./retired-shapes";
 import { taskHoldSchema } from "./hold";
 import { taskSpendSchema } from "./spend";
 
@@ -491,19 +490,9 @@ export const taskSchema = z.object({
    * nor `holds`, which says what the row is held on for a person, nor `wait`,
    * a request waiting on this row's ending. Server-written by the claim gate
    * (`setKeptOpenBy`), never by a caller. **Absent, or `null`, reads as kept
-   * open by nothing** (BP-030). `"queued"`, which a row stored while a queued
-   * message held it open carries, reads as `"filed"`: its request had
-   * answered (the retired-shape map's `queued` entry). `"wait"`, the name for
-   * `"suspended"` before FIX-2317, reads as `"suspended"`.
+   * open by nothing** (BP-030).
    */
-  // Only the retired-shape read drops a legacy row's lease: a bare parse keeps
-  // it, and every src read of a stored row goes through `withRetiredShapes` first.
-  keptOpenBy: z
-    .preprocess(
-      (value) => (value === QUEUED_WAIT ? "filed" : value === SUSPENDED_WAIT ? "suspended" : value),
-      z.enum(["suspended", "filed", "steer"]).nullable()
-    )
-    .optional(),
+  keptOpenBy: z.enum(["suspended", "filed", "steer"]).nullable().optional(),
 
   /**
    * What holds the task on its row for a person (FIX-2133 D2, FIX-2317): its
