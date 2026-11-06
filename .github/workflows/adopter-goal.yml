@@ -55,7 +55,7 @@ jobs:
       # The judge's rules (what turns the job red, how a row is derived),
       # pinned against fixtures before the slow steps.
       - name: Goal judge rules
-        run: node --test scripts/packed-install/goal.test.mjs
+        run: node --test scripts/packed-install/goal.test.mjs scripts/packed-install/first-hour.test.mjs
 
       - name: Release build
         run: pnpm release:build
