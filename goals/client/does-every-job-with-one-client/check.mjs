@@ -54,8 +54,10 @@
 //   node goals/client/does-every-job-with-one-client/check.mjs            # inventory + totality
 //   node goals/client/does-every-job-with-one-client/check.mjs --after    # gate: passes once every caller is migrated
 //   node goals/client/does-every-job-with-one-client/check.mjs --control  # negative control: must report all plants
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { isHistory, readCorpus } from "../../../scripts/import-census.mjs";
+import { fsReader } from "../../../scripts/mechanism-exports.mjs";
 
 const FACTORIES = [
   "createClient",
@@ -111,9 +113,8 @@ const SELF = new Set([
   "specs/issues/FIX-2162/poc/caller-census/check.mjs",
   "goals/client/does-every-job-with-one-client/check.mjs"
 ]);
-// Retained history: never rewritten (spec-template, BP-037), allowed after.
-const isHistory = (f) =>
-  f.startsWith("specs/") || f.startsWith("docs/internal/") || f.startsWith(".changeset/") || /(^|\/)CHANGELOG\.md$/.test(f);
+// Retained history (`isHistory`, from the shared import census): never rewritten
+// (spec-template, BP-037), allowed after.
 // Other libraries' `createClient`, by file, with the reason. A new homonym must
 // be added here by hand, or the run fails.
 const HOMONYMS = {};
@@ -121,19 +122,10 @@ const HOMONYMS = {};
 const TEXT = /\.(ts|tsx|mts|mjs|cjs|js|jsx|md|mdx|html|json|yaml|yml)$/;
 const FACTORY_RE = new RegExp(`\\b(${FACTORIES.join("|")})\\b`, "g");
 
+// Every tracked text file, read through the shared import census (scripts/import-census.mjs).
 function corpus() {
-  const out = {};
-  const files = execFileSync("git", ["ls-files"], { encoding: "utf8", maxBuffer: 1 << 28 })
-    .split("\n")
-    .filter((f) => f && TEXT.test(f) && !f.includes("/dist/"));
-  for (const f of files) {
-    try {
-      out[f] = readFileSync(f, "utf8");
-    } catch {
-      // deleted in the working tree
-    }
-  }
-  return out;
+  const root = fileURLToPath(new URL("../../../", import.meta.url));
+  return readCorpus(fsReader(root), (f) => TEXT.test(f) && !f.includes("/dist/"));
 }
 
 function area(f) {
