@@ -43,6 +43,9 @@ const refreshCalls = vi.fn();
 const listRequests = vi.fn(async (..._args: unknown[]) => []);
 /** The client's `flow(kind).send`: a line sent beside the running turn. */
 const clientSend = vi.fn(async () => ({ id: "line-1" }));
+/** The feed's `sent`: the page tells the conversation the user's line is going out as a turn. */
+const sent = vi.fn();
+const feed = { ref: () => undefined, atEnd: true, jump: () => undefined, sent, mine: (key: string) => ({ "data-sent-line": key }) };
 /** Ends the running turn in the stubbed hook. */
 let endTurn: () => void = () => undefined;
 /** Session state the server holds; `refresh` reads it. */
@@ -60,6 +63,7 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => ({
 vi.mock("@flow-state-dev/react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@flow-state-dev/react")>()),
   FlowProvider: ({ children }: { children: ReactNode }) => children,
+  useJumpToLatest: () => feed,
   useResourceManifest: () => ({ manifest: undefined, error: undefined }),
   useResourceCollectionList: () => ({ items: [], error: undefined }),
   useSession: () => {
@@ -106,6 +110,7 @@ afterEach(() => {
   clientSend.mockClear();
   refreshCalls.mockClear();
   listRequests.mockClear();
+  sent.mockClear();
   serverState = {};
   localStorage.clear();
 });
@@ -171,6 +176,29 @@ describe("a line sent while the turn runs", () => {
     act(() => endTurn());
     await waitFor(() => expect(followRequest).toHaveBeenCalledWith("line-1"));
     expect(followRequest).toHaveBeenCalledTimes(1);
+  });
+
+  // A line the running turn takes joins that turn: no new line of the user's
+  // lands in the conversation. A send left armed for it would raise the next
+  // user line the feed shows, which can be one the user didn't send (another
+  // tab's turn, read in by a refresh).
+  it("does not tell the conversation a line was sent when the running turn takes it", async () => {
+    steerRunningTurn.mockImplementation(async () => {
+      serverState = { turns: { "turn-1": { steered: ["use v3"] } } };
+      return { taken: true, live: true };
+    });
+    mount();
+    sendLine("use v3");
+    await waitFor(() => expect(screen.getByTestId("line-taken")).toBeTruthy());
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  it("tells the conversation once, as a refused line goes out as its own turn", async () => {
+    steerRunningTurn.mockResolvedValue({ taken: false, live: true });
+    mount();
+    sendLine("later");
+    await waitFor(() => expect(clientSend).toHaveBeenCalledWith("turn", { prompt: "later" }, { sessionId: "s1" }));
+    expect(sent).toHaveBeenCalledTimes(1);
   });
 
   it("while a turn runs, Send sends the line and clears the box, and Stop is a button of its own", async () => {

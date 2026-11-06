@@ -150,10 +150,23 @@ function SessionBody({
   }, [heldBy]);
   // Lines reach the run in the order they were typed, and the page stays on
   // the running turn while a line's turn waits behind it.
-  const lines = useHarnessLines(session, { sendOne: sendLineOnce });
-  // The user's line rises when it lands: the composer says when they sent.
+  // The user's line rises when it lands. Only a line that goes out as a turn of its own lands as one: a
+  // line the running turn takes joins it, and a send left waiting for it would raise the next user line
+  // shown, which may not be this user's.
   const feed = useJumpToLatest({ resetKey: sessionId });
   const { sent } = feed;
+  const sendOne = useCallback(
+    (prompt: string, running: boolean, sender: LineSender) =>
+      sendLineOnce(prompt, running, {
+        ...sender,
+        turn: async (text) => {
+          sent();
+          return await sender.turn(text);
+        },
+      }),
+    [sent],
+  );
+  const lines = useHarnessLines(session, { sendOne });
   const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
@@ -168,7 +181,6 @@ function SessionBody({
         return;
       }
       try {
-        sent();
         const outcome = await lines.send(prompt);
         setLastLine(outcome);
         // The view may have closed (a session switch) while it ran: the stored draft goes only if it is still this line.
@@ -182,7 +194,7 @@ function SessionBody({
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [heldBy, lines, refresh, sent, setMessage, sessionId],
+    [heldBy, lines, refresh, setMessage, sessionId],
   );
   // A turn waiting on an answer has no stream to close: the session stops it by request id.
   const waiting = shown?.status === "waiting";

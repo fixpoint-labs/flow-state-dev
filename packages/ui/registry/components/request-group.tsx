@@ -182,8 +182,10 @@ function RequestGroup({
     [showWorkedFor, live, completedAtMs, group.items],
   );
 
-  // The user's line: the segment holding their message, named by that item's id, not the request's,
-  // since one request can own several segments. Outside a Conversation nothing is marked.
+  // The user's line: only the segment holding their message is marked, however many segments its
+  // request owns. It is named by that message's request, not its id: a sent line is drawn first as an
+  // optimistic message and replaced by the server's under another id, and the feed keeps its space
+  // under the line by this name. Outside a Conversation nothing is marked.
   const feed = useConversationFeed();
   const userItem = group.items.find((item) => item.type === "message" && item.role === "user");
 
@@ -191,7 +193,7 @@ function RequestGroup({
     <div
       data-request-id={group.requestId}
       className="flex flex-col gap-2"
-      {...(feed && userItem ? feed.mine(userItem.id) : undefined)}
+      {...(feed && userItem ? feed.mine(userItem.requestId) : undefined)}
     >
       <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
       <SourcesGroup items={group.items} />

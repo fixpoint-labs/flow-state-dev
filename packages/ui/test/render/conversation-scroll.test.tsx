@@ -5,7 +5,7 @@
  * goal's (`goals/conversation-scroll/sent-line-rises-reply-stays`, the
  * `registry/*` surfaces); these pin the wiring a layout can't show:
  *
- * - the user's line is marked by their message's id, and only inside a
+ * - the user's line is marked by their message's request, and only inside a
  *   Conversation, so `feed.sent()` has a line to raise and a view with no feed
  *   raises nothing;
  * - the last request group keeps no space of its own (the hook keeps the space);
@@ -38,15 +38,33 @@ function fakeFeed(atEnd: boolean): JumpToLatest {
 }
 
 describe("the user's line, inside a Conversation", () => {
-  it("is the segment holding their message, named by that message's id", () => {
+  it("is the segment holding their message, named by that message's request", () => {
     const { container } = render(
       <Conversation>
         <RequestGroupRenderer items={[...turn("r1"), ...turn("r2")]} isStreaming={false} />
       </Conversation>,
     );
-    expect(marks(container)).toEqual(["r1-user", "r2-user"]);
+    expect(marks(container)).toEqual(["r1", "r2"]);
     // The mark is on the segment, so the line that rises is the user's message and what follows it.
-    expect(container.querySelector('[data-sent-line="r2-user"]')?.getAttribute("data-request-id")).toBe("r2");
+    expect(container.querySelector('[data-sent-line="r2"]')?.getAttribute("data-request-id")).toBe("r2");
+  });
+
+  // `useSession` draws a sent line at once as an optimistic message, then
+  // replaces it with the server's, under another id. The hook keeps space
+  // under the line by its mark, so a mark that changed with the id would
+  // lose its line and leave that space as the reply grows.
+  it("keeps one mark across the optimistic message and the server's that replaces it", () => {
+    const optimistic = messageItem({ id: "item_msg_optimistic_r2", role: "user", text: "asked in r2", requestId: "r2" });
+    const view = (line: ReturnType<typeof messageItem>) => (
+      <Conversation>
+        <RequestGroupRenderer items={[...turn("r1"), line]} isStreaming />
+      </Conversation>
+    );
+    const { container, rerender } = render(view(optimistic));
+    const before = marks(container);
+    rerender(view({ ...optimistic, id: "msg-from-server" }));
+    expect(marks(container)).toEqual(before);
+    expect(new Set(before).size).toBe(2);
   });
 
   it("is not marked on a segment with no message of theirs", () => {
@@ -56,7 +74,7 @@ describe("the user's line, inside a Conversation", () => {
         <RequestGroupRenderer items={[...turn("r1"), ...agentOnly]} isStreaming={false} />
       </Conversation>,
     );
-    expect(marks(container)).toEqual(["r1-user"]);
+    expect(marks(container)).toEqual(["r1"]);
   });
 
   it("is not marked outside a Conversation", () => {
@@ -72,7 +90,7 @@ describe("the user's line, inside a Conversation", () => {
         <RequestGroupRenderer items={turn("r1")} isStreaming={false} />
       </Conversation>,
     );
-    expect(mine).toHaveBeenCalledWith("r1-user");
+    expect(mine).toHaveBeenCalledWith("r1");
     expect(feed.ref).toHaveBeenCalledWith(screen.getByRole("log"));
   });
 });
