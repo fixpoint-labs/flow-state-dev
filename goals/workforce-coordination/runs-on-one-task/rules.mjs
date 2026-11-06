@@ -260,7 +260,7 @@ export const KEEP = [
   { path: /^(apps\/docs\/docs\/server\/scheduled\.md|packages\/scheduled\/README\.md)$/, line: /idempotency(WindowMs|Options)/, why: "says the adapter refuses the removed options (FIX-2085)" },
   { path: /^packages\/scheduled\/src\/createScheduledTransportAdapter\.ts$/, line: /idempotency(WindowMs|Options)/, why: "BP-030: the adapter refuses a removed option loudly, naming it" },
   { path: /^packages\/harness-manager\/README\.md$/, line: /Upgrading from `messageDoor`|^Before `harnessSessionDoor`, a manager's `messageDoor`/, why: "the README's upgrade note: says the door is gone and what replaces it" },
-  { path: /^packages\/harness-manager\/src\/manager\.ts$/, line: /^if \("announce" in \(options as object\)\) \{$|^"\[harness-manager\] `announce` was removed: /, why: "BP-030: the manager refuses the removed `announce` option loudly, naming it (FIX-2132)" },
+  { path: /^packages\/[^/]+\/src\/retired\.ts$/, line: /./, why: "BP-030: a package's retired table, which the package refuses each name from loudly, with its replacement and removal version (FIX-2454)" },
   { path: /^packages\/harness-manager\/README\.md$/, line: /^- The manager keeps no questions of its own\. Removed: /, why: "the README's migration note: says the question inbox is gone and what replaces it (FIX-2132)" },
   { path: /^packages\/orchestration\/README\.md$/, line: /^\*\*Migrating from `resumeOwedWaits`\.\*\* `resumeOwedWaits\(ctx, collection\)` is no longer exported/, why: "the README's migration note: says the helper is gone" },
 ];

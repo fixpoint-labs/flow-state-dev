@@ -37,7 +37,8 @@ import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-err
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { resolveProfileStores } from "./resolve-slots";
 import type { FlowRunner } from "../transports/runner";
-import { refuseRetiredDispatcherOption } from "../transports/runner";
+import { refuseRetired } from "@flow-state-dev/contracts/internal";
+import { REFUSALS } from "../retired";
 import {
   createDispatchOperation,
   type DispatchOperation,
@@ -295,28 +296,6 @@ class InternalFlowState<TSettings extends object>
   readonly #arbiter: ConcurrencyArbiter;
 
   constructor(options: CreateFlowStateOptions<TSettings>) {
-    if (Object.hasOwn(options, "middleware")) {
-      throw new FlowStateConfigError(
-        "createFlowState: the removed `middleware` option is not executed. " +
-          "Move policy checks to the HTTP authentication layer or block logic."
-      );
-    }
-
-    if (Object.hasOwn(options, "detachedDrainTimeoutMs")) {
-      throw new FlowStateConfigError(
-        "createFlowState: `detachedDrainTimeoutMs` is now `dispatchDrainTimeoutMs`. " +
-          "Accepting it silently would leave the shutdown drain on its default, so a host " +
-          "tuned for a long-running child would truncate one without saying why."
-      );
-    }
-    if (Object.hasOwn(options, "maxWorkstreamListLimit")) {
-      throw new FlowStateConfigError(
-        "createFlowState: `maxWorkstreamListLimit` is now `maxChildSessionListLimit`. " +
-          "Accepting it silently would leave the children listing on its default cap, so a " +
-          "host that raised the ceiling would truncate its reads without a named error."
-      );
-    }
-
     this.#options = options;
     this.#arbiter = createConcurrencyArbiter(
       options.worker?.leaseBackend !== undefined
@@ -334,7 +313,7 @@ class InternalFlowState<TSettings extends object>
       );
     }
 
-    refuseRetiredDispatcherOption(options, "createFlowState");
+    refuseRetired(REFUSALS, options, "createFlowState");
     if (options.worker !== undefined && options.runner !== undefined) {
       throw new FlowStateConfigError(
         "createFlowState: `worker` and `runner` are mutually exclusive. " +

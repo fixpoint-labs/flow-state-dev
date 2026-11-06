@@ -217,7 +217,7 @@ describe("a phase's collections ride `uses`", () => {
   it("refuses `announce` by name: a question holds its task, where the Inbox lists it", () => {
     // A host still passing it expects to be told of each question. Ignored, it
     // would wait on a call that never comes; refused, it is told where to read.
-    expect(() => build({ announce: () => undefined })).toThrow(/`announce` was removed/);
+    expect(() => build({ announce: () => undefined })).toThrow(/"announce" was retired\. Use the board.*openRowHolds.*harness-manager 0\.7\.0/);
   });
 
   it("refuses a capability claiming the board ledger", () => {

@@ -485,7 +485,7 @@ describe("createSkillsLibrary — removed skill sub-agents", () => {
 
   it("refuses a bundled skill that still declares agents, at construction, naming the skill", () => {
     expect(() => createSkillsLibrary({ initialSkills: [teamSkill] })).toThrow(
-      /bundled skill "team": SKILL\.md `agents:` was removed from skills/,
+      /bundled skill "team": SKILL\.md: "agents" was retired\. Use the task board/,
     );
   });
 

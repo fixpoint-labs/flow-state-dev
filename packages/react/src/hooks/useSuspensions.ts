@@ -22,6 +22,7 @@ import type {
   SuspensionResumeItem
 } from "@flow-state-dev/core/items";
 import type { ResumeAction, SuspensionReason, SuspensionStatus } from "@flow-state-dev/core/types";
+import { CONTRACTS_REFUSALS, currentSuspensionReason, refuseRetiredValue } from "@flow-state-dev/contracts/internal";
 import { useFlowContext } from "../context/FlowContext";
 import type { SessionView } from "./useSession";
 
@@ -104,6 +105,8 @@ export function deriveSuspensions(
   options: UseSuspensionsOptions = {},
   inFlight: ReadonlySet<string> = new Set()
 ): { suspensions: SuspensionView[]; pending: SuspensionView[] } {
+  // A retired `human_*` filter would match nothing new: refused, naming its `user_*` reason.
+  for (const reason of options.reasons ?? []) refuseRetiredValue(CONTRACTS_REFUSALS, reason, "useSuspensions", "reason");
   // Match by `type` literal — this package imports only TYPES from core, not
   // its runtime predicates.
   const resumeIndex = new Map<string, SuspensionResumeItem>();
@@ -119,7 +122,8 @@ export function deriveSuspensions(
     if (item.type !== "suspension") continue;
     const suspItem = item as SuspensionItem;
     if (options.requestId !== undefined && suspItem.requestId !== options.requestId) continue;
-    if (options.reasons !== undefined && !options.reasons.includes(suspItem.reason)) continue;
+    // A stop core 0.2.0 stored under a retired `human_*` reason matches its `user_*` filter.
+    if (options.reasons !== undefined && !options.reasons.includes(currentSuspensionReason(suspItem.reason))) continue;
     const resume = resumeIndex.get(suspItem.suspensionId);
     suspensions.push({
       item: suspItem,

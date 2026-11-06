@@ -12,6 +12,7 @@
 
 import type { ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { currentSuspensionReason } from "@flow-state-dev/contracts/internal";
 import type { ResumeAction, SuspensionReason, SuspendForUserKind } from "../types/suspension";
 
 export interface SuspendOptions {
@@ -67,7 +68,7 @@ export function resolveAllowedActions(
   allow: ResumeAction[] | undefined
 ): ResumeAction[] {
   if (allow !== undefined) return allow;
-  return reason === "user_input" ? ["submit"] : ["approve", "reject"];
+  return currentSuspensionReason(reason) === "user_input" ? ["submit"] : ["approve", "reject"];
 }
 
 /**

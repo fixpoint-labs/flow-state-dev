@@ -1,4 +1,6 @@
 import { providerNames, type GatewayConfig } from "./types";
+import { RetiredNameError } from "@flow-state-dev/contracts/internal";
+import { REFUSALS } from "../retired";
 
 // ---------------------------------------------------------------------------
 // Standard env var mappings
@@ -209,11 +211,9 @@ export function parseModelString(modelString: string): ParsedModelString {
         `Invalid model format: "${modelString}". intent/* model strings must be 2 parts (intent/name).`
       );
     }
-    const renamed = `${parts[0]}:${parts.slice(1).join("/")}`;
-    throw new Error(
-      `Invalid model format: "${modelString}". The "gateway/provider/model" form was removed; ` +
-        `name the route with a colon: "${renamed}".`
-    );
+    throw new RetiredNameError(REFUSALS, "gateway/provider/model", `Invalid model format "${modelString}"`, {
+      replacement: `a named route with a colon: "${parts[0]}:${parts.slice(1).join("/")}"`,
+    });
   }
 
   throw new Error(

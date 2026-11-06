@@ -69,6 +69,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@flow-state-dev/contracts": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "cron-parser": "^5.5.0",

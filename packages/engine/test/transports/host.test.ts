@@ -568,12 +568,12 @@ describe("the old `dispatcher` option", () => {
         runtimeConfig: {},
         ...legacy
       } as never)
-    ).toThrow(/createInboundTransportHost: the `dispatcher` option is now `runner`/);
+    ).toThrow(/createInboundTransportHost: "dispatcher" was retired\. Use `runner`, with the same FlowRunner\. This refusal is removed in @flow-state-dev\/engine 0\.7\.0\./);
   });
 
   it("is refused by createFlowRouteHandlers and createFlowApiRouter", () => {
     const options = { registry: createFlowRegistry(), stores: createInMemoryStores(), ...legacy } as never;
-    expect(() => createFlowRouteHandlers(options)).toThrow(/createFlowRouteHandlers: the `dispatcher` option is now `runner`/);
-    expect(() => createFlowApiRouter(options)).toThrow(/createFlowApiRouter: the `dispatcher` option is now `runner`/);
+    expect(() => createFlowRouteHandlers(options)).toThrow(/createFlowRouteHandlers: "dispatcher" was retired\. Use `runner`, with the same FlowRunner\. This refusal is removed in @flow-state-dev\/engine 0\.7\.0\./);
+    expect(() => createFlowApiRouter(options)).toThrow(/createFlowApiRouter: "dispatcher" was retired\. Use `runner`, with the same FlowRunner\. This refusal is removed in @flow-state-dev\/engine 0\.7\.0\./);
   });
 });

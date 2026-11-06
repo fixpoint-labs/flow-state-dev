@@ -102,7 +102,7 @@ describe("getOrCreateTaskCollection — backing: \"state\" default slots", () =>
   });
 });
 
-describe("getOrCreateTaskCollection — removed backings (untyped callers)", () => {
+describe("getOrCreateTaskCollection — retired backings (untyped callers)", () => {
   // A ctx whose storage handles throw on any touch: the rejection must come
   // first, before `ctx.request`, `ctx.session` or a state ref is read.
   const untouchable = new Proxy(
@@ -123,7 +123,7 @@ describe("getOrCreateTaskCollection — removed backings (untyped callers)", () 
         collectionId: "old",
       } as never),
     ).rejects.toThrow(
-      'backing "sequencer" was removed. Write backing: "state" and pass the ref as `state` (was `sequencer`). Valid backings: "state", "resource".',
+      '[tasks] getOrCreateTaskCollection("old"): backing "sequencer" was retired. Use backing: "state", and pass the ref as `state`. This refusal is removed in @flow-state-dev/orchestration 0.8.0.',
     );
   });
 
@@ -135,7 +135,7 @@ describe("getOrCreateTaskCollection — removed backings (untyped callers)", () 
         collectionId: "old",
       } as never),
     ).rejects.toThrow(
-      'backing "request" was removed. Write backing: "state" with no `state` field to keep tasks on the request. Valid backings: "state", "resource".',
+      '[tasks] getOrCreateTaskCollection("old"): backing "request" was retired. Use backing: "state" with no `state` field, to keep tasks on the request. This refusal is removed in @flow-state-dev/orchestration 0.8.0.',
     );
   });
 

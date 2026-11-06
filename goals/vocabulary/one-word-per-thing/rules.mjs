@@ -296,8 +296,46 @@ export const EXCLUDE = [
   { path: /^goals\/.*$/, why: "other goal files: only the post-to-mailbox rule reads them, see RETIRED" }
 ];
 
+/**
+ * FIX-2454: every retired name a package still refuses or reads lives in that package's one
+ * table, `packages/<pkg>/src/retired.ts`, built with `retiredNames` from
+ * `@flow-state-dev/contracts/internal`, and each entry names the package version that removes it.
+ * The sweep's table pass (sweep.mjs → "Retired tables") reads every table and its package's
+ * version:
+ *
+ * - `retired-expired`: an entry whose `removeIn` is at or below its package's version. The minor
+ *   that removes it has shipped (or is being cut), so the entry and its refusal go now.
+ * - `retired-unowned`: a refusal-shaped line under `packages/<pkg>/src` (`shape`) that is not in
+ *   a table, not the helper itself, not a call through the helper, and not in `excluded`. A
+ *   refusal outside the helper is one nobody dated. The `retired-name-refusal` marker matches
+ *   the shape on purpose: in `src` a deliberate old name lives in the table, not on a marked line
+ *   (tests and docs keep the marker).
+ */
+export const RETIRED_TABLES = {
+  table: /^packages\/([^/]+)\/src\/retired\.ts$/,
+  helper: /^packages\/contracts\/src\/internal\//,
+  source: /^packages\/[^/]+\/src\/.*\.(ts|tsx|mts|cts|js|mjs)$/,
+  test: /\.(test|spec)\.|\/(test|__tests__)\//,
+  shape: /retired-name-refusal|\bwas removed\b|uses the removed\b|the removed \\?`|was renamed\b|is now \\?`|RESUMED_UNDER_FORMER_NAME|\brefuseRetired(Value)?\b|\breadRetired\b|\bRetiredNameError\b/,
+  // A line that routes through the helper: the name it refuses or reads is in a table.
+  throughHelper: /\b(refuseRetired(Value)?|readRetired|RetiredNameError|currentSuspensionReason)\b/,
+  excluded: [
+    [/^packages\/core\/src\/tools\/resource-tools\.ts$/, /listResources/, "history in a comment: no refusal, nothing reads the old tool"],
+    [/^packages\/engine\/src\/routes\/route-utils\.ts$/, /includeInternal/, "history in a comment: nothing reads the old flag"],
+    [/^packages\/orchestration\/src\/task-board\/blocks\/worker-step\.ts$/, /BlockDefinition\.run/, "history in a comment"],
+    [/^packages\/orchestration\/src\/task-board\/task-entry\.ts$/, /removed or renamed/, "a runtime assignee that disappeared, not a retired name"],
+    [/^packages\/workforce\/src\/manifest-sources\.ts$/, /was removed/, "history in a comment"],
+    [/^packages\/harness-manager\/src\/session-flow\.ts$/, /removed/, "a worktree that was deleted at run time, not a retired name"],
+    [/^packages\/workspace\/src\//, /removed/, "a checkout or branch removed at run time, not a retired name"]
+  ]
+};
+
 /** Hits that keep their word, each with its reason (D3: ask = a question to a person; hand-off = mid-work). */
 export const KEEP = [
+  {
+    path: /^packages\/[^/]+\/src\/retired\.ts$/,
+    why: "FIX-2454: a package's retired table names each retired name on purpose, with its replacement and removal version"
+  },
   {
     path: /^packages\/harness-manager\/README\.md$/,
     line: /^### Upgrading from `messageDoor`$|^Before `harnessSessionDoor`, a manager's `messageDoor` \(and `harnessMessageDoor`\) kept/,
@@ -320,6 +358,16 @@ export const KEEP = [
     path: /^\.changeset\/user-suspension-reasons\.md$/,
     rules: ["human-reasons"],
     why: "FIX-2151: the release note that tells consumers which old reasons to replace"
+  },
+  {
+    path: /^\.changeset\/retired-names-(contracts|engine|react)\.md$/,
+    rules: ["human-reasons"],
+    why: "FIX-2454: the release notes that say a new human_* reason throws and a stored one reads as a user's"
+  },
+  {
+    path: /^packages\/(engine|react)\/test\/retired-suspension-reasons\.test\.tsx?$/,
+    rules: ["human-reasons"],
+    why: "FIX-2454: the tests that a stored human_* stop reads as a user's and a new one throws: they name the old reasons to probe them"
   },
   {
     path: /^goals\//,

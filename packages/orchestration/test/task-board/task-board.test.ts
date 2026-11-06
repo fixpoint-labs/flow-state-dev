@@ -167,7 +167,7 @@ describe("taskBoard - handle structure", () => {
         dispatcher: "priority",
         workers: makeGoalWorker("noop", () => null),
       } as never)
-    ).toThrow(/sets `dispatcher`, which is now `claimOrder`/);
+    ).toThrow(/"dispatcher" was retired\. Use `claimOrder`/);
   });
 });
 

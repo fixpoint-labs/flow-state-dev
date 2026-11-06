@@ -130,11 +130,12 @@ Update policy:
 - Date: 2026-06-27
 - Scope: Universal — any change to a persisted or in-flight data shape (resource state, request `metadata`, stored records, client-store buffers).
 - Rule:
-  - Dual-read the old shape for the rollout window: `metadata.schedule?.scheduleId ?? metadata.scheduleId` (optional-chain the new path so a legacy record falls back instead of throwing). Never assume every record on disk or in flight already has the new shape.
-  - Renaming or removing a key from a public config object: reject the dead key with an error pointing at the replacement (`"reactTo.updated was renamed to reactTo.stateUpdated"`). Never accept-then-silently-ignore an unknown key.
+  - **The test is whether a published version accepted or wrote the old name**, read off its npm tarball, not the changelog. Only those get a reader or a refusal. Delete a reader or refusal for a name no published version accepted: no adopter could have written it, and our own dev stores are reset instead.
+  - Dual-read what a published version wrote: a stored value reads as its replacement (`readRetired`; core 0.2.0's stored `human_approval` stop reads as a user's). Optional-chain the new path so a legacy record falls back instead of throwing (`metadata.schedule?.scheduleId ?? metadata.scheduleId`). Never assume every record on disk or in flight already has the new shape.
+  - Refuse a retired value or key a published version accepted, through the helper: an entry in the package's one table, `packages/<pkg>/src/retired.ts` (`retiredNames` from `@flow-state-dev/contracts/internal`), with its replacement and a `removeIn` at least two minors past the first version that refuses it; the entry point calls `refuseRetired` / `refuseRetiredValue`, which throw `RetiredNameError`. Never accept-then-silently-ignore a retired name, and never word a refusal of your own. An open-string value (a reason, a status) is the case that goes silent without it.
+  - `removeIn` is the cleanup pointer: the vocabulary sweep fails CI once the package reaches it, and removing the entry is a breaking change written in that minor's changeset.
   - Adding a nullable field for back-compat: every downstream reader (formatter / renderer / prompt-context builder) must `== null`-guard it.
-  - Pair any transitional dual-read with a cleanup pointer (`TODO(FIX-NNN)` or changeset note) so it doesn't outlive the rollout.
-- Why: A schema change is a contract change for data that already exists; the rollout window — old records, in-flight requests, dead keys — is where these bugs live.
+- Why: A schema change is a contract change for data that already exists; the rollout window — old records, in-flight requests, dead keys — is where these bugs live. Dating every refusal keeps the window closed: a shim nobody can reach is debt, and one nobody dated stays forever.
 
 ### BP-031: Never make authorization or control-flow decisions from caller-controllable input
 
@@ -154,7 +155,9 @@ Update policy:
 - Scope: Universal — package moves, renames, and extractions.
 - Rule:
   - A move that compiles isn't done. Update what the move invalidated: file-header comments naming the old home, architecture/dependency diagrams, and doc examples / cross-link anchors.
-  - Re-export moved public types from every documented import path, including subpath barrels (`@flow-state-dev/core/types`), not just the package root.
+  - How a moved *published* export reaches adopters is the epic FIX-2447's Q1, open with the owner. Until it settles, write the move as the default below, in one block you can drop whole:
+    - *Q1 default, pending sign-off (alias):* the old path stays a `@deprecated` alias naming the new path and the one minor that removes it, `@deprecated Use `<new path>`. Removed in @flow-state-dev/<pkg> <version>.` Whether that minor must be at least two past the first version carrying the alias, as for a refusal (BP-030), is part of Q1. The vocabulary sweep reads the tag as it reads a retired table's `removeIn`, and fails once the package reaches it.
+  - *Hold*, or *break as each lands* (Q1's other answers): re-export from every documented import path after the move, including subpath barrels (`@flow-state-dev/core/types`), not just the package root; the old root path goes; the changeset names the new home.
 - Why: The compiler verifies the code, not the prose, diagrams, or subpath barrels — those are the move's blind spots.
 
 ### BP-035: Walk the second-path checklist before declaring a change done

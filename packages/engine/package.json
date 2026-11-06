@@ -79,6 +79,7 @@
   "sideEffects": false,
   "dependencies": {
     "@cfworker/json-schema": "^4.1.1",
+    "@flow-state-dev/contracts": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "p-retry": "^6.2.0",
     "path-to-regexp": "^8.2.0"

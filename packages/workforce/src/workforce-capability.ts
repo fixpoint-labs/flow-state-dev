@@ -24,14 +24,8 @@
  * `tools:` fence to check, and fencing it would leave a worker advertising a tool
  * in its prompt it cannot call.
  *
- * ## What changed
- *
- * The `agents` option is **gone**. It took a pre-built `Agent[] | AgentRegistry`
- * for a DevTool listing that never shipped, and the function's whole body was a
- * duplicate-name check over it plus a standing `TODO`. An app passing it now
- * fails to type-check with a message naming the replacement, rather than having
- * its roster silently ignored (BP-030). Pass `roster` and `inventory` instead;
- * the capability reads both.
+ * The retired `agents` and `catalog` options are refused at construction
+ * (`./retired`), so an app passing one is told what to pass instead.
  */
 
 import { createManifestRegistry, defineCapability, discoveryTools } from "@flow-state-dev/core";
@@ -48,6 +42,8 @@ import {
   type InventoryKeys,
 } from "./manifest-sources";
 import { narrowToWorkerSelection, workerDiscoverSelection } from "./worker-discovery";
+import { refuseRetired } from "@flow-state-dev/contracts/internal";
+import { REFUSALS } from "./retired";
 
 export interface WorkforceCapabilityOptions {
   /**
@@ -77,27 +73,6 @@ export interface WorkforceCapabilityOptions {
    * naming both sites.
    */
   sources?: readonly BlockManifestSource[];
-  /**
-   * Removed (FIX-817). The pre-built roster this took never reached a caller —
-   * the capability validated duplicate names, returned an empty capability and
-   * carried a standing `TODO`.
-   *
-   * Typed as its own replacement message rather than deleted, so an app that
-   * still passes it is told what to pass instead. Deleting the key would rely
-   * on excess-property checking, which says only that the key is unknown —
-   * and says nothing at all when the options are built up in a variable
-   * (BP-030).
-   *
-   * @deprecated Pass `roster` and `inventory` instead.
-   */
-  agents?: "`agents` was removed: pass `roster` (the declared roster) and `inventory` (the live inventory collection keys) instead";
-  /**
-   * Removed (FIX-817). Nothing ever read it.
-   *
-   * @deprecated Tool catalogs reach a worker flow through
-   * `defineAgentWorkerFlow({ catalog })`.
-   */
-  catalog?: "`catalog` was removed: it was never read. A tool catalog reaches a worker flow through defineAgentWorkerFlow({ catalog })";
 }
 
 /**
@@ -108,11 +83,13 @@ export interface WorkforceCapabilityOptions {
  * @returns A capability named `workforce`, contributing the `discover` control
  *   tool and nothing else.
  * @throws when two sources claim the same domain, naming both registration
- *   sites — at construction, not at the first ambiguous read.
+ *   sites — at construction, not at the first ambiguous read; and
+ *   `RetiredNameError` for a retired option (`agents`, `catalog`).
  */
 export function createWorkforceCapability(
   options: WorkforceCapabilityOptions,
 ): DefinedCapability {
+  refuseRetired(REFUSALS, options, "createWorkforceCapability");
   // One registration point (tenet 5). The workforce's own domain and the
   // app's go into the same call, so a duplicate is refused in one place with
   // both sites named rather than discovered when a worker asks.

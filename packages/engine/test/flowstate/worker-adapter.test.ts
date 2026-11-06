@@ -217,6 +217,6 @@ describe("createFlowState — worker adapter", () => {
         modelResolver: stubModelResolver,
         dispatcher: runner
       } as never)
-    ).toThrow(/createFlowState: the `dispatcher` option is now `runner`/);
+    ).toThrow(/createFlowState: "dispatcher" was retired\. Use `runner`, with the same FlowRunner\. This refusal is removed in @flow-state-dev\/engine 0\.7\.0\./);
   });
 });

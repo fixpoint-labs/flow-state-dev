@@ -51,7 +51,8 @@ import type {
   TransportRoute
 } from "../transports/types";
 import type { FlowRunner } from "../transports/runner";
-import { refuseRetiredDispatcherOption } from "../transports/runner";
+import { refuseRetired } from "@flow-state-dev/contracts/internal";
+import { REFUSALS } from "../retired";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 
 /**
@@ -424,7 +425,7 @@ export async function dispatchDedicatedRoute(
  * Creates a catch-all route adapter with default no-op internal seam behavior.
  */
 export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowApiRouter {
-  refuseRetiredDispatcherOption(options, "createFlowApiRouter");
+  refuseRetired(REFUSALS, options, "createFlowApiRouter");
   // Server-internal sweeper: marks requests whose executor heartbeat stopped
   // as interrupted, releasing session locks. Disabled when interval is 0.
   //

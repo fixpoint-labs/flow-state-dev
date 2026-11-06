@@ -434,7 +434,7 @@ describe("parseSkillMd — removed `agents:` (skill sub-agents)", () => {
       withFrontmatter([`agents:`, `  analyst:`, `    prompt: You analyse.`].join("\n")),
     );
     expect(err).toBeInstanceOf(SkillAgentsRemovedError);
-    expect(err.message).toMatch(/`agents:` was removed from skills/);
+    expect(err.message).toMatch(/SKILL\.md: "agents" was retired\. Use the task board.*orchestration 0\.8\.0/);
     expect(err.message).toMatch(/task board/);
   });
 
@@ -444,12 +444,12 @@ describe("parseSkillMd — removed `agents:` (skill sub-agents)", () => {
       [`  vet:`, `    agent-ref: research-analyst`],
     ]) {
       const err = refusalOf(withFrontmatter([`agents:`, ...entry].join("\n")));
-      expect(err.message).toMatch(/`agents:` was removed/);
+      expect(err.message).toMatch(/"agents" was retired/);
     }
   });
 
   it("refuses a bare `agents:` key with no entries", () => {
-    expect(refusalOf(withFrontmatter(`agents:`)).message).toMatch(/`agents:` was removed/);
+    expect(refusalOf(withFrontmatter(`agents:`)).message).toMatch(/"agents" was retired/);
   });
 
   it("parses the same skill once the `agents:` block is deleted", () => {
@@ -457,23 +457,5 @@ describe("parseSkillMd — removed `agents:` (skill sub-agents)", () => {
     expect(parseSkillMd(withFrontmatter(`keywords: [research]`)).state.keywords).toEqual([
       "research",
     ]);
-  });
-});
-
-describe("parseSkillMd — removed pattern/fork/workers frontmatter (FIX-918)", () => {
-  it("throws a migration error on `context: fork`", () => {
-    const text = `---\n${baseHeader}\ncontext: fork\n---\n\nbody`;
-    expect(() => parseSkillMd(text)).toThrow(/context: fork.*removed/);
-  });
-
-  it("throws a migration error on `pattern:`", () => {
-    const text = withFrontmatter([`pattern: task-board`].join("\n"));
-    expect(() => parseSkillMd(text)).toThrow(/pattern.*removed/);
-  });
-
-  it("refuses the legacy `workers:` name for a team, without pointing at the removed `agents:`", () => {
-    const err = refusalOf(withFrontmatter([`workers:`, `  analyst:`, `    prompt: hi`].join("\n")));
-    expect(err.message).toMatch(/`workers:` was removed from skills/);
-    expect(err.message).not.toMatch(/`agents:`/);
   });
 });
