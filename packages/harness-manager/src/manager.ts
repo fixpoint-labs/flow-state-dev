@@ -427,7 +427,7 @@ export type HarnessLedgers = (
   partition: string | undefined,
 ) => Promise<TaskCollectionRef | undefined>;
 
-/** What a {@link HarnessJudge}'s block is handed: the task, the run's answer, and its commits. */
+/** What a {@link HarnessJudge}'s block is handed: the task, the run's answer, its commits, and what they changed. */
 export const harnessJudgeInputSchema = z.object({
   /** The task's goal, as filed. */
   goal: z.string(),
@@ -435,6 +435,14 @@ export const harnessJudgeInputSchema = z.object({
   answer: z.string().nullable(),
   /** The commits the run made: how many, and their subjects, newest first (at most 20). */
   commits: z.object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()) }),
+  /**
+   * What those commits changed against the run's base, file by file: each
+   * file's added and removed lines, at most 200 files (`MAX_DIFF_FILES`)
+   * listed, with totals over all of them. A subject alone can't show a judge
+   * that a change was made. `null` for a run with no branch (kept files only)
+   * or one whose commits couldn't be read.
+   */
+  diff: runDiffSchema.nullable().default(null),
 });
 export type HarnessJudgeInput = z.infer<typeof harnessJudgeInputSchema>;
 
@@ -2743,6 +2751,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         commits: RunCommits,
         judgeInput: HarnessJudgeInput | null = null,
         checks: CommandCheckResult[] | null = null,
+        read: RunDiff | null = null,
       ): Promise<HarnessJudgeInput | null> => {
         const output: ManagerOutput = {
           issue: state.issue!,
@@ -2760,7 +2769,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // Read once here, so the review's prompt and data come from state alone.
         const diff: RunDiff | null =
           reviewChanges && settle === "complete" && state.filesOnly !== true && commits.verified && commits.count > 0
-            ? await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)
+            ? (read ?? (await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)))
             : null;
         await ctx.sequencer!.patchState({ decided: { settle, output, changes: commits, diff, reviewed: null, checks } });
         return judgeInput;
@@ -2938,15 +2947,21 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // run gets one) has read it: only a board read from the claim, and
           // only a task with a goal to read the answer against.
           const commits = await commitsOf();
-          const judgeInput =
-            judge !== undefined && state.claim !== null && (state.goal ?? "").trim() !== ""
-              ? {
-                  goal: state.goal!,
-                  answer: handle.finalMessage === null ? null : handle.finalMessage.slice(0, MAX_ANSWER_CHARS),
-                  commits: { count: commits.count, subjects: commits.subjects },
-                }
+          const judged = judge !== undefined && state.claim !== null && (state.goal ?? "").trim() !== "";
+          // The judge reads what the commits changed, read once and kept for the review too.
+          const diff =
+            judged && state.filesOnly !== true && commits.verified
+              ? await readRunDiff(state.workspacePath!, state.baseRef, state.baseCommit)
               : null;
-          return keep("complete", commits, judgeInput, verdict.checks ?? null);
+          const judgeInput = judged
+            ? {
+                goal: state.goal!,
+                answer: handle.finalMessage === null ? null : handle.finalMessage.slice(0, MAX_ANSWER_CHARS),
+                commits: { count: commits.count, subjects: commits.subjects },
+                diff: diff?.verified === true ? diff : null,
+              }
+            : null;
+          return keep("complete", commits, judgeInput, verdict.checks ?? null, diff);
         }
       }
 
@@ -3461,7 +3476,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           const taking = (async () => {
             const take = await takeSteersFor(ctx, takenIn, (now, id) => steersTakenIn(now, id));
             if (take === null || take.steers.length === 0) return;
-            showTakenSteers(ctx, take.taken);
+            await showTakenSteers(ctx, take.taken);
             // The step ended, or its run withdrew the offer, while the take wrote
             // the row: these lines are the next step's, never dropped (D2).
             if (!live() || watch.steer !== steer) {
@@ -3658,7 +3673,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const steers = [...carried.steers, ...take.steers];
     if (steers.length === 0 && !stopped) return undefined;
     // The steers this take wrote, as lines in the run's session from their senders.
-    showTakenSteers(ctx, take.taken);
+    await showTakenSteers(ctx, take.taken);
     const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
     await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session, steerSteps: loop });
     // A turn's save points let a place with kept files go (`saveKeptFiles`):

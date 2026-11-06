@@ -6,12 +6,8 @@ import { useMissing, useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
 import { TaskTime } from "./flow-state/task-signals";
-import { HarnessTag, statusLine, ThreadIcon } from "./ThreadStatus";
+import { HarnessTag, rowNote, ThreadIcon } from "./ThreadStatus";
 import { ThreadView } from "./ThreadView";
-
-/** A row's note: the group already says the status, so only what it's on, or why it failed. */
-const rowNote = (task: TaskRow) =>
-  task.status === "errored" || task.status === "cancelled" ? statusLine(task) : (task.waitingOn?.prompt ?? task.statusNote ?? "");
 
 /**
  * Threads mode's right pane: the status board, titled *Tasks*. Every row is
@@ -19,8 +15,9 @@ const rowNote = (task: TaskRow) =>
  * columns table), and pinned ones on top. Each group has a count and
  * collapses; *Resolved* starts collapsed. Each row carries its time (a
  * running one's clock, *quiet* once its run stopped answering, an ended one's
- * age; never *quiet* while the app's last read of the rows failed). Opening a thread replaces the board
- * with its view, with a back arrow; the main thread stays in the center.
+ * age; never *quiet* while the app's last read of the rows failed). Opening a
+ * thread draws its view as a sheet over the main thread, as session mode's
+ * tasks open; the board stays in the pane behind it.
  */
 export function ThreadsBoard({
   adapter,
@@ -49,19 +46,6 @@ export function ThreadsBoard({
   const now = useNow(tasks.length > 0);
 
   const open = tasks.find((t) => t.id === openId);
-  if (open) {
-    return (
-      <ThreadView
-        key={open.id}
-        adapter={adapter}
-        sessionId={sessionId}
-        task={open}
-        pinned={pins.includes(open.id)}
-        onBack={() => onOpen(undefined)}
-      />
-    );
-  }
-
   const groups = COLUMNS.map((column) => ({
     ...column,
     rows: tasks.filter((t) => columnOf(t, pins.includes(t.id)) === column.id),
@@ -126,6 +110,16 @@ export function ThreadsBoard({
           })}
         </div>
       )}
+      {open ? (
+        <ThreadView
+          key={open.id}
+          adapter={adapter}
+          sessionId={sessionId}
+          task={open}
+          pinned={pins.includes(open.id)}
+          onClose={() => onOpen(undefined)}
+        />
+      ) : null}
     </aside>
   );
 }

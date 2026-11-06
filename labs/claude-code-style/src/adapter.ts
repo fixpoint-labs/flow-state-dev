@@ -14,6 +14,7 @@
  * | `openSession`   | a new session on the mode's main worker, then `setWorkProject`            |
  * | `send`          | the worker's door, `respond`, in that session                             |
  * | `interrupt`     | aborting the session's running request                                     |
+ * | `retry`         | the client's `request(id).retry()` on the session's flow: a failed turn again |
  * | `watchThread`   | the session's items, followed through the client's `sessionFeed`          |
  * |                 | and that feed's connection state, for the connection bar; `loadEarlier`    |
  * |                 | is the feed's, for a thread longer than its first read; its running turn   |
@@ -22,7 +23,11 @@
  * |                 | again on each notice of the board, through `client.subscribe`; a failed   |
  * |                 | row's error from its `getTask`, once per attempt                           |
  * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`, with   |
- * |                 | its `loadEarlier` too, from the moment the board's read names that session |
+ * |                 | its `loadEarlier` too, from the moment the board's read names that session; |
+ * |                 | while the task runs, the tool call in flight (the UI registry's            |
+ * |                 | `working-status`), from the run request's own stream too, which sends a   |
+ * |                 | call as it starts; and harness-manager's `readRecordedWork`, for the plan |
+ * |                 | its harness recorded, read on each write to it and on a re-run's request  |
  * | `sayInThread`   | the Inbox client's answer to the thread's open question, else the board's `steer` |
  * | `taskActions`   | the Inbox client's `board(at)` on the session that holds the board: `cancel`, |
  * |                 | `steer`, `release` and `retry`, each the board's own action                 |
@@ -33,7 +38,7 @@
  *
  * Every watch reads on a change, through `onNotice`.
  */
-import { createClient, sessionFeed, topic, type Client, type SessionConnectionState, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
+import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type SessionConnectionState, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createInboxClient,
@@ -48,21 +53,26 @@ import {
   taskRowView,
 } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
-import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { readRecordedWork, reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import {
   createWorkforceClient,
   delegateAnswerOf,
   parseProjectRef,
+  taskBriefOf,
   projectRef,
   WORK_PROJECT_STATE_KEY,
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
 import { isSuspensionWait } from "@flow-state-dev/core/items";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/types";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
+import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
 import { waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
+import { firstLineOfText, NEW_SESSION_TITLE, sessionTitle } from "./lib/session-title";
 import { filedTaskOf, toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
+import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/flow-state/working-status";
 
 /** Stops a watch. */
 export type Unsubscribe = () => void;
@@ -99,7 +109,10 @@ export type ThreadEntry = (
       /** Threads mode: the lead's turn filed threads for this line. */
       sentToThread?: boolean;
     }
-  | { kind: "assistant"; id: string; text: string }
+  /** What a task's session was handed: its brief, as filed or re-queued. One folded line, never your line. */
+  | { kind: "brief"; id: string; text: string }
+  /** `incomplete` when its turn failed before the reply was finished. */
+  | { kind: "assistant"; id: string; text: string; incomplete?: boolean }
   /** A run of consecutive tool calls in one turn, in words (`toolRun`): one line that opens to a line per call. */
   | ({ kind: "tool"; id: string } & ToolRun)
   | {
@@ -113,6 +126,11 @@ export type ThreadEntry = (
       duringTurn: boolean;
     }
   | { kind: "interrupted"; id: string }
+  /**
+   * A turn that failed, from the engine's `error` item: its reason, and `retryable` when Retry is
+   * offered on it: it is the thread's newest turn, and one the engine will run again for you.
+   */
+  | { kind: "failed"; id: string; reason: string; code?: string; details?: Record<string, unknown>; retryable: boolean }
   /** Threads mode: a thread the lead filed, where its `createTask` call is. The card reads the task row. */
   | { kind: "thread"; id: string; taskId: string }
 ) & { requestId?: string };
@@ -160,6 +178,8 @@ export interface TaskRow {
   steps?: { done: number; total: number };
   /** When the task last changed, in ms. */
   updatedAt?: number;
+  /** When it started running, in ms: what its feed's elapsed time counts from. */
+  startedAt?: number;
   /** What its runs spent, as the board's `listTasks` reads it (`taskSpendView`): model, harness, tokens; none before it runs. */
   spend?: TaskSpendView;
   /** Why its last attempt failed, as the board recorded it; only on a failed task. */
@@ -186,7 +206,22 @@ export interface TaskWork {
   review?: ReviewDetail;
   /** Present while the run holds items older than its first entry: adds the page before them. */
   loadEarlier?: () => Promise<void>;
+  /** What its run is doing now, while the task runs. */
+  working?: WorkingNow;
 }
+
+/** What a running task's run shows it doing now: the tool call still running, and the plan its harness recorded. */
+export interface WorkingNow {
+  inFlight?: ToolCallNow;
+  /** `undefined` while the run records no plan. */
+  plan?: PlanRowNow[];
+}
+
+/** One coding harness's readiness, as harness-manager's readiness action answers it. */
+export type HarnessRow = HarnessReadinessChipRow;
+
+/** Whether a run could check a repository out on this machine: the projects flow's `checkRepository`. */
+export type RepositoryCheck = { usable: true; how: "worktree" | "clone" } | { usable: false; problem: string };
 
 /** Everything the screen reads and writes. */
 export interface LabAdapter {
@@ -196,9 +231,15 @@ export interface LabAdapter {
   listProjects(): Promise<ProjectRow[]>;
   /** A new project of yours on a git repository, which you may then work in. */
   createProject(name: string, repository: string): Promise<ProjectRow>;
+  /** Whether a coding run could use `repository` here, and what happens to it; the same check `createProject` refuses with. */
+  checkRepository(repository: string): Promise<RepositoryCheck>;
+  /** Which coding harnesses can run on this machine; `refresh` checks them again (Re-check). */
+  readHarnesses(refresh?: boolean): Promise<HarnessRow[]>;
   openSession(mode: ModeId, projectId: string): Promise<SessionRow>;
   send(sessionId: string, text: string): Promise<void>;
   interrupt(sessionId: string): Promise<void>;
+  /** Run a failed turn of the session again, as a new request the engine links to `requestId`. */
+  retry(sessionId: string, requestId: string): Promise<void>;
   watchThread(sessionId: string, onChange: (view: ThreadView) => void): Unsubscribe;
   /**
    * The session's task rows, on each change; `onStale` hears `true` when a read fails (the
@@ -219,6 +260,9 @@ export interface LabAdapter {
   pin(taskId: string): Promise<void>;
   unpin(taskId: string): Promise<void>;
 }
+
+/** The lab flow whose `read` action is harness-manager's readiness action (`fsdev.config.mts`). */
+const READINESS_FLOW = "harness-readiness";
 
 /** How often an open view reads again, in ms. */
 const READ_EVERY_MS = 1500;
@@ -241,8 +285,15 @@ const UPDATE_TASK_ACTION = taskActionName("updateTask", TASKS_BOARD);
 /** The flow a coding worker runs on: its run sessions answer which harness it is (`harness`). */
 const CODING_FLOW = "harness-thread";
 
-/** The item types a thread draws. */
-const THREAD_ITEMS = ["message", "tool_output"];
+/**
+ * The request sources the engine retries for a caller (`PUBLIC_REENTRY_SOURCES`): a turn that came
+ * in another way, such as a worker's message (`internal`) or a task's run (`task`), it refuses.
+ * A copy, since the page can't import the engine; a test pins it to the engine's.
+ */
+export const RETRYABLE_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "scheduled"]);
+
+/** The item types a thread draws: a failed turn's `error` item too. */
+const THREAD_ITEMS = ["message", "tool_output", "error"];
 
 /** One stored item, as far as the thread reads it. */
 export interface Item {
@@ -264,6 +315,10 @@ export interface Item {
   status?: string;
   /** A failed `tool_output` item's error: a `SUSPENSION` one is a call waiting on you (`isSuspensionWait`). */
   error?: { code?: string };
+  /** An `error` item's: why its turn failed. */
+  message?: string;
+  code?: string;
+  details?: Record<string, unknown>;
 }
 
 
@@ -271,6 +326,17 @@ export interface Item {
 const TASKS_EVERY_MS = 2_000;
 /** The ledgers a session's `listTasks` read returns: its board and its planning worker's steps. */
 const BOARD_LEDGERS = ["tasks", "plan"] as const;
+
+/**
+ * A write to the plan a harness records (core's `observed-plan` rows and its
+ * `observed-plan-list` markers). A row only its owner may read is published
+ * unnamed, so an unnamed resource notice reads too.
+ */
+const isPlanWrite = (notice: WireNotice): boolean =>
+  notice.kind === "resource" &&
+  (notice.topic.resource === undefined ||
+    notice.topic.resource.startsWith(`${OBSERVED_PLAN}/`) ||
+    notice.topic.resource.startsWith(`${OBSERVED_PLAN_LIST}/`));
 
 /**
  * A read again after a failed one, 1 s and doubling to 30 s, the shape of the
@@ -401,12 +467,18 @@ const filedTaskOfItem = (item: Item): string | undefined => (item.type === "tool
  * and so is a delegate's answer that landed in the conversation as written (a task filed with `resultTo:
  * "conversation"`): either way the task's reply is one line, not the session's own words.
  * In threads mode (`threads`), a task the lead filed is a thread card where its `createTask` call is, and
- * your line is marked when its turn filed one.
+ * your line is marked when its turn filed one. A failed turn's `error` item is a failed entry, `retryable`
+ * when it is the newest turn and one of `retryableTurns` (the requests the engine will retry), and a reply
+ * that turn never finished is marked incomplete.
  */
-export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[] {
+export function entriesOf(items: readonly Item[], threads = false, retryableTurns: ReadonlySet<string> = new Set()): ThreadEntry[] {
   // A turn a user's line started holds that line; a notice's own turn holds none.
-  const userTurns = new Set(items.filter((item) => item.type === "message" && item.role === "user").map((item) => item.requestId));
+  const userTurns = new Set(
+    items.filter((item) => item.type === "message" && item.role === "user" && taskBriefOf(item) === undefined).map((item) => item.requestId),
+  );
   const filingTurns = new Set(items.filter((item) => filedTaskOfItem(item) !== undefined).map((item) => item.requestId));
+  // A turn that failed; its reply, if it never finished, is marked incomplete. Retry is offered on the newest turn only.
+  const failedTurns = new Set(items.filter((item) => item.type === "error").map((item) => item.requestId));
   const entries: ThreadEntry[] = [];
   const runs = new Map<string, ToolCallOf[]>();
   for (const item of items) {
@@ -427,7 +499,24 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
       else entries.push(entry);
       continue;
     }
+    if (item.type === "error") {
+      entries.push({
+        kind: "failed",
+        id: item.id,
+        reason: item.message ?? "",
+        ...(item.code === undefined ? {} : { code: item.code }),
+        ...(item.details === undefined ? {} : { details: item.details }),
+        retryable: false,
+        requestId,
+      });
+      continue;
+    }
     const text = textOf(item);
+    // A task's brief is a `user` line for its model's history, but you never typed it.
+    if (item.role === "user" && taskBriefOf(item) !== undefined) {
+      entries.push({ kind: "brief", id: item.id, text, requestId });
+      continue;
+    }
     if (item.role === "user") {
       entries.push({ kind: "user", id: item.id, text, requestId, ...(threads && filingTurns.has(requestId) ? { sentToThread: true } : {}) });
       continue;
@@ -454,9 +543,17 @@ export function entriesOf(items: readonly Item[], threads = false): ThreadEntry[
       entries.push({ kind: "result", id: item.id, taskId: answer.taskId, title: `Answer from ${worker}`, status: "completed", summary: resultSummary(text), duringTurn: userTurns.has(requestId), requestId });
       continue;
     }
-    if (text.length > 0) entries.push({ kind: "assistant", id: item.id, text, requestId });
+    if (text.length > 0) {
+      const incomplete = failedTurns.has(requestId) && item.status !== "completed";
+      entries.push({ kind: "assistant", id: item.id, text, ...(incomplete ? { incomplete: true } : {}), requestId });
+    }
   }
-  return entries;
+  // The newest turn is the one that drew the last entry: an item that draws none (a retried notice,
+  // an empty message) does not move it.
+  const newestTurn = entries[entries.length - 1]?.requestId;
+  return entries.map((entry) =>
+    entry.kind === "failed" && entry.requestId !== undefined && entry.requestId === newestTurn && retryableTurns.has(entry.requestId) ? { ...entry, retryable: true } : entry,
+  );
 }
 
 /** The adapter the app runs on: the served lab, as the user the page was served for. */
@@ -501,6 +598,68 @@ function followItems(
       feed.close();
     },
   };
+}
+
+/**
+ * The tool calls of one request as its own stream sends them: each one as it
+ * starts, not only once finished, as the session stream sends them. For what
+ * a running task is in now. A dropped connection is opened again after a
+ * backoff (1 s, doubling to 30 s), resuming after the last event it heard,
+ * until the request ends or the watch stops. An answer that says the request
+ * is not there for you (401, 403, 404) stops it; the session feed's finished
+ * copies stand.
+ */
+function followRequestCalls(fsd: Client, flow: Promise<string>, requestId: string, onItems: (items: readonly Item[]) => void): Unsubscribe {
+  const store = createRequestStreamStore();
+  let live = true;
+  let handle: { close(): void } | undefined;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  let failures = 0;
+  const open = (flowKind: string): void => {
+    if (!live) return;
+    const heard = store.lastSequenceNumber;
+    handle = fsd.flow(flowKind).request(requestId).stream({
+      ...(heard > 0 ? { startingAfter: heard } : {}),
+      ...bindStoreToCallbacks(store, {
+        itemFilter: (item) => item.type === "tool_output",
+        onChange: () => {
+          failures = 0;
+          store.flushDeltas();
+          if (live) onItems(store.getSorted() as unknown as Item[]);
+        },
+      }),
+      onError: (error) => {
+        handle?.close();
+        handle = undefined;
+        if (!live || store.status !== "in_progress" || STREAM_GONE.has((error as { status?: number }).status ?? 0)) return;
+        retry = setTimeout(() => open(flowKind), Math.min(30_000, 1_000 * 2 ** failures));
+        failures += 1;
+      },
+    });
+  };
+  flow.then(open, (error) => console.warn("[claude-code-style]", error));
+  return () => {
+    live = false;
+    if (retry !== undefined) clearTimeout(retry);
+    handle?.close();
+  };
+}
+
+/** A request stream's answers that mean it is not there for this caller: opening it again cannot help. */
+const STREAM_GONE: ReadonlySet<number> = new Set([401, 403, 404]);
+
+/**
+ * The call a run is in now, from both of its sources: the request's own
+ * stream, which sends a call as it starts, and the session feed, whose
+ * finished copy of a call wins over a streamed copy that never heard its end.
+ * The feed's own candidates are the run request's only (`requestId`, else the
+ * newest request's): a reused session keeps the call a crashed earlier request
+ * left half-done for good, and that is not what the run is doing now.
+ */
+function inFlightOf(streamed: readonly Item[], fed: readonly Item[], requestId: string | null | undefined): ToolCallNow | undefined {
+  const finished = new Set(fed.filter((item) => item.status !== "in_progress").map((item) => item.id));
+  const request = requestId ?? fed[fed.length - 1]?.requestId;
+  return toolInFlight(streamed.filter((item) => !finished.has(item.id)) as never) ?? toolInFlight(fed.filter((item) => item.requestId === request) as never);
 }
 
 /** The adapter over one client. */
@@ -577,10 +736,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
     );
 
   /** The turns running in a session, oldest first. */
-  const runningTurns = async (sessionId: string) =>
-    (await fsd.sessions.requests(sessionId, { status: "in_progress", limit: 50 }))
-      .filter((request) => TURN_ACTIONS.has(request.actionName))
+  /** Of a session's requests, its turns still running, oldest first. */
+  const turnsRunningIn = (requests: Awaited<ReturnType<typeof fsd.sessions.requests>>) =>
+    requests
+      .filter((request) => request.status === "in_progress" && TURN_ACTIONS.has(request.actionName))
       .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
+  const runningTurns = async (sessionId: string) => turnsRunningIn(await fsd.sessions.requests(sessionId, { status: "in_progress", limit: 50 }));
 
   /** Every item of a session of the types a thread draws (or `types`), every page. */
   const itemsOf = async (sessionId: string, types: readonly string[] = THREAD_ITEMS): Promise<Item[]> => {
@@ -596,15 +757,18 @@ export function createWiredLab(fsd: Client): LabAdapter {
     }
   };
 
-  /** A session's title: its first line, once it has one. Kept, since a first line never changes. */
-  const titles = new Map<string, string>();
-  const titleOf = async (sessionId: string) => {
-    if (!titles.has(sessionId)) {
+  /**
+   * The first line of a session's first message: the fallback title (`sessionTitle`). Kept once
+   * read, since a first line never changes; a session with no message yet is read again.
+   */
+  const firstLines = new Map<string, string>();
+  const firstLineOf = async (sessionId: string): Promise<string | undefined> => {
+    if (!firstLines.has(sessionId)) {
       const first = (await itemsOf(sessionId)).find((item) => item.role === "user");
-      if (first === undefined) return "New session";
-      titles.set(sessionId, textOf(first).split("\n")[0]!.slice(0, 60));
+      if (first === undefined) return undefined;
+      firstLines.set(sessionId, firstLineOfText(textOf(first)));
     }
-    return titles.get(sessionId)!;
+    return firstLines.get(sessionId);
   };
 
   /**
@@ -613,17 +777,14 @@ export function createWiredLab(fsd: Client): LabAdapter {
    */
   type SessionRowRead = { row: SessionRow; complete: boolean };
   const rowOf = async (worker: string, sessionId: string, held?: SessionRow): Promise<SessionRowRead> => {
-    const [detail, turns, title, waiting] = await Promise.all([
-      fsd.sessions.get(sessionId),
-      runningTurns(sessionId),
-      titleOf(sessionId),
-      waitingCountFor(sessionId),
-    ]);
+    const [detail, turns, waiting] = await Promise.all([fsd.sessions.get(sessionId), runningTurns(sessionId), waitingCountFor(sessionId)]);
+    // The first message's first line is the fallback until the generated title lands.
+    const firstLine = detail.title?.trim() ? undefined : await firstLineOf(sessionId);
     const project = (detail.state as Record<string, unknown> | undefined)?.[WORK_PROJECT_STATE_KEY];
     return {
       row: {
         id: sessionId,
-        title,
+        title: sessionTitle({ title: detail.title, firstLine }),
         worker,
         updatedAt: detail.updatedAt,
         running: turns.length > 0,
@@ -660,6 +821,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
 
   /** Each listed task's run session, by task id, as the last list saw it. */
   const runSessionOf = new Map<string, string>();
+  /** Each running task's run (its session and request), by task id, as the last list saw it; none once it ended. */
+  const runningRunOf = new Map<string, { sessionId: string; requestId: string }>();
   /** Told whenever a list moves a task's run session: a task's work follows the one the board names now. */
   const runLinkMoved = new Set<() => void>();
 
@@ -674,6 +837,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
     if (!listed.ok) throw new Error(listed.error);
     let moved = false;
     for (const task of listed.tasks as any[]) {
+      const ranAs = runningRunOf.get(task.id)?.requestId;
+      if (task.status === "in_progress" && typeof task.run?.sessionId === "string" && typeof task.run?.requestId === "string") {
+        runningRunOf.set(task.id, { sessionId: task.run.sessionId, requestId: task.run.requestId });
+      } else runningRunOf.delete(task.id);
+      // A re-run in the same session is a new request: what the task is in now moved with it.
+      if (runningRunOf.get(task.id)?.requestId !== ranAs) moved = true;
       if (task.run?.sessionId === undefined || runSessionOf.get(task.id) === task.run.sessionId) continue;
       runSessionOf.set(task.id, task.run.sessionId);
       moved = true;
@@ -687,6 +856,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
       ...(task.assignee === undefined ? {} : { assignee: task.assignee }),
       ...(task.statusNote == null ? {} : { statusNote: task.statusNote }),
       ...(typeof task.updatedAt === "number" ? { updatedAt: task.updatedAt } : {}),
+      // The row's own start, else its run link's; rows before either carry neither (BP-030).
+      ...(typeof (task.startedAt ?? task.run?.startedAt) === "number" ? { startedAt: task.startedAt ?? task.run.startedAt } : {}),
       ...(task.run?.sessionId === undefined ? {} : { runSessionId: task.run.sessionId, run: task.run }),
       ...(Array.isArray(task.holds) ? { holds: task.holds } : {}),
       ...(task.spend == null ? {} : { spend: task.spend }),
@@ -945,6 +1116,9 @@ export function createWiredLab(fsd: Client): LabAdapter {
       refuseExisting(created, name);
       return { id: projectRef({ visibility: created.visibility, id: created.project.id }), name: created.project.title };
     },
+    checkRepository: async (repository) => await run("projects", await projects(), "checkRepository", { repository }),
+    readHarnesses: async (refresh = false) =>
+      (await run(READINESS_FLOW, await ownSession(READINESS_FLOW), "read", { refresh })).harnesses as HarnessRow[],
     openSession: async (mode, projectId) => {
       const { worker } = modeById(mode);
       const project = parseProjectRef(projectId);
@@ -952,7 +1126,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
       const created = await fsd.flow(await flowOf(worker)).createSession({ state: { [WORKER_ID_STATE_KEY]: worker } });
       await workforce.setWorkProject(worker, project, { sessionId: created.id });
       for (const tell of [...sessionOpened]) tell();
-      return { id: created.id, title: "New session", worker, updatedAt: created.updatedAt, running: false, waiting: 0, projectId };
+      return { id: created.id, title: NEW_SESSION_TITLE, worker, updatedAt: created.updatedAt, running: false, waiting: 0, projectId };
     },
     send: async (sessionId, text) => {
       const flow = fsd.flow(await flowOfSession(sessionId));
@@ -972,19 +1146,22 @@ export function createWiredLab(fsd: Client): LabAdapter {
         await fsd.flow(turn.flowId ?? turn.flowKind).request(turn.id).abort().catch(() => undefined);
       }
     },
+    retry: async (sessionId, requestId) => {
+      await fsd.flow(await flowOfSession(sessionId)).request(requestId).retry();
+    },
     watchThread: (sessionId, onChange) => {
       // Items come from the session feed. The running turn is still read: the feed's runs are
       // child sessions, not this session's own turns.
       let items: Item[] | undefined;
       let loadEarlier: (() => Promise<void>) | undefined;
       let connection: ConnectionState | undefined;
-      let turnOf: { turn: Awaited<ReturnType<typeof runningTurns>>[number] | undefined; threads: boolean } | undefined;
+      let turnOf: { turn: Awaited<ReturnType<typeof runningTurns>>[number] | undefined; threads: boolean; retryable: string[] } | undefined;
       let last: string | undefined;
       const tell = () => {
         if (items === undefined || turnOf === undefined) return;
-        const { turn, threads } = turnOf;
+        const { turn, threads, retryable } = turnOf;
         const view: ThreadView = {
-          entries: entriesOf(items, threads),
+          entries: entriesOf(items, threads, new Set(retryable)),
           running: turn !== undefined,
           ...(connection === undefined ? {} : { connection }),
           ...(turn?.startedAtMs === undefined ? {} : { turnStartedAt: turn.startedAtMs }),
@@ -1019,8 +1196,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
         [topic.session(sessionId)],
         (notice) => notice.kind === "request",
         async () => {
-          const [turns, threads] = await Promise.all([runningTurns(sessionId), isThreads(sessionId)]);
-          return { turn: turns[0], threads };
+          // One read of the latest requests, newest updated first, answers both: the running turn
+          // is among them, and so is the turn a failed line could retry.
+          const [recent, threads] = await Promise.all([fsd.sessions.requests(sessionId, { limit: 50 }), isThreads(sessionId)]);
+          // The turns the engine would retry: a record with no source predates it, and came in over http.
+          const retryable = recent.filter((request) => RETRYABLE_SOURCES.has(request.source ?? "http")).map((request) => request.id);
+          return { turn: turnsRunningIn(recent)[0], threads, retryable };
         },
         (next) => {
           turnOf = next;
@@ -1042,33 +1223,97 @@ export function createWiredLab(fsd: Client): LabAdapter {
     watchTaskWork: (_sessionId, taskId, onChange) => {
       // The task's run session is known once the board has listed it, and a re-run moves it: follow
       // whichever session the board names now, from the moment a list names it, and show no work
-      // until one does. The run's items come from its session stream.
+      // until one does. The run's items come from its session stream. While the task runs, what it
+      // is in now follows the request the board names: its own stream for the call in flight, and
+      // the plan it recorded, read again on each write to it. A re-run in the same session is a new
+      // request, followed from the list that names it.
       let stopItems: Unsubscribe | undefined;
+      let stopRun: Unsubscribe | undefined;
       let following: string | null | undefined;
+      let followingRun: string | null | undefined;
+      let work: TaskWork | undefined;
+      let fed: readonly Item[] = [];
+      let streamed: readonly Item[] = [];
+      let plan: PlanRowNow[] | undefined;
+      // What was last told: a stream delta that moves neither the work nor what it is doing now tells nothing.
+      let toldWork: TaskWork | undefined;
+      let toldWorking = "";
+      const tell = () => {
+        if (work === undefined) return;
+        const inFlight = inFlightOf(streamed, fed, followingRun);
+        const working: WorkingNow = { ...(inFlight === undefined ? {} : { inFlight }), ...(plan === undefined ? {} : { plan }) };
+        const seen = JSON.stringify(working);
+        if (work === toldWork && seen === toldWorking) return;
+        toldWork = work;
+        toldWorking = seen;
+        onChange(Object.keys(working).length === 0 ? work : { ...work, working });
+      };
+      const followRun = (runSession: string) => {
+        const run = runningRunOf.get(taskId);
+        const requestId = run !== undefined && run.sessionId === runSession ? run.requestId : null;
+        if (requestId === followingRun) return;
+        followingRun = requestId;
+        stopRun?.();
+        stopRun = undefined;
+        streamed = [];
+        plan = undefined;
+        tell();
+        if (requestId === null) return;
+        const stopCalls = followRequestCalls(fsd, flowOfSession(runSession), requestId, (items) => {
+          streamed = items;
+          tell();
+        });
+        const stopPlan = onNotice(
+          fsd,
+          [topic.session(runSession)],
+          isPlanWrite,
+          async () => (await readRecordedWork(fsd, { sessionId: runSession, requestId })).plan?.rows.map(({ title, status }) => ({ title, status })) ?? null,
+          (rows) => {
+            plan = rows ?? undefined;
+            tell();
+          },
+        );
+        stopRun = () => {
+          stopCalls();
+          stopPlan();
+        };
+      };
       const follow = () => {
         const runSession = runSessionOf.get(taskId) ?? null;
-        if (runSession === following) return;
-        following = runSession;
-        stopItems?.();
-        stopItems = undefined;
-        if (runSession === null) {
-          onChange({ entries: [] });
-          return;
+        if (runSession !== following) {
+          following = runSession;
+          stopItems?.();
+          stopItems = undefined;
+          stopRun?.();
+          stopRun = undefined;
+          followingRun = undefined;
+          work = undefined;
+          fed = [];
+          streamed = [];
+          plan = undefined;
+          if (runSession === null) {
+            onChange({ entries: [] });
+            return;
+          }
+          stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
+            const review = reviewStopOf(items);
+            fed = items;
+            work = {
+              entries: entriesOf(items.filter((item) => item.type !== "suspension")),
+              ...(review === undefined ? {} : { review }),
+              ...(loadEarlier === undefined ? {} : { loadEarlier }),
+            };
+            tell();
+          }).stop;
         }
-        stopItems = followItems(fsd, runSession, [...THREAD_ITEMS, "suspension"], (items, loadEarlier) => {
-          const review = reviewStopOf(items);
-          onChange({
-            entries: entriesOf(items.filter((item) => item.type !== "suspension")),
-            ...(review === undefined ? {} : { review }),
-            ...(loadEarlier === undefined ? {} : { loadEarlier }),
-          });
-        }).stop;
+        if (runSession !== null) followRun(runSession);
       };
       runLinkMoved.add(follow);
       follow();
       return () => {
         runLinkMoved.delete(follow);
         stopItems?.();
+        stopRun?.();
       };
     },
     sayInThread: async (sessionId, taskId, line) => {

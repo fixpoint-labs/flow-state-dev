@@ -154,6 +154,58 @@ const existing = await notes.get({ topic: "rust" });
 
 The framework resolves `{ topic: "react" }` to the storage key `react/notes`.
 
+### Looking items up by a field
+
+A key answers one question: which item lives at this address. Sometimes you need to find items by a field that isn't in the key, like a task by its id when tasks are filed under the conversation they came from. Declare the field as an index on the collection, then ask for it with `findBy`:
+
+```ts
+const work = defineResourceCollection({
+  pattern: "work/**",
+  scope: "user",
+  stateSchema: taskSchema,
+  indexes: {
+    byTaskId: (key, state) => state.id,
+    byTag: (key, state) => state.tags,
+  },
+});
+
+// In a block:
+const [item] = await ctx.resources.work.findBy("byTaskId", id);
+const tagged = await ctx.resources.work.findBy("byTag", "urgent");
+```
+
+`findBy(name, value)` returns the items whose index has that value, as `ResourceRef`s in key order, the same refs `list()` returns. It reads the same items `list()` reads, behind the same owner rules, so it never returns an item `list()` would hide. An index name the collection doesn't declare throws.
+
+**What an index function returns.** A string, number or boolean, or an array of them, and the item is found by each value. `null` and `undefined` mean the item has no value for that index. Lookups are equality only, and types stay apart: if `byTaskId` returns the number `1` for an item, `findBy("byTaskId", "1")` does not find it.
+
+**Keep the function deterministic.** It gets the item's key and state, and must answer from those alone. A function that reads the clock or another item will drift from what was recorded when the item was written. `findBy` never returns an item whose current value doesn't match. But a non-deterministic function can make it miss items that do match. A function that throws fails the write it runs for, so guard fields that older items may lack.
+
+**Versions.** A bare function is version 1. When you change what a function returns for items that already exist, declare `{ version, value }` with a higher version:
+
+```ts
+indexes: {
+  // Now lower-cases tags, so existing items need new entries.
+  byTag: { version: 2, value: (key, state) => state.tags.map((t) => t.toLowerCase()) },
+},
+```
+
+The next lookup in each scope rebuilds the index, and from then on lookups answer from the new function. Two collections in one scope whose patterns can match the same keys can't declare one index name at two versions: the server refuses to start.
+
+**The first lookup builds the index.** Adding an index to a collection that already has items needs no backfill step. The first `findBy` in each scope reads the collection's items, answers from them, and records their entries. Every later write keeps those entries current. That first lookup costs one read of the whole collection in that scope.
+
+**What it costs on each store.**
+
+| Store | `findBy` reads |
+| --- | --- |
+| SQLite, Postgres | One index query, then one item read per hit. |
+| Memory, filesystem | The collection's items, filtered in memory. Same results, slower on a large collection. |
+
+On SQLite and Postgres, a lookup on an index whose value many items share costs one read per item it returns, so an index pays off most on a field that picks out a few items, like an id.
+
+**When not to use it.** `findBy` is for items you haven't read yet. If a block already holds the items (an eager collection, or a list it just made), filtering them in code costs nothing, and `findBy` would add a store read.
+
+**Writes from elsewhere.** Every write through the server's stores keeps the index current: block writes, the resource routes, and code that writes `runtime.stores` directly. A process that writes the collection without declaring the index is fine: lookups still find its items. A process on a flow-state-dev version without `findBy` support is not. Its writes can be missed. Upgrade every process before the first lookup, or bump the index's version once they're all upgraded.
+
 ## Owner-private collections
 
 Sometimes a row belongs to one person and nobody else in the org should see it, not even through a wider collection that happens to match its key. Declare the collection owner-private and name the parameter that holds the owner:

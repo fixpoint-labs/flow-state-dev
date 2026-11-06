@@ -262,6 +262,7 @@ Config options:
 - `onInstanceCreated?: (key, state, ctx) => void` — lifecycle hook
 - `onInstanceUpdated?: (key, state, prevState, ctx) => void` — lifecycle hook
 - `onInstanceDeleted?: (key, ctx) => void` — lifecycle hook
+- `indexes?: Record<string, IndexFn | { version: number; value: IndexFn }>` — fields the items can be looked up by with `findBy`. `IndexFn` is `(key, state) => value`, where `value` is a string, number or boolean, an array of them, or `null` / `undefined` for no value. A bare function is version 1. Names must be non-empty and must not contain `@`; a version must be a positive integer; anything else throws when the collection is defined. Two collections in one scope whose patterns can match the same keys must not declare one index name at two versions, or the server refuses to start. See [Looking items up by a field](/docs/resources/collections#looking-items-up-by-a-field)
 
 Runtime `ResourceCollectionRef` methods:
 
@@ -270,6 +271,7 @@ Runtime `ResourceCollectionRef` methods:
 - `getOptional(key)` — get existing instance or `undefined`
 - `getOrCreate(key, initial?)` — returns existing if present, creates if not
 - `list(prefix?)` — list all instances, optionally filtered by prefix
+- `findBy(index, value)` — the instances whose declared index `index` has `value` (a string, number or boolean), in key order, read behind the same owner rules as `list()`. Throws when the collection declares no index named `index`
 - `delete(key)` — delete an instance. No-op if not found on a writable collection. Throws the read-only error when the collection is `writable: false`, including when the key is already absent.
 - `count()` — current instance count
 

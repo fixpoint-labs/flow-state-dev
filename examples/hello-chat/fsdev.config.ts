@@ -1,6 +1,7 @@
 /**
- * fsdev config — the single runtime wiring for this app, consumed by both the
- * Next.js route handler (via `lib/server.ts`) and the `fsdev` CLI.
+ * fsdev config — the single runtime wiring for this app, imported directly by
+ * the Next.js route handler (`app/api/flows/[[...path]]/route.ts`) and loaded
+ * by the `fsdev` CLI.
  *
  * Run a flow from the CLI without the browser:
  *   pnpm fsdev run hello-chat chat -i '{"message":"hi"}'

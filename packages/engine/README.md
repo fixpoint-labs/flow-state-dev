@@ -632,6 +632,27 @@ new session a new id.
 A store adapter shows it serves the stream with
 `createSessionStreamConformanceTests`, from `@flow-state-dev/engine/testing`.
 
+### Runs as a row's owner
+
+`fireOwnerRunThrough(host, run)` starts an internal entry as the user whose stored row it names.
+`run` is `{ flowKind, entry, input, owner: { userId, orgId, tenantId? }, rowKey }`, where `rowKey`
+is the row's full key in a user-scoped collection that every flow shares (`flowIsolation: false`).
+The owner only says whose rows to look in, the same per-user, per-org storage the scheduled
+dispatch endpoint reads (`resolveSharedUserCellKey`). The run starts only when that user's rows
+hold `rowKey`, the row's `orgId` and `tenantId` are the owner's, and the row isn't
+`enabled: false`. Otherwise it answers `{ fired: false, refused }` with `no_row`, `other_org`,
+`other_tenant` or `disabled`, and nothing runs. A run that starts answers `{ fired: true,
+requestId, finished }`. Every run of one row starts in the same session.
+
+`routeServiceEvent(host, { flowKind, entry, input, principal }, { concurrency? })` runs a service
+flow's internal entry as the service's own principal, then fires each run its output lists in
+`ownerRuns` through `fireOwnerRunThrough`, at most `concurrency` (8 by default) at once. It answers
+`{ output, error?, ownerRuns, malformed }`. Each owner run carries `finished`, `refused`, or
+`failed` (the host threw while starting it; the other runs still fire). `malformed` lists the
+entries it didn't fire: one naming another flow than the service's own, or an owner in another
+org. Workforce's subscriptions use it (`SUBSCRIPTION_ROUTE_ENTRY`). Reach the host from an
+inbound transport adapter's `createBindings(host)`.
+
 ## Change bus
 
 A change notice says that something under a topic changed, never what. Whoever
@@ -1142,6 +1163,8 @@ Entries may be stale but never missing, because a reader checks every hit agains
 | `findKeys` | The keys with an entry of that value, in ascending order |
 
 Each scope's entries and markers are its own. **Writing an adapter:** implement all four verbs or none. Commit a row and its entries together: SQLite runs both in one transaction, and Postgres puts the entry upkeep in the write's own statement. Pass `indexes: true` to `createResourceStateStoreConformanceTests` to run the index cases against your store.
+
+**Who writes the entries.** The stores `createFlowState` resolves, and the ones a router built with `createFlowApiRouter` resolves, compute every row's entries from the collections the app declares with `indexes`, and pass them on each `set`. So block writes, the resource routes, and host code writing `runtime.stores` all keep the index current. `findBy` on a collection reads `findKeys` once the scope's index is built, and builds it on the first lookup otherwise. To check a whole registry end to end, run `createFindByConformanceTests({ name, createStores, indexes })` from `@flow-state-dev/engine/testing`: it boots an app over the registry and checks which rows `findBy` returns, and, with `indexes: true`, that a lookup on a built index makes no prefix or whole-scope read.
 
 `toBareState` / `toBareStates` are exported for readers that only want the stored value and not the version beside it. `VersionedResourceState` is **branded**, so it is not assignable to `JsonObject` and a missing unwrap fails to compile rather than silently handing the wrong shape downstream. The brand is a phantom optional property that never exists at runtime — adapters still construct a versioned read as a plain object literal. It does not defend against an explicit `as` cast; that stays the caller's assertion to make.
 

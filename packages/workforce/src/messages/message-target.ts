@@ -3,7 +3,7 @@
  * before anything is written.
  *
  * `{ task: id }` lands in the session that works the task: the conversation
- * ledger finds the row by id (its id index), and the row's run link names the
+ * ledger finds the row by id (its `byTaskId` index), and the row's run link names the
  * session. `{ session: id }` lands in that conversation of the user's. Both are
  * then checked the same way, on the session's own record as the engine reads
  * it for this user (`requestHost.sessions.read`): the user, their organization
@@ -124,8 +124,7 @@ export async function taskSessionOf(
   ctx: BlockContext,
   taskId: string
 ): Promise<{ readonly sessionId: string; readonly ledger: TaskCollectionRef } | undefined> {
-  // Only partitions that hold the row count: a marker is written before its
-  // row, so a failed add leaves one behind.
+  // Only partitions whose ledger, as this request reads it, holds the row count.
   const held: TaskCollectionRef[] = [];
   for (const partition of await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId)) {
     const ledger = await conversationLedgerAt(ctx, partition);

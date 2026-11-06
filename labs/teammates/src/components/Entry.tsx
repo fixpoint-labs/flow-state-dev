@@ -4,7 +4,8 @@ import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import type { AnswerState } from "./Popups";
 import { useSubmit } from "@flow-state-dev/react";
-import { AgentMarkdown } from "./flow-state/message-response";
+import { MarkdownText } from "./flow-state/message-response";
+import { RequestRecovery } from "./flow-state/request-recovery";
 import { ToolRun } from "./ToolRun";
 
 /**
@@ -18,6 +19,10 @@ import { ToolRun } from "./ToolRun";
  * yes (`suspendForUser` with an approval) is a card with Approve and Deny until
  * you answer. The tool calls a turn makes show inline as it makes them, a run
  * of them as one line that is open while it runs and folds once it is done.
+ * A failed turn is the registry's `request-recovery` line under the worker's
+ * name, with its reason; `onRetry` draws its Retry, so pass it only for the
+ * newest turn while nothing runs. A reply its turn never finished is marked
+ * incomplete.
  * Memoized: a streamed chunk redraws only the entry that changed.
  */
 export const Entry = memo(function Entry({
@@ -30,6 +35,7 @@ export const Entry = memo(function Entry({
   onOpenMessage,
   onOpenTask,
   onAnswer,
+  onRetry,
 }: {
   entry: ConversationEntry;
   workerName: string;
@@ -45,6 +51,8 @@ export const Entry = memo(function Entry({
   /** Open the task a result came from. */
   onOpenTask?: (taskId: string) => void;
   onAnswer?: (approve: boolean) => Promise<void>;
+  /** Run a failed turn again. */
+  onRetry?: () => Promise<void>;
 }) {
   switch (entry.kind) {
     case "user":
@@ -58,8 +66,15 @@ export const Entry = memo(function Entry({
       );
     case "assistant":
       return (
-        <div className="py-1 text-sm leading-relaxed" data-entry="assistant">
-          <AgentMarkdown text={entry.text} />
+        <div className="py-1 text-sm leading-relaxed" data-entry="assistant" data-incomplete={entry.incomplete ? "true" : undefined}>
+          <MarkdownText text={entry.text} />
+          {entry.incomplete ? <span className="mt-1 block text-xs text-muted-foreground">Incomplete</span> : null}
+        </div>
+      );
+    case "failed":
+      return (
+        <div data-entry="failed">
+          <RequestRecovery who={workerName} reason={entry.reason} code={entry.code} details={entry.details} onRetry={onRetry} />
         </div>
       );
     case "sent":
@@ -75,7 +90,7 @@ export const Entry = memo(function Entry({
             <Avatar look={lookOf(entry.from)} size="sm" />← {nameOf(entry.from)}
             {entry.noAnswer ? " · no answer" : entry.inReplyTo ? " · reply" : ""}
           </div>
-          <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
+          <MarkdownText className="mt-0.5 text-sm" text={entry.text} />
         </section>
       );
     case "result": {
@@ -103,7 +118,7 @@ export const Entry = memo(function Entry({
               </button>
             ) : null}
           </div>
-          <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
+          <MarkdownText className="mt-0.5 text-sm" text={entry.text} />
         </section>
       );
     }

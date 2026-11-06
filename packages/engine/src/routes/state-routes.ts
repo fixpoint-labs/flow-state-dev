@@ -2,7 +2,6 @@
  * Session state projection route handler.
  */
 import { isValidOrgId } from "@flow-state-dev/core";
-import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
@@ -25,6 +24,7 @@ import {
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { sessionRequestScope } from "../context/session-request-scope";
+import { applyScopeStateDefaults } from "../context/scope-state-defaults";
 import {
   buildProjectedResourceContextFromSession,
   getPersistedData
@@ -190,21 +190,21 @@ export async function handleGetSessionState(
     config: flow.session?.client,
     scope: "session",
     filter: clientDataFilter,
-    state: (session.state ?? {}) as JsonObject,
+    state: applyScopeStateDefaults(flow.session?.stateSchema, session.state),
     resources: sessionResources
   });
   const userClientData = await computeClientData({
     config: flow.user?.client,
     scope: "user",
     filter: clientDataFilter,
-    state: (user?.state ?? {}) as JsonObject,
+    state: applyScopeStateDefaults(flow.user?.stateSchema, user?.state),
     resources: userResources
   });
   const orgClientData = await computeClientData({
     config: flow.org?.client,
     scope: "org",
     filter: clientDataFilter,
-    state: (org?.state ?? {}) as JsonObject,
+    state: applyScopeStateDefaults(flow.org?.stateSchema, org?.state),
     resources: orgResources
   });
 

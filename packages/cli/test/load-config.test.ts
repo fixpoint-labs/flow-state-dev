@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { isFlowState } from "@flow-state-dev/engine";
 import { loadFsdevConfig } from "../src/load-config";
 import { CliError } from "../src/resolve-block";
@@ -91,5 +93,46 @@ describe("loadFsdevConfig", () => {
     const first = await loadFsdevConfig({ cwd });
     const second = await loadFsdevConfig({ cwd });
     expect(first!.flowState).not.toBe(second!.flowState);
+  });
+});
+
+/**
+ * Run `importConfigModule` on plain Node, outside vitest: vitest (and tsx)
+ * resolve extensionless imports themselves, so only a bare `node` process shows
+ * what a published `fsdev` sees. Prints the default export's `flowKeys`, or the
+ * load error's code.
+ */
+function importOnPlainNode(configPath: string): string {
+  const leaf = pathToFileURL(resolve(import.meta.dirname, "../src/import-config-module.ts")).href;
+  const script =
+    `const { importConfigModule } = await import(${JSON.stringify(leaf)});` +
+    `try { const m = await importConfigModule(${JSON.stringify(configPath)});` +
+    ` console.log(JSON.stringify(m.default.flowKeys)); }` +
+    ` catch (e) { console.log("error:" + (e.code ?? e.message)); }`;
+  return execFileSync(process.execPath, ["--input-type=module", "-e", script], {
+    encoding: "utf-8",
+    env: { ...process.env, NODE_OPTIONS: "" },
+  }).trim();
+}
+
+describe("importConfigModule on plain Node", () => {
+  // The quick start writes `import ... from "./src/flows/chat/flow"`. Node's
+  // own loader rejects that (ERR_MODULE_NOT_FOUND), so a TS config the docs
+  // teach would not load from a published fsdev without the jiti fallback.
+  it("loads a .ts config whose relative imports have no extension", () => {
+    const out = importOnPlainNode(resolve(configFixtures, "extensionless", "fsdev.config.ts"));
+    expect(out).toBe('["chat"]');
+  });
+
+  // Next.js apps import through `@/` aliases; Node's loader knows nothing of tsconfig paths.
+  it("resolves the app's tsconfig path aliases in a .ts config", () => {
+    const out = importOnPlainNode(resolve(configFixtures, "alias", "fsdev.config.ts"));
+    expect(out).toBe('["aliased"]');
+  });
+
+  // JavaScript configs keep the plain native import: they are not rerouted.
+  it("leaves a .mjs config on Node's native import", () => {
+    const out = importOnPlainNode(resolve(configFixtures, "extensionless-mjs", "fsdev.config.mjs"));
+    expect(out).toBe("error:ERR_MODULE_NOT_FOUND");
   });
 });

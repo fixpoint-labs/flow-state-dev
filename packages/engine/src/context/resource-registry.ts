@@ -21,12 +21,17 @@ import type {
   ResourceConfig,
   ResourceCollectionConfig,
   ResourceCollectionRef,
+  DeclaredResourceIndex,
+  ResourceIndexValue,
   ResourceQuery,
   ResourceRef,
   ResourceRegistry,
   ScopeType,
 } from "@flow-state-dev/core/types";
 import {
+  canonicalIndexValue,
+  canonicalIndexValues,
+  declaredIndexes,
   resolveCollectionKey,
   matchesPattern,
   getPatternPrefix,
@@ -804,6 +809,10 @@ function fenceOwnerKeys(
       const rows = await handle.list(listPrefix);
       return rows.filter((row) => admits(row.path));
     },
+    async findBy(index, value) {
+      const rows = await handle.findBy(index, value);
+      return rows.filter((row) => admits(row.path));
+    },
     async count() {
       const rows = await handle.list();
       return rows.filter((row) => admits(row.path)).length;
@@ -914,6 +923,18 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
      * where a lazy collection falls back to the eager cache-only behaviour.
      */
     lazyLoad?: ScopeLazyLoad;
+    /**
+     * FIX-2532: the candidate keys for a collection's `findBy`, from the
+     * store's index (built first when the scope's index is not). A superset:
+     * every key is re-checked against its row. Resolves `undefined` when the
+     * store keeps no index entries, and is omitted for mock registries; in
+     * both cases `findBy` scans the collection the way `list()` reads it.
+     */
+    findIndexedKeys?: (
+      collection: ResourceCollectionConfig,
+      index: DeclaredResourceIndex,
+      value: string
+    ) => Promise<string[] | undefined>;
     /**
      * FIX-701: trace observability. `recordResourceLoad` pushes one load record
      * (gating + aggregation happen in the execution context); `resolveEagerSource`
@@ -1506,6 +1527,45 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         });
       };
 
+      // `findBy`: candidate keys from the store's index, or from a scan of the
+      // collection (`scan`, which reads what `list()` reads) when the store
+      // keeps none. Every candidate is then read the way `get` reads it and
+      // re-checked against its row, so a stale entry, a row this request
+      // changed and a key it deleted are never returned.
+      const findRows = async (
+        indexName: string,
+        value: ResourceIndexValue,
+        scan: () => Promise<ResourceRef<JsonObject>[]>
+      ): Promise<ResourceRef<JsonObject>[]> => {
+        const index = declaredIndexes(nsConfig).find((declared) => declared.name === indexName);
+        if (index === undefined) {
+          throw new Error(`Collection "${nsConfig.pattern}" declares no index "${indexName}"`);
+        }
+        const wanted = canonicalIndexValue(value);
+        if (wanted === undefined) return [];
+        const indexed = await options.findIndexedKeys?.(nsConfig, index, wanted);
+        let candidates: string[];
+        if (indexed === undefined) {
+          candidates = (await scan()).map((row) => row.path);
+        } else {
+          // Fence before loading: a key the owner fence refuses never reaches
+          // this request's cache, which other readers share.
+          candidates = indexed.filter(
+            (key) => matchesPattern(nsConfig.pattern, key) && ownerKeyAdmits(nsConfig, key, options.actorUserId)
+          );
+          const lazyLoad = options.lazyLoad;
+          if (lazyLoad !== undefined) await Promise.all(candidates.map((key) => lazyLoad.getInstance(key)));
+        }
+        const resources = options.readResources();
+        return candidates
+          .filter((key) => {
+            const state = resources[key];
+            return state !== undefined && canonicalIndexValues(index.value(key, state)).includes(wanted);
+          })
+          .sort()
+          .map((key) => createNamespaceInstanceRef(key, nsConfig, hookCtx(key)));
+      };
+
       const nsHandle: ResourceCollectionRef<JsonObject> = {
         pattern: nsConfig.pattern,
         scope: options.scope,
@@ -1862,6 +1922,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           return instances;
         },
 
+        async findBy(index: string, value: ResourceIndexValue): Promise<ResourceRef<JsonObject>[]> {
+          return findRows(index, value, () => nsHandle.list());
+        },
+
         async delete(key: string | Record<string, string>): Promise<void> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
           if (!matchesPattern(nsConfig.pattern, storageKey)) {
@@ -1973,6 +2037,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             const outcome = await ensurePrefix();
             recordLazyRead("count", collectionKeyPrefix, outcome);
             return nsHandle.count();
+          },
+          async findBy(index: string, value: ResourceIndexValue): Promise<ResourceRef<JsonObject>[]> {
+            return findRows(index, value, () => lazyHandle.list());
           },
           async create(
             key: string | Record<string, string>,

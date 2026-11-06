@@ -1,11 +1,11 @@
 /**
  * The names the shell writes down, held to the tree they describe.
  *
- * The rail's flow lists and the coordinators it lists are literals in
- * `lib/workforce-shell.ts`, because a browser cannot read `workforce/`. That
- * makes them a second copy, and a copy drifts: add a worker flow or a
- * coordinator's `WORKER.md`, and the rail silently shows the old one. These
- * cases fail on that drift.
+ * The rail's flow lists are literals in `lib/workforce-shell.ts`, because a
+ * browser cannot read `workforce/`. That makes them a second copy, and a copy
+ * drifts: add a worker flow, and the rail silently shows the old ones. These
+ * cases fail on that drift. The coordinators are not copied: the rail reads
+ * them off the roster (`test/rail-sessions.test.ts`).
  *
  * Red states produced before these were trusted:
  *   - add a worker flow to the tree and not to `WORKER_FLOWS` or `COORDINATOR_FLOWS`:
@@ -14,15 +14,12 @@
  *     naming the worker flow with no entry.
  *   - misname `agent`'s field `message`: the answering-action case fails,
  *     naming the field the worker flow actually takes.
- *   - drop `support.help` from `SHELL_COORDINATORS`: the coordinator case
- *     fails.
  */
 import { describe, expect, it } from "vitest";
 import { z, type ZodTypeAny } from "zod";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
-import { buildKitchenSinkWorkforce, workforceRoot } from "../workforce/hire";
+import { buildKitchenSinkWorkforce } from "../workforce/hire";
 import {
   COORDINATOR_ASK,
   COORDINATOR_FLOWS,
@@ -30,7 +27,6 @@ import {
   delegateOfRun,
   WORKER_ASKS,
   WORKER_FLOWS,
-  SHELL_COORDINATORS,
   workerAskFor,
 } from "../lib/workforce-shell";
 
@@ -39,15 +35,6 @@ describe("the shell's names match the workforce tree", () => {
     const { installation } = await buildKitchenSinkWorkforce();
     expect([...WORKER_FLOWS, ...COORDINATOR_FLOWS].sort()).toEqual(Object.keys(installation.workerFlows()).sort());
     expect([...COORDINATOR_FLOWS]).toEqual([COORDINATOR_FLOW]);
-  });
-
-  it("lists every coordinator the tree declares, by its worker id", async () => {
-    const { workers, errors } = await readWorkforce(workforceRoot);
-    expect(errors).toEqual([]);
-    const declared = workers.filter((worker) => worker.declared.flow === COORDINATOR_FLOW).map((worker) => worker.id);
-    // Not vacuous: the tree does declare a coordinator.
-    expect(declared.length).toBeGreaterThan(0);
-    expect([...SHELL_COORDINATORS].sort()).toEqual(declared.sort());
   });
 });
 

@@ -23,6 +23,7 @@
  *   const board = taskBoard({ name: "todos", collection: todos, workers });
  */
 
+import type { JsonObject } from "@flow-state-dev/core";
 import {
   defineResourceCollection,
   type BlockContext,
@@ -35,8 +36,15 @@ import type { TaskEnding, TaskEndingRecorder } from "./ending";
 import type { TaskSettingsSupport } from "./filing";
 import type { TaskPartitionFn } from "./partition";
 import { assertSafeCollectionId } from "./safe-key";
-import { defineTaskIdIndex, taskIdIndexKey } from "./id-index";
 import type { DeclaredDelivery } from "../notice/delivery";
+
+/** The index a partitioned ledger declares on its rows' task id (`findTaskPartitions`). */
+export const TASK_ID_INDEX = "byTaskId";
+
+/** The `byTaskId` index function: a row's task id, or nothing for a row without one. */
+function taskIdOfRow(_key: string, state: JsonObject): string | undefined {
+  return typeof state.id === "string" ? state.id : undefined;
+}
 
 /**
  * Build the resource-instance schema for a durable task: the whole `Task`
@@ -58,12 +66,6 @@ export type DefinedTaskCollection = DefinedResourceCollection & {
     readonly id: string;
     /** Present when the ledger keeps one set of rows per partition. */
     readonly partitionBy?: TaskPartitionFn;
-    /**
-     * Present with `partitionBy`: the ledger's id index (FIX-2160), which
-     * partitions hold each task id. Installed beside the ledger under `key`
-     * (`taskLedgerResources`), and written by the ledger's own add.
-     */
-    readonly idIndex?: { readonly key: string; readonly collection: DefinedResourceCollection };
     /** Present when every ending written to the ledger goes through a recorder. */
     readonly recordEnding?: TaskEndingRecorder;
     /** Present when the ledger honours filing settings beyond the defaults. */
@@ -138,9 +140,9 @@ export interface DefineTaskCollectionOptions<
    * rows load a partition at a time, on that partition's first read in a
    * request, never the whole ledger when the request starts.
    *
-   * A partitioned ledger also keeps an id index, which partitions hold each
-   * task id (`findTaskPartitions`), so a bare id can find its row. Install the
-   * ledger with `taskLedgerResources(ledger)`, which carries both.
+   * A partitioned ledger also declares a `byTaskId` index on its rows, so a
+   * bare task id finds the partitions that hold it (`findTaskPartitions`)
+   * without reading any partition's rows.
    */
   partitionBy?: TaskPartitionFn;
   /**
@@ -232,18 +234,18 @@ export function defineTaskCollection<
     // sit in the user's own cell even on a flow that isolates its user state
     // (`isolateUserState`): the task entry that works them runs on another
     // flow, and reads that cell.
-    ...(options.partitionBy !== undefined ? { prefetchMode: "lazy" as const, flowIsolation: false } : {}),
+    //
+    // Its rows are found by task id across partitions through the declared
+    // `byTaskId` index, written with each row (FIX-2532).
+    ...(options.partitionBy !== undefined
+      ? { prefetchMode: "lazy" as const, flowIsolation: false, indexes: { [TASK_ID_INDEX]: taskIdOfRow } }
+      : {}),
   });
 
   return Object.assign(collection, {
     __taskCollection: {
       id: options.id,
-      ...(options.partitionBy !== undefined
-        ? {
-            partitionBy: options.partitionBy,
-            idIndex: { key: taskIdIndexKey(options.id), collection: defineTaskIdIndex(options.id, options.scope) },
-          }
-        : {}),
+      ...(options.partitionBy !== undefined ? { partitionBy: options.partitionBy } : {}),
       ...(options.recordEnding !== undefined ? { recordEnding: options.recordEnding } : {}),
       ...(options.settings !== undefined ? { settings: options.settings } : {}),
       ...(options.cascadeFiled !== undefined ? { cascadeFiled: options.cascadeFiled } : {}),
@@ -253,13 +255,12 @@ export function defineTaskCollection<
 }
 
 /**
- * The flow resources that install `ledger`: the ledger under its id, and, for
- * a partitioned ledger, its id index beside it. A flow that files to a
- * partitioned ledger without the index is refused at the add.
+ * The flow resources that install `ledger`: the ledger alone, under its id.
+ * A partitioned ledger's id lookup is an index the ledger itself declares, so
+ * nothing is installed beside it.
  */
 export function taskLedgerResources(ledger: DefinedTaskCollection): Record<string, DefinedResourceCollection> {
-  const { id, idIndex } = ledger.__taskCollection;
-  return { [id]: ledger, ...(idIndex !== undefined ? { [idIndex.key]: idIndex.collection } : {}) };
+  return { [ledger.__taskCollection.id]: ledger };
 }
 
 /**

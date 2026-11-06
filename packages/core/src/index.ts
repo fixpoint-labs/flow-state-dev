@@ -41,6 +41,11 @@ export type {
   ResourceCollectionRef,
 } from "./types/resource-collection";
 export type {
+  ResourceIndexDeclaration,
+  ResourceIndexFunction,
+  ResourceIndexValue,
+} from "./types/resource-index";
+export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
@@ -394,6 +399,7 @@ export type {
   ActionConfig,
   ReadConfig,
   ActionCore,
+  UserMessageEcho,
   ActionMcpConfig,
   ClientDataComputeFn,
   ClientDataContext,

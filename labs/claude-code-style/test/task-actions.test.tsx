@@ -103,7 +103,7 @@ describe("a thread's view", () => {
     fireEvent.click(within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: /Billing triage/ }));
     const board = screen.getByRole("complementary", { name: "Tasks" });
     fireEvent.click(await within(board).findByRole("button", { name: new RegExp(title) }));
-    return screen.getByRole("complementary", { name: `Task: ${title}` });
+    return screen.getByRole("dialog", { name: `Task: ${title}` });
   }
 
   it("offers Cancel on a running thread with no Steer box: its composer steers", async () => {
@@ -118,6 +118,8 @@ describe("a thread's view", () => {
     const view = await billingTriage("Export failed invoices");
     expect(within(within(view).getByTestId("task-action-row")).getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(within(view).getByRole("alert").textContent).toContain("The export timed out after 30s.");
+    // The alert says why it failed, once: no status line repeats it under the alert.
+    expect(within(view).queryByText(/^Failed · /)).toBeNull();
     expect(within(view).queryByText(/ask the main session/)).toBeNull();
     fireEvent.click(within(view).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(within(view).getByTestId("task-action-row").dataset.status).toBe("in_progress"));

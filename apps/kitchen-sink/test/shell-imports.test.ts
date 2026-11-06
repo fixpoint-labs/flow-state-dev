@@ -47,10 +47,11 @@ describe("V9 · the shell's rail and panel are package components", () => {
     expect(page).not.toMatch(/components\/session-sidebar/);
   });
 
-  it("draws the panel's roster from Workforce's client", () => {
+  it("draws the panel's roster from Workforce's client, following it", () => {
     const panel = read("components/team-panel.tsx");
     expect(importedFrom(panel, "@flow-state-dev/workforce/browser")).toEqual(expect.arrayContaining(["WorkforceClient"]));
-    expect(panel).toContain(".roster()");
+    expect(panel).toContain(".watchRoster(");
+    expect(panel).not.toContain(".roster()");
   });
 
   it("lists no flows or sessions in app code for those regions", () => {

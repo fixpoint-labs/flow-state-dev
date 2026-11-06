@@ -48,6 +48,8 @@
  * notice stays owed on its row.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
+import { endTaskSubscriptions } from "../subscriptions/subscribe";
+import { subscriptionResources } from "../subscriptions/rows";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { taskSettledEntry as orchestrationTaskSettledEntry } from "@flow-state-dev/orchestration";
 import {
@@ -187,7 +189,7 @@ function noteSeen(ctx: BlockContext, key: string) {
     (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
       ctx.session.atomicState(mutator as never),
     (state: Readonly<Record<string, unknown>>) => {
-      const seen = (state[TASK_NOTICES_STATE] ?? []) as string[];
+      const seen = state[TASK_NOTICES_STATE] as string[];
       if (seen.includes(key)) return { state: {}, result: false };
       return { state: { [TASK_NOTICES_STATE]: [...seen, key].slice(-MAX_NOTICE_KEYS) }, result: true };
     }
@@ -239,6 +241,10 @@ async function reportFailure(ctx: BlockContext, notice: TaskNotice): Promise<voi
  */
 async function beforeAcknowledge(ctx: BlockContext, notice: TaskNotice): Promise<void> {
   await onEnding(ctx, notice);
+  // A task that failed or was cancelled has nobody left to hear its events:
+  // the subscriptions its session made end (FIX-2534, epic ER-7 as amended).
+  // A completed task's stay, so its session hears its PR until the PR closes.
+  if (notice.ending === "errored" || notice.ending === "cancelled") await endTaskSubscriptions(ctx, notice.taskId, notice.ending);
   await reportFailure(ctx, notice);
 }
 
@@ -342,7 +348,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
    */
   const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
-    const acted = ((ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] ?? []) as string[];
+    const acted = (ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] as string[];
     // Acted on already, by a run that stopped before clearing the marker.
     if (acted.includes(key)) {
       await ref.patchMetadata(row.id, clearNotice(notice));
@@ -393,7 +399,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     outputSchema: settledSchema,
     sessionStateSchema: z.object(conversationBoardStateShape),
     requestStateSchema: taskEndingReadsStateSchema,
-    resources: { ...taskChainResources },
+    resources: { ...taskChainResources, ...subscriptionResources },
     execute: async (notice: TaskNotice, rawCtx): Promise<Settled> => {
       const ctx = rawCtx as unknown as BlockContext;
       if (notice.boardId !== CONVERSATION_LEDGER_ID) return { act: "none" };

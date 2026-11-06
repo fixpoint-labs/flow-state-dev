@@ -16,7 +16,10 @@
  * - `desk.coder` and `desk.thread-coder` are on the lab's one coding flow,
  *   `harness-thread`; only `desk.thread-coder` waits for your review.
  * - `projects` lists and creates the projects a session works in, and `pins`
- *   keeps the threads you pinned.
+ *   keeps the threads you pinned. A project's repository is checked when it is
+ *   made, by the workspace host's `checkRepository`: one no coding run could
+ *   use here (no such folder, not a git repository, `.fsdev/` not ignored) is
+ *   refused, and the picker asks the same check before Create.
  * - `harness-readiness` reads which coding harnesses can run on this machine
  *   (harness-manager's `harnessReadiness`, one check per harness from its
  *   integration): logged as a table at start, and returned by its `read`
@@ -57,10 +60,10 @@ import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code/sdk";
 import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
-import { defineFlow, harnessEnv } from "@flow-state-dev/core";
+import { defineFlow, harnessEnv, utility } from "@flow-state-dev/core";
 import { checkCursorReadiness, CURSOR_PASS } from "@flow-state-dev/cursor";
 import { createFlowState } from "@flow-state-dev/engine";
-import { formatHarnessReadiness, harnessReadiness, harnessReadinessAction } from "@flow-state-dev/harness-manager";
+import { ASK_MARKER_IGNORED, formatHarnessReadiness, harnessReadiness, harnessReadinessAction } from "@flow-state-dev/harness-manager";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { consultSessionsCapability, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
@@ -72,6 +75,8 @@ import { defineProjectsFlow, PROJECTS_FLOW } from "./workforce/flows/projects.mt
 const model = process.env.CLAUDE_CODE_STYLE_MODEL ?? "openai/gpt-5.4";
 const data = resolve(process.env.CLAUDE_CODE_STYLE_DATA ?? ".fsdev/claude-code-style");
 const userId = process.env.CLAUDE_CODE_STYLE_USER ?? "u_lab";
+/** The small model for background work: session titles, and a consult of another conversation (`intent/utility`). */
+const utilityModel = process.env.CLAUDE_CODE_STYLE_UTILITY_MODEL ?? "openai/gpt-6-luna";
 const answerAgain = process.env.CLAUDE_CODE_STYLE_ANSWER_AGAIN === "off" ? {} : { answerAgain: true as const };
 const scripted =
   process.env.CLAUDE_CODE_STYLE_HARNESS === "stub" ? { scriptedStepMs: Number(process.env.CLAUDE_CODE_STYLE_HARNESS_STEP_MS ?? 2_000) } : {};
@@ -124,13 +129,29 @@ if (tree.errors.length > 0) throw new Error(`workforce/ did not load: ${tree.err
 let flows = {};
 const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
 flows = {
-  agent: defineAgentWorkerFlow({ installation, model, ...answerAgain, uses: [projectSourceCapability({ workspace }), consultSessionsCapability(installation)] }),
+  // Titles each session after its turn (core's sessionTitleGenerator, a background step): the sessions list reads the title it writes.
+  agent: defineAgentWorkerFlow({
+    installation,
+    model,
+    ...answerAgain,
+    afterAnswer: utility.sessionTitleGenerator({ name: "auto-title", model: utilityModel }),
+    uses: [projectSourceCapability({ workspace }), consultSessionsCapability(installation)],
+  }),
   coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model } }),
   // Its runs work in the session's project: a task filed with none is refused at filing (FIX-2333).
   [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace, ...scripted }), roles: ["contributor"], needsProject: true },
 };
 const workers = hireWorkforce(installation) as { id: string }[];
-const projects = defineProjectsFlow()({ id: PROJECTS_FLOW }) as { id: string };
+// A project is checked when it's made, by the same rule a run's checkout passes:
+// a repository no run could use here is refused before its first task (FIX-2403).
+// It is asked about the repository a run will get: a listed one by its real path, as
+// `source` hands it over, so the picker says worktree where the run makes one.
+// `GOAL_CONTROL=no-repository-check` leaves the check off, for the goal check's control.
+const checkRepository =
+  process.env.GOAL_CONTROL === "no-repository-check"
+    ? undefined
+    : (repository: string) => workspace.checkRepository!(listed(repository) ?? repository, { ignored: ASK_MARKER_IGNORED });
+const projects = defineProjectsFlow({ checkRepository })({ id: PROJECTS_FLOW }) as { id: string };
 const pins = definePinsFlow()({ id: PINS_FLOW }) as { id: string };
 
 /** Which harnesses a coding thread can run on here, over the environment each run gets. */
@@ -155,5 +176,5 @@ export default createFlowState({
   ...stale,
   devtool: { userId },
   // A consult of another conversation reads on `intent/utility`, a smaller model.
-  models: { default: model, intents: { utility: [process.env.CLAUDE_CODE_STYLE_UTILITY_MODEL ?? "openai/gpt-6-luna"] } },
+  models: { default: model, intents: { utility: [utilityModel] } },
 } as never);

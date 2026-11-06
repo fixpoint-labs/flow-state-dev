@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
-import { TASK_STATUS } from "../lib/task-status";
+import { FINISHED, TASK_STATUS } from "../lib/task-status";
 import { useMissing, useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
@@ -8,13 +8,12 @@ import { LoadEarlier } from "./LoadEarlier";
 import { Sheet } from "./Sheet";
 import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
+import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { taskCounts } from "./flow-state/task-signals";
 import { TaskActions } from "./flow-state/task-actions";
+import { workingStatus } from "./flow-state/working-status";
 import { harnessLabelOf } from "./ThreadStatus";
 import { TaskCard, TaskDoneRow } from "./TaskCard";
-
-/** The endings a task stays in: these rows move to the pane's *Done* group. */
-const FINISHED: ReadonlySet<TaskStatus> = new Set(["completed", "errored", "cancelled"]);
 
 /**
  * The right pane: the main session's background tasks. A row opens the task's
@@ -155,6 +154,10 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
       {work === undefined || work.entries.length === 0 ? <p className="text-sm text-muted-foreground">Nothing yet.</p> : null}
       <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
+      {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
+      {task.status === "in_progress" && task.waitingOn === undefined ? (
+        <StreamingIndicator message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
+      ) : null}
     </Sheet>
   );
 }

@@ -142,7 +142,7 @@ export const conversationLedger = Object.assign(
   { client: { state: { read: true }, expose: CONVERSATION_BOARD_CLIENT_FIELDS } }
 );
 
-/** The flow resources that install the ledger, with the id index a `{ task }` message finds its row by (FIX-2160). */
+/** The flow resources that install the ledger. A `{ task }` message finds its row by the ledger's own `byTaskId` index. */
 export const conversationLedgerResources = taskLedgerResources(conversationLedger);
 
 /**

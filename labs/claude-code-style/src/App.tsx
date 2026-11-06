@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "./adapter";
+import type { HarnessRow, LabAdapter, ProjectRow, SessionRow, TaskRow } from "./adapter";
 import { PaneResizer } from "./components/PaneResizer";
 import { ProjectPicker } from "./components/ProjectPicker";
 import { SheetArea, SheetProvider } from "./components/Sheet";
@@ -12,8 +12,9 @@ import { Thread } from "./components/Thread";
 import { readAddress, writeAddress, type Address, type AddressWrite } from "./lib/address";
 import { paneColumn, usePaneWidth } from "./lib/pane-width";
 import { focusComposer, focusWhenDrawn, useLabKeys } from "./lib/keys";
+import { EMPTY_PANE } from "./lib/first-run";
 import { useWatch } from "./lib/use-watch";
-import { modeOfWorker, type ModeId } from "./modes";
+import { modeById, modeOfWorker, type ModeId } from "./modes";
 
 /**
  * The screen: the view's sessions on the left, the open session's main thread
@@ -71,13 +72,21 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   };
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [paneWidth, setPaneWidth] = usePaneWidth();
+  // Which coding harnesses can run here: read once for the picker, again on its Re-check.
+  const [harnesses, setHarnesses] = useState<HarnessRow[]>();
   useEffect(() => {
     let live = true;
     void adapter.listProjects().then((rows) => live && setProjects(rows));
+    void adapter.readHarnesses().then(
+      (rows) => live && setHarnesses(rows),
+      // A failed read draws no chips rather than "checking" forever.
+      () => live && setHarnesses([]),
+    );
     return () => {
       live = false;
     };
   }, [adapter]);
+  const recheck = async () => setHarnesses(await adapter.readHarnesses(true));
 
   // Open what the address names, once the sessions are read. A session that is gone leaves the default.
   const rows = useRef(listed);
@@ -205,7 +214,11 @@ export function App({ adapter }: { adapter: LabAdapter }) {
             />
           ) : (
             <ProjectPicker
+              mode={view}
               projects={projects}
+              harnesses={harnesses}
+              onRecheck={recheck}
+              onCheckRepository={(repository) => adapter.checkRepository(repository)}
               onPick={(project) => openNew(view, project)}
               onCreate={async (name, repository) => {
                 const created = await adapter.createProject(name, repository);
@@ -241,7 +254,11 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               onMissing={() => dropMissing(selected.id)}
             />
           ) : (
-            <aside className="h-full bg-inspector" />
+            <aside className="flex h-full items-center justify-center bg-inspector px-6">
+              <p className="max-w-56 text-center text-xs text-muted-foreground" data-testid="empty-pane">
+                {EMPTY_PANE[modeById(view).pane]}
+              </p>
+            </aside>
           )}
         </div>
       </div>

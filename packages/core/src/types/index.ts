@@ -165,6 +165,7 @@ export type {
   ReadConfig,
   TypedEntries,
   ActionCore,
+  UserMessageEcho,
   ActionMcpConfig,
   CostEstimator,
   ModelUsageEntry,
@@ -245,6 +246,14 @@ export type {
 } from "./webhooks";
 
 export { defineWebhookBinding, validateWebhookConfig } from "./webhooks";
+
+export {
+  MAX_SUBSCRIPTION_EVENT_TEXT,
+  SUBSCRIPTION_SENDER_ROLES,
+  subscriptionEventSchema,
+  type SubscriptionEvent,
+  type SubscriptionSenderRole
+} from "./subscription-event";
 
 export type {
   CompositeVoiceProviderConfig,
@@ -354,6 +363,18 @@ export {
   encodeUserSegment,
   ownerSegment,
 } from "./resource-collection";
+
+export type {
+  DeclaredResourceIndex,
+  ResourceIndexDeclaration,
+  ResourceIndexFunction,
+  ResourceIndexValue,
+} from "./resource-index";
+export {
+  canonicalIndexValue,
+  canonicalIndexValues,
+  declaredIndexes,
+} from "./resource-index";
 
 export { isCollectionConfig, resourceStorageKeys } from "./storage-identity";
 

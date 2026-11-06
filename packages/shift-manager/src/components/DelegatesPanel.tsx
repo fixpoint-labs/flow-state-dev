@@ -2,7 +2,10 @@
  * DELEGATES, at Shift Coordinator: who the coordinator hands this
  * conversation's work to. Lists the conversation's delegates, adds one from
  * the user's roster, and removes one, through the coordinator's own actions
- * on the conversation's session (`lib/delegates.ts`). What it shows is what
+ * on the conversation's session (`lib/delegates.ts`). The roster it picks
+ * from is the connection's one roster watch (`useRoster`), so a worker hired
+ * meanwhile is offered without a remount, and the delegates aren't read
+ * again for it. What it shows is what
  * the coordinator answered, never a guess: a refused add shows its reason and
  * leaves the list as it was.
  *
@@ -10,20 +13,19 @@
  * is nothing to list: the panel says so.
  */
 import { useEffect, useState } from "react";
-import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { addDelegate, readDelegates, removeDelegate, type DelegateList } from "../lib/delegates";
 import { workerLabel } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Worker } from "../lib/reads";
-import { useWorkforce } from "../lib/workforce";
+import { useRoster } from "../lib/roster";
 
 type Read = { list: DelegateList } | { failure: string } | undefined;
 
 export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionId: string | null }) {
   const { client } = useLab();
-  const workforce = useWorkforce();
+  const rosterRead = useRoster();
+  const roster = rosterRead !== undefined && "entries" in rosterRead ? rosterRead.entries : [];
   const [read, setRead] = useState<Read>(undefined);
-  const [roster, setRoster] = useState<readonly RosterEntry[]>([]);
   const [picked, setPicked] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,14 +37,10 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
     readDelegates(client, worker.kind, sessionId)
       .then((list) => !closed && setRead({ list }))
       .catch((error: unknown) => !closed && setRead({ failure: describeFailure(error).message }));
-    workforce
-      .roster()
-      .then((entries) => !closed && setRoster(entries))
-      .catch(() => !closed && setRoster([]));
     return () => {
       closed = true;
     };
-  }, [client, workforce, worker.kind, sessionId]);
+  }, [client, worker.kind, sessionId]);
 
   if (sessionId === null || worker.kind === null) {
     return (

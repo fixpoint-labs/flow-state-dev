@@ -95,9 +95,10 @@ Do not ask for approach approval.
 2. **Alternative approaches** — `Plan`: simpler/more robust? root cause vs
    symptom? broader refactor (note it, don't block).
 3. **Impact** — `Explore`: other sites with the same problem; related Linear issues.
-4. **Docs & changelog** — `general-purpose`: architecture docs, `apps/docs`,
-   package READMEs, AGENTS/BPs. Changeset only if a published-package consumer
-   can observe the fix (BP-022). Return a concrete file list.
+4. **Docs & changelog** — `general-purpose`: architecture docs, AGENTS/BPs.
+   Changeset only if a published-package consumer can observe the fix (BP-022).
+   Not `apps/docs` or package READMEs: those are written at release
+   (`docs/contributing/release-docs.md`). Return a concrete file list.
 
 Address critical findings before presenting. Non-critical notes go in the summary.
 

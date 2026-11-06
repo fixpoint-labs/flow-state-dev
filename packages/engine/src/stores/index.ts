@@ -93,6 +93,7 @@ export type {
 
 export {
   resolveUserStorageKey,
+  resolveSharedUserCellKey,
   resolveOrgStorageKey,
   resolveRequestIncarnation
 } from "./scope-keys";

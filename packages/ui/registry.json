@@ -120,12 +120,26 @@
       "categories": ["ai", "chat"]
     },
     {
+      "name": "message-response",
+      "title": "Message Response",
+      "type": "registry:component",
+      "description": "Markdown drawn with Streamdown: MessageResponse, the renderer chat messages use, and MarkdownText for text a card shows, with any HTML in it kept as text and a one-line inline form.",
+      "dependencies": ["streamdown", "@streamdown/cjk", "@streamdown/code", "@streamdown/math", "@streamdown/mermaid"],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/message-response.tsx",
+        "target": "components/flow-state/message-response.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
       "name": "message",
       "title": "Message",
       "type": "registry:component",
       "description": "Individual message display with streaming markdown support.",
-      "dependencies": ["@flow-state-dev/core", "streamdown", "@streamdown/cjk", "@streamdown/code", "@streamdown/math", "@streamdown/mermaid", "lucide-react"],
-      "registryDependencies": ["button", "button-group", "tooltip"],
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
+      "registryDependencies": ["button", "button-group", "tooltip", "message-response"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/message.tsx",
@@ -180,6 +194,22 @@
           "type": "registry:lib",
           "path": "registry/components/tool-naming.ts",
           "target": "components/flow-state/tool-naming.ts"
+        }
+      ],
+      "categories": ["ai", "tools"]
+    },
+    {
+      "name": "working-status",
+      "title": "Working Status",
+      "type": "registry:component",
+      "description": "Pure helpers that say what a running task is doing now in one line: the tool call in flight, else the plan step in progress, else its progress note. Pairs with streaming-indicator.",
+      "dependencies": ["@flow-state-dev/core"],
+      "registryDependencies": ["tool-naming"],
+      "files": [
+        {
+          "type": "registry:lib",
+          "path": "registry/components/working-status.ts",
+          "target": "components/flow-state/working-status.ts"
         }
       ],
       "categories": ["ai", "tools"]
@@ -370,7 +400,7 @@
       "type": "registry:component",
       "description": "Human-in-the-loop approval card for suspension items. Green Approve / red Reject while pending; collapses to a receipt once resolved. Logic comes from the useApproval hook in @flow-state-dev/react.",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react"],
-      "registryDependencies": ["session-items-context", "tokens"],
+      "registryDependencies": ["message-response", "session-items-context", "tokens"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/approval.tsx",
@@ -384,7 +414,7 @@
       "type": "registry:component",
       "description": "A coding run's changes waiting on the user's review: its commits on the branch, the project's checks, the judge's verdict, and Accept or Ask for changes. Reads harness-manager's review stop data and sends the only two answers it takes. Drawn from a task's hold, or for a kind: review suspension (SuspensionCard routes those here).",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react"],
-      "registryDependencies": ["run-checks", "tokens"],
+      "registryDependencies": ["message-response", "run-checks", "tokens"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/review-hold.tsx",

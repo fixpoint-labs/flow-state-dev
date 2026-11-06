@@ -1,6 +1,6 @@
 ---
 name: polish-docs
-description: The docs editor. A corpus-level editorial pass that consolidates, streamlines, simplifies, and re-arranges documentation so it reads elegantly and navigates well — unafraid to rewrite and move content to make cohesive sense. Runs standalone on a section or the whole site, and is auto-dispatched at epic wrap to clean up the docs a batch of issues each edited in isolation. Edits and opens a draft PR; never auto-merges.
+description: The docs editor. A corpus-level editorial pass that consolidates, streamlines, simplifies, and re-arranges documentation so it reads elegantly and navigates well — unafraid to rewrite and move content to make cohesive sense. Runs inside `release-docs` over the pages a release touched, or standalone on a section or the whole site. Edits; standalone it opens a draft PR from a `release-docs/` branch; never auto-merges.
 argument-hint: "<scope, e.g. 'guides', 'the orchestration section', a PR/branch/epic, or empty = whole site>"
 ---
 
@@ -47,7 +47,7 @@ You do.
 
 Resolve what to polish, from the argument:
 
-- **A change / branch / epic** (the epic-wrap case): the union of docs the batch touched, plus
+- **A release / change / branch** (the `release-docs` case): the union of docs the batch touched, plus
   the pages that *should* have changed with them but didn't (a new capability documented in its
   own page but never linked from the overview it belongs under). **Resolve this from the docs paths
   in the diff, not from the specs or the implementation diff.** You need to know *which pages* the
@@ -109,7 +109,12 @@ and package READMEs, and report both in the PR.
 - **Standalone:** present the working changes for review — a short summary of *what moved, what
   merged, what got cut*, so a human can sanity-check the restructuring at a glance (not a line diff).
   Then let the user review before it lands.
-- **Dispatched by `epic-lifecycle` at epic wrap:** open a **draft** docs-cleanup PR against the default
+- **Run by `release-docs`:** scope is the pages that pass touched plus their overview and nav pages.
+  Edit in place on its `release-docs/*` branch; the release docs PR carries the result, so open no
+  PR of your own.
+- **Standalone on user docs** (`apps/docs/`, package READMEs): CI only accepts the edits on a
+  `release-docs/*` branch or with the `docs-fix` label, so open the PR from a `release-docs/` branch.
+  Open a **draft** docs-cleanup PR against the default
   branch. Its description follows
   [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout" like
   any other PR — **the problem leads** (which docs had drifted, and how a reader hit it), then what
