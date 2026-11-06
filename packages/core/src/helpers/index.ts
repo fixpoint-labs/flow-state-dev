@@ -29,6 +29,9 @@ export {
   getZodInnerType,
   getReadonlyStateKeys,
   compareZodSchemasStructurally,
+  dynamicDefaultFactories,
+  getZodDeclaredDefault,
+  type ZodDeclaredDefault,
   type ZodSchemaCompareResult,
 } from "./zod-introspect";
 export {

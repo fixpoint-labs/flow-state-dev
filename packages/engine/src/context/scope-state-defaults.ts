@@ -33,7 +33,14 @@
  */
 import type { ZodTypeAny } from "zod";
 import type { FlowInstance, JsonObject } from "@flow-state-dev/core/types";
-import { getZodInnerType, getZodObjectShape, getZodTypeName, isZodObject } from "@flow-state-dev/core/helpers";
+import {
+  dynamicDefaultFactories,
+  getZodDeclaredDefault,
+  getZodInnerType,
+  getZodObjectShape,
+  getZodTypeName,
+  isZodObject
+} from "@flow-state-dev/core/helpers";
 import { isJsonObject } from "../utils/json-helpers";
 
 /**
@@ -67,19 +74,30 @@ export function applyScopeStateDefaults(
 
   const shape = rootShapeOf(schema);
   if (shape === undefined) {
-    return schema.safeParse(stored).success ? (fillDefaults(schema, stored) as JsonObject) : stored;
+    return parsesWithoutFactories(schema, stored) ? (fillDefaults(schema, stored) as JsonObject) : stored;
   }
 
   let out: JsonObject | undefined;
   for (const [key, field] of Object.entries(shape)) {
     const current = stored[key];
-    if (!field.safeParse(current).success) continue;
+    if (!parsesWithoutFactories(field, current)) continue;
     const filled = fillDefaults(field, current);
     if (filled === current || filled === undefined) continue;
     out ??= { ...stored };
     out[key] = filled as JsonObject[string];
   }
   return out ?? stored;
+}
+
+/**
+ * Whether `value` fits `schema`, checked without running a default factory.
+ * A parse runs any default it reaches, an author's factory included, so a
+ * schema that declares one isn't parsed: the fill only ever adds static
+ * defaults where a value is missing, and never replaces a present value.
+ */
+function parsesWithoutFactories(schema: ZodTypeAny, value: unknown): boolean {
+  if (dynamicDefaultFactories(schema).size > 0) return true;
+  return schema.safeParse(value).success;
 }
 
 /** Wrappers the fill reads through to their inner schema (a transform's: its input). */
@@ -96,10 +114,15 @@ function rootShapeOf(schema: ZodTypeAny): Record<string, ZodTypeAny> | undefined
   return undefined;
 }
 
-/** The declared value of a `.default()`; zod 3 keeps it on `_def.defaultValue`, usually as a thunk. */
-function declaredDefault(schema: ZodTypeAny): unknown {
-  const value = (schema as { _def?: { defaultValue?: unknown } })._def?.defaultValue;
-  return typeof value === "function" ? (value as () => unknown)() : value;
+/**
+ * The value a `.default()` fills with on a read: its static value, or
+ * `undefined` for an author's factory. A read never runs a factory: only a
+ * new session's birth does, by parsing the flow's own schema, so one stored
+ * record always reads one value.
+ */
+function staticDefault(schema: ZodTypeAny): { value: unknown } | undefined {
+  const declared = getZodDeclaredDefault(schema);
+  return declared?.kind === "static" ? { value: declared.value() } : undefined;
 }
 
 /** A child schema read off `_def` (an array's element, a record's value type). */
@@ -133,8 +156,13 @@ function fillDefaults(schema: ZodTypeAny, stored: unknown): unknown {
   switch (getZodTypeName(schema)) {
     case "ZodDefault": {
       const inner = getZodInnerType(schema);
-      const value = stored === undefined ? declaredDefault(schema) : stored;
-      return inner === undefined ? value : fillDefaults(inner, value);
+      if (stored === undefined) {
+        // A factory default stays unfilled on a read: only birth runs it.
+        const fill = staticDefault(schema);
+        if (fill === undefined) return stored;
+        return inner === undefined ? fill.value : fillDefaults(inner, fill.value);
+      }
+      return inner === undefined ? stored : fillDefaults(inner, stored);
     }
     case "ZodOptional":
     case "ZodNullable":

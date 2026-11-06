@@ -525,7 +525,7 @@ describe("reading one stored record always gives one value", () => {
   it("refuses a block-only readonly field with a factory default, by name, at defineFlow", () => {
     expect(() =>
       flowWith("counter-ro", factoryBlock("counts", "session", z.number().readonly().default(() => ++counter)))
-    ).toThrow(/Flow "counter-ro": session\.state\.id has a default factory declared by block "counts"[\s\S]*declare the field on the flow/);
+    ).toThrow(/Flow "counter-ro": session\.state\.id has a default factory declared by block "counts"[\s\S]*declare the factory on the flow/);
   });
 
   it("refuses a block-only id with a factory default in every scope", () => {
@@ -546,7 +546,7 @@ describe("reading one stored record always gives one value", () => {
 
   it("refuses a factory default nested in a block-only object, and in a block-only array's items", () => {
     const nested = z.object({ meta: z.object({ id: z.string().default(() => "x") }).default({}) });
-    expect(() => flowWith("nested-f", factoryBlock("n", "session", nested))).toThrow(/session\.state\.id has a default factory/);
+    expect(() => flowWith("nested-f", factoryBlock("n", "session", nested))).toThrow(/session\.state\.id\.meta\.id has a default factory declared by block "n"/);
     const items = z.array(z.object({ id: z.string().default(() => "x") }));
     expect(() => flowWith("items-f", factoryBlock("i", "session", items))).toThrow(/session\.state\.id has a default factory/);
   });
@@ -581,16 +581,16 @@ describe("reading one stored record always gives one value", () => {
   it("refuses a session factory the flow declares the field without (an optional on the flow)", () => {
     const uuid = z.string().default(() => crypto.randomUUID());
     expect(() => flowWith("optional-on-flow", factoryBlock("ids", "session", uuid), z.object({ id: z.string().optional() }))).toThrow(
-      /session\.state\.id has a default factory declared by block "ids", and a new session doesn't store it: the flow declares the field without it[\s\S]*same factory/
+      /session\.state\.id has a default factory declared by block "ids"[\s\S]*would never take effect[\s\S]*declare the factory on the flow/
     );
   });
 
   it("refuses a session factory that differs from the one the flow declares", () => {
     const theirs = z.string().default(() => "a");
     const ours = z.string().default(() => "a");
-    // The merge refuses two factories for one field before the birth check runs.
+    // A factory that isn't the flow's own would never run.
     expect(() => flowWith("other-factory", factoryBlock("ids", "session", theirs), z.object({ id: ours }))).toThrow(
-      /session\.state\.id is declared twice with a dynamic default/
+      /session\.state\.id has a default factory declared by block "ids"/
     );
   });
 
@@ -633,69 +633,26 @@ describe("reading one stored record always gives one value", () => {
   });
 });
 
-describe("a session factory is allowed only where birth stores it, along its whole path", () => {
-  // Writes store scope state as given, never parsed through the flow's schema:
-  // only a session's birth parse stores a default. So a factory is stable only
-  // where that parse reaches it through defaults alone.
-  const noop = (name: string, session?: z.AnyZodObject) =>
-    handler({ name, inputSchema: z.object({}), ...(session === undefined ? {} : { sessionStateSchema: session }), execute: () => ({}) });
-  const define = (kind: string, own: z.AnyZodObject, block = noop(`${kind}-b`)) =>
-    defineFlow({ kind, session: { stateSchema: own }, actions: { a: { inputSchema: z.object({}), block } } });
-
-  it("refuses a factory whose enclosing object the flow declares optional, though a block defaults it", () => {
-    const id = z.string().default(() => crypto.randomUUID());
-    expect(() =>
-      define(
-        "gitar-shape",
-        z.object({ prefs: z.object({ id }).optional() }),
-        noop("defaults-prefs", z.object({ prefs: z.object({ id }).default({}) }))
-      )
-    ).toThrow(/session\.state\.prefs\.id has a default factory[\s\S]*a new session doesn't store it[\s\S]*"prefs" has no default/);
-  });
-
-  it("refuses a factory under an optional ancestor on the flow alone", () => {
-    const id = z.string().default(() => crypto.randomUUID());
-    expect(() => define("optional-ancestor", z.object({ prefs: z.object({ id }).optional() }))).toThrow(
-      /session\.state\.prefs\.id has a default factory declared by flow "optional-ancestor"/
-    );
-  });
-
-  it("refuses a factory inside an array item: a later write's item is stored as given", () => {
-    const item = z.object({ id: z.string().default(() => crypto.randomUUID()) });
-    expect(() => define("array-item", z.object({ items: z.array(item).default([]) }))).toThrow(
-      /session\.state\.items has a default factory[\s\S]*inside an array item, a record value or a union/
-    );
-  });
-
-  it("refuses a factory on a flow whose sessions can be born from state its schema refuses", () => {
-    // `topic` is required with no default and nothing binds the sessions, so a
-    // create without it is stored as sent, defaults and all left out.
-    const id = z.string().default(() => crypto.randomUUID());
-    expect(() => define("unbound-required", z.object({ topic: z.string(), id }))).toThrow(
-      /session\.state\.id has a default factory[\s\S]*stored as sent/
-    );
-  });
-
-  it("refuses a factory the flow wraps in an outer .optional(), though a block declares it bare", () => {
-    const leaf = z.string().default(() => crypto.randomUUID());
-    expect(() => define("outer-optional", z.object({ id: leaf.optional() }), noop("bare", z.object({ id: leaf })))).toThrow(
-      // The flow's own declaration is read first: its outer optional suppresses the factory.
-      /session\.state\.id has a default factory declared by flow "outer-optional", and a new session doesn't store it[\s\S]*no default before its factory/
-    );
-  });
-
-  it("allows a factory every ancestor defaults to, restated by a block, and a session reads one value", async () => {
-    const id = z.string().default(() => `nested-${crypto.randomUUID()}`);
-    const own = z.object({ prefs: z.object({ id }).default({}) });
-    const reader = handler({
-      name: "reads-prefs",
+describe("a read never runs a default factory: one stored record reads one value", () => {
+  // Only a session's birth parse runs the flow's own factory defaults. A read
+  // fills static defaults alone, so a field a factory would fill stays missing
+  // on read, and two reads of one stored record always agree.
+  let calls = 0;
+  const id = z.string().default(() => `id-${++calls}`);
+  const reader = (name: string, session?: z.AnyZodObject) =>
+    handler({
+      name,
       inputSchema: z.object({}),
-      sessionStateSchema: z.object({ prefs: z.object({ id }).default({}) }),
-      execute: (_input, ctx) => ({ id: (ctx.session.state as { prefs?: { id?: string } }).prefs?.id })
+      ...(session === undefined ? {} : { sessionStateSchema: session }),
+      execute: (_input, ctx) => {
+        const state = ctx.session.state as { id?: string; prefs?: { id?: string }; items?: Array<{ id?: string }> };
+        return { id: state.id, prefsId: state.prefs?.id, itemIds: state.items?.map((item) => item.id) };
+      }
     });
-    const flow = define("stable-nested", own, reader)();
-    const stores = createInMemoryStores();
-    const read = async () =>
+  const define = (kind: string, own: z.AnyZodObject, block = reader(`${kind}-read`)) =>
+    defineFlow({ kind, session: { stateSchema: own }, actions: { a: { inputSchema: z.object({}), block } } })();
+  async function readTwice(flow: ReturnType<typeof define>, stores = createInMemoryStores(), sessionId = "sess_reads") {
+    const run = async () =>
       (
         await runAction({
           orgId: ORG,
@@ -703,15 +660,71 @@ describe("a session factory is allowed only where birth stores it, along its who
           actionName: "a",
           input: {},
           userId: USER,
-          sessionId: "sess_stable",
+          sessionId,
           stores,
-          responseEmitter: createResponseEmitter({ requestId: `req_stable_${Math.random()}` }),
+          responseEmitter: createResponseEmitter({ requestId: `req_reads_${Math.random()}` }),
           runtimeConfig: {}
         })
-      ).output as { id?: string };
-    const first = await read();
-    expect(first.id).toMatch(/^nested-/);
-    expect(await read()).toEqual(first);
+      ).output as Record<string, unknown>;
+    const first = await run();
+    const before = calls;
+    const second = await run();
+    // The second run reads an existing record: it is not born, so no factory runs.
+    expect(calls).toBe(before);
+    return { first, second };
+  }
+
+  it("a session born from state its schema refuses (stored as sent) reads the factory field missing, the same each time", async () => {
+    // `topic` is required and nothing binds the sessions, so birth keeps `{}` as sent.
+    const flow = define("raw-birth", z.object({ topic: z.string(), id }));
+    const { first, second } = await readTwice(flow);
+    expect(first.id).toBeUndefined();
+    expect(second).toEqual(first);
+  });
+
+  it("an old record that lacks the flow's own factory field reads it missing, the same each time", async () => {
+    const flow = define("old-record", z.object({ id }));
+    const stores = createInMemoryStores();
+    // A record stored before the field existed.
+    await runAction({
+      orgId: ORG,
+      flow: define("old-record-seed", z.object({})),
+      actionName: "a",
+      input: {},
+      userId: USER,
+      sessionId: "sess_old",
+      stores,
+      responseEmitter: createResponseEmitter({ requestId: "req_old_seed" }),
+      runtimeConfig: {}
+    });
+    const record = await stores.session.get("sess_old");
+    await stores.session.set("sess_old", { ...record!, flowKind: "old-record", flowId: "old-record" }, "any");
+    const before = calls;
+    const { first, second } = await readTwice(flow, stores, "sess_old");
+    expect(calls).toBe(before);
+    expect(first.id).toBeUndefined();
+    expect(second).toEqual(first);
+  });
+
+  it("a factory under an optional parent, a block restating it, or in an array item reads stably", async () => {
+    const shapes: Array<[string, z.AnyZodObject, z.AnyZodObject | undefined]> = [
+      // The flow's `prefs` is optional; the block defaults it and restates the same `id` factory.
+      ["optional-parent", z.object({ prefs: z.object({ id }).optional() }), z.object({ prefs: z.object({ id }).default({}) })],
+      ["outer-optional", z.object({ id: id.optional() }), z.object({ id })],
+      ["array-item", z.object({ items: z.array(z.object({ id })).default([]) }), undefined]
+    ];
+    for (const [kind, own, block] of shapes) {
+      const flow = define(kind, own, reader(`${kind}-read`, block));
+      const { first, second } = await readTwice(flow, createInMemoryStores(), `sess_${kind}`);
+      expect(second, kind).toEqual(first);
+    }
+  });
+
+  it("a session born with the flow's factory stores its value, and reads it back unchanged", async () => {
+    const flow = define("born-stable", z.object({ id }));
+    const { first, second } = await readTwice(flow, createInMemoryStores(), "sess_born");
+    expect(first.id).toMatch(/^id-/);
+    expect(second).toEqual(first);
   });
 });
 

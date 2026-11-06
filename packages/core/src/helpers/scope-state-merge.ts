@@ -101,172 +101,59 @@ export function isMergeableScopeStateSchema(schema: ZodTypeAny): boolean {
 }
 
 /**
- * Refuse a default factory whose value would not be stored, so that reading
- * the same stored record always gives the same value.
+ * Refuse a default factory that would never take effect.
  *
- * A scope write stores its value as given: nothing parses it through the
- * flow's schema. The one parse that stores defaults is a session's birth
- * (`parseInitialSessionState` in the engine), and it stores the parsed value
- * only when the whole parse succeeds; for a flow that doesn't bind its
- * sessions, a refused initial state is stored as sent. So a factory default
- * (`() => crypto.randomUUID()`, a counter) is stable only where that parse is
- * sure to reach it from nothing:
+ * A read fills static defaults only and never runs a factory, so one stored
+ * record always reads one value. The one place a factory default runs is a
+ * new session's birth, which parses the flow's own session schema. So:
  *
- * - in session scope, on the flow's own declaration;
- * - with a default on the field and on every field enclosing it, so a birth
- *   that names none of them still creates each one;
- * - not inside an array item, a record value or a union: a session is never
- *   born with those, and a later write's item is stored as given;
- * - on a flow whose birth parse can't fall back to the state as sent: it
- *   binds its sessions (a readonly field or a create check, so a refused
- *   state is refused), or every top-level field of its schema accepts a
- *   missing value.
+ * - a factory on the flow's own session schema keeps that meaning;
+ * - a block or capability may restate one of the flow's own session
+ *   factories (the same function), which changes nothing;
+ * - any other factory a block or capability declares would never run, so it
+ *   is refused rather than left to do nothing silently;
+ * - in user and org scope nothing ever runs a factory, the flow's own
+ *   included, so every one is refused.
  *
- * A block or capability may restate such a factory, compared by identity.
- * Every other factory default is refused, by name, with advice that holds
- * where it sits; in user and org scope that is every factory, the flow's own
- * included, since those records are never parsed at creation. Static
- * defaults are allowed everywhere. The check walks the declarations; no
- * factory is called.
+ * Static defaults are allowed everywhere. No factory is called.
  *
  * @param declarations Every declaration of the scope, the flow's own included.
- * @param bindsSessions Whether the flow refuses a session born with state its
- *   schema refuses (it declares a readonly session field or a create check).
- * @throws Error naming the field path, the declarer and a fix that holds there.
+ * @throws Error naming the field path, the declarer and a fix.
  */
 export function refuseUnstoredFactoryDefaults(
   owner: string,
   scope: string,
   flowOwn: ZodTypeAny | undefined,
-  declarations: readonly ScopeStateDeclaration[],
-  bindsSessions = false
+  declarations: readonly ScopeStateDeclaration[]
 ): void {
-  const shapeOf = (schema: ZodTypeAny | undefined, root: boolean): Record<string, ZodTypeAny> | undefined => {
-    if (schema === undefined) return undefined;
-    const core = peel(schema, root).core;
-    return root || isPlainZodObject(core) ? getZodObjectShape(core) : undefined;
-  };
-  /** The factories on an object's own wrappers (its `.default(() => ...)`), not its fields'. */
-  const ownFactories = (schema: ZodTypeAny, root: boolean): Set<() => unknown> =>
-    new Set(
-      peel(schema, root)
-        .chain.map((w) => w.declared)
-        .filter((d): d is Extract<ZodDeclaredDefault, { kind: "dynamic" }> => d?.kind === "dynamic")
-        .map((d) => d.factory)
-    );
-  const base = `${scope}.state`;
-
-  if (scope !== "session") {
-    // User and org: no factory anywhere.
-    const find = (schema: ZodTypeAny, path: string, root: boolean): string | undefined => {
-      const shape = shapeOf(schema, root);
-      if (shape === undefined) return dynamicDefaultFactories(schema).size > 0 ? path : undefined;
-      if (ownFactories(schema, root).size > 0) return path;
-      for (const [key, field] of Object.entries(shape)) {
-        const at = find(field, `${path}.${key}`, false);
-        if (at !== undefined) return at;
-      }
-      return undefined;
-    };
-    for (const declaration of declarations) {
-      const at = find(declaration.schema, base, true);
-      if (at === undefined) continue;
-      throw new Error(
-        `${owner}: ${at} has a default factory declared by ${declaration.source}. A ${scope} record is ` +
-          `stored as written and its defaults are filled on every read, so a factory would give a new value ` +
-          `on every read of the same record. Use a static default, or set the value when you write the record.`
-      );
-    }
-    return;
-  }
-
-  const fillOf = (schema: ZodTypeAny, root: boolean) => flagsOf(peel(schema, root).chain).fill;
-  const ownRoot = shapeOf(flowOwn, true);
-  // The birth parse succeeds from a stateless create, or a refused one is refused.
-  const birthParses =
-    ownRoot !== undefined &&
-    (bindsSessions || Object.values(ownRoot).every((field) => fillOf(field, false).kind !== "required"));
-
-  // Every (path, factory) the birth parse stores: reached from the root through
-  // defaults alone, on the flow's own declaration.
-  const stored = new Map<string, Set<() => unknown>>();
-  const collect = (shape: Record<string, ZodTypeAny>, path: string): void => {
+  const allowed = scope === "session" && flowOwn !== undefined ? dynamicDefaultFactories(flowOwn) : new Set<() => unknown>();
+  /** The path of the first factory in `schema` that isn't allowed, read field by field. */
+  const find = (schema: ZodTypeAny, path: string, root: boolean): string | undefined => {
+    const { chain, core } = peel(schema, root);
+    const shape = root || isPlainZodObject(core) ? getZodObjectShape(core) : undefined;
+    const disallowed = (factories: Iterable<() => unknown>) => [...factories].some((f) => !allowed.has(f));
+    if (shape === undefined) return disallowed(dynamicDefaultFactories(schema)) ? path : undefined;
+    const own = chain.flatMap((w) => (w.declared?.kind === "dynamic" ? [w.declared.factory] : []));
+    if (disallowed(own)) return path;
     for (const [key, field] of Object.entries(shape)) {
-      const fill = fillOf(field, false);
-      if (fill.kind !== "default") continue;
-      const at = `${path}.${key}`;
-      if (fill.declared.kind === "dynamic") stored.set(at, new Set([fill.declared.factory]));
-      const inner = shapeOf(field, false);
-      if (inner !== undefined) collect(inner, at);
+      const at = find(field, `${path}.${key}`, false);
+      if (at !== undefined) return at;
     }
-  };
-  if (birthParses) collect(ownRoot!, base);
-
-  const blockOnly = (at: string, source: string): never => {
-    throw new Error(
-      `${owner}: ${at} has a default factory declared by ${source}, and the flow doesn't declare the ` +
-        `field. A field only a block or a capability declares is filled when it is read and never stored, ` +
-        `so its factory would give a new value on every read of the same record. To keep it, declare the ` +
-        `field on the flow's session stateSchema with the same factory (share one schema), or give it a ` +
-        `static default.`
-    );
-  };
-  const notStored = (at: string, source: string, why: string): never => {
-    throw new Error(
-      `${owner}: ${at} has a default factory declared by ${source}, and a new session doesn't store it: ` +
-        `${why}. A session's state is stored as written after birth, so the factory would run on every read ` +
-        `of a record that lacks the field and give a new value each time. Use a static default, or set the ` +
-        `value when you write it.`
-    );
-  };
-  const whyNotStored = (undefaultedAncestor: string | undefined, flowCarriesIt: boolean): string =>
-    !birthParses
-      ? `the flow's sessions can be born from state its schema refuses (a top-level field is required with ` +
-        `no default, and nothing binds the sessions), and that state is stored as sent`
-      : undefaultedAncestor !== undefined
-        ? `the enclosing field "${undefaultedAncestor}" has no default, so a new session isn't born with it`
-        : flowCarriesIt
-          ? `the flow's declaration of the field has no default before its factory`
-          : `the flow declares the field without it (give the flow's declaration the same factory, or share one schema)`;
-
-  const walk = (
-    declared: ZodTypeAny,
-    own: ZodTypeAny | undefined,
-    path: string,
-    root: boolean,
-    source: string,
-    undefaultedAncestor: string | undefined
-  ): void => {
-    const declaredShape = shapeOf(declared, root);
-    if (declaredShape === undefined) return;
-    const ownShape = shapeOf(own, root);
-    for (const [key, field] of Object.entries(declaredShape)) {
-      const ownField = ownShape?.[key];
-      const at = `${path}.${key}`;
-      if (ownField === undefined) {
-        if (dynamicDefaultFactories(field).size > 0) blockOnly(at, source);
-        continue;
-      }
-      const ownFill = fillOf(ownField, false);
-      const factoriesHere = ownFactories(field, false);
-      for (const factory of factoriesHere) {
-        if (stored.get(at)?.has(factory)) continue;
-        const flowCarriesIt = ownFactories(ownField, false).has(factory);
-        notStored(at, source, whyNotStored(undefaultedAncestor, flowCarriesIt));
-      }
-      if (shapeOf(field, false) !== undefined) {
-        const ancestor = undefaultedAncestor ?? (ownFill.kind === "default" ? undefined : key);
-        walk(field, ownField, at, false, source, ancestor);
-        continue;
-      }
-      const inside = [...dynamicDefaultFactories(field)].filter((factory) => !factoriesHere.has(factory));
-      if (inside.length > 0) {
-        notStored(at, source, `it sits inside an array item, a record value or a union, which a session is never born with and a later write stores as given`);
-      }
-    }
+    return undefined;
   };
   for (const declaration of declarations) {
-    walk(declaration.schema, flowOwn, base, true, declaration.source, undefined);
+    if (scope === "session" && declaration.schema === flowOwn) continue;
+    const at = find(declaration.schema, `${scope}.state`, true);
+    if (at === undefined) continue;
+    throw new Error(
+      scope === "session"
+        ? `${owner}: ${at} has a default factory declared by ${declaration.source}. A read never runs a default ` +
+            `factory; only a new session's birth does, from the flow's own session schema, so this default would ` +
+            `never take effect. Use a static default, or declare the factory on the flow's session stateSchema.`
+        : `${owner}: ${at} has a default factory declared by ${declaration.source}. A read never runs a default ` +
+            `factory, and a ${scope} record is stored as written, so this default would never take effect. ` +
+            `Use a static default, or set the value when you write the record.`
+    );
   }
 }
 
