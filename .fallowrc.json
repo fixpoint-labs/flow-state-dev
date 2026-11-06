@@ -209,7 +209,12 @@
     { "file": "labs/claude-code-style/src/components/flow-state/streaming-indicator.tsx", "exports": ["WorkedFor"] },
     { "file": "labs/teammates/src/components/flow-state/streaming-indicator.tsx", "exports": ["WorkedFor"] },
     { "file": "labs/claude-code-style/src/components/flow-state/shimmer.tsx", "exports": ["TextShimmerProps"] },
-    { "file": "labs/teammates/src/components/flow-state/shimmer.tsx", "exports": ["TextShimmerProps"] }
+    { "file": "labs/teammates/src/components/flow-state/shimmer.tsx", "exports": ["TextShimmerProps"] },
+    // Shift Manager's and the Teammates lab's byte copies of the registry's conversation:
+    // each app draws only `ConversationScrollButton` from it, and its own `Conversation`
+    // view is a different component that keeps the app's name.
+    { "file": "packages/shift-manager/src/components/flow-state/conversation.tsx", "exports": ["Conversation"] },
+    { "file": "labs/teammates/src/components/flow-state/conversation.tsx", "exports": ["Conversation"] }
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports
