@@ -21,7 +21,8 @@ function AgentMarkdown({ text, className }: { text: string; className?: string }
   return (
     <MessageResponse
       className={cn(
-        "text-sm leading-relaxed",
+        // Reading text: a 1.5 line, 8px between blocks, and list items and headings close to what they belong to. Streamdown's own gaps are for short chat bubbles and run long here.
+        "text-sm leading-normal space-y-2 [&_li]:py-0.5 [&_:is(h1,h2,h3,h4,h5,h6)]:mt-4 [&_:is(h1,h2,h3,h4,h5,h6)]:mb-1",
         // Text stays in the column: a long path, link or token breaks where it must, and code wraps instead of scrolling sideways.
         "min-w-0 [overflow-wrap:anywhere] [&_code]:[overflow-wrap:anywhere] [&_code]:whitespace-pre-wrap [&_pre]:whitespace-pre-wrap",
         className,
