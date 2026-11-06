@@ -33,6 +33,7 @@ import type {
 } from "@flow-state-dev/core/internal";
 import type { DeclaredResources, ResourceVisibilityRule } from "@flow-state-dev/core";
 import { z } from "zod";
+import { routedFromStateSchema } from "./routed-from";
 import { AGENT_FLOW, defineAgentWorkerFlow } from "../agent-worker-flow";
 import {
   hireRefusalReasons,
@@ -483,7 +484,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional(),
     [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
     // Written by the `work` entry when it starts a routed task here (FIX-2083): server-owned.
-    [ROUTED_FROM_STATE_KEY]: z.string().min(1).optional(),
+    [ROUTED_FROM_STATE_KEY]: routedFromStateSchema,
     [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_WORKER_STATE_KEY]: z.string().min(1).readonly().optional(),

@@ -23,11 +23,6 @@
  *    by the role's factory and taking what their caller sends, and no piece of
  *    a role's factory sits on a flow that doesn't declare it
  *    (`./worker-roles`, the one table of a role's entries).
- * 5. **Role state.** A manager's and a coordinator's pieces read session
- *    fields they don't own the schema of (the delegate list, the notices
- *    acted on, a coordinator's rounds) and trust each to hold its default. So
- *    the flow's session `stateSchema` must declare each one with a default:
- *    the engine fills a missing field only from the flow's own schema.
  *
  * What is deliberately NOT checked: where a flow keeps its data. Org scope is
  * shared with the whole org by design, and a flow writes there because its
@@ -45,9 +40,6 @@ import { doorProblem } from "./worker-door";
 import { workerConfigSchema } from "./worker-config";
 import { WRITTEN_BY_KEY, declaresWrittenBy, isSharedResource } from "./shared-resource";
 import { builtInRolesOf, roleProblems, type WorkerRole } from "./worker-roles";
-import { delegateStateShape } from "./delegates/delegate-list";
-import { conversationBoardStateShape } from "./conversation-board/task-settled";
-import { coordinatorStateShape } from "./coordinator/coordinator-state";
 
 /** Any flow definition, whatever it declares. */
 export type WorkerFlowDefinition = FlowType<any, any, any, any, any, any, any>;
@@ -282,67 +274,11 @@ export function workerFlowProblems(
       ? undefined
       : `worker flow "${name}" is passed under that name, but its kind is "${String(flow.kind)}": a worker ` +
         `naming "${name}" would run a different flow's graph. Pass each flow under its own kind.`;
-  // A role's state is judged once its pieces are its factory's: a flow
-  // refused for its entries is told that first, in one sentence.
-  const roleIssues = roleProblems(name, flow, roles);
   return [
     misnamed,
     configurationProblem(name, flow),
     doorProblem(name, (flow.actions ?? {}) as Readonly<Record<string, unknown>>),
     ...attributionProblems(name, flow),
-    ...roleIssues,
-    roleIssues.length === 0 ? roleStateProblem(name, flow, roles) : undefined
+    ...roleProblems(name, flow, roles)
   ].filter((problem): problem is string => problem !== undefined);
-}
-
-/**
- * The session fields each role's pieces read, and where a flow gets them.
- * Read when a flow is checked, not when this module loads: the shapes' modules
- * reach back into the worker code.
- */
-function roleStateFields(role: WorkerRole): { readonly keys: readonly string[]; readonly fix: string } | undefined {
-  if (role === "manager") {
-    return {
-      keys: Object.keys({ ...delegateStateShape, ...conversationBoardStateShape }),
-      fix: "Spread the board's `sessionStateShape` into it: `session: installation.session(board.sessionStateShape)`."
-    };
-  }
-  if (role === "coordinator") {
-    return {
-      keys: Object.keys({ ...coordinatorStateShape, ...conversationBoardStateShape }),
-      fix: "Only `defineCoordinatorFlow` builds a coordinator, and its session declares them: run its workers on that flow."
-    };
-  }
-  return undefined;
-}
-
-/** The fields of a schema's `z.object`, or `undefined` when it isn't one (nothing to read keys off). */
-function sessionFields(schema: unknown): Readonly<Record<string, { safeParse?: (value: unknown) => { success: boolean; data?: unknown } }>> | undefined {
-  const shape = (schema as { _def?: { typeName?: string; shape?: () => unknown } } | undefined)?._def;
-  if (shape?.typeName !== "ZodObject" || typeof shape.shape !== "function") return undefined;
-  return shape.shape() as Readonly<Record<string, { safeParse?: (value: unknown) => { success: boolean; data?: unknown } }>>;
-}
-
-/**
- * Why a flow's roles would read a session field it doesn't default, or
- * `undefined`. A field counts as defaulted when the flow's session schema
- * declares it and reads a value for a record that lacks it. A session schema
- * that isn't a plain `z.object` can't be read for keys and isn't judged.
- */
-function roleStateProblem(name: string, flow: WorkerFlowDefinition, roles: readonly WorkerRole[]): string | undefined {
-  const role = roles.includes("coordinator") ? "coordinator" : roles.includes("manager") ? "manager" : undefined;
-  const fields = role === undefined ? undefined : roleStateFields(role);
-  if (role === undefined || fields === undefined) return undefined;
-  const schema = (flow.session as { stateSchema?: unknown } | undefined)?.stateSchema;
-  const declared = schema === undefined ? {} : sessionFields(schema);
-  if (declared === undefined) return undefined;
-  const missing = fields.keys.filter((key) => {
-    const parsed = declared[key]?.safeParse?.(undefined);
-    return parsed === undefined || !parsed.success || parsed.data === undefined;
-  });
-  if (missing.length === 0) return undefined;
-  return (
-    `worker flow "${name}" declares the "${role}" role, but its session \`stateSchema\` doesn't default ` +
-    `${missing.map((key) => `"${key}"`).join(", ")}, which the role's pieces read on every turn. ${fields.fix}`
-  );
 }

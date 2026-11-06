@@ -131,9 +131,14 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     return migrateTasks(raw[stateKey]);
   }
 
-  /** The board as `tasks` holds it. */
+  /**
+   * The board as `tasks` holds it. The map a write reads is immutable for
+   * that invocation, so its rows are listed once and shared: a narrowed
+   * claim hands them to `eligibility` per candidate.
+   */
   function viewOf(tasks: Readonly<Record<string, Task>>): TaskBoardView {
-    return { row: (id) => ownTask(tasks, id), rows: () => Object.values(tasks) };
+    let rows: readonly Task[] | undefined;
+    return { row: (id) => ownTask(tasks, id), rows: () => (rows ??= Object.values(tasks)) };
   }
 
   /**
