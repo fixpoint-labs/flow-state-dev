@@ -1,6 +1,6 @@
 /**
  * The merge of a scope's state declarations into the one schema its reads fill
- * defaults from.
+ * defaults from and read its readonly fields off.
  *
  * A flow, each block it reaches and each capability those blocks use can
  * declare a `session`, `user` or `org` state schema. `defineFlow` hands every
@@ -12,27 +12,37 @@
  *
  * - The same schema object declared twice is one declaration.
  * - Fields that only one declaration names are unioned in, at any depth: two
- *   `z.object`s under one key merge field by field.
- * - A field two declarations type differently is refused. `.nullable()` is part
- *   of the type; `.optional()` and `.readonly()` are not.
- * - A field two declarations default to different values is refused. A default
- *   on one side and none on the other is not a conflict: the default is taken.
- * - A field whose schema this merge can't read (a refinement, a transform, a
- *   lazy, an intersection) agrees with another only when it is the same object.
+ *   plain `z.object`s under one key merge field by field.
+ * - Every other field is a leaf, and a leaf is never rebuilt: the merged
+ *   object holds one of the declared leaf schemas themselves, so its
+ *   constraints, wrapper order, refinements and default factory are what an
+ *   author wrote.
+ * - Two declarations of a leaf agree when they are the same object, or when
+ *   their fingerprints (`zodSchemaSignature`) match; the fingerprint reads only
+ *   what it fully understands and compares everything else by identity.
+ * - One declaration may add outer wrappers to the other (a `.default()`, an
+ *   `.optional()`, a `.readonly()`): the more wrapped one is kept. Wrappers
+ *   that differ any other way are refused, as is a different type under them.
+ *   `.nullable()` is part of the type.
+ * - Two static defaults must be equal. An author's default factory is never
+ *   called: two declarations agree on one only when it is the same function.
  *
  * A refusal names the field's path and both declarers. Nothing is picked by
  * declaration order, so the value a block reads never depends on code it can't
- * see. The merged schema is for filling defaults only: writes still validate
- * against the schema each declarer gave.
+ * see. The merged schema is for filling defaults and reading readonly fields
+ * only: writes still validate against the schema each declarer gave.
  */
 import { z, type ZodTypeAny } from "zod";
 import { deepEqual } from "./deep-equal";
 import {
-  getZodDefaultFactory,
+  getZodDeclaredDefault,
   getZodInnerType,
   getZodObjectShape,
   getZodTypeName,
-  zodSchemaSignature
+  isPlainZodObject,
+  isZodObject,
+  zodSchemaSignature,
+  type ZodDeclaredDefault
 } from "./zod-introspect";
 
 /** One scope state schema, as one declarer stated it. */
@@ -58,30 +68,20 @@ export class ScopeStateSchemaConflictError extends Error {
   readonly first: string;
   /** The declarer that disagrees with it. */
   readonly second: string;
-  /** How they disagree, as the message words it: `defaults it to "plan" and block "b" to "ask"`. */
+  /** How they disagree, naming both: `block "a" defaults it to "plan" and block "b" to "ask"`. */
   readonly detail: string;
 
   constructor(
     owner: string,
     conflict: ScopeStateConflictKind,
     path: string,
+    why: string,
+    detail: string,
+    remedy: string,
     first: string,
-    second: string,
-    firstValue: string,
-    secondValue: string
+    second: string
   ) {
-    const detail =
-      conflict === "default"
-        ? `${first} defaults it to ${firstValue} and ${second} to ${secondValue}`
-        : `${first} types it as ${firstValue} and ${second} as ${secondValue}`;
-    const remedy =
-      conflict === "default"
-        ? "Declare one default, or share one schema for the field."
-        : "Declare one type, or share one schema for the field.";
-    super(
-      `${owner}: ${path} is declared twice with different ${conflict === "default" ? "defaults" : "types"}: ` +
-        `${detail}. ${remedy}`
-    );
+    super(`${owner}: ${path} is declared twice with ${why}: ${detail}. ${remedy}`);
     this.name = "ScopeStateSchemaConflictError";
     this.conflict = conflict;
     this.path = path;
@@ -91,104 +91,165 @@ export class ScopeStateSchemaConflictError extends Error {
   }
 }
 
-type Meta = {
-  nullable: boolean;
-  optional: boolean;
-  /** The first declared default met, with who declared it. */
-  def?: { factory: () => unknown; source: string };
-  /** The declarer that first stated this field. */
-  source: string;
-  /** The schema as declared, while no second declaration has been merged into it. */
-  declared: ZodTypeAny | undefined;
+/**
+ * `true` when `schema` is a state schema the merge can read: a `z.object`
+ * under the root wrappers. Anything else can only be declared once per scope.
+ */
+export function isMergeableScopeStateSchema(schema: ZodTypeAny): boolean {
+  return isZodObject(peel(schema, true).core);
+}
+
+type WrapperKind = "optional" | "nullable" | "readonly" | "default";
+/** One wrapper as declared, outermost first in a chain. */
+type Wrapper = { kind: WrapperKind; declared?: ZodDeclaredDefault };
+
+const WRAPPER_KINDS: Record<string, WrapperKind> = {
+  ZodOptional: "optional",
+  ZodNullable: "nullable",
+  ZodReadonly: "readonly",
+  ZodDefault: "default"
 };
 
-type ObjectNode = { kind: "object"; fields: Map<string, MergeNode>; meta: Meta };
-type LeafNode = { kind: "leaf"; core: ZodTypeAny; signature: string; meta: Meta };
+/** A schema's outer wrappers, outermost first, and what they wrap. */
+function peel(schema: ZodTypeAny, root: boolean): { chain: Wrapper[]; core: ZodTypeAny } {
+  const chain: Wrapper[] = [];
+  let core = schema;
+  for (;;) {
+    const name = getZodTypeName(core) ?? "";
+    const kind = WRAPPER_KINDS[name];
+    // A refinement over a whole state schema says nothing about one field, so
+    // the root reads through it; a field's own refinement is part of its leaf.
+    if (kind === undefined && !(root && name === "ZodEffects")) break;
+    const inner = getZodInnerType(core);
+    if (inner === undefined) break;
+    if (kind !== undefined) {
+      chain.push(kind === "default" ? { kind, declared: getZodDeclaredDefault(core) } : { kind });
+    }
+    core = inner;
+  }
+  return { chain, core };
+}
+
+type Common = { chain: Wrapper[]; source: string; declared: ZodTypeAny | undefined };
+type ObjectNode = Common & { kind: "object"; fields: Map<string, MergeNode> };
+type LeafNode = Common & { kind: "leaf"; core: ZodTypeAny; signature: string };
 type MergeNode = ObjectNode | LeafNode;
 
-const PEELED = new Set(["ZodOptional", "ZodNullable", "ZodDefault", "ZodReadonly"]);
-
-/** Read one declared schema into a merge node: peel the wrappers, descend into objects. */
+/** Read one declared schema into a merge node. Only a plain `z.object` (any `z.object` at the root) is descended into. */
 function toNode(schema: ZodTypeAny, source: string, root: boolean): MergeNode {
-  const meta: Meta = { nullable: false, optional: false, source, declared: schema };
-  let current = schema;
-  for (;;) {
-    const name = getZodTypeName(current) ?? "";
-    // A refinement over a whole state schema says nothing about one field's
-    // default, so the root reads through it; a field's own refinement is a leaf.
-    const peel = PEELED.has(name) || (root && name === "ZodEffects");
-    const inner = peel ? getZodInnerType(current) : undefined;
-    if (inner === undefined) break;
-    if (name === "ZodOptional") meta.optional = true;
-    if (name === "ZodNullable") meta.nullable = true;
-    if (name === "ZodDefault" && meta.def === undefined) {
-      meta.def = { factory: getZodDefaultFactory(current)!, source };
-    }
-    current = inner;
-  }
-  const shape = getZodObjectShape(current);
+  const { chain, core } = peel(schema, root);
+  const shape = root ? getZodObjectShape(core) : isPlainZodObject(core) ? getZodObjectShape(core) : undefined;
   if (shape !== undefined) {
     const fields = new Map<string, MergeNode>();
     for (const [key, field] of Object.entries(shape)) fields.set(key, toNode(field, source, false));
-    return { kind: "object", fields, meta };
+    return { kind: "object", fields, chain, source, declared: schema };
   }
-  return { kind: "leaf", core: current, signature: zodSchemaSignature(current), meta };
+  return { kind: "leaf", core, signature: zodSchemaSignature(core), chain, source, declared: schema };
 }
 
+function showDefault(declared: ZodDeclaredDefault | undefined): string {
+  if (declared === undefined || declared.kind === "dynamic") return "a factory";
+  return JSON.stringify(declared.value()) ?? String(declared.value());
+}
+
+/** How a refusal names a node's type: its core, then its wrappers inside out. */
 function typeOf(node: MergeNode): string {
-  const base = node.kind === "leaf" ? node.signature : "object";
-  return node.meta.nullable ? `${base} | null` : base;
+  const core =
+    node.kind === "object"
+      ? "object"
+      : node.signature.startsWith("opaque#")
+        ? `a ${(getZodTypeName(node.core) ?? "custom").replace(/^Zod/, "").toLowerCase()} schema that only matches itself`
+        : node.signature;
+  return [...node.chain].reverse().reduce(
+    (out, w) => `${out}.${w.kind}(${w.kind === "default" ? showDefault(w.declared) : ""})`,
+    core
+  );
 }
 
-function show(value: unknown): string {
-  return JSON.stringify(value) ?? String(value);
+/**
+ * The chain both declarations agree on: equal, or one the other's with outer
+ * `.optional()`, `.readonly()` or `.default()` wrappers added, the longer kept.
+ * `undefined` when they differ otherwise: `.nullable()` is part of the type.
+ */
+function joinChains(a: Wrapper[], b: Wrapper[]): Wrapper[] | undefined {
+  const [long, short] = a.length >= b.length ? [a, b] : [b, a];
+  const offset = long.length - short.length;
+  if (long.slice(0, offset).some((w) => w.kind === "nullable")) return undefined;
+  for (let i = 0; i < short.length; i++) if (long[offset + i]!.kind !== short[i]!.kind) return undefined;
+  return long;
 }
 
 /** Merge `b` into `a` at `path`, or throw a conflict naming both declarers. */
 function mergeNodes(owner: string, a: MergeNode, b: MergeNode, path: string): MergeNode {
-  if (a.meta.declared !== undefined && a.meta.declared === b.meta.declared) return a;
-  const sameKind =
-    a.kind === b.kind && (a.kind !== "leaf" || a.signature === (b as LeafNode).signature);
-  if (!sameKind || a.meta.nullable !== b.meta.nullable) {
-    throw new ScopeStateSchemaConflictError(owner, "type", path, a.meta.source, b.meta.source, typeOf(a), typeOf(b));
+  if (a.declared !== undefined && a.declared === b.declared) return a;
+  const typeConflict = (why = "different types") => {
+    const opaque = [a, b].some((n) => n.kind === "leaf" && n.signature.startsWith("opaque#"));
+    return new ScopeStateSchemaConflictError(
+      owner, "type", path, why,
+      `${a.source} types it as ${typeOf(a)} and ${b.source} as ${typeOf(b)}`,
+      opaque
+        ? "A schema that can't be compared by its structure agrees only with itself: share one schema for the field."
+        : "Declare one type, or share one schema for the field.",
+      a.source, b.source
+    );
+  };
+  if (a.kind !== b.kind) throw typeConflict();
+  if (a.kind === "leaf" && a.signature !== (b as LeafNode).signature) throw typeConflict();
+  const chain = joinChains(a.chain, b.chain);
+  if (chain === undefined) {
+    const nullable = (n: MergeNode) => n.chain.filter((w) => w.kind === "nullable").length;
+    throw typeConflict(nullable(a) !== nullable(b) ? "different types" : "different wrappers");
   }
-  if (a.meta.def !== undefined && b.meta.def !== undefined) {
-    const left = a.meta.def.factory();
-    const right = b.meta.def.factory();
-    if (!deepEqual(left, right)) {
+
+  // The defaults both chains declare at the same depth must agree.
+  const offsetA = chain.length - a.chain.length;
+  const offsetB = chain.length - b.chain.length;
+  for (let i = Math.max(offsetA, offsetB); i < chain.length; i++) {
+    const left = a.chain[i - offsetA]!.declared;
+    const right = b.chain[i - offsetB]!.declared;
+    if (left === undefined || right === undefined) continue;
+    if (left.kind === "static" && right.kind === "static") {
+      if (deepEqual(left.value(), right.value())) continue;
       throw new ScopeStateSchemaConflictError(
-        owner, "default", path, a.meta.def.source, b.meta.def.source, show(left), show(right)
+        owner, "default", path, "different defaults",
+        `${a.source} defaults it to ${showDefault(left)} and ${b.source} to ${showDefault(right)}`,
+        "Declare one default, or share one schema for the field.",
+        a.source, b.source
       );
     }
+    if (left.factory === right.factory) continue;
+    throw new ScopeStateSchemaConflictError(
+      owner, "default", path, "a dynamic default",
+      `${a.source} and ${b.source} each declare a default factory (or one a factory and one a value), and a factory can't be compared`,
+      "Share one schema for the field.",
+      a.source, b.source
+    );
   }
-  const meta: Meta = {
-    nullable: a.meta.nullable,
-    // Either declarer's blocks may have written the record, so a field one of
-    // them may leave out can be absent: optional when either says so.
-    optional: a.meta.optional || b.meta.optional,
-    def: a.meta.def ?? b.meta.def,
-    source: a.meta.source,
-    declared: undefined
-  };
-  if (a.kind === "leaf") return { ...a, meta };
+
+  const kept = chain === a.chain ? a : b;
+  if (a.kind === "leaf") return kept;
   const fields = new Map(a.fields);
   for (const [key, child] of (b as ObjectNode).fields) {
     const have = fields.get(key);
     fields.set(key, have === undefined ? child : mergeNodes(owner, have, child, `${path}.${key}`));
   }
-  return { kind: "object", fields, meta };
+  return { kind: "object", fields, chain, source: a.source, declared: undefined };
 }
 
 /** The schema a merged node stands for: the declared one when nothing was merged into it. */
 function toSchema(node: MergeNode): ZodTypeAny {
-  if (node.meta.declared !== undefined) return node.meta.declared;
-  let schema: ZodTypeAny =
-    node.kind === "leaf"
-      ? node.core
-      : z.object(Object.fromEntries([...node.fields].map(([key, child]) => [key, toSchema(child)])));
-  if (node.meta.nullable) schema = schema.nullable();
-  if (node.meta.def !== undefined) schema = schema.default(node.meta.def.factory as never);
-  else if (node.meta.optional) schema = schema.optional();
+  if (node.declared !== undefined) return node.declared;
+  // Only an object is ever rebuilt: its fields, then its wrappers inside out,
+  // each as declared (a default keeps its own factory).
+  let schema: ZodTypeAny = z.object(
+    Object.fromEntries([...(node as ObjectNode).fields].map(([key, child]) => [key, toSchema(child)]))
+  );
+  for (const wrapper of [...node.chain].reverse()) {
+    if (wrapper.kind === "optional") schema = schema.optional();
+    else if (wrapper.kind === "nullable") schema = schema.nullable();
+    else if (wrapper.kind === "readonly") schema = schema.readonly();
+    else schema = schema.default(wrapper.declared!.factory as never);
+  }
   return schema;
 }
 
@@ -198,7 +259,7 @@ function toSchema(node: MergeNode): ZodTypeAny {
  *
  * Returns `undefined` when nothing declares the scope, and the declared schema
  * itself when one schema does, so a flow whose blocks add nothing reads exactly
- * what it declared.
+ * what it declared. Never calls an author's default factory.
  *
  * @param owner Who the merge is for, as a refusal opens: `Flow "my-app"`.
  * @param scope The scope, as a field path starts: `session`.
@@ -220,13 +281,13 @@ export function mergeScopeStateSchemas(
 
   let merged: MergeNode | undefined;
   for (const { schema, source } of distinct) {
-    const node = toNode(schema, source, true);
-    if (node.kind !== "object") {
+    if (!isMergeableScopeStateSchema(schema)) {
       throw new Error(
-        `${owner}: ${source} declares a ${scope} state schema that is not a z.object (${node.signature}), ` +
+        `${owner}: ${source} declares a ${scope} state schema that is not a z.object, ` +
           `so it can't be merged with the other declarations of ${scope} state. Declare it as z.object({ ... }).`
       );
     }
+    const node = toNode(schema, source, true);
     merged = merged === undefined ? node : mergeNodes(owner, merged, node, `${scope}.state`);
   }
   return toSchema(merged!);

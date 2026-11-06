@@ -5,7 +5,7 @@
  * a Zod-internal change is a single-site fix instead of a multi-file hunt.
  * The grep guard in `zod-introspect.test.ts` enforces this invariant.
  */
-import type { ZodTypeAny } from "zod";
+import { z, type ZodTypeAny } from "zod";
 
 // ---------------------------------------------------------------------------
 // Primitive accessors
@@ -341,38 +341,77 @@ export function introspectStateKeys(stateSchema: unknown): Set<string> | undefin
 // ---------------------------------------------------------------------------
 
 /**
- * The declared default of a `.default()` as a thunk that returns a fresh value
- * on each call, the way zod keeps it. `undefined` for any other schema.
+ * The source text of the thunk zod 3 wraps a static `.default(value)` in.
+ * Read once off a probe, so a static default is told apart from an author's
+ * factory without calling either.
  */
-export function getZodDefaultFactory(schema: ZodTypeAny): (() => unknown) | undefined {
+const STATIC_DEFAULT_SOURCE: string | undefined = (() => {
+  const thunk = (z.string().default("") as any)._def?.defaultValue;
+  return typeof thunk === "function" ? String(thunk) : undefined;
+})();
+
+/** A `.default()`'s declared default, read without running an author's factory. */
+export type ZodDeclaredDefault =
+  /** `.default(value)`: `value()` returns the declared value (zod's own thunk). */
+  | { kind: "static"; factory: () => unknown; value: () => unknown }
+  /** `.default(() => ...)`: an author's factory, compared by identity and never called here. */
+  | { kind: "dynamic"; factory: () => unknown };
+
+/**
+ * The default a `.default()` declares, or `undefined` for any other schema.
+ * A static default's value is read through zod's own thunk; an author's
+ * factory is returned as is, never called.
+ */
+export function getZodDeclaredDefault(schema: ZodTypeAny): ZodDeclaredDefault | undefined {
   if (getZodTypeName(schema) !== "ZodDefault") return undefined;
-  const value = (schema as any)._def.defaultValue;
-  return typeof value === "function" ? (value as () => unknown) : () => value;
+  const raw = (schema as any)._def.defaultValue;
+  if (typeof raw !== "function") return { kind: "static", factory: () => raw, value: () => raw };
+  const factory = raw as () => unknown;
+  return STATIC_DEFAULT_SOURCE !== undefined && String(factory) === STATIC_DEFAULT_SOURCE
+    ? { kind: "static", factory, value: factory }
+    : { kind: "dynamic", factory };
+}
+
+/** `true` for a `z.object` with no catchall, no strict or passthrough mode and no refinement. */
+export function isPlainZodObject(schema: ZodTypeAny): boolean {
+  if (!isZodObject(schema)) return false;
+  const def = (schema as any)._def;
+  return (def.unknownKeys ?? "strip") === "strip" && !hasZodObjectCatchall(schema);
 }
 
 const opaqueSchemaIds = new WeakMap<object, number>();
 let nextOpaqueSchemaId = 0;
 
-/** A per-reference id for a schema whose structure {@link zodSchemaSignature} does not read. */
-function opaqueSignature(schema: ZodTypeAny): string {
-  let id = opaqueSchemaIds.get(schema);
+/** A per-reference id, for a schema or a factory {@link zodSchemaSignature} does not read into. */
+function identityOf(value: object): string {
+  let id = opaqueSchemaIds.get(value);
   if (id === undefined) {
     id = nextOpaqueSchemaId++;
-    opaqueSchemaIds.set(schema, id);
+    opaqueSchemaIds.set(value, id);
   }
-  return `opaque#${id}`;
+  return `#${id}`;
+}
+
+/** Whether a `_def.checks` list (a string's `.min()`, a number's `.int()`, …) is empty. */
+function hasNoChecks(def: { checks?: unknown[]; coerce?: unknown }): boolean {
+  return (def.checks === undefined || def.checks.length === 0) && def.coerce !== true;
 }
 
 /**
- * A structural fingerprint of a schema: two schemas with one signature accept
- * the same values and declare the same defaults.
+ * A conservative fingerprint of a schema: two schemas with one signature
+ * accept the same values and declare the same defaults, in the same wrapper
+ * order.
  *
- * Read for primitives, enums, literals, arrays, records, tuples, objects,
- * unions and the optional / nullable / default / readonly wrappers. Anything
- * else (a refinement or transform, a lazy, an intersection, a brand, a pipe, a
- * catch) is fingerprinted by reference, so two of them match only when they
- * are the same object: what a refinement accepts can't be read off it. An
- * object's unknown-keys mode is not part of its signature.
+ * Read structurally only where every part is understood: a primitive with no
+ * checks (no `.min()`, `.email()`, `.int()`, no coercion), an enum, a literal,
+ * an array with no length checks, a plain `z.object` (strip mode, no
+ * catchall), a record, a tuple with no rest, a union, and the optional /
+ * nullable / readonly / default wrappers in the order they were applied. A
+ * static default is read by value through zod's own thunk. Anything else (a
+ * constrained primitive, a refinement or transform, a lazy, an intersection, a
+ * brand, a pipe, a catch, an author's default factory) is fingerprinted by
+ * reference, so it matches only the same object. No default factory is ever
+ * called.
  */
 export function zodSchemaSignature(schema: ZodTypeAny): string {
   const def = (schema as any)._def;
@@ -380,11 +419,13 @@ export function zodSchemaSignature(schema: ZodTypeAny): string {
   switch (name) {
     case "ZodString":
     case "ZodNumber":
+    case "ZodBigInt":
+    case "ZodDate":
+      return hasNoChecks(def) ? name.slice(3).toLowerCase() : `opaque${identityOf(schema)}`;
     case "ZodBoolean":
+      return def.coerce === true ? `opaque${identityOf(schema)}` : "boolean";
     case "ZodAny":
     case "ZodUnknown":
-    case "ZodDate":
-    case "ZodBigInt":
     case "ZodNull":
     case "ZodUndefined":
       return name.slice(3).toLowerCase();
@@ -395,12 +436,17 @@ export function zodSchemaSignature(schema: ZodTypeAny): string {
     case "ZodLiteral":
       return `literal(${JSON.stringify(def.value)})`;
     case "ZodArray":
-      return `${zodSchemaSignature(def.type)}[]`;
+      return def.minLength === null && def.maxLength === null && def.exactLength === null
+        ? `${zodSchemaSignature(def.type)}[]`
+        : `opaque${identityOf(schema)}`;
     case "ZodRecord":
       return `record<${zodSchemaSignature(def.keyType)},${zodSchemaSignature(def.valueType)}>`;
     case "ZodTuple":
-      return `[${(def.items as ZodTypeAny[]).map(zodSchemaSignature).join(",")}]`;
+      return def.rest === null || def.rest === undefined
+        ? `[${(def.items as ZodTypeAny[]).map(zodSchemaSignature).join(",")}]`
+        : `opaque${identityOf(schema)}`;
     case "ZodObject": {
+      if (!isPlainZodObject(schema)) return `opaque${identityOf(schema)}`;
       const shape = getZodObjectShape(schema) ?? {};
       return `{${Object.keys(shape).sort().map((k) => `${k}:${zodSchemaSignature(shape[k]!)}`).join(",")}}`;
     }
@@ -410,14 +456,17 @@ export function zodSchemaSignature(schema: ZodTypeAny): string {
       return `(${options.map(zodSchemaSignature).sort().join(" | ")})`;
     }
     case "ZodOptional":
-      return `${zodSchemaSignature(def.innerType)}?`;
+      return `(${zodSchemaSignature(def.innerType)})?`;
     case "ZodNullable":
-      return `${zodSchemaSignature(def.innerType)}|null`;
+      return `(${zodSchemaSignature(def.innerType)})|null`;
     case "ZodReadonly":
-      return `readonly ${zodSchemaSignature(def.innerType)}`;
-    case "ZodDefault":
-      return `${zodSchemaSignature(def.innerType)}=${JSON.stringify(getZodDefaultFactory(schema)!())}`;
+      return `readonly(${zodSchemaSignature(def.innerType)})`;
+    case "ZodDefault": {
+      const declared = getZodDeclaredDefault(schema)!;
+      const value = declared.kind === "static" ? JSON.stringify(declared.value()) : `fn${identityOf(declared.factory)}`;
+      return `(${zodSchemaSignature(def.innerType)})=${value}`;
+    }
     default:
-      return opaqueSignature(schema);
+      return `opaque${identityOf(schema)}`;
   }
 }

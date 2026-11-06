@@ -761,7 +761,8 @@ function blockScopeStateDeclarations(
  * validates writes; this one only fills defaults, so a block's declared
  * default reads on a fresh record without the flow restating it.
  *
- * Throws when two declarations disagree on a field, naming both.
+ * Throws when two declarations disagree on a field, naming both. Never calls
+ * an author's default factory: a dynamic default agrees only with itself.
  */
 function mergeFlowScopeStateSchemas(
   kind: string,

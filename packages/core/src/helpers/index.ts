@@ -33,6 +33,7 @@ export {
 } from "./zod-introspect";
 export {
   mergeScopeStateSchemas,
+  isMergeableScopeStateSchema,
   ScopeStateSchemaConflictError,
   type ScopeStateDeclaration,
   type ScopeStateConflictKind,

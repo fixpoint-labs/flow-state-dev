@@ -60,7 +60,11 @@ import type {
 } from "@flow-state-dev/core/types";
 import { isProjectedResourceCollection } from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
-import { mergeScopeStateSchemas, ScopeStateSchemaConflictError } from "@flow-state-dev/core/helpers";
+import {
+  isMergeableScopeStateSchema,
+  mergeScopeStateSchemas,
+  ScopeStateSchemaConflictError
+} from "@flow-state-dev/core/helpers";
 import { scopeStateSchema } from "../context/scope-state-defaults";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -646,7 +650,8 @@ function checkResourcePair(
  *
  * Runs after {@link checkPair}, which already refuses what it can tell apart;
  * this adds what it lets through (a different default, a nullable on one side).
- * A root that is not an object can't be merged and is left to `checkPair`.
+ * A root that is not a `z.object` can't be merged, so the pair is left to
+ * `checkPair` alone. Any other error is a bug and propagates.
  */
 function checkStatePairStrictly(
   scope: ConflictScope,
@@ -655,13 +660,14 @@ function checkStatePairStrictly(
   schemaA: ZodTypeAny,
   schemaB: ZodTypeAny
 ): void {
+  if (!isMergeableScopeStateSchema(schemaA) || !isMergeableScopeStateSchema(schemaB)) return;
   try {
     mergeScopeStateSchemas(`Flows "${flowA}" and "${flowB}"`, scope, [
       { schema: schemaA, source: `flow "${flowA}"` },
       { schema: schemaB, source: `flow "${flowB}"` }
     ]);
   } catch (error) {
-    if (!(error instanceof ScopeStateSchemaConflictError)) return;
+    if (!(error instanceof ScopeStateSchemaConflictError)) throw error;
     throw new CrossFlowSchemaConflictError({
       scope,
       field: `stateSchema${error.path.slice(`${scope}.state`.length)}`,

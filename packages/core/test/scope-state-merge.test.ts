@@ -54,6 +54,81 @@ describe("mergeScopeStateSchemas", () => {
   });
 });
 
+describe("a leaf is never rebuilt, and a factory is never called", () => {
+  const merge = (...schemas: z.ZodTypeAny[]) =>
+    mergeScopeStateSchemas(
+      "Flow \"f\"",
+      "session",
+      schemas.map((schema, i) => decl(schema, `block "b${i}"`))
+    ) as z.AnyZodObject;
+  // Shared item schemas, as two declarers reach one module's export.
+  let minted = 0;
+  const nanoid = () => `id-${++minted}`;
+  const Item = z.object({ id: z.string().default(nanoid), title: z.string() });
+
+  const cases: Array<{
+    name: string;
+    schemas: () => z.ZodTypeAny[];
+    expect: (merged: () => z.AnyZodObject) => void;
+  }> = [
+    {
+      name: "a default an outer .optional() suppresses stays suppressed (n is not filled)",
+      schemas: () => [
+        z.object({ n: z.number().default(7).optional(), a: z.string().default("a") }),
+        z.object({ n: z.number().default(7).optional(), b: z.string().default("b") })
+      ],
+      expect: (merged) => expect(merged().shape.n.safeParse(undefined).data).toBeUndefined()
+    },
+    {
+      name: "a constrained number and a plain one are refused, not merged in declaration order",
+      schemas: () => [z.object({ n: z.number().min(10) }), z.object({ n: z.number().default(0) })],
+      expect: (merged) => expect(merged).toThrow(/session\.state\.n is declared twice with different types[\s\S]*share one schema/)
+    },
+    {
+      name: "one item schema with a dynamic default, wrapped in each declarer's own array, merges",
+      schemas: () => [
+        z.object({ items: z.array(Item).default([]) }),
+        z.object({ items: z.array(Item), other: z.number().default(1) })
+      ],
+      expect: (merged) => expect(Object.keys(merged().shape).sort()).toEqual(["items", "other"])
+    },
+    {
+      name: "two different dynamic defaults are refused as dynamic, not as two defaults",
+      schemas: () => [
+        z.object({ id: z.string().default(() => "x") }),
+        z.object({ id: z.string().default(() => "x") })
+      ],
+      expect: (merged) => expect(merged).toThrow(/declared twice with a dynamic default[\s\S]*Share one schema for the field\./)
+    },
+    {
+      name: "one shared dynamic default merges",
+      schemas: () => {
+        const at = () => `at-${++minted}`;
+        return [
+          z.object({ at: z.string().default(at), a: z.number().default(1) }),
+          z.object({ at: z.string().default(at), b: z.number().default(2) })
+        ];
+      },
+      expect: (merged) => expect(Object.keys(merged().shape).sort()).toEqual(["a", "at", "b"])
+    }
+  ];
+
+  for (const c of cases) {
+    it(c.name, () => {
+      const before = minted;
+      c.expect(() => merge(...c.schemas()));
+      // No factory ran while the declarations were compared.
+      expect(minted).toBe(before);
+    });
+  }
+
+  it("keeps the declared leaf object itself in the merged schema", () => {
+    const leaf = z.number().min(1).default(5);
+    const merged = merge(z.object({ n: leaf }), z.object({ n: leaf, m: z.number().default(0) }));
+    expect(merged.shape.n).toBe(leaf);
+  });
+});
+
 describe("defineFlow's merged scope state", () => {
   it("is kept on the instance and the blueprint; the flow's own stateSchema is unchanged", () => {
     const own = z.object({ mode: z.string() });
