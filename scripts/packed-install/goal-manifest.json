@@ -25,7 +25,9 @@
     {
       "id": "onepath",
       "title": "One path",
-      "assertions": []
+      "assertions": [
+        "onepath.answer-task-stop"
+      ]
     },
     {
       "id": "first-hour",
@@ -87,6 +89,7 @@
     "first-hour.example.knowledge-base.typecheck": "fail",
     "first-hour.example.knowledge-base.test": "fail",
     "first-hour.example.knowledge-base.fsdev": "fail",
+    "onepath.answer-task-stop": "fail",
     "leakage.tracker-ids": "fail",
     "shims.never-published": "fail",
     "shims.human-approval-throws": "fail",

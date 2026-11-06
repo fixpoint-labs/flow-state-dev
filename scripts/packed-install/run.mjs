@@ -443,6 +443,13 @@ function exampleCopy(project, example) {
 /** The TypeScript the consumer project reads core's `.d.ts` with: the workspace's own. */
 const TYPESCRIPT_SPEC = "typescript@npm:@typescript/typescript6@6.0.2";
 
+/**
+ * What leg c's React fixture renders with: React and a DOM, at the versions the
+ * workspace builds and tests React against. An adopter's app brings its own
+ * React; the installed `@flow-state-dev/react` only peers on it.
+ */
+const REACT_SPECS = ["react@19.2.4", "react-dom@19.2.4", "jsdom@27.4.0"];
+
 /** The export census's frozen list of moved core names. */
 const MOVED_TSV = join(ROOT, "specs/issues/FIX-2448/poc/export-census/moved.tsv");
 
@@ -526,6 +533,14 @@ export const GOAL_CHECKS = [
     id: "shims.stored-human-approval",
     name: "a stored human_approval suspension reads as a user's stop",
     run: (project) => goalFixture(project, "goal-stored-approval.mjs", "stored-approval"),
+  },
+  {
+    id: "onepath.answer-task-stop",
+    name: "installed React's useApproval, under jsdom, answers a user_approval stop raised in a task-board run",
+    run(project) {
+      npmInstall(project.dir, REACT_SPECS);
+      return goalFixture(project, "goal-answer-task-stop.mjs", "answer-task-stop");
+    },
   },
 ];
 
