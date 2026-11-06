@@ -13,7 +13,7 @@
  * neither in a file the page writes: model access (a placeholder
  * `OPENAI_API_KEY` and `OPENAI_BASE_URL` pointing at a local stub,
  * `fixtures/stub-model.mjs`), and the override map below, in a
- * `pnpm-workspace.yaml`, so the folder has no `package.json` until the page
+ * `.pnpmfile.cjs` ({@link pnpmfile}), so the folder has no `package.json` until the page
  * makes one and a page that opens with `pnpm init` runs. The cell passes when
  * every block succeeds and the page's `fsdev run` prints the stub's answer.
  * Each block is its own shell, so an `export` in one does not reach the next;
@@ -32,7 +32,7 @@
  * resolve inside the folder at its tarball's version; otherwise the run
  * throws, which the judge reports as `error`, never as an expected fail.
  * Transitive `@flow-state-dev/*` dependencies map to the tarballs through the
- * package manager's overrides (pnpm's in `pnpm-workspace.yaml`, npm's in the
+ * package manager's overrides (pnpm's through `.pnpmfile.cjs`, npm's in the
  * copied example's `package.json`): the leg's stand-in for a registry that
  * serves the versions under test.
  *
@@ -163,13 +163,28 @@ function overrides(tarballs) {
 }
 
 /**
- * pnpm's override map as a `pnpm-workspace.yaml`, which pnpm reads with no
- * `package.json` beside it. Keys and values are JSON strings, which YAML reads
- * as the same strings.
+ * The override map as a `.pnpmfile.cjs`, whose `readPackage` hook points each
+ * `@flow-state-dev/*` dependency of every package pnpm reads at its tarball.
+ * pnpm loads it from the folder with no `package.json` beside it, on every
+ * pnpm 10 (the repository pins 10.4.1). `pnpm-workspace.yaml` is not used:
+ * before pnpm 10.5 it needs a `packages` field and does not carry
+ * `overrides`, and a workspace root refuses a bare `pnpm add`.
  */
-export function pnpmWorkspaceYaml(tarballs) {
-  const lines = Object.entries(overrides(tarballs)).map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`);
-  return lines.length === 0 ? "overrides: {}\n" : `overrides:\n${lines.join("\n")}\n`;
+export function pnpmfile(tarballs) {
+  return [
+    "// Written by the adopter goal's First hour leg: @flow-state-dev/* from the tarballs under test.",
+    `const tarballs = ${JSON.stringify(overrides(tarballs), null, 2)};`,
+    "module.exports = {",
+    "  hooks: {",
+    "    readPackage(pkg) {",
+    '      for (const field of ["dependencies", "optionalDependencies"])',
+    "        for (const name of Object.keys(pkg[field] ?? {})) if (tarballs[name]) pkg[field][name] = tarballs[name];",
+    "      return pkg;",
+    "    },",
+    "  },",
+    "};",
+    "",
+  ].join("\n");
 }
 
 /**
@@ -385,9 +400,9 @@ export function runQuickstart({ markdown, dir, repoRoot, tarballs, timeout = STE
   const steps = quickstartPlan(markdown);
   if (!steps.some((s) => s.kind === "shell" && /\bfsdev\s+run\b/.test(s.script)))
     return ["the quick start has no `fsdev run` block, so it never shows an answer"];
-  // pnpm overrides map transitive @flow-state-dev/* dependencies to the
-  // tarballs; pnpm-workspace.yaml, so the folder has no package.json yet.
-  writeFileSync(join(dir, "pnpm-workspace.yaml"), pnpmWorkspaceYaml(tarballs));
+  // The pnpmfile maps transitive @flow-state-dev/* dependencies to the
+  // tarballs, and leaves the folder without a package.json.
+  writeFileSync(join(dir, ".pnpmfile.cjs"), pnpmfile(tarballs));
   const stub = startStub(dirname(dir));
   try {
     const env = readerEnv(process.env, repoRoot, stub.url);

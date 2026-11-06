@@ -9,7 +9,8 @@
  * Run: `node --test scripts/packed-install/first-hour.test.mjs`.
  */
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,6 +21,7 @@ import {
   exampleRun,
   installedOutsideTarballs,
   mapInstallLines,
+  pnpmfile,
   quickstartPlan,
   readerEnv,
   rewriteExampleManifest,
@@ -310,6 +312,57 @@ test("a quick start block that times out is an error", () => {
 test("a quick start install block that fails on what the tarballs ask for stays a fail", () => {
   const noMatch = 'echo " ERR_PNPM_NO_MATCHING_VERSION  No matching version found for zod@99" >&2\nexit 1';
   withFakeBin("pnpm", noMatch, (root) => assert.equal(outcomeOf(() => quickstart(root)), "fail"));
+});
+
+/**
+ * The repository's pinned pnpm (`packageManager`), run through corepack, the
+ * version CI's `pnpm/action-setup` installs. The quick start folder's pnpm is
+ * that one, so the leg's override file is checked against it, not whatever
+ * pnpm is first on a developer's PATH.
+ */
+const PINNED_PNPM = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).packageManager;
+
+function pinnedPnpm(cwd, args) {
+  return spawnSync("corepack", [PINNED_PNPM, ...args], {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: "0", COREPACK_ENABLE_STRICT: "0" },
+  });
+}
+
+test("the pinned pnpm applies the leg's pnpmfile: a tarball's own @flow-state-dev dependency is the tarball, and pnpm init still runs", () => {
+  const root = mkdtempSync(join(tmpdir(), "fsd-first-hour-pnpmfile-"));
+  try {
+    const pack = (name, deps) => {
+      const at = join(root, "src", name);
+      mkdirSync(at, { recursive: true });
+      writeFileSync(join(at, "package.json"), JSON.stringify({ name: `@flow-state-dev/${name}`, version: "1.0.0", dependencies: deps }));
+      const res = spawnSync("npm", ["pack", "--silent", "--pack-destination", root], { cwd: at, encoding: "utf8" });
+      assert.equal(res.status, 0, res.stderr);
+      return join(root, res.stdout.trim().split("\n").pop());
+    };
+    const inner = pack("inner", {});
+    // A range no registry serves, and the install is offline: only the pnpmfile can satisfy it.
+    const outer = pack("outer", { "@flow-state-dev/inner": "^9.0.0" });
+    const tarballs = new Map([
+      ["@flow-state-dev/inner", { tarball: inner, version: "1.0.0" }],
+      ["@flow-state-dev/outer", { tarball: outer, version: "1.0.0" }],
+    ]);
+    const app = join(root, "app");
+    mkdirSync(app);
+    writeFileSync(join(app, ".pnpmfile.cjs"), pnpmfile(tarballs));
+    const res = pinnedPnpm(app, ["add", outer, "--offline", "--store-dir", join(root, "store")]);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.match(res.stdout + res.stderr, new RegExp(`pnpm v${PINNED_PNPM.split("@")[1].replaceAll(".", "\\.")}`));
+    assert.deepEqual(installedOutsideTarballs(app, tarballs), []);
+
+    const fresh = join(root, "fresh");
+    mkdirSync(fresh);
+    writeFileSync(join(fresh, ".pnpmfile.cjs"), pnpmfile(tarballs));
+    assert.equal(pinnedPnpm(fresh, ["init"]).status, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("a quick start block that runs a stray fsdev anywhere in a line, not only at its start, is an error", () => {
