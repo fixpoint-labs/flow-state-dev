@@ -32,7 +32,7 @@ flowchart LR
   T["every tracked text file"] --> S["poc/cap-sweep/check.mjs"]
   S -->|"cap 0 · worker cap kept"| P["PASS · goal met"]
   M["control · today's main"] -.-> S
-  S -.->|"under the control"| F["must FAIL · 20 cap lines named"]
+  S -.->|"under the control"| F["must FAIL · 21 cap lines named"]
 ```
 
 The sweep reads every tracked file, not a list of the sites we already know. The dashed path
@@ -47,7 +47,7 @@ runtime behaviour. The sweep is what proves the goal instead.
 | **Signal** | `cap: 0`, `worker cap kept: yes`, exit 0 |
 | **Input** | The whole tracked tree. An unclassified hit counts as a cap hit, so a new mention anywhere is caught |
 | **Anti-game** | No passing by new allowlist entries or narrower patterns. Any new `OTHER_AXIS` entry is named in the implementation PR body, with its reason |
-| **Control that must fail** | Today's `main`: FAIL with `cap: 20 lines in 5 files`. And `--control`, which plants a cap line in a file that has an allowlisted line: it must be reported as cap |
+| **Control that must fail** | Today's `main`: FAIL with `cap: 21 lines in 5 files`. And `--control`, which plants a worded cap line and a digit-in-markup one (`<b>2 epics</b>`): both must be reported as cap |
 
 ## What changes
 
@@ -90,7 +90,7 @@ PR. No changeset: no published package changes.
 | `orchestration.md` → "Two epics under one project", first sentence | **Amends**: no longer cites the cap. The heading and its anchor stay |
 | `epic-lifecycle` project-spec step, "with the cap at two epics" | **Amends** the clause |
 | `plan-day` → the ceiling of 8 | **Amends** the reason: how many objectives run is the owner's choice, not a cap |
-| `docs/internal/4dx-process.md` → the rule row and design call 1 | **Removes** the row; call 1 is rewritten or dropped |
+| `docs/internal/4dx-process.md` → the chain diagram's "at most 2 epics at once" node, the rule row, and design call 1 | **Removes** the node (its edge becomes objective → epic-spec) and the row; call 1 is rewritten or dropped |
 | `epic-spec-template` worked example, "an epic slot" (three lines) | **Amends**: a slot presumes a fixed number of epics |
 | The per-wake worker cap | **Leaves alone** ([D2](DECISIONS.md#d2)) |
 | [`4dx-process-review.md` → R1](../../../docs/internal/4dx-process-review.md#r1--give-docsobjectivesmd-a-finish-line-and-cap-concurrent-epics-at-two), which proposed the cap | **Superseded in part**: the cap half. Its objectives-finish-line half is kept. The review stays as written |
@@ -122,4 +122,4 @@ is added. If wrong: nothing we can see; a removal has no shim.
 
 **Open: none.** Number 2 is the one to weigh: correct it if "the cap rule" meant both.
 
-Improvement · contributor docs and skills, no package · small: 5 files, 20 lines removed or reworded · no epic
+Improvement · contributor docs and skills, no package · small: 5 files, 21 lines removed or reworded · no epic

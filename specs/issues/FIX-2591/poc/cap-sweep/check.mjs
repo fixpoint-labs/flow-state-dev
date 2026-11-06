@@ -21,7 +21,7 @@ const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: '
 process.chdir(root)
 
 const PATTERN =
-  /two epics|cap is two|active epics|held, not cancelled|hold this outcome|wrap another|epics run at once|how many epics run|how-many-epics|epic slot|slot frees|frees the slot|cap at two|cap lives on epics|caps? concurrent epics|third epic|two active|active-epic|cap is on objectives|epic cap|→ cap →|cap \(skip/i
+  /\b(?:two|three|2|3)(?:\s|<[^>]+>|\*\*)*(?:active |concurrent |running )?epics\b|at most\b.{0,40}epics|cap is two|active epics|held, not cancelled|hold this outcome|wrap another|epics run at once|how many epics run|how-many-epics|epic slot|slot frees|frees the slot|cap at two|cap lives on epics|caps? concurrent epics|third epic|two active|active-epic|cap is on objectives|epic cap|→ cap →|cap \(skip/i
 
 const TEXT = /\.(md|mjs|js|ts|tsx|yml|yaml|json)$/
 
@@ -37,6 +37,7 @@ const OTHER_AXIS = [
   { path: /^packages\/harness-manager\//, line: /two epics/i, why: 'two epics driving one issue-phase get separate checkouts' },
   { path: /^packages\/core\/test\//, line: /two active edges/i, why: 'graph edge cap in a unit test' },
   { path: /^docs\/contributing\/project-spec-template\.md$/, line: /two epics|two concurrent epics/i, why: 'project-spec figure triggers and branch collisions' },
+  { path: /^docs\/contributing\/project-spec-template\.md$/, line: /2 epics done · 1 in flight/, why: 'a worked example status count, not a limit' },
   { path: /^docs\/contributing\/orchestration\.md$/, line: /^### Two epics under one project: skip, don't queue$/, why: 'project-branch collision section heading' },
   { path: /^\.agents\/skills\/project-spec\/SKILL\.md$/, line: /Two epics may run under one project/, why: 'project-branch collision' },
   { path: /^\.agents\/subagents\/project-agent\.md$/, line: /Two epics may run under one project/, why: 'project-branch collision' },
@@ -81,9 +82,13 @@ function keptProblems() {
 
 if (process.argv.includes('--control')) {
   // Plant a cap line in a living doc that also carries an allowlisted heading: the allowlist must not absorb it.
-  const planted = { f: 'docs/contributing/orchestration.md', n: 0, text: 'The cap allows two active epics.' }
-  const { hits } = scan([planted])
-  const caught = hits.cap.some((h) => h.includes('The cap allows two active epics.'))
+  // Plus the digit-and-markup form a mermaid node uses, which a words-only pattern misses.
+  const planted = [
+    { f: 'docs/contributing/orchestration.md', n: 0, text: 'The cap allows two active epics.' },
+    { f: 'docs/internal/4dx-process.md', n: 0, text: '  C{"at most<br/><b>2 epics</b> at once"}' },
+  ]
+  const { hits } = scan(planted)
+  const caught = planted.every((p) => hits.cap.some((h) => h.includes(p.text.trim())))
   console.log(caught ? 'control: PASS (planted cap line reported as cap)' : 'control: FAIL (planted line was absorbed)')
   process.exit(caught ? 0 : 1)
 }

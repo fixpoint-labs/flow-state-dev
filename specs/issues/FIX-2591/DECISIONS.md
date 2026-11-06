@@ -76,8 +76,8 @@ It comes down to the machine: without the worker cap, a busy wake can exhaust it
 ## Settled
 
 - **The inventory is complete** — **CONFIRMED** by `poc/cap-sweep/check.mjs` on `origin/main`
-  at this spec's base: 6,965 tracked text files, 20 cap lines in 5 files, 21 other-axis lines
-  in 13 files, 14 history lines in 10 files. The script prints each count; quote its output. `--control` plants a cap line beside an allowlisted one, and it is reported.
+  at this spec's base: 6,965 tracked text files, 21 cap lines in 5 files, 23 other-axis lines
+  in 13 files, 14 history lines in 10 files. The script prints each count; quote its output. `--control` plants a worded cap line and a digit-in-markup one, and both are reported.
 
 ## Analysis
 
@@ -100,5 +100,8 @@ author, not by a separate agent: this worker had no sub-agent dispatch.
 
 - **Draft** — framed as a removal of one process rule; the whole-tree sweep set the edit list;
   the worker cap kept as a separate axis.
+- **Review** — the inventory gained the "2 epics" node in `4dx-process.md`'s chain diagram,
+  because Codex found it and the words-only sweep could not match a digit inside markup. The
+  sweep now matches digits and markup, and its control plants that form.
 
 **Open: none.**
