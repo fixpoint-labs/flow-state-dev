@@ -26,6 +26,7 @@
       "id": "onepath",
       "title": "One path",
       "assertions": [
+        "onepath.output-read",
         "onepath.answer-task-stop"
       ]
     },
@@ -62,7 +63,10 @@
     {
       "id": "types",
       "title": "Types",
-      "assertions": []
+      "assertions": [
+        "types.typed-handler",
+        "types.fresh-session-default"
+      ]
     }
   ],
   "expect": {
@@ -81,6 +85,7 @@
     "surface.root.workforce": "fail",
     "surface.collisions": "fail",
     "surface.core-installed-dts": "fail",
+    "onepath.output-read": "fail",
     "first-hour.quickstart": "fail",
     "first-hour.example.hello-chat.typecheck": "fail",
     "first-hour.example.hello-chat.test": "fail",
@@ -93,7 +98,9 @@
     "leakage.tracker-ids": "fail",
     "shims.never-published": "fail",
     "shims.human-approval-throws": "fail",
-    "shims.stored-human-approval": "fail"
+    "shims.stored-human-approval": "fail",
+    "types.typed-handler": "fail",
+    "types.fresh-session-default": "fail"
   },
   "ratchets": {
     "export-check": null,
