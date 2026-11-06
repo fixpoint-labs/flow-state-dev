@@ -67,7 +67,7 @@ export function resolveAllowedActions(
   allow: ResumeAction[] | undefined
 ): ResumeAction[] {
   if (allow !== undefined) return allow;
-  return reason === "user_input" ? ["submit"] : ["approve", "reject"];
+  return reason === "user_input" || reason === "human_input" ? ["submit"] : ["approve", "reject"]; // retired-name-refusal: a stop core 0.2.0 stored
 }
 
 /**

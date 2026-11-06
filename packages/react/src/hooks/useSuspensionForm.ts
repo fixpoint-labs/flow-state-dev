@@ -136,7 +136,7 @@ export function suspensionShape(item: {
   resumeSchema?: Record<string, unknown>;
   allow?: ResumeAction[];
 }): SuspensionShape {
-  if (item.reason !== "user_input") return "approval";
+  if (item.reason !== "user_input" && item.reason !== "human_input") return "approval"; // retired-name-refusal: a stop core 0.2.0 stored
   // No submit path → render the binary approval card so the gate stays resolvable.
   if (item.allow === undefined || !item.allow.includes("submit")) return "approval";
   const analysis = analyzeResumeSchema(item.resumeSchema);

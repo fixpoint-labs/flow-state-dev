@@ -463,29 +463,6 @@ describe.each(BACKINGS)("retired rows in the store at upgrade (%s)", (_name, mak
     expect(tasks.get("t")?.status).toBe("pending");
     expect((await tasks.claim("w"))?.id).toBe("t");
   });
-
-  it("reads a recorded-not-started row as held, and starts it once released", async () => {
-    const { seed } = await makeBacking();
-    const tasks = await seed({ ...stored, id: "t", goal: "t", status: "pending", undispatched: true } as unknown as Task);
-    expect(tasks.get("t")?.status).toBe("held");
-    expect("undispatched" in (tasks.get("t") as object)).toBe(false);
-    expect(await tasks.claim("w")).toBeNull();
-
-    await tasks.release("t");
-    expect((await tasks.claim("w"))?.id).toBe("t");
-  });
-
-  it("reads every retired shape in the current one: a stored post as a routed task, and a reopened row as pending", async () => {
-    const { seed } = await makeBacking();
-    await seed({ ...stored, id: "p", goal: "p", status: "pending", sealed: { kind: "post" } } as unknown as Task);
-    const tasks = await seed({ ...stored, id: "r", goal: "r", status: "pending", reopened: true } as unknown as Task); // retired-name-refusal: the reopened shape
-    // On since FIX-2083: a stored post row reads as a task in the delegate's ongoing session, its result to the conversation.
-    expect(tasks.get("p")).toMatchObject({ session: "ongoing", resultTo: "conversation" });
-    // On since FIX-2086: a reopened row reads as pending with a steer for its line.
-    expect(tasks.get("r")).toMatchObject({ status: "pending", steers: [expect.objectContaining({ id: "reopened", from: "user" })] }); // retired-name-refusal: the reopened shape
-    expect(tasks.get("r")).not.toHaveProperty("reopened"); // retired-name-refusal: the reopened shape
-    // No parked row is read: stores were reset when the status was retired (FIX-2131).
-  });
 });
 
 /**

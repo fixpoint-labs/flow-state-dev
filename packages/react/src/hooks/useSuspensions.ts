@@ -103,6 +103,30 @@ export function deriveSuspensions(
   options: UseSuspensionsOptions = {},
   inFlight: ReadonlySet<string> = new Set()
 ): { suspensions: SuspensionView[]; pending: SuspensionView[] } {
+  refuseOldReasons(options.reasons);
+  return suspensionViews(items, options, inFlight);
+}
+
+/** The `user_*` reason each old `human_*` one was renamed to. */
+const RENAMED_REASONS: Readonly<Record<string, string>> = {
+  human_approval: "user_approval", // retired-name-refusal: the old reason, refused or read as its new one
+  human_input: "user_input" // retired-name-refusal: the old reason, refused or read as its new one
+};
+
+/** An old `human_*` filter would match nothing new: refused, naming its `user_*` reason. */
+function refuseOldReasons(reasons: readonly string[] | undefined): void {
+  for (const reason of reasons ?? []) {
+    const renamed = Object.hasOwn(RENAMED_REASONS, reason) ? RENAMED_REASONS[reason] : undefined;
+    if (renamed !== undefined) throw new Error(`useSuspensions: reason "${reason}" was renamed. Use "${renamed}".`);
+  }
+}
+
+/** {@link deriveSuspensions} without the filter check, for the hook, which checks once per filter. */
+function suspensionViews(
+  items: readonly OutputItem[],
+  options: UseSuspensionsOptions,
+  inFlight: ReadonlySet<string>
+): { suspensions: SuspensionView[]; pending: SuspensionView[] } {
   // Match by `type` literal — this package imports only TYPES from core, not
   // its runtime predicates.
   const resumeIndex = new Map<string, SuspensionResumeItem>();
@@ -118,7 +142,9 @@ export function deriveSuspensions(
     if (item.type !== "suspension") continue;
     const suspItem = item as SuspensionItem;
     if (options.requestId !== undefined && suspItem.requestId !== options.requestId) continue;
-    if (options.reasons !== undefined && !options.reasons.includes(suspItem.reason)) continue;
+    // A stop core 0.2.0 stored under an old `human_*` reason matches its `user_*` filter.
+    const reason = Object.hasOwn(RENAMED_REASONS, suspItem.reason) ? RENAMED_REASONS[suspItem.reason]! : suspItem.reason;
+    if (options.reasons !== undefined && !options.reasons.includes(reason)) continue;
     const resume = resumeIndex.get(suspItem.suspensionId);
     suspensions.push({
       item: suspItem,
@@ -210,8 +236,11 @@ export function useSuspensions(
   // (`useSuspensions(session, { reasons: ["user_approval"] })`) is a new array
   // every render, which would force deriveSuspensions to recompute each time.
   const reasonsKey = reasons === undefined ? undefined : reasons.join(" ");
+  // Checked once per distinct filter, not on each stream update; an old one still throws here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useMemo(() => refuseOldReasons(reasons), [reasonsKey]);
   const { suspensions, pending } = useMemo(
-    () => deriveSuspensions(session.items, { requestId, reasons }, inFlight),
+    () => suspensionViews(session.items, { requestId, reasons }, inFlight),
     // `reasons` is intentionally tracked via `reasonsKey` (by value, not reference).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [session.items, requestId, reasonsKey, inFlight]

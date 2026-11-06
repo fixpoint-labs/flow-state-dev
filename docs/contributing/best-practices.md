@@ -154,7 +154,7 @@ Update policy:
 - Scope: Universal — package moves, renames, and extractions.
 - Rule:
   - A move that compiles isn't done. Update what the move invalidated: file-header comments naming the old home, architecture/dependency diagrams, and doc examples / cross-link anchors.
-  - Re-export moved public types from every documented import path, including subpath barrels (`@flow-state-dev/core/types`), not just the package root.
+  - Re-export moved public types from every documented import path, including subpath barrels (`@flow-state-dev/core/types`), not just the package root. A moved *published* export breaks: the old path goes with no alias, and the changeset names the new home.
 - Why: The compiler verifies the code, not the prose, diagrams, or subpath barrels — those are the move's blind spots.
 
 ### BP-035: Walk the second-path checklist before declaring a change done

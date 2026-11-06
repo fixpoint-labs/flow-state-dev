@@ -23,15 +23,6 @@
  * because its worker flow composed this capability at all, so there is nothing for a
  * `tools:` fence to check, and fencing it would leave a worker advertising a tool
  * in its prompt it cannot call.
- *
- * ## What changed
- *
- * The `agents` option is **gone**. It took a pre-built `Agent[] | AgentRegistry`
- * for a DevTool listing that never shipped, and the function's whole body was a
- * duplicate-name check over it plus a standing `TODO`. An app passing it now
- * fails to type-check with a message naming the replacement, rather than having
- * its roster silently ignored (BP-030). Pass `roster` and `inventory` instead;
- * the capability reads both.
  */
 
 import { createManifestRegistry, defineCapability, discoveryTools } from "@flow-state-dev/core";
@@ -77,27 +68,6 @@ export interface WorkforceCapabilityOptions {
    * naming both sites.
    */
   sources?: readonly BlockManifestSource[];
-  /**
-   * Removed (FIX-817). The pre-built roster this took never reached a caller —
-   * the capability validated duplicate names, returned an empty capability and
-   * carried a standing `TODO`.
-   *
-   * Typed as its own replacement message rather than deleted, so an app that
-   * still passes it is told what to pass instead. Deleting the key would rely
-   * on excess-property checking, which says only that the key is unknown —
-   * and says nothing at all when the options are built up in a variable
-   * (BP-030).
-   *
-   * @deprecated Pass `roster` and `inventory` instead.
-   */
-  agents?: "`agents` was removed: pass `roster` (the declared roster) and `inventory` (the live inventory collection keys) instead";
-  /**
-   * Removed (FIX-817). Nothing ever read it.
-   *
-   * @deprecated Tool catalogs reach a worker flow through
-   * `defineAgentWorkerFlow({ catalog })`.
-   */
-  catalog?: "`catalog` was removed: it was never read. A tool catalog reaches a worker flow through defineAgentWorkerFlow({ catalog })";
 }
 
 /**

@@ -273,31 +273,6 @@ describe("transitionDeclineReason — which condition fired", () => {
     ).toBeUndefined();
   });
 
-  it("throws on the removed expectAttempt key rather than dropping the guard", () => {
-    // BP-030. TypeScript catches this for a typed caller; an untyped one would
-    // otherwise have its ownership check silently discarded and its write
-    // proceed — the exact silence the ticket exists to remove.
-    expect(() =>
-      transitionDeclineReason(
-        task("in_progress"),
-        "completed",
-        { ifAllowed: true, expectAttempt: 1 } as never,
-        BOARD,
-        NOW,
-      ),
-    ).toThrow(/"expectAttempt" was removed/);
-
-    // Present-but-undefined is still a caller that thinks it is passing a guard.
-    expect(() =>
-      transitionDeclineReason(
-        task("in_progress"),
-        "completed",
-        { expectAttempt: undefined } as never,
-        BOARD,
-        NOW,
-      ),
-    ).toThrow(/"expectAttempt" was removed/);
-  });
 });
 
 describe.each([

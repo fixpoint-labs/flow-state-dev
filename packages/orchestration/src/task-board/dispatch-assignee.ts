@@ -11,7 +11,7 @@
  * This module owns two things and nothing else:
  *
  * 1. reading a board's assignees — a bare block means inline, a dispatcher
- *    dispatches, and the removed assignee shapes are refused by name;
+ *    dispatches, and anything else is refused;
  * 2. the construction-time refusals — `assertDispatchBoardSupported` for the
  *    board, `assertDispatchEntrySupported` for the entry block the gate is
  *    given.
@@ -97,10 +97,7 @@ export interface DispatchingAssignee {
  * Read one assignee's value: the block that runs there and, when the block is a
  * task dispatcher, where it dispatches to.
  *
- * The removed assignee shapes are refused by name rather than silently read as
- * inline (BP-030): a board that still says `{ block, session }`,
- * `{ worker, dispatch }` or `dispatch: { mode: "detached" }` would otherwise
- * run its worker in the drain and never dispatch.
+ * Anything else is refused, with what an assignee is.
  */
 export function resolveWorkerSlot(
   slot: unknown,
@@ -114,19 +111,6 @@ export function resolveWorkerSlot(
     `An assignee is a block. To run it inline, put the block there; to dispatch it, put a ` +
     `\`dispatcher({ action, session })\` there and declare the block on the flow ` +
     `as \`tasks: { [target]: { block } }\`.`;
-  if (typeof slot === "object" && slot !== null) {
-    const keys = Object.keys(slot);
-    if (keys.includes("dispatch")) {
-      throw new Error(
-        `[task-board] ${where} uses the removed \`dispatch: { mode }\` option. ${fix}`
-      );
-    }
-    if (keys.includes("block") || keys.includes("worker") || keys.includes("session")) {
-      throw new Error(
-        `[task-board] ${where} uses the removed \`{ ${keys.join(", ")} }\` assignee shape. ${fix}`
-      );
-    }
-  }
   throw new Error(`[task-board] ${where} is not a block (got ${describe(slot)}). ${fix}`);
 }
 

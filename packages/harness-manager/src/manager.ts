@@ -1722,15 +1722,6 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   } = options;
   const specOptions = issueSpecOptions(issueSpec);
 
-  // **A removed option, refused by name** (BP-030). A host that still passes
-  // it expects to be told of each question; dropping it silently would leave
-  // that host waiting on a call that never comes.
-  if ("announce" in (options as object)) {
-    throw new Error(
-      "[harness-manager] `announce` was removed: a run's question now keeps its task waiting on the board, " +
-        "where the Inbox lists it. Read held tasks from the board (`openRowHolds`) instead of being told.",
-    );
-  }
 
   // **A board to read, named one way or the other.** A fixed board needs both
   // halves; without one, the resolver is the only way to a board.

@@ -1077,7 +1077,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * so a plain parse would drop them and file a task the caller thinks it
    * waits on.
    */
-  const WAIT_FIELDS = ["wait", "deadline", "waitForResponse", "timeoutMs"] as const; // retired-name-refusal: waitForResponse
+  const WAIT_FIELDS = ["wait", "deadline", "timeoutMs"] as const;
   type FollowUp = { root: string; assignee: string | undefined; id: string };
 
   /**
@@ -1462,15 +1462,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }
       const fields = UPDATE_FIELDS.filter((field) => input[field] !== undefined);
       const message = input.message;
-      // `question` was the answer's field before FIX-2183: refused by name, so a call
-      // that still sends it is never kept as a plain message.
-      if ((input as Record<string, unknown>).question !== undefined) {
-        return {
-          ok: false as const,
-          taskId: input.id,
-          error: "answers_not_question: name the question you answer with answers, not question. Nothing was written.", // retired-name-refusal: question
-        };
-      }
       // An answer (FIX-2133) is its own write, decided apart from every edit.
       const answers = input.answers;
       const done = (input as { done?: unknown }).done;

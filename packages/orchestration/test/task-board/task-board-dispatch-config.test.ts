@@ -83,7 +83,7 @@ describe("task dispatch — the off state (BP-030 / BP-035)", () => {
           summarize: { worker: worker("summarize-2b"), dispatch: { mode: "detached" } } as never,
         },
       })
-    ).toThrow(/removed `dispatch: \{ mode \}` option/);
+    ).toThrow(/assignee "summarize" is not a block/);
   });
 
   it("refuses the removed `{ block, session }` assignee shape by name", () => {
@@ -95,7 +95,7 @@ describe("task dispatch — the off state (BP-030 / BP-035)", () => {
         collection: durable,
         workers: { summarize: { block: worker("summarize-2c"), session: "per-task" } as never },
       })
-    ).toThrow(/removed `\{ block, session \}` assignee shape/);
+    ).toThrow(/assignee "summarize" is not a block/);
   });
 
   it("refuses an assignee that is not a block, naming the assignee", () => {

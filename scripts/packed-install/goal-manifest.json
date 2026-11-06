@@ -96,9 +96,9 @@
     "first-hour.example.knowledge-base.fsdev": "fail",
     "onepath.answer-task-stop": "fail",
     "leakage.tracker-ids": "fail",
-    "shims.never-published": "fail",
-    "shims.human-approval-throws": "fail",
-    "shims.stored-human-approval": "fail",
+    "shims.never-published": "pass",
+    "shims.human-approval-throws": "pass",
+    "shims.stored-human-approval": "pass",
     "types.typed-handler": "fail",
     "types.fresh-session-default": "fail"
   },
