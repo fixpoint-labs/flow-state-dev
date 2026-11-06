@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 414" role="img" aria-label="Q1, open: is adding a repository in Settings always on, or on only when the operator starts the lab with a switch. Recommended: always on. Instead of: on only with a start switch. It comes down to the first row: the lab serves one configured person, who is the operator, so a switch guards no one today. The price is the second row: if the lab is ever shown to a second person, any user could point runs at any local repository, so a gate must be added first. Third row: with always on, adding works at once with nothing to set. Locks in a lab that serves one person, stated in its README. Flips if there is any plan to show the lab to a second person."
+<svg viewBox="0 0 940 414" role="img" aria-label="Q1, open: is adding a repository in Settings on whatever the bind, or only while the lab is bound to loopback. Recommended: on at loopback, off on any other bind unless the operator turns it on. Instead of: on whatever the bind. It comes down to the first row: on a non-loopback bind a second person can reach the lab, and an authenticated person is not thereby the operator, so under always-on any user could point runs at any local repository. The price is the third row: a check of the bind and a start flag to override it. On the one-person loopback lab both options add a repository at once. Locks in a lab that knows its bind. Flips if the lab is never served beyond loopback."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -37,66 +37,66 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">Q1 · OPEN · THE CALL</text>
-    <text class="t-q" x="32" y="52">Settings add: always on, or on only when the operator starts the lab with it?</text>
+    <text class="t-q" x="32" y="52">Settings add: on whatever the bind, or only while the lab is bound to loopback?</text>
   </g>
 
   <g id="options">
     <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">Always on</text>
+    <text class="t-h c-code" x="228" y="112">On at loopback, off elsewhere</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">On only with a start switch</text>
+    <text class="t-h c-lost" x="592" y="112">On whatever the bind</text>
   </g>
 
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WHO SITS</text>
-    <text class="t-lbl" x="32" y="169">AT THE PAGE</text>
+    <text class="t-lbl" x="32" y="156">A SECOND PERSON</text>
+    <text class="t-lbl" x="32" y="169">REACHES THE LAB</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="163">+</text>
-    <text class="t-b" x="248" y="162">The one configured person</text>
-    <text class="t-s" x="248" y="180">who is the operator; nothing to set</text>
+    <text class="t-b" x="248" y="162">Add is off; they cannot register</text>
+    <text class="t-s" x="248" y="180">unless the operator turns it on</text>
     <text class="mark minus" x="592" y="163">−</text>
-    <text class="t-b" x="612" y="162">A setting that guards no one</text>
-    <text class="t-s" x="612" y="180">today the lab serves one person</text>
+    <text class="t-b" x="612" y="162">Any user can point runs anywhere</text>
+    <text class="t-s" x="612" y="180">authenticated is not the operator</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="220">IF THE LAB IS</text>
-    <text class="t-lbl" x="32" y="233">EVER SHARED</text>
-    <text class="mark minus" x="228" y="225">−</text>
-    <text class="t-b" x="248" y="224">Any user can point runs anywhere</text>
-    <text class="t-s" x="248" y="242">a gate must be added first</text>
-    <text class="mark plus" x="592" y="225">+</text>
-    <text class="t-b" x="612" y="224">Add stays off until allowed</text>
-    <text class="t-s" x="612" y="242">safe by default</text>
+    <text class="t-lbl" x="32" y="220">THE ONE-PERSON LAB</text>
+    <text class="t-lbl" x="32" y="233">ON LOOPBACK</text>
+    <text class="mark tie" x="228" y="225">=</text>
+    <text class="t-b" x="248" y="224">Add works at once</text>
+    <text class="t-s" x="248" y="242">no restart, nothing to find</text>
+    <text class="mark tie" x="592" y="225">=</text>
+    <text class="t-b" x="612" y="224">Add works at once</text>
+    <text class="t-s" x="612" y="242">the same</text>
     <line class="row" x1="16" y1="250" x2="924" y2="250"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="278">THE FIRST RUN</text>
-    <text class="mark plus" x="228" y="283">+</text>
-    <text class="t-b" x="248" y="282">Add works at once</text>
-    <text class="t-s" x="248" y="300">no restart, nothing to find</text>
-    <text class="mark minus" x="592" y="283">−</text>
-    <text class="t-b" x="612" y="282">Add does nothing without a flag</text>
-    <text class="t-s" x="612" y="300">the environment variable's problem again</text>
+    <text class="t-lbl" x="32" y="278">WHAT IT COSTS</text>
+    <text class="mark minus" x="228" y="283">−</text>
+    <text class="t-b" x="248" y="282">A check of the bind, a flag</text>
+    <text class="t-s" x="248" y="300">the lab learns where it is served</text>
+    <text class="mark plus" x="592" y="283">+</text>
+    <text class="t-b" x="612" y="282">Nothing to build</text>
+    <text class="t-s" x="612" y="300">nothing to set</text>
     <line class="row" x1="16" y1="308" x2="924" y2="308"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="324" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="345">LOCKS IN</text>
-    <text class="t-b" x="32" y="365">A one-person lab, said in its README</text>
-    <text class="t-s" x="32" y="383">a shared host adds its own gate</text>
+    <text class="t-b" x="32" y="365">A lab that knows its bind</text>
+    <text class="t-s" x="32" y="383">FIX-2594's spec says how it reads it</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="324" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="345">FLIPS IF</text>
-    <text class="t-b" x="494" y="365">Any plan to show the lab to a second person</text>
-    <text class="t-s" x="494" y="383">then the switch or a gate ships first</text>
+    <text class="t-b" x="494" y="365">The lab is never served beyond loopback</text>
+    <text class="t-s" x="494" y="383">then always on is simpler and enough</text>
   </g>
 </svg>

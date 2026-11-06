@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 424" role="img" aria-label="Who owns what: ten rules across FIX-2593 the workspace package, FIX-2597 the harness packages, FIX-2594 the sidebar and Settings, FIX-2595 the working line, FIX-2598 the harness and model selector, FIX-2599 plan mode, FIX-2596 the closure and the coordinator. Each rule has exactly one owner. ER-1 One list of repositories: owned by FIX-2594. ER-2 A later add passes the start-up checks: owned by FIX-2593. ER-3 Removal never strands a run: owned by FIX-2593. ER-4 Registration is an operator act: owned by FIX-2594. ER-5 The word is repository: owned by FIX-2594. ER-6 No default repository: owned by FIX-2594. ER-7 FIX-2403's checks survive: owned by FIX-2594. ER-8 The line reads the thread's own state: owned by FIX-2595. ER-9 A harness is asked what it offers: owned by FIX-2597. ER-10 Consumed issues keep their parents: owned by the coordinator. The closure checks every rule but ER-10." xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 940 454" role="img" aria-label="Who owns what: eleven rules across FIX-2593 the workspace package, FIX-2597 the harness packages, FIX-2594 the sidebar and Settings, FIX-2595 the working line, FIX-2598 the harness and model selector, FIX-2599 plan mode, FIX-2596 the closure and the coordinator. Each rule has exactly one owner. ER-1 One list of repositories: owned by FIX-2594. ER-2 A later add passes the start-up checks: owned by FIX-2593. ER-3 Removal never strands a run: owned by FIX-2593. ER-4 Admission follows the bind: owned by FIX-2594. ER-5 The word is repository: owned by FIX-2594. ER-6 No default repository: owned by FIX-2594. ER-7 FIX-2403's checks survive: owned by FIX-2594. ER-8 The line reads the thread's own state: owned by FIX-2595. ER-9 A harness is asked what it offers: owned by FIX-2597. ER-10 The choice rides on the task: owned by FIX-2598. ER-11 Consumed issues keep their parents: owned by the coordinator. The closure checks every rule but ER-11." xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; }
@@ -17,7 +17,7 @@
     .t-o   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
     .t-u   { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="424"/>
+  <rect class="bg" x="0" y="0" width="940" height="454"/>
 
   <g id="columns">
     <text class="t-col" x="336" y="36" text-anchor="middle">2593</text>
@@ -41,11 +41,11 @@
 
   <g id="er-1">
     <text class="t-id" x="16" y="82">ER-1</text>
-    <text class="t-b" x="62" y="82">One list of repositories</text>
-    <rect class="u" x="304" y="66" width="64" height="22" rx="3"/>
-    <text class="t-u" x="336" y="81" text-anchor="middle">uses</text>
-    <rect class="o" x="456" y="66" width="64" height="22" rx="3"/>
-    <text class="t-o" x="488" y="81" text-anchor="middle">owns</text>
+    <text class="t-b" x="62" y="82">One list of admitted repositories</text>
+    <rect class="o" x="304" y="66" width="64" height="22" rx="3"/>
+    <text class="t-o" x="336" y="81" text-anchor="middle">owns</text>
+    <rect class="u" x="456" y="66" width="64" height="22" rx="3"/>
+    <text class="t-u" x="488" y="81" text-anchor="middle">uses</text>
     <rect class="c" x="760" y="66" width="64" height="22" rx="3"/>
     <text class="t-u" x="792" y="81" text-anchor="middle">checks</text>
     <line class="line" x1="16" y1="92" x2="924" y2="92"/>
@@ -74,7 +74,7 @@
   </g>
   <g id="er-4">
     <text class="t-id" x="16" y="172">ER-4</text>
-    <text class="t-b" x="62" y="172">Registration is an operator act</text>
+    <text class="t-b" x="62" y="172">Admission follows the bind</text>
     <rect class="u" x="304" y="156" width="64" height="22" rx="3"/>
     <text class="t-u" x="336" y="171" text-anchor="middle">uses</text>
     <rect class="o" x="456" y="156" width="64" height="22" rx="3"/>
@@ -142,18 +142,31 @@
   </g>
   <g id="er-10">
     <text class="t-id" x="16" y="352">ER-10</text>
-    <text class="t-b" x="62" y="352">Consumed issues keep their parents</text>
-    <rect class="o" x="836" y="336" width="64" height="22" rx="3"/>
-    <text class="t-o" x="868" y="351" text-anchor="middle">owns</text>
+    <text class="t-b" x="62" y="352">The choice rides on the task</text>
+    <rect class="u" x="380" y="336" width="64" height="22" rx="3"/>
+    <text class="t-u" x="412" y="351" text-anchor="middle">uses</text>
+    <rect class="o" x="608" y="336" width="64" height="22" rx="3"/>
+    <text class="t-o" x="640" y="351" text-anchor="middle">owns</text>
+    <rect class="u" x="684" y="336" width="64" height="22" rx="3"/>
+    <text class="t-u" x="716" y="351" text-anchor="middle">uses</text>
+    <rect class="c" x="760" y="336" width="64" height="22" rx="3"/>
+    <text class="t-u" x="792" y="351" text-anchor="middle">checks</text>
     <line class="line" x1="16" y1="362" x2="924" y2="362"/>
+  </g>
+  <g id="er-11">
+    <text class="t-id" x="16" y="382">ER-11</text>
+    <text class="t-b" x="62" y="382">Consumed issues keep their parents</text>
+    <rect class="o" x="836" y="366" width="64" height="22" rx="3"/>
+    <text class="t-o" x="868" y="381" text-anchor="middle">owns</text>
+    <line class="line" x1="16" y1="392" x2="924" y2="392"/>
   </g>
 
   <g id="legend">
-    <rect class="o" x="16" y="384" width="40" height="18" rx="3"/>
-    <text class="t-b" x="64" y="397">decides or builds it · exactly one per rule</text>
-    <rect class="u" x="360" y="384" width="40" height="18" rx="3"/>
-    <text class="t-b" x="408" y="397">uses it · must not decide again</text>
-    <rect class="c" x="640" y="384" width="40" height="18" rx="3"/>
-    <text class="t-b" x="688" y="397">the closure checks it</text>
+    <rect class="o" x="16" y="414" width="40" height="18" rx="3"/>
+    <text class="t-b" x="64" y="427">decides or builds it · exactly one per rule</text>
+    <rect class="u" x="360" y="414" width="40" height="18" rx="3"/>
+    <text class="t-b" x="408" y="427">uses it · must not decide again</text>
+    <rect class="c" x="640" y="414" width="40" height="18" rx="3"/>
+    <text class="t-b" x="688" y="427">the closure checks it</text>
   </g>
 </svg>

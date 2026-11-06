@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 414" role="img" aria-label="Q2, open: what the sidebar calls the group of coordinator sessions, where the lead files work as tasks on a board. Recommended: Workstreams. Instead of: Project Sessions. It comes down to the first row: after the rename, project is the word for a repository's storage row, so a Project Sessions group sits beside Repository on one screen and means a third thing; Workstreams collides only for someone who also uses Shift Manager. The price is the second row: Workforce already has workstreams, an owned entry with a lead and its own session, which this lab's sessions are not. Third row: a label is cheap to change either way. Locks in a word the lab's README, dialog and goal scripts repeat. Flips if people who use both apps expect the lab to list Shift Manager's workstreams."
+<svg viewBox="0 0 940 414" role="img" aria-label="Q2, open: what the sidebar calls the group of coordinator sessions, where the lead files work as tasks on a board. Recommended: Coordinators. Instead of: Workstreams, or Project Sessions. It comes down to the first row: Coordinators names what the lead does and the flow it runs on, and clashes with nothing; Workstreams is already a group in Shift Manager's command palette with a heavier meaning, an owned project entry with a lead and its own session; Project Sessions puts the word project back beside Repository with a third meaning. Changing it later is a label, so the third row is a tie. Locks in a word the README, dialog and goal scripts repeat. Flips if people want the lab to list Shift Manager's workstreams."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -41,48 +41,59 @@
   </g>
 
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
+    <rect class="rec" x="212" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">Workstreams</text>
-    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Project Sessions</text>
+    <text class="t-h c-code" x="228" y="112">Coordinators</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="468" y="112">Workstreams</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="708" y="112">Project Sessions</text>
   </g>
 
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">NEXT TO THE WORD</text>
-    <text class="t-lbl" x="32" y="169">REPOSITORY</text>
+    <text class="t-lbl" x="32" y="156">CLASHES WITH</text>
+    <text class="t-lbl" x="32" y="169">A WORD NEARBY</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="163">+</text>
-    <text class="t-b" x="248" y="162">No clash on the lab's screen</text>
-    <text class="t-s" x="248" y="180">project is gone from its words</text>
-    <text class="mark minus" x="592" y="163">−</text>
-    <text class="t-b" x="612" y="162">Project returns with a third meaning</text>
-    <text class="t-s" x="612" y="180">storage row, body of work, and this</text>
+    <text class="t-b" x="248" y="162">With none</text>
+    <text class="t-s" x="248" y="180">the flow is a coordinator</text>
+    <text class="mark minus" x="468" y="163">−</text>
+    <text class="t-b" x="488" y="162">Shift Manager's palette group</text>
+    <text class="t-s" x="488" y="180">a heavier thing, same keys</text>
+    <text class="mark minus" x="708" y="163">−</text>
+    <text class="t-b" x="728" y="162">Repository's neighbour</text>
+    <text class="t-s" x="728" y="180">project, a third meaning</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="220">WORKFORCE'S OWN</text>
-    <text class="t-lbl" x="32" y="233">WORKSTREAM</text>
+    <text class="t-lbl" x="32" y="220">TO A NEWCOMER</text>
     <text class="mark minus" x="228" y="225">−</text>
-    <text class="t-b" x="248" y="224">Same word, lighter thing</text>
-    <text class="t-s" x="248" y="242">workforce's has an owner, a lead, an entry</text>
-    <text class="mark plus" x="592" y="225">+</text>
-    <text class="t-b" x="612" y="224">No second meaning of workstream</text>
-    <text class="t-s" x="612" y="242">but the Project word is stretched</text>
+    <text class="t-b" x="248" y="224">Jargon: needs a line of help</text>
+    <text class="t-s" x="248" y="242">what is a coordinator</text>
+    <text class="mark minus" x="468" y="225">−</text>
+    <text class="t-b" x="488" y="224">Promises more than it does</text>
+    <text class="t-s" x="488" y="242">an entry the lab does not make</text>
+    <text class="mark minus" x="708" y="225">−</text>
+    <text class="t-b" x="728" y="224">Says little</text>
+    <text class="t-s" x="728" y="242">every session has a project row</text>
     <line class="row" x1="16" y1="250" x2="924" y2="250"/>
   </g>
 
   <g id="row-3">
     <text class="t-lbl" x="32" y="278">CHANGING IT LATER</text>
     <text class="mark tie" x="228" y="283">=</text>
-    <text class="t-b" x="248" y="282">A label, a README line, goal text</text>
+    <text class="t-b" x="248" y="282">A label, a line, goal text</text>
     <text class="t-s" x="248" y="300">no stored data names it</text>
-    <text class="mark tie" x="592" y="283">=</text>
-    <text class="t-b" x="612" y="282">The same</text>
-    <text class="t-s" x="612" y="300">no stored data names it</text>
+    <text class="mark tie" x="468" y="283">=</text>
+    <text class="t-b" x="488" y="282">The same</text>
+    <text class="t-s" x="488" y="300">no stored data names it</text>
+    <text class="mark tie" x="708" y="283">=</text>
+    <text class="t-b" x="728" y="282">The same</text>
+    <text class="t-s" x="728" y="300">no stored data names it</text>
     <line class="row" x1="16" y1="308" x2="924" y2="308"/>
   </g>
 
@@ -90,13 +101,13 @@
     <rect class="foot" x="16" y="324" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="345">LOCKS IN</text>
     <text class="t-b" x="32" y="365">A word the README, dialog and goals repeat</text>
-    <text class="t-s" x="32" y="383">B's spec writes it once, as one constant</text>
+    <text class="t-s" x="32" y="383">FIX-2594's spec writes it once, as one constant</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="324" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="345">FLIPS IF</text>
-    <text class="t-b" x="494" y="365">People using both apps expect one list</text>
-    <text class="t-s" x="494" y="383">then the lab shows real workstreams, or another word</text>
+    <text class="t-b" x="494" y="365">People want the lab to list workstreams</text>
+    <text class="t-s" x="494" y="383">then real workstreams, or that word</text>
   </g>
 </svg>
