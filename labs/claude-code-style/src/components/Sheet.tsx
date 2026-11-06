@@ -111,7 +111,7 @@ export function Sheet({ label, title, meta, subtitle, toolbar, onClose, feed: sh
           {children}
           <JumpToLatestButton feed={feed} />
         </div>
-        {footer ? <footer className="shrink-0 border-t border-border px-5 py-3">{footer}</footer> : null}
+        {footer ? <footer className="max-h-[70%] shrink-0 overflow-y-auto border-t border-border px-5 py-3">{footer}</footer> : null}
       </section>
     </div>,
     host,

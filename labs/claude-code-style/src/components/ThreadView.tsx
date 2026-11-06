@@ -116,7 +116,12 @@ export function ThreadView({
               <span className="font-semibold">Waiting on you</span> · {question.prompt}
             </div>
           ) : null}
-          {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
+          {/* A long review scrolls here, so the feed above and the Resolve box below stay on screen. */}
+          {column === "review" ? (
+            <div className="max-h-[40vh] min-h-0 overflow-y-auto">
+              <ReviewCard task={task} review={work?.review} />
+            </div>
+          ) : null}
           {finished ? (
             <p role="note" className="text-xs text-muted-foreground">
               This task is finished.
