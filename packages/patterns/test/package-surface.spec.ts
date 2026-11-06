@@ -16,7 +16,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { fsReader, type Reader } from "../../../scripts/mechanism-exports.mjs";
+import { fsReader, packageEntryExports, type Reader } from "../../../scripts/mechanism-exports.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
@@ -32,6 +32,10 @@ interface RootReport {
 // Untyped script; the specifier is computed so the import is not resolved at typecheck.
 const checkScript = pathToFileURL(path.join(repoRoot, "scripts/check-root-exports.mjs")).href;
 const { rootReport } = (await import(checkScript)) as { rootReport: (read: Reader) => RootReport };
+const censusScript = pathToFileURL(path.join(repoRoot, "scripts/import-census.mjs")).href;
+const { importCensus } = (await import(censusScript)) as {
+  importCensus: (read: Reader) => { uses: Map<string, Map<string, Set<string>>> };
+};
 
 /** Root names the export check fails, outside the benchmark entry, reading through `read`. */
 function failingRootNames(read: Reader): string[] {
@@ -69,6 +73,24 @@ describe("patterns package surface", () => {
         `used signature reaching them:\n${failing.join("\n")}\n\n` +
         `Export the name from its pattern's subpath only (drop it from src/index.ts), or stop ` +
         `exporting it if nothing reads it.`
+    ).toEqual([]);
+  }, CENSUS_TIMEOUT_MS);
+
+  it("the root keeps every name an app or docs page imports from it", () => {
+    // The other half of the rule: a name leaves the root only when nothing outside our
+    // packages imports it there. Reads the same census the export check reads.
+    const read = fsReader(repoRoot);
+    const root = packageEntryExports(read).get(PKG)?.get(".");
+    if (!root) throw new Error(`${PKG} lost its "." entry`);
+    const imported = importCensus(read).uses.get(PKG) ?? new Map<string, Set<string>>();
+    const missing = [...imported]
+      .filter(([name]) => !root.has(name))
+      .map(([name, areas]) => `${name} (${[...areas].join(", ")})`)
+      .sort();
+    expect(
+      missing,
+      `These names are imported from the ${PKG} root by an app or docs page, but the root ` +
+        `doesn't export them:\n${missing.join("\n")}`
     ).toEqual([]);
   }, CENSUS_TIMEOUT_MS);
 

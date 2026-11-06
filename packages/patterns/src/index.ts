@@ -15,7 +15,13 @@ export {
   planAndExecuteInputSchema,
   iterationOutputSchema,
   evaluatePlanProgress,
+  createTaskEvaluator,
+  createLLMEvaluator,
+  createCaptureAndPlan,
+  createApplyReplan,
   createSynthesize,
+  createBuildPlanOutput,
+  normalizeOutputStatus,
 } from "./plan-and-execute";
 
 export type {
@@ -34,6 +40,7 @@ export {
   reviewerInputSchema,
   plannerOutputSchema,
   buildReviewedWorker,
+  createCaptureAndPlan as createSupervisorCaptureAndPlan,
   createSynthesize as createSupervisorSynthesize,
   createLabelFailedReviews,
 } from "./supervisor";
