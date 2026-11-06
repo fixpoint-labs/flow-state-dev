@@ -11,7 +11,7 @@ import { Avatar } from "./Avatar";
 import { Composer } from "./Composer";
 import { ContextStrip } from "./ContextStrip";
 import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
-import { JumpToLatestButton } from "./JumpToLatest";
+import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { answerIn, type Popup } from "./Popups";
@@ -242,7 +242,7 @@ export function Conversation({
             </div>
           ))}
         </div>
-        <JumpToLatestButton feed={feed} />
+        <ConversationScrollButton feed={feed} className="size-8" />
       </div>
       <Composer sessionId={sessionId} workerName={worker.name} running={running} seed={seed} onSend={(text) => {
           // Your own line takes you to the end, wherever you had scrolled to.

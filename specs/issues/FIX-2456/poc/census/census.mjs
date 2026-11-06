@@ -12,6 +12,10 @@
  *   node specs/issues/FIX-2456/poc/census/census.mjs --plant   # negative control for totality: must exit 1
  *   node specs/issues/FIX-2456/poc/census/census.mjs --after   # the end state: must exit 1 on today's main
  *
+ * A docs page or README that imports a moved name is cleared by a pending changeset whose
+ * `Docs:` line lists it (docs are written at release from that line), as in
+ * `scripts/check-root-exports.mjs`.
+ *
  * Retained design evidence, not production code. Not run by CI.
  */
 import { execFileSync } from "node:child_process";
@@ -77,8 +81,27 @@ for (const f of tracked.map((p) => ({ path: p, text: readFileSync(join(repo, p),
   }
 }
 
+// A docs page or README is written at release from the changesets (docs/contributing/release-docs.md),
+// so a pending changeset whose `Docs:` line lists the file, and which names the new path and each
+// moved name the file imports, is that file's line: the same rule as `scripts/check-root-exports.mjs`.
+const pendingDocs = new Map();
+for (const p of execFileSync("git", ["ls-files", ".changeset"], { cwd: repo, encoding: "utf8" }).split("\n").filter((p) => /^\.changeset\/[^/]+\.md$/.test(p) && !p.endsWith("/README.md"))) {
+  const text = read(p);
+  for (const [, line] of text.matchAll(/^Docs:(.*)$/gm)) {
+    for (const [doc] of line.matchAll(/(?:packages\/[^/\s,()]+\/README\.md|apps\/docs\/[^\s,()]+\.mdx?)/g)) {
+      pendingDocs.set(doc, (pendingDocs.get(doc) ?? "") + "\n" + text);
+    }
+  }
+}
+const docsPending = (entry) => {
+  const [path, names] = entry.split(": ");
+  const text = pendingDocs.get(path);
+  return text != null && text.includes("@flow-state-dev/react/workforce") && names.split(", ").every((n) => new RegExp(`\\b${n}\\b`).test(text));
+};
+const changesetCleared = [...new Set(importers)].filter(docsPending);
+
 for (const [k, v] of Object.entries(table)) console.log(`${k} (${v.length})\n${v.map((p) => `  ${p}`).join("\n")}`);
-console.log(`importers of moved panel names from the react root (${new Set(importers).size})\n${[...new Set(importers)].map((p) => `  ${p}`).join("\n")}`);
+console.log(`importers of moved panel names from the react root (${new Set(importers).size})\n${[...new Set(importers)].map((p) => `  ${p}${changesetCleared.includes(p) ? "  [a pending changeset's Docs: line moves it]" : ""}`).join("\n")}`);
 if (process.argv.includes("--after")) {
   // The end state this spec promises. Each line names what is still there.
   const left = [
@@ -87,7 +110,7 @@ if (process.argv.includes("--after")) {
     ...table["ScrollOnNewRequest call site"].map((p) => `ScrollOnNewRequest call site: ${p}`),
     ...(/\bScrollOnNewRequest\b|scrollHeight - el\.scrollTop - el\.clientHeight/.test(registryText) ? [`registry keeps its own rule: ${REGISTRY}`] : []),
     ...(/useJumpToLatest/.test(registryText) ? [] : [`registry Conversation is not on useJumpToLatest: ${REGISTRY}`]),
-    ...[...new Set(importers)].map((p) => `moved name imported from the react root: ${p}`),
+    ...[...new Set(importers)].filter((p) => !changesetCleared.includes(p)).map((p) => `moved name imported from the react root: ${p}`),
     // The root itself: a moved name is gone, or (Q1's alias option) carries @deprecated naming the subpath.
     ...MOVED.filter((n) => new RegExp(`\\b${n}\\b`).test(rootText) && !/@deprecated[^*]*react\/workforce/.test(rootText)).map((n) => `still a plain react root export: ${n}`),
     // The registry composer sends by the one rule.
