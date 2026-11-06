@@ -518,7 +518,7 @@ function PanelContent({ className }: { className?: string }) {
   // one report at a time:
   //
   // - `sendAction`          → `handleSendAction`   — refreshed.
-  // - `resumeSuspension`    → `handleResumed`      — refreshed.
+  // - `answerSuspension`    → `handleResumed`      — refreshed.
   // - `continueRequest`     → `handleContinue`     — refreshed.
   // - `resumeLatestRequest` → NO EQUIVALENT. The top-level Resume button was
   //   removed in FIX-865 as a strictly narrower case of the per-row Continue
@@ -687,7 +687,7 @@ function PanelContent({ className }: { className?: string }) {
       // the stream's connect effect won't re-run on the id alone.
       setStreamReconnectToken((t) => t + 1);
       void refreshRequests();
-      // `resumeSuspension` on the contract's list of work-starting calls: a
+      // `answerSuspension` on the contract's list of work-starting calls: a
       // resumed run can reach a board and file background work, so the axis has
       // to advance here too.
       //

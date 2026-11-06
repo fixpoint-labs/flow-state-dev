@@ -3,8 +3,8 @@
  *
  * A test hands in the mocks it asserts on, named after the client's own
  * surface (`sessions.state`, `flow.send`, `request.continue`, …), and mocks
- * `createClient` to return `fakeClient(parts)`. A send, continue or resume
- * made with `stream: true` reaches its mock without the flag, so a test
+ * `createClient` to return `fakeClient(parts)`. A send, continue, resume or
+ * answer made with `stream: true` reaches its mock without the flag, so a test
  * asserts on what the hook asked for. The streams a hook opens are handed to
  * (`request.continue` alone gets its options as given, so a test tells a
  * streaming continue from a JSON one.) The streams a hook opens are handed to
@@ -30,7 +30,7 @@ export type FakeClientParts = {
   /** Flow-level calls; `send` gets `(action, input, options)` without `stream`, `abort` gets the request id. */
   flow?: Partial<Record<"send" | "abort" | "createSession" | "read", AnyFn>>;
   /** Request-level calls, each given the request id first (and the flow address last). */
-  request?: Partial<Record<"status" | "continue" | "retry" | "resume", AnyFn>>;
+  request?: Partial<Record<"status" | "continue" | "retry" | "resume" | "answer", AnyFn>>;
   resources?: Partial<Client["resources"]>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each test types its own capture
   requestStream?: (options: RequestStreamOptions & { url: string } & Record<string, any>) => RequestStreamHandle;
@@ -69,7 +69,10 @@ export function fakeClient(parts: FakeClientParts): Client {
         const result = await call(parts.request?.resume, "request.resume", id, body);
         return options?.stream === true ? result : handle(flow, (result as { requestId: string }).requestId);
       }) as RequestHandle["resume"],
-      answer: async () => missing("request.answer"),
+      answer: (async (body: unknown, options?: { stream?: boolean }) => {
+        const result = await call(parts.request?.answer, "request.answer", id, body);
+        return options?.stream === true ? result : self;
+      }) as RequestHandle["answer"],
       stream: (options) =>
         parts.requestStream?.({
           url: `/api/flows/${encodeURIComponent(flow)}/requests/${encodeURIComponent(id)}/stream${

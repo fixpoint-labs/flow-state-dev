@@ -991,7 +991,7 @@ function ChatPanel({
     // Bridge the session's streaming resume to the inline approval cards
     // (the ui Approval renderer) so approving/rejecting a suspension streams the
     // continuation into the chat live, without a page refresh.
-    <SuspensionResolverProvider resolve={session.resumeSuspension}>
+    <SuspensionResolverProvider resolve={session.answerSuspension}>
     <FailedTurnRetryProvider value={retryFor}>
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <Conversation className="min-h-0 flex-1" data-testid="conversation" feed={feed}>
