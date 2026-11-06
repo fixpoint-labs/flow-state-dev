@@ -3,7 +3,7 @@
  * `code` so hosts and the orchestrator can branch on the failure class without
  * string-matching messages, mirroring the CLI path's error-class style.
  */
-import type { ClassifiedHarnessError, HarnessFailureKind } from "@flow-state-dev/core/types";
+import type { ClassifiedHarnessError, HarnessFailureKind } from "@flow-state-dev/core/harness";
 
 /**
  * The optional `@anthropic-ai/claude-agent-sdk` peer dependency is not

@@ -12,7 +12,7 @@
  * Shift Manager's `test/run.test.ts` against a running Lab.
  */
 import type { CollectionListPage, ResourceManifest } from "@flow-state-dev/client";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, OBSERVED_PULL_REQUESTS } from "@flow-state-dev/core/types";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, OBSERVED_PULL_REQUESTS } from "@flow-state-dev/core/harness";
 import { describe, expect, it } from "vitest";
 import { readRecordedWork, type RecordedWorkClient } from "../src/browser";
 

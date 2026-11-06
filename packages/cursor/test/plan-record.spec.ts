@@ -21,7 +21,7 @@ import {
   observedPlanCollection,
   observedPlanItemStateSchema,
   observedPlanListCollection,
-} from "@flow-state-dev/core";
+} from "@flow-state-dev/core/harness";
 import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import { TESTED_SDK_VERSION, type CursorSdkMessage, type ResolvedCursorClient } from "../src/types";
 import { WHOLE_LIST, todosFailed, todosRunning, todosSettled, type WireTodo } from "./fixtures/update-todos";

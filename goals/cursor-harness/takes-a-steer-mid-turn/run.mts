@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, createInMemoryStores, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { cursorAgent } from "@flow-state-dev/cursor";
 import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder } from "@flow-state-dev/harness-manager";

@@ -17,15 +17,15 @@ import {
   onRequestEnded,
   readRequestSpend,
   readRequestTotalSpend,
-  reportHarnessSpend,
   type FlowInstance,
   type GeneratorModel,
   type GeneratorModelCallOptions,
   type GeneratorModelResult,
   type GeneratorModelResultPayload,
   type RequestEnding,
-  type SuspensionRecord
+  type SuspensionRecord,
 } from "@flow-state-dev/core/types";
+import { reportHarnessSpend } from "@flow-state-dev/core/harness";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";

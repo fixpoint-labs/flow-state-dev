@@ -20,7 +20,7 @@
  * `tsconfig.test-d.json` compiles every `.test-d.ts` file in this package's
  * `test` directory, and the `typecheck` script runs it after the `src` pass.
  */
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { claudeCodeAgent } from "../src/sdk/agent";
 
 const agent = claudeCodeAgent({

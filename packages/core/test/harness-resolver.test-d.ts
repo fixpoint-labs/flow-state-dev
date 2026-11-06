@@ -22,7 +22,7 @@ import type {
   HarnessResolver,
   HarnessRunInput,
   HarnessSessionHook,
-} from "../src/types";
+} from "../src/harness";
 
 /** Scope state a harness's host never declared reads `unknown`, not `any`. */
 export const scopeStateIsUnknown: HarnessResolver<string> = (ctx) => {

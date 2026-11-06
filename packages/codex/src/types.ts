@@ -19,8 +19,9 @@
  * fields (tenet 4).
  */
 import { z } from "zod";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
-import type { BlockContext, HarnessRunHandle } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { HarnessRunHandle } from "@flow-state-dev/core/harness";
 
 /**
  * This harness's `<package>/<door>` name — the convention every writer of a
@@ -217,7 +218,7 @@ export interface CodexThreadOptions {
  * Leave `env` unset and the CLI process inherits the server's **entire**
  * `process.env`, every secret in it included. Setting it REPLACES that
  * environment rather than adding to it — the SDK's own rule. To pass only
- * named variables, use `harnessEnv` from `@flow-state-dev/core`, exactly as
+ * named variables, use `harnessEnv` from `@flow-state-dev/core/harness`, exactly as
  * for the Claude Code adapter's `env`.
  */
 export interface CodexClientOptions {

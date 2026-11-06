@@ -32,7 +32,7 @@
  */
 
 import type { LooseBlockContext } from "@flow-state-dev/core";
-import type { HarnessCallbackContext } from "@flow-state-dev/core/types";
+import type { HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import {
   createMcpManager,
   redactSecrets,

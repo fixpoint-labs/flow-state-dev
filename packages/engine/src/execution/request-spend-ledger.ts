@@ -23,7 +23,8 @@
 import { cacheTokensOf } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
-import type { GeneratorModelResultPayload, HarnessRunSpend, ModelUsageEntry, RequestSpend } from "@flow-state-dev/core/types";
+import type { GeneratorModelResultPayload, ModelUsageEntry, RequestSpend } from "@flow-state-dev/core/types";
+import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { storeIdentity } from "../bus/publish-writes";
 
 /** One request's ledger. */

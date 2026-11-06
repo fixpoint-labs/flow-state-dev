@@ -14,7 +14,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { testBlock } from "@flow-state-dev/testing";
-import { harnessEnv } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import { claudeCodeAgent } from "../../src/sdk/agent";
 import type { ClaudeAgentQuery, ResolveClaudeAgent } from "../../src/sdk/types";
 

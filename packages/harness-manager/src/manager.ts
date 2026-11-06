@@ -33,25 +33,23 @@
 import { existsSync } from "node:fs";
 import { setTimeout as sleepFor } from "node:timers/promises";
 import {
-  OBSERVED_PULL_REQUESTS,
   SuspensionTimeoutError,
   defineCapability,
   handler,
-  observedPullRequestsCollection,
-  pullRequestRefFromUrl,
   sequencer,
-  writePullRequests,
-  type PullRequestCollection,
   type DefinedCapability,
   type PresetDef,
   type UsesSlot,
 } from "@flow-state-dev/core";
-import type { HarnessRunOutcome } from "@flow-state-dev/core/types";
-import { withTimeout } from "@flow-state-dev/core/helpers";
+import {
+  OBSERVED_PULL_REQUESTS,
+  observedPullRequestsCollection,
+  pullRequestRefFromUrl,
+  writePullRequests,
+  type PullRequestCollection,
+} from "@flow-state-dev/core/harness";
 import type {
-  BlockContext,
-  BlockDefinition,
-  DeclaredResourceEntry,
+  HarnessRunOutcome,
   HarnessActivityHook,
   HarnessBlock,
   HarnessResolver,
@@ -59,7 +57,9 @@ import type {
   HarnessSteer,
   HarnessSteerHook,
   HarnessUsageHook,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/harness";
+import { withTimeout } from "@flow-state-dev/core/helpers";
+import type { BlockContext, BlockDefinition, DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import {
   renderSteers,
   showTakenSteers,

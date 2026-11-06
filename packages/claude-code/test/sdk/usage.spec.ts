@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
-import type { HarnessUsageReport } from "@flow-state-dev/core/types";
+import type { HarnessUsageReport } from "@flow-state-dev/core/harness";
 import { claudeCodeAgent } from "../../src/sdk/agent";
 import { readClaudeUsage, usageWindowOf } from "../../src/sdk/usage";
 import type { SdkMessageLike } from "../../src/sdk/types";

@@ -22,16 +22,16 @@
  * dispatches the block.
  */
 import { randomUUID } from "node:crypto";
+import { handler } from "@flow-state-dev/core";
 import {
   OBSERVED_PULL_REQUESTS,
   formatRunDuration,
-  handler,
   harnessRunInputSchema,
   observedPullRequestsCollection,
   recordPullRequests as startPullRequestRecorder,
   reportHarnessActivity,
-} from "@flow-state-dev/core";
-import { reportHarnessSpend } from "@flow-state-dev/core/types";
+  reportHarnessSpend,
+} from "@flow-state-dev/core/harness";
 import type {
   HarnessActivityHook,
   HarnessBilling,
@@ -39,7 +39,7 @@ import type {
   HarnessResolver,
   HarnessRunOutcome,
   HarnessSessionHook,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/harness";
 import type { UsesSlot } from "@flow-state-dev/core";
 import {
   assertTestedSdkVersion,

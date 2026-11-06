@@ -16,7 +16,7 @@
  * `tsconfig.test-d.json` compiles every `.test-d.ts` file here, and the
  * `typecheck` script runs it after the `src` pass.
  */
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 
 const agent = cursorAgent({

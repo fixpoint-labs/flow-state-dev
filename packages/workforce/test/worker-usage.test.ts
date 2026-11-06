@@ -11,7 +11,8 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
-import { reportHarnessSpend, type FlowInstance, type HarnessRunSpend } from "@flow-state-dev/core/types";
+import type { FlowInstance } from "@flow-state-dev/core/types";
+import { reportHarnessSpend, type HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { abortRequest, createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { workerConfigSchema } from "../src/worker-config";

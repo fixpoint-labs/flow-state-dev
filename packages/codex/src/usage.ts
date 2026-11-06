@@ -22,7 +22,7 @@
  * number. Signed out and API key are told apart by `account/read`, never by
  * an error's wording.
  */
-import type { HarnessUsageReading, HarnessUsageWindow } from "@flow-state-dev/core/types";
+import type { HarnessUsageReading, HarnessUsageWindow } from "@flow-state-dev/core/harness";
 import { ReadStopped, startAppServer } from "./app-server";
 import { createDefaultResolveCodexClient, type CodexSdkImporter } from "./codex-client";
 

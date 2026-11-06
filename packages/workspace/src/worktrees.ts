@@ -21,7 +21,8 @@
  * page still shows where the work was.
  */
 import { createHash } from "node:crypto";
-import { defineResourceCollection, planKeySegment } from "@flow-state-dev/core";
+import { defineResourceCollection } from "@flow-state-dev/core";
+import { planKeySegment } from "@flow-state-dev/core/harness";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 

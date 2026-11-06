@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createTestContext, testBlock } from "@flow-state-dev/testing";
-import { harnessEnv, harnessFailureKind } from "@flow-state-dev/core";
+import { harnessEnv, harnessFailureKind } from "@flow-state-dev/core/harness";
 import {
   cursorAgent,
   INTERNAL_CHILD_SDK_MODULE,
