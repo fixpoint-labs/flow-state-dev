@@ -128,7 +128,8 @@ Skipped in this spec: the epic-agent runs `analysis` and `reuse-review` over the
   its two plants, and the BP-030 and BP-034 rewrites are dropped. Kept: deleting the census's 19.
   Added under D4: the ten published names' refusals go too, with the one stored-shape reader
   raised under the guard. FIX-2564 drops two of this issue's three cells; FIX-2452 and FIX-2459
-  no longer wait on it.
+  no longer wait on it. On review (Gitar), the goal check widened to match: a census `--after`
+  pass over the 19, the published names' refusal sites and both helpers, failing on today's `main`.
 - **Set review (Nov 5)** — ownership and expiry extend the vocabulary sweep, not a new
   scanner; `contracts/internal` listed with call 6's completions line; D2's floor covers a Q1
   alias, and BP-034 says so; leg b's three cells and the 19 as their scope; blocks only

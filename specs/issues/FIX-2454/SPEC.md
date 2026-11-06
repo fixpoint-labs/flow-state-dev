@@ -31,7 +31,7 @@ changeset names each replacement.**
 | **The real need** | The epic's *Shims* row, and the owner's call that this epic carries no backward-compat code ([D4](../../epics/FIX-2447/DECISIONS.md#d4)) |
 | **Smaller, and rejected** | "Delete the issue's three shims." The census found 16 more of the same kind |
 | **Bigger, and not this issue's** | Code elsewhere that supports older versions: each child streamlines its own under D4 |
-| **Not done if** | An installed tarball reads or refuses one of the census's 19 · this issue adds a retired table, a refusal, a removal version or a reader of an old shape · a reader of a stored record is deleted without the guard below asked first |
+| **Not done if** | An installed tarball reads or refuses one of the census's 19 · a published name's refusal, `refuseRetiredDispatcherOption` or `rejectRemovedMiddleware` is still in source · this issue adds a retired table, a refusal, a removal version or a reader of an old shape · a reader of a stored record is deleted without the guard below asked first |
 
 ```mermaid
 flowchart LR
@@ -39,16 +39,21 @@ flowchart LR
   B -->|"reads none · refuses none"| P["PASS · shims.never-published flips"]
   C["run.mjs --control=adopter-goal · main at ebec5326 · 0.4.0 tarballs"] -.-> B
   B -.->|"under the control"| F["must FAIL · retired-shapes reads them"]
+  W["workspace src"] --> A["census --after · the 19 · the published names' refusals · both helpers"]
+  A -->|"finds none"| P2["PASS · nothing left in source"]
+  M["today's main"] -.-> A
+  A -.->|"under the control"| F2["must FAIL · finds every site"]
 ```
 
-The leg proves it in an adopter's install, where the shims would ship.
+The leg proves the 19 in an adopter's install, where the shims would ship. The census re-run
+proves the rest in source, where the published names' refusals and the two helpers live.
 
 | How we verify | |
 |---|---|
-| **Goal check** | FIX-2564's `shims.never-published` cell (leg b), scoped to the [census](poc/retired-census/census.mjs)'s 19, flipped to `expect: pass`. The implementer runs `run.mjs --goal` at completion |
-| **Signal** | On installed tarballs, none of the 19 reads or refuses, e.g. `questions`, `keptOpenBy: "wait"`/`"queued"`. The census, re-run, finds none of the 19 in source |
-| **Anti-game** | Leg b reads installed tarballs, never `src`. The census sized the 19 from published `dist/`, not changelogs |
-| **Control that must fail** | `run.mjs --control=adopter-goal` (`main` at `ebec5326`, the 0.4.0 tarballs, orchestration 0.5.0): its `retired-shapes` still reads them |
+| **Goal check** | (1) FIX-2564's `shims.never-published` cell (leg b), scoped to the [census](poc/retired-census/census.mjs)'s 19, flipped to `expect: pass`. (2) The census re-run in an `--after` mode the implementer adds: at every entry's `sites` in `packages/*/src`, the 19 and the published names' alike, its totality scan finds no refusal-shaped or reader line, and the names `refuseRetiredDispatcherOption` and `rejectRemovedMiddleware` appear nowhere. It reads the refusal shape, not a site's marker string, so an unrelated use of a word like `dispatcher` doesn't count. The implementer runs `run.mjs --goal` and `census.mjs --after` at completion; verdict in the implementation PR |
+| **Signal** | On installed tarballs, none of the 19 reads or refuses, e.g. `questions`, `keptOpenBy: "wait"`/`"queued"`. In source, the census finds none of the 19, none of the published names' refusal sites (`dispatcher`, `onReview`, `agents`/`catalog`, `announce`, the scheduled idempotency keys, the `"sequencer"` backing, the gateway model form, SKILL.md's `agents:`) and neither helper. Two entries sit outside this count: `human-reasons`, which has no refusal site and is with the owner, and `row-blocked`, which counts as absent, or as kept when the guard's ruling to keep it is linked on the PR |
+| **Anti-game** | Leg b reads installed tarballs, never `src`. The census sized the 19 from published `dist/`, not changelogs. `--after` reads the census's own entry list and its totality scan of refusal-shaped lines, never a list written in the same diff, so a refusal moved to a new file is still found |
+| **Control that must fail** | (1) `run.mjs --control=adopter-goal` (`main` at `ebec5326`, the 0.4.0 tarballs, orchestration 0.5.0): its `retired-shapes` still reads them. (2) `census.mjs --after` on today's `main`: it must FAIL, finding every listed site and both helpers |
 
 ## What changes
 
