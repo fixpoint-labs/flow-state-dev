@@ -41,13 +41,12 @@ Everything below is that one distinction, propagated.
 ```mermaid
 flowchart TD
   O["docs/objectives.md<br/><b>project objective</b><br/>X → Y by when · lead measure"]
-  C{"at most<br/><b>2 epics</b> at once"}
   E["epic-spec §1<br/><b>five lines</b> under epic-pm<br/>Outcome · Proof · <b>Lead</b> · Not doing · Kill"]
   S["the epic report<br/><b>lead measure</b><br/>are we winning?"]
   R["<b>Account → Review → Plan</b><br/>checked next turn"]
   P["plan-day<br/>Account · ⭑ objective mark"]
 
-  O --> C --> E --> S --> R
+  O --> E --> S --> R
   O -.->|"⭑ marks which tasks serve it"| P
   R -.->|"next Account checks<br/>this Plan"| R
   S -.->|"rows at DONE,<br/>off the status table"| S
@@ -69,7 +68,6 @@ ten places is corrected in none, and `stale-restatement` is a live recurring cla
 | The rule | Owned by |
 |---|---|
 | The project objective, its finish line and its lead measure | [`docs/objectives.md`](../objectives.md) |
-| At most two epics at once; the cap is on objectives, not work items | [`orchestration.md`](../contributing/orchestration.md) → "How many epics run at once" |
 | The epic objective's five lines, incl. what a lead measure must be | [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md) → "The objective is five lines" |
 | The running index (audit log, no scoreboard) | [`epic-spec-template.md`](../contributing/epic-spec-template.md) → §4 |
 | Account → Review → Plan | [`epic-em`](../../.agents/skills/epic-em/SKILL.md) — `epic-pm` inherits it and adds the cut line |
@@ -77,15 +75,9 @@ ten places is corrected in none, and `stale-restatement` is a live recurring cla
 
 ---
 
-## Three design calls worth knowing
+## Two design calls worth knowing
 
-**1. The cap is on objectives, not throughput.** This is the most misreadable piece. Eight
-issues running in parallel under one epic is *one* objective with throughput and is untouched;
-four epics under four objectives is the violation. A human team caps at one or two goals because
-attention splits — ours run in isolated worktrees and cost each other nothing, so `plan-day`
-keeps its ceiling of 8 and the cap lives on epics instead.
-
-**2. The measure lives where live state lives — not in a document.** A number a human or an
+**1. The measure lives where live state lives — not in a document.** A number a human or an
 agent has to remember to refresh is a number that will be wrong, and a stale one is worse than
 none because it reads as evidence. An earlier draft put a scoreboard in the epic-spec's §4; it
 had no refresh trigger (`foldEpicWanted` fires on epic-PR activity, never on child progress),
@@ -94,7 +86,7 @@ branch, can't see `.orchestration/`, and isn't woken by the thing being measured
 measure moved to the **epic report**, which the coordinator writes from its own status table,
 and §4 went back to being a pure audit log.
 
-**3. The lead measure is a named list, not a ratio.** *Goal proven — FIX-775, FIX-776. To go —
+**2. The lead measure is a named list, not a ratio.** *Goal proven — FIX-775, FIX-776. To go —
 FIX-777.* Four separate review findings landed on the ratio version, each about the denominator
 — exempt rows, cancelled rows, dropped rows, a custom §1 measure — because every ratio over a
 heterogeneous set needs a policy per exception. A list has no denominator, so it has no
