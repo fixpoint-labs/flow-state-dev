@@ -10,6 +10,7 @@ import { LandedOutcome, ReviewHold, type ReviewAnswer } from "./flow-state/revie
 import { Spend } from "./flow-state/spend";
 import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
+import type { TaskSignalKind } from "./flow-state/task-signals";
 import { workingStatus } from "./flow-state/working-status";
 import { SessionPopup, Steps } from "./SessionPopup";
 
@@ -24,6 +25,34 @@ const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1
 /** A task's line, the same in the thread and on the popup: a coding task, or what was asked of whom. */
 export function taskLine(task: { title: string; to: string }, coding: boolean, nameOf: (id: string) => string): string {
   return coding ? `Coding task: ${task.title}` : `Asked ${nameOf(task.to)} to ${lowerFirst(task.title)}`;
+}
+
+/** A task's word and the class that colours it. */
+export interface TaskRowPresentation {
+  word: string;
+  tone: string;
+}
+
+/**
+ * How a task stands, in one word and one colour, for every place the lab
+ * draws a task: its row in the teammate's panel, its line in the
+ * conversation (`TaskCard`), its popup and the worker's status line. One
+ * reader beside `taskLine`, so they never disagree. A task that waits on you
+ * says so in the attention colour (a person must act); a run that stopped
+ * answering (its time signal reads *quiet*) is in the warning colour; a
+ * failed one is red; the rest are quiet.
+ */
+export function taskRowPresentation(task: Pick<BoardTask, "status" | "waiting">, signal?: TaskSignalKind): TaskRowPresentation {
+  if (task.status === "running" && task.waiting !== undefined) return { word: "waiting on you", tone: "text-attention" };
+  if (signal === "quiet") return { word: "quiet", tone: "text-warning" };
+  if (task.status === "failed") return { word: "failed", tone: "text-destructive" };
+  return { word: task.status, tone: "text-muted-foreground" };
+}
+
+/** A failed or cancelled task's reason, its first line only; the popup has the whole. */
+export function reasonLine(task: Pick<BoardTask, "error">): string | undefined {
+  const line = task.error?.split("\n").find((l) => l.trim() !== "")?.trim();
+  return line === "" ? undefined : line;
 }
 
 /** What a coding task runs on, as its line names it: the harness, and the model when its run reported one. */

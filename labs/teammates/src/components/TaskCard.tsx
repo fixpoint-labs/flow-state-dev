@@ -4,10 +4,10 @@ import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
 import { Spend } from "./flow-state/spend";
-import { RunsOn, runsOn, taskLabel, taskLine } from "./Popups";
+import { RunsOn, runsOn, taskLabel, taskLine, taskRowPresentation } from "./Popups";
 
 /** What a task's line draws: a board row's task, or a filed task's stand-in before its row is read. */
-export type TaskLine = Pick<BoardTask, "id" | "to" | "title" | "status" | "harness" | "model" | "spend" | "landed">;
+export type TaskLine = Pick<BoardTask, "id" | "to" | "title" | "status" | "harness" | "model" | "spend" | "landed" | "waiting">;
 
 /**
  * A task a conversation filed, as one line in the thread: what was asked of
@@ -30,6 +30,7 @@ export const TaskCard = memo(function TaskCard({
 }) {
   const line = taskLine(task, coding, nameOf);
   const on = coding ? runsOn(task) : undefined;
+  const state = taskRowPresentation(task);
   return (
     <button
       type="button"
@@ -55,8 +56,8 @@ export const TaskCard = memo(function TaskCard({
       )}
       {/* What its runs spent: tokens, and the charge when the vendor reported one. The tag above names the model. */}
       {coding && task.spend ? <Spend spend={{ ...task.spend, model: null }} className="w-auto shrink-0" /> : null}
-      <span className={cn("shrink-0 text-xs", task.status === "failed" ? "text-destructive" : "text-muted-foreground")} data-task-status>
-        {task.status}
+      <span className={cn("shrink-0 text-xs", state.tone)} data-task-status>
+        {state.word}
       </span>
     </button>
   );

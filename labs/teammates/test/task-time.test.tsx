@@ -65,7 +65,7 @@ describe("a teammate's task rows and their time", () => {
       listed("a", "in_progress", { updatedAt: now - 10_000, startedAt: now - (4 * MIN + 12_000), leaseUntil: now + 100_000 }),
       listed("b", "in_progress", { updatedAt: now - 40 * MIN, startedAt: now - 45 * MIN, leaseUntil: now - 38 * MIN }),
     ]);
-    expect(within(shown).getByText(/^Tasks · 2 running$/)).toBeTruthy();
+    expect(within(shown).getByText(/^Tasks \(2\) · 2 running$/)).toBeTruthy();
     expect(within(shown).getByText(/^working · 4m 1[23]s$/)).toBeTruthy();
     const quiet = within(shown).getByText("quiet for 40m");
     expect(quiet.className).toContain("text-warning");
@@ -88,7 +88,7 @@ describe("a teammate's task rows and their time", () => {
   it("says how long ago an ended task ended, after its status", () => {
     const now = Date.now();
     const shown = panel([listed("c", "completed", { updatedAt: now - 12 * MIN })]);
-    expect(within(shown).getByText(/^Tasks · 1 done$/)).toBeTruthy();
+    expect(within(shown).getByText(/^Tasks \(1\) · 1 done$/)).toBeTruthy();
     fireEvent.click(within(shown).getByRole("button", { name: /Done \(1\)/ }));
     expect(within(shown).getByText("12m ago").closest("[data-status]")?.textContent).toBe("done · 12m ago");
   });
