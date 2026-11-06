@@ -6,14 +6,14 @@
  * workforce records, so the panels went to a subpath named for who reads it.
  * These assertions hold that split from both sides: the subpath carries the
  * documented panel API and nothing more, the published manifest actually
- * serves it, and the root no longer pulls the panels in on its own. (The
- * deprecated root aliases, while Q1 keeps them, are held apart in
- * `workforce-root-aliases.test.ts` so removing them is one file.)
+ * serves it, and none of the 25 names 0.4.0 published on the root is there
+ * any more (the epic's Q1 was answered "break": no deprecated aliases).
  */
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as workforce from "../src/workforce";
+import * as root from "../src";
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
@@ -21,6 +21,15 @@ const manifest = JSON.parse(readFileSync(here("../package.json"), "utf8")) as {
   exports: Record<string, { types: string; default: string }>;
   publishConfig: { exports: Record<string, { types: string; default: string }> };
 };
+
+/** The 25 names 0.4.0 published on the root from the panels module. */
+const MOVED = [
+  "Roster", "BoardColumns", "BoardList", "WorkerDetail", "groupIntoColumns", "BOARD_STATUS_COLUMNS",
+  "rosterPropNames", "boardColumnsPropNames", "boardListPropNames",
+  "BoardCard", "BoardCardRow", "BoardColumn", "BoardColumnsProps", "BoardColumnsSlots",
+  "BoardListProps", "BoardListSlots", "BoardStatus", "PanelRowSource", "PanelItemSource",
+  "PanelLiveSource", "RosterProps", "RosterWorker", "RosterWorkerRow", "RosterSlots", "WorkerDetailProps"
+];
 
 describe("@flow-state-dev/react/workforce", () => {
   it("carries exactly the panel components and their helpers", () => {
@@ -45,10 +54,15 @@ describe("@flow-state-dev/react/workforce", () => {
     expect(existsSync(here("../src/workforce/index.ts"))).toBe(true);
   });
 
-  it("is no longer re-exported by the root's own export list", () => {
-    // The root reaches the panels only through the deprecated-alias module;
-    // a direct re-export would put them back in every chat app's autocomplete.
-    const root = readFileSync(here("../src/index.ts"), "utf8");
-    expect(root).not.toMatch(/from\s+["']\.\/components\/panels["']/);
+  it("leaves none of the 25 old names on the root", () => {
+    // A name left behind keeps the panels in every chat app's autocomplete.
+    // Runtime names are checked on the module itself; type-only names leave
+    // no runtime trace, so the root's source is read for every name too.
+    expect(MOVED).toHaveLength(25);
+    const runtime = Object.keys(root);
+    expect(MOVED.filter((name) => runtime.includes(name))).toEqual([]);
+    const source = readFileSync(here("../src/index.ts"), "utf8");
+    expect(MOVED.filter((name) => new RegExp(`\\b${name}\\b`).test(source))).toEqual([]);
+    expect(source).not.toMatch(/components\/panels|workforce/);
   });
 });

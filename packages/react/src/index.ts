@@ -155,13 +155,6 @@ export {
   type SessionRowState
 } from "./components/flow-navigator";
 
-// ---------------------------------------------------------------------------
-// Deprecated aliases: the workforce panels moved to
-// `@flow-state-dev/react/workforce`. Kept until the minor that removes every
-// alias; deleting this line and `./workforce-root-aliases.ts` is the removal.
-// ---------------------------------------------------------------------------
-export * from "./workforce-root-aliases";
-
 export {
   useReadFence,
   type ReadFence
