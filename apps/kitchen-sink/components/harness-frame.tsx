@@ -65,6 +65,10 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
 
   const [selected, setSelected] = useState<string | undefined>(undefined);
   const [picked, setPicked] = useState<string | null>(models.defaultId ?? models.models[0]?.id ?? null);
+  // The pick, checked against the list it is offered from: one the list no
+  // longer holds falls back to the default, so New session never sends an id
+  // the picker doesn't show.
+  const chosen = models.models.some((model) => model.id === picked) ? picked : (models.defaultId ?? models.models[0]?.id ?? null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The mode's sessions: the one read the list draws and the address's session
@@ -105,13 +109,13 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
   }, [rows, listError]);
 
   const handleNewSession = useCallback(async () => {
-    if (picked === null) return;
+    if (chosen === null) return;
     setCreating(true);
     setError(null);
     try {
       // Born with its model: the flow refuses a session that names none, and
       // no later write can change it.
-      const created = await client.flow(flowKind).createSession({ state: { model: picked } });
+      const created = await client.flow(flowKind).createSession({ state: { model: chosen } });
       // The rail hears the new session on the user's topic.
       open(created.id);
     } catch (cause) {
@@ -119,7 +123,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
     } finally {
       setCreating(false);
     }
-  }, [client, flowKind, open, picked]);
+  }, [client, flowKind, open, chosen]);
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-background sm:flex-row" data-testid="harness-frame">
@@ -140,7 +144,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
               Model
               <select
                 className="mt-1 block w-full rounded-md border bg-background px-2 py-1 text-sm text-foreground"
-                value={picked ?? ""}
+                value={chosen ?? ""}
                 onChange={(event) => setPicked(event.target.value)}
                 data-testid="model-picker"
               >
@@ -162,7 +166,7 @@ export function HarnessFrame({ label, flowKind, note, models, stream, client: ho
             size="sm"
             className="w-full gap-2"
             onClick={() => void handleNewSession()}
-            disabled={creating || picked === null}
+            disabled={creating || chosen === null}
             data-testid="new-session"
           >
             <Plus className="h-4 w-4" />
