@@ -2,13 +2,16 @@
  * Resolves a durable-execution suspension by approving or rejecting it
  * (FIX-141 operator UI).
  *
- * Wraps a request's `resume()` on the DevTool's client — transport lives in
- * the client, this hook only manages the in-flight / error UI state. The
- * owning instance and `requestId` come from the selected RECORD, so the resume
- * re-enters the exact copy that suspended — not the DevTool's synthetic
+ * Wraps the DevTool client's call for the stop: `answer()` for a user's stop
+ * (`isUserSuspension`), which answers it whatever started the run, a task's
+ * included; `resume()` for a developer's own custom-reason `ctx.suspend`.
+ * Transport lives in the client, this hook only manages the in-flight /
+ * error UI state. The owning instance and `requestId` come from the selected
+ * RECORD, so the answer re-enters the exact copy that suspended — not the DevTool's synthetic
  * `__devtool__` address, and not whichever copy of the kind is registered.
  */
 import { useCallback, useState } from "react";
+import { isUserSuspension } from "@flow-state-dev/core/types";
 /** The resumed run: the request that carries on (the suspended one, under its own id), and the one it carries on from. */
 export type ResumeSuspensionResult = { requestId: string; originalRequestId: string };
 import { useDevTool } from "../context/devtool-context";
@@ -18,9 +21,10 @@ export type ResumeArgs = {
   flowId: string;
   requestId: string;
   suspensionId: string;
+  /** The stop's reason, from the record: it picks the call that answers it. */
+  reason: string;
   action: "approve" | "reject";
   data?: unknown;
-  resumedBy?: string;
 };
 
 export type UseResumeSuspensionResult = {
@@ -45,12 +49,15 @@ export function useResumeSuspension(): UseResumeSuspensionResult {
       setError(null);
       try {
         // Addressed to the exact owning instance.
-        const resumed = await client.flow(args.flowId).request(args.requestId).resume({
+        const request = client.flow(args.flowId).request(args.requestId);
+        const body = {
           suspensionId: args.suspensionId,
           action: args.action,
-          data: args.data,
-          resumedBy: args.resumedBy
-        });
+          ...(args.data !== undefined ? { data: args.data } : {})
+        };
+        const resumed = isUserSuspension({ reason: args.reason })
+          ? await request.answer(body)
+          : await request.resume(body);
         return { requestId: resumed.id, originalRequestId: args.requestId };
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to resume");

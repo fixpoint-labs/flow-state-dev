@@ -29,7 +29,8 @@ const { sessionsMock, flowMock, requestMock } = vi.hoisted(() => ({
   requestMock: {
     continue: vi.fn(),
     retry: vi.fn(),
-    resume: vi.fn()
+    resume: vi.fn(),
+    answer: vi.fn()
   }
 }));
 
@@ -470,6 +471,8 @@ describe("useSession childSessions — every interaction path is classified (FIX
   const SIDE_CHAIN_STARTING = [
     "sendAction",
     "resumeLatestRequest",
+    "answerSuspension",
+    // The deprecated alias of answerSuspension: the same function.
     "resumeSuspension",
     "continueRequest"
   ];
@@ -501,6 +504,7 @@ describe("useSession childSessions — every interaction path is classified (FIX
     flowMock.send.mockResolvedValue(sseResponse());
     requestMock.continue.mockResolvedValue(sseResponse());
     requestMock.resume.mockResolvedValue(sseResponse());
+    requestMock.answer.mockResolvedValue(sseResponse());
     requestMock.retry.mockResolvedValue(sseResponse());
   });
 
@@ -535,6 +539,12 @@ describe("useSession childSessions — every interaction path is classified (FIX
     const drive: Record<string, () => Promise<unknown>> = {
       sendAction: () => result.current.sendAction("go", {}),
       resumeLatestRequest: () => result.current.resumeLatestRequest(),
+      answerSuspension: () =>
+        result.current.answerSuspension({
+          suspensionId: "susp1",
+          requestId: "req1",
+          action: "approve" as never
+        }),
       resumeSuspension: () =>
         result.current.resumeSuspension({
           suspensionId: "susp1",

@@ -202,7 +202,7 @@ function SessionBody({
         </div>
         <Conversation className="min-h-0 flex-1" data-testid="conversation">
           {/* An answer to a card goes through the session, so the turn it resumes streams in here. */}
-          <SuspensionResolverProvider resolve={session.resumeSuspension}>
+          <SuspensionResolverProvider resolve={session.answerSuspension}>
           <SessionItemsProvider value={session.items}>
             <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
               {session.isLoading ? (
