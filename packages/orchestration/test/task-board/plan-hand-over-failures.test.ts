@@ -100,8 +100,8 @@ vi.mock("../../src/tasks/collection/resource-backed", async (importOriginal) => 
   };
 });
 
-vi.mock("@flow-state-dev/core", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@flow-state-dev/core")>();
+vi.mock("@flow-state-dev/core/internal", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@flow-state-dev/core/internal")>();
   return {
     ...original,
     parkOnWait: (ctx: Parameters<typeof original.parkOnWait>[0], input: Parameters<typeof original.parkOnWait>[1]) =>

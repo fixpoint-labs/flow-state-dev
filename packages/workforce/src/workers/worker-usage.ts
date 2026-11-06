@@ -33,8 +33,9 @@
  */
 import { defineCapability, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import { addRequestSpendSource, requestSpendSources } from "@flow-state-dev/core/types";
-import type { BlockContext, RequestEndHook, RequestSpend, SessionRequestEndHook } from "@flow-state-dev/core/types";
+import { addRequestSpendSource, requestSpendSources } from "@flow-state-dev/core/internal";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { RequestEndHook, RequestSpend, SessionRequestEndHook } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { WORKER_ID_STATE_KEY } from "./keys";
 import type { WorkerInstallation, WorkerTurnContext } from "./installation";

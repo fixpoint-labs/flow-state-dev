@@ -6,7 +6,8 @@
  * leaves its task waiting on it, reads it without importing the session's
  * door (`./steer`), which reads the board.
  */
-import { dispatchThroughSeam, type BlockContext } from "@flow-state-dev/core/types";
+import { type BlockContext } from "@flow-state-dev/core/types";
+import { requestHostOf, dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import { STEER_TURN_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { STEER_TURN_ENTRY } from "./board-entries";
@@ -22,7 +23,7 @@ import { STEER_TURN_ENTRY } from "./board-entries";
 export async function startOwedSteerTurn(ctx: BlockContext, row: Task, flowKind?: string): Promise<void> {
   const sessionId = row.run?.sessionId;
   if (sessionId === undefined) return;
-  const wakes = ctx.requestHost?.wakes;
+  const wakes = requestHostOf(ctx)?.wakes;
   try {
     await wakes?.owe({ entry: STEER_TURN_ENTRY, dueAt: Date.now() + STEER_TURN_DUE_MS, sessionId });
   } catch (error) {

@@ -10,7 +10,7 @@
  * still owed.
  */
 import { defineFlow, handler, sequencer, DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { onRequestEnded } from "@flow-state-dev/core/types";
+import { onRequestEnded } from "@flow-state-dev/core/internal";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createFlowState, disposeFlowApiRouter, inMemoryStores, runAction } from "../src";

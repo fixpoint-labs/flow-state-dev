@@ -21,7 +21,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";

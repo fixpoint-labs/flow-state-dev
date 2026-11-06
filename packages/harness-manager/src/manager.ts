@@ -181,6 +181,7 @@ import {
   type OwnershipBounds,
   type WorkspaceConfig,
 } from "./workspace";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** What a phase's prompt builder and done-condition are handed. */
 export interface PhaseRunContext {
@@ -2360,7 +2361,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // before any coding run: a run whose changes it couldn't hold for review
       // would otherwise be spent, or completed unreviewed. A host with durable
       // execution offers `resumeWait`; one without leaves it absent.
-      if (reviewChanges && ctx.requestHost?.resumeWait === undefined) {
+      if (reviewChanges && requestHostOf(ctx)?.resumeWait === undefined) {
         throw runRefused(
           ctx,
           `[harness-manager] this manager reviews a run's changes (\`reviewChanges\`), which waits for ` +
@@ -2369,7 +2370,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         );
       }
       // **Nor can an approval** (FIX-2389): a held call waits for a person the same way.
-      if (approveTools && ctx.requestHost?.resumeWait === undefined) {
+      if (approveTools && requestHostOf(ctx)?.resumeWait === undefined) {
         throw runRefused(
           ctx,
           `[harness-manager] this manager asks a person before a run's tool calls (\`approveTools\`), ` +

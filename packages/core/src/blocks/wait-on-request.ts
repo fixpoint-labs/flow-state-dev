@@ -10,6 +10,7 @@
  */
 import type { BlockContext } from "../types/block";
 import { parkOnWait } from "../types/wait-gate";
+import { requestHostOf } from "../types/request-host";
 
 /** Arguments to {@link waitOnRequest}. */
 export type WaitOnRequestInput = {
@@ -56,7 +57,7 @@ export type RequestWaitOutcome =
  * that first, and this throws without `ctx.runOnce` or `RequestHost.waits`.
  */
 export async function waitOnRequest(ctx: BlockContext, input: WaitOnRequestInput): Promise<RequestWaitOutcome> {
-  const waits = ctx.requestHost?.waits;
+  const waits = requestHostOf(ctx)?.waits;
   if (waits === undefined || ctx.runOnce === undefined) {
     throw new Error("waitOnRequest needs a host that can hold a wait (ctx.runOnce and RequestHost.waits).");
   }

@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core";
-import { REQUEST_END_SEAM } from "@flow-state-dev/core/types";
+import { REQUEST_END_SEAM } from "@flow-state-dev/core/internal";
 import { createDelivery } from "../../src/tasks/notice/delivery";
 import { NOTICE_DUE_MS } from "../../src/tasks/notice/task-notice";
 import type { Task } from "../../src/tasks/schema/task";

@@ -17,8 +17,8 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
-import { defineFlow, dispatchThroughSeam, handler } from "@flow-state-dev/core";
-import { requireRequestHost } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { dispatchThroughSeam, requireRequestHost } from "@flow-state-dev/core/internal";
 import { createInMemoryStores, runAction } from "../../src";
 import type { StoreRegistry } from "../../src/stores/types";
 

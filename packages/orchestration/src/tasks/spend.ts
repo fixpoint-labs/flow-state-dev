@@ -9,7 +9,7 @@
  * Both are core's one conversion of a request's spend into tokens per source,
  * so a task's tokens and its worker's Usage count alike.
  */
-import { addRequestSpendSource, requestSpendSources, type RequestSpend } from "@flow-state-dev/core/types";
+import { addRequestSpendSource, requestSpendSources, type RequestSpend } from "@flow-state-dev/core/internal";
 import { taskSpendSchema, type TaskSpend, type TaskSpendRequest, type TaskSpendSource, type TaskSpendView } from "./schema/spend";
 
 export type { TaskSpendView };

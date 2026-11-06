@@ -73,7 +73,8 @@
  */
 import { sequencer } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
-import { requestResumeOf, taskDispatchInputSchema } from "@flow-state-dev/core/types";
+import { taskDispatchInputSchema } from "@flow-state-dev/core/types";
+import { requestResumeOf } from "@flow-state-dev/core/internal";
 import type {
   ActionCore,
   BlockContext,

@@ -26,6 +26,7 @@ import { WORKER_REPLIES_OWED_STATE } from "./keys";
 import { owedRepliesOf, type OwedReply } from "./delivery";
 import { MAX_MESSAGE_CHARS, messageLogOf, type WorkerMessageRow } from "./message-log";
 import { sendMessage } from "./send-message";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** The block name the framework's answer is dispatched from. */
 const OWED_REPLY_FROM = "message-received-answer";
@@ -68,7 +69,7 @@ const NO_ANSWER_TEXT: Readonly<Record<NoAnswerReason, string>> = {
  */
 export async function oweReply(ctx: BlockContext, id: string): Promise<void> {
   try {
-    await ctx.requestHost?.wakes?.owe({ entry: DISPATCH_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
+    await requestHostOf(ctx)?.wakes?.owe({ entry: DISPATCH_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
   } catch {
     // The list still holds it; the next pass pays it.
   }

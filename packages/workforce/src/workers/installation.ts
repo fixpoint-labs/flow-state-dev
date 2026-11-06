@@ -20,15 +20,17 @@
  * session, and a refused turn leaves the row and the session for a fix.
  */
 import type { InitialSkill } from "@flow-state-dev/core";
-import { SESSION_REQUEST_END_HOOK } from "@flow-state-dev/core/types";
+import { SESSION_REQUEST_END_HOOK } from "@flow-state-dev/core/internal";
 import type {
   FlowInstance,
   ResourceCollectionRef,
-  SessionRequestEndHook,
   SessionCreateCheck,
   SessionCreateCheckInput,
   SessionCreateCheckResult
 } from "@flow-state-dev/core/types";
+import type {
+  SessionRequestEndHook
+} from "@flow-state-dev/core/internal";
 import type { DeclaredResources, ResourceVisibilityRule } from "@flow-state-dev/core";
 import { z } from "zod";
 import { AGENT_FLOW, defineAgentWorkerFlow } from "../agent-worker-flow";

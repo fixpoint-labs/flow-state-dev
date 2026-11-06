@@ -7,6 +7,7 @@
  * wait slot is released.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** Where one request stands: running its own work, parked on a person or a wait, or ended (its process died too). */
 export type RequestState = "running" | "parked" | "ended";
@@ -32,7 +33,7 @@ export async function requestStates(
   ctx: BlockContext,
   ids: readonly string[]
 ): Promise<Readonly<Partial<Record<string, RequestState>>> | undefined> {
-  const waits = ctx.requestHost?.waits;
+  const waits = requestHostOf(ctx)?.waits;
   if (ids.length === 0 || (waits?.running === undefined && waits?.ended === undefined)) return undefined;
   const unique = [...new Set(ids)];
   const [running, ended] = await Promise.all([waits.running?.(unique), waits.ended?.(unique)]);

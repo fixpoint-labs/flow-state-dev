@@ -17,6 +17,7 @@
 
 import type { ModelUsageEntry } from "./flow";
 import type { HarnessBilling, HarnessRunSpend } from "./harness";
+import type { InternalBlockContext } from "./block";
 
 /** How a request ended, as a request-end hook is told. */
 export type RequestEndStatus = "completed" | "incomplete" | "failed" | "aborted" | "interrupted" | "suspended";
@@ -139,8 +140,8 @@ export const REQUEST_END_SEAM: unique symbol = Symbol.for("@flow-state-dev/reque
  *   context, or a block run outside a request. The caller decides what that
  *   means for it.
  */
-export function onRequestEnded(ctx: { readonly [REQUEST_END_SEAM]?: RequestEndSeam }, hook: RequestEndHook): boolean {
-  const seam = ctx[REQUEST_END_SEAM];
+export function onRequestEnded(ctx: object, hook: RequestEndHook): boolean {
+  const seam = (ctx as Pick<InternalBlockContext, typeof REQUEST_END_SEAM>)[REQUEST_END_SEAM];
   if (seam == null) return false;
   seam.add(hook);
   return true;
@@ -207,7 +208,7 @@ export interface RequestSpendSeam {
  *   test context, or a block run outside a request.
  */
 export function readRequestSpend(ctx: object): RequestSpend | undefined {
-  const seam = (ctx as { readonly [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM];
+  const seam = (ctx as Pick<InternalBlockContext, typeof REQUEST_SPEND_SEAM>)[REQUEST_SPEND_SEAM];
   return seam?.pending?.();
 }
 
@@ -224,7 +225,7 @@ export function readRequestSpend(ctx: object): RequestSpend | undefined {
  *   before it could read a total.
  */
 export function readRequestTotalSpend(ctx: object): RequestSpend | undefined {
-  const seam = (ctx as { readonly [REQUEST_SPEND_SEAM]?: RequestSpendSeam })[REQUEST_SPEND_SEAM];
+  const seam = (ctx as Pick<InternalBlockContext, typeof REQUEST_SPEND_SEAM>)[REQUEST_SPEND_SEAM];
   return seam?.total?.();
 }
 

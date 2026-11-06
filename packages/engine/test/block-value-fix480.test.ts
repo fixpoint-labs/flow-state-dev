@@ -22,7 +22,7 @@ import type {
   MessageItem,
 } from "@flow-state-dev/core/items";
 import { buildItemLookup } from "@flow-state-dev/core/items";
-import { resolveBlockValueInternal, type BlockValueInternal, type RuntimeItem } from "@flow-state-dev/core/items/internal";
+import { resolveBlockValueInternal, type BlockValueInternal, type RuntimeItem } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {

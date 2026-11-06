@@ -2234,7 +2234,7 @@ export function taskToolsForTurn(
   };
   // The plain list now, so a board that can't build its tools fails at wiring.
   listFor(false);
-  return (ctx) => listFor(waits && canHoldWait(ctx as Pick<BlockContext, "requestHost">));
+  return (ctx) => listFor(waits && canHoldWait(ctx));
 }
 
 

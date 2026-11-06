@@ -28,11 +28,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
 import {
-  DISPATCH_SEAM,
   type BlockContext,
   type DispatchOutcome,
-  type DispatchSpec,
+  type DispatchSpec
 } from "@flow-state-dev/core/types";
+import {
+  DISPATCH_SEAM
+} from "@flow-state-dev/core/internal";
 import type { TaskClaimTicket, TaskWorkerInput } from "../../src/tasks";
 import { createRowDispatch } from "../../src/task-board/blocks/dispatch-row";
 import type { TaskDispatchInput } from "../../src/task-board/task-entry";

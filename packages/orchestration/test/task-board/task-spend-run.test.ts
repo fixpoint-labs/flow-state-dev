@@ -13,12 +13,14 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import {
+  type ActionCore,
+  type BlockContext
+} from "@flow-state-dev/core/types";
+import {
   REQUEST_END_SEAM,
   REQUEST_SPEND_SEAM,
-  type ActionCore,
-  type BlockContext,
-  type RequestSpend,
-} from "@flow-state-dev/core/types";
+  type RequestSpend
+} from "@flow-state-dev/core/internal";
 import { reportHarnessSpend } from "@flow-state-dev/core/harness";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";

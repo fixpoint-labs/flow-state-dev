@@ -1,7 +1,7 @@
 /**
  * Internal-only items API. Not part of the public surface — accessible via
  * `@flow-state-dev/contracts/items/internal` (re-exported from
- * `@flow-state-dev/core/items/internal`). Carries the `ref` BlockValue case
+ * `@flow-state-dev/core/internal`). Carries the `ref` BlockValue case
  * and the runtime item union (public `OutputItem` plus the four trace types)
  * used by the executor, persistence layer, and observability surfaces.
  * `RuntimeItem` alone is also public, re-exported from the items barrel and

@@ -25,7 +25,7 @@ import {
   resolveClientData
 } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";

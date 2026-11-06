@@ -1,4 +1,4 @@
-import type { RuntimeItem as TestItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem as TestItem } from "@flow-state-dev/core/internal";
 import type { BlockInput, BlockOutput, FlowInstance, FlowStateSettings, ModelResolver } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import type {

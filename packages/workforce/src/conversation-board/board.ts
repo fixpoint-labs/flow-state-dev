@@ -118,7 +118,8 @@ import {
   type TaskWriteOutcome
 } from "@flow-state-dev/orchestration/tasks";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
-import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
+import { markDispatcher } from "@flow-state-dev/core/types";
+import { requestHostOf, dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import { carriedHopState, freshHopMark, heldFromFiling, hopMarkOf, sessionUserLinesOf, turnHopMark } from "../messages/hop";
 import type { BlockContext, BlockDefinition, DispatchAddress } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -643,7 +644,7 @@ export async function wakeIfStartable(ctx: BlockContext, collection: TaskCollect
  */
 async function owePass(ctx: BlockContext): Promise<void> {
   try {
-    await ctx.requestHost?.wakes?.owe({ entry: DISPATCH_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
+    await requestHostOf(ctx)?.wakes?.owe({ entry: DISPATCH_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
   } catch {
     // The fast path still runs.
   }
@@ -702,11 +703,11 @@ export async function triggerPass(ctx: BlockContext, options: { touch?: boolean 
   const now = Date.now();
   const sent = waitingPasses.get(key);
   const running = runningPasses.get(key);
-  const here = ctx.requestHost?.dispatchRunsHere === true;
+  const here = requestHostOf(ctx)?.dispatchRunsHere === true;
   const waiting = here && sent !== undefined && now - sent < PASS_START_GRACE_MS;
   if (waiting) {
     // No wake backs this write: if that pass never starts, send again.
-    if (options.touch !== true && ctx.requestHost?.wakes === undefined) resendIfNeverStarted(ctx, key, sent!);
+    if (options.touch !== true && requestHostOf(ctx)?.wakes === undefined) resendIfNeverStarted(ctx, key, sent!);
     return;
   }
   if (here && options.touch === true && running !== undefined && now - running < PASS_RUN_GRACE_MS) return;
@@ -1748,7 +1749,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     requestStateSchema: passStateSchema,
     execute: async (_input, ctx) => {
       notePassStarted(ctx as never);
-      const wake = await ctx.requestHost?.wakes?.read(DISPATCH_ENTRY);
+      const wake = await requestHostOf(ctx)?.wakes?.read(DISPATCH_ENTRY);
       await ctx.request.patchState({ passWake: wake === undefined ? undefined : { dueAt: wake.dueAt, landBy: wake.landBy, version: wake.version }, passRounds: 0 });
       const partition = await filingSessionIdOf(ctx.session);
       const ref = await conversationLedgerAt(ctx, partition);

@@ -169,8 +169,8 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[] }> = {
     patches: [
       {
         module: "packages/orchestration/src/tasks/collection/get-or-create.ts",
-        from: String.raw`const holdDueMs = ctx\.requestHost\?\.userDeadlineMs;`,
-        to: "const holdDueMs = ctx.requestHost?.userDeadlineMs ?? 1500;"
+        from: String.raw`const holdDueMs = requestHostOf\(ctx\)\?\.userDeadlineMs;`,
+        to: "const holdDueMs = requestHostOf(ctx)?.userDeadlineMs ?? 1500;"
       }
     ],
     legs: ["e"]

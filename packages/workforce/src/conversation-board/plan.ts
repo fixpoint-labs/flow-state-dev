@@ -60,6 +60,7 @@ import { filingSessionIdOf } from "./filing-session";
 import { CONVERSATION_BOARD_CLIENT_FIELDS, conversationPartition } from "./ledger";
 import { conversationDelivery } from "./delivery";
 import { taskMessage } from "./task-message";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /**
  * The plan ledger's id: its resource key. **Pinned**: rows are stored under it.
@@ -187,7 +188,7 @@ export async function anotherTurnWaitsOnItsPlan(ctx: BlockContext): Promise<bool
   // A host with no record of ended requests holds no durable wait, and a step
   // filed `session: "new"` is refused there, so no request marks the session;
   // reading a mark anyway, take it as live.
-  const ended = ctx.requestHost?.waits?.ended;
+  const ended = requestHostOf(ctx)?.waits?.ended;
   if (ended === undefined) return true;
   // A request that died holds nothing.
   const answers = await ended(others);
@@ -205,7 +206,7 @@ export async function anotherTurnWaitsOnItsPlan(ctx: BlockContext): Promise<bool
 export async function markPlanWaiting(ctx: BlockContext): Promise<void> {
   const own = ctx.request.identity.id;
   const others = markedRequests(ctx).filter((requestId) => requestId !== own);
-  const ended = ctx.requestHost?.waits?.ended;
+  const ended = requestHostOf(ctx)?.waits?.ended;
   if (ended !== undefined && others.length > 0) {
     const answers = await ended(others);
     for (const requestId of others) if (answers[requestId] === true) await ctx.session.deleteStateRecord(PLAN_WAITING_STATE, requestId);

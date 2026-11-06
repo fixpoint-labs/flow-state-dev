@@ -117,7 +117,7 @@ import type {
   HarnessUsageHook,
   HarnessUsageReader,
 } from "@flow-state-dev/core/harness";
-import { readRequestTotalSpend } from "@flow-state-dev/core/types";
+import { readRequestTotalSpend, requestHostOf } from "@flow-state-dev/core/internal";
 import {
   checkedOutBranch,
   occupyWorktree,
@@ -1292,7 +1292,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       const requireDurable = handler({
         name: `${kind}-approvals-need-durable`,
         execute: async (_input: unknown, ctx) => {
-          if ((ctx as { requestHost?: { resumeWait?: unknown } }).requestHost?.resumeWait === undefined) {
+          if (requestHostOf(ctx)?.resumeWait === undefined) {
             throw new Error(HARNESS_SESSION_APPROVALS_NEED_DURABLE);
           }
         },

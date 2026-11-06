@@ -1,4 +1,4 @@
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type {
   ActiveRequestEntry,
   ActiveRequestRegistry,

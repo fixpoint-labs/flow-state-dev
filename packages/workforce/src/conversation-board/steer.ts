@@ -27,6 +27,7 @@ import { conversationLedgerResources, ledgerAboveOf } from "./ledger";
 import { admitOwnTask, markAdmittedTask } from "./task-admission";
 import { AFTER_REPLY_CONCURRENCY } from "./task-settled";
 import { sessionTaskOf } from "./task-entry";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 export { STEER_TURN_ENTRY } from "./board-entries";
 
@@ -207,7 +208,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
         const sessionId = ctx.session.identity.id;
         const row = ledger?.list({ status: "in_progress" }).find((task) => task.run?.sessionId === sessionId);
         if (row?.keptOpenBy === "steer" || row?.turnOwed === true) return;
-        const wakes = ctx.requestHost?.wakes;
+        const wakes = requestHostOf(ctx)?.wakes;
         const read = await wakes?.read(STEER_TURN_ENTRY);
         if (wakes !== undefined && read !== undefined) await wakes.settle(STEER_TURN_ENTRY, read, null);
       });

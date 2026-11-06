@@ -17,7 +17,8 @@
  * accepted, not from the moment a worker picks it up (FIX-999).
  */
 import type { ActiveRequestEntry, ActiveRequestRegistry } from "../stores/types";
-import type { FlowInstance, LivenessAnswers } from "@flow-state-dev/core/types";
+import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { LivenessAnswers } from "@flow-state-dev/core/internal";
 import { matchesOrgFilter, tenantMatches } from "../stores/scope-keys";
 import { ownsRecord } from "./record-owner";
 

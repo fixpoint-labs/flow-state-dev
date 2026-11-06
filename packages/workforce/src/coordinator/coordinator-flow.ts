@@ -90,7 +90,7 @@ import {
   sequencer
 } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import { dispatchThroughSeam } from "@flow-state-dev/core/types";
+import { requestHostOf, dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import type { BlockContext, BlockDefinition, EvaluationModel } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { defineFitCheck, failedFitSchema } from "../fit-check";
@@ -485,7 +485,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * in-process timer instead, which a restart loses, as today.
    */
   const oweRoundDeadline = async (ctx: BlockContext, dueAt: number): Promise<void> => {
-    const wakes = ctx.requestHost?.wakes;
+    const wakes = requestHostOf(ctx)?.wakes;
     if (wakes !== undefined) {
       try {
         if (await wakes.owe({ entry: ROUND_DEADLINE_ACTION, dueAt })) return;
@@ -1448,7 +1448,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     outputSchema: routeOnsOutputSchema,
     ...blockBase,
     execute: async (_value: unknown, ctx) => {
-      const wakes = ctx.requestHost?.wakes;
+      const wakes = requestHostOf(ctx)?.wakes;
       const read = await wakes?.read(ROUND_DEADLINE_ACTION);
       const { closed, nextDue } = await closeOverdueRounds(ctx as never);
       if (wakes !== undefined && read !== undefined) await wakes.settle(ROUND_DEADLINE_ACTION, read, nextDue ?? null);

@@ -8,8 +8,9 @@
  * resuming a wait past its deadline with `wait_timed_out`
  * (`durability-sweeper.ts`).
  */
-import { isWaitGate, parseWaitOutcome } from "@flow-state-dev/core/types";
-import type { WaitOutcome, ResumeWaitResult, SuspensionRecord } from "@flow-state-dev/core/types";
+import { isWaitGate, parseWaitOutcome } from "@flow-state-dev/core/internal";
+import type { SuspensionRecord } from "@flow-state-dev/core/types";
+import type { WaitOutcome, ResumeWaitResult } from "@flow-state-dev/core/internal";
 import type { StoreRegistry } from "../stores/types";
 import { latestGateIdOf, resumeUnderLease, type ResumeDeps } from "./resume-under-lease";
 

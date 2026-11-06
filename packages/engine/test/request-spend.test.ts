@@ -13,18 +13,20 @@
 import { DEFAULT_ORG_ID, boolean, defineFlow, evaluator, generator, handler, sequencer } from "@flow-state-dev/core";
 import { mockEvaluationModel } from "@flow-state-dev/testing";
 import {
-  SESSION_REQUEST_END_HOOK,
-  onRequestEnded,
-  readRequestSpend,
-  readRequestTotalSpend,
   type FlowInstance,
   type GeneratorModel,
   type GeneratorModelCallOptions,
   type GeneratorModelResult,
   type GeneratorModelResultPayload,
-  type RequestEnding,
-  type SuspensionRecord,
+  type SuspensionRecord
 } from "@flow-state-dev/core/types";
+import {
+  SESSION_REQUEST_END_HOOK,
+  onRequestEnded,
+  readRequestSpend,
+  readRequestTotalSpend,
+  type RequestEnding
+} from "@flow-state-dev/core/internal";
 import { reportHarnessSpend } from "@flow-state-dev/core/harness";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";

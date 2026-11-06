@@ -27,7 +27,7 @@ import type {
   ToolOutputItem,
 } from "@flow-state-dev/core/items";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { sanitizeToolName } from "@flow-state-dev/core/helpers";
 import {
   buildAssistantToolCallMessage,
