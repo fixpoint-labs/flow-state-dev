@@ -4,17 +4,18 @@ import { useEffect, useRef } from "react";
 /**
  * The lab's keys, in one place. ⌘K (Ctrl+K) opens the switcher and Alt+↑/↓
  * steps to the previous or next session, from anywhere, the composer
- * included. `/` puts the cursor in the composer and `?` lists the keys, but
- * only outside a text field, so both stay text when typed there. Inside an
+ * included. `/` puts the cursor in the composer, `?` lists the keys, and `[`
+ * and `]` collapse the sessions list and the right pane, but only outside a
+ * text field, so all four stay text when typed there. Inside an
  * open dialog only ⌘K acts; the dialog owns the rest.
  */
-export function useLabKeys(on: { palette: () => void; step: (by: -1 | 1) => void; help: () => void }) {
+export function useLabKeys(on: { palette: () => void; step: (by: -1 | 1) => void; help: () => void; nav: () => void; pane: () => void }) {
   const latest = useRef(on);
   latest.current = on;
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || event.repeat) return;
-      const { palette, step, help } = latest.current;
+      const { palette, step, help, nav, pane } = latest.current;
       if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
         palette();
@@ -33,6 +34,12 @@ export function useLabKeys(on: { palette: () => void; step: (by: -1 | 1) => void
       } else if (event.key === "?") {
         event.preventDefault();
         help();
+      } else if (event.key === "[") {
+        event.preventDefault();
+        nav();
+      } else if (event.key === "]") {
+        event.preventDefault();
+        pane();
       }
     };
     window.addEventListener("keydown", onKey);

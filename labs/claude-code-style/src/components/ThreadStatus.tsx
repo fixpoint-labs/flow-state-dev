@@ -40,7 +40,7 @@ export function ThreadIcon({ task }: { task: TaskRow }) {
 /** A run that completed at the review deadline: resolved, but never approved. */
 const notReviewed = (task: TaskRow) => task.status === "completed" && task.review === "deadline";
 
-/** An error's first non-empty line, whitespace collapsed; `undefined` when it has none. */
+/** A note's first non-empty line, whitespace collapsed; `undefined` when it has none. A status line is one line, and a note can be a whole command or a paragraph. */
 const firstLine = (text: string | undefined) => text?.split("\n").find((line) => line.trim() !== "")?.replace(/\s+/g, " ").trim();
 
 /**
@@ -53,7 +53,7 @@ export function statusLine(task: TaskRow): string {
   const column = statusColumn(task);
   const label =
     task.status === "errored" ? "Failed" : task.status === "cancelled" ? "Cancelled" : COLUMNS.find((c) => c.id === column)!.label;
-  const note = task.status === "errored" ? firstLine(task.error) : FINISHED.has(task.status) ? undefined : (task.waitingOn?.prompt ?? task.statusNote);
+  const note = task.status === "errored" ? firstLine(task.error) : FINISHED.has(task.status) ? undefined : firstLine(task.waitingOn?.prompt ?? task.statusNote);
   return note ? `${label} · ${note}` : label;
 }
 
@@ -73,12 +73,12 @@ export function HarnessTag({ task }: { task: TaskRow }) {
   return (
     <>
       {task.harness ? (
-        <span className="shrink-0 border border-border px-1.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+        <span className="shrink-0 rounded-sm bg-muted px-1.5 py-px font-mono text-[10px] text-muted-foreground">
           {HARNESS_LABEL[task.harness] ?? task.harness}
         </span>
       ) : null}
       {notReviewed(task) ? (
-        <span className="shrink-0 border border-warning px-1.5 font-mono text-[10px] tracking-widest text-warning uppercase">Not reviewed</span>
+        <span className="shrink-0 rounded-sm border border-warning/60 px-1.5 py-px font-mono text-[10px] text-warning">Not reviewed</span>
       ) : null}
     </>
   );
