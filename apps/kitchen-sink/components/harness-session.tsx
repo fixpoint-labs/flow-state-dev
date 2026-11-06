@@ -151,7 +151,7 @@ function SessionBody({
   // Lines reach the run in the order they were typed, and the page stays on
   // the running turn while a line's turn waits behind it.
   const lines = useHarnessLines(session, { sendOne: sendLineOnce });
-  // The person's line rises when it lands: the composer says when they sent.
+  // The user's line rises when it lands: the composer says when they sent.
   const feed = useJumpToLatest({ resetKey: sessionId });
   const { sent } = feed;
   const [lastLine, setLastLine] = useState<LineOutcome | null>(null);

@@ -5,10 +5,10 @@
  * goal's (`goals/conversation-scroll/sent-line-rises-reply-stays`, the
  * `registry/*` surfaces); these pin the wiring a layout can't show:
  *
- * - the person's line is marked by their message's id, and only inside a
+ * - the user's line is marked by their message's id, and only inside a
  *   Conversation, so `feed.sent()` has a line to raise and a view with no feed
  *   raises nothing;
- * - the last request group keeps no room of its own (the hook keeps the room);
+ * - the last request group keeps no space of its own (the hook keeps the space);
  * - the jump button reads the feed it is given or the Conversation's, and
  *   shows only while there is more below.
  *
@@ -37,7 +37,7 @@ function fakeFeed(atEnd: boolean): JumpToLatest {
   return { ref: vi.fn(), atEnd, jump: vi.fn(), sent: vi.fn(), mine: (key) => ({ "data-sent-line": key }) };
 }
 
-describe("the person's line, inside a Conversation", () => {
+describe("the user's line, inside a Conversation", () => {
   it("is the segment holding their message, named by that message's id", () => {
     const { container } = render(
       <Conversation>
@@ -45,7 +45,7 @@ describe("the person's line, inside a Conversation", () => {
       </Conversation>,
     );
     expect(marks(container)).toEqual(["r1-user", "r2-user"]);
-    // The mark is on the segment, so the line that rises is the person's message and what follows it.
+    // The mark is on the segment, so the line that rises is the user's message and what follows it.
     expect(container.querySelector('[data-sent-line="r2-user"]')?.getAttribute("data-request-id")).toBe("r2");
   });
 
@@ -78,7 +78,7 @@ describe("the person's line, inside a Conversation", () => {
 });
 
 describe("the last request group", () => {
-  it("keeps no room of its own below the reply", () => {
+  it("keeps no space of its own below the reply", () => {
     const { container } = render(
       <Conversation>
         <RequestGroupRenderer items={[...turn("r1"), ...turn("r2")]} isStreaming />

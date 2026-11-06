@@ -953,7 +953,7 @@ function ChatPanel({
   onSubmit,
 }: ChatPanelProps) {
   const { retryFor, shownError } = useFailedTurnRetry(session);
-  // The person's line rises when it lands: a send with a line says so as it goes out.
+  // The user's line rises when it lands: a send with a line says so as it goes out.
   const feed = useJumpToLatest({ resetKey: session.snapshot?.sessionId ?? null });
   const { sent } = feed;
   const send = useCallback(

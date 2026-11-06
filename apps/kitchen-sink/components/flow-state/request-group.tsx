@@ -80,7 +80,7 @@ type RequestGroupRendererProps = {
 
 /**
  * Renders items grouped by request. Inside a `<Conversation>`, a segment that
- * holds the person's message is marked as their line, by that message's id,
+ * holds the user's message is marked as their line, by that message's id,
  * so a send the app reports with `feed.sent()` rises to near the top.
  */
 export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFinishing = false, showWorkedFor = false, latestCompletedAtMs }: RequestGroupRendererProps) {
@@ -182,7 +182,7 @@ function RequestGroup({
     [showWorkedFor, live, completedAtMs, group.items],
   );
 
-  // The person's line: the segment holding their message, named by that item's id, not the request's,
+  // The user's line: the segment holding their message, named by that item's id, not the request's,
   // since one request can own several segments. Outside a Conversation nothing is marked.
   const feed = useConversationFeed();
   const userItem = group.items.find((item) => item.type === "message" && item.role === "user");

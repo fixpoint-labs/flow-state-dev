@@ -31,7 +31,7 @@ export function useConversationFeed(): JumpToLatest | null {
 export type ConversationProps = Omit<ComponentProps<"div">, "ref"> & {
   /**
    * The feed from `useJumpToLatest`, made by the app so its composer can call
-   * `feed.sent()` as the person's line goes out: that line then rises to near
+   * `feed.sent()` as the user's line goes out: that line then rises to near
    * the top, and its reply streams in below it. Without it the Conversation
    * makes its own feed, for a view that never sends.
    */
@@ -46,7 +46,7 @@ export type ConversationProps = Omit<ComponentProps<"div">, "ref"> & {
 
 /**
  * The scrolling element of a conversation, on `useJumpToLatest`'s rule: it
- * opens at its end, a line the app says the person sent rises to near the
+ * opens at its end, a line the app says the user sent rises to near the
  * top, and nothing else moves the view. New content below shows the jump
  * button instead.
  */
