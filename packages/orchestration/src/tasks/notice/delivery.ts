@@ -22,7 +22,7 @@
  * undeliverable, recorded on the row, and handed to the board's
  * `onUndeliverable`. Nothing here fails the write that already committed.
  */
-import { dispatchThroughSeam, onRequestEnded, REQUEST_END_SEAM } from "@flow-state-dev/core/types";
+import { requestHostOf, dispatchThroughSeam, onRequestEnded, REQUEST_END_SEAM } from "@flow-state-dev/core/internal";
 import type { BlockContext, DispatchOutcome, SessionTarget } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
 import type { RowHold } from "../schema/hold";
@@ -230,7 +230,7 @@ export function createDelivery(
     // hook would be owed for nothing: a context built outside a request's
     // run (a test harness's) never runs its hooks, and a host's shutdown
     // waits out its drain budget for every hook still owed in the process.
-    if (ctx.requestHost?.waits?.running === undefined) return;
+    if (requestHostOf(ctx)?.waits?.running === undefined) return;
     // Once per request and board: every resolution of the board in this
     // request reaches the same request-end list.
     const seam = (ctx as { readonly [REQUEST_END_SEAM]?: object })[REQUEST_END_SEAM];
@@ -267,7 +267,7 @@ export function createDelivery(
   /** The filing or waiting request parked: owe this (its filer's) session's pass one wake (FIX-2149, FIX-2170). */
   async function owePassAtPark(): Promise<void> {
     try {
-      await ctx.requestHost?.wakes?.owe({ entry: passEntry, dueAt: Date.now() + NOTICE_DUE_MS });
+      await requestHostOf(ctx)?.wakes?.owe({ entry: passEntry, dueAt: Date.now() + NOTICE_DUE_MS });
     } catch (error) {
       console.warn("[orchestration] a wake for the filer's pass at a park couldn't be written: a notice held for the request goes out at its next resend", {
         boardId: board.collectionId,
@@ -279,7 +279,7 @@ export function createDelivery(
   async function owePassAt(row: Task, dueAt: number): Promise<void> {
     if (owesNothing(row)) return;
     const filer = filerOf(row);
-    const wakes = ctx.requestHost?.wakes;
+    const wakes = requestHostOf(ctx)?.wakes;
     if (filer === undefined || wakes === undefined) return;
     try {
       await wakes.owe({ entry: passEntry, dueAt, sessionId: filer });

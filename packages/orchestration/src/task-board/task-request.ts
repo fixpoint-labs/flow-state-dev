@@ -51,7 +51,8 @@
  * nothing outside the gate, and the gate checks at its entry's last step.
  */
 import { handler } from "@flow-state-dev/core";
-import { dispatchThroughSeam, isUserSuspension, onRequestEnded, readRequestSpend, requestSpendSources, suspendForUserKindOf, type RequestEndVerdict, type RequestEnding, type RequestSpend, type SuspensionAddress } from "@flow-state-dev/core/types";
+import { isUserSuspension, suspendForUserKindOf } from "@flow-state-dev/core/types";
+import { requestHostOf, dispatchThroughSeam, onRequestEnded, readRequestSpend, requestSpendSources, type RequestEndVerdict, type RequestEnding, type RequestSpend, type SuspensionAddress } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
@@ -538,7 +539,7 @@ const REFUSED_STOP_RETRY_MS = [50, 100, 250, 500, 1_000, 2_000, 5_000];
  * task's cancel: the row and its questions stand. Never fails the caller.
  */
 function cancelRefusedStop(ctx: BlockContext, taskId: string, address: SuspensionAddress): void {
-  const resumeWait = ctx.requestHost?.resumeWait;
+  const resumeWait = requestHostOf(ctx)?.resumeWait;
   if (resumeWait === undefined) return;
   const suspension = { requestId: address.requestId, suspensionId: address.suspensionId };
   void (async () => {
@@ -669,7 +670,7 @@ async function oweSteerTurn(record: Admitted, row: Task): Promise<boolean> {
   const entry = record.rules.steerTurn?.entry;
   const { ctx, ref } = record;
   if (entry === undefined || ref.setKeptOpenBy === undefined) return false;
-  const wakes = ctx.requestHost?.wakes;
+  const wakes = requestHostOf(ctx)?.wakes;
   try {
     await wakes?.owe({ entry, dueAt: ref.now() + STEER_TURN_DUE_MS });
   } catch (error) {

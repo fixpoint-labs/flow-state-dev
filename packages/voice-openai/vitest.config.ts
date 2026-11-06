@@ -9,7 +9,7 @@ export default defineConfig({
       "@flow-state-dev/core/resource-template": resolve(root, "packages/core/src/resource-template/resource-template.ts"),
       "@flow-state-dev/core/types": resolve(root, "packages/core/src/types/index.ts"),
       "@flow-state-dev/core/harness": resolve(root, "packages/core/src/harness/index.ts"),
-      "@flow-state-dev/core/items/internal": resolve(root, "packages/core/src/items/internal.ts"),
+      "@flow-state-dev/core/internal": resolve(root, "packages/core/src/internal/index.ts"),
       "@flow-state-dev/core/items": resolve(root, "packages/core/src/items/index.ts"),
       "@flow-state-dev/core/graph": resolve(root, "packages/core/src/graph/index.ts"),
       "@flow-state-dev/core/utils": resolve(root, "packages/core/src/utils/index.ts"),

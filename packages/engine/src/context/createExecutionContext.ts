@@ -46,8 +46,16 @@ import type {
   StateSnapshotItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import type { BlockValueInternal, RuntimeItem } from "@flow-state-dev/core/items/internal";
-import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
+import type { BlockValueInternal, RuntimeItem, ReplayLog } from "@flow-state-dev/core/internal";
+import {
+  resolveAllowedActions,
+  BOARD_NOTICE_SEAM,
+  DISPATCH_SEAM,
+  REQUEST_RESUME_SEAM,
+  REQUEST_SPEND_SEAM,
+  type RequestResume,
+  type RequestSpendSeam
+} from "@flow-state-dev/core/internal";
 import type { BlockContext, BlockOutputHint, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import {
@@ -71,7 +79,7 @@ import type {
   UserRecord
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
-import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
+import type { ModelResolver } from "@flow-state-dev/core";
 import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
@@ -99,18 +107,12 @@ import {
   type ErrorCaptureBlockInfo,
   type ErrorCaptureIdentity
 } from "../errors/error-capture";
-import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, resolveAllowedActions, type SuspendOptions } from "@flow-state-dev/core";
+import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, type SuspendOptions } from "@flow-state-dev/core";
 import {
-  BOARD_NOTICE_SEAM,
-  DISPATCH_SEAM,
-  REQUEST_RESUME_SEAM,
-  REQUEST_SPEND_SEAM,
   SUSPENSION_SKIPPED,
   isUserSuspension,
   suspendForUserOn,
-  type RequestResume,
-  type RequestSpendSeam,
-  type SuspendForUser,
+  type SuspendForUser
 } from "@flow-state-dev/core/types";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { matchesPattern } from "@flow-state-dev/core/types";

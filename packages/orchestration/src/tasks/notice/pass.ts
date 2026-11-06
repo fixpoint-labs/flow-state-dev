@@ -31,8 +31,9 @@
  * is cleared, a lapsed wait slot is no longer looked at (counted from its
  * lapse), and it is logged. So every wake clears.
  */
-import type { BlockContext, WakeView } from "@flow-state-dev/core/types";
-import { dispatchThroughSeam } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { WakeView } from "@flow-state-dev/core/internal";
+import { requestHostOf, dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import type { TaskCollectionRef } from "../collection/types";
@@ -102,7 +103,7 @@ export async function payBoardDebts(
   options: PayBoardDebtsOptions = {}
 ): Promise<BoardDebts> {
   const now = options.now ?? ref.now();
-  const maxAge = ctx.requestHost?.wakes?.maxDebtAgeMs ?? DEFAULT_MAX_DEBT_AGE_MS;
+  const maxAge = requestHostOf(ctx)?.wakes?.maxDebtAgeMs ?? DEFAULT_MAX_DEBT_AGE_MS;
   const tooOld = (due: number): boolean => now - due > maxAge;
 
   // 1 and 3: cancels owed, then resumes owed. Never fails the pass.
@@ -220,7 +221,7 @@ export async function payBoardDebts(
  */
 async function stoppedFilingRequests(ctx: BlockContext, ref: TaskCollectionRef, rows: readonly Task[]): Promise<Set<string>> {
   const held = new Set<string>();
-  if (ctx.requestHost?.waits?.running === undefined) return held;
+  if (requestHostOf(ctx)?.waits?.running === undefined) return held;
   for (const row of rows) {
     for (const notice of owedNotices(row, ref.collectionId)) {
       const heldFor = heldWhileRunning(row, notice);
@@ -263,7 +264,7 @@ export async function settlePassWake(
   read: WakeView | undefined,
   nextDue: number | undefined
 ): Promise<void> {
-  const wakes = ctx.requestHost?.wakes;
+  const wakes = requestHostOf(ctx)?.wakes;
   if (wakes === undefined) return;
   if (read === undefined) {
     // A pass that started with no wake to move still leaves its next debt one.

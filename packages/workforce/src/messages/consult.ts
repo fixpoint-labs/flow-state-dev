@@ -32,6 +32,7 @@ import { SEND_MESSAGE_TOOL } from "./keys";
 import { taskSessionOf } from "./message-target";
 import { messageHearingOf } from "./received-mark";
 import { conversationAddress } from "./send-message";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** The capability's name, as a worker file names it. */
 export const CONSULT_SESSIONS_CAPABILITY = "consultSessions";
@@ -93,7 +94,7 @@ async function resolveOf(
   }
   const address = await conversationAddress(ctx, installation, worker.id, worker.flow, state);
   // Read, never opened: a worker the user never spoke to has no session, and the read answers none.
-  if ((await ctx.requestHost?.sessions?.read(address.sessionId)) === undefined) {
+  if ((await requestHostOf(ctx)?.sessions?.read(address.sessionId)) === undefined) {
     return { ok: false, error: `no_conversation: the user has no conversation with "${of}" yet.` };
   }
   return { ok: true, sessionId: address.sessionId, of };

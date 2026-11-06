@@ -63,19 +63,21 @@ import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-default
 import type {
   DispatchOutcome,
   DispatchRefusal,
-  DispatchSeam,
   DispatchSpec,
   FlowInstance,
+  TokenCounter
+} from "@flow-state-dev/core/types";
+import type {
+  DispatchSeam,
   LivenessAnswers,
   RequestHost,
   ResumeWaitInput,
   ResumeWaitResult,
   SettleParentTaskInput,
   SettleParentTaskResult,
-  TokenCounter,
   WaitDeadlines,
-  WaitRow,
-} from "@flow-state-dev/core/types";
+  WaitRow
+} from "@flow-state-dev/core/internal";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveEntry } from "@flow-state-dev/core";
 import type { DispatchStamp } from "../execution/dispatch-metadata";

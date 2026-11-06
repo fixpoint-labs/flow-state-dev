@@ -8,7 +8,7 @@
  */
 import type { RuntimeItem } from "@flow-state-dev/core";
 import type { OutputItem, RuntimeItem as ItemsRuntimeItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem as InternalRuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem as InternalRuntimeItem } from "@flow-state-dev/core/internal";
 import type { ResponseEmitterHandle } from "@flow-state-dev/core/types";
 
 declare const handle: ResponseEmitterHandle;

@@ -31,6 +31,7 @@ import {
   type IndexEntry,
   type SubscriptionRow
 } from "./rows";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /**
  * A provider a session can subscribe on: its key, who may read a thread, and
@@ -131,7 +132,7 @@ export async function subscribe(ctx: BlockContext, providers: readonly Subscript
     return { refused: "no_identity: a subscription needs a session that names its user and organization." };
   }
   // The flow a delivery lands on: the session's own record, as the engine reads it for this user.
-  const view = await ctx.requestHost?.sessions?.read(identity.id);
+  const view = await requestHostOf(ctx)?.sessions?.read(identity.id);
   const flowKind = view === undefined ? undefined : (view.flowId ?? view.flowKind);
   const tenantId = tenantOf(ctx);
   const id = await subscriptionIdOf(identity.id, provider.provider, thread, tenantId);

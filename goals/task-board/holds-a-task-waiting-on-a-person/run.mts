@@ -43,7 +43,8 @@ import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, handler, sequencer, SuspensionTimeoutError } from "@flow-state-dev/core";
-import { dispatchThroughSeam, isUserSuspension, markDispatcher, type BlockContext } from "@flow-state-dev/core/types";
+import { isUserSuspension, markDispatcher, type BlockContext } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";

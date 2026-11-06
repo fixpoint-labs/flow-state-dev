@@ -18,7 +18,7 @@
  * Owing a wake in this process tells the sweeper listening on the same store
  * ({@link onWakeOwed}), so it comes forward rather than wait for its interval.
  */
-import type { RequestWakes, WakeSettleResult, WakeView } from "@flow-state-dev/core/types";
+import type { RequestWakes, WakeSettleResult, WakeView } from "@flow-state-dev/core/internal";
 import { logRuntimeEvent, type RuntimeLogger } from "../execution/logging";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { SessionStore, WakeRecord, WakeStore } from "../stores/types";

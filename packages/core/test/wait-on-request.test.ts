@@ -5,7 +5,7 @@
  * and takes a deadline in ms from now, the host's default when unset.
  */
 import { describe, expect, it } from "vitest";
-import { waitOnRequest } from "../src";
+import { waitOnRequest } from "../src/internal";
 import type { WaitOutcome } from "../src/types/wait-gate";
 import type { SuspendOptions } from "../src/errors/suspension-error";
 import { createMockContext } from "./helpers";

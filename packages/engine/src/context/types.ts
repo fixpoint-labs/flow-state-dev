@@ -6,9 +6,12 @@ import type {
   ModelResolver,
   RequestStatus,
   ResponseEmitterHandle,
-  ResumeContext,
-  WaitDeadlines
+  ResumeContext
 } from "@flow-state-dev/core/types";
+import type {
+  InternalBlockContext,
+  WaitDeadlines
+} from "@flow-state-dev/core/internal";
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
@@ -35,7 +38,9 @@ export type ExecutionContext<
   TSessionState extends JsonObject = JsonObject,
   TUserState extends JsonObject = JsonObject,
   TOrgState extends JsonObject = JsonObject
-> = BlockContext<TRequestState, TSessionState, TUserState, TOrgState> & {
+> = BlockContext<TRequestState, TSessionState, TUserState, TOrgState> &
+  // The runtime's wiring the engine attaches: `requestHost` and the seam slots.
+  Omit<InternalBlockContext, keyof BlockContext> & {
   flow: FlowInstance;
   actionName: string;
   requestRuntime: RequestRuntime;

@@ -16,20 +16,27 @@ import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, blockPathObserver, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
+import { SuspensionError, errorDetailsWithCause, buildBlockInstanceId, blockPathObserver, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
 import {
+  buildReplayLog,
   REQUEST_SPEND_SEAM,
   SESSION_REQUEST_END_HOOK,
   onRequestEnded,
   type BackgroundFailure,
   type RequestEnding,
   type RequestSpendSeam,
-  type TaskEntry,
+  getRequestSideChainPool,
+  WAIT_DEADLINE_ENTRY,
+  isWaitGate,
+  continuesAtExpiry,
+  waitGateDataOf
+} from "@flow-state-dev/core/internal";
+import {
+  type TaskEntry
 } from "@flow-state-dev/core/types";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
-import type { ReplayLog } from "@flow-state-dev/core";
+import type { ReplayLog, RuntimeItem } from "@flow-state-dev/core/internal";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
 import {
@@ -39,7 +46,7 @@ import {
   resolveSessionStorageKey,
   tenantMatches
 } from "../stores/scope-keys";
-import { canSpeak, canSpeakStream, getRequestSideChainPool } from "@flow-state-dev/core";
+import { canSpeak, canSpeakStream } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
   DEFAULT_RUNTIME_LOGGER,
@@ -95,7 +102,7 @@ import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { noteSuspensionDeadline } from "../durability/suspension-deadlines";
 import { WRITES_OUTLIVE_ABORT, requestEndRegistryOf, type WritesOutliveAbort } from "./request-end-hooks";
 import { holdInterruptedEnding } from "./request-spend-ledger";
-import { WAIT_DEADLINE_ENTRY, isUserSuspension, isWaitGate, continuesAtExpiry, waitGateDataOf } from "@flow-state-dev/core/types";
+import { isUserSuspension } from "@flow-state-dev/core/types";
 import { clearParkOwed, parkOwedKey } from "../durability/park-owed";
 import { withChangeBus } from "../bus/publish-writes";
 

@@ -20,12 +20,14 @@ import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-default
 import type {
   FlowInstance,
   HistoryTurn,
+  TokenCounter
+} from "@flow-state-dev/core/types";
+import type {
   RequestSessions,
   SessionHistory,
   SessionHistoryQuery,
-  SessionView,
-  TokenCounter
-} from "@flow-state-dev/core/types";
+  SessionView
+} from "@flow-state-dev/core/internal";
 import type { DurabilityProvider } from "../durability/types";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { RequestStore, SessionRecord, SessionStore } from "../stores/types";

@@ -52,21 +52,25 @@
  * - {@link deliverHeldEnding}, a read of a task that delivers an ending held
  *   for the reading request: every `getTask` calls it.
  * - {@link payOwedResumes}, the waker: the filer's pass resumes every request
- *   its rows are owed, through `ctx.requestHost.resumeWait`. Never called
+ *   its rows are owed, through `requestHostOf(ctx).resumeWait`. Never called
  *   inside the waiting request.
  */
 import { owesUserResume, payOwedUserResume } from "./user-stop";
 import {
-  canHoldWait,
   logicalBlockIdOf,
+  parseBlockInstanceId
+} from "@flow-state-dev/core";
+import {
+  requestHostOf,
+  canHoldWait,
   MAX_WAIT_DEPTH,
   parkOnWait,
-  parseBlockInstanceId,
   recordedWaitOutcome,
-  requireRequestHost
-} from "@flow-state-dev/core";
-import { onRequestEnded } from "@flow-state-dev/core/types";
-import type { BlockContext, WaitGateBinding, WaitOutcome, WaitRow } from "@flow-state-dev/core/types";
+  requireRequestHost,
+  onRequestEnded
+} from "@flow-state-dev/core/internal";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { WaitGateBinding, WaitOutcome, WaitRow } from "@flow-state-dev/core/internal";
 import { IllegalTaskTransitionError, isTerminalStatus } from "../schema/task-status";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
@@ -343,7 +347,7 @@ export async function checkWaitable(
   ctx: BlockContext,
   options: WaitableOptions
 ): Promise<{ readonly ok: false; readonly error: WaitableRefusal; readonly message: string } | { readonly ok: true; readonly deadlineMs: number }> {
-  const waits = ctx.requestHost?.waits;
+  const waits = requestHostOf(ctx)?.waits;
   if (waits === undefined || !canHoldWait(ctx) || ctx.runOnce === undefined || ctx.suspend === undefined) {
     return { ok: false, error: "wait_unavailable", message: options.unavailable };
   }
@@ -382,7 +386,7 @@ async function depthRefusal(
   own: WaitRow | undefined
 ): Promise<Extract<TaskWaitResult, { ok: false }> | undefined> {
   const depth = await ctx.runOnce!(memoKey, () =>
-    ctx.requestHost!.waits!.depth({ ...(binding !== undefined ? { binding } : {}), ...(own !== undefined ? { own } : {}) })
+    requestHostOf(ctx)!.waits!.depth({ ...(binding !== undefined ? { binding } : {}), ...(own !== undefined ? { own } : {}) })
   );
   if (depth <= MAX_WAIT_DEPTH) return undefined;
   return refused(
@@ -793,7 +797,7 @@ export async function releaseEndedWaits(
 ): Promise<number | undefined> {
   const lapsed = collection.list().filter((row) => row.wait?.lapsed === true && row.wait.requestId !== undefined);
   if (lapsed.length === 0) return undefined;
-  if (ctx.requestHost?.waits?.ended === undefined || collection.releaseWait === undefined) return undefined;
+  if (requestHostOf(ctx)?.waits?.ended === undefined || collection.releaseWait === undefined) return undefined;
   const states = await requestStates(
     ctx,
     lapsed.map((row) => row.wait!.requestId!)

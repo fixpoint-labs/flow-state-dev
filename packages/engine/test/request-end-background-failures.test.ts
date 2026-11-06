@@ -5,7 +5,7 @@
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { onRequestEnded, type RequestEnding } from "@flow-state-dev/core/types";
+import { onRequestEnded, type RequestEnding } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import { abortRequest, createInMemoryStores, runAction } from "../src";

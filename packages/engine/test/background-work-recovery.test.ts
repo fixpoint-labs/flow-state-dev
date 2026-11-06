@@ -44,7 +44,7 @@ import type { InboundTransportHost } from "../src/transports/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { buildItemLookup, resolveBlockValue } from "@flow-state-dev/core/items";
-import { parseBlockInstanceId } from "@flow-state-dev/core/items/internal";
+import { parseBlockInstanceId } from "@flow-state-dev/core/internal";
 
 function createDurableStores() {
   const stores = createInMemoryStores();

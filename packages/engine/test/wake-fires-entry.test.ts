@@ -10,6 +10,7 @@ import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createFlowState, disposeFlowApiRouter, inMemoryStores, runAction } from "../src";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -25,8 +26,8 @@ const owe = handler({
   inputSchema: z.object({ inMs: z.number() }),
   outputSchema: z.any(),
   execute: async (input, ctx) => ({
-    offered: ctx.requestHost?.wakes !== undefined,
-    owed: (await ctx.requestHost?.wakes?.owe({ entry: "pass", dueAt: Date.now() + input.inMs })) ?? false
+    offered: requestHostOf(ctx)?.wakes !== undefined,
+    owed: (await requestHostOf(ctx)?.wakes?.owe({ entry: "pass", dueAt: Date.now() + input.inMs })) ?? false
   })
 });
 
@@ -46,7 +47,7 @@ const pass = handler({
         });
       });
     }
-    const wakes = ctx.requestHost?.wakes;
+    const wakes = requestHostOf(ctx)?.wakes;
     const read = await wakes?.read("pass");
     if (wakes !== undefined && read !== undefined) await wakes.settle("pass", { ...read, landBy: 0 }, null);
     passEnded = true;

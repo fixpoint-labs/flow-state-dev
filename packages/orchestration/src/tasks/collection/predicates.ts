@@ -11,7 +11,7 @@
  * visible multi-second idle gaps between actor invocations.
  */
 import type { ComponentItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { TaskChangeEvent } from "./change-event";
 import { TASK_CHANGE_COMPONENT_TYPE } from "./get-or-create";
 

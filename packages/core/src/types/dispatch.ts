@@ -44,7 +44,7 @@
  * with `markDispatcher` so the walk stays complete.
  */
 import { z } from "zod";
-import type { BlockContext, BlockDefinition } from "./block";
+import type { BlockContext, BlockDefinition, InternalBlockContext } from "./block";
 import type { ActionCore } from "./flow";
 
 /** The kinds of dispatch a flow can receive. Each resolves one map on the flow. */
@@ -686,10 +686,10 @@ export async function resolveTaskFlowKind(
  * address it dispatches to.
  */
 export function dispatchThroughSeam(
-  ctx: { readonly [DISPATCH_SEAM]?: DispatchSeam },
+  ctx: object,
   spec: DispatchSpec
 ): Promise<DispatchOutcome> {
-  const seam = ctx[DISPATCH_SEAM];
+  const seam = (ctx as Pick<InternalBlockContext, typeof DISPATCH_SEAM>)[DISPATCH_SEAM];
   if (seam == null) throw new NoDispatchSeamError(spec.from);
   return seam(spec);
 }

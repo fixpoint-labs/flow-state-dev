@@ -1,7 +1,7 @@
 /**
  * Small response-emitter helpers shared by the execution runtime.
  */
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 
 export type { RuntimeItem };
 

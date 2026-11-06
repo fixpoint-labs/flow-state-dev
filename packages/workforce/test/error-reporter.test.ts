@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // The send's own dispatch of a worker message (`from: "sendMessage"`) can be
 // made to throw, so only the sending session's pass can land it (FIX-2271).
 const fault = vi.hoisted(() => ({ throwFastPath: false }));
-vi.mock("@flow-state-dev/core/types", async (original) => {
-  const actual = await original<typeof import("@flow-state-dev/core/types")>();
+vi.mock("@flow-state-dev/core/internal", async (original) => {
+  const actual = await original<typeof import("@flow-state-dev/core/internal")>();
   return {
     ...actual,
     dispatchThroughSeam: (ctx: never, spec: { action: string; from?: string }) =>
