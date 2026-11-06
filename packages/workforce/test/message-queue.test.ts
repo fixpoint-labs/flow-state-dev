@@ -19,8 +19,8 @@ const ledger = {
   }
 };
 
-vi.mock("@flow-state-dev/orchestration/tasks", async (original) => ({
-  ...(await original<typeof import("@flow-state-dev/orchestration/tasks")>()),
+vi.mock("@flow-state-dev/orchestration/internal", async (original) => ({
+  ...(await original<typeof import("@flow-state-dev/orchestration/internal")>()),
   findTaskPartitions: async () => ["alice"]
 }));
 vi.mock("../src/conversation-board/ledger", async (original) => ({
