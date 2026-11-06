@@ -1,6 +1,4 @@
 import { providerNames, type GatewayConfig } from "./types";
-import { RetiredNameError } from "@flow-state-dev/contracts/internal";
-import { REFUSALS } from "../retired";
 
 // ---------------------------------------------------------------------------
 // Standard env var mappings
@@ -167,8 +165,7 @@ export function canonicalizeIntentName(intentName: string): string {
 /**
  * Parse a model string into its lane: `provider/model`, `intent/name`, or
  * `name:model` (first `:` before the first `/`, so `openai/gpt-oss:free` stays
- * a slash id). The removed `gateway/provider/model` form throws, naming its
- * colon spelling.
+ * a slash id). Any other shape throws as an invalid format.
  */
 export function parseModelString(modelString: string): ParsedModelString {
   const trimmed = modelString.trim();
@@ -205,15 +202,10 @@ export function parseModelString(modelString: string): ParsedModelString {
     return { type: "direct", provider: parts[0], modelId: parts[1] };
   }
 
-  if (parts.length >= 3) {
-    if (parts[0] === "intent") {
-      throw new Error(
-        `Invalid model format: "${modelString}". intent/* model strings must be 2 parts (intent/name).`
-      );
-    }
-    throw new RetiredNameError(REFUSALS, "gateway/provider/model", `Invalid model format "${modelString}"`, {
-      replacement: `a named route with a colon: "${parts[0]}:${parts.slice(1).join("/")}"`,
-    });
+  if (parts.length >= 3 && parts[0] === "intent") {
+    throw new Error(
+      `Invalid model format: "${modelString}". intent/* model strings must be 2 parts (intent/name).`
+    );
   }
 
   throw new Error(

@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import { withRetiredShapes } from "../../src/tasks/schema/retired-shapes";
 import { persistedTaskStatusSchema } from "../../src/tasks/schema/task-status";
 import { taskSchema } from "../../src/tasks/schema/task";
-import { REFUSALS } from "../../src/retired";
 
 const row = { id: "t", goal: "t", attempts: 0, createdAt: 1, updatedAt: 1 };
 
@@ -29,10 +28,6 @@ describe("the retired-shape read", () => {
 
   it("blocked: the parse path reads the status as held too", () => {
     expect(persistedTaskStatusSchema.parse("blocked")).toBe("held");
-  });
-
-  it("blocked: the read is the package table's entry, removed at its version", () => {
-    expect(REFUSALS.entries.blocked).toMatchObject({ readAs: "held", removeIn: "0.8.0" });
   });
 
   it("reads none of the shapes no published version wrote", () => {

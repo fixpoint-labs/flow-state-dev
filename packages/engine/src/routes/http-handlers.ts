@@ -78,8 +78,6 @@ import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBo
 import { pinRejectsCaller } from "../context/instance-pin";
 import { createInstanceCallerResolver, type InstanceCallerResolver } from "./instance-caller";
 import type { FlowRunner } from "../transports/runner";
-import { refuseRetired } from "@flow-state-dev/contracts/internal";
-import { REFUSALS } from "../retired";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 import { createWaitResumeOperation } from "../context/wait-resume-operation";
 import { installWaitSweeperFact } from "../durability/wait-deadlines";
@@ -246,7 +244,6 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   /** Push delivery's state (FIX-2428): empty until a host turns push on. */
   push: PushState;
 } {
-  refuseRetired(REFUSALS, options, "createFlowRouteHandlers");
   // A router built straight over its stores keeps declared indexes in step
   // too. Stores `createFlowState` already wrapped are left as they are.
   const stores = withResourceIndexWriter(resolveStores(options.stores), () =>

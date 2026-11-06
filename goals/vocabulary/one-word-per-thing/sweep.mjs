@@ -16,15 +16,10 @@
  * Totality: every tracked file under a swept root is either scanned or excluded by a
  * named rule in rules.mjs → EXCLUDE; the report prints both counts, and the run fails
  * if a file is neither. CI's Process guards run it, and again with `--control`.
- *
- * Retired tables (FIX-2454, rules.mjs → RETIRED_TABLES): every refusal-shaped line under
- * `packages/<pkg>/src` sits in that package's `src/retired.ts` table or goes through the
- * helper (`retired-unowned` otherwise), and no table entry's `removeIn` is at or below its
- * package's version (`retired-expired`).
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { EXCLUDE, KEEP, REFUSAL_MARKER, RETIRED, RETIRED_TABLES, ROOTS } from "./rules.mjs";
+import { EXCLUDE, KEEP, REFUSAL_MARKER, RETIRED, ROOTS } from "./rules.mjs";
 
 const argv = process.argv.slice(2);
 const args = new Set(argv);
@@ -112,81 +107,11 @@ if (args.has("--list")) {
   for (const [path, n] of [...byFile].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`  ${String(n).padStart(4)}  ${path}`);
 }
 
-// ── Retired tables ─────────────────────────────────────────────────────────
-// The control plants one refusal no table owns and one table entry already at its
-// package's version; each must be reported by its own rule, by identity.
-const PLANTED_REFUSAL = { path: "packages/core/src/__planted_refusal__.ts", text: 'throw new Error("`plantedKey` was removed");\n' };
-const versionOf = (pkg) => JSON.parse(readFileSync(`${repo}/packages/${pkg}/package.json`, "utf8")).version;
-const PLANTED_TABLE = {
-  path: "packages/core/src/retired.ts (planted)",
-  pkg: "core",
-  text: `export const REFUSALS = retiredNames("@flow-state-dev/core", {\n  plantedName: { replacement: "x", removeIn: "${versionOf("core")}" }\n});\n`
-};
-
-/** `a` before `b`, by major.minor.patch. */
-const below = (a, b) => {
-  const [x, y] = [a, b].map((v) => v.split(".").map(Number));
-  for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i] < y[i];
-  return false;
-};
-
-/** Each entry of a table's source: its key and `removeIn`, read off the line that opens it. */
-function tableEntries(text) {
-  const entries = [];
-  let key;
-  for (const line of text.split("\n")) {
-    const opens = /^\s*("[^"]+"|[A-Za-z_$][\w$]*)\s*:\s*\{/.exec(line);
-    if (opens) key = opens[1].replace(/^"|"$/g, "");
-    const removeIn = /removeIn:\s*"([^"]+)"/.exec(line);
-    if (removeIn) entries.push({ key, removeIn: removeIn[1] });
-  }
-  return entries;
-}
-
-const retiredFails = [];
-const sourceFiles = tracked.filter((f) => RETIRED_TABLES.source.test(f) && !RETIRED_TABLES.test.test(f));
-const tables = sourceFiles
-  .map((path) => ({ path, match: RETIRED_TABLES.table.exec(path) }))
-  .filter((t) => t.match)
-  .map(({ path, match }) => ({ path, pkg: match[1], text: readFileSync(`${repo}/${path}`, "utf8") }));
-if (planted) tables.push(PLANTED_TABLE);
-let tableEntryCount = 0;
-for (const table of tables) {
-  const manifest = JSON.parse(readFileSync(`${repo}/packages/${table.pkg}/package.json`, "utf8"));
-  const named = /retiredNames\(\s*"([^"]+)"/.exec(table.text)?.[1];
-  if (named !== manifest.name) {
-    retiredFails.push({ rule: "retired-expired", path: table.path, entry: "(table)", text: `names ${named ?? "no package"}, not ${manifest.name}` });
-  }
-  for (const entry of tableEntries(table.text)) {
-    tableEntryCount += 1;
-    if (!below(manifest.version, entry.removeIn)) {
-      retiredFails.push({ rule: "retired-expired", path: table.path, entry: entry.key, text: `removeIn ${entry.removeIn}, and ${manifest.name} is at ${manifest.version}: remove the entry and its refusal` });
-    }
-  }
-}
-const refusalSources = planted ? [...sourceFiles, PLANTED_REFUSAL.path] : sourceFiles;
-let refusalLines = 0;
-for (const path of refusalSources) {
-  const text = path === PLANTED_REFUSAL.path ? PLANTED_REFUSAL.text : readFileSync(`${repo}/${path}`, "utf8");
-  text.split("\n").forEach((line, i) => {
-    if (!RETIRED_TABLES.shape.test(line)) return;
-    refusalLines += 1;
-    if (RETIRED_TABLES.table.test(path) || RETIRED_TABLES.helper.test(path)) return;
-    if (RETIRED_TABLES.throughHelper.test(line)) return;
-    if (RETIRED_TABLES.excluded.some(([file, text]) => file.test(path) && text.test(line))) return;
-    retiredFails.push({ rule: "retired-unowned", path, entry: `line ${i + 1}`, text: line.trim().slice(0, 140) });
-  });
-}
-
-const retiredOpen = retiredFails.filter((f) => inScope(f.rule));
-console.log(`retired tables: ${tables.length} tables · ${tableEntryCount} entries · ${refusalLines} refusal-shaped src lines · OPEN ${retiredOpen.length}`);
-for (const f of retiredOpen) console.log(`  ${f.rule}\t${f.path} ${f.entry}\t${f.text}`);
-
 // Totality: a file under a swept root with no scanning rule and no exclusion is a hole.
 if (unruled.length > 0) {
   console.log(`TOTALITY FAIL: ${unruled.length} files neither scanned nor excluded, e.g. ${unruled.slice(0, 5).join(", ")}`);
 }
-const pass = open.length === 0 && unruled.length === 0 && retiredOpen.length === 0;
+const pass = open.length === 0 && unruled.length === 0;
 if (planted) {
   // Each planted line must be caught by its own rule, so a row that reads nothing can't pass.
   const want = [
@@ -194,16 +119,8 @@ if (planted) {
     ["packages/workforce/src/__planted__.ts", "message-names"],
     ["packages/workforce/src/__planted__.ts", "message-reply-to"]
   ].filter(([, rule]) => inScope(rule));
-  // The table pass's plants, each by its path, rule and entry: a count of failures would pass on any two.
-  const retiredWant = [
-    [PLANTED_REFUSAL.path, "retired-unowned", "line 1"],
-    [PLANTED_TABLE.path, "retired-expired", "plantedName"]
-  ].filter(([, rule]) => inScope(rule));
   // Under `--only`, only the selected families' plants are expected; none selected proves nothing.
-  const caught =
-    want.length + retiredWant.length > 0 &&
-    want.every(([path, rule]) => open.some((h) => h.path === path && h.rule === rule)) &&
-    retiredWant.every(([path, rule, entry]) => retiredOpen.some((f) => f.path === path && f.rule === rule && f.entry === entry));
+  const caught = want.length > 0 && want.every(([path, rule]) => open.some((h) => h.path === path && h.rule === rule));
   console.log(caught ? "CONTROL OK: every planted hit was caught" : "CONTROL BROKEN: a planted hit passed");
   process.exit(caught ? 0 : 1);
 }

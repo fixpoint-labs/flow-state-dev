@@ -157,8 +157,6 @@ import {
 } from "./run-owner";
 
 export type { RequestIdentityContext } from "./run-owner";
-import { refuseRetired } from "@flow-state-dev/contracts/internal";
-import { REFUSALS } from "./retired";
 import { issueSpecOptions, readIssueSpecSection, type IssueSpecOption } from "./issue-spec";
 import {
   assertDerivedIdentity,
@@ -1724,7 +1722,6 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   } = options;
   const specOptions = issueSpecOptions(issueSpec);
 
-  refuseRetired(REFUSALS, options, "[harness-manager]");
 
   // **A board to read, named one way or the other.** A fixed board needs both
   // halves; without one, the resolver is the only way to a board.

@@ -610,8 +610,7 @@ describe("configuration", () => {
       dependencies: Record<string, string>;
     };
     // The isomorphic client is the Inbox's browser client (FIX-2133): a framework package, not an evaluation library.
-    // Contracts carries the retired-name helper, a framework package too.
-    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@flow-state-dev/client", "@flow-state-dev/contracts", "@flow-state-dev/core", "zod"]);
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@flow-state-dev/client", "@flow-state-dev/core", "zod"]);
 
     const dir = join(__dirname, "../../src/skills");
     for (const file of ["skill-evaluator.ts", "skill-evaluator-tier.ts", "skill-activator.ts", "skill-catalog.ts"]) {

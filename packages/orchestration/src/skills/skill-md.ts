@@ -22,8 +22,6 @@
 
 import type { Skill, SkillState } from "@flow-state-dev/core";
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
-import { RetiredNameError } from "@flow-state-dev/contracts/internal";
-import { REFUSALS } from "../retired";
 import {
   parseFrontmatterYaml,
   parseInlineMapping,
@@ -144,25 +142,6 @@ export function validateSkillName(name: string): void {
   // the lowercase message and only a lowercase device name reaches this one.
   if (isWindowsReservedName(name)) {
     throw new Error(`Skill name "${name}" is a reserved device name on Windows`);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Removed fields
-// ---------------------------------------------------------------------------
-
-/**
- * Thrown for a `SKILL.md` that declares `agents:`, skill sub-agents, which a
- * published version ran and the package's retired table now refuses.
- *
- * Its own class so a caller that otherwise skips a malformed skill can tell
- * this one apart and refuse it instead: `createSkillsLibrary` rethrows it at
- * construction rather than skipping a bundled skill that declares `agents:`.
- */
-export class SkillAgentsRemovedError extends RetiredNameError {
-  constructor() {
-    super(REFUSALS, "agents", "SKILL.md");
-    this.name = "SkillAgentsRemovedError";
   }
 }
 
@@ -353,8 +332,6 @@ export function parseSkillMd(
     }
   }
 
-  // `agents:` (skill sub-agents): refused on any presence, an empty value included.
-  if ("agents" in raw) throw new SkillAgentsRemovedError();
 
   // Warn about ignored Claude-Code fields.
   for (const key of WARN_IGNORED_KEYS) {

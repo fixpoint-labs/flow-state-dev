@@ -31,8 +31,6 @@ import { partitionedResourceCollection } from "./partition";
 import { createDelivery } from "../notice/delivery";
 import type { TaskCapOptions } from "./task-caps";
 import type { FilingStamp } from "./internal";
-import { refuseRetiredValue } from "@flow-state-dev/contracts/internal";
-import { COLLECTION_BACKINGS, REFUSALS } from "../../retired";
 
 /** Component-item type emitted on every task lifecycle transition. */
 export const TASK_CHANGE_COMPONENT_TYPE = "task-change";
@@ -131,8 +129,7 @@ export type GetOrCreateTaskCollectionOptions =
  * ```
  *
  * Throws, before touching any storage, when `backing` is not `"state"` or
- * `"resource"` — a retired `"sequencer"` or `"request"` spelling an untyped
- * caller may still send throws `RetiredNameError` — or when `state` is present but empty.
+ * `"resource"`, or when `state` is present but empty.
  *
  * Async: the resource backing hydrates a sync read-mirror at construction
  * (see `createResourceBackedTaskCollection`). The state backing builds
@@ -312,13 +309,12 @@ function checkedPartition(options: ResourceBackingSpec): string | undefined {
 /**
  * Reject a backing this factory does not build, before any storage or context
  * handle is read. Typed callers cannot get here; an untyped caller (plain JS,
- * a cast, a config loaded at runtime) still sending a retired spelling gets the
- * replacement named rather than a failure one step later.
+ * a cast, a config loaded at runtime) sending another spelling gets the valid
+ * backings named rather than a failure one step later.
  */
 function assertKnownBacking(options: GetOrCreateTaskCollectionOptions): void {
   const raw = options as { backing?: unknown; collectionId?: unknown; state?: unknown };
   const where = `[tasks] getOrCreateTaskCollection("${String(raw.collectionId)}")`;
-  refuseRetiredValue(REFUSALS, raw.backing, where, "backing", COLLECTION_BACKINGS);
   if (raw.backing !== "state" && raw.backing !== "resource") {
     throw new Error(
       `${where}: unknown backing ${JSON.stringify(raw.backing)}. ` +

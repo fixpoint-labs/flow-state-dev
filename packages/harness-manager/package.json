@@ -78,7 +78,6 @@
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/client": "workspace:*",
-    "@flow-state-dev/contracts": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",

@@ -8,7 +8,6 @@ import {
   kebabToCamel,
   camelToKebab,
   MAX_DESCRIPTION_LENGTH,
-  SkillAgentsRemovedError,
 } from "../../src/skills/skill-md";
 
 describe("parseSkillMd", () => {
@@ -400,62 +399,5 @@ describe("kebabToCamel / camelToKebab", () => {
     expect(camelToKebab("disableModelInvocation")).toBe(
       "disable-model-invocation",
     );
-  });
-});
-
-
-// ---------------------------------------------------------------------------
-// Removed frontmatter — refused loudly, never preserved or ignored
-// ---------------------------------------------------------------------------
-
-const baseHeader = `description: company research`;
-
-function withFrontmatter(extra: string): string {
-  return `---\n${baseHeader}\n${extra}\n---\n\nbody`;
-}
-
-/** The error `parseSkillMd` throws for `text`, or a failure if it parses. */
-function refusalOf(text: string): Error {
-  try {
-    parseSkillMd(text);
-  } catch (err) {
-    return err as Error;
-  }
-  throw new Error("expected parseSkillMd to refuse, but it parsed");
-}
-
-describe("parseSkillMd — removed `agents:` (skill sub-agents)", () => {
-  // A skill used to run a private team declared under `agents:`. That surface
-  // is gone, so a file that still declares one must fail where it is loaded —
-  // preserving the key would round-trip a team nothing runs, and dropping it
-  // would leave a body that tells the model to plan for that team.
-  it("refuses a skill that declares agents, saying it was removed and where delegation lives now", () => {
-    const err = refusalOf(
-      withFrontmatter([`agents:`, `  analyst:`, `    prompt: You analyse.`].join("\n")),
-    );
-    expect(err).toBeInstanceOf(SkillAgentsRemovedError);
-    expect(err.message).toMatch(/SKILL\.md: "agents" was retired\. Use the task board.*orchestration 0\.8\.0/);
-    expect(err.message).toMatch(/task board/);
-  });
-
-  it("refuses every shape an agent entry used to take, not only an inline prompt", () => {
-    for (const entry of [
-      [`  market:`, `    prompt-ref: ./reference/market.md`],
-      [`  vet:`, `    agent-ref: research-analyst`],
-    ]) {
-      const err = refusalOf(withFrontmatter([`agents:`, ...entry].join("\n")));
-      expect(err.message).toMatch(/"agents" was retired/);
-    }
-  });
-
-  it("refuses a bare `agents:` key with no entries", () => {
-    expect(refusalOf(withFrontmatter(`agents:`)).message).toMatch(/"agents" was retired/);
-  });
-
-  it("parses the same skill once the `agents:` block is deleted", () => {
-    // The control: the refusal is about the key, not the rest of the file.
-    expect(parseSkillMd(withFrontmatter(`keywords: [research]`)).state.keywords).toEqual([
-      "research",
-    ]);
   });
 });

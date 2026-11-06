@@ -23,9 +23,6 @@
  * because its worker flow composed this capability at all, so there is nothing for a
  * `tools:` fence to check, and fencing it would leave a worker advertising a tool
  * in its prompt it cannot call.
- *
- * The retired `agents` and `catalog` options are refused at construction
- * (`./retired`), so an app passing one is told what to pass instead.
  */
 
 import { createManifestRegistry, defineCapability, discoveryTools } from "@flow-state-dev/core";
@@ -42,8 +39,6 @@ import {
   type InventoryKeys,
 } from "./manifest-sources";
 import { narrowToWorkerSelection, workerDiscoverSelection } from "./worker-discovery";
-import { refuseRetired } from "@flow-state-dev/contracts/internal";
-import { REFUSALS } from "./retired";
 
 export interface WorkforceCapabilityOptions {
   /**
@@ -83,13 +78,11 @@ export interface WorkforceCapabilityOptions {
  * @returns A capability named `workforce`, contributing the `discover` control
  *   tool and nothing else.
  * @throws when two sources claim the same domain, naming both registration
- *   sites — at construction, not at the first ambiguous read; and
- *   `RetiredNameError` for a retired option (`agents`, `catalog`).
+ *   sites — at construction, not at the first ambiguous read.
  */
 export function createWorkforceCapability(
   options: WorkforceCapabilityOptions,
 ): DefinedCapability {
-  refuseRetired(REFUSALS, options, "createWorkforceCapability");
   // One registration point (tenet 5). The workforce's own domain and the
   // app's go into the same call, so a duplicate is refused in one place with
   // both sites named rather than discovered when a worker asks.

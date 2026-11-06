@@ -201,19 +201,6 @@ describe("goalSeekLoop — refuses a board whose drain can return with a row not
     );
   });
 
-  it("refuses a board built with the retired onReview, by name (FIX-2131)", () => { // retired-name-refusal: refusal test
-    for (const onReview of ["exit", "hold"]) { // retired-name-refusal: refusal test
-      expect(() =>
-        taskBoard({
-          name: "gsl-park-exit",
-          collection: durable("gsl-park-exit"),
-          workers: inline("gsl-park-exit-w"),
-          onReview, // retired-name-refusal: refusal test
-        } as never),
-      ).toThrow(/\[task-board\] "gsl-park-exit": "onReview" was retired\..*holdTaskForUser.*suspendForUser.*blocked.*orchestration 0\.8\.0/s); // retired-name-refusal: refusal test
-    }
-  });
-
   it("still loops over a plan board, whose judge sees every row ended", async () => {
     const seen: string[] = [];
     const board = taskBoard({

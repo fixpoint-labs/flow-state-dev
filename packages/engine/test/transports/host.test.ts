@@ -553,27 +553,3 @@ describe("createInboundTransportHost", () => {
     });
   });
 });
-
-// A caller that is not type-checked, or spreads an older config, would otherwise lose its queue
-// runner without a word and run its work in process: each entry point refuses the old key by name.
-describe("the old `dispatcher` option", () => {
-  const legacy = { dispatcher: { dispatch: vi.fn(), close: vi.fn() } };
-
-  it("is refused by createInboundTransportHost, pointing at runner", () => {
-    expect(() =>
-      createInboundTransportHost({
-        registry: createFlowRegistry(),
-        stores: createInMemoryStores(),
-        resolvePrincipal: defaultBodyUserIdPrincipalResolver,
-        runtimeConfig: {},
-        ...legacy
-      } as never)
-    ).toThrow(/createInboundTransportHost: "dispatcher" was retired\. Use `runner`, with the same FlowRunner\. This refusal is removed in @flow-state-dev\/engine 0\.7\.0\./);
-  });
-
-  it("is refused by createFlowRouteHandlers and createFlowApiRouter", () => {
-    const options = { registry: createFlowRegistry(), stores: createInMemoryStores(), ...legacy } as never;
-    expect(() => createFlowRouteHandlers(options)).toThrow(/createFlowRouteHandlers: "dispatcher" was retired\. Use `runner`, with the same FlowRunner\. This refusal is removed in @flow-state-dev\/engine 0\.7\.0\./);
-    expect(() => createFlowApiRouter(options)).toThrow(/createFlowApiRouter: "dispatcher" was retired\. Use `runner`, with the same FlowRunner\. This refusal is removed in @flow-state-dev\/engine 0\.7\.0\./);
-  });
-});

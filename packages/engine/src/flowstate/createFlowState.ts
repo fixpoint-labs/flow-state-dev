@@ -37,8 +37,6 @@ import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-err
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { resolveProfileStores } from "./resolve-slots";
 import type { FlowRunner } from "../transports/runner";
-import { refuseRetired } from "@flow-state-dev/contracts/internal";
-import { REFUSALS } from "../retired";
 import {
   createDispatchOperation,
   type DispatchOperation,
@@ -313,7 +311,6 @@ class InternalFlowState<TSettings extends object>
       );
     }
 
-    refuseRetired(REFUSALS, options, "createFlowState");
     if (options.worker !== undefined && options.runner !== undefined) {
       throw new FlowStateConfigError(
         "createFlowState: `worker` and `runner` are mutually exclusive. " +

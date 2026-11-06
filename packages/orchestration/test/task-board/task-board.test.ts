@@ -167,19 +167,7 @@ describe("taskBoard - handle structure", () => {
         dispatcher: "priority",
         workers: makeGoalWorker("noop", () => null),
       } as never)
-    ).toThrow(/"dispatcher" was retired\. Use `claimOrder`/);
-  });
-
-  // A config spread from a base that clears the old key passes nothing.
-  it("accepts `dispatcher: undefined`, as the key it replaced did", () => {
-    expect(() =>
-      taskBoard({
-        name: "cleared",
-        collection: { collectionId: "x" },
-        dispatcher: undefined,
-        workers: makeGoalWorker("noop", () => null),
-      } as never)
-    ).not.toThrow();
+    ).toThrow(/sets `dispatcher`, which is now `claimOrder`/);
   });
 });
 

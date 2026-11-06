@@ -160,8 +160,6 @@ import { createTaskGate } from "./task-entry";
 import { createRowDispatch } from "./blocks/dispatch-row";
 import { markDelegating, TASK_SETTLED_ENTRY } from "../tasks/notice/delivery";
 import { recordBoardResolver } from "./board-resolver";
-import { refuseRetired } from "@flow-state-dev/contracts/internal";
-import { BOARD_OPTIONS, REFUSALS } from "../retired";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -743,7 +741,15 @@ export function taskBoard<
     flowPolicy: flowPolicyConfig,
   } = config;
 
-  refuseRetired(REFUSALS, config, `[task-board] "${name}"`, BOARD_OPTIONS);
+  // The claim order's option was `dispatcher` (FIX-2245), the word the block
+  // keeps. Refused by name, so a board built with it does not quietly drop its
+  // claim order, and with it a guard such as `runOwnerClaimOrder()`.
+  if ((config as { dispatcher?: unknown }).dispatcher !== undefined) {
+    throw new Error(
+      `[task-board] "${name}" sets \`dispatcher\`, which is now \`claimOrder\`. Pass the same ` +
+        `claim order (or "fifo", "topological", "priority") as \`claimOrder\`.`
+    );
+  }
 
   const caps = resolveBoardCaps(name, config);
 

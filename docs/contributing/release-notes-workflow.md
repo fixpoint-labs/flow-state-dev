@@ -80,7 +80,7 @@ A PR that touches three published packages writes three fragments, one each:
 "@flow-state-dev/engine": minor
 ---
 
-`createFlowState` refuses the retired `dispatcher` option by name; pass the same FlowRunner as `runner` (FIX-123).
+`createFlowState` no longer accepts `dispatcher`; pass the same FlowRunner as `runner` (FIX-123).
 ```
 
 Write one fragment per published package the PR touches, each with one line for that package's reader, naming each moved or retired name's new home. A reader of `@flow-state-dev/engine`'s changelog should not have to read core's entry to learn what changed for them, so a change that spans packages is told once in each, in that package's terms. `pnpm version-packages` aggregates fragments per package — if two PRs each ship a fragment touching `core`, that's two entries under the next `@flow-state-dev/core` release heading and a single `core` version bump (taking the max of the bumps).

@@ -11,8 +11,6 @@ import type {
   InboundTransportHost
 } from "@flow-state-dev/engine";
 import { handleDispatch, handleList } from "./routes";
-import { refuseRetired } from "@flow-state-dev/contracts/internal";
-import { REFUSALS } from "./retired";
 
 export const SCHEDULED_TRANSPORT_SOURCE = "scheduled" as const;
 
@@ -27,14 +25,10 @@ export interface CreateScheduledTransportAdapterOptions {
 /**
  * Build an `InboundTransportAdapter` that mounts the scheduled-dispatch
  * routes. Pass to `createFlowApiRouter({ adapters: [...] })`.
- *
- * @throws `RetiredNameError` when given a retired option (`idempotencyWindowMs`,
- *   `idempotencyOptions`).
  */
 export function createScheduledTransportAdapter(
   options: CreateScheduledTransportAdapterOptions = {}
 ): InboundTransportAdapter {
-  refuseRetired(REFUSALS, options, "createScheduledTransportAdapter");
   const basePath = normalizeBasePath(options.basePath ?? "/api/flows");
 
   return {

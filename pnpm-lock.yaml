@@ -1480,9 +1480,6 @@ importers:
       '@flow-state-dev/client':
         specifier: workspace:*
         version: link:../client
-      '@flow-state-dev/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
@@ -1654,9 +1651,6 @@ importers:
       '@flow-state-dev/client':
         specifier: workspace:*
         version: link:../client
-      '@flow-state-dev/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
@@ -1735,9 +1729,6 @@ importers:
 
   packages/scheduled:
     dependencies:
-      '@flow-state-dev/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
@@ -2224,9 +2215,6 @@ importers:
       '@flow-state-dev/client':
         specifier: workspace:*
         version: link:../client
-      '@flow-state-dev/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
