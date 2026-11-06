@@ -32,12 +32,15 @@ export function ThreadView({
   sessionId,
   task,
   pinned,
+  dismissed = false,
   onClose,
 }: {
   adapter: LabAdapter;
   sessionId: string;
   task: TaskRow;
   pinned: boolean;
+  /** You dismissed this failed attempt: it no longer waits on you. */
+  dismissed?: boolean;
   onClose: () => void;
 }) {
   const work = useWatch(
@@ -55,6 +58,7 @@ export function ThreadView({
   // Resolve and a send share the composer: nothing else goes while one is on its way.
   const resolve = useSubmit(() => adapter.resolve(sessionId, task.id));
   const pin = useSubmit(() => (pinned ? adapter.unpin(task.id) : adapter.pin(task.id)));
+  const dismiss = useSubmit(() => adapter.dismiss(task));
   const actions = useMemo(() => adapter.taskActions(sessionId), [adapter, sessionId]);
   const held = sending || resolve.busy;
 
@@ -159,6 +163,17 @@ export function ThreadView({
       <div className="flex flex-wrap items-center gap-2">
         {/* No Steer box: the composer below steers the task. */}
         <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} />
+        {/* A failure waits on you until you retry it or dismiss it. */}
+        {task.status === "errored" && !dismissed ? (
+          <button
+            type="button"
+            disabled={dismiss.busy}
+            onClick={() => void dismiss.submit(undefined)}
+            className="border border-border px-1.5 text-xs hover:bg-accent disabled:opacity-40"
+          >
+            {dismiss.busy ? "Dismissing…" : "Dismiss"}
+          </button>
+        ) : null}
         <button
           type="button"
           aria-pressed={pinned}
@@ -169,6 +184,11 @@ export function ThreadView({
           {pinned ? "Unpin" : "Pin"}
         </button>
       </div>
+      {dismiss.error === undefined ? null : (
+        <p role="alert" className="text-xs text-destructive">
+          Couldn't dismiss: {dismiss.error}
+        </p>
+      )}
       {pin.error === undefined ? null : (
         <p role="alert" className="text-xs text-destructive">
           Couldn't {pinned ? "unpin" : "pin"}: {pin.error}

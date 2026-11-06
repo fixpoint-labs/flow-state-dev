@@ -3,7 +3,7 @@ import type { TaskRow } from "../adapter";
 /**
  * The threads board's columns, read from the task row alone (spec, "The
  * board's columns"). The lab keeps no status of its own: a column is the
- * task's status and what it waits on, plus your pins.
+ * task's status and what it waits on, plus your pins and the failures you dismissed.
  */
 export type Column = "pinned" | "working" | "waiting" | "review" | "resolved";
 
@@ -16,19 +16,28 @@ export const COLUMNS: readonly { id: Column; label: string }[] = [
   { id: "resolved", label: "Resolved" },
 ];
 
+/**
+ * The key your dismissal of a failed task is kept under: its id and attempt, so a retry
+ * that fails again waits on you again.
+ */
+export const dismissalKey = (task: Pick<TaskRow, "id" | "attempts">) => `${task.id}#${task.attempts ?? 0}`;
+
 /** How many of a session's tasks wait on you: those under *Waiting on you* or *Ready for review*, pins aside. */
-export function waitingOnYou(tasks: readonly TaskRow[]): number {
+export function waitingOnYou(tasks: readonly TaskRow[], dismissed: ReadonlySet<string> = new Set()): number {
   return tasks.filter((task) => {
-    const column = columnOf(task, false);
+    const column = columnOf(task, false, dismissed.has(dismissalKey(task)));
     return column === "waiting" || column === "review";
   }).length;
 }
 
-/** The column a task row lands in. A pinned task shows only under *Pinned*. */
-export function columnOf(task: TaskRow, pinned: boolean): Column {
+/**
+ * The column a task row lands in. A pinned task shows only under *Pinned*. A failure waits on
+ * you until you retry or dismiss it; a dismissed one is resolved.
+ */
+export function columnOf(task: TaskRow, pinned: boolean, dismissed = false): Column {
   if (pinned) return "pinned";
   if (task.status === "completed" || task.status === "cancelled") return "resolved";
-  if (task.status === "errored") return "waiting";
+  if (task.status === "errored") return dismissed ? "resolved" : "waiting";
   if (task.waitingOn?.kind === "review") return "review";
   if (task.waitingOn) return "waiting";
   return "working";

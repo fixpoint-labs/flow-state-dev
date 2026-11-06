@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { LabAdapter, TaskRow } from "../adapter";
-import { COLUMNS, columnOf, type Column } from "../lib/columns";
+import { COLUMNS, columnOf, dismissalKey, type Column } from "../lib/columns";
 import { age, useMissing, useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
@@ -33,13 +33,15 @@ export function ThreadsBoard({
   const tasks = listed ?? [];
   useMissing(listed, openId, onMissing);
   const pins = useWatch((emit: (ids: string[]) => void) => adapter.watchPins(emit), [adapter]) ?? [];
+  const dismissed = useWatch((emit: (keys: string[]) => void) => adapter.watchDismissed(emit), [adapter]) ?? [];
+  const isDismissed = (task: TaskRow) => dismissed.includes(dismissalKey(task));
   const [collapsed, setCollapsed] = useState<Partial<Record<Column, boolean>>>({ resolved: true });
   const now = useNow(true, 30_000);
 
   const open = tasks.find((t) => t.id === openId);
   const groups = COLUMNS.map((column) => ({
     ...column,
-    rows: tasks.filter((t) => columnOf(t, pins.includes(t.id)) === column.id),
+    rows: tasks.filter((t) => columnOf(t, pins.includes(t.id), isDismissed(t)) === column.id),
   })).filter((group) => group.rows.length > 0);
 
   return (
@@ -106,6 +108,7 @@ export function ThreadsBoard({
           sessionId={sessionId}
           task={open}
           pinned={pins.includes(open.id)}
+          dismissed={isDismissed(open)}
           onClose={() => onOpen(undefined)}
         />
       ) : null}

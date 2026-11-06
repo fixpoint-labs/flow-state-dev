@@ -32,7 +32,7 @@ import type {
   ThreadView,
   Unsubscribe,
 } from "../src/adapter";
-import { waitingOnYou } from "../src/lib/columns";
+import { dismissalKey, waitingOnYou } from "../src/lib/columns";
 import { toolRun } from "../src/lib/tool-steps";
 import { modeById, modeOfWorker, type ModeId } from "../src/modes";
 
@@ -382,6 +382,8 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
 
   // fake: your pinned task ids, which the lab's pins flow keeps at wiring.
   const pins = new Set<string>();
+  // fake: the failed attempts you dismissed, which the lab's dismissals flow keeps at wiring.
+  const dismissed = new Set<string>();
 
   // fake: an older threads-mode session, with a pinned thread, a failed one and two resolved.
   const seedThreads = () => {
@@ -391,7 +393,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       startTask(title, title, note, { status, updatedAt: now() - ago });
     const tasks = [
       thread("Weekly uptime digest", "in_progress", "Collecting this week's incidents"),
-      { ...thread("Export failed invoices", "errored", "The export timed out"), error: "The export timed out after 30s." },
+      { ...thread("Export failed invoices", "errored", "The export timed out"), error: "The export timed out after 30s.", attempts: 1 },
       thread("Refund report", "completed"),
       thread("Dunning emails", "completed"),
       // A harness run nobody reviewed by the person-stop deadline: it completed, marked so.
@@ -451,7 +453,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     },
     modes: ["session", "threads"],
     watchSessions(onChange) {
-      return watch(() => onChange([...sessions.values()].map((s) => ({ ...s.row, waiting: waitingOnYou(s.tasks) })).sort((a, b) => b.updatedAt - a.updatedAt)));
+      return watch(() => onChange([...sessions.values()].map((s) => ({ ...s.row, waiting: waitingOnYou(s.tasks, dismissed) })).sort((a, b) => b.updatedAt - a.updatedAt)));
     },
 
     async listProjects() {
@@ -570,7 +572,8 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
           const s = session(sessionId);
           const task = s.tasks.find((t) => t.id === id);
           if (task?.status !== "errored" && task?.status !== "cancelled") throw new Error(`Task "${id}" hasn't failed or been cancelled.`);
-          setTask(s, id, { status: "in_progress", error: undefined, statusNote: "Running again" });
+          // A retry is a new attempt, as the board counts it.
+          setTask(s, id, { status: "in_progress", error: undefined, statusNote: "Running again", attempts: (task.attempts ?? 0) + 1 });
         },
       };
     },
@@ -612,6 +615,15 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
 
     async unpin(taskId) {
       pins.delete(taskId);
+      notify();
+    },
+
+    watchDismissed(onChange) {
+      return watch(() => onChange([...dismissed]));
+    },
+
+    async dismiss(task) {
+      dismissed.add(dismissalKey(task));
       notify();
     },
 

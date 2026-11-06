@@ -35,6 +35,7 @@
  * | `requestChanges`| the same answer with `{ verdict: "revise", words }`                        |
  * | `watchPins`, `pin`, `unpin` | the lab's `pins` flow, your own user state; `watchPins` is its |
  * |                 | `listPins` read, again on each state notice of your user topic             |
+ * | `watchDismissed`, `dismiss` | the lab's `dismissals` flow, your own user state, read the way pins are |
  *
  * Every watch reads on a change, through `onNotice`.
  */
@@ -65,7 +66,7 @@ import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/types";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
-import { waitingOnYou } from "./lib/columns";
+import { dismissalKey, waitingOnYou } from "./lib/columns";
 import { resultSummary } from "./lib/result-summary";
 import { firstLineOfText, NEW_SESSION_TITLE, sessionTitle } from "./lib/session-title";
 import { toolRun, type ToolCallOf, type ToolRun } from "./lib/tool-steps";
@@ -179,6 +180,8 @@ export interface TaskRow {
   spend?: TaskSpendView;
   /** Why its last attempt failed, as the board recorded it; only on a failed task. */
   error?: string;
+  /** How many attempts it has made, as the board counts them; a dismissal is kept per attempt (`dismissalKey`). */
+  attempts?: number;
 }
 
 /** A board's task changes, as the opened task's action row makes them: the board's own calls, refusals in its words. */
@@ -243,6 +246,10 @@ export interface LabAdapter {
   watchPins(onChange: (taskIds: string[]) => void): Unsubscribe;
   pin(taskId: string): Promise<void>;
   unpin(taskId: string): Promise<void>;
+  /** The failed attempts you dismissed, as `dismissalKey`s. */
+  watchDismissed(onChange: (keys: string[]) => void): Unsubscribe;
+  /** Dismiss a failed task's attempt: it leaves *Waiting on you* for *Resolved*. */
+  dismiss(task: Pick<TaskRow, "id" | "attempts">): Promise<void>;
 }
 
 /** The lab flow whose `read` action is harness-manager's readiness action (`fsdev.config.mts`). */
@@ -773,7 +780,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
    */
   const waitingCountFor = async (sessionId: string): Promise<number | undefined> => {
     try {
-      return waitingOnYou(await listedWithWaitingOn(sessionId));
+      const [listed, dismissed] = await Promise.all([listedWithWaitingOn(sessionId), readDismissed()]);
+      return waitingOnYou(listed, new Set(dismissed));
     } catch (cause) {
       console.warn(`[claude-code-style] couldn't count what session ${sessionId} waits on you for:`, cause);
       return undefined;
@@ -922,7 +930,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
     const listed = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
       listed.map(async (task): Promise<TaskRow> => {
-        const { runSessionId: _session, run: _run, holds: _holds, attempts: _attempts, ...row } = task;
+        const { runSessionId: _session, run: _run, holds: _holds, ...row } = task;
         // The harness its run reported; until one reports, the assignee's `harness` setting.
         const harness = task.spend?.harness ?? (await harnessOf(task));
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
@@ -959,6 +967,9 @@ export function createWiredLab(fsd: Client): LabAdapter {
   /** Your pins, through the flow's read: reading them stores no request. */
   const readPins = async (): Promise<string[]> =>
     (await fsd.flow("pins").read<{ pinned: string[] }>("listPins", {}, { sessionId: await ownSession("pins") })).pinned;
+  /** The failures you dismissed, through the `dismissals` flow's read. */
+  const readDismissed = async (): Promise<string[]> =>
+    (await fsd.flow("dismissals").read<{ dismissed: string[] }>("listDismissed", {}, { sessionId: await ownSession("dismissals") })).dismissed;
 
   return {
     modes: modes.map((mode) => mode.id),
@@ -996,11 +1007,13 @@ export function createWiredLab(fsd: Client): LabAdapter {
         subscribed = key;
         subscription?.close();
         subscription = fsd.subscribe(
-          ids.map((id) => topic.session(id)),
+          // Your user topic too: a dismissal changes what each session waits on you for.
+          [...ids.map((id) => topic.session(id)), topic.user()],
           {
             onChange: (notice) => {
               if (notice === null || notice.kind === "resync") relist = true;
               else if (notice.topic.scope === "session" && ROW_CHANGES.has(notice.kind)) dirty.add(notice.topic.id);
+              else if (notice.topic.scope === "user" && notice.kind === "state") relist = true;
               else return;
               void pump();
             },
@@ -1300,6 +1313,11 @@ export function createWiredLab(fsd: Client): LabAdapter {
     },
     unpin: async (taskId) => {
       await pinsDo("unpin", { taskId });
+    },
+    // Read the way pins are: your dismissals are your user state.
+    watchDismissed: (onChange) => onNotice(fsd, [topic.user()], (notice) => notice.kind === "state", readDismissed, onChange, 3000),
+    dismiss: async (task) => {
+      await run("dismissals", await ownSession("dismissals"), "dismiss", { key: dismissalKey(task) });
     },
   };
 }

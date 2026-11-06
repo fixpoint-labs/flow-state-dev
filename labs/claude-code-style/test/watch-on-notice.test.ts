@@ -40,6 +40,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 function host() {
   const calls: string[] = [];
   let pinned: string[] = [];
+  let dismissed: string[] = [];
   let running: unknown[] = [];
   let board: unknown[] = [];
   /** Held reads of the pins, released by the case. */
@@ -65,6 +66,7 @@ function host() {
       }
       return json({ output: { pinned } });
     }
+    if (path.endsWith("/reads/listDismissed")) return json({ output: { dismissed } });
     if (path.endsWith("/reads/listTasks_tasks")) return json({ output: { ok: true, tasks: board } });
     if (path.endsWith("/requests")) return json({ requests: running });
     if (path.endsWith("/stream")) {
@@ -100,6 +102,7 @@ function host() {
       for (const s of subscriptions) if (!s.closed) s.options.onChange(notice);
     },
     pin: (ids: string[]) => void (pinned = ids),
+    dismiss: (keys: string[]) => void (dismissed = keys),
     failPinReads: (n: number) => void (pinsFailing = n),
     /** Fail the next `n` calls of `METHOD path`. */
     fail: (call: string, n = 1) => void failing.set(call, n),
@@ -164,7 +167,8 @@ describe("watchSessions", () => {
     expect(seen[0]).toEqual([]);
     const live = h.subscriptions.filter((s) => !s.closed);
     expect(live).toHaveLength(1);
-    expect(live[0]!.topics).toEqual([]);
+    // No session yet, but your user topic: a dismissal changes what each session waits on you for.
+    expect(live[0]!.topics).toEqual([{ scope: "user" }]);
     expect(live[0]!.options.pollIntervalMs).toBe(3_000);
 
     // A tick lists again, and a session added since shows.
@@ -184,6 +188,18 @@ describe("watchSessions", () => {
     await until(() => h.count("/reads/listTasks_tasks") >= 1 && seen.length >= 1);
     // No notice comes: the row's own retry reads the board again.
     await until(() => seen.at(-1)!.find((row) => row.id === "s1")?.waiting === 1);
+  });
+
+  it("counts again when you dismiss a failure, on your user state notice", async () => {
+    listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
+    const h = host();
+    h.list([{ id: "t1", goal: "Fix it", status: "errored", attempts: 1 }]);
+    const seen: SessionRow[][] = [];
+    stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
+    await until(() => seen.at(-1)?.find((row) => row.id === "s1")?.waiting === 1);
+    h.dismiss(["t1#1"]);
+    h.hear({ topic: { scope: "user" }, kind: "state" });
+    await until(() => seen.at(-1)!.find((row) => row.id === "s1")?.waiting === 0);
   });
 
   it("lists again on its own after a first listing that failed, with no notice to wake it", async () => {

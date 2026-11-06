@@ -43,8 +43,9 @@ threads, each a task in a session of its own, and the right pane is the status b
   *Request changes* when it is ready for review.
 - **Right:** the board groups threads by what you owe them: *Pinned*, *Working*, *Waiting on you*,
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
-  status and what it waits on, never a mark the lab keeps. A failed thread waits on you; its view
-  shows the error and offers *Retry*.
+  status and what it waits on, plus two marks of your own: your pins, and the failures you
+  dismissed. A failed thread waits on you; its view shows the error and offers *Retry* and
+  *Dismiss*, which moves that failed attempt to *Resolved* (a retry that fails again waits on you again).
 - **The right pane** is as wide as you drag its left edge (or move it with the arrow keys once it
   has focus), and keeps that width across reloads.
 - **The page's address** names the view, the open session and the task open in its pane
@@ -163,6 +164,7 @@ a package call:
 | *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
 | Answering in a thread | the Inbox client's `answerHold` on its open question; with none, `updateTask_tasks` with your line as a steer |
 | Pins | the `pins` flow's `listPins` read, so reading them stores nothing |
+| Dismissed failures | the `dismissals` flow's `listDismissed` read, the same way |
 
 The thread and a task's work follow their session's stream. The rest reads when something changes,
 through `client.subscribe`: a row of the sessions list on its session's notices (a turn, a board
@@ -172,6 +174,7 @@ push can miss a change, such as the SQLite store the lab runs on, each also read
 the list and pins every 3 seconds, the running turn every 1.5.
 | *Resolve* and *Request changes* | the Inbox client's `answerHold` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
 | *Pin* and *Unpin* | the lab's `pins` flow (`workforce/flows/pins.mts`), your own user state |
+| *Dismiss* | the lab's `dismissals` flow (`workforce/flows/dismissals.mts`), your own user state, kept per task attempt |
 
 `desk.coder` and `desk.thread-coder`, and their plan, Codex and Cursor siblings, are on the lab's one coding flow,
 `workforce/flows/harness-thread.mts`: a `harnessManager` per harness, picked by the worker's
