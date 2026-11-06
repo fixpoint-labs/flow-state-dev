@@ -177,30 +177,6 @@ for (const path of refusalSources) {
     retiredFails.push({ rule: "retired-unowned", path, entry: `line ${i + 1}`, text: line.trim().slice(0, 140) });
   });
 }
-// ── Q1 default, pending the owner's sign-off on the epic's Q1: `@deprecated` aliases ──
-// One separable block: if Q1 settles on hold or break, delete it, its plant and its rule.
-// An alias for a moved export names its removal the way a table entry does,
-// `@deprecated Use `<new path>`. Removed in @flow-state-dev/<pkg> <version>.`, and the
-// sweep reads that version against the package's as it reads `removeIn`.
-const PLANTED_ALIAS = {
-  path: "packages/core/src/__planted_alias__.ts",
-  text: `/** @deprecated Use \`plantedNew\`. Removed in @flow-state-dev/core ${versionOf("core")}. */\nexport const plantedOld = 1;\n`
-};
-const ALIAS_TAG = /@deprecated\b.*\bRemoved in (@flow-state-dev\/[\w-]+) (\d+\.\d+\.\d+)/;
-for (const path of planted ? [...sourceFiles, PLANTED_ALIAS.path] : sourceFiles) {
-  const text = path === PLANTED_ALIAS.path ? PLANTED_ALIAS.text : readFileSync(`${repo}/${path}`, "utf8");
-  if (!text.includes("@deprecated")) continue;
-  const pkg = /^packages\/([^/]+)\//.exec(path)[1];
-  const manifest = JSON.parse(readFileSync(`${repo}/packages/${pkg}/package.json`, "utf8"));
-  text.split("\n").forEach((line, i) => {
-    const tag = ALIAS_TAG.exec(line);
-    if (!tag) return;
-    if (tag[1] !== manifest.name || !below(manifest.version, tag[2])) {
-      retiredFails.push({ rule: "retired-alias-expired", path, entry: `line ${i + 1}`, text: `names ${tag[1]} ${tag[2]}, and ${manifest.name} is at ${manifest.version}` });
-    }
-  });
-}
-// ── end of the Q1 block ──
 
 const retiredOpen = retiredFails.filter((f) => inScope(f.rule));
 console.log(`retired tables: ${tables.length} tables · ${tableEntryCount} entries · ${refusalLines} refusal-shaped src lines · OPEN ${retiredOpen.length}`);
@@ -221,8 +197,7 @@ if (planted) {
   // The table pass's plants, each by its path, rule and entry: a count of failures would pass on any two.
   const retiredWant = [
     [PLANTED_REFUSAL.path, "retired-unowned", "line 1"],
-    [PLANTED_TABLE.path, "retired-expired", "plantedName"],
-    [PLANTED_ALIAS.path, "retired-alias-expired", "line 1"] // the Q1 block's plant
+    [PLANTED_TABLE.path, "retired-expired", "plantedName"]
   ].filter(([, rule]) => inScope(rule));
   // Under `--only`, only the selected families' plants are expected; none selected proves nothing.
   const caught =

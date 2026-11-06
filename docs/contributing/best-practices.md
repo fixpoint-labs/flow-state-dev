@@ -155,9 +155,7 @@ Update policy:
 - Scope: Universal — package moves, renames, and extractions.
 - Rule:
   - A move that compiles isn't done. Update what the move invalidated: file-header comments naming the old home, architecture/dependency diagrams, and doc examples / cross-link anchors.
-  - How a moved *published* export reaches adopters is the epic FIX-2447's Q1, open with the owner. Until it settles, write the move as the default below, in one block you can drop whole:
-    - *Q1 default, pending sign-off (alias):* the old path stays a `@deprecated` alias naming the new path and the one minor that removes it, `@deprecated Use `<new path>`. Removed in @flow-state-dev/<pkg> <version>.` Whether that minor must be at least two past the first version carrying the alias, as for a refusal (BP-030), is part of Q1. The vocabulary sweep reads the tag as it reads a retired table's `removeIn`, and fails once the package reaches it.
-  - *Hold*, or *break as each lands* (Q1's other answers): re-export from every documented import path after the move, including subpath barrels (`@flow-state-dev/core/types`), not just the package root; the old root path goes; the changeset names the new home.
+  - Re-export moved public types from every documented import path, including subpath barrels (`@flow-state-dev/core/types`), not just the package root. A moved *published* export breaks: the old path goes with no alias, and the changeset names the new home.
 - Why: The compiler verifies the code, not the prose, diagrams, or subpath barrels — those are the move's blind spots.
 
 ### BP-035: Walk the second-path checklist before declaring a change done
