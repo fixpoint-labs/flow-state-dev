@@ -23,20 +23,25 @@ export const SIDEBAR_MIN = 200;
 /** The widest it goes, in px. */
 export const SIDEBAR_MAX = 440;
 
+/** The collapsed sessions list's rail, and the collapsed pane's strip, in px. */
+export const RAIL_WIDTH = 48;
+export const STRIP_WIDTH = 43;
+
 /**
  * The sessions list's grid column: its width, but never more than leaves the
  * main thread `THREAD_MIN` beside the right pane's floor, and never under its
  * own. A narrow window shrinks it without forgetting your width.
  */
-export const sidebarColumn = (width: number) => `min(${width}px, max(${SIDEBAR_MIN}px, 100vw - ${PANE_MIN}px - ${THREAD_MIN}px))`;
+export const sidebarColumn = (width: number, collapsed = false) =>
+  collapsed ? `${RAIL_WIDTH}px` : `min(${width}px, max(${SIDEBAR_MIN}px, 100vw - ${PANE_MIN}px - ${THREAD_MIN}px))`;
 
 /**
  * The pane's grid column: its width, but never more than leaves the main
  * thread `THREAD_MIN` beside the sessions list as drawn, and never under the
  * floor. A narrow window shrinks the pane without forgetting your width.
  */
-export const paneColumn = (width: number, sidebar: number) =>
-  `min(${width}px, max(${PANE_MIN}px, 100vw - ${sidebarColumn(sidebar)} - ${THREAD_MIN}px))`;
+export const paneColumn = (width: number, sidebar: number, sidebarCollapsed = false, collapsed = false) =>
+  collapsed ? `${STRIP_WIDTH}px` : `min(${width}px, max(${PANE_MIN}px, 100vw - ${sidebarColumn(sidebar, sidebarCollapsed)} - ${THREAD_MIN}px))`;
 
 const KEY = "claude-code-style:pane-width";
 const SIDEBAR_KEY = "claude-code-style:sidebar-width";

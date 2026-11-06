@@ -1,9 +1,11 @@
+import { PlusIcon } from "lucide-react";
 import type { KeyboardEvent } from "react";
 import type { SessionRow } from "../adapter";
 import { cn } from "../lib/utils";
 import { age, useNow } from "../lib/use-watch";
 import { MODES, type ModeId } from "../modes";
 import { PaneHeader } from "./PaneHeader";
+import { PanelToggle } from "./PanelToggle";
 
 /**
  * The left pane: the view switch (Sessions or Projects) on top, then
@@ -13,6 +15,8 @@ import { PaneHeader } from "./PaneHeader";
  *
  * The view switch is one Tab stop, as a tab list is: ← and → (Home, End)
  * move to the other view and select it, skipping one the adapter doesn't serve.
+ *
+ * Collapsed (`[`), it is a rail: the toggle that opens it, and *New session*.
  */
 export function SessionsList({
   view,
@@ -22,6 +26,8 @@ export function SessionsList({
   onSelect,
   onNew,
   modes,
+  collapsed,
+  onToggle,
 }: {
   view: ModeId;
   sessions: SessionRow[];
@@ -31,6 +37,10 @@ export function SessionsList({
   onNew: () => void;
   /** The modes the adapter serves; a view whose mode it doesn't serve shows disabled. */
   modes: readonly ModeId[];
+  /** Draw the rail instead of the list. */
+  collapsed: boolean;
+  /** Collapse the list, or open it back. */
+  onToggle: () => void;
 }) {
   const now = useNow(true, 30_000);
   const served = MODES.filter((mode) => mode.available && modes.includes(mode.id)).map((mode) => mode.id);
@@ -47,8 +57,26 @@ export function SessionsList({
     onView(to);
     event.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-view="${to}"]`)?.focus();
   };
+  if (collapsed) {
+    return (
+      <nav aria-label="Sessions" data-collapsed="true" className="flex h-full min-h-0 flex-col items-center bg-sidebar">
+        <PaneHeader className="w-full justify-center px-0">
+          <PanelToggle side="left" name="sessions list" keyName="[" collapsed onToggle={onToggle} />
+        </PaneHeader>
+        <button
+          type="button"
+          onClick={onNew}
+          title="New session"
+          aria-label="New session"
+          className="mt-3 flex size-8 items-center justify-center rounded-md border border-border bg-background transition-colors hover:bg-accent"
+        >
+          <PlusIcon aria-hidden className="size-4" />
+        </button>
+      </nav>
+    );
+  }
   return (
-    <nav aria-label="Sessions" className="flex h-full min-h-0 flex-col bg-sidebar">
+    <nav aria-label="Sessions" data-collapsed="false" className="flex h-full min-h-0 flex-col bg-sidebar">
       <PaneHeader className="px-3">
         <div role="tablist" aria-label="View" className="flex flex-1 gap-1">
           {MODES.map((mode) => {
@@ -76,6 +104,7 @@ export function SessionsList({
             );
           })}
         </div>
+        <PanelToggle side="left" name="sessions list" keyName="[" collapsed={false} onToggle={onToggle} />
       </PaneHeader>
       <div className="px-3 py-3">
         <button
