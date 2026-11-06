@@ -180,8 +180,8 @@ export function ThreadView({
           <ErrorBody message={task.error} />
         </div>
       ) : null}
-      {/* Ready for review is said once, by its card at the end of the feed, and a failed task's error says why it failed. */}
-      {column === "review" || task.status === "errored" ? null : <div className="truncate text-xs text-muted-foreground" title={statusLine(task)}>{statusLine(task)}</div>}
+      {/* Ready for review is said once, by its card at the end of the feed; a failure's reason, by the alert above. */}
+      {column === "review" || (task.status === "errored" && task.error !== undefined) ? null : <div className="truncate text-xs text-muted-foreground" title={statusLine(task)}>{statusLine(task)}</div>}
       <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => (
         <Entry key={entry.id} entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />

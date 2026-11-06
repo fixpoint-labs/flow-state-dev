@@ -336,7 +336,7 @@ describe("a coding task's hold, while it runs", () => {
     const stop = createLabAdapter(clientWithRunRow()).watchTasks("wks_1", (next) => (tasks = next));
     await until(() => tasks[0]?.waiting !== undefined);
     stop();
-    expect(tasks[0]?.waiting).toEqual({ kind: "review", prompt: "1 commit on b", unanswerable: null });
+    expect(tasks[0]?.waiting).toEqual({ kind: "review", prompt: "1 commit on b", unanswerable: null, holdId: "susp-1" });
   });
 
   it("follows no run for a task that has ended, and lets go of a run once its task ends", async () => {
@@ -391,5 +391,36 @@ describe("a coding task's hold, while it runs", () => {
     // Following the run once per watch, not again from inside its own first answer.
     expect(errors.mock.calls.flat().some((e) => e instanceof RangeError)).toBe(false);
     errors.mockRestore();
+  });
+});
+
+describe("the board read's freshness", () => {
+  it("says stale while the board's read fails, keeping the last rows, and fresh once one succeeds", async () => {
+    let failing = false;
+    const { client, push } = clientWith(filed("in_progress"));
+    const flow = (client as unknown as { flow: (f: string) => { read: (a: string) => Promise<unknown> } }).flow;
+    (client as unknown as { flow: unknown }).flow = (name: string) => ({
+      read: async (action: string) => {
+        if (failing) throw new Error("the board is down");
+        return flow(name).read(action);
+      },
+    });
+    let tasks: BoardTask[] = [];
+    const stale: boolean[] = [];
+    const stop = createLabAdapter(client).watchTasks("wks_1", (next) => (tasks = next), (next) => stale.push(next));
+    await until(() => tasks.length === 1);
+    expect(stale).toEqual([]);
+
+    failing = true;
+    push.hear({ kind: "resource" } as WireNotice);
+    await until(() => stale.length === 1);
+    expect(stale).toEqual([true]);
+    expect(tasks).toHaveLength(1);
+
+    failing = false;
+    push.hear({ kind: "resource" } as WireNotice);
+    await until(() => stale.length === 2);
+    stop();
+    expect(stale).toEqual([true, false]);
   });
 });

@@ -14,7 +14,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { SuspensionResolverProvider, type SuspensionResolver } from "@flow-state-dev/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ReviewHold, shortBranch, takesReviewVerdict, NO_RESOLVER_UNANSWERABLE, type ReviewDetail } from "../../registry/components/review-hold";
+import { LandedOutcome, ReviewHold, shortBranch, takesReviewVerdict, NO_RESOLVER_UNANSWERABLE, type ReviewDetail } from "../../registry/components/review-hold";
 import { SuspensionCard } from "../../registry/components/suspension-card";
 import { SessionItemsProvider } from "../../registry/components/session-items-context";
 
@@ -128,6 +128,53 @@ describe("the review card sends only the two answers a review takes", () => {
       </ReviewHold>,
     );
     expect(screen.getByTestId("diff")).toBeTruthy();
+  });
+});
+
+describe("a review whose host can land the work offers two labelled accepts", () => {
+  it("Open a PR and Merge locally each send an accept naming its land, and there is no bare Accept", async () => {
+    const answer = vi.fn(async () => {});
+    render(<ReviewHold review={{ ...DATA, lands: ["pull-request", "merge"] }} answer={answer} />);
+    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Accept: Merge locally" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Accept: Open a PR" }));
+    await waitFor(() => expect(screen.getByText("Accepted")).toBeTruthy());
+    expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "pull-request" });
+  });
+
+  it("a landing that failed shows its error and a Retry of the same way first, with the other way still offered", async () => {
+    const answer = vi.fn(async () => {});
+    const landFailed = { land: "merge" as const, message: "Merging conflicts in README.md, so it was stopped." };
+    render(<ReviewHold review={{ ...DATA, lands: ["pull-request", "merge"], landFailed }} answer={answer} />);
+    expect(screen.getByRole("alert").textContent).toBe(`Merging locally failed: ${landFailed.message}`);
+    const buttons = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(buttons.slice(0, 2)).toEqual(["Retry: Merge locally", "Accept: Open a PR"]);
+    fireEvent.click(screen.getByRole("button", { name: "Retry: Merge locally" }));
+    await waitFor(() => expect(answer).toHaveBeenCalledWith({ verdict: "accepted", land: "merge" }));
+  });
+
+  it("a retry that fails with the same words is a new ask: Retry comes back, not the receipt of the last one", async () => {
+    const answer = vi.fn(async () => {});
+    const landFailed = { land: "merge" as const, message: "Merging conflicts in README.md, so it was stopped." };
+    const review = { ...DATA, lands: ["pull-request", "merge"] as const, landFailed };
+    const { rerender } = render(<ReviewHold review={{ ...review, lands: [...review.lands] }} holdId="susp-2" answer={answer} />);
+    fireEvent.click(screen.getByRole("button", { name: "Retry: Merge locally" }));
+    await waitFor(() => expect(screen.getByText("Accepted")).toBeTruthy());
+    // The same card, asked again with the same failure, under a new stop.
+    rerender(<ReviewHold review={{ ...review, lands: [...review.lands] }} holdId="susp-3" answer={answer} />);
+    expect(screen.getByRole("button", { name: "Retry: Merge locally" })).toBeTruthy();
+    expect(screen.queryByText("Accepted")).toBeNull();
+  });
+
+  it("the done state says where the work went and what comes next", () => {
+    render(<LandedOutcome landed={{ kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch: "b", base: "main" }} />);
+    expect(screen.getByRole("link", { name: "pull request #7" }).getAttribute("href")).toBe("https://github.com/acme/relay/pull/7");
+    expect(screen.getByText(/Next: review and merge it\./)).toBeTruthy();
+    cleanup();
+    render(<LandedOutcome landed={{ kind: "merge", branch: "main", commit: "c15d6f098abc0123", checkout: "/work/relay", from: "b" }} />);
+    expect(screen.getByText("c15d6f098abc")).toBeTruthy();
+    expect(screen.getByText("/work/relay")).toBeTruthy();
+    expect(screen.getByText(/Next: push main when you're ready\./)).toBeTruthy();
   });
 });
 

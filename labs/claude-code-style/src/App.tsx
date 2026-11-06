@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { HarnessRow, LabAdapter, ProjectRow, SessionRow } from "./adapter";
+import type { HarnessRow, LabAdapter, ProjectRow, SessionRow, TaskRow } from "./adapter";
 import { PaneHeader } from "./components/PaneHeader";
 import { PaneResizer } from "./components/PaneResizer";
 import { PanelToggle } from "./components/PanelToggle";
@@ -28,7 +28,9 @@ import { modeById, modeOfWorker, type ModeId } from "./modes";
  * and stay across reloads (`usePaneWidth`, `useSidebarWidth`). The app opens in the Sessions view on
  * *New session*, which asks for a project before the composer opens, unless
  * the page's address names what was open (`lib/address`): a reload, a link and
- * Back reopen the view, the session and the task open in its pane.
+ * Back reopen the view, the session and the task open in its pane. A line in
+ * the main thread that names a task opens it too, the same way: one open task
+ * per session, whichever side it was opened from.
  *
  * Keys (`useLabKeys`): ⌘K switches to any session, Alt+↑/↓ steps through the
  * view's sessions, `/` puts the cursor in the composer, `?` lists the keys.
@@ -174,6 +176,25 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const selected = inView.find((s) => s.id === selectedId);
   const pane = selected ? modeOfWorker(selected.worker)?.pane : undefined;
   const paneCollapsed = panels.paneCollapsed && pane !== undefined;
+  // The open session's task rows, read once for the main thread and its pane (FIX-2399 E1). Each read
+  // carries the session it was read for, so a switch never hands one session the last one's rows.
+  // `stale` while the last read failed: the rows are the last ones read, and a task's quiet can't be told from them.
+  const read = useWatch(
+    (emit: (read: { sessionId: string; rows: TaskRow[]; stale: boolean }) => void) => {
+      if (selected === undefined) return () => undefined;
+      let last: { sessionId: string; rows: TaskRow[]; stale: boolean } | undefined;
+      const send = (next: { rows?: TaskRow[]; stale?: boolean }) => {
+        if (next.rows === undefined && last === undefined) return;
+        last = { sessionId: selected.id, rows: next.rows ?? last!.rows, stale: next.stale ?? last?.stale ?? false };
+        emit(last);
+      };
+      return adapter.watchTasks(selected.id, (rows) => send({ rows }), (stale) => send({ stale }));
+    },
+    [adapter, selected?.id],
+  );
+  const current = selected !== undefined && read?.sessionId === selected.id ? read : undefined;
+  const taskRows = current?.rows;
+  const tasksStale = current?.stale === true;
   useLabKeys({
     palette: () => setSwitching((open) => !open),
     step: (by) => {
@@ -216,6 +237,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               adapter={adapter}
               session={selected}
               project={projects.find((p) => p.id === selected.projectId)}
+              tasks={taskRows}
               onOpenThread={(taskId) => openTaskOf(selected.id, taskId)}
             />
           ) : (
@@ -255,6 +277,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               key={selected.id}
               adapter={adapter}
               sessionId={selected.id}
+              tasks={taskRows}
+              stale={tasksStale}
               openId={openTask[selected.id]}
               onOpen={(taskId) => openTaskOf(selected.id, taskId)}
               onMissing={() => dropMissing(selected.id)}
@@ -265,6 +289,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               key={selected.id}
               adapter={adapter}
               sessionId={selected.id}
+              tasks={taskRows}
+              stale={tasksStale}
               openId={openTask[selected.id]}
               onOpen={(taskId) => openTaskOf(selected.id, taskId)}
               onMissing={() => dropMissing(selected.id)}

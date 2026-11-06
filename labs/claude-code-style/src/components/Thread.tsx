@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
 import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
@@ -20,7 +21,9 @@ import { useState } from "react";
  * `connection-banner` and greys its working line, whose clock stops there.
  * The header names the session's project; a session with none gets
  * no composer, so nothing runs until it has one (spec D3). In threads mode a
- * thread the lead filed is a card here, read from its task row.
+ * thread the lead filed is a card here, read from its task row. A result
+ * line, and the line where the main session started a task, open that task
+ * through `onOpenThread`, as the pane does.
  *
  * Esc twice, or Cmd/Ctrl+., stops the turn from anywhere on the page. One Esc
  * never does: it closes a sheet, or belongs to the text box it was typed in.
@@ -29,22 +32,20 @@ export function Thread({
   adapter,
   session,
   project,
+  tasks,
   onOpenThread,
 }: {
   adapter: LabAdapter;
   session: SessionRow;
   project: ProjectRow | undefined;
+  /** The session's task rows, as the app reads them for this thread and its pane; `undefined` until read. */
+  tasks: TaskRow[] | undefined;
   onOpenThread: (taskId: string) => void;
 }) {
   const view = useWatch((emit: Parameters<LabAdapter["watchThread"]>[1]) => adapter.watchThread(session.id, emit), [adapter, session.id]);
   const mode = modeOfWorker(session.worker);
-  // Only threads mode draws a card from a task row; session mode's rows are the tasks pane's own read.
-  const board = mode?.pane === "board";
-  const tasks =
-    useWatch(
-      (emit: (rows: TaskRow[]) => void) => (board ? adapter.watchTasks(session.id, emit) : () => undefined),
-      [adapter, session.id, board],
-    ) ?? [];
+  // What a line that names a task reads of it, and opens it with.
+  const feedTasks = useMemo(() => ({ rows: tasks, open: onOpenThread }), [tasks, onOpenThread]);
   const running = view?.running ?? false;
   // What the thread's feed last heard from the server; a stale one greys the working line and stops its clock.
   const connection = view?.connection ?? "connecting";
@@ -105,7 +106,7 @@ export function Thread({
                   key={entry.id}
                   adapter={adapter}
                   sessionId={session.id}
-                  task={tasks.find((t) => t.id === entry.taskId)}
+                  task={tasks?.find((t) => t.id === entry.taskId)}
                   onOpen={onOpenThread}
                 />
               ) : (
@@ -114,6 +115,7 @@ export function Thread({
                   <Entry
                     entry={entry}
                     mark={entry.kind === "user" ? feed.mine(entry.id) : undefined}
+                    tasks={feedTasks}
                     // Retry only the newest turn, and not while one runs: the engine retries a failed request as a new one.
                     onRetry={entry.kind === "failed" && entry.retryable && !running && entry.requestId !== undefined ? retryOf(entry.requestId) : undefined}
                   />

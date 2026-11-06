@@ -5,11 +5,15 @@
  * nothing, so a poll costs no request (FIX-2286). Each conversation
  * keeps a board of its own, so this reads that one board and nothing else.
  *
- * It reads when it opens, each time the Lab is read again (`readAt`), and on
- * every notice on the conversation's board or plan ledger. Wherever push can
- * miss a change it reads every {@link TASKS_POLL_MS} instead, but only while a
- * task is open or for a while after one moved: its ending wakes a coordinator
- * turn whose follow-up should show too. Nothing here knows a tool's name.
+ * It reads when it opens, again each time the Lab is read again (`readAt`),
+ * which is after each turn the user sends, and on every board notice
+ * (FIX-2429): a task filed, moved or settled in any session, on any process,
+ * on the conversation's board or its plan ledger. Wherever push can miss a
+ * change (no push, the socket down, a bus that doesn't cross, as the SQLite
+ * store's) it reads every {@link TASKS_POLL_MS} instead, but only while a task
+ * is open or for a while after one moved, as it always has: its ending wakes a
+ * coordinator turn of its own, and the turn's follow-up shows too. Nothing here
+ * knows a tool's name.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSubscription } from "@flow-state-dev/react";

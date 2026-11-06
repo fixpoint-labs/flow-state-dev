@@ -381,6 +381,20 @@
       "categories": ["ai", "framework"]
     },
     {
+      "name": "task-signals",
+      "title": "Task signals",
+      "type": "registry:component",
+      "description": "A task row's time and stall signal: a running row's clock from this attempt's run start, quiet when its lease has lapsed (the board's own rule, never while the feed is stale), how long ago an ended row ended; and a list's per-state counts. Reads a listTasks row's taskRowView, run start and lease deadline; the app passes the time and its tone.",
+      "dependencies": ["@flow-state-dev/orchestration"],
+      "registryDependencies": ["spend"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/task-signals.tsx",
+        "target": "components/flow-state/task-signals.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
       "name": "approval",
       "title": "Approval",
       "type": "registry:component",
@@ -398,7 +412,7 @@
       "name": "review-hold",
       "title": "Review Hold",
       "type": "registry:component",
-      "description": "A coding run's changes waiting on the user's review: its commits on the branch, the project's checks, the judge's verdict, and Accept or Ask for changes. Reads harness-manager's review stop data and sends the only two answers it takes. Drawn from a task's hold, or for a kind: review suspension (SuspensionCard routes those here).",
+      "description": "A coding run's changes waiting on the user's review: its commits on the branch, the project's checks, the judge's verdict, and Accept or Ask for changes, with Accept split into Open a PR and Merge locally when the host can land the work. Reads harness-manager's review stop data and sends only the answers it takes. Drawn from a task's hold, or for a kind: review suspension (SuspensionCard routes those here).",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react"],
       "registryDependencies": ["message-response", "run-checks", "tokens"],
       "files": [{

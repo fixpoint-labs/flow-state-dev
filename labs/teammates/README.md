@@ -45,6 +45,14 @@ theme so it reads as the app it copies.
 - **The page's address** names the open teammate and an open task popup
   (`?worker=<id>&session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns
   to what you had open before. A link to a teammate or task that is gone opens the first teammate.
+- **A task's time:** each task in the panel carries it. A running one reads *working · 4m 12s*,
+  counted from when this attempt's run started, so a retried task starts again from zero. A
+  running task whose run has stopped answering reads *quiet for 40m* in amber: the run stopped
+  renewing its claim on the task (the board's lease lapsed), as when the server running it died,
+  and it stays quiet until the board hands the task to a new run. A run that is alive but slow
+  keeps renewing, so it never reads quiet; a long clock is the sign there. Nothing reads quiet
+  while the panel has lost the server. An ended task says how long ago it ended, and the panel's
+  heading counts the tasks running, waiting, failed and done.
 
 Scope is core messaging and session management. There are no group chats, no new-chat button and
 no session list. The design and the decisions behind it are in the
@@ -107,7 +115,14 @@ doesn't show in its steps.
 
 A coding task that committed waits for your review before it completes. Its popup shows *Ready for
 review*: the commits on its branch, and a judge's verdict on whether the run did what the task
-asked, which is information, not approval. **Accept** completes the task. **Ask for changes**, with
+asked, which is information, not approval. To accept it, pick where the work goes. **Open a PR**
+pushes the run's branch and opens a pull request into the branch your working folder has checked
+out. **Merge locally** merges the run's commits into that branch, in your working folder. Either way
+the task completes. Its popup shows the pull request's link, or the branch and commit it merged
+at, and what to do next. The task's line in the thread says *PR #n*, or *merged into* and the
+branch's name. If the push, the pull request or the merge fails, the card shows the error with
+**Retry**. The run's commits stay on its branch. A merge that conflicts stops and says which
+files. It never resolves them for you, and your checkout is left as it was. **Ask for changes**, with
 your words, sends them to the same coding session for one more run, which you review again. A run
 that asks you something shows its question in the popup with a box for your answer, and goes on
 with it.

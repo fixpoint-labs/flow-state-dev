@@ -76,11 +76,13 @@ describe("a steer sent through the board", () => {
         .filter((item) => item.type === "message")
         .map((item) => ({
           text: (item.content ?? []).map((part: { text?: string }) => part.text ?? "").join(""),
+          role: item.role as string | undefined,
           taskId: item.taskId as string | undefined
         }));
+      // The steer is alice's own line, in her words; the reply is the worker's.
       expect(messages).toEqual([
-        { text: `Message from alice: ${STEER}`, taskId },
-        { text: REPLY, taskId }
+        { text: STEER, role: "user", taskId },
+        { text: REPLY, role: "assistant", taskId }
       ]);
     } finally {
       await h.dispose();
