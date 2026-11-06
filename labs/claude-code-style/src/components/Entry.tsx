@@ -5,6 +5,7 @@ import type { ThreadEntry } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
 import type { ToolRun } from "../lib/tool-steps";
 import { cn } from "../lib/utils";
+import { Clamp } from "./Clamp";
 import { MessageResponse } from "./flow-state/message";
 import { composeToolCallsLabel, toolRunOpen, type ToolStepState } from "./flow-state/tool-grouping";
 
@@ -17,7 +18,15 @@ const NO_RAW_HTML = [defaultRehypePlugins.sanitize!, defaultRehypePlugins.harden
 /** An agent's Markdown, drawn as it streams: an unfinished fence or list renders as far as it goes. */
 function AgentMarkdown({ text, className }: { text: string; className?: string }) {
   return (
-    <MessageResponse className={cn("text-sm leading-relaxed", className)} rehypePlugins={NO_RAW_HTML}>
+    <MessageResponse
+      className={cn(
+        "text-sm leading-relaxed",
+        // Text stays in the column: a long path, link or token breaks where it must, and code wraps instead of scrolling sideways.
+        "min-w-0 [overflow-wrap:anywhere] [&_code]:[overflow-wrap:anywhere] [&_code]:whitespace-pre-wrap [&_pre]:whitespace-pre-wrap",
+        className,
+      )}
+      rehypePlugins={NO_RAW_HTML}
+    >
       {text}
     </MessageResponse>
   );
@@ -36,9 +45,10 @@ export function Entry({ entry, mark }: { entry: ThreadEntry; mark?: SentLineMark
   switch (entry.kind) {
     case "user":
       return (
-        <div className="flex flex-col items-end gap-1" {...mark}>
-          <div className="max-w-[80%] border border-border bg-card px-3 py-2 text-sm whitespace-pre-wrap" data-entry="user">
-            {entry.text}
+        <div className="flex flex-col items-end gap-1.5" {...mark}>
+          <div className="max-w-[80%] rounded-xl border border-border/40 bg-accent/50 px-4 py-3 text-sm" data-entry="user">
+            {/* A task's first line is its brief, which can run to paragraphs: held to a few lines. */}
+            <Clamp lines={6}>{entry.text}</Clamp>
             {entry.queued ? <span className="mt-1 block text-xs text-muted-foreground">queued · runs when this turn ends</span> : null}
           </div>
           {entry.sentToThread ? <span className="text-xs text-muted-foreground">↳ Sent to a task</span> : null}
@@ -76,27 +86,34 @@ const stepTone = (state: ToolStepState) => (state === "error" ? "text-destructiv
 /**
  * A run of tool calls: one line, which opens to a line per call. The run
  * shows open while it is running and folds once it isn't, unless you open
- * or close it yourself.
+ * or close it yourself. The line never wraps: a long run's label is cut at
+ * the edge, and each call is whole once the run opens.
  */
 function ToolRunLine({ run }: { run: ToolRun }) {
   const [chosen, setChosen] = useState<boolean>();
   if (run.steps.length === 1) {
     return (
-      <div className={cn("font-mono text-xs", stepTone(run.state))} data-entry="tool" data-state={run.state}>
+      <div className={cn("truncate font-mono text-[11px] leading-5", stepTone(run.state))} data-entry="tool" data-state={run.state} title={run.label}>
         ▸ {run.label}
       </div>
     );
   }
   const open = chosen ?? toolRunOpen(run.state);
   return (
-    <div className="font-mono text-xs" data-entry="tool" data-state={run.state}>
-      <button type="button" aria-expanded={open} onClick={() => setChosen(!open)} className={cn("text-left hover:text-foreground", stepTone(run.state))}>
+    <div className="font-mono text-[11px] leading-5" data-entry="tool" data-state={run.state}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setChosen(!open)}
+        title={run.label}
+        className={cn("block w-full truncate text-left transition-colors hover:text-foreground", stepTone(run.state))}
+      >
         {open ? "▾" : "▸"} {run.label}
       </button>
       {open ? (
-        <ul className="mt-1 ml-3 flex flex-col gap-0.5">
+        <ul className="mt-1 ml-1 flex flex-col gap-0.5 border-l border-border pl-3">
           {run.steps.map((step) => (
-            <li key={step.id} className={stepTone(step.state)} data-step-state={step.state}>
+            <li key={step.id} className={cn("truncate", stepTone(step.state))} data-step-state={step.state} title={step.line}>
               {step.line}
             </li>
           ))}
@@ -127,7 +144,7 @@ function ResultLine({ entry }: { entry: Extract<ThreadEntry, { kind: "result" }>
         aria-expanded={open}
         onClick={() => setOpen(!open)}
         title={entry.duringTurn ? "Arrived while this turn was running" : undefined}
-        className="flex w-full min-w-0 items-center gap-2 border border-border bg-card px-3 py-1.5 text-left text-xs hover:bg-accent"
+        className={cn("flex w-full min-w-0 items-center gap-2 border border-border bg-card px-3 py-1.5 text-left text-xs hover:bg-accent", open ? "rounded-t-md" : "rounded-md")}
       >
         <span aria-hidden className="shrink-0 text-muted-foreground">
           {open ? "▾" : "▸"}
@@ -136,7 +153,7 @@ function ResultLine({ entry }: { entry: Extract<ThreadEntry, { kind: "result" }>
         <span className="min-w-0 truncate">{entry.title}</span>
         <span className={cn("shrink-0", status.tone)}>· {status.label}</span>
       </button>
-      {open ? <AgentMarkdown text={entry.summary} className="border-x border-b border-border px-3 py-2" /> : null}
+      {open ? <AgentMarkdown text={entry.summary} className="rounded-b-md border-x border-b border-border px-3 py-2" /> : null}
     </section>
   );
 }
