@@ -45,6 +45,14 @@ theme so it reads as the app it copies.
 - **The page's address** names the open teammate and an open task popup
   (`?worker=<id>&session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns
   to what you had open before. A link to a teammate or task that is gone opens the first teammate.
+- **A task's time:** each task in the panel carries it. A running one reads *working · 4m 12s*,
+  counted from when this attempt's run started, so a retried task starts again from zero. A
+  running task whose run has stopped answering reads *quiet for 40m* in amber: the run stopped
+  renewing its claim on the task (the board's lease lapsed), as when the server running it died,
+  and it stays quiet until the board hands the task to a new run. A run that is alive but slow
+  keeps renewing, so it never reads quiet; a long clock is the sign there. Nothing reads quiet
+  while the panel has lost the server. An ended task says how long ago it ended, and the panel's
+  heading counts the tasks running, waiting, failed and done.
 
 Scope is core messaging and session management. There are no group chats, no new-chat button and
 no session list. The design and the decisions behind it are in the

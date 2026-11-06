@@ -106,7 +106,7 @@ describe("the main thread", () => {
       await fake.send(row.id, "Fix the build");
     });
     act(() => fake.failTurn(row.id, "AI_GATEWAY_API_KEY is not set"));
-    render(<Thread adapter={fake} session={row} project={{ id: "project-vendor-notes", name: "vendor-notes" }} onOpenThread={() => undefined} />);
+    render(<Thread adapter={fake} session={row} project={{ id: "project-vendor-notes", name: "vendor-notes" }} tasks={[]} onOpenThread={() => undefined} />);
     expect(screen.getByTestId("request-recovery").textContent).toMatch(/AI_GATEWAY_API_KEY is not set/);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: /Retry/ })));
     expect(fake.retries).toEqual([{ sessionId: row.id, requestId: expect.any(String) }]);
@@ -124,7 +124,7 @@ describe("the main thread", () => {
       });
       act(() => fake.failTurn(row.id, `${line} failed`));
     }
-    render(<Thread adapter={fake} session={row} project={{ id: "project-vendor-notes", name: "vendor-notes" }} onOpenThread={() => undefined} />);
+    render(<Thread adapter={fake} session={row} project={{ id: "project-vendor-notes", name: "vendor-notes" }} tasks={[]} onOpenThread={() => undefined} />);
     const lines = screen.getAllByTestId("request-recovery");
     expect(lines.map((line) => line.textContent?.includes("Retry"))).toEqual([false, true]);
   });

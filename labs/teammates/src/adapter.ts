@@ -175,6 +175,13 @@ export interface BoardTask {
   spend?: TaskSpendView;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
+  /** The row as orchestration's `taskRowView` reads it, once per read: its state and times, for its time signal and the panel's counts. */
+  view?: TaskRowView;
+  /**
+   * What the view doesn't carry, for the time signal: when this attempt's run started (its run link's
+   * `startedAt`), and the row's lease deadline, which a live run keeps renewing. Each absent until the row has it.
+   */
+  run?: { startedAt?: number; leaseUntil?: number };
   /** The one-line note its run last reported while it ran (`statusNote`). */
   note?: string;
   /** When it started running, in ms: what its feed's elapsed time counts from. */
@@ -397,8 +404,11 @@ export interface LabAdapter {
   editInstructions(worker: string, instructions: string): Promise<void>;
   /** Fire one of the user's own teammates: it leaves the roster, and its conversation stays readable. */
   fire(worker: string): Promise<void>;
-  /** The tasks a conversation filed, oldest first. */
-  watchTasks(sessionId: string, onChange: (tasks: BoardTask[]) => void): Unsubscribe;
+  /**
+   * The tasks a conversation filed, oldest first. `onStale` hears `true` when the board's read
+   * fails (the rows handed last are kept, so they may be old) and `false` when one succeeds again.
+   */
+  watchTasks(sessionId: string, onChange: (tasks: BoardTask[]) => void, onStale?: (stale: boolean) => void): Unsubscribe;
   /** A task's run, by the session its row names, read only: the worker that runs it takes no messages. */
   watchRun(runSessionId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
   /** The run's latest review, read from its stop; `undefined` until it stops for one. */
@@ -587,7 +597,8 @@ function retryAfterFailure(again: () => void): { failed(): void; succeeded(): vo
  * and one waiting for any number of notices. Wherever push can miss a change,
  * `client.subscribe` reads every `everyMs` instead, so the view keeps no timer
  * of its own. A failed read tries again on its own ({@link retryAfterFailure}).
- * A read still out when the watch stops reports nothing.
+ * A read still out when the watch stops reports nothing. `onStale` hears `true`
+ * when a read fails and `false` when one succeeds after it.
  */
 function onNotice<T>(
   client: Client,
@@ -596,9 +607,11 @@ function onNotice<T>(
   read: () => Promise<T>,
   onValue: (value: T) => void,
   everyMs = POLL_MS,
+  onStale?: (stale: boolean) => void,
 ): Unsubscribe {
   let live = true;
   let last = "";
+  let stale = false;
   let running = false;
   let queued = false;
   const retry = retryAfterFailure(() => void run());
@@ -617,9 +630,17 @@ function onNotice<T>(
         last = seen;
         onValue(value);
       }
+      if (live && stale) {
+        stale = false;
+        onStale?.(false);
+      }
     } catch (error) {
       console.error("teammates: a read failed", error);
       if (live) retry.failed();
+      if (live && !stale) {
+        stale = true;
+        onStale?.(true);
+      }
     }
     running = false;
     if (queued) {
@@ -767,7 +788,18 @@ export function toBoardTask(
     ...harnessAndModel(spend, harnessOf(row.assignee ?? "")),
     ...(spend === null ? {} : { spend }),
     ...waitingOf(view),
+    ...(view === null ? {} : { view }),
+    ...runOf(row),
   };
+}
+
+/** A row's run start and lease deadline, each only when the row has it. */
+function runOf(row: Record<string, any>): Pick<BoardTask, "run"> {
+  const run = {
+    ...(typeof row.run?.startedAt === "number" ? { startedAt: row.run.startedAt as number } : {}),
+    ...(typeof row.leaseUntil === "number" ? { leaseUntil: row.leaseUntil as number } : {}),
+  };
+  return Object.keys(run).length === 0 ? {} : { run };
 }
 
 /** When a row's run started: the row's own start, else its run's (rows before either carry neither, BP-030). */
@@ -1317,7 +1349,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       await workforce.fire(worker);
       conversations.delete(worker);
     },
-    watchTasks(sessionId, onChange) {
+    watchTasks(sessionId, onChange, onStale) {
       const show = stableList(onChange);
       let rows = new Map<string, Record<string, any>>();
       /** Each row as the board's last read answered it: a task settles, and its run links, on its own session. */
@@ -1423,6 +1455,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           if (stopped) return;
           listed = new Map(tasks.map((task) => [task.id as string, task]));
           publish();
+        },
+        POLL_MS,
+        (stale) => {
+          if (!stopped) onStale?.(stale);
         },
       );
       const stopFeed = watchFeed(sessionId, boardRows, (read) => {

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import type { LabAdapter, TaskRow } from "../adapter";
 import { COLUMNS, columnOf, type Column } from "../lib/columns";
-import { age, useMissing, useNow, useWatch } from "../lib/use-watch";
+import { taskSignalTone } from "../lib/task-status";
+import { useMissing, useNow, useWatch } from "../lib/use-watch";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
+import { TaskTime } from "./flow-state/task-signals";
 import { HarnessTag, rowNote, ThreadIcon } from "./ThreadStatus";
 import { ThreadView } from "./ThreadView";
 
@@ -11,30 +13,37 @@ import { ThreadView } from "./ThreadView";
  * Threads mode's right pane: the status board, titled *Tasks*. Every row is
  * one task row of the session's board, grouped by what you owe it (the
  * columns table), and pinned ones on top. Each group has a count and
- * collapses; *Resolved* starts collapsed. Opening a thread draws its view as a
- * sheet over the main thread, as session mode's tasks open; the board stays
- * in the pane behind it.
+ * collapses; *Resolved* starts collapsed. Each row carries its time (a
+ * running one's clock, *quiet* once its run stopped answering, an ended one's
+ * age; never *quiet* while the app's last read of the rows failed). Opening a
+ * thread draws its view as a sheet over the main thread, as session mode's
+ * tasks open; the board stays in the pane behind it.
  */
 export function ThreadsBoard({
   adapter,
   sessionId,
+  tasks: listed,
+  stale = false,
   openId,
   onOpen,
   onMissing,
 }: {
   adapter: LabAdapter;
   sessionId: string;
+  /** The session's task rows, as the app reads them; `undefined` until read. */
+  tasks: TaskRow[] | undefined;
+  /** The app's last read of the rows failed: they may be old. */
+  stale?: boolean;
   openId: string | undefined;
   onOpen: (taskId: string | undefined) => void;
   /** `openId` names no thread of this session's, once its rows are read. */
   onMissing: () => void;
 }) {
-  const listed = useWatch((emit: (rows: TaskRow[]) => void) => adapter.watchTasks(sessionId, emit), [adapter, sessionId]);
   const tasks = listed ?? [];
   useMissing(listed, openId, onMissing);
   const pins = useWatch((emit: (ids: string[]) => void) => adapter.watchPins(emit), [adapter]) ?? [];
   const [collapsed, setCollapsed] = useState<Partial<Record<Column, boolean>>>({ resolved: true });
-  const now = useNow(true, 30_000);
+  const now = useNow(tasks.length > 0);
 
   const open = tasks.find((t) => t.id === openId);
   const groups = COLUMNS.map((column) => ({
@@ -86,8 +95,10 @@ export function ThreadsBoard({
                             </span>
                             <Spend spend={task.spend} />
                           </span>
-                          {task.updatedAt !== undefined ? (
-                            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{age(task.updatedAt, now)}</span>
+                          {task.view !== undefined ? (
+                            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                              <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={taskSignalTone} />
+                            </span>
                           ) : null}
                         </button>
                       </li>
