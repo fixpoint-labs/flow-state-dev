@@ -94,7 +94,7 @@
     "first-hour.example.knowledge-base.typecheck": "fail",
     "first-hour.example.knowledge-base.test": "fail",
     "first-hour.example.knowledge-base.fsdev": "fail",
-    "onepath.answer-task-stop": "fail",
+    "onepath.answer-task-stop": "pass",
     "leakage.tracker-ids": "fail",
     "shims.never-published": "pass",
     "shims.human-approval-throws": "pass",

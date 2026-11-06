@@ -40,7 +40,7 @@
       "types": "./dist/supervisor/index.d.ts",
       "default": "./src/supervisor/index.ts"
     },
-    "./routedSpecialists": {
+    "./routed-specialists": {
       "types": "./dist/routedSpecialists/index.d.ts",
       "default": "./src/routedSpecialists/index.ts"
     },
@@ -48,7 +48,7 @@
       "types": "./dist/response-auditor/index.d.ts",
       "default": "./src/response-auditor/index.ts"
     },
-    "./eventActors": {
+    "./event-actors": {
       "types": "./dist/eventActors/index.d.ts",
       "default": "./src/eventActors/index.ts"
     },
@@ -83,7 +83,7 @@
         "types": "./dist/supervisor/index.d.ts",
         "default": "./dist/supervisor/index.js"
       },
-      "./routedSpecialists": {
+      "./routed-specialists": {
         "types": "./dist/routedSpecialists/index.d.ts",
         "default": "./dist/routedSpecialists/index.js"
       },
@@ -91,7 +91,7 @@
         "types": "./dist/response-auditor/index.d.ts",
         "default": "./dist/response-auditor/index.js"
       },
-      "./eventActors": {
+      "./event-actors": {
         "types": "./dist/eventActors/index.d.ts",
         "default": "./dist/eventActors/index.js"
       },
