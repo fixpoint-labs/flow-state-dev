@@ -4,6 +4,7 @@ import type { LabAdapter, TaskRow } from "../adapter";
 import { COLUMNS, columnOf, type Column } from "../lib/columns";
 import { taskSignalTone } from "../lib/task-status";
 import { useMissing, useNow, useWatch } from "../lib/use-watch";
+import { PANE_TITLE } from "../modes";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
 import { TaskTime } from "./flow-state/task-signals";
@@ -56,7 +57,7 @@ export function ThreadsBoard({
   return (
     <aside aria-label="Tasks" className="flex h-full min-h-0 flex-col bg-inspector">
       <PaneHeader>
-        <h2 className="text-sm font-semibold">Tasks</h2>
+        <h2 className="text-sm font-semibold">{PANE_TITLE.board}</h2>
       </PaneHeader>
       {groups.length === 0 ? (
         <p className="px-4 py-4 text-xs text-muted-foreground">

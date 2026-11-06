@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
 import { FINISHED, TASK_STATUS } from "../lib/task-status";
 import { useMissing, useNow, useWatch } from "../lib/use-watch";
+import { PANE_TITLE } from "../modes";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
 import { LoadEarlier } from "./LoadEarlier";
@@ -75,7 +76,7 @@ export function TasksPane({
   return (
     <aside aria-label="Background tasks" className="flex h-full min-h-0 flex-col bg-inspector" data-stale={stale || undefined}>
       <PaneHeader>
-        <h2 className="text-sm font-semibold">Background tasks{counts === "" ? "" : ` · ${counts}`}</h2>
+        <h2 className="text-sm font-semibold">{PANE_TITLE.tasks}{counts === "" ? "" : ` · ${counts}`}</h2>
       </PaneHeader>
       {tasks.length === 0 ? (
         <p className="px-4 pt-4 text-xs text-muted-foreground">

@@ -29,11 +29,14 @@ export const STRIP_WIDTH = 43;
 
 /**
  * The sessions list's grid column: its width, but never more than leaves the
- * main thread `THREAD_MIN` beside the right pane's floor, and never under its
- * own. A narrow window shrinks it without forgetting your width.
+ * main thread `THREAD_MIN` beside the right pane as drawn (its floor, or its
+ * strip when `paneCollapsed`), and never under its own. A narrow window
+ * shrinks it without forgetting your width.
  */
-export const sidebarColumn = (width: number, collapsed = false) =>
-  collapsed ? `${RAIL_WIDTH}px` : `min(${width}px, max(${SIDEBAR_MIN}px, 100vw - ${PANE_MIN}px - ${THREAD_MIN}px))`;
+export const sidebarColumn = (width: number, collapsed = false, paneCollapsed = false) =>
+  collapsed
+    ? `${RAIL_WIDTH}px`
+    : `min(${width}px, max(${SIDEBAR_MIN}px, 100vw - ${paneCollapsed ? STRIP_WIDTH : PANE_MIN}px - ${THREAD_MIN}px))`;
 
 /**
  * The pane's grid column: its width, but never more than leaves the main

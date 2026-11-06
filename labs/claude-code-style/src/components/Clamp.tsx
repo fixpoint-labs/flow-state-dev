@@ -13,10 +13,19 @@ export function Clamp({ children, lines = 3, className }: { children: ReactNode;
   const [open, setOpen] = useState(false);
   const [cut, setCut] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
+  const measure = () => {
     const el = box.current;
     if (el && !open) setCut(el.scrollHeight > el.clientHeight + 1);
-  });
+  };
+  // After each render, and again when the box changes width: dragging an edge or collapsing a column rewraps the text without a render.
+  useLayoutEffect(measure);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (el === null || typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(() => measure());
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [open]);
   return (
     <div className={className}>
       <div ref={box} className={cn("whitespace-pre-wrap [overflow-wrap:anywhere]", !open && LINES[lines])}>

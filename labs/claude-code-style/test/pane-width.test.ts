@@ -15,7 +15,9 @@ import {
   readSidebarWidth,
   SIDEBAR_MAX,
   SIDEBAR_MIN,
+  sidebarColumn,
   sidebarDefault,
+  STRIP_WIDTH,
 } from "../src/lib/pane-width";
 
 afterEach(() => {
@@ -65,5 +67,19 @@ describe("the sessions list's width", () => {
     expect(readSidebarWidth()).toBe(320);
     localStorage.setItem("claude-code-style:sidebar-width", "wide");
     expect(readSidebarWidth()).toBe(sidebarDefault());
+  });
+});
+
+describe("the sessions list's column", () => {
+  it("leaves the pane's floor beside the thread, and only its strip once the pane is collapsed", () => {
+    // A collapsed pane takes 43px, not 280: the list is not squeezed on a narrow window for a pane that is not there.
+    expect(sidebarColumn(300)).toContain("100vw - 280px");
+    expect(sidebarColumn(300, false, true)).toContain(`100vw - ${STRIP_WIDTH}px`);
+    expect(sidebarColumn(300, false, true)).not.toContain("280px");
+  });
+
+  it("is a fixed rail when collapsed, whatever the pane does", () => {
+    expect(sidebarColumn(300, true)).toBe("48px");
+    expect(sidebarColumn(300, true, true)).toBe("48px");
   });
 });

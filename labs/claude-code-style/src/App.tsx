@@ -18,7 +18,7 @@ import { focusComposer, focusWhenDrawn, useLabKeys } from "./lib/keys";
 import { usePanels } from "./lib/panels";
 import { EMPTY_PANE } from "./lib/first-run";
 import { useWatch } from "./lib/use-watch";
-import { modeById, modeOfWorker, type ModeId } from "./modes";
+import { modeById, modeOfWorker, PANE_TITLE, type ModeId } from "./modes";
 
 /**
  * The screen: the view's sessions on the left, the open session's main thread
@@ -213,7 +213,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
       <div
         className={cn("grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden", sliding && "transition-[grid-template-columns] duration-[180ms] ease-out motion-reduce:transition-none")}
         style={{
-          gridTemplateColumns: `${sidebarColumn(sidebarWidth, panels.navCollapsed)} minmax(0,1fr) ${paneColumn(paneWidth, sidebarWidth, panels.navCollapsed, paneCollapsed)}`,
+          gridTemplateColumns: `${sidebarColumn(sidebarWidth, panels.navCollapsed, paneCollapsed)} minmax(0,1fr) ${paneColumn(paneWidth, sidebarWidth, panels.navCollapsed, paneCollapsed)}`,
         }}
       >
         <div className="relative min-h-0 min-w-0">
@@ -264,44 +264,44 @@ export function App({ adapter }: { adapter: LabAdapter }) {
                 <PanelToggle side="right" name="side panel" keyName="]" collapsed onToggle={slideThen(panels.togglePane)} />
               </PaneHeader>
               <span className="font-mono text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase [writing-mode:vertical-rl]">
-                {pane === "tasks" ? "Background tasks" : "Tasks"}
+                {PANE_TITLE[pane]}
               </span>
             </div>
           ) : (
             <PanelToggle side="right" name="side panel" keyName="]" collapsed={false} onToggle={slideThen(panels.togglePane)} className="absolute top-3 right-3 z-30" />
           )}
           <div className={cn("h-full min-h-0", paneCollapsed && "hidden")}>
-          {selected && pane === "tasks" ? (
-            <TasksPane
-              // Keyed by session: a switch never judges the open task against the last session's rows.
-              key={selected.id}
-              adapter={adapter}
-              sessionId={selected.id}
-              tasks={taskRows}
-              stale={tasksStale}
-              openId={openTask[selected.id]}
-              onOpen={(taskId) => openTaskOf(selected.id, taskId)}
-              onMissing={() => dropMissing(selected.id)}
-            />
-          ) : selected && pane === "board" ? (
-            <ThreadsBoard
-              // Keyed by session: a switch never judges the open task against the last session's rows.
-              key={selected.id}
-              adapter={adapter}
-              sessionId={selected.id}
-              tasks={taskRows}
-              stale={tasksStale}
-              openId={openTask[selected.id]}
-              onOpen={(taskId) => openTaskOf(selected.id, taskId)}
-              onMissing={() => dropMissing(selected.id)}
-            />
-          ) : (
-            <aside className="flex h-full items-center justify-center bg-inspector px-6">
-              <p className="max-w-56 text-center text-xs text-muted-foreground" data-testid="empty-pane">
-                {EMPTY_PANE[modeById(view).pane]}
-              </p>
-            </aside>
-          )}
+            {selected && pane === "tasks" ? (
+              <TasksPane
+                // Keyed by session: a switch never judges the open task against the last session's rows.
+                key={selected.id}
+                adapter={adapter}
+                sessionId={selected.id}
+                tasks={taskRows}
+                stale={tasksStale}
+                openId={openTask[selected.id]}
+                onOpen={(taskId) => openTaskOf(selected.id, taskId)}
+                onMissing={() => dropMissing(selected.id)}
+              />
+            ) : selected && pane === "board" ? (
+              <ThreadsBoard
+                // Keyed by session: a switch never judges the open task against the last session's rows.
+                key={selected.id}
+                adapter={adapter}
+                sessionId={selected.id}
+                tasks={taskRows}
+                stale={tasksStale}
+                openId={openTask[selected.id]}
+                onOpen={(taskId) => openTaskOf(selected.id, taskId)}
+                onMissing={() => dropMissing(selected.id)}
+              />
+            ) : (
+              <aside className="flex h-full items-center justify-center bg-inspector px-6">
+                <p className="max-w-56 text-center text-xs text-muted-foreground" data-testid="empty-pane">
+                  {EMPTY_PANE[modeById(view).pane]}
+                </p>
+              </aside>
+            )}
           </div>
         </div>
       </div>

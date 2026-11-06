@@ -10,6 +10,9 @@
 /** A mode the app knows. */
 export type ModeId = "session" | "threads";
 
+/** What each right pane is called: its header and, collapsed, its strip say the same. */
+export const PANE_TITLE = { tasks: "Background tasks", board: "Tasks" } as const;
+
 /** What a mode is: who answers in its sessions, and what the right pane shows. */
 export interface Mode {
   id: ModeId;
