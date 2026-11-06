@@ -189,6 +189,26 @@ describe("defineFlow's merged scope state", () => {
   });
 });
 
+describe("the merge never makes a default unfillable", () => {
+  it("a field only one side of a merged object declares, with no default, doesn't stop the object's default filling", () => {
+    const merged = mergeScopeStateSchemas("Flow \"f\"", "session", [
+      decl(z.object({ prefs: z.object({ theme: z.string().default("light") }).default({}) }), "flow \"f\""),
+      decl(z.object({ prefs: z.object({ name: z.string() }) }), "block \"b\"")
+    ]) as z.AnyZodObject;
+    expect(merged.shape.prefs.safeParse(undefined).data).toEqual({ theme: "light" });
+    // A stored value still fills, and keeps what it holds.
+    expect(merged.shape.prefs.safeParse({ name: "Ada" }).data).toEqual({ name: "Ada", theme: "light" });
+  });
+
+  it("a field both sides require stays required: each side's own default already failed on it", () => {
+    const merged = mergeScopeStateSchemas("Flow \"f\"", "session", [
+      decl(z.object({ prefs: z.object({ id: z.string(), theme: z.string().default("light") }) }), "flow \"f\""),
+      decl(z.object({ prefs: z.object({ id: z.string(), size: z.number().default(1) }) }), "block \"b\"")
+    ]) as z.AnyZodObject;
+    expect(merged.shape.prefs.safeParse({}).success).toBe(false);
+  });
+});
+
 describe("a fingerprint has no delimiter ambiguity", () => {
   // Each pair accepts different values, so it must fingerprint apart.
   const pairs: Array<[string, z.ZodTypeAny, z.ZodTypeAny]> = [

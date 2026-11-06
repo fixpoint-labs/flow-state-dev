@@ -206,8 +206,19 @@ function covers(node: MergeNode, flags: Flags): boolean {
   return own.readonly === flags.readonly && own.fill.kind === flags.fill.kind;
 }
 
+/**
+ * `node` as a field one side of a merged object leaves out: a value written
+ * by the other side's blocks may lack it, so with no default of its own it
+ * is optional here. Required, it would make the object fail its parse, and
+ * the object's own default stop filling.
+ */
+function leftOutBySomeDeclarer(node: MergeNode): MergeNode {
+  if (node.flags.fill.kind !== "required") return node;
+  return { ...node, flags: { ...node.flags, fill: { kind: "absent" } }, declared: undefined };
+}
+
 /** Merge `b` into `a` at `path`, or throw a conflict naming both declarers. */
-function mergeNodes(owner: string, a: MergeNode, b: MergeNode, path: string): MergeNode {
+function mergeNodes(owner: string, a: MergeNode, b: MergeNode, path: string, root = false): MergeNode {
   if (a.declared !== undefined && a.declared === b.declared) return a;
   const typeConflict = () => {
     const opaque = [a, b].some((n) => n.kind === "leaf" && n.signature.startsWith("opaque#"));
@@ -265,10 +276,19 @@ function mergeNodes(owner: string, a: MergeNode, b: MergeNode, path: string): Me
     if (covers(b, flags)) return b;
     return { ...a, flags, declared: undefined };
   }
-  const fields = new Map(a.fields);
-  for (const [key, child] of (b as ObjectNode).fields) {
-    const have = fields.get(key);
-    fields.set(key, have === undefined ? child : mergeNodes(owner, have, child, `${path}.${key}`));
+  // A top-level field is filled on its own, so only a nested object's
+  // one-sided fields need loosening.
+  const bFields = (b as ObjectNode).fields;
+  const fields = new Map<string, MergeNode>();
+  for (const [key, child] of a.fields) {
+    const other = bFields.get(key);
+    fields.set(
+      key,
+      other !== undefined ? mergeNodes(owner, child, other, `${path}.${key}`) : root ? child : leftOutBySomeDeclarer(child)
+    );
+  }
+  for (const [key, child] of bFields) {
+    if (!a.fields.has(key)) fields.set(key, root ? child : leftOutBySomeDeclarer(child));
   }
   return { kind: "object", fields, flags, source: a.source, declared: undefined };
 }
@@ -325,7 +345,7 @@ export function mergeScopeStateSchemas(
       );
     }
     const node = toNode(schema, source, true);
-    merged = merged === undefined ? node : mergeNodes(owner, merged, node, `${scope}.state`);
+    merged = merged === undefined ? node : mergeNodes(owner, merged, node, `${scope}.state`, true);
   }
   return toSchema(merged!);
 }
