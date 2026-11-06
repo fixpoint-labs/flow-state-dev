@@ -405,11 +405,11 @@ describe("declarations that disagree are refused before anything runs", () => {
       flowOf(
         "two-defaults",
         leaf("planner", z.object({ mode: z.string().default("plan") })),
-        leaf("asker", z.object({ mode: z.string().default("ask") }))
+        leaf("writer", z.object({ mode: z.string().default("write") }))
       )
     ).toThrow(
       // Named in the order the walk meets them; which is first decides nothing.
-      /^Flow "two-defaults": session\.state\.mode is declared twice with different defaults: (block "planner" defaults it to "plan" and block "asker" to "ask"|block "asker" defaults it to "ask" and block "planner" to "plan")\./
+      /^Flow "two-defaults": session\.state\.mode is declared twice with different defaults: (block "planner" defaults it to "plan" and block "writer" to "write"|block "writer" defaults it to "write" and block "planner" to "plan")\./
     );
   });
 
