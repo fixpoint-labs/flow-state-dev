@@ -1446,9 +1446,6 @@ importers:
       '@cfworker/json-schema':
         specifier: ^4.1.1
         version: 4.1.1
-      '@flow-state-dev/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core

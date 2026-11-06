@@ -7,30 +7,15 @@
  * `useSuspensions` checks its filter once per distinct value, at the hook's
  * top: the per-item derivation re-runs on every stream update.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, renderHook } from "@testing-library/react";
 import type { ItemProvenance, OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
-
-const refusals = vi.hoisted(() => ({ calls: 0 }));
-vi.mock("@flow-state-dev/contracts/internal", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@flow-state-dev/contracts/internal")>();
-  return {
-    ...actual,
-    refuseRetiredValue: (...args: Parameters<typeof actual.refuseRetiredValue>) => {
-      refusals.calls += 1;
-      return actual.refuseRetiredValue(...args);
-    },
-  };
-});
 
 import { deriveSuspensions, useSuspensions } from "../src/hooks/useSuspensions";
 import { suspensionShape } from "../src/hooks/useSuspensionForm";
 import type { SessionView } from "../src/hooks/useSession";
 
-afterEach(() => {
-  cleanup();
-  refusals.calls = 0;
-});
+afterEach(cleanup);
 
 const provenance: ItemProvenance = { blockName: "gate", blockInstanceId: "b1", phase: "main" };
 
@@ -65,7 +50,7 @@ describe("a suspension under a retired human_* reason, in the hooks", () => {
     ["human_input", "user_input"],
   ])("a filter naming %s throws, naming %s", (old, replacement) => {
     expect(() => deriveSuspensions([], { reasons: [old] })).toThrow(
-      `useSuspensions: reason "${old}" was retired. Use "${replacement}". This refusal is removed in @flow-state-dev/contracts 0.6.0.`,
+      `useSuspensions: reason "${old}" was renamed. Use "${replacement}".`,
     );
   });
 
@@ -75,19 +60,24 @@ describe("a suspension under a retired human_* reason, in the hooks", () => {
   });
 
   it("useSuspensions checks its filter once, not again on each stream update", () => {
+    // The check walks the filter; the per-item match only calls `includes`. Count the walks.
+    let walks = 0;
+    const reasons = ["user_approval"];
+    const walk = reasons[Symbol.iterator].bind(reasons);
+    Object.defineProperty(reasons, Symbol.iterator, { value: () => ((walks += 1), walk()) });
     const { result, rerender } = renderHook(
-      ({ items }: { items: OutputItem[] }) => useSuspensions(sessionOf(items), { reasons: ["user_approval"] }),
+      ({ items }: { items: OutputItem[] }) => useSuspensions(sessionOf(items), { reasons }),
       { initialProps: { items: [] as OutputItem[] } },
     );
     rerender({ items: [suspension("user_approval", "a")] });
     rerender({ items: [suspension("user_approval", "a"), suspension("user_approval", "b")] });
     expect(result.current.pending.map((view) => view.item.suspensionId)).toEqual(["a", "b"]);
-    expect(refusals.calls).toBe(1);
+    expect(walks).toBe(1);
   });
 
   it("useSuspensions still throws for a retired filter, naming its replacement", () => {
     expect(() => renderHook(() => useSuspensions(sessionOf([]), { reasons: ["human_approval"] }))).toThrow(
-      'useSuspensions: reason "human_approval" was retired. Use "user_approval".',
+      'useSuspensions: reason "human_approval" was renamed. Use "user_approval".',
     );
   });
 });

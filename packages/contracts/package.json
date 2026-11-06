@@ -53,10 +53,6 @@
     "./helpers/*": {
       "types": "./dist/helpers/*.d.ts",
       "default": "./src/helpers/*.ts"
-    },
-    "./internal": {
-      "types": "./dist/internal/index.d.ts",
-      "default": "./src/internal/index.ts"
     }
   },
   "license": "MIT",
@@ -96,10 +92,6 @@
       "./helpers/*": {
         "types": "./dist/helpers/*.d.ts",
         "default": "./dist/helpers/*.js"
-      },
-      "./internal": {
-        "types": "./dist/internal/index.d.ts",
-        "default": "./dist/internal/index.js"
       }
     }
   },

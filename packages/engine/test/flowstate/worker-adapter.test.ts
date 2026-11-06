@@ -206,4 +206,17 @@ describe("createFlowState — worker adapter", () => {
       })
     ).toThrow(FlowStateConfigError);
   });
+
+  // An old config still passing `dispatcher` would otherwise run its queued work in process.
+  it("refuses the old `dispatcher` option by name, pointing at runner", () => {
+    const { runner } = makeFakeAdapter();
+    expect(() =>
+      createFlowState({
+        flows: { noop: noopFlow },
+        stores: { default: { primary: inMemoryStores() } },
+        modelResolver: stubModelResolver,
+        dispatcher: runner
+      } as never)
+    ).toThrow(/createFlowState: the `dispatcher` option is now `runner`/);
+  });
 });

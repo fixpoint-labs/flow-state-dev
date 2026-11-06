@@ -7,7 +7,6 @@
  */
 import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { isUserSuspension, suspendForUserKindOf } from "@flow-state-dev/core/types";
-import { RetiredNameError } from "@flow-state-dev/contracts/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
@@ -103,9 +102,9 @@ describe("a suspension under a retired human_* reason", () => {
       runtimeConfig: { durabilityProvider: provider },
     });
     expect(thrown).toHaveLength(1);
-    expect(thrown[0]).toBeInstanceOf(RetiredNameError);
+    expect(thrown[0]).toBeInstanceOf(Error);
     expect((thrown[0] as Error).message).toBe(
-      `ctx.suspend: reason "${old}" was retired. Use "${replacement}". This refusal is removed in @flow-state-dev/contracts 0.6.0.`,
+      `ctx.suspend: reason "${old}" was renamed. Use "${replacement}".`,
     );
     expect((await stores.request.get(result.requestId!))?.status).toBe("failed");
     expect(await provider.listSuspended({ status: "pending" })).toEqual([]);

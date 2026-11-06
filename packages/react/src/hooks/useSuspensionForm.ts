@@ -20,7 +20,6 @@
 import { useCallback, useMemo, useState } from "react";
 import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction, SuspensionStatus } from "@flow-state-dev/core/types";
-import { currentSuspensionReason } from "@flow-state-dev/contracts/internal";
 import { useFlowContext } from "../context/FlowContext";
 import { useClient } from "../internal/useClient";
 import { useSuspensionResolver } from "../context/SuspensionResolver";
@@ -136,7 +135,7 @@ export function suspensionShape(item: {
   resumeSchema?: Record<string, unknown>;
   allow?: ResumeAction[];
 }): SuspensionShape {
-  if (currentSuspensionReason(item.reason) !== "user_input") return "approval";
+  if (item.reason !== "user_input" && item.reason !== "human_input") return "approval"; // retired-name-refusal: a stop core 0.2.0 stored
   // No submit path → render the binary approval card so the gate stays resolvable.
   if (item.allow === undefined || !item.allow.includes("submit")) return "approval";
   const analysis = analyzeResumeSchema(item.resumeSchema);

@@ -37,6 +37,7 @@ import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-err
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { resolveProfileStores } from "./resolve-slots";
 import type { FlowRunner } from "../transports/runner";
+import { refuseRetiredDispatcherOption } from "../transports/runner";
 import {
   createDispatchOperation,
   type DispatchOperation,
@@ -294,6 +295,7 @@ class InternalFlowState<TSettings extends object>
   readonly #arbiter: ConcurrencyArbiter;
 
   constructor(options: CreateFlowStateOptions<TSettings>) {
+
     this.#options = options;
     this.#arbiter = createConcurrencyArbiter(
       options.worker?.leaseBackend !== undefined
@@ -311,6 +313,7 @@ class InternalFlowState<TSettings extends object>
       );
     }
 
+    refuseRetiredDispatcherOption(options, "createFlowState");
     if (options.worker !== undefined && options.runner !== undefined) {
       throw new FlowStateConfigError(
         "createFlowState: `worker` and `runner` are mutually exclusive. " +

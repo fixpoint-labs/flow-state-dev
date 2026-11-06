@@ -5,9 +5,6 @@
  * in `core/types/suspension.ts`, which re-exports these from here.
  */
 
-import { readRetired } from "../retired-names";
-import { REFUSALS } from "../retired";
-
 /** Lifecycle status of a suspension. `pending` is the sole non-terminal state. */
 export type SuspensionStatus =
   | "pending"
@@ -60,20 +57,15 @@ export type ResumeAction = "approve" | "reject" | "submit" | "skip";
  */
 export type SuspendForUserKind = "approval" | "review" | "input";
 
-/**
- * A suspension's reason as the current version reads it: a reason core 0.2.0
- * stored under its retired `human_*` name reads as the `user_*` one. A new use
- * of the old name is refused where it is written.
- *
- * Internal: exported only from `@flow-state-dev/contracts/internal`, for the
- * framework's own readers. Making it public is a separate decision.
- */
-export function currentSuspensionReason(reason: string): string {
-  return readRetired(REFUSALS, reason);
-}
-
 /** The suspension reasons that wait for a user. */
 const USER_REASONS: ReadonlySet<string> = new Set(["user_approval", "user_input"]);
+
+/** A reason core 0.2.0 stored under its old `human_*` name, read as the `user_*` one. */
+function currentReason(reason: string): string {
+  if (reason === "human_approval") return "user_approval"; // retired-name-refusal: a stop core 0.2.0 stored
+  if (reason === "human_input") return "user_input"; // retired-name-refusal: a stop core 0.2.0 stored
+  return reason;
+}
 
 /**
  * Whether a suspension waits for a user: the one predicate every reader keys
@@ -81,10 +73,10 @@ const USER_REASONS: ReadonlySet<string> = new Set(["user_approval", "user_input"
  * `ctx.suspendForUser` stop and for a raw `ctx.suspend` with `user_approval` or
  * `user_input`. `external_event` and a custom reason (the open `string & {}`
  * arm of {@link SuspensionReason}) are never a user's. A stop core 0.2.0
- * stored under a retired `human_*` reason is a user's.
+ * stored under its old `human_*` reason is a user's.
  */
 export function isUserSuspension(suspension: { readonly reason: string }): boolean {
-  return USER_REASONS.has(currentSuspensionReason(suspension.reason));
+  return USER_REASONS.has(currentReason(suspension.reason));
 }
 
 /**
@@ -99,5 +91,5 @@ export function suspendForUserKindOf(suspension: {
 }): SuspendForUserKind | undefined {
   if (!isUserSuspension(suspension)) return undefined;
   if (suspension.kind !== undefined) return suspension.kind;
-  return currentSuspensionReason(suspension.reason) === "user_approval" ? "approval" : "input";
+  return currentReason(suspension.reason) === "user_approval" ? "approval" : "input";
 }
