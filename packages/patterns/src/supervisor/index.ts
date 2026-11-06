@@ -16,7 +16,7 @@
  * labelled `skipped`, on that task's ending (the substrate's cascade).
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
-import { flowPolicy } from "@flow-state-dev/orchestration";
+import { flowPolicy } from "@flow-state-dev/orchestration/tasks";
 import type {
   ItemVisibility,
   GeneratorHistoryConfig,

@@ -1,22 +1,18 @@
 /**
- * `@flow-state-dev/orchestration` — the orchestration substrate.
+ * `@flow-state-dev/orchestration` — the orchestration substrate's Node entry.
  *
- * Three layers behind one entry point:
- *   - Task substrate (`./tasks`) — the `Task` schema + state machine, the
- *     storage-agnostic `TaskCollection`, the dispatcher catalog, workers,
- *     loop helpers, and flow policy.
- *   - Skills (`./skills`) — user-editable `SKILL.md` folders bound into a
- *     generator's context, plus the agent-callable `taskTools` surface.
+ * Each name has one home. This root carries skills (user-editable `SKILL.md`
+ * folders bound into a generator's context), the frontmatter helpers,
+ * `resolveCatalogTools`, and the Node-only seams below. The task substrate
+ * (the `Task` schema and state machine, `TaskCollection`, dispatchers,
+ * workers, loop helpers, flow policy) lives on `./tasks` only, which stays
+ * browser-safe; the task-board primitive on `./task-board`; the inbox on
+ * `./inbox`.
  *
- * The task-board primitive is a separate subpath export
- * (`@flow-state-dev/orchestration/task-board`) so a board can be pulled in
- * without the whole surface.
- *
- * Layering: `core → orchestration → patterns`. This package depends only on
- * `@flow-state-dev/core` and never imports from `patterns` or `workforce`.
+ * Layering: `core → orchestration → patterns`. This package never imports
+ * from `patterns` or `workforce`.
  */
 
-export * from "./tasks";
 export * from "./skills";
 
 // Cross-cutting catalog-key helper. Lives under `./shared` rather than

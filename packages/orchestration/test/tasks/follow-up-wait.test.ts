@@ -8,14 +8,14 @@ import { describe, expect, it } from "vitest";
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { createTaskToolsCapability } from "../../src";
 import {
-  createTaskToolsCapability,
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
   ticketForClaim,
   type TaskCollectionRef
-} from "../../src";
+} from "../../src/tasks";
 import { act, runtimeFor, stepModel, toolResults, type StepFn } from "./wait-fixture";
 import { heard } from "../fixtures/heard";
 
