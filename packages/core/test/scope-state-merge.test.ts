@@ -209,6 +209,47 @@ describe("the merge never makes a default unfillable", () => {
   });
 });
 
+describe("a default JSON and deepEqual can't read never crashes defineFlow", () => {
+  class Foo {
+    constructor(readonly n = 1) {}
+  }
+  let deep: Record<string, unknown> = { leaf: 1 };
+  for (let i = 0; i < 40; i++) deep = { next: deep };
+  const cases: Array<[string, () => z.ZodTypeAny]> = [
+    ["a Map default", () => z.map(z.string(), z.number()).default(new Map([["a", 1]]))],
+    ["a class-instance default", () => z.instanceof(Foo).default(new Foo())],
+    ["a Set inside an array default", () => z.array(z.set(z.string())).default([new Set(["a"])])],
+    ["a 40-deep nested default", () => z.record(z.unknown()).default(deep)]
+  ];
+  const merge = (...fields: z.ZodTypeAny[]) =>
+    mergeScopeStateSchemas(
+      "Flow \"f\"",
+      "session",
+      fields.map((f, i) => decl(z.object({ x: f, [`only${i}`]: z.number().default(i) }), `block "b${i}"`))
+    );
+
+  for (const [name, make] of cases) {
+    it(`${name}: one shared schema merges with itself, in a field and nested in an array`, () => {
+      const field = make();
+      expect(() => merge(field, field)).not.toThrow();
+      const nested = z.array(z.object({ v: field }));
+      expect(() => merge(nested, z.array(z.object({ v: field })))).not.toThrow();
+    });
+  }
+
+  it("two different Map defaults are refused, not crashed on", () => {
+    const map = () => z.map(z.string(), z.number()).default(new Map([["a", 1]]));
+    expect(() => merge(z.array(map()), z.array(map()))).toThrow(ScopeStateSchemaConflictError);
+  });
+
+  it("two declarations of one Map core with different Map defaults are refused, not crashed on", () => {
+    const core = z.map(z.string(), z.number());
+    expect(() => merge(core.default(new Map([["a", 1]])), core.default(new Map([["a", 2]])))).toThrow(
+      ScopeStateSchemaConflictError
+    );
+  });
+});
+
 describe("a fingerprint has no delimiter ambiguity", () => {
   // Each pair accepts different values, so it must fingerprint apart.
   const pairs: Array<[string, z.ZodTypeAny, z.ZodTypeAny]> = [

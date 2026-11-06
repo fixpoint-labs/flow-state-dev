@@ -179,7 +179,13 @@ function toNode(schema: ZodTypeAny, source: string, root: boolean): MergeNode {
 
 function showDefault(declared: ZodDeclaredDefault | undefined): string {
   if (declared === undefined || declared.kind === "dynamic") return "a factory";
-  return JSON.stringify(declared.value()) ?? String(declared.value());
+  const value = declared.value();
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    // A bigint, or a value with a cycle: named without its contents.
+    return typeof value === "bigint" ? `${value}n` : "a value that can't be printed";
+  }
 }
 
 /** How a refusal names a node's type: its core, then its wrappers inside out. */
@@ -217,6 +223,15 @@ function leftOutBySomeDeclarer(node: MergeNode): MergeNode {
   return { ...node, flags: { ...node.flags, fill: { kind: "absent" } }, declared: undefined };
 }
 
+/** `deepEqual`, or `undefined` when it can't compare the two (it throws on a `Map`, a class instance, deep nesting). */
+function comparable(left: unknown, right: unknown): boolean | undefined {
+  try {
+    return deepEqual(left, right);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Merge `b` into `a` at `path`, or throw a conflict naming both declarers. */
 function mergeNodes(owner: string, a: MergeNode, b: MergeNode, path: string, root = false): MergeNode {
   if (a.declared !== undefined && a.declared === b.declared) return a;
@@ -241,8 +256,17 @@ function mergeNodes(owner: string, a: MergeNode, b: MergeNode, path: string, roo
   if (left.kind === "default" && right.kind === "default") {
     const l = left.declared;
     const r = right.declared;
-    if (l.kind === "static" && r.kind === "static") {
-      if (!deepEqual(l.value(), r.value())) {
+    if (l.kind === "static" && r.kind === "static" && l.factory !== r.factory) {
+      const equal = comparable(l.value(), r.value());
+      if (equal === undefined) {
+        throw new ScopeStateSchemaConflictError(
+          owner, "default", path, "a default that can't be compared",
+          `${a.source} and ${b.source} each declare a default this check can't compare (a Map, a Set, a class instance, a deeply nested value)`,
+          "Share one schema for the field.",
+          a.source, b.source
+        );
+      }
+      if (!equal) {
         throw new ScopeStateSchemaConflictError(
           owner, "default", path, "different defaults",
           `${a.source} defaults it to ${showDefault(l)} and ${b.source} to ${showDefault(r)}`,

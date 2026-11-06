@@ -397,17 +397,18 @@ function identityOf(value: object): string {
  * `value` as JSON when JSON reads it back exactly, else `undefined`. A value
  * it can't round-trip (`undefined`, `NaN`, `Infinity`, a bigint, a symbol, a
  * `Date`, a function) would encode like another (`NaN` and `null` both as
- * `null`), so the caller fingerprints by identity instead.
+ * `null`), so the caller fingerprints by identity instead. So does any value
+ * the comparison throws on (a `Map`, a `Set`, a class instance, a value
+ * nested past `deepEqual`'s depth limit): nothing here may throw.
  */
 function exactJson(value: unknown): string | undefined {
-  let json: string | undefined;
   try {
-    json = JSON.stringify(value);
+    const json = JSON.stringify(value);
+    if (json === undefined) return undefined;
+    return deepEqual(JSON.parse(json), value) ? json : undefined;
   } catch {
     return undefined;
   }
-  if (json === undefined) return undefined;
-  return deepEqual(JSON.parse(json), value) ? json : undefined;
 }
 
 /** Whether a `_def.checks` list (a string's `.min()`, a number's `.int()`, …) is empty. */
