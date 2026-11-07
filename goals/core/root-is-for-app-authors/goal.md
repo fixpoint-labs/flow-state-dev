@@ -16,3 +16,6 @@ It also lists each core root name a README or changeset line is the only thing c
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-07 | 181ef2ad6 | n/a | FAIL (expected) | The tree before the rulings: `--after 181ef2ad6` red on **core-root**, 110 names (moved-gone 0, no-internal 0; 456 core root names, 111 moved rows read). |
+| 2026-11-07 | d6a38c09 | n/a | FAIL (expected) | The spec's census commit: core-root 137, moved-gone 284, no-internal 2. |
+| 2026-11-07 | 5836f1595 | n/a | PASS | core-root: only the 4 failing benchmark rows remain; 111 moved rows each in their one home (`SessionView` read as `PeerSessionView`); no adopter `/internal` import. Reviewer list: `DispatchWaitResult`, `SequencerOutputSchemaError`, `SequencerSchemaMismatchError`, `RecordedValueOmittedError`, `RECORDED_VALUE_OMITTED`, `isAbortLike`, each cleared by this PR's changeset. `--control`: all 7 plants named. |
