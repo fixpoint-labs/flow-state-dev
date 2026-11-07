@@ -25,6 +25,8 @@ const typedHandler = handler({
     review: z.object({ status: z.enum(["pending", "done"]) })
   },
   execute: async (input, ctx) => {
+    const researchRef: StateRef<{ progress: number }> | undefined = ctx.targets.research;
+    void researchRef;
     await ctx.targets.research?.patchState({ progress: input.value });
     const reviewStatus = ctx.targets.review?.state.status;
     return reviewStatus === "done" ? input.value : input.value + 1;
@@ -55,20 +57,11 @@ const typedRouter = router({
   },
   routes: [routeA, routeB],
   execute: (_input, ctx) => {
+    const coordinatorRef: StateRef<{ step: number }> | undefined = ctx.targets.coordinator;
+    void coordinatorRef;
     const step = ctx.targets.coordinator?.state.step ?? 0;
     return step > 0 ? routeA : routeB;
   }
 });
-
-type HandlerCtx = Parameters<NonNullable<(typeof typedHandler.config)["execute"]>>[1];
-type RouterCtx = Parameters<NonNullable<(typeof typedRouter.config)["execute"]>>[1];
-
-const handlerTargetCheck: StateRef<{ progress: number }> | undefined =
-  (null as unknown as HandlerCtx).targets.research;
-const routerTargetCheck: StateRef<{ step: number }> | undefined =
-  (null as unknown as RouterCtx).targets.coordinator;
-
-void handlerTargetCheck;
-void routerTargetCheck;
 
 export const targetsTypeSmoke = true;
