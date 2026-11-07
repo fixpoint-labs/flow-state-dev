@@ -32,7 +32,6 @@ import type {
   ManifestDomain,
   ManifestRegistry,
 } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   workforceManifestSources,
   type DeclaredWorkforce,

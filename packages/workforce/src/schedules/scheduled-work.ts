@@ -27,7 +27,7 @@
  * a row is written.
  */
 import { defineResourceCollection, handler } from "@flow-state-dev/core";
-import { isKnownTimeZone, type ActionConfig, type BlockContext, type SchedulesConfig } from "@flow-state-dev/core/types";
+import { isKnownTimeZone, type ActionConfig, type SchedulesConfig } from "@flow-state-dev/core/types";
 import { dispatchThroughSeam, isFiveFieldCron } from "@flow-state-dev/core/internal";
 import {
   FIRED_RECORDS_PATTERN,

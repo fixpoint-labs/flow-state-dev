@@ -3,7 +3,7 @@
  * primes the per-run TaskCollection. Runs once before the round loop.
  */
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext, DefinedResource } from "@flow-state-dev/core/types";
+import type { DefinedResource } from "@flow-state-dev/core/types";
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { roundRobinInputSchema } from "../schemas";
 

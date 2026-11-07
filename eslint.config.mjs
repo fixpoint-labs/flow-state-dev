@@ -69,7 +69,11 @@ export default defineConfig(
   {
     // A block's own ctx is a BlockContext however the block is typed, so the
     // framework's source passes it as it is. Three spellings, so a cast can't
-    // move to another one. Tests are out: their mocks are partial on purpose.
+    // move to another one. The two BlockContext casts are refused whatever the
+    // variable is named (`rawCtx`, `given`); building a context from an object
+    // literal is not a cast of one, and stays allowed. `as never` is keyed on
+    // `ctx`, since packages use it on other values. Tests are out: their mocks
+    // are partial on purpose.
     files: ["packages/*/src/**/*.{ts,tsx,mts,cts}"],
     rules: {
       "no-restricted-syntax": [
@@ -79,12 +83,12 @@ export default defineConfig(
           message: "Pass ctx as it is; it is a BlockContext.",
         },
         {
-          selector: "TSAsExpression[expression.name='ctx'][typeAnnotation.typeName.name='BlockContext']",
+          selector: "TSAsExpression[expression.type='Identifier'][typeAnnotation.typeName.name='BlockContext']",
           message: "Pass ctx as it is; it is a BlockContext.",
         },
         {
           selector:
-            "TSAsExpression[expression.expression.name='ctx'][typeAnnotation.typeName.name='BlockContext']",
+            "TSAsExpression[expression.expression.type='Identifier'][typeAnnotation.typeName.name='BlockContext']",
           message: "Pass ctx as it is; it is a BlockContext.",
         },
       ],

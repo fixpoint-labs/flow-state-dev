@@ -234,8 +234,7 @@ export function subscriptionTools(options: { readonly providers: readonly Subscr
     inputSchema: z.object({ id: z.string().min(1) }).strict(),
     outputSchema: unsubscribeOutputSchema,
     resources: subscriptionResources,
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (input, ctx) => {
       const row = (await subscriptionsOf(ctx).getOptional(input.id))?.state;
       if (row === undefined || !madeHere(ctx, row)) {
         return { refused: `not_yours: this conversation has no subscription "${input.id}".` };
