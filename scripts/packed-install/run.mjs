@@ -287,6 +287,12 @@ export const CHECKS = [
     },
   },
   {
+    // Benchmarking is reached only through its two subpaths; the testing and
+    // patterns roots carry none of it, and the repo-only scanners aren't published.
+    name: "benchmarking is on testing/benchmark and patterns/benchmark, not on either root",
+    run: (project) => runFixture(project, "benchmark-subpaths.mjs", "benchmark-subpaths"),
+  },
+  {
     name: "a server starts and answers an action",
     run: (project) => runFixture(project, "serve.mjs", "serve"),
   },
