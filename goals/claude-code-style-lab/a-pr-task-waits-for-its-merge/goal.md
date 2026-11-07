@@ -17,7 +17,7 @@ names any of it. The tasks are filed on the session's board through its own `cre
 
 **Signal:** one browser on `fsdev dev --config labs/claude-code-style/fsdev.config.mts --app
 @flow-state-dev/claude-code-style`, a fresh data folder, every coding run on harness-manager's
-scripted coder (`CLAUDE_CODE_STYLE_HARNESS=stub`), and `bin/gh` first on the server's `PATH`: it
+scripted coder (`CLAUDE_CODE_STYLE_HARNESS=stub`), and `goals/lib/github-stub`'s `gh` first on the server's `PATH`: it
 lists PR 7 (PR 8 for the second task) on the run's branch once the run did its work there, answers
 `repos/acme/app/pulls/N` from a state file each leg writes, and logs each call. The delivered
 message goes through `mail.mts` (loaded by `GOAL_FLOWS`), which writes one message row and
@@ -45,9 +45,9 @@ from what the scripted coder narrates in the session, not from the manager's cal
 is typed in the page, which sends it as a board steer: a board steer that left the wait open
 fails b:line (the `plain-steer` control). The coding harness session id isn't client-readable; the row's run session stands in.
 
-**Not covered here:** the Teammates and Shift Manager legs on FIX-2543's Accept → Open a PR path.
-Both apps turn `awaitPullRequests` on and show the line (their screen tests), but a goal leg needs
-a landing that pushes to a GitHub remote; see the PR's notes.
+**Not covered here:** the Accept → Open a PR path (FIX-2543). Teammates and Shift Manager each
+have their own goal for it: `goals/teammates-lab/a-pr-task-waits-for-its-merge/` and
+`goals/shift-manager/a-pr-task-waits-for-its-merge/`.
 
 **Model:** n/a. The server gets no model credential.
 

@@ -7,7 +7,7 @@
  *
  * Model-free: the lab on `fsdev dev --app`, its coding tasks on harness-manager's
  * scripted coder (`CLAUDE_CODE_STYLE_HARNESS=stub`), and a stub `gh` first on the
- * server's PATH (`bin/gh`) that lists PR 7 on the run's branch once the run did
+ * server's PATH (`goals/lib/github-stub/bin/gh`) that lists PR 7 on the run's branch once the run did
  * its work, and answers `repos/acme/app/pulls/7` from a state file each leg
  * sets, logging every call. A delivered message goes through this folder's
  * `mail.mts`, a stand-in for the service that will deliver one.
@@ -86,7 +86,7 @@ await runGoal(async (failures, tell) => {
   const env = {
     CLAUDE_CODE_STYLE_HARNESS: "stub",
     CLAUDE_CODE_STYLE_HARNESS_STEP_MS: String(STEP_MS),
-    PATH: `${join(HERE, "bin")}:${process.env.PATH ?? ""}`,
+    PATH: `${join(REPO_ROOT, "goals", "lib", "github-stub", "bin")}:${process.env.PATH ?? ""}`,
     GOAL_GH_STATE: ghState,
     GOAL_GH_LOG: ghLog,
     GOAL_FLOWS: join(HERE, "mail.mts"),
