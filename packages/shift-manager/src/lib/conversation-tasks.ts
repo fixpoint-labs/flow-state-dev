@@ -6,6 +6,8 @@
  * refusal comes back as an `ActionRefused` carrying its reason.
  */
 import { ClientHttpError, topic, type Client, type WireTopic } from "@flow-state-dev/client";
+import { OBSERVED_PULL_REQUESTS } from "@flow-state-dev/core/harness";
+import { pullRequestWait, type PullRequestWaitRow } from "@flow-state-dev/harness-manager/browser";
 import { ActionRefused } from "./action";
 import { CONVERSATION_BOARD_COLLECTION, describeFailure } from "./reads";
 
@@ -44,7 +46,49 @@ export type ConversationTask = {
   /** The delegate it is handed to; absent while it waits to be assigned. */
   assignee?: string;
   attempts: number;
+  /** Its open holds, when it has any: what it waits on. */
+  holds?: PullRequestWaitRow["holds"];
+  /** The run it is in, once one started. */
+  run?: { sessionId: string; requestId: string } | null;
 };
+
+/**
+ * The pull requests a task waits on to merge or close (harness-manager's
+ * `awaitPullRequests`), by number, and the run session whose record links
+ * them; `undefined` while it waits on none.
+ */
+export function pullRequestsWaitedOn(task: ConversationTask): { numbers: number[]; runSessionId: string | null } | undefined {
+  const wait = pullRequestWait({ status: task.status, holds: task.holds ?? [] });
+  if (wait === null) return undefined;
+  return {
+    numbers: wait.pullRequests.flatMap((pr) => (pr.number === null ? [] : [pr.number])),
+    runSessionId: task.run?.sessionId ?? null,
+  };
+}
+
+/**
+ * The links of the pull requests a run session's record holds
+ * (`observed-pull-requests`), by number. Empty when it keeps none or can't
+ * be read: a line still says the numbers.
+ */
+export async function readPullRequestLinks(client: Client, runSessionId: string): Promise<Map<number, string>> {
+  try {
+    const manifest = await client.resources.getResourceManifest(runSessionId);
+    const ref = manifest.resources.find(
+      (r) => r.kind === "collection" && r.pattern === `${OBSERVED_PULL_REQUESTS}/**` && r.client.state?.read === true,
+    )?.ref;
+    if (ref === undefined) return new Map();
+    const page = await client.resources.listCollectionItems(runSessionId, ref, { limit: 200, topicPrefix: `${OBSERVED_PULL_REQUESTS}/` });
+    return new Map(
+      page.items.flatMap((item) => {
+        const data = (item.clientData ?? {}) as { number?: unknown; url?: unknown };
+        return typeof data.number === "number" && typeof data.url === "string" ? [[data.number, data.url] as const] : [];
+      }),
+    );
+  } catch {
+    return new Map();
+  }
+}
 
 /** Read the tasks of the coordinator conversation `sessionId` on `flow`. */
 export async function readConversationTasks(client: Client, flow: string, sessionId: string): Promise<ConversationTask[]> {
