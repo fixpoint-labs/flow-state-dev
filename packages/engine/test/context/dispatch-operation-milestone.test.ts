@@ -26,9 +26,11 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createDispatchOperation } from "../../src/context/dispatch-operation";
 import {
   createFlowRegistry,
-  createInMemoryStores,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import { createInboundTransportHost } from "../../src/host";
 import type { InboundDispatchHandle, InboundTransportHost } from "../../src/transports/types";
 

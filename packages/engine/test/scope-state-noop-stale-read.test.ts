@@ -21,9 +21,11 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   ConcurrentModificationError,
-  createExecutionContext,
-  createInMemoryStores
+  createExecutionContext
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { createScopeReread } from "../src/stores/scope-persist";
 
 type Mode = { mode: string };

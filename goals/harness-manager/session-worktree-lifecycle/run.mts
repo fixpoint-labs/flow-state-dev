@@ -21,7 +21,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
+import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   harnessSessionFlow,
   resolveHarnessSessionStart,

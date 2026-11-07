@@ -14,7 +14,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SessionRecord } from "@flow-state-dev/engine/host";
-import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
+import { createSQLiteStores, type SQLiteStoreRegistry } from "../src/host";
 import { initializeSchema } from "../src/schema";
 
 function makeSessionRecord(id: string, overrides?: Partial<SessionRecord>): SessionRecord {

@@ -7,7 +7,7 @@
  * what a second host sees, never a stored key.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { bootHost, FIXTURE, messageOf, OTHER, skill, standardWorkers } from "./worker-model-harness";
 
 function host(options: Parameters<typeof bootHost>[1] = {}) {

@@ -4,7 +4,8 @@ import { z } from "zod";
 import { defineProjectedResourceCollection, defineFlow, handler } from "@flow-state-dev/core";
 import { parseResourceTemplate } from "@flow-state-dev/core/resource-template";
 import type { ProjectedResourceCollectionRef, ProjectedResourceContext } from "@flow-state-dev/core/types";
-import { createExecutionContext, createInMemoryStores } from "../src";
+import { createExecutionContext } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 // An in-process "app store" standing in for a SQL table / API — the source of
 // truth the projected collection reads through to. Never copied into FSD storage.

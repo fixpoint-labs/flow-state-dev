@@ -17,10 +17,12 @@ import {
   createCheckpointDurabilityProvider,
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   runAction,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
 

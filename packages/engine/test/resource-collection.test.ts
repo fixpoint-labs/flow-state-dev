@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
-import { createExecutionContext, createInMemoryStores, toBareStates } from "../src";
+import { createExecutionContext, toBareStates } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { ResourceCollectionRef, JsonObject } from "@flow-state-dev/core/types";
 
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";

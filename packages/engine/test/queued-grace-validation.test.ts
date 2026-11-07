@@ -25,7 +25,8 @@
  * `staleSweepIntervalMs: 0` meaning sweeping off.
  */
 import { describe, expect, it } from "vitest";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
+import { createFlowApiRouter, createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { DEFAULT_QUEUED_GRACE_MS, resolveStaleSweep } from "../src/runtime-config";
 
 /** Every value that cannot bound a queued entry, and why it is reachable. */

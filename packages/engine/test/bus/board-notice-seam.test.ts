@@ -12,7 +12,8 @@ import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { publishBoardChange } from "@flow-state-dev/core/internal";
 import { createInMemoryBus, type ChangeNotice } from "../../src/host";
-import { createInMemoryStores, runAction } from "../../src";
+import { runAction } from "../../src";
+import { createInMemoryStores } from "../../src/host";
 
 const inputSchema = z.object({ filer: z.string(), board: z.string() });
 

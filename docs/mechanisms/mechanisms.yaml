@@ -286,7 +286,7 @@ mechanisms:
   - id: store
     job: The persistence seam for sessions, resources and requests. Memory, filesystem, SQLite, Postgres and Vercel Postgres are adapters of one seam.
     package: "@flow-state-dev/engine"
-    anchor: createInMemoryStores
+    anchor: inMemoryStores
     file: packages/engine/src/stores/index.ts
     adapters: ["@flow-state-dev/store-sqlite", "@flow-state-dev/store-postgres"]
     builtOn: []

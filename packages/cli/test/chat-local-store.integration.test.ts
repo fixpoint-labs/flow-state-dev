@@ -12,8 +12,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Readable, Writable } from "node:stream";
-import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { DEFAULT_LOCAL_USER_ID } from "@flow-state-dev/core/types";
 import { executeChatCommand } from "../src/commands/chat";
 

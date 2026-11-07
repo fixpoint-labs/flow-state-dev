@@ -14,9 +14,11 @@ import type { OutputItem, SessionStreamEvent } from "@flow-state-dev/core/items"
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { parseFlowRoute, withChangeBus } from "../src/host";
 import type { RequestRecord, SessionRecord } from "../src/host";
 import type { StoreRegistry } from "../src";

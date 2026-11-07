@@ -26,7 +26,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createDefaultResolveCodexClient } from "@flow-state-dev/codex";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { testFlow } from "@flow-state-dev/testing";
 
 import { codexClientOptions, codexEnv, codexSessionFlow, userMcpServers } from "@/lib/codex-mode";

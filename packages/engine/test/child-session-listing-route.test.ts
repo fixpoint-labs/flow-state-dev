@@ -19,9 +19,11 @@ import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowApiRouter,
-  createFlowRegistry,
-  createInMemoryStores
+  createFlowRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { parseFlowRoute } from "../src/host";
 
 import type { RequestRecord, SessionRecord } from "../src/host";

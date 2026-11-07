@@ -3,7 +3,8 @@
  * durability sweep the router starts finds every board debt's wake owed.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { type FlowState } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { afterStoredWorkUpgrade } from "@/lib/stored-work-upgrade";
 
 describe("afterStoredWorkUpgrade", () => {

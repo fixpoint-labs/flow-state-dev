@@ -15,7 +15,8 @@ import { defineFlow, handler, sequencer, DEFAULT_ORG_ID } from "@flow-state-dev/
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { createFlowApiRouter, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 function durableStores() {

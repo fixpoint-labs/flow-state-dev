@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { type FlowRegistry } from "@flow-state-dev/engine/host";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { createWorkforceClient, ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { fixtureDir, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";

@@ -16,9 +16,11 @@ import {
 import { publishScopeChange } from "../../src/bus/scope-changes";
 import {
   createFlowRegistry,
-  createInMemoryStores,
   runAction
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import {
   createInMemoryBus,
   type BusTopic,

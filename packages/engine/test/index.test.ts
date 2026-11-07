@@ -4,10 +4,12 @@ import {
   createExecutionContext,
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   executeBlock,
   runAction
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { normalizeError } from "../src/errors/normalize-error";
 import { replayRequestEvents } from "../src/streaming/resume";
 import { runWithCAS } from "../src/stores/cas";

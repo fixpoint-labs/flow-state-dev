@@ -13,7 +13,8 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
-import { createFilesystemStores, createInMemoryStores, runAction, type StoreRegistry } from "../src";
+import { runAction, type StoreRegistry } from "../src";
+import { createFilesystemStores, createInMemoryStores } from "../src/host";
 
 describe("a running request's items", () => {
   it("are in the store as each one lands, before the request settles, without its transient ones", async () => {

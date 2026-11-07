@@ -21,7 +21,8 @@ import {
 } from "@flow-state-dev/core";
 import type { BlockTraceItem, ResourceLoadRecord } from "@flow-state-dev/core/items";
 import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createResponseEmitter } from "../src/host";
 
 function createStubModelResolver(): ModelResolver {

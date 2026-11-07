@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { createFilesystemStores, createInMemoryStores } from "../src";
+import { createFilesystemStores, createInMemoryStores } from "../src/host";
 import { type RequestRecord, type RequestStore } from "../src/host";
 import { type RequestStatus } from "@flow-state-dev/core/types";
 import {

@@ -74,8 +74,8 @@ Every rule has one owner; read a row to see where it is built and where it is on
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | A vocabulary rule (a term, the words it retires, its exemptions) is written only in the glossary. A check, skill, goal or script reads it and never restates it | FIX-2601 builds · FIX-2354, FIX-2479 use | The spec set's cross-spec review; closure leg a |
-| ER-2 | The PR that coins or retires a public term edits its glossary entry in the same PR, and CI fails it when it doesn't | FIX-2601 builds · FIX-2479 uses | Each child's PR; the closure |
-| ER-3 | Every vocabulary check reads every contributor tree: `packages`, `apps`, `docs/architecture`, `docs/contributing`, `.agents`, `goals`, and the pending notes in `.changeset`. History (specs, `CHANGELOG.md`, `docs/internal/`) is left out by a named rule | FIX-2354 builds · FIX-2601 uses | FIX-2354's control; closure leg a |
+| ER-2 | The PR that coins or retires a public term edits its glossary entry in the same PR. Retiring happens nowhere else, by construction. CI refuses a new name built on a retired word, and a published glossary term with no entry; coining a new term is held by the naming skills and review, since no check can tell a new term from a new name | FIX-2601 builds · FIX-2479 uses | Each child's PR; the closure's journey A |
+| ER-3 | Every vocabulary check reads every contributor tree: `packages`, `apps`, `labs`, `examples`, `docs/architecture`, `docs/contributing`, `.agents`, `goals`, the root `CLAUDE.md`, `AGENTS.md` and `CONTRIBUTING.md`, and the pending notes in `.changeset`. Every tracked file is read or excluded by a named rule; history (specs, `CHANGELOG.md`, `docs/internal/`) is excluded so. A retired *name* is refused in every tree; a retired English *meaning* only in code and published pages | FIX-2354 builds · FIX-2601 uses | FIX-2354's control; closure leg a |
 | ER-4 | No new checker. The sweep, the Workforce guard and the side-chain check read the glossary, or merge; nothing is added beside them | FIX-2601 | The spec set's reuse review |
 | ER-5 | The resource entry is the owner's 2026-11-06 table as written. A child that finds it wrong comments up on the epic rather than deciding | FIX-2601 builds · FIX-2479 uses | FIX-2479's spec review |
 | ER-6 | Once the tree is renamed, the resource rule reads the whole tree at zero open, not only added lines | FIX-2479 | Closure leg b |
@@ -85,7 +85,7 @@ Every rule has one owner; read a row to see where it is built and where it is on
 
 | Seam | Between | Rule |
 |---|---|---|
-| `rules.mjs` (`ROOTS`, each rule's `files`, `COLLECTION_ITEM`) | FIX-2601, FIX-2354, FIX-2479 | FIX-2601 sets its shape first (D3). FIX-2354 widens scope through it; FIX-2479 widens the resource rule through the glossary |
+| The glossary's tree map and entries (today's `rules.mjs`: `ROOTS`, each rule's `files`, `COLLECTION_ITEM`) | FIX-2601, FIX-2354, FIX-2479 | FIX-2601 moves them into the glossary first (D3), with each entry's name-or-meaning reach. FIX-2354 widens the map; FIX-2479 turns the resource entry to the whole tree |
 | The guard's `process` area, which excludes `docs/contributing/` and `.agents/` | FIX-2354, FIX-2601 | FIX-2354 brings them into scope. FIX-2601's glossary reading must not exclude them again |
 | The resource entry | FIX-2601, FIX-2479 | FIX-2601 writes it for added lines; FIX-2479 turns it to the whole tree in its own PR (ER-6) |
 | `docs/contributing/architecture-reference.md` | FIX-2354, FIX-2479 | FIX-2354 renames `isInProcessDispatcher`; FIX-2479 changes "row" to "resource". The one that lands second rebases |
@@ -164,5 +164,10 @@ independent analyst the skill asks for. A fresh pass in the spec-set review cove
 - **Review round 1 (2026-11-07)** — two misreadings of today's sweep corrected. ER-3 keeps the
   pending changesets it already reads (Gitar). The `AskHold` ban is withdrawn: the *ask* rule
   exempts a person's question, so `RowHold`'s name is FIX-2479's (Codex).
+- **Amended by the spec set (2026-11-07)** — ER-2's CI half narrowed to what a check can see
+  (FIX-2601). ER-3 adds `labs`, `examples` and the root contributor files, requires every
+  tracked file to be read or excluded by name, and reaches names everywhere and English meanings
+  in code and pages only (FIX-2354). The collapse trigger did not fire: FIX-2601 moves the tree
+  map without widening it, so FIX-2354 stays. FIX-2479's count is about eighty names, not twenty.
 
 **Open: none.**

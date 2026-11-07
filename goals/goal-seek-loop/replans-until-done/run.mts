@@ -25,7 +25,8 @@
  */
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { runAction, createInMemoryStores } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createModelResolver } from "@flow-state-dev/core";
 import {
   goalSeekLoop,

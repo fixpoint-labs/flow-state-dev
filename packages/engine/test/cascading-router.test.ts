@@ -27,7 +27,8 @@ import { resolveBlockValueInternal } from "@flow-state-dev/core/internal";
 import { mockEvaluationModel, testBlock, type MockEvaluationAnswer } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createResponseEmitter } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 

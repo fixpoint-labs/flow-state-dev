@@ -15,7 +15,8 @@ import { defineFlow, handler, sequencer, SUSPENSION_SKIPPED } from "@flow-state-
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
 import type { DurabilityProvider } from "../src/durability/types";

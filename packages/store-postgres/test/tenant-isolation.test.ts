@@ -13,7 +13,7 @@ import {
   createPostgresRequestStore,
   initializeSchema,
   type QueryExecutor
-} from "../src";
+} from "../src/host";
 
 function pgliteExecutor(pglite: PGlite): QueryExecutor {
   return {

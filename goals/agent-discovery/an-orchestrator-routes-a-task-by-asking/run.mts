@@ -21,7 +21,8 @@
  * Run: pnpm tsx goals/agent-discovery/an-orchestrator-routes-a-task-by-asking/run.mts
  */
 import { defineCapability, defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createModelResolver } from "@flow-state-dev/core";
 import { ensureSessionRecord } from "@flow-state-dev/engine/host";
 import {

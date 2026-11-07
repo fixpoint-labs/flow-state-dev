@@ -6,7 +6,8 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 describe("FIX-552: optional action.inputSchema", () => {
   it("falls back to block.inputSchema when action.inputSchema is omitted", async () => {

@@ -144,6 +144,8 @@ export { resolveActiveStatusMessage } from "../blocks/internal/resolve-active-st
 export { resolveAllowedActions } from "../errors/resolve-allowed-actions";
 export { cacheTokensOf } from "../helpers/cache-tokens";
 export { isFiveFieldCron } from "../types/schedules";
+/** A once-per-process warning that, unlike `warnOnceDev`, still prints in production. */
+export { warnOnce } from "../helpers/deprecation";
 
 /**
  * The internal item surface: the `ref` block value, the runtime item union

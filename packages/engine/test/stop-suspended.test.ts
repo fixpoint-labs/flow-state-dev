@@ -21,7 +21,8 @@ import {
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { WaitOutcome } from "@flow-state-dev/core/internal";
 import { z } from "zod";
-import { continueRequest, createFlowRegistry, createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, createFlowState, inMemoryStores, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createDurabilitySweeper, runTick } from "../src/durability/durability-sweeper";
 import { resumeWaitGate } from "../src/durability/resume-wait-gate";

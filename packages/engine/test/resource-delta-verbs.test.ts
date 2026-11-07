@@ -26,7 +26,8 @@ import {
   handler
 } from "@flow-state-dev/core";
 import type { JsonObject, ResourceRef } from "@flow-state-dev/core/types";
-import { createExecutionContext, createInMemoryStores, type StoreRegistry } from "../src";
+import { createExecutionContext, type StoreRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 const counter = defineResource({

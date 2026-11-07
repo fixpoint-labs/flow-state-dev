@@ -12,7 +12,7 @@
  * evaluation model: directly with `OPENAI_API_KEY`, otherwise through the
  * gateway's OpenAI-compatible endpoint with `AI_GATEWAY_API_KEY`.
  */
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState } from "@flow-state-dev/engine";
 import { createRoutingFlow } from "./src/flow";
 import { JEV, modelWithoutConfidence } from "./src/models";
 
@@ -23,8 +23,6 @@ export default createFlowState({
       withoutConfidence: modelWithoutConfidence(),
     }),
   },
-  // In-memory stores: the example keeps no state across restarts.
-  stores: { default: { primary: inMemoryStores() } },
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },

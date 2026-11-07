@@ -18,9 +18,11 @@ import { describe, expect, it } from "vitest";
 import {
   createExecutionContext,
   createFlowRegistry,
-  createInMemoryStores,
   defaultBodyUserIdPrincipalResolver
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { createInboundTransportHost } from "../src/host";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import { claimRequestRecord } from "../src/context/request-principal";

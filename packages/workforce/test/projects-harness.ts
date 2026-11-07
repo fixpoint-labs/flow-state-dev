@@ -21,11 +21,13 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
 import {
   createFlowState,
-  createInMemoryStores,
   createInProcessFetch,
   inMemoryStores,
   type StoreAdapter
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { FILED_PROJECT } from "../src/conversation-board/board-entries";

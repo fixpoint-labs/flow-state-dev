@@ -7,7 +7,7 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 import type { Pool, PoolConfig } from "pg";
-import { createPostgresStores } from "../src";
+import { createPostgresStores } from "../src/host";
 
 /** Minimal pg.Pool stand-in: records the config, stubs the two methods the adapter uses. */
 function fakePool(overrides?: Partial<Pool>) {

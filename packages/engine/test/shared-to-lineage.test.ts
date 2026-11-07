@@ -32,9 +32,11 @@ import { describe, expect, it } from "vitest";
 import {
   createExecutionContext,
   createFlowRegistry,
-  createInMemoryStores,
   toBareStates
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { getPersistedData } from "../src/resources/internal";
 import {
   handleCreateCollectionItem,

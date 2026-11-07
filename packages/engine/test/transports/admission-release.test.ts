@@ -24,7 +24,8 @@ vi.mock("../../src/streaming/live-stream", async (importOriginal) => {
   };
 });
 
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../../src";
+import { createFlowApiRouter, createFlowRegistry } from "../../src";
+import { createInMemoryStores } from "../../src/host";
 
 afterEach(() => {
   streamSetup.fail = false;
