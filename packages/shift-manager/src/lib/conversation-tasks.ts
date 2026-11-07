@@ -6,8 +6,7 @@
  * refusal comes back as an `ActionRefused` carrying its reason.
  */
 import { ClientHttpError, topic, type Client, type WireTopic } from "@flow-state-dev/client";
-import { OBSERVED_PULL_REQUESTS } from "@flow-state-dev/core/harness";
-import { pullRequestWait, type PullRequestWaitRow } from "@flow-state-dev/harness-manager/browser";
+import { pullRequestWait, readSessionPullRequests, type PullRequestWaitRow } from "@flow-state-dev/harness-manager/browser";
 import { ActionRefused } from "./action";
 import { CONVERSATION_BOARD_COLLECTION, describeFailure } from "./reads";
 
@@ -68,23 +67,13 @@ export function pullRequestsWaitedOn(task: ConversationTask): { numbers: number[
 
 /**
  * The links of the pull requests a run session's record holds
- * (`observed-pull-requests`), by number. Empty when it keeps none or can't
- * be read: a line still says the numbers.
+ * (`readSessionPullRequests`), by number. Empty when it can't be read: a line
+ * still says the numbers.
  */
 export async function readPullRequestLinks(client: Client, runSessionId: string): Promise<Map<number, string>> {
   try {
-    const manifest = await client.resources.getResourceManifest(runSessionId);
-    const ref = manifest.resources.find(
-      (r) => r.kind === "collection" && r.pattern === `${OBSERVED_PULL_REQUESTS}/**` && r.client.state?.read === true,
-    )?.ref;
-    if (ref === undefined) return new Map();
-    const page = await client.resources.listCollectionItems(runSessionId, ref, { limit: 200, topicPrefix: `${OBSERVED_PULL_REQUESTS}/` });
-    return new Map(
-      page.items.flatMap((item) => {
-        const data = (item.clientData ?? {}) as { number?: unknown; url?: unknown };
-        return typeof data.number === "number" && typeof data.url === "string" ? [[data.number, data.url] as const] : [];
-      }),
-    );
+    const rows = await readSessionPullRequests(client, runSessionId);
+    return new Map(rows.map((row) => [row.number, row.url]));
   } catch {
     return new Map();
   }

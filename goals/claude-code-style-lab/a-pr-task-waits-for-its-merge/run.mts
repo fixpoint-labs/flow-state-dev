@@ -17,6 +17,9 @@
  *   - `no-wait`: the lab's managers built without `awaitPullRequests`. Must FAIL a:open.
  *   - `ignore-pr-state`: every wake reads its pull requests as merged. Must FAIL
  *     b:waits-again and d:cancelled.
+ *   - `plain-steer`: a board steer is kept as a plain steer, leaving the wait open
+ *     (orchestration's `steerWrite` before it answered an external wait). Must FAIL
+ *     b:line:waits-again: the view's box sends a board steer, never the run's door.
  *
  * Run: pnpm tsx goals/claude-code-style-lab/a-pr-task-waits-for-its-merge/run.mts
  */
@@ -49,6 +52,13 @@ const PATCHES: Record<string, ModulePatch[]> = {
       module: "packages/harness-manager/src/manager.ts",
       from: String.raw`const reads = await readTaskPullRequests\(ctx, prs\);`,
       to: `const reads = { read: prs.map((pr) => ({ ...pr, state: "merged" })) };`,
+    },
+  ],
+  "plain-steer": [
+    {
+      module: "packages/orchestration/src/tasks/steers.ts",
+      from: String.raw`const wait = task.status === "in_progress" \? externalHoldOf\(task\) : undefined;`,
+      to: `const wait = undefined as ReturnType<typeof externalHoldOf>;`,
     },
   ],
 };
@@ -125,7 +135,7 @@ await runGoal(async (failures, tell) => {
         const hold = externalOf(row);
         return hold !== undefined && hold.id !== before ? row : undefined;
       }, SETTLE_MS);
-    /** A line through the run session's own door, as the lab's composer sends it for a waiting task. */
+    /** A line through the run session's own door, as one typed in that session goes. */
     const door = async (runSession: string, message: string) => {
       const flow = (await fsd.sessions.get(runSession)).flowKind!;
       const sent = await fsd.flow(flow).send("respond", { message }, { sessionId: runSession });

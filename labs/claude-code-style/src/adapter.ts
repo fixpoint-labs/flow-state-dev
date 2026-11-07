@@ -30,9 +30,7 @@
  * |                 | `working-status`), from the run request's own stream too, which sends a   |
  * |                 | call as it starts; and harness-manager's `readRecordedWork`, for the plan |
  * |                 | its harness recorded, read on each write to it and on a re-run's request  |
- * | `sayInThread`   | the Inbox client's answer to the thread's open question; to a task waiting on |
- * |                 | its pull request, the run session's own door (`respond`), which wakes it; else |
- * |                 | the board's `steer`                                                          |
+ * | `sayInThread`   | the Inbox client's answer to the thread's open question, else the board's `steer` |
  * | `taskActions`   | the Inbox client's `board(at)` on the session that holds the board: `cancel`, |
  * |                 | `steer`, `release` and `retry`, each the board's own action                 |
  * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }` |
@@ -59,6 +57,7 @@ import {
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
   pullRequestWait,
+  readSessionPullRequests,
   readRecordedWork,
   reviewDetail,
   type PullRequestRecordRow,
@@ -75,7 +74,7 @@ import {
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
 import { isSuspensionWait } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, OBSERVED_PULL_REQUESTS } from "@flow-state-dev/core/harness";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
@@ -970,19 +969,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
   };
 
   /**
-   * The rows of a run session's pull-request record (`observed-pull-requests`), each as the
-   * record keeps it; none when the session declares no record or it can't be read, so a wait
-   * still shows its numbers, without links.
+   * The rows of a run session's pull-request record (`readSessionPullRequests`); none when it
+   * can't be read, so a wait still shows its numbers, without links.
    */
   const pullRequestRecords = async (runSession: string): Promise<PullRequestRecordRow[]> => {
     try {
-      const manifest = await fsd.resources.getResourceManifest(runSession);
-      const ref = manifest.resources.find(
-        (r) => r.kind === "collection" && r.pattern === `${OBSERVED_PULL_REQUESTS}/**` && r.client.state?.read === true,
-      )?.ref;
-      if (ref === undefined) return [];
-      const page = await fsd.resources.listCollectionItems(runSession, ref, { limit: 200, topicPrefix: `${OBSERVED_PULL_REQUESTS}/` });
-      return page.items.map((item) => (item.clientData ?? {}) as PullRequestRecordRow);
+      return await readSessionPullRequests(fsd, runSession);
     } catch (cause) {
       console.warn(`[claude-code-style] couldn't read the pull requests of run session ${runSession}:`, cause);
       return [];
@@ -998,18 +990,6 @@ export function createWiredLab(fsd: Client): LabAdapter {
     if (waitOf(task) === null) return undefined;
     const records = task.runSessionId === undefined ? [] : await pullRequestRecords(task.runSessionId);
     return waitOf(task, records)?.pullRequests.map(({ number, url, title }) => ({ number, url, title }));
-  };
-
-  /**
-   * A line for a task waiting on its pull request, through its run session's own door
-   * (`respond`): the door's line wakes the wait, and the task reads its pull request again
-   * before anything runs. `false` when the task waits on none, and the line goes as a steer.
-   */
-  const wakePullRequestWait = async (sessionId: string, taskId: string, line: string): Promise<boolean> => {
-    const task = (await tasksOf(sessionId)).find((t) => t.id === taskId);
-    if (task === undefined || task.runSessionId === undefined || waitOf(task) === null) return false;
-    await run(await flowOfSession(task.runSessionId), task.runSessionId, "respond", { message: line });
-    return true;
   };
 
   /** Session `sessionId`'s board, bound once its flow is known: every task change goes through it. */
@@ -1386,16 +1366,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
         await inbox.answerOne(question, { text: line });
         return;
       }
-      // A task waiting on its pull request takes the line through its run's door, which wakes it.
-      if (await wakePullRequestWait(sessionId, taskId, line)) return;
       await (await boardAt(sessionId)).steer(taskId, line);
     },
     // Bound per call, so the session's flow is read when a button is pressed, not when the row draws.
     taskActions: (sessionId) => ({
       cancel: async (id) => (await boardAt(sessionId)).cancel(id),
-      steer: async (id, message) => {
-        if (!(await wakePullRequestWait(sessionId, id, message))) await (await boardAt(sessionId)).steer(id, message);
-      },
+      steer: async (id, message) => (await boardAt(sessionId)).steer(id, message),
       release: async (id) => (await boardAt(sessionId)).release(id),
       retry: async (id) => (await boardAt(sessionId)).retry(id),
     }),

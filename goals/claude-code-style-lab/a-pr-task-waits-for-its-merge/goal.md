@@ -42,8 +42,8 @@ dispatches it to the run session's `onMessageReceived`, as a service will.
 **Anti-game:** graded on the board's rows (`listTasks`, `getTask`), the run session's items and
 pull-request record (public client), the stub's call log, and the rendered page. Runs are counted
 from what the scripted coder narrates in the session, not from the manager's calls. The line in b
-is typed in the page, so a lab that sent it as a plain board steer (which wakes nothing) fails
-b:line. The coding harness session id isn't client-readable; the row's run session stands in.
+is typed in the page, which sends it as a board steer: a board steer that left the wait open
+fails b:line (the `plain-steer` control). The coding harness session id isn't client-readable; the row's run session stands in.
 
 **Not covered here:** the Teammates and Shift Manager legs on FIX-2543's Accept → Open a PR path.
 Both apps turn `awaitPullRequests` on and show the line (their screen tests), but a goal leg needs
@@ -59,6 +59,9 @@ a landing that pushes to a GitHub remote; see the PR's notes.
   a:open (the row is `completed`); b, c are then not reached and d:waits fails too.
 - `GOAL_CONTROL=ignore-pr-state`: the wake reads every pull request as merged. Must FAIL
   b:line:waits-again (the line completes the task) and d:cancelled (it completes instead).
+- `GOAL_CONTROL=plain-steer`: orchestration's `steerWrite` keeps a board steer as a plain steer,
+  leaving the wait open. Must FAIL b:line:waits-again (the row stays in_progress with no new wait
+  and no run).
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

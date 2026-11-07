@@ -63,7 +63,7 @@ import {
   type WireTopic,
 } from "@flow-state-dev/client";
 import { isSuspensionWait, type OutputItem } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, OBSERVED_PULL_REQUESTS } from "@flow-state-dev/core/harness";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   answerTextOf,
@@ -89,7 +89,7 @@ import {
   type RefileRow,
   type TaskRowView,
 } from "@flow-state-dev/orchestration/inbox";
-import { pullRequestWait, readRecordedWork, reviewDetail, type PullRequestWaitRow, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitRow, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
@@ -1148,8 +1148,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const runFlows = new Map<string, string>();
   /** Each conversation's tasks' open holds, from its last read: what `answerTask` answers. */
   const openHolds = new Map<string, Map<string, InboxHold[]>>();
-  /** Per conversation, each task waiting on its pull request, by the run session its line goes to, as the last read saw it. */
-  const pullRequestWaits = new Map<string, Map<string, string>>();
   const feeds = sessionFeeds(client);
   /** Each worker's conversation, and the flow it runs on, once opened. */
   const conversations = new Map<string, { sessionId: string; flow: string }>();
@@ -1460,10 +1458,6 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         const flowOf = (id: string) => (id === sessionId ? flowOfSession.get(sessionId) : runFlows.get(id));
         const holds = holdsOfRows(sessionId, current, flowOf);
         openHolds.set(sessionId, holds);
-        pullRequestWaits.set(
-          sessionId,
-          new Map(current.flatMap((row) => (typeof row.run?.sessionId === "string" && pullRequestWait(row as PullRequestWaitRow) !== null ? [[row.id as string, row.run.sessionId as string]] : []))),
-        );
         show(current.map((row) => toBoardTask(row, (worker) => harnesses.get(worker), holds.get(row.id) ?? [])));
         learnFlows(current);
         followRuns(current);
@@ -1522,18 +1516,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     },
     async readPullRequests(runSessionId) {
       try {
-        const manifest = await client.resources.getResourceManifest(runSessionId);
-        const ref = manifest.resources.find(
-          (r) => r.kind === "collection" && r.pattern === `${OBSERVED_PULL_REQUESTS}/**` && r.client.state?.read === true,
-        )?.ref;
-        if (ref === undefined) return [];
-        const page = await client.resources.listCollectionItems(runSessionId, ref, { limit: 200, topicPrefix: `${OBSERVED_PULL_REQUESTS}/` });
-        return page.items.flatMap((item) => {
-          const data = (item.clientData ?? {}) as { number?: unknown; url?: unknown; title?: unknown };
-          return typeof data.number === "number" && typeof data.url === "string"
-            ? [{ number: data.number, url: data.url, title: typeof data.title === "string" ? data.title : null }]
-            : [];
-        });
+        const rows = await readSessionPullRequests(client, runSessionId);
+        return rows.map(({ number, url, title }) => ({ number, url, title }));
       } catch (error) {
         console.warn(`teammates: the pull requests of run session ${runSessionId} couldn't be read`, error);
         return [];
@@ -1585,18 +1569,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       };
       return {
         cancel: async (taskId) => (await board()).cancel(taskId),
-        steer: async (taskId, message) => {
-          // A task waiting on its pull request takes the line through its run's door, which wakes it to read the pull request.
-          const runSession = pullRequestWaits.get(sessionId)?.get(taskId);
-          if (runSession === undefined) return (await board()).steer(taskId, message);
-          const flow = (await client.sessions.get(runSession)).flowKind;
-          const sent = await client.flow(flow).send("respond", { message }, { sessionId: runSession });
-          const { status } = await sent.wait();
-          if (status !== "completed") {
-            const found = (await client.sessions.requests(runSession, { includeResultOutput: true, limit: 20 })).find((r) => r.id === sent.id);
-            throw new Error(found?.result?.error?.message ?? `The line ended ${status}.`);
-          }
-        },
+        steer: async (taskId, message) => (await board()).steer(taskId, message),
         release: async (taskId) => (await board()).release(taskId),
         retry: async (taskId) => (await board()).retry(taskId),
         rerun: async (task, worker) => {
