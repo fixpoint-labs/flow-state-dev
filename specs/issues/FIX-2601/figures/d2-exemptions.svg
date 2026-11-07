@@ -1,0 +1,101 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D2, where a word&#x27;s exemptions live. Chosen: in the glossary entry, beside the words it retires. Instead of: the words in the glossary and each check&#x27;s exemptions left in the check. It comes down to the first row: a word&#x27;s exemption is half of its rule, so with exemptions in the checks a word can be kept in one check and refused in another, and the epic&#x27;s not done if line fails. The cost: the glossary carries about 70 exemptions, most of them the sweep&#x27;s keep list, and a contributor who classifies a hit edits the glossary. Locks in a large glossary module. Flips if an exemption turned out to be about how one check matches, not about the word."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F2E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .box    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .keep   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .gonebox{ fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow  { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-m    { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Do a word&#x27;s exemptions live in the glossary, or stay in each check?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">In the glossary entry</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Words only; exemptions stay</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">ONE WORD,</text>
+    <text class="t-lbl" x="32" y="169">ONE ANSWER</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="163">+</text>
+    <text class="t-b" x="248" y="162">Kept or refused once</text>
+    <text class="t-s" x="248" y="180">every check reads the same list</text>
+    <text class="mark minus" x="592" y="163">−</text>
+    <text class="t-b" x="612" y="162">Kept in one check, refused in another</text>
+    <text class="t-s" x="612" y="180">the drift the epic exists to stop</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">SIZE</text>
+    <text class="mark minus" x="228" y="225">−</text>
+    <text class="t-b" x="248" y="224">About 70 exemptions move in</text>
+    <text class="t-s" x="248" y="242">the sweep&#x27;s keep list is most of them</text>
+    <text class="mark plus" x="592" y="225">+</text>
+    <text class="t-b" x="612" y="224">The glossary stays short</text>
+    <text class="t-s" x="612" y="242">terms and their words</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">HOW A CHECK</text>
+    <text class="t-lbl" x="32" y="289">MATCHES</text>
+    <text class="mark tie" x="228" y="283">=</text>
+    <text class="t-b" x="248" y="282">Stays in the check</text>
+    <text class="t-s" x="248" y="300">walks, encodings, the syntax tree</text>
+    <text class="mark tie" x="592" y="283">=</text>
+    <text class="t-b" x="612" y="282">Stays in the check</text>
+    <text class="t-s" x="612" y="300">the same</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">About 60 terms and 70 exemptions in one module</text>
+    <text class="t-s" x="32" y="387">classifying a hit is a glossary edit, reviewed as one</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">An exemption is about one check&#x27;s matching</text>
+    <text class="t-s" x="494" y="387">then it stays in that check, named as such</text>
+  </g>
+</svg>

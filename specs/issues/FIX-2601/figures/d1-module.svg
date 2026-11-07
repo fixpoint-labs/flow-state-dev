@@ -1,0 +1,114 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, what the glossary is. Chosen: one module the checks import, with no page made from it. Instead of: a markdown page the checks parse, or a module with a markdown page generated from it. It comes down to the first row: a rule is a regular expression and a list of path exemptions, which the module holds as written; a markdown table cannot hold a pattern that contains a pipe, and a parser is one more thing to drift; the generated page holds it but needs a generator and a staleness check. The cost: a person reads a JavaScript file, not a page. Locks in that a contributor edits glossary.mjs to coin or retire a word. Flips if people want to read the glossary as a page: the generator is added then, and no rule moves."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F2E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .box    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .keep   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .gonebox{ fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow  { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-m    { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What is the glossary: a module the checks import, or a page?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">One module, no page</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="468" y="112">A page the checks parse</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="708" y="112">Module plus a made page</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">HOLDS A</text>
+    <text class="t-lbl" x="32" y="169">REAL RULE</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="163">+</text>
+    <text class="t-b" x="248" y="162">As written</text>
+    <text class="t-s" x="248" y="180">patterns, paths, reasons</text>
+    <text class="mark minus" x="468" y="163">−</text>
+    <text class="t-b" x="488" y="162">Not as written</text>
+    <text class="t-s" x="488" y="180">a pipe ends a table cell</text>
+    <text class="mark plus" x="708" y="163">+</text>
+    <text class="t-b" x="728" y="162">In the module</text>
+    <text class="t-s" x="728" y="180">the page is a copy</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">WHAT A PERSON</text>
+    <text class="t-lbl" x="32" y="231">READS</text>
+    <text class="mark minus" x="228" y="225">−</text>
+    <text class="t-b" x="248" y="224">A JavaScript file</text>
+    <text class="t-s" x="248" y="242">terms first, exemptions below</text>
+    <text class="mark plus" x="468" y="225">+</text>
+    <text class="t-b" x="488" y="224">A page</text>
+    <text class="t-s" x="488" y="242">prose and tables</text>
+    <text class="mark plus" x="708" y="225">+</text>
+    <text class="t-b" x="728" y="224">A page</text>
+    <text class="t-s" x="728" y="242">generated, never edited</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">WHAT IT</text>
+    <text class="t-lbl" x="32" y="289">ADDS</text>
+    <text class="mark plus" x="228" y="283">+</text>
+    <text class="t-b" x="248" y="282">One file</text>
+    <text class="t-s" x="248" y="300">the checks import it</text>
+    <text class="mark minus" x="468" y="283">−</text>
+    <text class="t-b" x="488" y="282">A parser</text>
+    <text class="t-s" x="488" y="300">a seventh thing to drift</text>
+    <text class="mark minus" x="708" y="283">−</text>
+    <text class="t-b" x="728" y="282">Two files and a generator</text>
+    <text class="t-s" x="728" y="300">and a staleness check in CI</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">A word is coined or retired in glossary.mjs</text>
+    <text class="t-s" x="32" y="387">the mechanisms list is read the same way</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">People want to read the glossary as a page</text>
+    <text class="t-s" x="494" y="387">add the generator then; no rule moves</text>
+  </g>
+</svg>
