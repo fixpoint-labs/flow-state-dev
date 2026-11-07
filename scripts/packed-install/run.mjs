@@ -726,10 +726,11 @@ function npmInstall(dir, specs) {
 }
 
 /**
- * Pack every publishable workspace package into `dest`.
+ * Pack every publishable workspace package into `dest`. Exported for the
+ * tarball scan (`scan-tracker-ids-in-tarballs.mjs --all`).
  * @returns {{ name: string, dir: string, tarball: string, manifest: object }[]}
  */
-function packAll(dest) {
+export function packAll(dest) {
   const dirs = readdirSync(PACKAGES, { withFileTypes: true })
     .filter((e) => e.isDirectory() && existsSync(join(PACKAGES, e.name, "package.json")))
     .map((e) => e.name);

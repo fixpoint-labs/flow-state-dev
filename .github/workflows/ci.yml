@@ -86,7 +86,7 @@ jobs:
       # The rule must report each planted leak and keep `//` pointers, or the
       # Lint step above could pass because the rule stopped reading something.
       - name: The tracker-id rule reports its plants
-        run: node --test scripts/eslint-rules/no-tracker-ids.test.mjs scripts/check-tracker-ids.test.mjs
+        run: node --test scripts/eslint-rules/no-tracker-ids.test.mjs scripts/check-tracker-ids.test.mjs scripts/scan-tracker-ids-in-tarballs.test.mjs
 
       # The lint-gate test runs the pre-push hook, and the hook's retired-term
       # guard diffs against `origin/<base>` to find added lines. This job's
