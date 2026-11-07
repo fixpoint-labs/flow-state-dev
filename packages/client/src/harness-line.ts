@@ -107,11 +107,7 @@ export async function steerRunningTurn(
   options: SteerRunningTurnOptions,
 ): Promise<{ readonly taken: boolean; readonly live: boolean }> {
   const sent = await client.flow(options.flowKind).send(options.action ?? "steer", { prompt: options.prompt }, { sessionId: options.sessionId });
-  await sent.wait({ pollMs: options.pollMs ?? 150 });
-  // The status snapshot carries no output; the session's request listing does.
-  const requests = await client.sessions.requests(options.sessionId, { includeResultOutput: true, limit: 20 });
-  const output = requests.find((request) => request.id === sent.id)?.result?.output as
-    | { taken?: unknown; live?: unknown }
-    | undefined;
-  return { taken: output?.taken === true, live: output?.live === true };
+  const { output } = await sent.result({ pollMs: options.pollMs ?? 150 });
+  const answer = output as { taken?: unknown; live?: unknown } | undefined;
+  return { taken: answer?.taken === true, live: answer?.live === true };
 }

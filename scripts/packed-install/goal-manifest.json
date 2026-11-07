@@ -85,7 +85,7 @@
     "surface.root.workforce": "fail",
     "surface.collisions": "fail",
     "surface.core-installed-dts": "pass",
-    "onepath.output-read": "fail",
+    "onepath.output-read": "pass",
     "first-hour.quickstart": "fail",
     "first-hour.example.hello-chat.typecheck": "fail",
     "first-hour.example.hello-chat.test": "fail",
