@@ -272,6 +272,14 @@ describe("the denylist is closed, so ordinary use of the word stays legal", () =
     expect(encodings(text)).toContain("E2");
   });
 
+  it("still refuses a tier assertion that is returned", () => {
+    expect(encodings(`function check(item) { return expect(item.scope).toBe("work"); }`)).toContain("E2");
+  });
+
+  it("still refuses a tier assertion held in a const", () => {
+    expect(encodings(`const r = expect(error.scope).toBe("work");`)).toContain("E2");
+  });
+
   it("allows a `\"work\"` union with no named declaration holding it", () => {
     expect(scan(`const s: "idle" | "work" = "idle";`)).toEqual([]);
     expect(scan(`function f(): "idle" | "work" { return "idle"; }`)).toEqual([]);

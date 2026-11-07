@@ -486,7 +486,12 @@ function isRetiredTierLiteral(literal) {
   // worker's `work` entry name reads as a tier assertion because the callback
   // mentions `.phase` lines away.
   const nearest = literal.getFirstAncestor((a) => Node.isStatement(a));
-  const statement = nearest !== undefined && Node.isExpressionStatement(nearest) ? nearest : undefined;
+  // An assertion stands as an expression, is returned, or is held in a const.
+  const statement =
+    nearest !== undefined &&
+    (Node.isExpressionStatement(nearest) || Node.isReturnStatement(nearest) || Node.isVariableStatement(nearest))
+      ? nearest
+      : undefined;
   if (statement !== undefined && /\.(phase|scope)\b/.test(statement.getText())) return true;
 
   // A tier passed positionally into a provenance/phase builder:
