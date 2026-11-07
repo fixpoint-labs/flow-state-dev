@@ -27,7 +27,7 @@ wherever a contributor reads it: package source, contributor docs and skills.**
 | **The real need** | Tenet 1, one name for one thing, kept true over time. A word decision must not be able to contradict an earlier one without anyone seeing it |
 | **Smaller, and rejected** | "FIX-2479's renames ship." The code conforms for a week, and the next decision lands in a seventh place. Or "a glossary page exists": a page that no check reads drifts, as `goal.md` did |
 | **Bigger, and not this epic's** | Renaming words that collide but are not retired (*kind*, *worker*, *stream*, `InboxItem`); a naming-style linter; rewriting the published glossary page, which `/release-docs` writes |
-| **Not done if** | A rule is still written outside the glossary (`goal.md` prose, a script's term list, `GLOSSARY_TERMS`, the side-chain check's list) · a check skips `docs/contributing/` or `.agents/` · an exported name outside the store adapters and UI list rows uses *row* or *item* for a resource in a collection · a stored `kind: "row"` hold no longer reads · a bug the closure run found is open |
+| **Not done if** | A rule is still written outside the glossary (`goal.md` prose, a script's term list, `GLOSSARY_TERMS`, the side-chain check's list) · a check skips `docs/contributing/`, `.agents/` or a pending changeset · an exported name outside the store adapters and UI list rows uses *row* or *item* for a resource in a collection · a stored `kind: "row"` hold no longer reads · a bug the closure run found is open |
 
 ```mermaid
 flowchart LR
@@ -102,8 +102,9 @@ waits on all three.
 - **Store-adapter rows and UI list rows.** `VersionedRow`, `ResourceStateRow`, SQL rows,
   `ToolRow`, `TaskRowActions`. They are rows.
 - **Stream items.** `OutputItem`, `getItems`. *Item* keeps that one meaning.
-- **History.** Specs, changesets, `CHANGELOG.md`, `docs/internal/`, verdict logs. Not rewritten,
-  not read by the checks.
+- **History.** Specs, released notes in `CHANGELOG.md`, `docs/internal/`, verdict logs. Not
+  rewritten, not read by the checks. A pending `.changeset/*.md` is not history: `/release-docs`
+  turns it into published pages, so the sweep reads it today and keeps reading it ([ER-3](DECISIONS.md#who-owns-what)).
 - **Collection storage keys** (`projects/<id>`). Moving one breaks stores that hold data.
 - **Words that collide but are not retired.** Their own decision, if ever.
 
@@ -116,7 +117,7 @@ waits on all three.
 | `scripts/validate-side-chain-vocabulary.mjs` (FIX-766): the retired `work` / `background` names | **Builds on.** A sixth rule home FIX-2601's issue doesn't list; its words join the glossary |
 | `apps/docs/docs/glossary.md`, the published glossary, its rows counted by the guard | **Leaves as a reader** ([D2](DECISIONS.md#d2)). It still says "one row" for a project, which FIX-2479's changeset hands to `/release-docs` |
 | FIX-2071 ER-3: each rename adds its identifiers to `RETIRED` in the same PR | **Amended:** the same PR edits the glossary instead, and `RETIRED` is read from it |
-| FIX-1876 D3: *ask* is a question to a person, never an identifier | **Kept.** It rules out the `AskHold` name FIX-2479 suggests ([decided below](DECISIONS.md#decided-before-the-draft-and-in-review)) |
+| FIX-1876 D3: *ask* is only a question to a person | **Kept.** The sweep refuses other *ask* names and exempts a person's question by `KEEP` (`MidwayAsk`, `AskDeclineReason`, `tasks/schema/hold.ts`). FIX-2479 names `RowHold` under that rule ([decided below](DECISIONS.md#decided-before-the-draft-and-in-review)) |
 | The 2026-11-02 "collection item" decision | **Superseded** by the owner's 2026-11-06 resource convention |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |

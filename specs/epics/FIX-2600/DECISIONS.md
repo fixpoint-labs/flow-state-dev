@@ -75,7 +75,7 @@ Every rule has one owner; read a row to see where it is built and where it is on
 |---|---|---|---|
 | ER-1 | A vocabulary rule (a term, the words it retires, its exemptions) is written only in the glossary. A check, skill, goal or script reads it and never restates it | FIX-2601 builds · FIX-2354, FIX-2479 use | The spec set's cross-spec review; closure leg a |
 | ER-2 | The PR that coins or retires a public term edits its glossary entry in the same PR, and CI fails it when it doesn't | FIX-2601 builds · FIX-2479 uses | Each child's PR; the closure |
-| ER-3 | Every vocabulary check reads every contributor tree: `packages`, `apps`, `docs/architecture`, `docs/contributing`, `.agents`, `goals`. History is left out by a named rule | FIX-2354 builds · FIX-2601 uses | FIX-2354's control; closure leg a |
+| ER-3 | Every vocabulary check reads every contributor tree: `packages`, `apps`, `docs/architecture`, `docs/contributing`, `.agents`, `goals`, and the pending notes in `.changeset`. History (specs, `CHANGELOG.md`, `docs/internal/`) is left out by a named rule | FIX-2354 builds · FIX-2601 uses | FIX-2354's control; closure leg a |
 | ER-4 | No new checker. The sweep, the Workforce guard and the side-chain check read the glossary, or merge; nothing is added beside them | FIX-2601 | The spec set's reuse review |
 | ER-5 | The resource entry is the owner's 2026-11-06 table as written. A child that finds it wrong comments up on the epic rather than deciding | FIX-2601 builds · FIX-2479 uses | FIX-2479's spec review |
 | ER-6 | Once the tree is renamed, the resource rule reads the whole tree at zero open, not only added lines | FIX-2479 | Closure leg b |
@@ -108,9 +108,12 @@ decision.
 
 **Decided while drafting (engineering calls, under the EM posture):**
 
-- **`RowHold` does not become `AskHold` / `"ask"`.** FIX-2479 suggests it, and the sweep's
-  `ask-symbol` rule refuses any `…Ask…` identifier (FIX-1876 D3). FIX-2479's spec picks a
-  name the glossary allows. This is the set's first example of ER-1 earning its place.
+- **`RowHold`'s new name is FIX-2479's call, under the *ask* rule as it stands.** The draft
+  ruled out `AskHold` / `"ask"`, reading the sweep's `ask-symbol` rule as refusing every
+  `…Ask…` identifier. It doesn't: FIX-1876 D3 keeps *ask* for a question to a person, and `KEEP`
+  already exempts those names (`MidwayAsk`, `AskDeclineReason`, all of `tasks/schema/hold.ts`).
+  A row hold is a question or a `confirm`, so an *ask* name can qualify. Withdrawn in review
+  (Codex, PR #4883); the epic sets no name.
 - **FIX-2601's scope includes the side-chain check and `GLOSSARY_TERMS`.** Its issue lists four
   rule homes; there are six. Without both, the *not done if* line fails at the closure.
 - **The glossary's format is FIX-2601's call.** A parsed document or a generated one; ER-1
@@ -150,7 +153,7 @@ independent analyst the skill asks for. A fresh pass in the spec-set review cove
 | Finding | Objective | Changes the approach? | Disposition |
 |---|---|---|---|
 | The side-chain check and the published glossary are rule homes the issues miss | 1 | Yes: the goal's *not done if* | Folded into SPEC and DECISIONS |
-| FIX-2479's `AskHold` breaks FIX-1876 D3 | 7 | Yes: a cross-cutting rule | Folded as a recorded decision |
+| FIX-2479's `AskHold` breaks FIX-1876 D3 | 7 | No: the check exempts a person's question | Withdrawn in review; FIX-2479's call |
 | Data-first glossary format | 2 | No | Recorded for FIX-2601 |
 
 ## How it got here
@@ -158,5 +161,8 @@ independent analyst the skill asks for. A fresh pass in the spec-set review cove
 - **Drafted (2026-11-07)** — three issues and a closure under one glossary. The owner's
   2026-11-06 decisions are recorded as given. Analysis folded two rule homes the issues missed,
   and the `AskHold` collision.
+- **Review round 1 (2026-11-07)** — two misreadings of today's sweep corrected. ER-3 keeps the
+  pending changesets it already reads (Gitar). The `AskHold` ban is withdrawn: the *ask* rule
+  exempts a person's question, so `RowHold`'s name is FIX-2479's (Codex).
 
 **Open: none.**
