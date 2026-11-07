@@ -10,11 +10,11 @@ import { describe, expect, it } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
 import { REQUEST_SPEND_SEAM } from "@flow-state-dev/core/internal";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
-import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
-import { TESTED_SDK_VERSION, type CursorAgentLike, type CursorRunLike, type CursorSdkMessage, type ResolvedCursorClient } from "../src/types";
+import { cursorAgent, INTERNAL_CURSOR_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
+import { TESTED_CURSOR_SDK, type CursorAgentLike, type CursorRunLike, type CursorSdkMessage, type ResolvedCursorClient } from "../src/types";
 
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_CURSOR_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CURSOR_SDK.range }),
 } as CursorAgentOptions;
 
 const TURN_USAGE: CursorSdkMessage = {

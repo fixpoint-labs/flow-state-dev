@@ -37,7 +37,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
-import { createTestContext, testBlock, testFlow } from "@flow-state-dev/testing";
+import { testBlock, testFlow } from "@flow-state-dev/testing";
 
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { codexSessionFlow } from "@/lib/codex-mode";
@@ -284,9 +284,13 @@ describe("the session flow, for every mode", () => {
  * the Claude Code list cell (its list was `listClaudeModels`), the base-list
  * cell (no `HARNESS_BASE_PASS`), the no-hand-list cell, the Codex and Cursor
  * stop cells for every reason, and Claude Code's stop cells for a timeout and
- * a plain `Error`. The Codex list cell, the pass-list cells, Claude Code's
- * reason-less stop and every not-a-stop cell pass there, which shows the
- * block reaches the code.
+ * a plain `Error`, and every SDK-version readiness cell. The Codex list cell,
+ * the pass-list cells, Claude Code's reason-less stop and every not-a-stop
+ * cell pass there, which shows the block reaches the code.
+ *
+ * A block's own build-time refusal of an SDK outside its range is held in each
+ * package's tests, not here: the reader that refusal reads is deliberately off
+ * every public entry, so no host can answer it with the tested version.
  */
 describe("the contract every harness owes a host", () => {
   /** The models every scripted SDK below answers with, in the shared shape they come back in. */
@@ -441,48 +445,29 @@ describe("the contract every harness owes a host", () => {
    * Run one turn of `harness`'s block on `prompt` through the host path
    * (`testBlock`, as a sequencer's step, the way the session flow runs it) and
    * return the error it failed with. `options` are added to the block's own
-   * (`resume`); `absent` gives it an SDK that won't load.
+   * (`resume`); `absent` gives it an SDK that won't load; `stop`, when given,
+   * fires the run's signal once the run has its prompt.
    */
   async function failureOf(
     harness: (typeof RUNNABLE)[number],
     prompt: string,
-    { options = {}, absent = false }: { options?: Record<string, unknown>; absent?: boolean } = {},
+    { options = {}, absent = false, stop }: { options?: Record<string, unknown>; absent?: boolean; stop?: (controller: AbortController) => void } = {},
   ): Promise<unknown> {
-    // A step, because Cursor's script reads its directives off the turn's input, which a block carries as its parent's.
     const block = (await blockOf(harness, options, absent)) as Parameters<typeof testBlock>[0];
-    const { error } = await testBlock(block, { input: { prompt }, sequencer: { state: {} } });
+    const controller = new AbortController();
+    scriptedReceived.length = 0;
+    // A step, because Cursor's script reads its directives off the turn's input, which a block carries as its parent's.
+    const running = testBlock(block, { input: { prompt }, sequencer: { state: {} }, signal: controller.signal });
+    if (stop !== undefined) {
+      for (let waited = 0; !scriptedReceived.includes(prompt); waited += 10) {
+        if (waited > 5_000) throw new Error(`${harness.mode}: the run never had its prompt`);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      stop(controller);
+    }
+    const { error } = await running;
     if (error === null) throw new Error(`${harness.mode}: the turn did not fail`);
     return error;
-  }
-
-  /**
-   * Run one turn of `harness`'s block on `prompt`, stop it with `stop` once
-   * the run has its prompt, and return what it threw.
-   *
-   * Called on the block's handler directly, not through `testBlock`: neither
-   * `testBlock` nor `testFlow` takes a signal the caller fires (each builds its
-   * own context), and a stop is the caller's signal firing.
-   */
-  async function stoppedBy(harness: (typeof RUNNABLE)[number], prompt: string, stop: (controller: AbortController) => void): Promise<unknown> {
-    const block = await blockOf(harness, {}, false);
-    const runtime = await createTestContext({});
-    // Cursor's script reads its directives off the turn's input, which a block carries as its parent's.
-    Object.defineProperty(runtime.ctx, "parent", { value: { input: { prompt } } });
-    const controller = new AbortController();
-    (runtime.ctx as { signal?: AbortSignal }).signal = controller.signal;
-    scriptedReceived.length = 0;
-    const running = (block as { config: { execute: (input: unknown, ctx: unknown) => Promise<unknown> } }).config.execute({ prompt }, runtime.ctx);
-    for (let waited = 0; !scriptedReceived.includes(prompt); waited += 10) {
-      if (waited > 5_000) throw new Error(`${harness.mode}: the run never had its prompt`);
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    stop(controller);
-    try {
-      await running;
-    } catch (error) {
-      return error;
-    }
-    throw new Error(`${harness.mode}: the turn did not throw`);
   }
 
   /** The ways a host stops a run: with no reason, a deadline, and a plain error (harness-manager's steer). */
@@ -502,7 +487,7 @@ describe("the contract every harness owes a host", () => {
 
     it.each(STOPS)("a stop with $reason is abort-like", async ({ stop }) => {
       const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
-      const thrown = await stoppedBy(harness, "[slow] do some work", stop);
+      const thrown = await failureOf(harness, "[slow] do some work", { stop });
       expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(true);
     }, 15_000);
 
@@ -532,9 +517,86 @@ describe("the contract every harness owes a host", () => {
     });
   });
 
+  /**
+   * Each harness's readiness check as a host calls it, from the package's
+   * entry, with the installed-SDK reader it takes for a host's own check, and
+   * a version one step below and one step above the range the package tested.
+   */
+  const VERSIONED = [
+    {
+      mode: "claude-code",
+      pkg: "claude-code",
+      sdk: "@anthropic-ai/claude-agent-sdk",
+      below: "0.3.315",
+      above: "0.4.0",
+      ready: async (read: unknown) => {
+        const { checkClaudeCodeReadiness } = (await import("@flow-state-dev/claude-code/sdk")) as Record<string, any>;
+        return checkClaudeCodeReadiness({ env: {}, timeoutMs: 1, readInstalledSdkVersion: read });
+      },
+    },
+    {
+      mode: "codex",
+      pkg: "codex",
+      sdk: "@openai/codex-sdk",
+      below: "0.163.0",
+      above: "0.164.1",
+      ready: async (read: unknown) => {
+        const { checkCodexReadiness } = (await import("@flow-state-dev/codex")) as Record<string, any>;
+        return checkCodexReadiness({ env: {}, timeoutMs: 1, readInstalledSdkVersion: read });
+      },
+    },
+    {
+      mode: "cursor",
+      pkg: "cursor",
+      sdk: "@cursor/sdk",
+      below: "1.0.39",
+      above: "1.0.41",
+      ready: async (read: unknown) => {
+        const { checkCursorReadiness } = (await import("@flow-state-dev/cursor")) as Record<string, any>;
+        return checkCursorReadiness({}, { readInstalledSdkVersion: read });
+      },
+    },
+  ] as const;
+
+  describe.each(VERSIONED)("$mode, refusing an SDK it never ran against", (harness) => {
+    /** The package's peer range for its SDK: the range it tested. */
+    const peerRange = () =>
+      (JSON.parse(readFileSync(join(import.meta.dirname, "../../../packages", harness.pkg, "package.json"), "utf8")) as {
+        peerDependencies: Record<string, string>;
+      }).peerDependencies[harness.sdk]!;
+
+    it("peers its SDK at a bounded range", () => {
+      expect(peerRange()).not.toBe("*");
+      expect(peerRange()).toMatch(/\d+\.\d+\.\d+/);
+    });
+
+    it.each(["below", "above"] as const)("readiness is not ready for an SDK one step %s the range, naming both versions", async (side) => {
+      const installed = harness[side];
+      const answer = (await harness.ready(() => ({ kind: "version", version: installed }))) as { ready: boolean; reason?: string; remedy?: string };
+      expect(answer.ready, JSON.stringify(answer)).toBe(false);
+      expect(answer.reason).toContain(installed);
+      // The range it names is the one the package peers at.
+      expect(answer.reason).toContain(peerRange());
+      expect(answer.remedy).toContain(harness.sdk);
+    });
+
+    it("readiness is not ready for an absent SDK, with a remedy", async () => {
+      const answer = (await harness.ready(() => ({ kind: "absent" }))) as { ready: boolean; remedy?: string };
+      expect(answer.ready, JSON.stringify(answer)).toBe(false);
+      expect(answer.remedy).toContain(harness.sdk);
+    });
+  });
+
   it("Kitchen Sink keeps no hand list of Cursor's models", () => {
     const source = readFileSync(join(import.meta.dirname, "..", "lib/cursor-mode.ts"), "utf8");
     expect(source).not.toMatch(/CURSOR_MODELS\s*[:=]/);
     expect(source).toMatch(/listCursorModels/);
+  });
+
+  it("Kitchen Sink checks no harness's SDK by hand: its modes read the package's readiness", () => {
+    for (const file of ["lib/codex-mode.ts", "lib/cursor-mode.ts"]) {
+      const source = readFileSync(join(import.meta.dirname, "..", file), "utf8");
+      expect(source, file).not.toMatch(/TESTED_SDK_VERSION|readInstalled\w*SdkVersion|assertTestedSdkVersion/);
+    }
   });
 });

@@ -20,6 +20,7 @@
  * settle. It is a session resource, not session state, so `detached: true`
  * still leaves a block a task board dispatches.
  */
+import { assertTestedSdkVersion, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
 import { randomUUID } from "node:crypto";
 import { handler } from "@flow-state-dev/core";
 import {
@@ -67,7 +68,7 @@ import {
   OBSERVED_PLAN_LIST,
   workRecorderResources,
 } from "./work-collections";
-import { defaultResolveClaudeAgent } from "./sdk-client";
+import { defaultResolveClaudeAgent, readInstalledClaudeCodeSdkVersion, TESTED_CLAUDE_CODE_SDK } from "./sdk-client";
 import { CLAUDE_CODE_HARNESS, usageWindowOf } from "./usage";
 import { trackProcess } from "./process-exit";
 import { inProcessMcpServer, type ClaudeCodeMcpToolServer, type ClaudeCodeMcpTools } from "./mcp-tools";
@@ -827,7 +828,27 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
  *
  * See {@link ClaudeCodeAgentOptions.detached} for the background-work mode.
  */
+/**
+ * The version gate's test seam, keyed by a symbol no public entry exports.
+ *
+ * It is deliberately not a field on {@link ClaudeCodeAgentOptions}. A host able
+ * to substitute its own version reader could answer with a tested version and
+ * run an untested wire, which would make the refusal a claim rather than a
+ * guarantee. The specs import this symbol from the module directly; a consumer
+ * of the package cannot name it, so the only reachable behaviour is the real
+ * gate. A host's own check passes a reader to `checkClaudeCodeReadiness`.
+ */
+export const INTERNAL_CLAUDE_CODE_SDK_VERSION_READER = Symbol("claude-code.internal.readInstalledSdkVersion");
+
+/** The shape the specs pass through the symbol above. */
+interface InternalTestSeams {
+  [INTERNAL_CLAUDE_CODE_SDK_VERSION_READER]?: InstalledSdkVersionReader;
+}
+
 export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
+  // Refused when the block is built: an SDK outside the tested range would
+  // run an untested wire and show it as malformed items.
+  assertTestedSdkVersion(TESTED_CLAUDE_CODE_SDK, (options as InternalTestSeams)[INTERNAL_CLAUDE_CODE_SDK_VERSION_READER] ?? readInstalledClaudeCodeSdkVersion);
   const {
     resolveClaudeAgent = defaultResolveClaudeAgent,
     sessionProvider = createClaudeAgentSessionProvider(),

@@ -29,7 +29,7 @@ import { createDefaultResolveCodexClient } from "@flow-state-dev/codex";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 
-import { HOST_CHECKS, codexClientOptions, codexEnv, codexSessionFlow, userMcpServers } from "@/lib/codex-mode";
+import { codexClientOptions, codexEnv, codexSessionFlow, userMcpServers } from "@/lib/codex-mode";
 import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
 import { worktreeRoot } from "@/lib/harness-worktree";
 

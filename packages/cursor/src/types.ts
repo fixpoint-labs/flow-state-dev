@@ -11,7 +11,7 @@
  *   Declared here rather than imported so this package never type-depends on
  *   the optional peer, exactly as `codex/types.ts` does for the Codex SDK and
  *   `claude-code/sdk/types.ts` for the Agent SDK. The declarations mirror
- *   `@cursor/sdk` {@link TESTED_SDK_VERSION}; the version gate is what keeps
+ *   `@cursor/sdk` {@link TESTED_CURSOR_SDK}; the version gate is what keeps
  *   them true (see `./cursor-client`).
  * - The **seam types** the block calls the SDK through, so a scripted client
  *   satisfies them in tests with no runtime and no network.
@@ -21,6 +21,7 @@
  */
 import { z } from "zod";
 import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import type { TestedSdk } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessRunHandle, PlanListItem } from "@flow-state-dev/core/harness";
 
@@ -33,16 +34,12 @@ import type { HarnessRunHandle, PlanListItem } from "@flow-state-dev/core/harnes
 export const CURSOR_SOURCE = "cursor/sdk" as const;
 
 /**
- * The one `@cursor/sdk` version this package has been tested against.
- *
- * The SDK ships its local runtime as a platform-specific native binary and
- * moves fast — a `SDKMessage` variant or a `Run` method can change between
- * patch releases — so a Cursor upgrade is a deliberate, tested bump of ours
- * rather than something a host can take on its own. `cursorAgent` refuses to
- * build against any other installed version, and the escape is a release of
- * this package; there is no override option.
+ * The `@cursor/sdk` this package is tested against: its `peerDependencies`
+ * range, one version wide. Its wire can change in any release, so a new
+ * version is a tested bump of ours. `cursorAgent` refuses to build against
+ * another, and the readiness check says so first (core's SDK gate).
  */
-export const TESTED_SDK_VERSION = "1.0.40" as const;
+export const TESTED_CURSOR_SDK: TestedSdk = { harness: "Cursor", sdk: "@cursor/sdk", range: "1.0.40" };
 
 /**
  * Cursor's full token breakdown for a run.
@@ -312,32 +309,6 @@ export type ResolveCursorClient = (
   ctx: BlockContext<any, any, any, any, any, any, any, any, any>,
 ) => ResolvedCursorClient | Promise<ResolvedCursorClient>;
 
-/**
- * What the version gate could learn about the installed SDK.
- *
- * Three answers, not two, and the third is the one that matters. A layout the
- * manifest walk cannot see (Yarn PnP, a custom loader) is not the same fact as
- * "there is nothing installed", and treating it as such would let an
- * unvalidated SDK through the very gate that exists to refuse one, while the
- * dynamic import went on resolving and running it. A safety gate must fail
- * closed: "there is nothing installed" is safe, "I cannot tell" is not.
- */
-export type InstalledSdkVersion =
-  | { kind: "absent" }
-  | { kind: "version"; version: string }
-  | { kind: "unreadable"; reason: string };
-
-/**
- * How the version gate learns which SDK is installed.
- *
- * A seam only so the refusal is testable against versions other than the one on
- * this disk. It is deliberately NOT reachable from `CursorAgentOptions`: a host
- * that could substitute its own reader could answer with the tested version and
- * run an unvalidated wire, which would make the package's exact-version refusal
- * a claim rather than a guarantee.
- */
-export type InstalledSdkVersionReader = () => InstalledSdkVersion;
-
 // ---------------------------------------------------------------------------
 // The pure translation layer's output
 // ---------------------------------------------------------------------------
@@ -352,7 +323,7 @@ export type InstalledSdkVersionReader = () => InstalledSdkVersion;
  * which the block writes to the plan record when `recordPlan` is on. The tool
  * step it came from is emitted as its own `tool_result`.
  */
-export type TranslatedEvent =
+export type CursorTranslatedEvent =
   | { kind: "message"; text: string }
   | { kind: "reasoning"; text: string }
   | { kind: "tool_call"; callId: string; name: string; arguments: string }

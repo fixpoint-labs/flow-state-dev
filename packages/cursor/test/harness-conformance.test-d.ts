@@ -17,12 +17,12 @@
  * `typecheck` script runs it after the `src` pass.
  */
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
-import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
+import { cursorAgent, INTERNAL_CURSOR_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 
 const agent = cursorAgent({
   // Never called: this file is compiled, not run. The version gate is stubbed
   // out for the same reason — a compile must not depend on what is on disk.
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "absent" }),
+  [INTERNAL_CURSOR_SDK_VERSION_READER]: () => ({ kind: "absent" }),
   resolveCursorClient: () => ({
     create: () => {
       throw new Error("unused");
@@ -45,7 +45,7 @@ void conforms;
 const noPublicReaderSeam: "readInstalledSdkVersion" extends keyof CursorAgentOptions
   ? never
   : true = true;
-const noSymbolOnTheType: typeof INTERNAL_SDK_VERSION_READER extends keyof CursorAgentOptions
+const noSymbolOnTheType: typeof INTERNAL_CURSOR_SDK_VERSION_READER extends keyof CursorAgentOptions
   ? never
   : true = true;
 void noPublicReaderSeam;
