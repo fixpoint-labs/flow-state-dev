@@ -30,15 +30,12 @@ import { mkdirSync } from "node:fs";
 import { harnessEnv } from "@flow-state-dev/core/harness";
 import {
   CURSOR_PASS,
-  TESTED_SDK_VERSION,
   checkCursorReadiness,
   cursorAgent,
   listCursorModels,
-  readInstalledCursorSdkVersion,
   type CursorAgentOptions,
   type CursorModelSelection,
   type CursorModelVariant,
-  type InstalledSdkVersion,
   type ResolveCursorClient,
 } from "@flow-state-dev/cursor";
 
@@ -220,13 +217,11 @@ export async function cursorModelChoices(
 
 /** What the mode's check asks of the host. Each a seam for tests. */
 export interface CursorHostChecks {
-  /** Which `@cursor/sdk` is installed beside the Cursor package. */
-  readonly sdk: () => InstalledSdkVersion;
   /** Make the worktree root, or throw why it can't be made. */
   readonly makeRoot: (repository: string) => void;
   /** Why a process with exactly `env` can't start here, or `null` when it can. */
   readonly childStarts: (env: Record<string, string>) => string | null;
-  /** Whether Cursor can run over the run's own environment (its key or the SDK's stored login), from the Cursor package. No run. */
+  /** Whether Cursor can run over the run's own environment (its SDK, in the range the package tested, and its key or the SDK's stored login), from the Cursor package. No run. */
   readonly readiness: (env: Record<string, string>) => Promise<HarnessReadiness>;
 }
 
@@ -244,35 +239,24 @@ function childStarts(env: Record<string, string>): string | null {
 
 /** The host's own answers. */
 export const HOST_CHECKS: CursorHostChecks = {
-  sdk: readInstalledCursorSdkVersion,
   makeRoot: (repository) => {
     mkdirSync(worktreeRoot(repository), { recursive: true });
   },
   childStarts,
-  readiness: checkCursorReadiness,
+  readiness: (env) => checkCursorReadiness(env),
 };
 
 /**
- * Cursor mode's own check, for the gate's mode-check slot: the pinned Cursor
- * SDK is installed, the worktree root can be made, a process with only the
- * run's environment can start (the Cursor package runs the runtime in one),
- * and Cursor is signed in over that environment. The first that fails is the
- * reason. Nothing is asked about a sandbox: Kitchen Sink runs Cursor with its
+ * Cursor mode's own check, for the gate's mode-check slot: the worktree root
+ * can be made, a process with only the run's environment can start (the
+ * Cursor package runs the runtime in one), and the Cursor package's readiness
+ * check passes over that environment (an SDK in the range the package
+ * tested, and a sign-in). The first that fails is the reason. Nothing is asked about a sandbox: Kitchen Sink runs Cursor with its
  * sandbox off (see the header).
  */
 export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
     if (cursorIsScripted()) return { available: true };
-    const sdk = checks.sdk();
-    if (sdk.kind === "absent") {
-      return { available: false, reason: `The Cursor SDK is not installed. Install @cursor/sdk ${TESTED_SDK_VERSION}, then restart.` };
-    }
-    if (sdk.kind === "unreadable") {
-      return { available: false, reason: `The Cursor SDK's version can't be read (${sdk.reason}). Cursor mode needs exactly ${TESTED_SDK_VERSION}.` };
-    }
-    if (sdk.version !== TESTED_SDK_VERSION) {
-      return { available: false, reason: `The Cursor SDK installed is ${sdk.version}. Cursor mode needs exactly ${TESTED_SDK_VERSION}.` };
-    }
     try {
       checks.makeRoot(repository);
     } catch (error) {

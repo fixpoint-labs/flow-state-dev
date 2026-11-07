@@ -34,6 +34,7 @@
  * pull-request record. It is a session resource, not session state, so a task
  * board still dispatches the block.
  */
+import { assertTestedSdkVersion, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
 import { handler } from "@flow-state-dev/core";
 import {
   OBSERVED_PLAN,
@@ -66,7 +67,6 @@ import type {
 } from "@flow-state-dev/core/harness";
 import type { UsesSlot } from "@flow-state-dev/core";
 import {
-  assertTestedSdkVersion,
   createDefaultResolveCursorClient,
   readInstalledCursorSdkVersion,
 } from "./cursor-client";
@@ -83,6 +83,7 @@ import {
   isUnknownAgentFailure,
 } from "./errors";
 import {
+  TESTED_SDK,
   CURSOR_SOURCE,
   cursorAgentHandleSchema,
   type CursorAgentHandle,
@@ -93,7 +94,6 @@ import {
   type CursorRunResult,
   type CursorRunUsage,
   type CursorSendOptions,
-  type InstalledSdkVersionReader,
   type ResolveCursorClient,
   type ResolvedCursorClient,
 } from "./types";
@@ -437,6 +437,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
   } = options;
 
   assertTestedSdkVersion(
+    TESTED_SDK,
     (options as InternalTestSeams)[INTERNAL_SDK_VERSION_READER] ?? readInstalledCursorSdkVersion,
   );
   assertNoOwnedKeys(agentOptions, sendOptions);

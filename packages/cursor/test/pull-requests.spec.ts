@@ -15,10 +15,10 @@ import { createTestContext } from "@flow-state-dev/testing";
 import { OBSERVED_PULL_REQUESTS, observedPullRequestsCollection } from "@flow-state-dev/core/harness";
 import { REQUEST_END_SEAM, type RequestEndHook } from "@flow-state-dev/core/internal";
 import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
-import { TESTED_SDK_VERSION, type CursorSdkMessage, type ResolvedCursorClient } from "../src/types";
+import { TESTED_SDK, type CursorSdkMessage, type ResolvedCursorClient } from "../src/types";
 
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK.range }),
 } as CursorAgentOptions;
 
 /** A Cursor shell call, opened and settled with the result shape a real run carried. */

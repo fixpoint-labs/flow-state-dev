@@ -7,18 +7,18 @@ import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { INTERNAL_SDK_VERSION_READER as CURSOR_GATE, type CursorAgentOptions } from "../../../packages/cursor/src/agent";
 import { INTERNAL_SDK_VERSION_READER as CODEX_GATE, type CodexAgentOptions } from "../../../packages/codex/src/agent";
-import { TESTED_SDK_VERSION as CURSOR_SDK } from "@flow-state-dev/cursor";
-import { TESTED_SDK_VERSION as CODEX_SDK } from "@flow-state-dev/codex";
+import { TESTED_SDK as CURSOR_SDK } from "../../../packages/cursor/src/types";
+import { TESTED_SDK as CODEX_SDK } from "../../../packages/codex/src/types";
 import { createFsdCodingFlow } from "../src/flow";
 import { scriptedClaude } from "./scripted-claude";
 import { scriptedCodex } from "./scripted-codex";
 import { scriptedCursor } from "./scripted-cursor";
 
 const cursorGate = {
-  [CURSOR_GATE]: () => ({ kind: "version", version: CURSOR_SDK }),
+  [CURSOR_GATE]: () => ({ kind: "version", version: CURSOR_SDK.range }),
 } as CursorAgentOptions;
 const codexGate = {
-  [CODEX_GATE]: () => ({ kind: "version", version: CODEX_SDK }),
+  [CODEX_GATE]: () => ({ kind: "version", version: CODEX_SDK.range }),
 } as CodexAgentOptions;
 
 const dirs: string[] = [];

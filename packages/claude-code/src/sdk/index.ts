@@ -26,6 +26,7 @@ export {
 } from "./sdk-client";
 export {
   checkClaudeCodeReadiness,
+  type ClaudeCodeReadinessOptions,
   CLAUDE_SIGN_IN_REMEDY,
   probeClaudeAccount,
   type ClaudeAccountProbe,

@@ -24,7 +24,7 @@ import {
   CursorSdkNotInstalledError,
 } from "../src/errors";
 import {
-  TESTED_SDK_VERSION,
+  TESTED_SDK,
   type CursorAgentHandle,
   type CursorAgentLike,
   type CursorCreateOptions,
@@ -38,7 +38,7 @@ import { CURSOR_PROJECT_NAME_LIMIT, cursorProjectName } from "../src/workspace-a
 
 /** Every spec below builds against a stubbed version gate; slice 1 owns the gate itself. */
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK.range }),
 } as CursorAgentOptions;
 
 interface Recorder {

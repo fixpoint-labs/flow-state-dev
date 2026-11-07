@@ -23,11 +23,11 @@ import {
   observedPlanListCollection,
 } from "@flow-state-dev/core/harness";
 import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
-import { TESTED_SDK_VERSION, type CursorSdkMessage, type ResolvedCursorClient } from "../src/types";
+import { TESTED_SDK, type CursorSdkMessage, type ResolvedCursorClient } from "../src/types";
 import { WHOLE_LIST, todosFailed, todosRunning, todosSettled, type WireTodo } from "./fixtures/update-todos";
 
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK.range }),
 } as CursorAgentOptions;
 
 /** A client whose one run replays `messages` and finishes, on agent `agentId`. */

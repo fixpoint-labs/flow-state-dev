@@ -12,6 +12,9 @@
  * `HarnessReadiness`, with the remedy the user follows.
  */
 import type { HarnessReadiness } from "@flow-state-dev/core/harness";
+import { sdkVersionReadiness, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
+import { readInstalledCursorSdkVersion } from "./cursor-client";
+import { TESTED_SDK } from "./types";
 
 /** The sign-in `cursorSignIn` found. */
 export type CursorSignIn = { readonly status: "key" | "login" } | { readonly status: "none"; readonly reason: string };
@@ -32,14 +35,30 @@ export async function cursorSignIn(env: Readonly<Record<string, string>>): Promi
 /** What the user does when Cursor has no sign-in. */
 export const CURSOR_SIGN_IN_REMEDY = "Set CURSOR_API_KEY, or sign in to Cursor";
 
+/** Options for {@link checkCursorReadiness}. */
+export interface CursorReadinessOptions {
+  /**
+   * Which `@cursor/sdk` is installed. Default: the one beside this package.
+   * A seam for a host's own check and for tests; the block itself always
+   * reads the installed one.
+   */
+  readInstalledSdkVersion?: InstalledSdkVersionReader;
+}
+
 /**
- * Whether Cursor can run on this machine, as core's neutral readiness: the
- * answer of {@link cursorSignIn}, with what to do when there is none. An SDK
+ * Whether Cursor can run on this machine, as core's neutral readiness: an
+ * installed SDK in the range this package tested, then the answer of
+ * {@link cursorSignIn}, with what to do when there is none. An SDK
  * that won't load, or a sign-in read that fails, is not ready with its reason;
  * a key counts only when the SDK also loads, since a run needs both.
  * Never throws.
  */
-export async function checkCursorReadiness(env: Readonly<Record<string, string>>): Promise<HarnessReadiness> {
+export async function checkCursorReadiness(
+  env: Readonly<Record<string, string>>,
+  options: CursorReadinessOptions = {},
+): Promise<HarnessReadiness> {
+  const version = sdkVersionReadiness(TESTED_SDK, options.readInstalledSdkVersion ?? readInstalledCursorSdkVersion);
+  if (version !== null) return version;
   let signIn: CursorSignIn;
   try {
     signIn = await cursorSignIn(env);

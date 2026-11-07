@@ -18,8 +18,9 @@
  * `HarnessReadiness`, with the remedy the user follows.
  */
 import type { HarnessReadiness } from "@flow-state-dev/core/harness";
+import { sdkVersionReadiness, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
 import { runIdleQuery } from "./idle-query";
-import type { SdkImporter } from "./sdk-client";
+import { readInstalledClaudeCodeSdkVersion, TESTED_SDK, type SdkImporter } from "./sdk-client";
 
 /** What {@link probeClaudeAccount} found. */
 export type ClaudeAccountProbe =
@@ -109,13 +110,26 @@ export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Pr
 /** What the user does when Claude Code has no credential. */
 export const CLAUDE_SIGN_IN_REMEDY = "Sign in with `claude`, or set ANTHROPIC_API_KEY";
 
+/** Options for {@link checkClaudeCodeReadiness}: the probe's, and how the installed SDK is read. */
+export interface ClaudeCodeReadinessOptions extends ProbeClaudeAccountOptions {
+  /**
+   * Which `@anthropic-ai/claude-agent-sdk` is installed. Default: the one
+   * beside this package. A seam for a host's own check and for tests; the
+   * block itself always reads the installed one.
+   */
+  readInstalledSdkVersion?: InstalledSdkVersionReader;
+}
+
 /**
  * Whether Claude Code can run on this machine, as core's neutral readiness:
- * the answer of {@link probeClaudeAccount}, with what to do when there is no
+ * an installed SDK in the range this package tested, then the answer of
+ * {@link probeClaudeAccount}, with what to do when there is no
  * credential. A cold start can miss the probe's window, so an unanswered
  * probe is asked once more before it counts. Never throws.
  */
-export async function checkClaudeCodeReadiness(options: ProbeClaudeAccountOptions): Promise<HarnessReadiness> {
+export async function checkClaudeCodeReadiness(options: ClaudeCodeReadinessOptions): Promise<HarnessReadiness> {
+  const version = sdkVersionReadiness(TESTED_SDK, options.readInstalledSdkVersion ?? readInstalledClaudeCodeSdkVersion);
+  if (version !== null) return version;
   let account = await probeClaudeAccount(options);
   if (account.status === "none" && account.unanswered === true && options.signal?.aborted !== true) {
     account = await probeClaudeAccount(options);

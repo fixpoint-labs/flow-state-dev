@@ -27,45 +27,6 @@ export class CodexSdkNotInstalledError extends Error {
 }
 
 /**
- * An installed `@openai/codex-sdk` that is not the version this package was
- * tested against. Raised when the block is BUILT, so a host cannot start a run
- * on an untested wire and discover the mismatch from a malformed item stream.
- *
- * There is deliberately no override: the upgrade path is a release of this
- * package, which is what makes every Codex bump a tested one.
- */
-export class CodexSdkVersionMismatchError extends Error {
-  readonly code = "CODEX_SDK_VERSION_MISMATCH";
-  /**
-   * @param installed the version found, or `null` when an SDK is present but its
-   *   version could not be established. The gate refuses in BOTH cases: "there
-   *   is nothing installed" is safe, "I cannot tell what is installed" is not,
-   *   and a gate that passed the second would let an unchecked wire run.
-   * @param unreadableReason why the version could not be read, when it could not.
-   */
-  constructor(
-    readonly installed: string | null,
-    readonly tested: string,
-    readonly unreadableReason?: string,
-  ) {
-    super(
-      (installed === null
-        ? `\`@openai/codex-sdk\` is installed but its version could not be determined (${unreadableReason ?? "reason unknown"}), and @flow-state-dev/codex is tested against exactly ${tested}. `
-        : `\`@openai/codex-sdk\` ${installed} is installed, but @flow-state-dev/codex is tested against exactly ${tested}. `) +
-        "Codex's JSONL wire is experimental and can change in a lockstep CLI+SDK release, so this package refuses to run against a version it has not checked. " +
-        (installed === null
-          ? // Deliberately NOT offering `resolveCodexClient` as the escape: the
-            // gate runs when the block is built, before any client is resolved,
-            // so supplying one does not get past it. An error that names a way
-            // out that does not work is worse than one that names none.
-            `Install \`@openai/codex-sdk\` ${tested} in a layout this package can read.`
-          : `Pin \`@openai/codex-sdk\` to ${tested}, or take a release of @flow-state-dev/codex that tests ${installed}.`),
-    );
-    this.name = "CodexSdkVersionMismatchError";
-  }
-}
-
-/**
  * A configuration mistake caught when the block is built: an option group
  * carrying something the block owns rather than forwards (a working directory,
  * a turn signal).

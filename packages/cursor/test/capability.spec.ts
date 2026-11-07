@@ -21,10 +21,10 @@ import {
 } from "@flow-state-dev/core/harness";
 import { createCursorAgentCapability } from "../src/capability";
 import { INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
-import { TESTED_SDK_VERSION } from "../src/types";
+import { TESTED_SDK } from "../src/types";
 
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK.range }),
 } as CursorAgentOptions;
 
 describe("createCursorAgentCapability", () => {

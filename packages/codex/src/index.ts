@@ -1,6 +1,6 @@
 /**
  * Public surface of `@flow-state-dev/codex`: the Codex harness block, its
- * opt-in capability, the client seam and its version gate, the pure
+ * opt-in capability, the client seam, the pure
  * translation layer, the cost derivation, the usage read, the environment pass-list, the start-time account probe and its readiness check, the model list, the handle and wire types, and the
  * typed errors.
  *
@@ -14,9 +14,7 @@ export { codexAgent, type CodexAgentOptions } from "./agent";
 export { CODEX_PASS } from "./env-pass";
 export { createCodexAgentCapability } from "./capability";
 export {
-  assertTestedSdkVersion,
   createDefaultResolveCodexClient,
-  readInstalledCodexSdkVersion,
   type CodexSdkImporter,
 } from "./codex-client";
 export { translateCodexEvent } from "./translate";
@@ -28,6 +26,7 @@ export {
   CODEX_SIGN_IN_REMEDY,
   probeCodexAccount,
   type CodexAccountProbe,
+  type CodexReadinessOptions,
   type ProbeCodexAccountOptions,
 } from "./account-probe";
 export {
@@ -38,7 +37,6 @@ export {
 } from "./emit";
 export {
   CODEX_SOURCE,
-  TESTED_SDK_VERSION,
   codexAgentHandleSchema,
   type CodexAgentHandle,
   type CodexClientOptions,
@@ -49,7 +47,6 @@ export {
   type CodexThreadLike,
   type CodexThreadOptions,
   type CodexWireUsage,
-  type InstalledSdkVersionReader,
   type ResolveCodexClient,
   type ResolvedCodexClient,
   type TranslatedEvent,
@@ -59,5 +56,4 @@ export {
   CodexAgentConfigError,
   CodexAgentRunError,
   CodexSdkNotInstalledError,
-  CodexSdkVersionMismatchError,
 } from "./errors";

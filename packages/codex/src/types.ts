@@ -10,7 +10,7 @@
  *   `ThreadItem` kinds `codex exec --experimental-json` emits. Declared here
  *   rather than imported so this package never type-depends on the optional
  *   peer, exactly as `claude-code/sdk/types.ts` does for the Agent SDK. The
- *   declarations mirror `@openai/codex-sdk` {@link TESTED_SDK_VERSION}; the
+ *   declarations mirror `@openai/codex-sdk` {@link TESTED_SDK}; the
  *   version gate is what keeps them true (see `./codex-client`).
  * - The **seam types** the block calls the SDK through, so a scripted client
  *   satisfies them in tests with no subprocess.
@@ -20,6 +20,7 @@
  */
 import { z } from "zod";
 import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import type { TestedSdk } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessRunHandle } from "@flow-state-dev/core/harness";
 
@@ -31,15 +32,12 @@ import type { HarnessRunHandle } from "@flow-state-dev/core/harness";
 export const CODEX_SOURCE = "codex/sdk" as const;
 
 /**
- * The one `@openai/codex-sdk` version this package has been tested against.
- *
- * The JSONL wire the SDK speaks sits behind the CLI's `--experimental-json`
- * flag and can change in a lockstep CLI+SDK release, so a Codex upgrade is a
- * deliberate, tested bump of ours rather than something a host can take on its
- * own. `codexAgent` refuses to build against any other installed version, and
- * the escape is a release of this package — there is no override option.
+ * The `@openai/codex-sdk` this package is tested against: its `peerDependencies`
+ * range, one version wide. Its wire can change in any release, so a new
+ * version is a tested bump of ours. `codexAgent` refuses to build against
+ * another, and the readiness check says so first (core's SDK gate).
  */
-export const TESTED_SDK_VERSION = "0.164.0" as const;
+export const TESTED_SDK: TestedSdk = { harness: "Codex", sdk: "@openai/codex-sdk", range: "0.164.0" };
 
 /**
  * Codex's full token breakdown for a turn.
@@ -262,32 +260,6 @@ export interface ResolvedCodexClient {
 export type ResolveCodexClient = (
   ctx: BlockContext<any, any, any, any, any, any, any, any, any>,
 ) => ResolvedCodexClient | Promise<ResolvedCodexClient>;
-
-/**
- * What the version gate could learn about the installed SDK.
- *
- * Three answers, not two, and the third is the one that matters. `absent` and
- * `unreadable` both used to be `null`, and the gate PASSED on `null` — so a
- * layout the manifest walk cannot see (Yarn PnP, a custom loader) let an
- * unvalidated SDK through a gate whose whole purpose is to refuse one, while the
- * dynamic import went on resolving and running it. A safety gate must fail
- * closed: "there is nothing installed" is safe, "I cannot tell" is not.
- */
-export type InstalledSdkVersion =
-  | { kind: "absent" }
-  | { kind: "version"; version: string }
-  | { kind: "unreadable"; reason: string };
-
-/**
- * How the version gate learns which SDK is installed.
- *
- * A seam only so the refusal is testable against versions other than the one on
- * this disk. It is deliberately NOT reachable from `CodexAgentOptions`: a host
- * that could substitute its own reader could answer with the tested version and
- * run an unvalidated wire, which would make the package's exact-version refusal
- * a claim rather than a guarantee.
- */
-export type InstalledSdkVersionReader = () => InstalledSdkVersion;
 
 // ---------------------------------------------------------------------------
 // The pure translation layer's output

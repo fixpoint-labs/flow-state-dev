@@ -21,6 +21,7 @@
  * settle. It is a session resource, not session state, so a task board still
  * dispatches the block.
  */
+import { assertTestedSdkVersion, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
 import { randomUUID } from "node:crypto";
 import { handler } from "@flow-state-dev/core";
 import {
@@ -42,7 +43,6 @@ import type {
 } from "@flow-state-dev/core/harness";
 import type { UsesSlot } from "@flow-state-dev/core";
 import {
-  assertTestedSdkVersion,
   createDefaultResolveCodexClient,
   readInstalledCodexSdkVersion,
 } from "./codex-client";
@@ -57,6 +57,7 @@ import {
   isUnknownThreadFailure,
 } from "./errors";
 import {
+  TESTED_SDK,
   CODEX_SOURCE,
   codexAgentHandleSchema,
   type CodexAgentHandle,
@@ -65,7 +66,6 @@ import {
   type CodexThreadEvent,
   type CodexThreadLike,
   type CodexThreadOptions,
-  type InstalledSdkVersionReader,
   type ResolveCodexClient,
 } from "./types";
 
@@ -237,6 +237,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
   } = options;
 
   assertTestedSdkVersion(
+    TESTED_SDK,
     (options as InternalTestSeams)[INTERNAL_SDK_VERSION_READER] ?? readInstalledCodexSdkVersion,
   );
   assertNoOwnedKeys(

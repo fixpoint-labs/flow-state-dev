@@ -284,9 +284,13 @@ describe("the session flow, for every mode", () => {
  * the Claude Code list cell (its list was `listClaudeModels`), the base-list
  * cell (no `HARNESS_BASE_PASS`), the no-hand-list cell, the Codex and Cursor
  * stop cells for every reason, and Claude Code's stop cells for a timeout and
- * a plain `Error`. The Codex list cell, the pass-list cells, Claude Code's
- * reason-less stop and every not-a-stop cell pass there, which shows the
- * block reaches the code.
+ * a plain `Error`, and every SDK-version readiness cell. The Codex list cell,
+ * the pass-list cells, Claude Code's reason-less stop and every not-a-stop
+ * cell pass there, which shows the block reaches the code.
+ *
+ * A block's own build-time refusal of an SDK outside its range is held in each
+ * package's tests, not here: the reader that refusal reads is deliberately off
+ * every public entry, so no host can answer it with the tested version.
  */
 describe("the contract every harness owes a host", () => {
   /** The models every scripted SDK below answers with, in the shared shape they come back in. */
@@ -513,9 +517,86 @@ describe("the contract every harness owes a host", () => {
     });
   });
 
+  /**
+   * Each harness's readiness check as a host calls it, from the package's
+   * entry, with the installed-SDK reader it takes for a host's own check, and
+   * a version one step below and one step above the range the package tested.
+   */
+  const VERSIONED = [
+    {
+      mode: "claude-code",
+      pkg: "claude-code",
+      sdk: "@anthropic-ai/claude-agent-sdk",
+      below: "0.3.315",
+      above: "0.4.0",
+      ready: async (read: unknown) => {
+        const { checkClaudeCodeReadiness } = (await import("@flow-state-dev/claude-code/sdk")) as Record<string, any>;
+        return checkClaudeCodeReadiness({ env: {}, timeoutMs: 1, readInstalledSdkVersion: read });
+      },
+    },
+    {
+      mode: "codex",
+      pkg: "codex",
+      sdk: "@openai/codex-sdk",
+      below: "0.163.0",
+      above: "0.164.1",
+      ready: async (read: unknown) => {
+        const { checkCodexReadiness } = (await import("@flow-state-dev/codex")) as Record<string, any>;
+        return checkCodexReadiness({ env: {}, timeoutMs: 1, readInstalledSdkVersion: read });
+      },
+    },
+    {
+      mode: "cursor",
+      pkg: "cursor",
+      sdk: "@cursor/sdk",
+      below: "1.0.39",
+      above: "1.0.41",
+      ready: async (read: unknown) => {
+        const { checkCursorReadiness } = (await import("@flow-state-dev/cursor")) as Record<string, any>;
+        return checkCursorReadiness({}, { readInstalledSdkVersion: read });
+      },
+    },
+  ] as const;
+
+  describe.each(VERSIONED)("$mode, refusing an SDK it never ran against", (harness) => {
+    /** The package's peer range for its SDK: the range it tested. */
+    const peerRange = () =>
+      (JSON.parse(readFileSync(join(import.meta.dirname, "../../../packages", harness.pkg, "package.json"), "utf8")) as {
+        peerDependencies: Record<string, string>;
+      }).peerDependencies[harness.sdk]!;
+
+    it("peers its SDK at a bounded range", () => {
+      expect(peerRange()).not.toBe("*");
+      expect(peerRange()).toMatch(/\d+\.\d+\.\d+/);
+    });
+
+    it.each(["below", "above"] as const)("readiness is not ready for an SDK one step %s the range, naming both versions", async (side) => {
+      const installed = harness[side];
+      const answer = (await harness.ready(() => ({ kind: "version", version: installed }))) as { ready: boolean; reason?: string; remedy?: string };
+      expect(answer.ready, JSON.stringify(answer)).toBe(false);
+      expect(answer.reason).toContain(installed);
+      // The range it names is the one the package peers at.
+      expect(answer.reason).toContain(peerRange());
+      expect(answer.remedy).toContain(harness.sdk);
+    });
+
+    it("readiness is not ready for an absent SDK, with a remedy", async () => {
+      const answer = (await harness.ready(() => ({ kind: "absent" }))) as { ready: boolean; remedy?: string };
+      expect(answer.ready, JSON.stringify(answer)).toBe(false);
+      expect(answer.remedy).toContain(harness.sdk);
+    });
+  });
+
   it("Kitchen Sink keeps no hand list of Cursor's models", () => {
     const source = readFileSync(join(import.meta.dirname, "..", "lib/cursor-mode.ts"), "utf8");
     expect(source).not.toMatch(/CURSOR_MODELS\s*[:=]/);
     expect(source).toMatch(/listCursorModels/);
+  });
+
+  it("Kitchen Sink checks no harness's SDK by hand: its modes read the package's readiness", () => {
+    for (const file of ["lib/codex-mode.ts", "lib/cursor-mode.ts"]) {
+      const source = readFileSync(join(import.meta.dirname, "..", file), "utf8");
+      expect(source, file).not.toMatch(/TESTED_SDK_VERSION|readInstalled\w*SdkVersion|assertTestedSdkVersion/);
+    }
   });
 });

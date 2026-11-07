@@ -18,17 +18,22 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TESTED_SDK_VERSION } from "@flow-state-dev/cursor";
+import { checkCursorReadiness, type CursorReadinessOptions } from "@flow-state-dev/cursor";
 
 import { HOST_CHECKS, cursorEnv, cursorModeCheck, cursorSessionFlow, type CursorHostChecks } from "@/lib/cursor-mode";
 import { availableHarnessFlows, resetModeAvailabilityForTests } from "@/lib/harness-gate";
 
+/** What the package reads the installed SDK as. */
+type InstalledSdkVersion = ReturnType<NonNullable<CursorReadinessOptions["readInstalledSdkVersion"]>>;
+
 const able: CursorHostChecks = {
-  sdk: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
   makeRoot: () => undefined,
   childStarts: () => null,
   readiness: async () => ({ ready: true }),
 };
+
+/** The Cursor package's own readiness, over a stated installed SDK: the mode reads its answer. */
+const packageReadiness = (installed: InstalledSdkVersion) => (env: Record<string, string>) => checkCursorReadiness(env, { readInstalledSdkVersion: () => installed });
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -46,18 +51,17 @@ describe("Cursor mode's check (V7)", () => {
   });
 
   it("is unavailable without the SDK", async () => {
-    const result = await check({ sdk: () => ({ kind: "absent" }) });
-    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("SDK is not installed") });
+    const result = await check({ readiness: packageReadiness({ kind: "absent" }) });
+    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("not installed"), remedy: expect.stringContaining("@cursor/sdk") });
   });
 
   it("is unavailable with another SDK version, naming both", async () => {
-    const result = await check({ sdk: () => ({ kind: "version", version: "1.0.99" }) });
-    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("1.0.99") });
-    expect(result).toMatchObject({ reason: expect.stringContaining(TESTED_SDK_VERSION) });
+    const result = await check({ readiness: packageReadiness({ kind: "version", version: "1.0.99" }) });
+    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("1.0.99"), remedy: expect.stringContaining("@cursor/sdk") });
   });
 
   it("is unavailable when the SDK's version can't be read", async () => {
-    const result = await check({ sdk: () => ({ kind: "unreadable", reason: "a custom loader" }) });
+    const result = await check({ readiness: packageReadiness({ kind: "unreadable", reason: "a custom loader" }) });
     expect(result).toMatchObject({ available: false, reason: expect.stringContaining("a custom loader") });
   });
 
@@ -100,7 +104,7 @@ describe("Cursor mode's check (V7)", () => {
   it("asks nothing of the host in test mode, where the scripted Cursor runs", async () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     vi.stubEnv("KITCHEN_SINK_REAL_HARNESS", "");
-    const result = await cursorModeCheck({ ...able, sdk: () => ({ kind: "absent" }) })({ repository: "/repo" });
+    const result = await cursorModeCheck({ ...able, readiness: packageReadiness({ kind: "absent" }) })({ repository: "/repo" });
     expect(result).toEqual({ available: true });
   });
 
@@ -115,7 +119,6 @@ describe("Cursor mode's check (V7)", () => {
 
 describe("Cursor mode's check, on this host's own answers", () => {
   it("finds the pinned SDK, starts a process with only the run's environment, and reads the sign-in", async () => {
-    expect(HOST_CHECKS.sdk()).toEqual({ kind: "version", version: TESTED_SDK_VERSION });
     expect(HOST_CHECKS.childStarts(cursorEnv())).toBeNull();
 
     // A home with no stored login, so the developer's own never answers.
