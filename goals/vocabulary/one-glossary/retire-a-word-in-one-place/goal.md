@@ -13,5 +13,6 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-11-07 | 0709a9c69 | n/a (model-free) | PASS | Lever: the sweep and the guard each reported the generated word in `packages/core/src`, `packages/engine/src` and `apps/docs/docs`; the side-chain check reported the second word; the unretired word was reported by nobody; all three passed with the entries removed. Parity: hits 1617 · marked 47 · kept 1570 · OPEN 0 both sides, 18 guard count lines and 21 guard control verdicts equal, side-chain findings `[]` both sides, exit codes equal. |
+| 2026-11-07 | a3655381e | n/a (model-free) | PASS | After review round 1 (load-time refusals, shared exemptions, the guard's CollectionItem path fix). Lever as at 0709a9c69. Parity: hits 1617 · marked 47 · kept 1570 · OPEN 0 both sides, 18 guard count lines and 21 guard control verdicts equal. |
 | 2026-11-07 | 0f1056861 (control) | n/a (model-free) | FAIL (expected) | "The plant is refused" failed for all seven plants: no check reads a glossary there. Parity skipped. |
 | 2026-11-07 | 0709a9c69 + one sweep exemption narrowed to a path nothing has | n/a (model-free) | FAIL (expected) | Non-vacuity of the parity leg: kept 1568 · OPEN 2 against 1570 · 0 before the move, and the sweep's exit code differed. |
