@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import {
   askMidway,
+  waitExternally,
   taskBoard,
   goalSeekLoop,
   mapToVerdict,
@@ -638,6 +639,42 @@ describe("goalSeekLoop - a task waiting on a person", () => {
     // The loop's output is the board as the drain left it: the task still running, waiting.
     const row = (result.output as { tasks?: Array<{ id: string; status: string }> } | null)?.tasks?.find((t) => t.id === "a");
     expect(row?.status).toBe("in_progress");
+  });
+});
+
+describe("goalSeekLoop - a task waiting on an event outside the board", () => {
+  it("never judges while a task waits externally (FIX-2578), and ends the pass naming the event, not a user", async () => {
+    // A coding task waiting on its pull request: nobody is asked, and the
+    // judge would rule on work that isn't done until the pull request merges.
+    const name = "awaiting-merge";
+    const worker = handler({
+      name: `${name}-w`,
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        waitExternally(ctx, await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: name }), {
+          prompt: "Waiting on pull request #7.",
+          events: [{ event: "pull-request", key: "github.com/acme/app/7" }],
+        }),
+    });
+    const board = taskBoard({ name: `${name}-board`, collection: { collectionId: name }, workers: worker });
+    let judged = 0;
+    const loop = goalSeekLoop({
+      name,
+      board,
+      seed: seedTasks(name, board, ["a"]),
+      judge: (): Verdict => {
+        judged += 1;
+        return { decision: "continue", reason: "not yet" };
+      },
+      maxIterations: 3,
+    });
+
+    const result = await testBlock(loop, { input: undefined });
+
+    expect(result.error).toBeNull();
+    expect(judged).toBe(0);
+    expect(readTermination(result.items)).toMatchObject({ reason: "waiting-on-an-event", iterations: 0 });
   });
 });
 
