@@ -10,7 +10,7 @@
  * any of those should say so here rather than copy this host as if it had them.
  */
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { z } from "zod";
 import {
   defineTaskCollection,

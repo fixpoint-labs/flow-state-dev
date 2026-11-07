@@ -58,7 +58,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code/sdk";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code";
 import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
 import { defineFlow, utility } from "@flow-state-dev/core";
 import { harnessEnv } from "@flow-state-dev/core/harness";

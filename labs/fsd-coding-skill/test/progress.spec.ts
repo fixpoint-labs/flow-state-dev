@@ -1,7 +1,7 @@
 /** Exercises the compact progress filter as a real, incrementally consumed jq process. */
 import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { testBlock } from "@flow-state-dev/testing";
 import { describe, expect, it } from "vitest";
 import { scriptedClaude } from "./scripted-claude";

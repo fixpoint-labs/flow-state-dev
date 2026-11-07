@@ -10,8 +10,8 @@
  *   It carries a percent (`utilization`, a fraction) only near a limit.
  *   {@link usageWindowOf} maps one to a window; `claudeCodeAgent` hands it to
  *   its `onUsage` hook.
- * - **The account, on demand.** {@link readClaudeUsage} asks
- *   `probeClaudeAccount` who is signed in. It reports the account and plan
+ * - **The account, on demand.** {@link readClaudeCodeUsage} asks
+ *   `probeClaudeCodeAccount` who is signed in. It reports the account and plan
  *   and no windows: no allowed source gives a percent without a run.
  *
  * Nothing here reads a credentials file, calls a usage endpoint, or uses the
@@ -22,7 +22,7 @@ import type {
   HarnessUsageReading,
   HarnessUsageWindow,
 } from "@flow-state-dev/core/harness";
-import { probeClaudeAccount, type ClaudeAccountProbe, type ProbeClaudeAccountOptions } from "./account-probe";
+import { probeClaudeCodeAccount, type ClaudeCodeAccountProbe, type ProbeClaudeCodeAccountOptions } from "./account-probe";
 
 /** The usage record's name for Claude Code. */
 export const CLAUDE_CODE_HARNESS = "claude-code";
@@ -69,10 +69,10 @@ export function usageWindowOf(info: unknown): HarnessUsageWindow | null {
   };
 }
 
-/** Options for {@link readClaudeUsage}: the probe's. */
-export type ReadClaudeUsageOptions = ProbeClaudeAccountOptions & {
-  /** How the account is asked for. A seam for tests; default {@link probeClaudeAccount}. */
-  probe?: (options: ProbeClaudeAccountOptions) => Promise<ClaudeAccountProbe>;
+/** Options for {@link readClaudeCodeUsage}: the probe's. */
+export type ReadClaudeCodeUsageOptions = ProbeClaudeCodeAccountOptions & {
+  /** How the account is asked for. A seam for tests; default {@link probeClaudeCodeAccount}. */
+  probe?: (options: ProbeClaudeCodeAccountOptions) => Promise<ClaudeCodeAccountProbe>;
 };
 
 /**
@@ -85,9 +85,9 @@ export type ReadClaudeUsageOptions = ProbeClaudeAccountOptions & {
  * `signed-out`. An SDK that won't load, or a probe that got no answer, is
  * `unavailable`, which leaves a stored reading in place. Never throws.
  */
-export async function readClaudeUsage(options: ReadClaudeUsageOptions): Promise<HarnessUsageReading> {
-  const { probe = probeClaudeAccount, ...probeOptions } = options;
-  let found: ClaudeAccountProbe;
+export async function readClaudeCodeUsage(options: ReadClaudeCodeUsageOptions): Promise<HarnessUsageReading> {
+  const { probe = probeClaudeCodeAccount, ...probeOptions } = options;
+  let found: ClaudeCodeAccountProbe;
   try {
     found = await probe(probeOptions);
   } catch {

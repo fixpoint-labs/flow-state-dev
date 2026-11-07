@@ -9,7 +9,7 @@
  * status`, the program the SDK starts, so the check and the run read one
  * sign-in. No model turn starts.
  *
- * The shape follows `probeClaudeAccount` in `@flow-state-dev/claude-code`: a
+ * The shape follows `probeClaudeCodeAccount` in `@flow-state-dev/claude-code`: a
  * discriminated result, a timeout, and no throw. It checks where a credential
  * would come from, not that it works: a key that is set but rejected reads as
  * `account`.

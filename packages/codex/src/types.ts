@@ -255,7 +255,7 @@ export interface ResolvedCodexClient {
  * Host hook resolving the Codex client for a block invocation.
  *
  * Accepts the block context loosely so a fully parameterized `execute` context
- * passes without a cast — the same reason `ResolveClaudeAgent` does.
+ * passes without a cast — the same reason `ResolveClaudeCodeAgent` does.
  */
 export type ResolveCodexClient = (
   ctx: BlockContext<any, any, any, any, any, any, any, any, any>,

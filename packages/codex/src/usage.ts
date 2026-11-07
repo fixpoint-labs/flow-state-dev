@@ -17,7 +17,7 @@
  * person's own machine, not in a hosted service. A host opts in by passing
  * this as its Codex usage reader.
  *
- * The shape follows `probeClaudeAccount` in `@flow-state-dev/claude-code`: a
+ * The shape follows `probeClaudeCodeAccount` in `@flow-state-dev/claude-code`: a
  * discriminated result, a timeout, and no throw for the states that have no
  * number. Signed out and API key are told apart by `account/read`, never by
  * an error's wording.

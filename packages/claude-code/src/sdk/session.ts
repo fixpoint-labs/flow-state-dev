@@ -14,21 +14,21 @@ import type { BindingProvider } from "@flow-state-dev/core/types";
  * The portable session record. `sdkSessionId` is the SDK `session_id` to resume,
  * or `null` for a fresh run. `key` echoes the resolution key for diagnostics.
  */
-export interface ClaudeAgentSession {
+export interface ClaudeCodeSession {
   sdkSessionId: string | null;
 }
 
 /**
- * Create a {@link BindingProvider} for {@link ClaudeAgentSession}.
+ * Create a {@link BindingProvider} for {@link ClaudeCodeSession}.
  *
  * `resolve(key)` treats a non-empty key as the SDK session id to resume and an
  * empty key as "no prior session". `release` is defined and safe to call but
  * does nothing — resume-by-id is cheap and stateless, so there is nothing to
  * dispose.
  */
-export function createClaudeAgentSessionProvider(): BindingProvider<ClaudeAgentSession> {
+export function createClaudeCodeSessionProvider(): BindingProvider<ClaudeCodeSession> {
   return {
-    async resolve(key: string): Promise<ClaudeAgentSession> {
+    async resolve(key: string): Promise<ClaudeCodeSession> {
       return { sdkSessionId: key === "" ? null : key };
     },
     async release(): Promise<void> {

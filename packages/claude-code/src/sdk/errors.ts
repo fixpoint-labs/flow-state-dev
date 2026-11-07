@@ -9,14 +9,14 @@ import type { ClassifiedHarnessError, HarnessFailureKind } from "@flow-state-dev
  * The optional `@anthropic-ai/claude-agent-sdk` peer dependency is not
  * installed. Fatal: the agent block cannot run its `query()` loop without it.
  */
-export class ClaudeAgentSdkNotInstalledError extends Error {
+export class ClaudeCodeSdkNotInstalledError extends Error {
   readonly code = "CLAUDE_AGENT_SDK_NOT_INSTALLED";
   constructor(message?: string, readonly detail?: { cause?: string }) {
     super(
       message ??
         "The `@anthropic-ai/claude-agent-sdk` package is not installed. Add it as a dependency, or pass a `resolveClaudeAgent` that supplies a `query` function.",
     );
-    this.name = "ClaudeAgentSdkNotInstalledError";
+    this.name = "ClaudeCodeSdkNotInstalledError";
   }
 }
 
@@ -25,7 +25,7 @@ export class ClaudeAgentSdkNotInstalledError extends Error {
  * caller sees a stable class while the original message is preserved on
  * `detail.cause`. The agent block emits an error item and rethrows this.
  */
-export class ClaudeAgentRunError extends Error implements ClassifiedHarnessError {
+export class ClaudeCodeAgentRunError extends Error implements ClassifiedHarnessError {
   readonly code = "CLAUDE_AGENT_RUN_FAILED";
   /**
    * The failure in core's neutral vocabulary, read with core's
@@ -40,7 +40,7 @@ export class ClaudeAgentRunError extends Error implements ClassifiedHarnessError
     harnessFailure: HarnessFailureKind | null = null,
   ) {
     super(message);
-    this.name = "ClaudeAgentRunError";
+    this.name = "ClaudeCodeAgentRunError";
     this.harnessFailure = harnessFailure;
   }
 }

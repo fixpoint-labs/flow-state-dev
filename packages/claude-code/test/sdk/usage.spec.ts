@@ -1,6 +1,6 @@
 /**
  * Claude Code's usage, two ways: a run's `rate_limit_event` handed to
- * `onUsage` as one window, and `readClaudeUsage` mapping the account probe.
+ * `onUsage` as one window, and `readClaudeCodeUsage` mapping the account probe.
  * The event shapes are the ones the pinned CLI builds (FIX-2142's POC): a
  * percent only on a warning, as a fraction; `resetsAt` in epoch seconds; no
  * window on an API key.
@@ -9,8 +9,8 @@ import { describe, expect, it, vi } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
 import type { HarnessUsageReport } from "@flow-state-dev/core/harness";
 import { claudeCodeAgent } from "../../src/sdk/agent";
-import { readClaudeUsage, usageWindowOf } from "../../src/sdk/usage";
-import type { SdkMessageLike } from "../../src/sdk/types";
+import { readClaudeCodeUsage, usageWindowOf } from "../../src/sdk/usage";
+import type { ClaudeCodeSdkMessage } from "../../src/sdk/types";
 
 const RESETS = 1_800_000_000;
 const ALLOWED = { status: "allowed", resetsAt: RESETS, rateLimitType: "five_hour" };
@@ -18,7 +18,7 @@ const WARNING = { status: "allowed_warning", resetsAt: RESETS, rateLimitType: "s
 const REJECTED = { status: "rejected", resetsAt: RESETS, rateLimitType: "five_hour" };
 const API_KEY = { status: "allowed" };
 
-const RESULT_OK: SdkMessageLike = { type: "result", subtype: "success", result: "done", session_id: "sess_1" };
+const RESULT_OK: ClaudeCodeSdkMessage = { type: "result", subtype: "success", result: "done", session_id: "sess_1" };
 
 describe("usageWindowOf", () => {
   it("reads a plain allowed event as ok with no percent, never 0", () => {
@@ -53,8 +53,8 @@ describe("claudeCodeAgent — onUsage", () => {
       resolveClaudeAgent: () => ({
         query: () => {
           const iterable = (async function* () {
-            yield { type: "system", subtype: "init", session_id: "sess_1" } as SdkMessageLike;
-            for (const info of events) yield { type: "rate_limit_event", session_id: "sess_1", rate_limit_info: info } as SdkMessageLike;
+            yield { type: "system", subtype: "init", session_id: "sess_1" } as ClaudeCodeSdkMessage;
+            for (const info of events) yield { type: "rate_limit_event", session_id: "sess_1", rate_limit_info: info } as ClaudeCodeSdkMessage;
             yield RESULT_OK;
           })();
           return Object.assign(iterable, { accountInfo });
@@ -125,9 +125,9 @@ describe("claudeCodeAgent — onUsage", () => {
   });
 });
 
-describe("readClaudeUsage", () => {
-  const read = (found: Awaited<ReturnType<NonNullable<Parameters<typeof readClaudeUsage>[0]["probe"]>>>) =>
-    readClaudeUsage({ env: {}, probe: async () => found });
+describe("readClaudeCodeUsage", () => {
+  const read = (found: Awaited<ReturnType<NonNullable<Parameters<typeof readClaudeCodeUsage>[0]["probe"]>>>) =>
+    readClaudeCodeUsage({ env: {}, probe: async () => found });
 
   it("maps a sign-in to its account and plan, with no windows", async () => {
     expect(await read({ status: "account", email: "alice@example.com", subscriptionType: "max" })).toEqual({
