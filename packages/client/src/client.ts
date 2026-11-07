@@ -275,6 +275,38 @@ export type ActionInputOf<TFlow extends TypedFlow, TAction extends string> = TFl
     ? FlowActionInput<TFlow["actions"][TAction]>
     : never;
 
+/** How {@link RequestHandle.wait} and {@link RequestHandle.result} wait. */
+export type WaitOptions = {
+  /** How often the status is read, in ms. Default 250. */
+  pollMs?: number;
+  /** Reject with a `ClientHttpError` of status 0 past this many ms. Default: never. */
+  timeoutMs?: number;
+  /** Stop waiting when this aborts. Stops the wait only, never the run. */
+  signal?: AbortSignal;
+};
+
+/**
+ * A settled request, as {@link RequestHandle.result} reads it: its status,
+ * plus what the record stored for it.
+ *
+ * | `status` | also |
+ * |---|---|
+ * | `completed` / `incomplete` | `output`, absent when the action returned nothing |
+ * | `failed` | `error`, plus `output` when the action answered before a completion hook failed the request |
+ * | any of those, output not storable as JSON | `outputNotRecorded: true` in place of `output` |
+ * | `suspended` / `aborted` / `interrupted` | nothing |
+ */
+export type RequestResult = {
+  /** How the request settled. */
+  status: RequestStatusSnapshot["status"];
+  /** The action's return value, as stored (JSON). */
+  output?: unknown;
+  /** The action returned a value that could not be stored as JSON; distinct from returning nothing. */
+  outputNotRecorded?: true;
+  /** Why the request failed. */
+  error?: { code: string; message: string };
+};
+
 /**
  * One request, found by a send, by id, or in the interrupted list. Its
  * lifecycle lives on it, with the flow and session its routes need.
@@ -292,9 +324,20 @@ export interface RequestHandle {
    * continued or resumed is waited for rather than read back as it was. A run
    * that stops for a person settles at `suspended`. Reads every `pollMs`
    * (default 250); past `timeoutMs` (default: never) it rejects with a
-   * `ClientHttpError` of status 0.
+   * `ClientHttpError` of status 0. When `signal` aborts it rejects with the
+   * signal's reason; the run carries on.
    */
-  wait(options?: { pollMs?: number; timeoutMs?: number }): Promise<RequestStatusSnapshot>;
+  wait(options?: WaitOptions): Promise<RequestStatusSnapshot>;
+  /**
+   * What the request answered: `wait()`, then one read of this request by
+   * its id with its stored result. Resolves for every way a request settles
+   * and says which, so branch on `status`: `output` is the action's return
+   * value on `completed` or `incomplete`, `error` says why on `failed`, and a
+   * run that stops for a person resolves `suspended` with neither. Rejects
+   * only as `wait()` does: past `timeoutMs`, on a transport error, or when
+   * `signal` aborts, which never stops the run.
+   */
+  result(options?: WaitOptions): Promise<RequestResult>;
   /** Ask the server to stop it. A finished request answers 409. */
   abort(): Promise<void>;
   /**
@@ -754,7 +797,25 @@ function requestHandle(
   let session: Promise<string | null> | undefined =
     knownSession === undefined ? undefined : Promise.resolve(knownSession);
 
-  const status = (): Promise<RequestStatusSnapshot> => t.json<RequestStatusSnapshot>(`${base}/status`);
+  const status = (signal?: AbortSignal): Promise<RequestStatusSnapshot> =>
+    t.json<RequestStatusSnapshot>(`${base}/status`, signal === undefined ? undefined : { signal });
+
+  /** The one wait: polls the status until the request has settled. */
+  const wait = async (waitOptions?: WaitOptions): Promise<RequestStatusSnapshot> => {
+    const pollMs = waitOptions?.pollMs ?? 250;
+    const signal = waitOptions?.signal;
+    const until = waitOptions?.timeoutMs === undefined ? Infinity : Date.now() + waitOptions.timeoutMs;
+    for (;;) {
+      signal?.throwIfAborted();
+      const snapshot = await status(signal);
+      // A continued or resumed run is registered before its route answers, and
+      // keeps the status it was carried on from until it gets its turn: while
+      // the server holds a live run (`lastHeartbeatAt`), it isn't settled.
+      if (snapshot.status !== "in_progress" && snapshot.lastHeartbeatAt === undefined) return snapshot;
+      if (Date.now() >= until) clientError(`Request "${id}" did not finish in ${waitOptions?.timeoutMs} ms`);
+      await pause(pollMs, signal);
+    }
+  };
 
   const sessionPath = async (verb: "continue" | "retry"): Promise<string> => {
     session ??= status().then(
@@ -818,18 +879,17 @@ function requestHandle(
     id,
     flow,
     status,
-    wait: async (waitOptions) => {
-      const pollMs = waitOptions?.pollMs ?? 250;
-      const until = waitOptions?.timeoutMs === undefined ? Infinity : Date.now() + waitOptions.timeoutMs;
-      for (;;) {
-        const snapshot = await status();
-        // A continued or resumed run is registered before its route answers, and
-        // keeps the status it was carried on from until it gets its turn: while
-        // the server holds a live run (`lastHeartbeatAt`), it isn't settled.
-        if (snapshot.status !== "in_progress" && snapshot.lastHeartbeatAt === undefined) return snapshot;
-        if (Date.now() >= until) clientError(`Request "${id}" did not finish in ${waitOptions?.timeoutMs} ms`);
-        await new Promise((resolve) => setTimeout(resolve, pollMs));
-      }
+    wait,
+    result: async (waitOptions) => {
+      await wait(waitOptions);
+      // One read by id, with the stored result: the session's length changes nothing.
+      const read = await t.json<RequestStatusSnapshot>(
+        `${base}/status`,
+        { signal: waitOptions?.signal },
+        { include_result_output: "true" }
+      );
+      const { hasOutput: _hasOutput, ...stored } = read.result ?? {};
+      return { status: read.status, ...stored };
     },
     abort: async () => {
       await t.raw(`${base}/abort`, { method: "POST" });
@@ -865,6 +925,22 @@ function requestHandle(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Sleep `ms`, or reject with the signal's reason as soon as it aborts. */
+function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 function sid(sessionId: string): string {
   return seg(requireValue(sessionId, "sessionId"));
