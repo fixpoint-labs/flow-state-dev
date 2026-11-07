@@ -1,5 +1,4 @@
-import type { BlockDefinition, BlockRuntime } from "@flow-state-dev/core/types";
-import { asRuntime } from "@flow-state-dev/core/types";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { sequencer } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
 import type { BlockTraceItem, OutputItem, StateChangeItem } from "@flow-state-dev/core/items";
@@ -53,30 +52,18 @@ function toTrackedStateChanges(items: OutputItem[]): Array<{
     }));
 }
 /**
- * Wraps a router's substrate `run` to inject an `onRouteSelected` hook that
- * records the chosen route's name, and returns the restore. Works through
- * `connectInput`, which builds a new block but keeps the original's name.
+ * The route a router chose in this run, read from the `router_decision` item
+ * the engine emits for it. Each run reads its own items, so concurrent runs of
+ * one router definition never see each other's choice. Matched by the
+ * router's name, which `connectInput` keeps.
  */
-function recordSelectedRoute(router: BlockDefinition<any, any>, record: (route: string) => void): () => void {
-  const runtime = asRuntime(router) as BlockRuntime<any, any>;
-  const originalRun = runtime.run;
-  runtime.run = async (input: unknown, ctx: unknown) => {
-    const blockCtx = ctx as { _runtimeHooks?: Record<string, Function> };
-    const existingOnRouteSelected = blockCtx._runtimeHooks?.onRouteSelected;
-    blockCtx._runtimeHooks = {
-      ...blockCtx._runtimeHooks,
-      onRouteSelected: (routerName: string, routeName: string, instanceId?: string) => {
-        record(routeName);
-        // Forward the wrapped hook's promise so the router's decision-anchor
-        // await still covers the original hook's write.
-        return existingOnRouteSelected?.(routerName, routeName, instanceId);
-      }
-    };
-    return originalRun.call(runtime, input as any, ctx as any);
-  };
-  return () => {
-    runtime.run = originalRun;
-  };
+function selectedRouteOf(router: BlockDefinition<any, any>, items: ReadonlyArray<{ type: string }>): string | undefined {
+  for (const item of items) {
+    if (item.type !== "router_decision") continue;
+    const decision = item as { routerName?: string; selectedRoute?: string };
+    if (decision.routerName === router.name) return decision.selectedRoute;
+  }
+  return undefined;
 }
 
 /**
@@ -94,21 +81,15 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
   block: TBlock,
   options: TestBlockOptions<BlockInput<TBlock>>
 ): Promise<TestBlockResult<BlockOutput<TBlock>, TBlock>> {
-  let selectedRoute: string | undefined;
-  const restore =
-    block.kind === "router" ? recordSelectedRoute(block, (route) => (selectedRoute = route)) : undefined;
-  try {
-    const base = await runBlock(block, options);
-    const kindFields =
-      block.kind === "sequencer"
-        ? sequencerTraces(base.items as Array<OutputItem | BlockTraceItem>)
-        : selectedRoute !== undefined
-          ? { selectedRoute }
-          : {};
-    return { ...base, ...kindFields } as TestBlockResult<BlockOutput<TBlock>, TBlock>;
-  } finally {
-    restore?.();
-  }
+  const base = await runBlock(block, options);
+  const selectedRoute = block.kind === "router" ? selectedRouteOf(block, base.items) : undefined;
+  const kindFields =
+    block.kind === "sequencer"
+      ? sequencerTraces(base.items as Array<OutputItem | BlockTraceItem>)
+      : selectedRoute !== undefined
+        ? { selectedRoute }
+        : {};
+  return { ...base, ...kindFields } as TestBlockResult<BlockOutput<TBlock>, TBlock>;
 }
 
 async function runBlock<TBlock extends BlockDefinition<any, any>>(
