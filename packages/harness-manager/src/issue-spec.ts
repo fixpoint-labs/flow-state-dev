@@ -35,7 +35,7 @@ export function isTrackerIssue(value: unknown): value is string {
 
 /** The message a malformed issue is refused with, naming the value's shape rather than echoing it whole. */
 export const TRACKER_ISSUE_REFUSED =
-  "An issue is a tracker key such as FIX-2165: letters and digits joined by single - or _, at most 64 characters.";
+  "An issue is a tracker key such as ENG-142: letters and digits joined by single - or _, at most 64 characters.";
 
 /** Options for the spec brief. */
 export interface IssueSpecOptions {

@@ -9,6 +9,7 @@ PRAGMA foreign_keys = ON;
 PRAGMA temp_store = MEMORY;
 `;
 
+// FIX-1009, FIX-1010: the parent indexes below.
 const SESSIONS_TABLE = `
 CREATE TABLE IF NOT EXISTS sessions (
   id          TEXT PRIMARY KEY,
@@ -32,12 +33,12 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_flow_user   ON sessions(flow_kind, user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_tenant ON sessions(user_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at);
--- FIX-1009: serves one access path — \`{ parentOf: id }\` equality lookups
+-- Serves one access path — \`{ parentOf: id }\` equality lookups
 -- (enumerating one session's children). The default \`IS NULL\` scan is
 -- low-selectivity and is deliberately not the justification, so a plain btree
 -- is enough and no composite is warranted yet.
 CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_session_id);
--- FIX-1010: the child listing reads one parent's children ordered by
+-- The child listing reads one parent's children ordered by
 -- \`created_at DESC, id DESC\` (immutable keys, so a run starting mid-walk
 -- cannot reorder a caller's pages). The single-column parent index above
 -- serves the equality but not the order, so a page limit would apply after
@@ -73,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_parent_tenant_owner_updated
   ON sessions(parent_session_id, tenant_id, user_id, org_id, updated_at);
 `;
 
+// FIX-1010: the most-recent-run index below.
 const REQUESTS_TABLE = `
 CREATE TABLE IF NOT EXISTS requests (
   id          TEXT PRIMARY KEY,
@@ -98,7 +100,7 @@ CREATE INDEX IF NOT EXISTS idx_requests_session_status  ON requests(session_id, 
 CREATE INDEX IF NOT EXISTS idx_requests_session_tenant  ON requests(session_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_requests_flow_user       ON requests(flow_kind, user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at);
--- FIX-1010: the most-recent-run read orders one session's requests by
+-- The most-recent-run read orders one session's requests by
 -- \`created_at DESC, id DESC\` and takes one row. \`idx_requests_session_status\`
 -- stops at \`status\` and \`idx_requests_session_tenant\` at \`tenant_id\`, so
 -- neither carries the ordering and the database would sort the session's whole

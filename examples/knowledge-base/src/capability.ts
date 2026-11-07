@@ -6,7 +6,7 @@
 //   - `resources`: the concept collection (its single resource entry).
 //   - `index` preset: an `index.md`-style progressive-disclosure listing injected
 //     into the prompt under a <knowledge> tag (OKF SPEC §6, in spirit).
-//   - `search` preset: the core glob/grep/search nav tools (FIX-813 PR 1),
+//   - `search` preset: the core glob/grep/search nav tools,
 //     installed as-is. They are NOT re-aliased under KB-specific names: the KB
 //     vocabulary lives in `fns` helpers and the context formatter, so we avoid a
 //     second, divergent tool surface (decision #4) and shallow wrapper blocks.

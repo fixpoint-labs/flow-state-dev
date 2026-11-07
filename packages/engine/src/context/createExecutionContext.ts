@@ -1412,7 +1412,7 @@ export async function createExecutionContext<
       `Flow "${flow.kind}": ${scope}-scoped collections sharing storage prefix ` +
         `"${keyPrefix || "(whole scope)"}" declare conflicting ${flagName}. ` +
         `Collections that share a storage prefix must share a storage bucket — ` +
-        `give them distinct static prefixes or matching ${flagName} (FIX-735).`
+        `give them distinct static prefixes or matching ${flagName}.`
     );
   // User and org buckets route on `flowIsolation` and are built here.
   const buildScopeBuckets = (

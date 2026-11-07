@@ -235,7 +235,7 @@ describe("Roster (V3)", () => {
     await open("/roster");
     expect((await screen.findByTestId("roster-gap-worker-match")).textContent).toBe(GAPS.roster.workerMatch);
     expect(screen.queryByTestId("roster-gap-watches")).toBeNull();
-    expect(GAPS.roster.workerMatch).toMatch(/FIX-1672/);
+    expect(GAPS.roster.workerMatch).toMatch(/A declared map arrives in a later release\./);
     expect(screen.getAllByTestId("roster-worker-harness")[0]!.getAttribute("title")).toBe(GAPS.harness);
   });
 
