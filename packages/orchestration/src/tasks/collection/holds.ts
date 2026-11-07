@@ -20,7 +20,6 @@ import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import { MAX_QUESTION_PROMPT, type ExternalWait, type QuestionInit, type RowHold, type SuspensionHold, type TaskHold } from "../schema/hold";
 import { MAX_STEERS, type TaskSteer } from "../schema/steer";
-import { untakenSteers } from "../steers";
 import type { TaskWriteDeclineReason } from "./types";
 
 /** What the board's steer says when it closes a question at a deadline a host set. */
@@ -262,7 +261,7 @@ export function holdWrite(task: Task, change: HoldChange): HoldWriteResult {
       const holds = [...(task.holds ?? []), ...change.holds];
       const opened = { holds, leaseUntil: undefined, askedInTurn: task.turn ?? 0 };
       const wait = change.holds.length === 1 && isExternalHold(change.holds[0]!) ? change.holds[0]! : undefined;
-      const waiting = wait === undefined ? undefined : untakenSteers(task).find((steer) => steer.answers === undefined);
+      const waiting = wait === undefined ? undefined : (task.steers ?? []).find((steer) => steer.takenBy !== task.attempts && steer.answers === undefined);
       if (wait === undefined || waiting === undefined || task.status !== "in_progress") return { patch: opened };
       const steers = (task.steers ?? []).map((steer) => (steer.id === waiting.id ? { ...steer, answers: wait.id } : steer));
       return { patch: { ...opened, steers, turnOwed: true } };
