@@ -26,9 +26,9 @@ import { CODEX_SESSION, codexModelChoices, codexSessionFlow } from "@/lib/codex-
 import { CURSOR_DEFAULT_MODEL, cursorModelChoices, cursorModelSelection, cursorSessionFlow } from "@/lib/cursor-mode";
 import { harnessModelChoices, resetHarnessModelChoicesForTests, type ModelChoices } from "@/lib/harness-models";
 import { HARNESS_SESSION_MODEL_REQUIRED, type HarnessSessionState } from "@flow-state-dev/harness-manager";
-import { scriptedClaudeCode } from "@/lib/scripted-claude-code";
+import { scriptedClaudeCode, scriptedPauses } from "@/lib/scripted-claude-code";
 import { scriptedCodex, scriptedCodexPauses } from "@/lib/scripted-codex";
-import { scriptedCursor } from "@/lib/scripted-cursor";
+import { scriptedCursor, scriptedCursorPauses } from "@/lib/scripted-cursor";
 
 let scratch: string;
 let repo: string;
@@ -42,6 +42,10 @@ beforeAll(() => {
   execFileSync("git", ["-C", repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
   scriptedCodexPauses.stepMs = 0;
   scriptedCodexPauses.slowMs = 0;
+  scriptedPauses.stepMs = 0;
+  scriptedPauses.slowMs = 0;
+  scriptedCursorPauses.stepMs = 0;
+  scriptedCursorPauses.slowMs = 0;
 });
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -281,8 +285,8 @@ describe("what each mode offers to pick", () => {
     }));
     expect(choices).toEqual({
       models: [
-        { id: "claude-big-2", label: "Big" },
-        { id: "claude-mid-5", label: "Mid" },
+        { id: "claude-big-2", label: "Big", isDefault: true },
+        { id: "claude-mid-5", label: "Mid", isDefault: false },
       ],
       defaultId: "claude-big-2",
       reason: null,
@@ -308,8 +312,8 @@ describe("what each mode offers to pick", () => {
     }));
     expect(choices).toEqual({
       models: [
-        { id: "gpt-b", label: "GPT-B" },
-        { id: "gpt-a", label: "GPT-A" },
+        { id: "gpt-b", label: "GPT-B", isDefault: true },
+        { id: "gpt-a", label: "GPT-A", isDefault: false },
       ],
       defaultId: "gpt-b",
       reason: null,
@@ -324,23 +328,56 @@ describe("what each mode offers to pick", () => {
     expect(choices.reason).toMatch(/Codex's model list can't be read \(no answer\)/);
   });
 
-  it("Cursor: the hand-kept list, Composer 2.5 preselected, Auto offered as the default", async () => {
-    const choices = await cursorModelChoices();
-    expect(choices).toMatchObject({ defaultId: CURSOR_DEFAULT_MODEL, reason: null, fallbackId: CURSOR_DEFAULT_MODEL });
-    expect(choices.models.map((model) => model.id)).toEqual([
-      "grok-4.7:low", "grok-4.7:medium", "grok-4.7:high", "grok-4.7:xhigh",
-      "composer-2.5", "gemini-4-argon", "muse-wonder-1.0", "kimi-k3", "glm-5p3", "glm-5p3-flash", "default",
-    ]);
-    // The preselected model is one the picker offers.
-    expect(choices.models.map((model) => model.id)).toContain(choices.defaultId);
+  /** What Cursor's catalog answers for an account with Grok 4.7 at two efforts, Composer 2.5 and Auto. */
+  const CURSOR_LISTED = async () => ({
+    status: "models" as const,
+    models: [
+      {
+        id: "grok-4.7",
+        label: "Grok 4.7",
+        isDefault: false,
+        variants: [
+          { params: [{ id: "reasoning_effort", value: "low" }], label: "Low", isDefault: false },
+          { params: [{ id: "reasoning_effort", value: "high" }], label: "High", isDefault: true },
+        ],
+      },
+      { id: "composer-2.5", label: "Composer 2.5", isDefault: false, variants: [] },
+      { id: "default", label: "Auto", isDefault: false, variants: [{ params: [], label: "Auto", isDefault: true }] },
+    ],
   });
 
-  // Grok 4.7 is one model run at four efforts; the effort is part of the pick,
-  // and Cursor takes it as the model's settings, not as a different id.
-  it("Cursor: a Grok effort reaches Cursor as the model and its setting; every other pick is its own id", () => {
-    expect(cursorModelSelection("grok-4.7:xhigh")).toEqual({
+  it("Cursor: its own list for the account a run gets, a model per way Cursor runs it, Composer 2.5 preselected", async () => {
+    const choices = await cursorModelChoices(CURSOR_LISTED);
+    expect(choices).toMatchObject({ defaultId: CURSOR_DEFAULT_MODEL, reason: null, fallbackId: CURSOR_DEFAULT_MODEL });
+    expect(choices.models.map(({ id, label }) => ({ id, label }))).toEqual([
+      { id: "grok-4.7?reasoning_effort=low", label: "Grok 4.7 · Low" },
+      { id: "grok-4.7?reasoning_effort=high", label: "Grok 4.7 · High" },
+      { id: "composer-2.5", label: "Composer 2.5" },
+      { id: "default", label: "Auto" },
+    ]);
+  });
+
+  it("Cursor: an account without Composer 2.5 preselects the first model it lists", async () => {
+    const choices = await cursorModelChoices(async () => ({ status: "models", models: [{ id: "kimi-k3", label: "Kimi K3", isDefault: false, variants: [] }] }));
+    expect(choices.defaultId).toBe("kimi-k3");
+  });
+
+  it("Cursor: a list that can't be read offers nothing, and says why", async () => {
+    const choices = await cursorModelChoices(async () => ({ status: "failed", reason: "no answer" }));
+    expect(choices.models).toEqual([]);
+    expect(choices.defaultId).toBeNull();
+    expect(choices.reason).toMatch(/Cursor's model list can't be read \(no answer\)/);
+    // A session stored before models could be picked still runs: Cursor's SDK needs a model.
+    expect(choices.fallbackId).toBe(CURSOR_DEFAULT_MODEL);
+  });
+
+  // Grok 4.7 is one model run at several efforts; the effort is part of the
+  // pick, and Cursor takes it as the model's settings, not as a different id.
+  it("Cursor: a variant's pick reaches Cursor as the model and its settings; every other pick is its own id", async () => {
+    const choices = await cursorModelChoices(CURSOR_LISTED);
+    expect(cursorModelSelection(choices.models[1]!.id)).toEqual({
       id: "grok-4.7",
-      params: [{ id: "reasoning_effort", value: "xhigh" }],
+      params: [{ id: "reasoning_effort", value: "high" }],
     });
     expect(cursorModelSelection("kimi-k3")).toBe("kimi-k3");
     expect(cursorModelSelection("default")).toBe("default");
@@ -361,15 +398,15 @@ describe("what each mode offers to pick", () => {
     };
     const mode: Mode = { name: "Cursor", flow: () => cursorSessionFlow({ resolveCursorClient: resolve }) as never, models: [], fallback: CURSOR_DEFAULT_MODEL };
     const stores = createInMemoryStores();
-    await turn(stores, mode, "s-grok", { model: "grok-4.7:high" });
-    await turn(stores, mode, "s-grok", { model: "grok-4.7:high" });
+    await turn(stores, mode, "s-grok", { model: "grok-4.7?reasoning_effort=high" });
+    await turn(stores, mode, "s-grok", { model: "grok-4.7?reasoning_effort=high" });
     const high = { id: "grok-4.7", params: [{ id: "reasoning_effort", value: "high" }] };
     expect(selections).toEqual([high, high]);
   });
 
   it("a full list is kept until restart; a short one is asked for again", async () => {
     let asked = 0;
-    const full: ModelChoices = { models: [{ id: "a", label: "A" }], defaultId: "a", reason: null, fallbackId: null };
+    const full: ModelChoices = { models: [{ id: "a", label: "A", isDefault: true }], defaultId: "a", reason: null, fallbackId: null };
     const short: ModelChoices = { models: [], defaultId: null, reason: "down", fallbackId: null };
     const answers = [short, full, short];
     const lists = { "claude-code": async () => answers[asked++]!, codex: codexModelChoices, cursor: async () => full };
@@ -382,7 +419,7 @@ describe("what each mode offers to pick", () => {
   it("page loads during a read share it, so Claude Code is started once; a failed read is asked for again", async () => {
     let asked = 0;
     let answer!: (choices: ModelChoices) => void;
-    const full: ModelChoices = { models: [{ id: "a", label: "A" }], defaultId: "a", reason: null, fallbackId: null };
+    const full: ModelChoices = { models: [{ id: "a", label: "A", isDefault: true }], defaultId: "a", reason: null, fallbackId: null };
     const lists = {
       "claude-code": () => {
         asked += 1;
