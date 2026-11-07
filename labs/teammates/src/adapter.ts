@@ -63,7 +63,7 @@ import {
   type WireTopic,
 } from "@flow-state-dev/client";
 import { isSuspensionWait, type OutputItem } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, OBSERVED_PULL_REQUESTS } from "@flow-state-dev/core/harness";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   answerTextOf,
@@ -89,7 +89,7 @@ import {
   type RefileRow,
   type TaskRowView,
 } from "@flow-state-dev/orchestration/inbox";
-import { readRecordedWork, reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { pullRequestWait, readRecordedWork, reviewDetail, type PullRequestWaitRow, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
@@ -178,6 +178,12 @@ export interface BoardTask {
   waiting?: TaskWaiting;
   /** For an accepted coding task, where its work went: the pull request opened, or the merge into your checkout. */
   landed?: LandedWork;
+  /**
+   * For a coding task whose work is a pull request, the ones it waits on to
+   * merge or close (harness-manager's `awaitPullRequests`), by number: its run
+   * is done and its work is not, so it stays open. Absent while it waits on none.
+   */
+  pullRequests?: { number: number | null }[];
   /** The row as orchestration's `taskRowView` reads it, once per read: its state and times, for its time signal and the panel's counts. */
   view?: TaskRowView;
   /**
@@ -416,6 +422,11 @@ export interface LabAdapter {
   watchTasks(sessionId: string, onChange: (tasks: BoardTask[]) => void, onStale?: (stale: boolean) => void): Unsubscribe;
   /** A task's run, by the session its row names, read only: the worker that runs it takes no messages. */
   watchRun(runSessionId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
+  /**
+   * The pull requests a run session's record holds (`observed-pull-requests`), with their links:
+   * what a task waiting on one links to. Empty when the session keeps none or it can't be read.
+   */
+  readPullRequests(runSessionId: string): Promise<{ number: number; url: string; title: string | null }[]>;
   /** The run's latest review, read from its stop; `undefined` until it stops for one. */
   watchReview(runSessionId: string, onChange: (review: ReviewDetail | undefined) => void): Unsubscribe;
   /** Answer what a task waits on you for; the run goes on, or the task completes on an accept. */
@@ -796,7 +807,14 @@ export function toBoardTask(
     ...(view === null ? {} : { view }),
     ...runOf(row),
     ...landedOf(row.output?.landed),
+    ...pullRequestsOf(row),
   };
+}
+
+/** A row's open pull-request wait, as harness-manager's browser reader reads it: the pull requests by number, or nothing. */
+function pullRequestsOf(row: Record<string, any>): Pick<BoardTask, "pullRequests"> {
+  const wait = pullRequestWait(row as PullRequestWaitRow);
+  return wait === null ? {} : { pullRequests: wait.pullRequests.map(({ number }) => ({ number })) };
 }
 
 /** Where an accepted run's work went, from harness-manager's output, or nothing when it names none readable. */
@@ -1130,6 +1148,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const runFlows = new Map<string, string>();
   /** Each conversation's tasks' open holds, from its last read: what `answerTask` answers. */
   const openHolds = new Map<string, Map<string, InboxHold[]>>();
+  /** Per conversation, each task waiting on its pull request, by the run session its line goes to, as the last read saw it. */
+  const pullRequestWaits = new Map<string, Map<string, string>>();
   const feeds = sessionFeeds(client);
   /** Each worker's conversation, and the flow it runs on, once opened. */
   const conversations = new Map<string, { sessionId: string; flow: string }>();
@@ -1440,6 +1460,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         const flowOf = (id: string) => (id === sessionId ? flowOfSession.get(sessionId) : runFlows.get(id));
         const holds = holdsOfRows(sessionId, current, flowOf);
         openHolds.set(sessionId, holds);
+        pullRequestWaits.set(
+          sessionId,
+          new Map(current.flatMap((row) => (typeof row.run?.sessionId === "string" && pullRequestWait(row as PullRequestWaitRow) !== null ? [[row.id as string, row.run.sessionId as string]] : []))),
+        );
         show(current.map((row) => toBoardTask(row, (worker) => harnesses.get(worker), holds.get(row.id) ?? [])));
         learnFlows(current);
         followRuns(current);
@@ -1496,6 +1520,25 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     watchRun(runSessionId, onChange) {
       return watchFeed(runSessionId, runSteps, stableList(onChange));
     },
+    async readPullRequests(runSessionId) {
+      try {
+        const manifest = await client.resources.getResourceManifest(runSessionId);
+        const ref = manifest.resources.find(
+          (r) => r.kind === "collection" && r.pattern === `${OBSERVED_PULL_REQUESTS}/**` && r.client.state?.read === true,
+        )?.ref;
+        if (ref === undefined) return [];
+        const page = await client.resources.listCollectionItems(runSessionId, ref, { limit: 200, topicPrefix: `${OBSERVED_PULL_REQUESTS}/` });
+        return page.items.flatMap((item) => {
+          const data = (item.clientData ?? {}) as { number?: unknown; url?: unknown; title?: unknown };
+          return typeof data.number === "number" && typeof data.url === "string"
+            ? [{ number: data.number, url: data.url, title: typeof data.title === "string" ? data.title : null }]
+            : [];
+        });
+      } catch (error) {
+        console.warn(`teammates: the pull requests of run session ${runSessionId} couldn't be read`, error);
+        return [];
+      }
+    },
     watchReview(runSessionId, onChange) {
       let last: string | undefined;
       return watchFeed(runSessionId, reviewOf, (review) => {
@@ -1542,7 +1585,18 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       };
       return {
         cancel: async (taskId) => (await board()).cancel(taskId),
-        steer: async (taskId, message) => (await board()).steer(taskId, message),
+        steer: async (taskId, message) => {
+          // A task waiting on its pull request takes the line through its run's door, which wakes it to read the pull request.
+          const runSession = pullRequestWaits.get(sessionId)?.get(taskId);
+          if (runSession === undefined) return (await board()).steer(taskId, message);
+          const flow = (await client.sessions.get(runSession)).flowKind;
+          const sent = await client.flow(flow).send("respond", { message }, { sessionId: runSession });
+          const { status } = await sent.wait();
+          if (status !== "completed") {
+            const found = (await client.sessions.requests(runSession, { includeResultOutput: true, limit: 20 })).find((r) => r.id === sent.id);
+            throw new Error(found?.result?.error?.message ?? `The line ended ${status}.`);
+          }
+        },
         release: async (taskId) => (await board()).release(taskId),
         retry: async (taskId) => (await board()).retry(taskId),
         rerun: async (task, worker) => {

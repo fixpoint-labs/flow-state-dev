@@ -21,26 +21,41 @@
  * `WorkspaceHost.land`). Your words go to the same coding session for one
  * more run, which you review again.
  *
+ * **A task whose work is a pull request is done when it merges**
+ * (harness-manager's `awaitPullRequests`): a run that opened one, or an
+ * accept that opened one (**Open a PR**), leaves its task open, waiting on
+ * it. A line sent to the task while it waits (the popup's Steer box, which
+ * goes to the run's door) wakes it: the task reads its pull request first,
+ * and completes once it merged, is cancelled once it closed unmerged, or runs
+ * the line on the same coding session while it is still open. A delivered
+ * message wakes it the same way.
+ *
  * Where a run works comes from the host's workspace, whose source is the
  * lab's one working folder: every run gets a worktree of it. With `checks`,
  * a run is done only when those commands pass in its worktree too; a red one
  * sends the run back, its brief naming the command and the end of its output.
  *
  * It hears worker messages only in its tasks' sessions, so nobody messages it
- * by name. The screen opens no conversation with it, so its door is not
- * reachable from the page; it stays because a worker flow answers `respond`,
- * and it says where to go instead: you steer a coding task through the
- * teammate that started it.
+ * by name. The screen opens no conversation with it. Its door answers
+ * `respond` with where to go instead (you steer a coding task through the
+ * teammate that started it), except for a task waiting on its pull request,
+ * whose line it takes as a steer that wakes the wait (harness-manager's
+ * `harnessSessionDoor`).
  */
 import { z } from "zod";
 import { defineFlow, handler, router } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
-import { commandCheck, goalJudge, harnessManager, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
+import { commandCheck, goalJudge, harnessManager, harnessSessionDoor, taskIssueSegment, type HarnessFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
+import { rowsInSession } from "@flow-state-dev/orchestration/internal";
 import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
-import type { TaskWorker } from "@flow-state-dev/orchestration/tasks";
+import { externalHoldOf, isTerminalStatus, type Task, type TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
+  filingConversationBoard,
+  startOwedSteerTurn,
+  STEER_TURN_ENTRY,
+  steerTurnEntry,
   MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   WORKER_TASK_ENTRY,
@@ -147,6 +162,8 @@ export function coderFlow(options: CoderFlowOptions) {
           // A run that committed waits for your review; the judge's verdict is shown on it as information.
           reviewChanges: true,
           judge: goalJudge({ name: `${CODER_FLOW}-${name}-judge` }),
+          // A run whose work is a pull request (its own, or the one Open a PR opened) waits for it to merge or close.
+          awaitPullRequests: true,
         } as never) as TaskWorker;
       }
 
@@ -174,6 +191,32 @@ export function coderFlow(options: CoderFlowOptions) {
         },
       });
 
+      // The board a run's session reads its task on: the conversation's that filed it.
+      const board = async (ctx: Parameters<typeof filingConversationBoard>[0]) => {
+        const filed = await filingConversationBoard(ctx);
+        return filed === undefined ? undefined : { tasks: filed.tasks, runOf: (row: Task) => ({ issue: taskIssueSegment(row.id), phase: phase.phase }) };
+      };
+      // A line to a task waiting on its pull request: a steer that wakes the wait, and the turn it owes.
+      const wake = harnessSessionDoor({
+        name: `${CODER_FLOW}-${options.defaultHarness}`,
+        harness: options.harnesses[options.defaultHarness]!,
+        board,
+        onSteered: (ctx, row) => startOwedSteerTurn(ctx, row),
+      });
+      /** Whether the session's open task waits on its pull request (an `external` hold), read from the board, never the line (BP-031). */
+      const waitsOnPullRequest = async (ctx: Parameters<typeof filingConversationBoard>[0]) => {
+        const found = await board(ctx);
+        if (found === undefined) return false;
+        return rowsInSession(found.tasks, ctx.session.identity.id).some((row) => !isTerminalStatus(row.status) && externalHoldOf(row) !== undefined);
+      };
+      const respond = router({
+        name: `${CODER_FLOW}-door-or-wake`,
+        inputSchema: z.object({ message: z.string() }),
+        routes: [door, wake.block] as never,
+        resources: installation.resources,
+        execute: async (_input: unknown, ctx: never) => ((await waitsOnPullRequest(ctx)) ? wake.block : door),
+      } as never) as BlockDefinition<any, any>;
+
       return defineFlow({
         kind: CODER_FLOW,
         cardinality: "collection",
@@ -182,11 +225,13 @@ export function coderFlow(options: CoderFlowOptions) {
         session: installation.session(),
         resources: { ...installation.resources, ...workerMessagesResources },
         actions: {
-          respond: { block: door, userMessage: (input: { message: string }) => input.message },
+          respond: { block: respond, userMessage: (input: { message: string }) => input.message },
         },
         internal: {
           actions: {
             [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: CODER_FLOW, hears: "task-sessions" }),
+            // The turn a line or a delivered message owes a task it woke from its pull-request wait.
+            [STEER_TURN_ENTRY]: steerTurnEntry({ name: `${CODER_FLOW}-steer-turn`, block: byHarness }),
           },
         },
         task: {
