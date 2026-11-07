@@ -14,11 +14,9 @@
  * session views keep their once-a-second read across the deployment's
  * instances; its writes still send their notices.
  *
- * It also declares the `scheduler` capability and exposes a `scheduleIndex`
- * backed by the same pool. `scheduler` is a forward-compatible slot (it backs
- * no `StoreRegistry` sub-store), so the index reaches scheduled flows through
- * the app's own stable proxy — install it with the app's `setScheduleIndexImpl`
- * equivalent. The index no-ops until the pool is resolved on first request.
+ * It also exposes a `scheduleIndex` backed by the same pool. No profile slot
+ * carries it, so the index reaches scheduled flows through the app's own
+ * stable proxy — install it with the app's `setScheduleIndexImpl` equivalent. The index no-ops until the pool is resolved on first request.
  */
 import type { StoreAdapter } from "@flow-state-dev/engine";
 import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
@@ -138,7 +136,7 @@ export function vercelPostgresStores(
 
   return {
     // `bus`: the Postgres bus, not the one-process in-memory fallback (see header).
-    capabilities: ["primary", "bus", "scheduler"],
+    capabilities: ["primary", "bus"],
     resolve() {
       building ??= build();
       return building;

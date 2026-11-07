@@ -46,6 +46,7 @@ import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
 import { hasZodObjectCatchall, introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
 import { walkBlockGraph } from "../helpers/block-graph";
+import { warnOnceDev } from "../helpers/deprecation";
 import {
   mergeScopeStateSchemas,
   refuseUnstoredFactoryDefaults,
@@ -505,6 +506,29 @@ function withFlowToolsEntries<TEntry extends InternalEntry | TaskEntry>(
     result[name] = { ...entry, block: withFlowTools(entry.block, flowTools) };
   }
   return result;
+}
+
+/**
+ * Warn, once per flow kind and action and in dev only, about each caller
+ * action whose block is a generator with no `itemVisibility`: it emits no
+ * items, so a chat mounted on it renders nothing. A warning, not a throw: a
+ * headless generator action is legitimate, and `itemVisibility` gets no
+ * position-inferred default (`docs/architecture/generator-identity.md`). Only
+ * `actions`: internal, task, webhook and schedule entries have no chat.
+ */
+function warnSilentGeneratorActions(kind: string, actions: AnyActions): void {
+  for (const [name, action] of Object.entries(actions)) {
+    const block = action.block as BlockDefinition | undefined;
+    if (block?.kind !== "generator") continue;
+    if ((block.config as { itemVisibility?: unknown }).itemVisibility !== undefined) continue;
+    warnOnceDev(
+      `core/silent-generator-action/${kind}/${name}`,
+      `Flow "${kind}" action "${name}" runs generator "${block.name}" with no \`itemVisibility\`, ` +
+        `so it emits no items and a chat on this action renders nothing. Set ` +
+        `\`itemVisibility: { client: true, history: true }\` to show its reply in chat, or ` +
+        `\`itemVisibility: { client: false, history: false }\` to keep it headless on purpose.`
+    );
+  }
 }
 
 function mergeActions(
@@ -1353,6 +1377,7 @@ function normalizeFlowConfig(
   const tools = mergeToolsConfig(definition.tools, options?.tools);
   const kind = options?.kind ?? definition.kind;
   const actions = mergeActions(definition.actions, options?.actions, tools);
+  warnSilentGeneratorActions(kind, actions);
 
   const session = mergeConfig(definition.session, options?.session);
   const user = mergeConfig(definition.user, options?.user);

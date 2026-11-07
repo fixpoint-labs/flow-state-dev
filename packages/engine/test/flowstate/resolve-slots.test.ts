@@ -47,8 +47,8 @@ describe("resolveProfileStores", () => {
         profileName: "prod",
         profile: {
           primary: inMemoryStores(),
-          // Declares only "blobs" but is wired into the scheduler slot.
-          scheduler: fakeAdapter(["blobs"])
+          // Declares only "blobs" but is wired into the bus slot.
+          bus: fakeAdapter(["blobs"])
         }
       })
     ).rejects.toBeInstanceOf(FlowStateConfigError);

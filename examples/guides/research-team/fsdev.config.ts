@@ -8,7 +8,7 @@
  *
  * Both actions use deterministic handler workers, so they run with no API key.
  */
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState } from "@flow-state-dev/engine";
 import researchTeamFlow from "./src/flow";
 
 export default createFlowState({
@@ -16,8 +16,6 @@ export default createFlowState({
   models: {
     default: "openai/gpt-6-luna",
   },
-  // In-memory stores — the example keeps no state across restarts.
-  stores: { default: { primary: inMemoryStores() } },
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },
