@@ -599,10 +599,59 @@ describe("the contract every harness owes a host", () => {
    * read by the same per-entry index the export check reads.
    */
   const SURFACES = [
-    { mode: "claude-code", pkg: "@flow-state-dev/claude-code", spelling: /ClaudeCode|claudeCode|CLAUDE_CODE_/ },
-    { mode: "codex", pkg: "@flow-state-dev/codex", spelling: /Codex|codex|CODEX_/ },
-    { mode: "cursor", pkg: "@flow-state-dev/cursor", spelling: /Cursor|cursor|CURSOR_/ },
+    { mode: "claude-code", pkg: "@flow-state-dev/claude-code", dir: "claude-code", spelling: /ClaudeCode|claudeCode|CLAUDE_CODE_/ },
+    { mode: "codex", pkg: "@flow-state-dev/codex", dir: "codex", spelling: /Codex|codex|CODEX_/ },
+    { mode: "cursor", pkg: "@flow-state-dev/cursor", dir: "cursor", spelling: /Cursor|cursor|CURSOR_/ },
   ] as const;
+
+  /**
+   * Every `export → type` pair where a public export's signature names a type
+   * declared in the package's own source that its entry doesn't export. Types
+   * from other packages (core's, the vendor's) are another entry's to publish.
+   * Function bodies are not read: only what a caller sees.
+   */
+  async function unreachableTypes(dir: string): Promise<string[]> {
+    const ts = (await import("typescript")).default;
+    const pkgDir = join(import.meta.dirname, "../../../packages", dir);
+    const manifest = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8")) as { exports: Record<string, { default: string }> };
+    const entry = join(pkgDir, manifest.exports["."]!.default);
+    const src = join(pkgDir, "src");
+    const program = ts.createProgram([entry], {
+      noEmit: true,
+      skipLibCheck: true,
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+    });
+    const checker = program.getTypeChecker();
+    const resolve = (symbol: import("typescript").Symbol) =>
+      symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+    const exported = checker.getExportsOfModule(checker.getSymbolAtLocation(program.getSourceFile(entry)!)!);
+    const reachable = new Set(exported.map(resolve));
+    const misses = new Set<string>();
+    for (const symbol of exported) {
+      const visit = (node: import("typescript").Node): void => {
+        if (ts.isBlock(node)) return;
+        if (ts.isTypeReferenceNode(node) || ts.isExpressionWithTypeArguments(node)) {
+          const at = ts.isTypeReferenceNode(node) ? node.typeName : node.expression;
+          const found = checker.getSymbolAtLocation(at);
+          const target = found === undefined ? undefined : resolve(found);
+          const file = target?.declarations?.[0]?.getSourceFile().fileName ?? "";
+          if (target !== undefined && !(target.flags & ts.SymbolFlags.TypeParameter) && file.startsWith(src) && !reachable.has(target)) {
+            misses.add(`${symbol.name} → ${target.name}`);
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      for (const declaration of resolve(symbol).declarations ?? []) {
+        // A variable's initializer is its body; only its declared type is the signature.
+        if (ts.isVariableDeclaration(declaration)) {
+          if (declaration.type !== undefined) visit(declaration.type);
+        } else visit(declaration);
+      }
+    }
+    return [...misses].sort();
+  }
 
   /** The translation layer and the item emitter: how a harness works, not what a host calls. */
   const INTERNALS = /translate|Translate|emit[A-Z]|Emit|finalizeOpenItems|closeStreamingItems|drainUnsettledObservations/;
@@ -631,6 +680,14 @@ describe("the contract every harness owes a host", () => {
       const names = [...(await surfaceOf(harness.pkg)).values()].flat();
       expect(names.filter((name) => !harness.spelling.test(name))).toEqual([]);
     });
+
+    // A name on the entry is usable only if every type its signature names is
+    // one a host can reach too: a public option typed by an internal type is a
+    // name no host can call. Checked by the compiler, so a new name of any
+    // spelling is held to it, not only the ones a pattern lists.
+    it("names in its public signatures only types a host can reach", async () => {
+      expect(await unreachableTypes(harness.dir)).toEqual([]);
+    }, 60_000);
   });
 
   it("Kitchen Sink checks no harness's SDK by hand: its modes read the package's readiness", () => {

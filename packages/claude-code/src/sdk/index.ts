@@ -2,8 +2,8 @@
  * Public surface of `@flow-state-dev/claude-code`: the in-process Agent SDK
  * handler block, its opt-in capability, the resolver seam, the start-time
  * account probe and model list, the environment pass-list a run needs, the
- * readiness check, the session-continuity provider, the work recorder and
- * the two collections it writes, the workspace capability, the types of the
+ * readiness check, the session-continuity provider, the two collections
+ * the work recorder writes, the workspace capability, the types of the
  * tools `mcpTools` relays, handle and wire types, and typed errors.
  *
  * Every name here carries the package's name (`ClaudeCode`, `claudeCode`,
@@ -61,7 +61,10 @@ export {
   type ClaudeCodeSystemPrompt,
   type ClaudeCodeToolApprovalRequest,
   type ClaudeCodeToolApprovalDecision,
+  type ClaudeCodeCanUseTool,
+  type ClaudeCodeSdkToolDecision,
 } from "./types";
+export type { ClaudeCodeSpawnOptions } from "./process-exit";
 export {
   CLAUDE_CODE_FILE_OPS,
   CLAUDE_CODE_GAPS,
@@ -71,11 +74,6 @@ export {
   claudeCodeWorkRecorderResources,
   type ClaudeCodeFileOpKind,
 } from "./work-collections";
-export {
-  createClaudeCodeWorkRecorder,
-  type ClaudeCodeWorkRecorder,
-  type ClaudeCodeWorkRecorderOptions,
-} from "./work-recorder";
 export { ClaudeCodeSdkNotInstalledError, ClaudeCodeAgentRunError, ClaudeCodeAgentAbortedError } from "./errors";
 export { CLAUDE_CODE_HARNESS, readClaudeCodeUsage, type ReadClaudeCodeUsageOptions } from "./usage";
 

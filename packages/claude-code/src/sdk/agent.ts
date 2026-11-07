@@ -85,7 +85,7 @@ import {
   type ClaudeCodeQueryOptions,
   type ResolveClaudeCodeAgent,
   type ClaudeCodeAgentHandle,
-  type SdkCanUseTool,
+  type ClaudeCodeCanUseTool,
   type ClaudeCodeResultSubtype,
   type ClaudeCodeToolApprovalDecision,
   type ClaudeCodeToolApprovalRequest,
@@ -124,23 +124,6 @@ export const claudeCodeSessionStateSchema = z.object({
 });
 
 /** Options for {@link claudeCodeAgent}. */
-/**
- * The block context as an option callback receives it.
- *
- * Loose in exactly three slots — session state (present or absent depending on
- * `detached`), and the targets and capability namespaces `uses` derives — and
- * checked in every other one. Pinning the three would mean a callback stops
- * type-checking because of an option set beside it, which is not a signal a
- * caller can act on. Everything else stays checked, so a scope-state field
- * nobody declared reads `unknown` rather than `any`.
- *
- * **This is core's {@link HarnessCallbackContext}, not a copy of it**, and the
- * identity is load-bearing rather than tidy: `resume`, `onSession` and `cwd`
- * are the harness contract's own feeds, and this block CALLS them with this
- * context. Two aliases that merely happened to agree would be one edit away
- * from a harness that cannot be handed the feeds a manager built.
- */
-type AgentCallbackContext = HarnessCallbackContext;
 
 /**
  * The Agent SDK's sandbox settings, as this package sees them.
@@ -157,7 +140,7 @@ export interface ClaudeCodeAgentOptions {
   /** Session-continuity provider. Default: resume-by-id provider. */
   sessionProvider?: BindingProvider<ClaudeCodeSession>;
   /** Derive the prompt from input/ctx. Default: `input.prompt`. */
-  prompt?: (input: { prompt: string }, ctx: AgentCallbackContext) => string;
+  prompt?: (input: { prompt: string }, ctx: HarnessCallbackContext) => string;
   /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
@@ -213,7 +196,7 @@ export interface ClaudeCodeAgentOptions {
    */
   onToolApproval?: (
     req: ClaudeCodeToolApprovalRequest,
-    ctx: AgentCallbackContext,
+    ctx: HarnessCallbackContext,
   ) => ClaudeCodeToolApprovalDecision | Promise<ClaudeCodeToolApprovalDecision>;
   /**
    * Run the agent as **dispatched background work** — the block a task board
@@ -361,7 +344,7 @@ export interface ClaudeCodeAgentOptions {
    */
   sandbox?:
     | ClaudeCodeSandboxSettings
-    | ((ctx: AgentCallbackContext) => ClaudeCodeSandboxSettings | Promise<ClaudeCodeSandboxSettings>);
+    | ((ctx: HarnessCallbackContext) => ClaudeCodeSandboxSettings | Promise<ClaudeCodeSandboxSettings>);
   /**
    * Tools this process serves to the run, grouped by server name: a value, or
    * a resolver called once per run with the run's context only (like `cwd`).
@@ -387,7 +370,7 @@ export interface ClaudeCodeAgentOptions {
    */
   mcpTools?:
     | ClaudeCodeMcpTools
-    | ((ctx: AgentCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>);
+    | ((ctx: HarnessCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>);
   /**
    * Capabilities installed on the block this factory returns — the same `uses`
    * slot any other block takes, forwarded to `handler()`.
@@ -409,7 +392,7 @@ export interface ClaudeCodeAgentOptions {
    *
    * It does not swallow the error; the run still fails.
    */
-  onErrored?: (error: Error, ctx: AgentCallbackContext) => Promise<void> | void;
+  onErrored?: (error: Error, ctx: HarnessCallbackContext) => Promise<void> | void;
   /**
    * The directory this run works in. Default: unset, which is the directory the
    * server process itself is running in — byte for byte what every existing
@@ -946,7 +929,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     // interest in it. Narrowing here keeps the option's cost at the option.
     execute: async (
       input,
-      ctx: AgentCallbackContext,
+      ctx: HarnessCallbackContext,
     ): Promise<ClaudeCodeAgentHandle> => {
       const promptText = (
         pickPrompt ? pickPrompt(input, ctx) : input.prompt
@@ -1026,7 +1009,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
       const sandboxSettings =
         typeof sandbox === "function"
-          ? await (sandbox as (c: AgentCallbackContext) => unknown)(ctx)
+          ? await (sandbox as (c: HarnessCallbackContext) => unknown)(ctx)
           : sandbox;
 
       const resolved = await resolveClaudeAgent(ctx);
@@ -1685,8 +1668,8 @@ function emailFrom(info: AccountInfo | undefined): string | null | undefined {
 }
 
 async function resolveMcpTools(
-  resolve: (ctx: AgentCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>,
-  ctx: AgentCallbackContext,
+  resolve: (ctx: HarnessCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>,
+  ctx: HarnessCallbackContext,
 ): Promise<ClaudeCodeMcpTools> {
   const pending = Promise.resolve().then(() => resolve(ctx));
   const abortRace = rejectOnAbort(ctx.signal);
@@ -1761,7 +1744,7 @@ function buildCanUseTool(
   onToolApproval: NonNullable<ClaudeCodeAgentOptions["onToolApproval"]>,
   ctx: BlockContext,
   onHeld: () => void,
-): SdkCanUseTool {
+): ClaudeCodeCanUseTool {
   let decisionSeq = 0;
   return async (toolName, toolInput, extra) => {
     const decision = await onToolApproval(

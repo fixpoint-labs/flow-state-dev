@@ -8,7 +8,7 @@
  * option/resolution interfaces shared across the path.
  */
 import { z } from "zod";
-import type { ClaudeAgentSpawnOptions } from "./process-exit";
+import type { ClaudeCodeSpawnOptions } from "./process-exit";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
 import type { HarnessRunHandle, HarnessRunOutcome } from "@flow-state-dev/core/harness";
@@ -405,7 +405,7 @@ export interface ClaudeCodeQueryOptions {
   allowedTools?: string[];
   disallowedTools?: string[];
   permissionMode?: string;
-  canUseTool?: SdkCanUseTool;
+  canUseTool?: ClaudeCodeCanUseTool;
   agents?: unknown;
   maxTurns?: number;
   resume?: string;
@@ -457,7 +457,7 @@ export interface ClaudeCodeQueryOptions {
    * process and can wait for it to exit on abort; a scripted `query` may
    * ignore it.
    */
-  spawnClaudeCodeProcess?: (options: ClaudeAgentSpawnOptions) => unknown;
+  spawnClaudeCodeProcess?: (options: ClaudeCodeSpawnOptions) => unknown;
 }
 
 /**
@@ -492,14 +492,14 @@ export type ClaudeCodeSystemPrompt =
 export type ClaudeCodeSettingSource = "user" | "project" | "local";
 
 /** The SDK's `canUseTool` callback shape (HITL seam target). */
-export type SdkCanUseTool = (
+export type ClaudeCodeCanUseTool = (
   toolName: string,
   input: unknown,
   extra: { signal?: AbortSignal; suggestions?: unknown },
-) => Promise<SdkToolDecision>;
+) => Promise<ClaudeCodeSdkToolDecision>;
 
 /** A tool-approval decision in the SDK's `canUseTool` vocabulary. */
-export type SdkToolDecision =
+export type ClaudeCodeSdkToolDecision =
   | { behavior: "allow"; updatedInput: unknown }
   | { behavior: "deny"; message: string; interrupt?: boolean };
 

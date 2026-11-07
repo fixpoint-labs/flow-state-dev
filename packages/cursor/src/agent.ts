@@ -191,7 +191,7 @@ export interface CursorAgentOptions {
    * `agent.model`. Setting this beside `agent.model` or `send.model` is
    * refused when the block is built: one owner per value.
    */
-  model?: ModelChoice | HarnessResolver<ModelChoice | null | undefined>;
+  model?: string | CursorModelSelection | HarnessResolver<string | CursorModelSelection | null | undefined>;
   /**
    * The SDK's agent options, forwarded verbatim to `Agent.create` /
    * `Agent.resume` (model, api key, mode, tools, MCP servers, the rest of
