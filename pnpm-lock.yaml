@@ -361,6 +361,9 @@ importers:
       '@flow-state-dev/design-system':
         specifier: workspace:*
         version: link:../../labs/design-system
+      '@flow-state-dev/fsdev':
+        specifier: workspace:*
+        version: link:../../packages/cli
       '@playwright/test':
         specifier: ^1.49.0
         version: 1.59.1
@@ -454,6 +457,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@flow-state-dev/fsdev':
+        specifier: workspace:*
+        version: link:../../../packages/cli
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../../packages/testing
@@ -482,6 +488,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@flow-state-dev/fsdev':
+        specifier: workspace:*
+        version: link:../../../packages/cli
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../../packages/testing
@@ -507,6 +516,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@flow-state-dev/fsdev':
+        specifier: workspace:*
+        version: link:../../../packages/cli
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../../packages/testing
@@ -538,6 +550,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@flow-state-dev/fsdev':
+        specifier: workspace:*
+        version: link:../../../packages/cli
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../../packages/testing
@@ -569,6 +584,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@flow-state-dev/fsdev':
+        specifier: workspace:*
+        version: link:../../../packages/cli
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../../packages/testing
@@ -630,6 +648,9 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
+      '@flow-state-dev/fsdev':
+        specifier: workspace:*
+        version: link:../../packages/cli
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../packages/testing
@@ -676,6 +697,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.5.4
         version: 0.5.4
+      '@flow-state-dev/fsdev':
+        specifier: workspace:*
+        version: link:../../packages/cli
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../../packages/testing

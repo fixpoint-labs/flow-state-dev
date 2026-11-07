@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
+    "fsdev": "fsdev",
     "test": "vitest run --root .",
     "test:watch": "vitest --root .",
     "typecheck": "tsc --noEmit"
@@ -30,6 +30,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@flow-state-dev/fsdev": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/react": "^19.2.14",

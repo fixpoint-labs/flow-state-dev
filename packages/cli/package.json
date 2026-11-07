@@ -46,10 +46,13 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       }
+    },
+    "bin": {
+      "fsdev": "./dist/bin.js"
     }
   },
   "bin": {
-    "fsdev": "./dist/bin.js"
+    "fsdev": "./bin/fsdev.ts"
   },
   "engines": {
     "node": ">=22"

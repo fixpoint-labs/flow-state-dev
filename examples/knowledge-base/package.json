@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root . --passWithNoTests",
     "test:watch": "vitest --root . --passWithNoTests",
-    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts",
+    "fsdev": "fsdev",
     "okf:smoke": "tsx scripts/visualize-smoke.ts",
     "serve": "pnpm fsdev serve"
   },
@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",
+    "@flow-state-dev/fsdev": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "tsx": "^4.21.0",
