@@ -27,7 +27,8 @@ import { join } from "node:path";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createModelResolver } from "@flow-state-dev/core";
 import type { ModelResolver } from "@flow-state-dev/core/types";
-import type { FlowState, FlowStateRuntime, createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import type { FlowState, createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import type { FlowStateRuntime } from "@flow-state-dev/engine/host";
 
 /** Haiku's id on Anthropic, as Claude Code and `@ai-sdk/anthropic` take it. */
 export const HAIKU_ID = "claude-haiku-5-5";

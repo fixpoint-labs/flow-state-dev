@@ -255,8 +255,8 @@ mechanisms:
   - id: durability
     job: Keep a run recoverable across a process loss (checkpoints, and the sweeper that resumes what was left).
     package: "@flow-state-dev/engine"
-    anchor: createDurabilitySweeper
-    file: packages/engine/src/durability/durability-sweeper.ts
+    anchor: createCheckpointDurabilityProvider
+    file: packages/engine/src/durability/checkpoint-durability-provider.ts
     builtOn: [execution, store]
     overlaps: []
     status: unconfirmed
@@ -396,8 +396,8 @@ mechanisms:
   - id: voice
     job: Speak and hear through a flow. Engine owns the sentence buffer and TTS pipeline; OpenAI is the provider package.
     package: "@flow-state-dev/engine"
-    anchor: createTTSPipeline
-    file: packages/engine/src/voice/tts-pipeline.ts
+    anchor: voiceContext
+    file: packages/engine/src/voice/context.ts
     adapters: ["@flow-state-dev/voice-openai"]
     builtOn: [streaming]
     overlaps: []
