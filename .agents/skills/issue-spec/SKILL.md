@@ -422,7 +422,10 @@ How this workflow's research feeds the set:
   from the tables, and it is the sign-off's debt line; *up* is allowed, never quiet.
 - **`DECISIONS.md` is the sign-off surface in full.** At most three cards, each a business
   decision (the filters in `asking-for-decisions.md`), with *Instead of · Because · Locks
-  in* (a public name a decision fixes is named in its *Locks in*); the tree; *Decided, not
+  in* (a public name a decision fixes is named in its *Locks in*, checked against
+  [`docs/contributing/glossary.mjs`](../../../docs/contributing/glossary.mjs): never a word an entry
+  retires, and a spec that coins or retires a public term says its implementation PR edits that
+  entry); the tree; *Decided, not
   asked* (the obvious calls, and the implementer-level ones that hold the direction);
   *Considered and dropped* (the simpler approach considered, and why it lost or won);
   *Open / Settled*, with every POC result; *How it got here* with the draft line. Size —

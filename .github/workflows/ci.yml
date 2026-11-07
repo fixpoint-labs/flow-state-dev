@@ -422,7 +422,7 @@ jobs:
         run: node scripts/check-isolation-coordinate.mjs
 
       # Unconditional for the same reason: a retired Workforce word is as
-      # wrong on main as on a PR. The script header owns the terms, the
+      # wrong on main as on a PR. docs/contributing/glossary.mjs owns the terms, the
       # areas and the exceptions.
       - name: No retired Workforce term
         run: node scripts/check-retired-terms.mjs
@@ -433,7 +433,7 @@ jobs:
         run: node scripts/check-retired-terms.mjs --control
 
       # One word per thing (FIX-1876): dispatch, wait, ask and hand-off each
-      # name one mechanism. The goal's rules own the words, the keep list and
+      # name one mechanism. docs/contributing/glossary.mjs owns the words, the exemptions and
       # the exclusions; goals/vocabulary/one-word-per-thing/goal.md says why.
       - name: One word per thing
         run: node goals/vocabulary/one-word-per-thing/sweep.mjs
