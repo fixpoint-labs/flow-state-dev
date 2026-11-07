@@ -13,7 +13,12 @@ import { spawn } from "node:child_process";
 import { REPO_ROOT, runGoal, sleep } from "../../lib/index.mts";
 import type { SessionStateSnapshotResponse } from "@flow-state-dev/client";
 import { harnessTurnRecordSchema } from "@flow-state-dev/harness-manager";
-import { FOLD_MARGIN, foldFillersPassed, planted, servedUntilStopped, skillFiles, turnChecksOf } from "../closure.mts";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { createClient } from "@flow-state-dev/client";
+import { createFlowState, createInProcessFetch, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
+import { z } from "zod";
+import { act, FOLD_MARGIN, foldFillersPassed, planted, servedUntilStopped, skillFiles, turnChecksOf } from "../closure.mts";
+import { APP_MODELS, serveOnHaiku, claudeCodeSettings, closureModel, HAIKU, HAIKU_CONFIG, HAIKU_ID, haikuResolver, servedModel } from "../model.mts";
 
 /**
  * A harness session's state snapshot as `GET /sessions/:id/state` serves it
@@ -55,6 +60,7 @@ import {
   passesEverywhere,
   passesIn,
   sheetCommitProblems,
+  sheetModelProblems,
   coverageProblems,
   sweepGuidance,
   type Fixtures,
@@ -203,6 +209,92 @@ const rules: [string, boolean, boolean][] = [
   ["the sweep finds a length line split across lines", sweepGuidance({ "a/WORKER.md": "Answer in a\nsentence or two, and say so." }).length === 1, true],
   ["the sweep finds a date line", sweepGuidance({ "a/WORKER.md": "Always state today's date first." }).length === 1, true],
   ["the sweep passes a worker with no such line", sweepGuidance({ "a/WORKER.md": "You are the main session. Read the project before you answer." }).length === 0, true],
+  ["a sheet all on one model is accepted", sheetModelProblems([{ app: "teammates", ask: "date", model: HAIKU }, { app: "kitchen-sink", ask: "sizing", model: HAIKU }]).length === 0, true],
+  ["a sheet mixing two models is refused", sheetModelProblems([{ app: "teammates", ask: "date", model: HAIKU }, { app: "kitchen-sink", ask: "date", model: APP_MODELS }]).length > 0, true],
+  ["a result with no model is refused", sheetModelProblems([{ app: "teammates", ask: "date" }]).length > 0, true],
+];
+
+/**
+ * The model switch: off, the app is served from its own config (its models,
+ * through the AI Gateway); on, every generator and evaluator in it resolves
+ * to Haiku on Anthropic directly, and the key reaches the served process and
+ * Claude Code, never the gateway.
+ */
+const KEY = "not-a-real-key";
+const providerCalls: { apiKey?: string; ids: string[] } = { ids: [] };
+/** A stand-in for `createAnthropic`'s provider: records the ids it is asked for, makes no call. */
+const spyAnthropic = (apiKey: string) => {
+  providerCalls.apiKey = apiKey;
+  return (id: string) => (providerCalls.ids.push(id), { specificationVersion: "v3", provider: "anthropic.messages", modelId: id });
+};
+const haiku = haikuResolver(KEY, spyAnthropic(KEY));
+const resolvedIds = ["openai/gpt-6-luna", "intent/chat", "vercel:anthropic/claude-sonnet-5.5"].map((id) => haiku(id, "probe").modelId);
+const appConfigArgs = ["--config", "/app/fsdev.config.ts"];
+const servedOff = servedModel(APP_MODELS, appConfigArgs, { MY_ANTHROPIC_API_KEY: KEY });
+const servedOn = servedModel(HAIKU, appConfigArgs, { MY_ANTHROPIC_API_KEY: KEY });
+const throwsNaming = (fn: () => unknown, name: string) => {
+  try {
+    fn();
+    return false;
+  } catch (error) {
+    return String(error).includes(name) && !String(error).includes(KEY);
+  }
+};
+/** A flow whose one action answers with the model a generator naming `openai/gpt-6-luna` resolves to. */
+const probeFlow = defineFlow({
+  kind: "model-probe",
+  actions: {
+    which: {
+      inputSchema: z.object({}),
+      block: handler({ name: "which-model", inputSchema: z.object({}), execute: (_input: object, ctx) => ({ model: ctx.resolveModel.resolveId("openai/gpt-6-luna") }) }),
+    },
+  },
+})();
+
+/**
+ * An app config served through the wrapper (`serveOnHaiku`, as
+ * `haiku.config.mts` runs it), then asked over its router which model it
+ * resolves. `routerAtImport`: the config builds its router while it is
+ * imported, as Shift Manager's `openLab` does; otherwise on first request.
+ */
+async function routerResolvesHaiku(routerAtImport: boolean): Promise<string> {
+  let app: FlowState | undefined;
+  const loadApp = async () => {
+    app = createFlowState({ flows: { probe: probeFlow }, models: { default: "openai/gpt-6-luna" }, stores: { default: { primary: inMemoryStores() } } });
+    if (routerAtImport) await app.getRouter();
+    return app;
+  };
+  try {
+    const served = await serveOnHaiku({ createFlowState, inMemoryStores }, loadApp, haiku);
+    const fsd = createClient({ userId: "u_probe", baseUrl: "http://in-process.invalid", fetcher: createInProcessFetch(served) } as Parameters<typeof createClient>[0]);
+    const sessionId = (await fsd.flow("model-probe").createSession()).id;
+    return ((await act(fsd, "model-probe", sessionId, "which", {})) as { model: string }).model;
+  } finally {
+    await app?.dispose();
+  }
+}
+const resolvedLateRouter = await routerResolvesHaiku(false);
+const resolvedImportRouter = await routerResolvesHaiku(true);
+const modelRules: [string, boolean, boolean][] = [
+  ["switch off: the apps answer on their own models", closureModel({ MY_ANTHROPIC_API_KEY: KEY }) === APP_MODELS, true],
+  ["switch on: the apps answer on Haiku", closureModel({ GOAL_HAIKU: "1", MY_ANTHROPIC_API_KEY: KEY }) === HAIKU, true],
+  ["switch on with no key: refused, naming the variable and never a value", throwsNaming(() => closureModel({ GOAL_HAIKU: "1" }), "MY_ANTHROPIC_API_KEY"), true],
+  ["on: every model id an app names resolves to Haiku", resolvedIds.every((id) => id === HAIKU), true],
+  // The resolver caches a resolved model per string, so the provider is asked once, and only ever for Haiku.
+  ["on: the calls reach the Anthropic provider, asked for Haiku alone", providerCalls.ids.length > 0 && providerCalls.ids.every((id) => id === HAIKU_ID), true],
+  ["on: the provider holds the key", providerCalls.apiKey === KEY, true],
+  // The real `@ai-sdk/anthropic` provider, built and asked for a model: no request is sent until a generate.
+  ["on: the default provider is @ai-sdk/anthropic, and serves Haiku", haikuResolver(KEY)("openai/gpt-6-luna").modelId === HAIKU, true],
+  ["on: the resolver names Anthropic as the provider", haiku.providerOf?.("openai/gpt-6-luna") === "anthropic" && haiku.resolveId("intent/chat") === HAIKU, true],
+  ["off: the app's own config is served, nothing added", JSON.stringify(servedOff) === JSON.stringify({ args: appConfigArgs, env: {} }), true],
+  ["on: the wrapper config is served over the app's", servedOn.args[1] === HAIKU_CONFIG && servedOn.env.CLOSURE_APP_CONFIG === "/app/fsdev.config.ts", true],
+  ["on: Claude Code gets the key, the gateway gets none", servedOn.env.ANTHROPIC_API_KEY === KEY && servedOn.env.AI_GATEWAY_API_KEY === "", true],
+  ["on with no --config: refused", throwsNaming(() => servedModel(HAIKU, ["--port", "1"], { MY_ANTHROPIC_API_KEY: KEY }), "--config"), true],
+  ["on: a Claude Code run in the repository is set to Haiku", JSON.parse(claudeCodeSettings(HAIKU)[".claude/settings.json"] ?? "{}").model === HAIKU_ID, true],
+  ["off: the repository sets no Claude Code model", Object.keys(claudeCodeSettings(APP_MODELS)).length === 0, true],
+  ["on: a router built on first request resolves Haiku", resolvedLateRouter === HAIKU, true],
+  // Shift Manager builds its router while its config is imported: a swap after the import misses it.
+  ["on: a router the app built while it was imported resolves Haiku", resolvedImportRouter === HAIKU, true],
 ];
 
 /**
@@ -310,5 +402,6 @@ await runGoal((failures, tell) => {
     if (!shouldPass && graded.length === 0) failures.push(`${name}: a hollow turn passed`);
   }
   for (const [name, got, want] of tell.over("verdict rules", rules)) if (got !== want) failures.push(`${name}: got ${got}`);
-  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused), ${rules.length} verdict rules, planting after a killed run, a signal mid-run, and a start that throws after serving` };
+  for (const [name, got, want] of tell.over("model switch rules", modelRules)) if (got !== want) failures.push(`${name}: got ${got}`);
+  return { failures, evidence: `${cases.length} grader cases (${cases.filter((c) => !c[2]).length} hollow, each refused), ${rules.length} verdict rules, ${modelRules.length} model switch rules, planting after a killed run, a signal mid-run, and a start that throws after serving` };
 });
