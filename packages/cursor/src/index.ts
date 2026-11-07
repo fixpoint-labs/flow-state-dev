@@ -45,7 +45,6 @@ export {
   type CursorWireUsage,
   type ResolveCursorClient,
   type ResolvedCursorClient,
-  type TranslatedEvent,
 } from "./types";
 export {
   CursorAgentAbortedError,

@@ -323,7 +323,7 @@ export type ResolveCursorClient = (
  * which the block writes to the plan record when `recordPlan` is on. The tool
  * step it came from is emitted as its own `tool_result`.
  */
-export type TranslatedEvent =
+export type CursorTranslatedEvent =
   | { kind: "message"; text: string }
   | { kind: "reasoning"; text: string }
   | { kind: "tool_call"; callId: string; name: string; arguments: string }

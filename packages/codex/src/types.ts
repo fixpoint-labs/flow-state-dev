@@ -275,7 +275,7 @@ export type ResolveCodexClient = (
  * `stream_error` is the stream's own `error` event: shown as the in-flight
  * line, and the run's failure only when no terminal turn event follows.
  */
-export type TranslatedEvent =
+export type CodexTranslatedEvent =
   | { kind: "thread_started"; threadId: string }
   | { kind: "message"; text: string }
   | { kind: "reasoning"; text: string }

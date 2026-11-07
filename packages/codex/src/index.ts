@@ -49,7 +49,6 @@ export {
   type CodexWireUsage,
   type ResolveCodexClient,
   type ResolvedCodexClient,
-  type TranslatedEvent,
 } from "./types";
 export {
   CodexAgentAbortedError,
