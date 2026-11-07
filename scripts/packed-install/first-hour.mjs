@@ -19,12 +19,18 @@
  * Each block is its own shell, so an `export` in one does not reach the next;
  * the leg's own placeholder key covers the page's `export … sk-...` lines.
  *
- * **`first-hour.example.<name>.<step>`** copies `examples/<name>` to an empty
- * folder and follows the copy-out recipe: rewrite each `workspace:` range to
- * its tarball, `npm install`, then each step's npm script ({@link
- * EXAMPLE_STEPS}). `examples/README.md` carries no recipe yet; this is the
- * interim one, the shape that README is to describe. Each step is its own
- * cell; a step after a failed install fails as not reached.
+ * **`first-hour.example.<name>.<step>`** copies an example (every folder
+ * under `examples/` with a `package.json`, {@link exampleCells}) to an empty
+ * folder and follows the copy-out recipe in `examples/README.md` verbatim
+ * ({@link copyOutRecipe}): its shell lines run in the copy, in order, except
+ * the copy and `cd` lines, which are the leg's own copy. Before the recipe's
+ * install line runs, every `@flow-state-dev/*` dependency the recipe left on
+ * a registry range maps to its tarball ({@link rewriteExampleManifest}), the
+ * leg's stand-in for a registry serving the versions under test; a
+ * `workspace:` range is left for npm to refuse. Then each step's npm script
+ * ({@link EXAMPLE_STEPS}), and for an example that runs with no key, its
+ * README's `fsdev run` blocks ({@link readmeRuns}). Each step is its own cell;
+ * a step after a failed install fails as not reached.
  *
  * Both run in a temporary folder outside the repository, whose ancestors hold
  * no `@flow-state-dev` install, with the repository's own `node_modules/.bin`
@@ -55,6 +61,18 @@ const STUB_SCRIPT = fileURLToPath(new URL("./fixtures/stub-model.mjs", import.me
 /** The quick start page, relative to the tree under test. */
 export const QUICKSTART_PAGE = "apps/docs/docs/getting-started/quick-start.md";
 
+/** The README holding the copy-out recipe, relative to the repository. */
+export const EXAMPLES_README = "examples/README.md";
+
+/** The heading of the recipe's section in {@link EXAMPLES_README}. */
+const RECIPE_HEADING = /^##\s+Copy an example out\s*$/;
+
+/** A recipe line that copies the example or moves into the copy: the leg does both itself. */
+const COPY_LINE = /^\s*(cp|cd)\s/;
+
+/** A shell line that runs a flow through the CLI. */
+const FSDEV_RUN = /\bfsdev\s+run\b/;
+
 /** A shell line the leg skips: the dev server, which never exits. */
 const DEV_SERVER = /^\s*(pnpm|npm|yarn)\s+(run\s+)?dev\s*$/;
 
@@ -71,6 +89,66 @@ const INSTALL_LINE_ANYWHERE = new RegExp(INSTALL_LINE.source, "m");
 const FSD_NAME = /(?<![\w/.-])(@flow-state-dev\/[a-z0-9][a-z0-9-]*)(@[^\s'"]+)?/g;
 
 const SHELL_LANGS = new Set(["bash", "sh", "shell", "zsh"]);
+
+/** The body of every shell block in `markdown`, in page order. */
+function shellBlocks(markdown) {
+  const blocks = [];
+  for (const m of markdown.matchAll(/^(`{3,}|~{3,})(\w*)[^\n]*\n([\s\S]*?)^\1\s*$/gm))
+    if (SHELL_LANGS.has(m[2])) blocks.push(m[3].replace(/\n$/, ""));
+  return blocks;
+}
+
+/**
+ * The copy-out recipe in `examples/README.md`: the shell lines of the section
+ * under "Copy an example out", in order, without the lines that copy the
+ * folder or `cd` into it. Null when the README has no such section.
+ */
+export function copyOutRecipe(readme) {
+  const lines = readme.split("\n");
+  const start = lines.findIndex((l) => RECIPE_HEADING.test(l));
+  if (start === -1) return null;
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((l) => /^##?\s/.test(l));
+  const kept = shellBlocks((end === -1 ? rest : rest.slice(0, end)).join("\n"))
+    .flatMap((b) => b.split("\n"))
+    .filter((l) => !COPY_LINE.test(l));
+  return kept.some((l) => l.trim() !== "" && !l.trim().startsWith("#")) ? kept.join("\n") : null;
+}
+
+/** An example README's runs: each shell block that runs a flow with `fsdev run`. */
+export function readmeRuns(readme) {
+  return shellBlocks(readme).filter((b) => FSDEV_RUN.test(b));
+}
+
+/**
+ * The example cells under `examplesDir`: every folder holding a
+ * `package.json` (searched below folders that hold none, so `guides/*`
+ * counts), named by its folder. Each has `typecheck`, `test` and `fsdev`;
+ * `build` when its manifest has a build script; `run` when its name is in
+ * `keyless`, the examples whose README runs need no model key.
+ *
+ * @returns {{ name: string, dir: string, step: string }[]}
+ */
+export function exampleCells(examplesDir, keyless) {
+  const cells = [];
+  const visit = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!entry.isDirectory() || entry.name === "node_modules") continue;
+      const at = join(dir, entry.name);
+      if (!existsSync(join(at, "package.json"))) {
+        visit(at);
+        continue;
+      }
+      const pkg = JSON.parse(readFileSync(join(at, "package.json"), "utf8"));
+      const steps = ["typecheck", "test", "fsdev"];
+      if (pkg.scripts?.build) steps.push("build");
+      if (keyless.has(entry.name)) steps.push("run");
+      for (const step of steps) cells.push({ name: entry.name, dir: at, step });
+    }
+  };
+  visit(examplesDir);
+  return cells;
+}
 
 /**
  * The quick start as steps, in page order: `{ kind: "file", path, content }`
@@ -129,19 +207,22 @@ export function mapInstallLines(script, tarballs) {
 }
 
 /**
- * Rewrite an example's `package.json` for copy-out: each `workspace:` range
- * becomes its tarball, and every tarball is an npm override, so a transitive
- * `@flow-state-dev/*` dependency gets the version under test too.
+ * Stand in for the registry after the recipe's rewrite: each
+ * `@flow-state-dev/*` dependency on a registry range becomes its tarball, and
+ * every tarball is an npm override, so a transitive `@flow-state-dev/*`
+ * dependency gets the version under test too. A `workspace:`, `file:` or
+ * `link:` range is left as it is: npm refuses `workspace:`, the error a
+ * reader who skips the rewrite gets.
  *
  * @param {Tarballs} tarballs
- * @returns {{ manifest: object, unknown: string[] }} `unknown`: `workspace:` names with no tarball.
+ * @returns {{ manifest: object, unknown: string[] }} `unknown`: registry-range names with no tarball.
  */
 export function rewriteExampleManifest(manifest, tarballs) {
   const out = structuredClone(manifest);
   const unknown = [];
   for (const field of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
     for (const [name, range] of Object.entries(out[field] ?? {})) {
-      if (typeof range !== "string" || !range.startsWith("workspace:")) continue;
+      if (!name.startsWith("@flow-state-dev/") || typeof range !== "string" || /^(workspace|file|link):/.test(range)) continue;
       const packed = tarballs.get(name);
       if (packed) out[field][name] = `file:${packed.tarball}`;
       else unknown.push(name);
@@ -235,10 +316,10 @@ function assertNotInfrastructure(res, what) {
 /**
  * The copy-out recipe's steps after install, one cell each: the example's own
  * npm script, as its README names it. `fsdev` is `--help`, which needs no
- * model and proves the CLI the example depends on runs from the copy.
+ * model and proves the CLI the example depends on runs from the copy. `run`
+ * is not here: it runs the README's own blocks.
  */
 export const EXAMPLE_STEPS = {
-  install: ["npm", ["install", "--no-audit", "--no-fund", "--loglevel=error"]],
   typecheck: ["npm", ["run", "typecheck"]],
   test: ["npm", ["test"]],
   fsdev: ["npm", ["run", "fsdev", "--", "--help"]],
@@ -450,23 +531,47 @@ export function runQuickstart({ markdown, dir, repoRoot, tarballs, timeout = STE
 /**
  * One example's copy-out run, step by step on demand: `step(name)` runs the
  * recipe up to and including that step once and returns its failures.
- * Install runs first and once; a later step after a failed install fails as
- * not reached. A step that would not run to an exit code, or an install the
- * registry or network broke, throws, and so does every later step after a
- * broken install: none of them ran.
+ * Install (the recipe) runs first and once; a later step after a failed
+ * install fails as not reached, and with no recipe every step fails. A step
+ * that would not run to an exit code, or an install the registry or network
+ * broke, throws, and so does every later step after a broken install: none of
+ * them ran.
  *
- * @param {{ src: string, dir: string, repoRoot: string, tarballs: Tarballs, timeout?: number, log?: (s: string) => void }} opts
+ * @param {{ src: string, dir: string, recipe: string | null, repoRoot: string, tarballs: Tarballs, timeout?: number, log?: (s: string) => void }} opts
  */
-export function exampleRun({ src, dir, repoRoot, tarballs, timeout = STEP_TIMEOUT, log = () => {} }) {
+export function exampleRun({ src, dir, recipe, repoRoot, tarballs, timeout = STEP_TIMEOUT, log = () => {} }) {
   const results = new Map();
   const env = readerEnv(process.env, repoRoot, null);
+  const spawnOpts = { cwd: dir, env, encoding: "utf8", timeout, maxBuffer: 64 * 1024 * 1024 };
+  const failed = (step, res) => [`${step}: exit ${res.status}`, ...tail(res).split("\n").slice(-12)];
+  const shell = (step, script) => {
+    const res = spawnSync("bash", ["-e", "-c", script], spawnOpts);
+    const first = script.split("\n").find((l) => l.trim() && !l.trim().startsWith("#"))?.trim();
+    log(`    ${step}: ${first} · exit ${res.status ?? res.signal}`);
+    assertRan(res, `${step} (${first})`);
+    return res;
+  };
   const run = (step) => {
     const [cmd, args] = EXAMPLE_STEPS[step];
-    const res = spawnSync(cmd, args, { cwd: dir, env, encoding: "utf8", timeout, maxBuffer: 64 * 1024 * 1024 });
+    const res = spawnSync(cmd, args, spawnOpts);
     log(`    ${step}: ${[cmd, ...args].join(" ")} · exit ${res.status ?? res.signal}`);
     assertRan(res, step);
-    if (step === "install") assertNotInfrastructure(res, step);
-    return res.status === 0 ? [] : [`${step}: exit ${res.status}`, ...tail(res).split("\n").slice(-12)];
+    return res.status === 0 ? [] : failed(step, res);
+  };
+  // The README's runs, each a shell block: every block exits 0, with one
+  // `flow_complete` result per `fsdev run` line in it.
+  const runReadme = () => {
+    const readme = join(dir, "README.md");
+    const blocks = existsSync(readme) ? readmeRuns(readFileSync(readme, "utf8")) : [];
+    if (blocks.length === 0) return ["run: the README has no `fsdev run` block"];
+    for (const block of blocks) {
+      const res = shell("run", block);
+      if (res.status !== 0) return failed("run", res);
+      const wanted = block.split("\n").filter((l) => FSDEV_RUN.test(l)).length;
+      const results = (res.stdout ?? "").split("\n").filter((l) => l.includes('"type":"flow_complete"')).length;
+      if (results < wanted) return [`run: ${results} of ${wanted} fsdev run(s) returned a result`, ...tail(res).split("\n").slice(-12)];
+    }
+    return [];
   };
   let broken = null;
   const install = () => {
@@ -483,23 +588,33 @@ export function exampleRun({ src, dir, repoRoot, tarballs, timeout = STEP_TIMEOU
   const copyAndInstall = () => {
     assertIsolated(dir);
     if (!existsSync(join(src, "package.json"))) throw new Error(`${src} has no package.json`);
+    if (recipe == null) return [`install: ${EXAMPLES_README} has no copy-out recipe to follow`];
     cpSync(src, dir, { recursive: true, filter: (p) => !/(^|[\\/])(node_modules|\.next|\.turbo|dist)$/.test(p) });
+    const lines = recipe.split("\n");
+    const at = lines.findIndex((l) => INSTALL_LINE.test(l));
+    if (at === -1) return ["install: the copy-out recipe has no install line"];
+    const before = lines.slice(0, at).join("\n");
+    if (before.split("\n").some((l) => l.trim() !== "" && !l.trim().startsWith("#"))) {
+      const res = shell("install", before);
+      if (res.status !== 0) return failed("install", res);
+    }
     const { manifest, unknown } = rewriteExampleManifest(JSON.parse(readFileSync(join(dir, "package.json"), "utf8")), tarballs);
     writeFileSync(join(dir, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-    const failures = unknown.length > 0 ? [`install: ${unknown.join(", ")} has no tarball`] : run("install");
-    if (failures.length === 0) {
-      const violations = installedOutsideTarballs(dir, tarballs);
-      if (violations.length > 0) throw new Error(`resolution guard: ${violations.join("; ")}`);
-    }
-    return failures;
+    if (unknown.length > 0) return [`install: ${unknown.join(", ")} has no tarball`];
+    const res = shell("install", lines.slice(at).join("\n"));
+    assertNotInfrastructure(res, "install");
+    if (res.status !== 0) return failed("install", res);
+    const violations = installedOutsideTarballs(dir, tarballs);
+    if (violations.length > 0) throw new Error(`resolution guard: ${violations.join("; ")}`);
+    return [];
   };
   return {
     step(name) {
-      if (!(name in EXAMPLE_STEPS)) throw new Error(`no copy-out step named ${name}`);
+      if (name !== "install" && name !== "run" && !(name in EXAMPLE_STEPS)) throw new Error(`no copy-out step named ${name}`);
       const installed = install();
       if (name === "install") return installed;
       if (installed.length > 0) return [`${name}: not reached, install failed`];
-      if (!results.has(name)) results.set(name, run(name));
+      if (!results.has(name)) results.set(name, name === "run" ? runReadme() : run(name));
       return results.get(name);
     },
   };

@@ -14,11 +14,18 @@ shows the whole setup.
 | `fsdev.config.ts` | Where the model is named: Jev through Vercel's AI Gateway when `AI_GATEWAY_API_KEY` is set, `openai/gpt-6-luna` otherwise. |
 | `test/` | The same flow on the mock evaluation model. |
 
+Run from this directory, after `pnpm install` in the repository. To run it outside this repository, copy it out with [the recipe](https://github.com/fixpoint-labs/flow-state-dev/blob/main/examples/README.md#copy-an-example-out) first.
+
 ```bash
-pnpm test                     # mock evaluation model, no API key
-pnpm fsdev run index-time-facets write  -i '{"key":"t1","title":"Charged twice","body":"I was charged twice for March."}'
-pnpm fsdev run index-time-facets search -i '{"topic":"billing"}'
+npm test                      # mock evaluation model, no API key
+npm run typecheck
+npx fsdev run index-time-facets write  -i '{"key":"t1","title":"Charged twice","body":"I was charged twice for March."}'
+npx fsdev run index-time-facets search -i '{"topic":"billing"}'
 ```
+
+The `fsdev run` lines call the model: they need `AI_GATEWAY_API_KEY` or `OPENAI_API_KEY`.
+Inside the repository, `test/excerpts.test.ts` also checks the docs page's excerpts against
+`src/`; a copy has no docs page, so it skips that check.
 
 The config uses the in-memory store, which lasts one process, so a `search` run after a
 separate `write` run finds nothing. Point the config at a persistent store to try both from the

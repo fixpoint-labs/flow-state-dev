@@ -18,12 +18,15 @@ import { test } from "node:test";
 import { handle, STUB_ANSWER } from "./fixtures/stub-model.mjs";
 import {
   assertFsdevFromFolder,
+  copyOutRecipe,
+  exampleCells,
   exampleRun,
   installedOutsideTarballs,
   mapInstallLines,
   pnpmfile,
   quickstartPlan,
   readerEnv,
+  readmeRuns,
   rewriteExampleManifest,
   runQuickstart,
 } from "./first-hour.mjs";
@@ -82,18 +85,83 @@ test("an install line naming a package with no tarball is reported, not sent to 
   assert.deepEqual(unknown, ["@flow-state-dev/nope"]);
 });
 
-test("an example's workspace ranges become tarballs, other ranges stay, and every tarball is an override for transitive copies", () => {
+test("after the recipe, each @flow-state-dev registry range is its tarball and every tarball an override; a workspace range is left for npm to refuse", () => {
   const tarballs = new Map([
     ["@flow-state-dev/core", { tarball: "/t/core.tgz", version: "1.0.0" }],
     ["@flow-state-dev/contracts", { tarball: "/t/contracts.tgz", version: "1.0.0" }],
   ]);
   const { manifest, unknown } = rewriteExampleManifest(
-    { dependencies: { "@flow-state-dev/core": "workspace:*", zod: "^3" }, devDependencies: { "@flow-state-dev/gone": "workspace:^" } },
+    {
+      dependencies: { "@flow-state-dev/core": "latest", zod: "^3" },
+      devDependencies: { "@flow-state-dev/gone": "latest", "@flow-state-dev/contracts": "workspace:*" },
+    },
     tarballs,
   );
   assert.deepEqual(manifest.dependencies, { "@flow-state-dev/core": "file:/t/core.tgz", zod: "^3" });
+  assert.equal(manifest.devDependencies["@flow-state-dev/contracts"], "workspace:*");
   assert.deepEqual(manifest.overrides, { "@flow-state-dev/core": "file:/t/core.tgz", "@flow-state-dev/contracts": "file:/t/contracts.tgz" });
   assert.deepEqual(unknown, ["@flow-state-dev/gone"]);
+});
+
+const examplesReadme = [
+  "# examples/",
+  "## Copy an example out",
+  "```bash",
+  "cp -R examples/guides/board-lifecycle ~/my-app   # any example's folder",
+  "cd ~/my-app",
+  "sed -i.bak 's/\"workspace:[^\"]*\"/\"latest\"/' package.json && rm package.json.bak",
+  "npm install",
+  "```",
+  "Then follow its README.",
+  "```bash",
+  "npm test",
+  "```",
+  "## apps vs. examples",
+  "```bash",
+  "echo not the recipe",
+  "```",
+].join("\n");
+
+test("the copy-out recipe is the shell blocks of its section, without the copy and cd lines the leg does itself", () => {
+  assert.equal(
+    copyOutRecipe(examplesReadme),
+    "sed -i.bak 's/\"workspace:[^\"]*\"/\"latest\"/' package.json && rm package.json.bak\nnpm install\nnpm test",
+  );
+  assert.equal(copyOutRecipe("# examples/\n## Something else\n```bash\nnpm install\n```\n"), null);
+});
+
+test("an example README's fsdev run blocks are its runs; its other blocks are not", () => {
+  const readme = "## Run it\n```bash\n# seed\nnpx fsdev run a b -i '{}'\n```\n## Test it\n```bash\nnpm test\n```\n";
+  assert.deepEqual(readmeRuns(readme), ["# seed\nnpx fsdev run a b -i '{}'"]);
+});
+
+test("every folder under examples/ with a package.json is an example, guides included, each with the steps it has", () => {
+  const root = mkdtempSync(join(tmpdir(), "fsd-first-hour-walk-"));
+  try {
+    const write = (dir, pkg, readme) => {
+      mkdirSync(join(root, dir), { recursive: true });
+      writeFileSync(join(root, dir, "package.json"), JSON.stringify(pkg));
+      if (readme) writeFileSync(join(root, dir, "README.md"), readme);
+    };
+    write("app", { scripts: { build: "next build" } });
+    write("guides/keyless", {}, "```bash\nnpx fsdev run k a -i '{}'\n```\n");
+    mkdirSync(join(root, "guides", "no-package"));
+    assert.deepEqual(
+      exampleCells(root, new Set(["keyless"])).map(({ name, dir, step }) => `${name} ${dir} ${step}`),
+      [
+        `app ${join(root, "app")} typecheck`,
+        `app ${join(root, "app")} test`,
+        `app ${join(root, "app")} fsdev`,
+        `app ${join(root, "app")} build`,
+        `keyless ${join(root, "guides", "keyless")} typecheck`,
+        `keyless ${join(root, "guides", "keyless")} test`,
+        `keyless ${join(root, "guides", "keyless")} fsdev`,
+        `keyless ${join(root, "guides", "keyless")} run`,
+      ],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("the reader's environment has no real model key, no repository bin on PATH, and the stub when asked", () => {
@@ -258,13 +326,63 @@ function withFakeBin(name, script, fn) {
   }
 }
 
-function copyOut(root, timeout) {
+function copyOut(root, timeout, { recipe = "npm install", pkg = {}, readme = null, tarballs = new Map() } = {}) {
   const src = join(root, "src");
   mkdirSync(src);
-  writeFileSync(join(src, "package.json"), JSON.stringify({ name: "ex", private: true, scripts: { typecheck: "true" } }));
+  writeFileSync(join(src, "package.json"), JSON.stringify({ name: "ex", private: true, scripts: { typecheck: "true" }, ...pkg }));
+  if (readme != null) writeFileSync(join(src, "README.md"), readme);
   mkdirSync(join(root, "out", "ex"), { recursive: true });
-  return exampleRun({ src, dir: join(root, "out", "ex"), repoRoot: "/nonexistent-repo", tarballs: new Map(), timeout });
+  return exampleRun({ src, dir: join(root, "out", "ex"), recipe, repoRoot: "/nonexistent-repo", tarballs, timeout });
 }
+
+/** A fake npm that keeps the package.json it was asked to install from, beside the folder. */
+const RECORDING_NPM = 'if [ "$1" = install ]; then cp package.json ../installed.json; fi\nexit 0';
+
+test("an example install follows the recipe: its rewrite runs first, then the leg maps the registry ranges it left to the tarballs", () => {
+  withFakeBin("npm", RECORDING_NPM, (root) => {
+    const tarballs = new Map([["@flow-state-dev/core", { tarball: "/t/core.tgz", version: "1.0.0" }]]);
+    const run = copyOut(root, undefined, {
+      recipe: "sed -i.bak 's/\"workspace:[^\"]*\"/\"latest\"/' package.json && rm package.json.bak\nnpm install",
+      pkg: { dependencies: { "@flow-state-dev/core": "workspace:*" } },
+      tarballs,
+    });
+    assert.deepEqual(run.step("install"), []);
+    const installed = JSON.parse(readFileSync(join(root, "out", "installed.json"), "utf8"));
+    assert.equal(installed.dependencies["@flow-state-dev/core"], "file:/t/core.tgz");
+  });
+});
+
+test("a recipe that skips the rewrite installs a workspace range, which the leg leaves for npm to refuse", () => {
+  withFakeBin("npm", RECORDING_NPM, (root) => {
+    const tarballs = new Map([["@flow-state-dev/core", { tarball: "/t/core.tgz", version: "1.0.0" }]]);
+    const run = copyOut(root, undefined, { pkg: { dependencies: { "@flow-state-dev/core": "workspace:*" } }, tarballs });
+    run.step("install");
+    const installed = JSON.parse(readFileSync(join(root, "out", "installed.json"), "utf8"));
+    assert.equal(installed.dependencies["@flow-state-dev/core"], "workspace:*");
+  });
+});
+
+test("with no copy-out recipe there is nothing to follow, and every step fails", () => {
+  withFakeBin("npm", "exit 0", (root) => {
+    const run = copyOut(root, undefined, { recipe: null });
+    assert.match(run.step("install").join("\n"), /no copy-out recipe/);
+    assert.equal(outcomeOf(() => run.step("typecheck")), "fail");
+  });
+});
+
+test("an example's run step passes when each of its README's fsdev run blocks exits 0 with one result per run", () => {
+  const readme = "```bash\nnpx fsdev run a b -i '{}'\nnpx fsdev run a c -i '{}'\n```\n";
+  const complete = 'echo \'{"type":"flow_complete","output":1}\'';
+  withFakeBin("npx", complete, (root) =>
+    withFakeBin("npm", "exit 0", () => assert.deepEqual(copyOut(root, undefined, { readme }).step("run"), [])),
+  );
+  withFakeBin("npx", 'echo \'{"type":"error","message":"no key"}\'', (root) =>
+    withFakeBin("npm", "exit 0", () => assert.equal(outcomeOf(() => copyOut(root, undefined, { readme }).step("run")), "fail")),
+  );
+  withFakeBin("npm", "exit 0", (root) =>
+    assert.match(copyOut(root, undefined, { readme: "no runs here\n" }).step("run").join("\n"), /no `fsdev run` block/),
+  );
+});
 
 test("an example install that times out is an error, and so is every step that waits on it", () => {
   withFakeBin("npm", "sleep 5; exit 1", (root) => {

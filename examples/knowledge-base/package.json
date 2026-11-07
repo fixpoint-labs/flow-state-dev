@@ -10,7 +10,7 @@
     "test:watch": "vitest --root . --passWithNoTests",
     "fsdev": "fsdev",
     "okf:smoke": "tsx scripts/visualize-smoke.ts",
-    "serve": "pnpm fsdev serve"
+    "serve": "fsdev serve"
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
@@ -27,6 +27,7 @@
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "tsx": "^4.21.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^3.2.4"
   }
 }
