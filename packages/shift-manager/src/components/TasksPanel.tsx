@@ -170,7 +170,7 @@ function TaskGroup({ tasks, name, boardRef }: { tasks: readonly ConversationTask
 }
 
 /** The line a task waiting on its pull request offers, while nothing tells it of a merge. */
-export const PULL_REQUEST_HINT = "Merged? Say so here and I'll check.";
+const PULL_REQUEST_HINT = "Merged? Say so here and I'll check.";
 
 /**
  * A task waiting on its pull request: *PR open · #7*, each number linked once

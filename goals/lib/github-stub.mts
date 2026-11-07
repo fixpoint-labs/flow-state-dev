@@ -119,6 +119,3 @@ export function githubStub(scratch: string) {
     sshCalls: () => lines(sshLog),
   };
 }
-
-/** What {@link githubStub} returns. */
-export type GithubStub = ReturnType<typeof githubStub>;
