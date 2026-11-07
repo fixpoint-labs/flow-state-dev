@@ -69,8 +69,12 @@ for (const [move, row] of moved) {
   for (const spec of [CORE, `${CORE}/types`]) for (const n of new Set([row, name])) if (has(spec, n)) violations.push(`${n} (${move}) is still on ${spec}`);
   if (move === "harness" && !has(`${CORE}/harness`, name)) violations.push(`${name} is not on ${CORE}/harness`);
   if (move === "internal" && !has(`${CORE}/internal`, name)) violations.push(`${name} is not on ${CORE}/internal`);
-  if (move === "unexport" || move === "benchmark")
-    for (const spec of publicSpecs) if (has(spec, name)) violations.push(`${name} (${move}) is on ${spec}`);
+  if (move === "unexport")
+    for (const spec of publicSpecs) if (has(spec, name)) violations.push(`${name} (unexport) is on ${spec}`);
+  // The root and core/types are read above; a benchmark name is on no other public entry either.
+  if (move === "benchmark")
+    for (const spec of publicSpecs.filter((s) => s !== CORE && s !== `${CORE}/types`))
+      if (has(spec, name)) violations.push(`${name} (benchmark) is on ${spec}`);
 }
 
 const blockContext = exportsOf.get(CORE)?.get("BlockContext") ?? exportsOf.get(`${CORE}/types`)?.get("BlockContext");
