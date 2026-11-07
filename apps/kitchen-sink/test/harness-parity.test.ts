@@ -37,7 +37,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine";
-import { createTestContext, testFlow } from "@flow-state-dev/testing";
+import { createTestContext, testBlock, testFlow } from "@flow-state-dev/testing";
 
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { codexSessionFlow } from "@/lib/codex-mode";
@@ -432,18 +432,39 @@ describe("the contract every harness owes a host", () => {
     },
   ] as const;
 
+  /** `harness`'s block, built from its entry with `options` and, for `absent`, a resolver over an SDK that won't load. */
+  function blockOf(harness: (typeof RUNNABLE)[number], options: Record<string, unknown>, absent: boolean) {
+    return harness.block((create) => ({ ...(absent ? harness.absent(create) : {}), ...options }));
+  }
+
   /**
-   * Run one turn of `harness`'s block on `prompt` and return what it threw.
-   * `options` are added to the block's own (`resume`), `seam` picks a resolver
-   * from the package's default one (the absent SDK), and `stop`, when given,
-   * fires the block's signal once the run has its prompt.
+   * Run one turn of `harness`'s block on `prompt` through the host path
+   * (`testBlock`, as a sequencer's step, the way the session flow runs it) and
+   * return the error it failed with. `options` are added to the block's own
+   * (`resume`); `absent` gives it an SDK that won't load.
    */
-  async function thrownBy(
+  async function failureOf(
     harness: (typeof RUNNABLE)[number],
     prompt: string,
-    { stop, options = {}, absent = false }: { stop?: (controller: AbortController) => void; options?: Record<string, unknown>; absent?: boolean } = {},
+    { options = {}, absent = false }: { options?: Record<string, unknown>; absent?: boolean } = {},
   ): Promise<unknown> {
-    const block = await harness.block((create) => ({ ...(absent ? harness.absent(create) : {}), ...options }));
+    // A step, because Cursor's script reads its directives off the turn's input, which a block carries as its parent's.
+    const block = (await blockOf(harness, options, absent)) as Parameters<typeof testBlock>[0];
+    const { error } = await testBlock(block, { input: { prompt }, sequencer: { state: {} } });
+    if (error === null) throw new Error(`${harness.mode}: the turn did not fail`);
+    return error;
+  }
+
+  /**
+   * Run one turn of `harness`'s block on `prompt`, stop it with `stop` once
+   * the run has its prompt, and return what it threw.
+   *
+   * Called on the block's handler directly, not through `testBlock`: neither
+   * `testBlock` nor `testFlow` takes a signal the caller fires (each builds its
+   * own context), and a stop is the caller's signal firing.
+   */
+  async function stoppedBy(harness: (typeof RUNNABLE)[number], prompt: string, stop: (controller: AbortController) => void): Promise<unknown> {
+    const block = await blockOf(harness, {}, false);
     const runtime = await createTestContext({});
     // Cursor's script reads its directives off the turn's input, which a block carries as its parent's.
     Object.defineProperty(runtime.ctx, "parent", { value: { input: { prompt } } });
@@ -451,13 +472,11 @@ describe("the contract every harness owes a host", () => {
     (runtime.ctx as { signal?: AbortSignal }).signal = controller.signal;
     scriptedReceived.length = 0;
     const running = (block as { config: { execute: (input: unknown, ctx: unknown) => Promise<unknown> } }).config.execute({ prompt }, runtime.ctx);
-    if (stop !== undefined) {
-      for (let waited = 0; !scriptedReceived.includes(prompt); waited += 10) {
-        if (waited > 5_000) throw new Error(`${harness.mode}: the run never had its prompt`);
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      stop(controller);
+    for (let waited = 0; !scriptedReceived.includes(prompt); waited += 10) {
+      if (waited > 5_000) throw new Error(`${harness.mode}: the run never had its prompt`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
+    stop(controller);
     try {
       await running;
     } catch (error) {
@@ -483,21 +502,21 @@ describe("the contract every harness owes a host", () => {
 
     it.each(STOPS)("a stop with $reason is abort-like", async ({ stop }) => {
       const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
-      const thrown = await thrownBy(harness, "[slow] do some work", { stop });
+      const thrown = await stoppedBy(harness, "[slow] do some work", stop);
       expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(true);
     }, 15_000);
 
     it("a run that failed is not abort-like", async () => {
       const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
       // Codex's `[fail]` is a failed turn it reports, not a throw; `[fail-early]` throws.
-      const thrown = await thrownBy(harness, harness.mode === "codex" ? "[fail-early] do some work" : "[fail] do some work");
+      const thrown = await failureOf(harness, harness.mode === "codex" ? "[fail-early] do some work" : "[fail] do some work");
       expect(String(thrown)).toMatch(/fail/i);
       expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(false);
     });
 
     it("an absent SDK is not abort-like", async () => {
       const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
-      const thrown = await thrownBy(harness, "do some work", { absent: true });
+      const thrown = await failureOf(harness, "do some work", { absent: true });
       expect(String(thrown)).toMatch(/install/i);
       expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(false);
     });
@@ -507,7 +526,7 @@ describe("the contract every harness owes a host", () => {
       const { harnessFailureKind } = (await import("@flow-state-dev/core/harness")) as Record<string, any>;
       // Claude Code takes a conversation to resume only as background work: in a session its own state owns it.
       const resume = { resume: () => "conversation-gone", ...(harness.mode === "claude-code" ? { detached: true } : {}) };
-      const thrown = await thrownBy(harness, "[refuse] go on", { options: resume });
+      const thrown = await failureOf(harness, "[refuse] go on", { options: resume });
       expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(false);
       expect(harnessFailureKind(thrown), `${harness.mode}: ${String(thrown)}`).toBe("unknown-conversation");
     });
