@@ -18,10 +18,7 @@ import { claimedKeys, firstInProcess } from "./once-per-process";
  */
 export function warnOnceDev(key: string, message: string): void {
   if (process.env.NODE_ENV === "production") return;
-  if (process.env.FSD_QUIET_WARNINGS === "1") return;
-  if (!firstInProcess(`warnOnceDev/${key}`)) return;
-  // eslint-disable-next-line no-console
-  console.warn(`[flow-state-dev] ${message}`);
+  emitOnce(`warnOnceDev/${key}`, message);
 }
 
 /**
@@ -31,8 +28,13 @@ export function warnOnceDev(key: string, message: string): void {
  * an app that names no store and so keeps nothing across a restart.
  */
 export function warnOnce(key: string, message: string): void {
+  emitOnce(`warnOnce/${key}`, message);
+}
+
+/** The opt-out, the once-per-process claim and the output prefix both warnings share. */
+function emitOnce(claim: string, message: string): void {
   if (process.env.FSD_QUIET_WARNINGS === "1") return;
-  if (!firstInProcess(`warnOnce/${key}`)) return;
+  if (!firstInProcess(claim)) return;
   // eslint-disable-next-line no-console
   console.warn(`[flow-state-dev] ${message}`);
 }

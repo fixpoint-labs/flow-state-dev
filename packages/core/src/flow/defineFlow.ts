@@ -515,6 +515,11 @@ function withFlowToolsEntries<TEntry extends InternalEntry | TaskEntry>(
  * headless generator action is legitimate, and `itemVisibility` gets no
  * position-inferred default (`docs/architecture/generator-identity.md`). Only
  * `actions`: internal, task, webhook and schedule entries have no chat.
+ *
+ * Only a generator that IS the action's block is checked. A sequencer whose
+ * generator steps are all silent is not warned, since a handler step can emit
+ * and silence can't be proved statically: no warning does not mean the action
+ * renders.
  */
 function warnSilentGeneratorActions(kind: string, actions: AnyActions): void {
   for (const [name, action] of Object.entries(actions)) {

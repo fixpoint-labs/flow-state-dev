@@ -165,6 +165,16 @@ describe("createFlowState with one adapter as stores", () => {
 });
 
 describe("createFlowState with named profiles", () => {
+  it("reads a map whose profiles are named `resolve` and `capabilities` as profiles, not as an adapter", async () => {
+    const state = make({
+      flows: doublerFlow().flows,
+      stores: { capabilities: { primary: inMemoryStores() }, resolve: { primary: inMemoryStores() } }
+    });
+    await state.ready();
+    expect(state.meta.profileKeys).toEqual(["capabilities", "resolve"]);
+    expect(state.activeProfile).toBe("capabilities");
+  });
+
   it("says nothing about memory, even when the profile is in memory", async () => {
     const { kind, flows } = doublerFlow();
     const state = make({ flows, stores: { dev: { primary: inMemoryStores() } } });
