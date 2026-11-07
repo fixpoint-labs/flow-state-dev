@@ -233,7 +233,7 @@ describe("the teammates screen", () => {
   it("lists only the open teammate's tasks in its panel, and switching teammates switches them", async () => {
     // Each teammate's conversation filed its own: a list that leaked another's would show both titles.
     const tasks = [
-      { filer: "teammates.lead", id: "t-lead", to: "teammates.cursor", title: "Bump the version", status: "running" as const, harness: "Cursor" },
+      { filer: "teammates.chief-of-staff", id: "t-lead", to: "teammates.cursor", title: "Bump the version", status: "running" as const, harness: "Cursor" },
       { filer: "teammates.researcher", id: "t-research", to: "teammates.writer", title: "Draft the survey summary", status: "running" as const },
     ];
     render(<App adapter={fast({ tasks })} />);
@@ -256,7 +256,7 @@ describe("the teammates screen", () => {
   });
 
   it("puts the running tasks first, shows the failed ones, folds done and cancelled into groups with their counts, and moves a task that ends into its group live", async () => {
-    const ended = (id: string, title: string, status: "done" | "failed" | "cancelled") => ({ filer: "teammates.lead", id, to: "teammates.researcher", title, status });
+    const ended = (id: string, title: string, status: "done" | "failed" | "cancelled") => ({ filer: "teammates.chief-of-staff", id, to: "teammates.researcher", title, status });
     const tasks = [ended("t-1", "Look up the launch date", "done"), ended("t-2", "Check the beta numbers", "failed"), ended("t-3", "Find a customer quote", "done"), ended("t-4", "Pull the survey", "cancelled")];
     render(<App adapter={fast({ tasks })} />);
     const side = await screen.findByRole("complementary", { name: "Lead's panel" });

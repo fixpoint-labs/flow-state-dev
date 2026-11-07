@@ -14,7 +14,7 @@ import { createLabAdapter, type ConversationEntry, type TalkRow } from "../src/a
 import { pendingFor } from "../src/lib/talk";
 import { createFixtureLab } from "./fake-lab";
 
-const LEAD = "teammates.lead";
+const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
 
 vi.mock("@flow-state-dev/workforce/browser", async (original) => ({

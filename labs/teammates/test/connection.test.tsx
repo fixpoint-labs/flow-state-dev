@@ -50,7 +50,7 @@ describe("the server going away", () => {
   });
 
   it("greys a running task's dot and stops its pulse in the panel while the feed is stale", async () => {
-    const tasks = [{ filer: "teammates.lead", id: "t-1", to: "teammates.researcher", title: "Check the beta numbers", goal: "Check the beta numbers", status: "running" as const, boardStatus: "in_progress" }];
+    const tasks = [{ filer: "teammates.chief-of-staff", id: "t-1", to: "teammates.researcher", title: "Check the beta numbers", goal: "Check the beta numbers", status: "running" as const, boardStatus: "in_progress" }];
     const lab = createFixtureLab({ speed: 0.05, tasks });
     render(<App adapter={lab} />);
     const panel = await screen.findByRole("complementary", { name: "Lead's panel" });

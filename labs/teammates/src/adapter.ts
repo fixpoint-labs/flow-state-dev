@@ -113,7 +113,7 @@ export type Unsubscribe = () => void;
 
 /** One worker on the roster. */
 export interface WorkerRow {
-  /** The worker's address on the roster, e.g. `teammates.lead`. */
+  /** The worker's address on the roster, e.g. `teammates.chief-of-staff`. */
   id: string;
   /** The name the user reads. */
   name: string;

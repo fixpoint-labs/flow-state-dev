@@ -3,8 +3,8 @@
  * one whose run has stopped, and sees how long each running task has worked
  * on this attempt, from the teammate's panel alone. The legs, controls and
  * grading are `goals/lib/task-signals.mts`, shared with the Claude Code-style
- * lab; this file says how to serve this lab, open its page, file on Chief of
- * Staff's board and read a panel row's words. See goal.md for the contract.
+ * lab; this file says how to serve this lab, open its page, file on Lead's
+ * board and read a panel row's words. See goal.md for the contract.
  *
  * Run:      pnpm tsx goals/teammates-lab/tells-a-stopped-task-from-a-working-one/run.mts
  * Controls: GOAL_CONTROL=task-clock | quiet-from-age | never-quiet, same command.
@@ -22,7 +22,7 @@ import { startTeammates } from "../lab.mts";
 
 const USER = "u_goal";
 /** The teammate whose conversation files the tasks, its name in the list, and the coding worker they go to. */
-const FILER = { id: "teammates.lead", name: "Lead" };
+const FILER = { id: "teammates.chief-of-staff", name: "Lead" };
 const CODER = "teammates.cursor";
 const BOARD = "tasks";
 

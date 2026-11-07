@@ -20,11 +20,11 @@ draws a docs question.
 
 | Ask | Claude Code-style | Teammates | Kitchen Sink | Shift Manager |
 |---|---|---|---|---|
-| date, sizing, skill | `desk.main` | `teammates.lead` | `support.help` (routes to a specialist) | `shift-coordinator` |
+| date, sizing, skill | `desk.main` | `teammates.chief-of-staff` | `support.help` (routes to a specialist) | `shift-coordinator` |
 | multi-file | `desk.main`, set to the project | `teammates.researcher`, over the working folder | `support.fsd`, over the docs | `researcher`, set to the project |
 | knowledge | `desk.researcher` | `teammates.researcher` | `support.fsd` | `researcher` |
-| coder | `desk.main` (hands it to a coding run) | `teammates.lead` (hands it to Claude Code) | a `claude-code-session` | `eng.em` (files it for the coder) |
-| fold | `desk.main`, at the wrap only | `teammates.lead` | — | — |
+| coder | `desk.main` (hands it to a coding run) | `teammates.chief-of-staff` (hands it to Claude Code) | a `claude-code-session` | `eng.em` (files it for the coder) |
+| fold | `desk.main`, at the wrap only | `teammates.chief-of-staff` | — | — |
 
 **Signal** (`asks.mts`), per ask, per run:
 

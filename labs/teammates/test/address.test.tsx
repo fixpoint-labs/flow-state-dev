@@ -92,7 +92,7 @@ describe("the page's address", () => {
     render(<App adapter={fast()} />);
     expect(await screen.findByLabelText("Message Lead")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
-    await waitFor(() => expect(params().get("worker")).toBe("teammates.lead"));
+    await waitFor(() => expect(params().get("worker")).toBe("teammates.chief-of-staff"));
     expect(params().has("session")).toBe(false);
     expect(params().has("task")).toBe(false);
   });

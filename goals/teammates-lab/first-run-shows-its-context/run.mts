@@ -27,7 +27,7 @@ import { sleep, startTeammates } from "../lab.mts";
 const fixture = loadFixture<{ lead: string; harness: { value: string; label: string }; remedy: string }>(import.meta.url);
 const USER = "u_goal";
 const LAB = repoPath("labs", "teammates");
-const LEAD_ID = "teammates.lead";
+const LEAD_ID = "teammates.chief-of-staff";
 const say = (s: string) => console.error(`[tm-first-run ${new Date().toISOString().slice(11, 19)}] ${s}`);
 
 type Patch = { file: string; from: string; to: string; why: string };

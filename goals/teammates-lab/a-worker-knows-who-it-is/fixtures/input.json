@@ -1,10 +1,10 @@
 {
   "workers": [
-    { "id": "teammates.lead", "name": "Lead" },
+    { "id": "teammates.chief-of-staff", "name": "Lead" },
     { "id": "teammates.researcher", "name": "researcher" },
     { "id": "teammates.writer", "name": "writer" }
   ],
-  "lead": "teammates.lead",
+  "lead": "teammates.chief-of-staff",
   "teammates": ["researcher", "writer"],
   "whoAreYou": ["Who are you, and what's your role on this team?", "Quick one: what's your name and what do you do here?"],
   "whoAreYourTeammates": [

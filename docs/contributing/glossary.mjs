@@ -724,6 +724,12 @@ const EXEMPTIONS = [
     why: "FIX-2151: a goal's dated verdict row records a past run under the reasons it ran with: history",
   },
   {
+    path: /^labs\/teammates\/(?:src|test)\/|^labs\/teammates\/workforce\/teams\/teammates\/workers\/chief-of-staff\/WORKER\.md$/,
+    line: /\bteammates\.chief-of-staff\b|^\(file path\)$/,
+    rules: ["shift-coordinator-names"],
+    why: "FIX-2354: the Teammates lab's Lead keeps its stored worker id `teammates.chief-of-staff` (its folder and roster key): stored worker id — renaming strands persisted conversations (BP-030). The name a person reads is Lead",
+  },
+  {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
     rules: ["human-reasons"],
     why: "FIX-2151: the release note that tells consumers which old reasons to replace",

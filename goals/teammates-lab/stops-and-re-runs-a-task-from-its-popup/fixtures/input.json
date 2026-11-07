@@ -1,5 +1,5 @@
 {
-  "filer": "teammates.lead",
+  "filer": "teammates.chief-of-staff",
   "coder": "teammates.cursor",
   "rerunOn": {
     "worker": "teammates.claude-code",

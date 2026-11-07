@@ -8,7 +8,7 @@
 
 **Signal:** `fsdev dev --app @flow-state-dev/teammates` on a copy of the lab's workers and a fresh store, and `fsdev dev --config labs/claude-code-style/fsdev.config.mts` on a fresh data folder, driven over HTTP.
 
-- **Leg 1** (Teammates): the user says the line to `teammates.writer` in writer's conversation, then asks `teammates.lead` the question in Lead's.
+- **Leg 1** (Teammates): the user says the line to `teammates.writer` in writer's conversation, then asks `teammates.chief-of-staff` the question in Lead's.
   - *value named*: Lead's reply contains the value.
   - *reading names it*: a consult in that turn returned a reading that contains the value. The lab's memory (user-scoped episodic and semantic facts) also carries what writer heard to Lead, so Lead can name the value with no consult at all; the reply alone proves nothing here.
   - *writer not woken*, *writer unchanged*: writer's conversation has the same number of requests and items as before the question.

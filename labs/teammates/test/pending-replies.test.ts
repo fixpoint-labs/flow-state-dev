@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { toEntries, type TalkRow } from "../src/adapter";
 import { pendingFor } from "../src/lib/talk";
 
-const LEAD = "teammates.lead";
+const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
 const WORKERS = new Set([LEAD, RESEARCHER]);
 

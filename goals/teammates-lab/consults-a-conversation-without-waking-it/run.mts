@@ -259,7 +259,7 @@ await runGoal(async (failures, tell) => {
   const tree = join(goalTmpDir("consults-tree"), "workforce");
   cpSync(join(LAB, "workforce"), tree, { recursive: true });
   if (CONTROL === "no-consult") {
-    const file = join(tree, "teams/teammates/workers/lead/WORKER.md");
+    const file = join(tree, "teams/teammates/workers/chief-of-staff/WORKER.md");
     const original = readFileSync(file, "utf8");
     const stripped = original.replace(/\ncapabilities:\n  consultSessions: \[consult\]\n/, "\n");
     if (stripped === original) throw new Error("setup: lead's file names no consultSessions preset to drop");

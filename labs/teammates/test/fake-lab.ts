@@ -116,14 +116,14 @@ const WINDOW_TURNS = 50;
 const MINUTE = 60_000;
 
 const ROSTER: WorkerRow[] = [
-  { id: "teammates.lead", name: "Lead", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
+  { id: "teammates.chief-of-staff", name: "Lead", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
   { id: "teammates.researcher", name: "researcher", icon: "🔎", color: "teal", role: "Finds facts for the team, and replies to whoever asked." },
   { id: "teammates.writer", name: "writer", icon: "✎", color: "violet", role: "Drafts and tightens copy when you or another worker asks." },
   { id: "teammates.claude-code", name: "Claude Code", role: "Runs coding tasks on Claude Code.", takesTasks: true, harness: "claude-code" },
   { id: "teammates.codex", name: "Codex", role: "Runs coding tasks on Codex.", takesTasks: true, harness: "codex" },
   { id: "teammates.cursor", name: "Cursor", role: "Runs coding tasks on Cursor.", takesTasks: true, harness: "cursor" },
 ];
-const LEAD = "teammates.lead";
+const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
 const WRITER = "teammates.writer";
 /** The coding worker a task that names no harness goes to: Lead's default. */

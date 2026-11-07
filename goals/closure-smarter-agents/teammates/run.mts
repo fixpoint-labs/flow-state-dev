@@ -21,7 +21,7 @@ import { askAfterFold, askWorker, clientFor, gitRepository, heldSkills, runCheck
 import { claudeCodeSettings } from "../model.mts";
 
 const USER = "u_closure";
-const LEAD = "teammates.lead";
+const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
 const lab = (root: string) => join(root, "labs", "teammates");
 const tree = (root: string) => join(lab(root), "workforce");

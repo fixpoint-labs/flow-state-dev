@@ -8,7 +8,7 @@
 
 **Signal:** `fsdev dev --app @flow-state-dev/teammates` on the lab's own workers and a fresh store, driven over HTTP.
 
-- **Leg 1:** each of `teammates.lead`, `teammates.researcher` and `teammates.writer` is asked who it is, in its own conversation.
+- **Leg 1:** each of `teammates.chief-of-staff`, `teammates.researcher` and `teammates.writer` is asked who it is, in its own conversation.
   - *named*: the reply holds the worker's name (`Lead`, `researcher`, `writer`).
   - *not ChatGPT*: the reply doesn't say ChatGPT.
 - **Leg 2:** Lead is asked who its teammates are.

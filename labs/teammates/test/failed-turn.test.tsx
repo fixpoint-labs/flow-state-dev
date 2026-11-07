@@ -24,7 +24,7 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-const LEAD = "teammates.lead";
+const LEAD = "teammates.chief-of-staff";
 /** An `error` item as `runAction.ts` writes one for a failed request. */
 const errorItem = (id: string, requestId: string, message: string, code = "PROVIDER_ERROR") => ({ id, type: "error", status: "failed", requestId, message, code });
 const message = (id: string, requestId: string, role: string, text: string, status = "completed") => ({

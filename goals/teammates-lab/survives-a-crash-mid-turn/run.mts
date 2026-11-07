@@ -24,7 +24,7 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (!["", "fresh-store"].includes(CONTROL)) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: fresh-store`);
 
 const USER = "u_goal";
-const FILER = "teammates.lead";
+const FILER = "teammates.chief-of-staff";
 const CODER = "teammates.claude-code";
 /** Each of the scripted run's five steps: long enough that the run is mid-way at the kill. */
 const STEP_MS = 30_000;

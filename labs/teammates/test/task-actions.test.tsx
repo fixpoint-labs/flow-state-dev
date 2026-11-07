@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 const TASK = "Coding task: Fix the typo in the README's first line";
-const LEAD_CONVERSATION = "conversation:teammates.lead";
+const LEAD_CONVERSATION = "conversation:teammates.chief-of-staff";
 
 /** Ask Lead to have `agent` fix the typo, then open the task's popup from its line. */
 async function openCodingTask(agent: string) {

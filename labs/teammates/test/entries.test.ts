@@ -96,7 +96,7 @@ describe("a session's steps in a popup", () => {
 });
 
 describe("how a sent message stands", () => {
-  const sent = { id: "msg_1", from: "teammates.lead", to: "teammates.researcher", text: "Launch date?", at: 1 };
+  const sent = { id: "msg_1", from: "teammates.chief-of-staff", to: "teammates.researcher", text: "Launch date?", at: 1 };
   const reply = { id: "msg_2", from: sent.to, to: sent.from, text: "Nov 12", at: 2, inReplyTo: "msg_1" };
 
   it("is replied when a message answers it", () => {
@@ -116,7 +116,7 @@ describe("how a sent message stands", () => {
 
 describe("where a sent message's popup looks", () => {
   const row = (id: string, toSession: string) => ({
-    id, from: "teammates.researcher", to: "teammates.lead", text: "Nov 12", exchange: "msg_1", inReplyTo: "msg_1",
+    id, from: "teammates.researcher", to: "teammates.chief-of-staff", text: "Nov 12", exchange: "msg_1", inReplyTo: "msg_1",
     fromSession: "sess_researcher", fromFlow: "teammates", toSession, toFlow: "teammates", hop: 1, status: "delivered", at: 2,
   });
 
