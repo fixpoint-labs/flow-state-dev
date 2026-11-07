@@ -19,7 +19,7 @@ export function isTaskBrief(item: { type: string; metadata?: Record<string, unkn
 }
 
 /** The brief as one folded line, opening to its text. */
-export function TaskBriefLine({ text }: { text: string }) {
+function TaskBriefLine({ text }: { text: string }) {
   return (
     <Collapsible className="group/brief not-prose w-full" data-testid="task-brief">
       <CollapsibleTrigger className="inline-flex max-w-full items-center gap-1 text-left text-sm text-muted-foreground hover:text-foreground">
