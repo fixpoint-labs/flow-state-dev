@@ -14,7 +14,8 @@
  */
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
-import { createInMemoryStores, runAction, runRead } from "@flow-state-dev/engine";
+import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runRead } from "@flow-state-dev/engine/internal";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

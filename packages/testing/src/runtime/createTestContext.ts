@@ -7,10 +7,9 @@ import { z } from "zod";
 import {
   createExecutionContext,
   createInMemoryStores,
-  createResponseEmitter,
-  type ExecutionContext,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import { createResponseEmitter, type ExecutionContext } from "@flow-state-dev/engine/host";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   StateChange,

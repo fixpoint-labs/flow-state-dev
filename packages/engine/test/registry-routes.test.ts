@@ -5,9 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  parseFlowRoute
+  createInMemoryStores
 } from "../src";
+import { parseFlowRoute } from "../src/host";
 
 function makeFlow(kind: string, id = kind): FlowInstance {
   return defineFlow({

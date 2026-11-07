@@ -8,9 +8,8 @@
  * right now?" do not have to reimplement scope resolution and the
  * content-store/record merge.
  *
- * These helpers are exported from `@flow-state-dev/engine` under the
- * `unstable_` prefix — they are deliberately not part of the long-term
- * public API surface.
+ * These helpers are exported from `@flow-state-dev/engine/internal`, for
+ * FSD's own packages: they are deliberately not part of the public API.
  */
 import { isValidOrgId } from "@flow-state-dev/core";
 import { requireAttributedOrg } from "../context/org-attribution";

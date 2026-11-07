@@ -19,12 +19,9 @@ import {
   type BlockDefinition,
 } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import {
-  createInMemoryStores,
-  createModelResolver,
-  createResponseEmitter,
-  runAction,
-} from "@flow-state-dev/engine";
+import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createModelResolver } from "@flow-state-dev/core";
+import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import { z } from "zod";
 import { system, type CaptureEvaluatorBlock } from "../../packages/memory/src/index.ts";
 

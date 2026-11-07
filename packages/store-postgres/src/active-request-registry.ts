@@ -3,10 +3,7 @@
  * Tracks in-flight requests with heartbeat timestamps for stale detection.
  */
 
-import type {
-  ActiveRequestEntry,
-  ActiveRequestRegistry
-} from "@flow-state-dev/engine";
+import type { ActiveRequestEntry, ActiveRequestRegistry } from "@flow-state-dev/engine/host";
 import type { QueryExecutor } from "./types";
 
 function serializeEntry(entry: ActiveRequestEntry): unknown[] {

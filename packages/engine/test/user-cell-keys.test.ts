@@ -12,7 +12,9 @@
  */
 import { describe, expect, it } from "vitest";
 import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
-import { OrgRequiredError, resolveOrgStorageKey, resolveUserStorageKey } from "../src";
+import { OrgRequiredError } from "../src/host";
+import { resolveOrgStorageKey } from "../src/stores/scope-keys";
+import { resolveUserStorageKey } from "../src";
 import {
   resolveResourceScopeId,
   resolveSessionStorageKey,

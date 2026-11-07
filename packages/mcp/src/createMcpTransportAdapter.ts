@@ -17,7 +17,7 @@
  *     itself. When stateful mode lands and the SDK ships a WHATWG-
  *     native transport we revisit.
  *   - Resources surface returns the empty list pending a true flow
- *     scope in the resource model — `unstable_listExposedResources`
+ *     scope in the resource model — `listExposedResources`
  *     is wired through and ready to fill in.
  *
  * The adapter is mounted alongside the HTTP adapter via
@@ -29,24 +29,23 @@ import type {
   InboundTransportAdapter,
   InboundTransportHost,
   TransportBindings,
-  TransportRoute,
-  PrincipalResolutionContext,
-  ResolvedPrincipal
-} from "@flow-state-dev/engine";
+  TransportRoute
+} from "@flow-state-dev/engine/host";
+import type { PrincipalResolutionContext, ResolvedPrincipal } from "@flow-state-dev/core/types";
 import {
   ConcurrencyQueueTimeoutError,
   ConcurrencyRejectedError,
   OrgBindingMismatchError,
-  PrincipalResolutionError,
   UserBindingMismatchError
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
+import { PrincipalResolutionError } from "@flow-state-dev/engine";
 import {
-  unstable_findResourceConfig,
-  unstable_getPersistedData,
-  unstable_isCollectionConfig,
-  unstable_listExposedResources,
-  unstable_renderContent
-} from "@flow-state-dev/engine";
+  findResourceConfig,
+  getPersistedData,
+  listExposedResources,
+  renderContent
+} from "@flow-state-dev/engine/internal";
+import { isCollectionConfig } from "@flow-state-dev/core/types";
 import type { ActionConfig, ActionMcpConfig, McpConfig } from "@flow-state-dev/core/types";
 import {
   JSON_RPC_INVALID_PARAMS,
@@ -349,7 +348,7 @@ async function listResources(
   host: InboundTransportHost
 ): Promise<Array<{ uri: string; name: string; description?: string; mimeType: string }>> {
   if (flow.mcp?.exposeResources === false) return [];
-  const entries = await unstable_listExposedResources(flow, {
+  const entries = await listExposedResources(flow, {
     registry: host.registry,
     stores: host.stores
   });
@@ -533,12 +532,12 @@ async function handleResourcesRead(
     );
   }
 
-  const found = unstable_findResourceConfig(flow, parsed.ref);
+  const found = findResourceConfig(flow, parsed.ref);
   if (found === undefined) {
     return jsonRpcResponse(id, jsonRpcError(JSON_RPC_RESOURCE_DENIED, `Unknown resource "${parsed.ref}".`));
   }
   const { config, scope } = found;
-  if (unstable_isCollectionConfig(config)) {
+  if (isCollectionConfig(config)) {
     return jsonRpcResponse(
       id,
       jsonRpcError(JSON_RPC_RESOURCE_DENIED, "Collection resources are not exposed via MCP in v1.")
@@ -552,10 +551,10 @@ async function handleResourcesRead(
   }
 
   // v1 has no flow-bound scope, and stateless MCP has no sessionId to
-  // hand to scope-bound storage. When `unstable_listExposedResources`
+  // hand to scope-bound storage. When `listExposedResources`
   // grows to surface entries, this path will follow.
-  void unstable_getPersistedData;
-  void unstable_renderContent;
+  void getPersistedData;
+  void renderContent;
   void scope;
 
   return jsonRpcResponse(

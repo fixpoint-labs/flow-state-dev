@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createFlowState, isFlowState, inMemoryStores } from "../../src";
+import { createFlowState, inMemoryStores } from "../../src";
+import { isFlowState } from "../../src/host";
 
 const noopFlow = defineFlow({
   kind: "noop-flow",

@@ -17,7 +17,8 @@
  */
 import { streamHandle } from "hono/aws-lambda";
 import { createServerApp, type ServerAppOptions } from "./app";
-import type { FlowApiRouter, FlowState } from "@flow-state-dev/engine";
+import type { FlowApiRouter } from "@flow-state-dev/engine/host";
+import type { FlowState } from "@flow-state-dev/engine";
 
 /**
  * Build an AWS Lambda streaming handler for `app` (a `FlowState` or a raw

@@ -20,10 +20,10 @@ import { z } from "zod";
 import {
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver,
   PrincipalResolutionError
 } from "../../src";
+import { createInboundTransportHost } from "../../src/host";
 import type { PrincipalResolver } from "../../src/transports/types";
 import type { PrincipalResolutionContext } from "@flow-state-dev/core/types";
 

@@ -5,7 +5,7 @@
  * never does.
  */
 import { describe, expect, it } from "vitest";
-import { StoreSubscriptionError } from "@flow-state-dev/engine";
+import { StoreSubscriptionError } from "@flow-state-dev/engine/host";
 import { createPostgresRequestStore, initializeSchema, type QueryExecutor } from "../src";
 import { FakeNotifyNetwork, until } from "./fake-notify-network";
 import { openListen } from "../src/listen";

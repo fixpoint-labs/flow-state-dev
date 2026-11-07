@@ -21,7 +21,8 @@ import {
 } from "@flow-state-dev/core/harness";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { createExecutionContext, createInMemoryStores, createResponseEmitter } from "../src";
+import { createExecutionContext, createInMemoryStores } from "../src";
+import { createResponseEmitter } from "../src/host";
 import type { RequestStreamEventWithId } from "../src/streaming/response-emitter";
 
 const flow = defineFlow({

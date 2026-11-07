@@ -14,9 +14,9 @@ import { z } from "zod";
 import {
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import { createInboundTransportHost } from "../../src/host";
 import { ConcurrencyRejectedError } from "../../src/transports/errors";
 import type { ConcurrencyConfig } from "@flow-state-dev/core";
 

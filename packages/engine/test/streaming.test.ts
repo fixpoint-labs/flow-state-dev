@@ -1,16 +1,15 @@
 import type { MessageItem, RequestCreatedEvent, RequestStreamEvent, RequestStatusEvent } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
+import { createResponseEmitter } from "../src/host";
+import { createStreamEventId } from "../src/streaming/encode-event";
+import { encodeStreamEvent } from "../src/internal";
 import {
-  createResponseEmitter,
-  createStreamEventId,
-  encodeStreamEvent,
   parseStartingAfter,
   parseStreamEventId,
   replayRequestEvents,
-  resolveRequestReplayCursor,
-  serializeSSEFrame,
-  serializeSSEFrames
-} from "../src";
+  resolveRequestReplayCursor
+} from "../src/streaming/resume";
+import { serializeSSEFrame, serializeSSEFrames } from "../src/streaming/sse";
 import { encodeStreamEventInternal } from "../src/streaming/encode-event";
 import { NOOP_INTERNAL_STREAMING_SEAMS } from "../src/streaming/internal/seams";
 import {

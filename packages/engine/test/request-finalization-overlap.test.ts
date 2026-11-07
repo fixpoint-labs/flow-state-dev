@@ -20,9 +20,9 @@ import {
   continueRequest,
   createFlowRegistry,
   createInMemoryStores,
-  detectInterruptedRequests,
   runAction
 } from "../src";
+import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import { abortRequest, hasActiveAbortController } from "../src/execution/abort-registry";
 
 type Worker = 0 | 1;

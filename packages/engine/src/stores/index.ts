@@ -1,7 +1,6 @@
 import path from "node:path";
 import type { CASOptions } from "@flow-state-dev/core/types";
-import { ConcurrentModificationError, runWithCAS } from "./cas";
-import { ResourceAlreadyExistsError, ResourceDeletedError } from "./resource-cas";
+import { ConcurrentModificationError } from "./cas";
 import { createFilesystemActiveRequestRegistry } from "./filesystem/active-request-registry";
 import { createFilesystemCheckpointStore } from "./filesystem/checkpoint-store";
 import { createFilesystemContentStore } from "./filesystem/content-store";
@@ -19,9 +18,8 @@ import { createInMemoryActiveRequestRegistry } from "./memory/active-request-reg
 import { createInMemoryCheckpointStore } from "./memory/checkpoint-store";
 import { createInMemoryContentStore } from "./memory/content-store";
 import { createInMemoryResourceStateStore } from "./memory/resource-state-store";
-import { toBareState, toBareStates } from "./resource-state-views";
+import { toBareStates } from "./resource-state-views";
 export type {
-  ResourceStateConflict,
   ResourceStateRow
 } from "./resource-state-predicate";
 import { createInMemoryOrgStore } from "./memory/org-store";
@@ -35,8 +33,6 @@ import { createInMemoryUserStore } from "./memory/user-store";
 import { createInMemorySuspensionStore } from "./memory/suspension-store";
 import { createInMemoryLeaseStore } from "./memory/lease-store";
 import { createInMemoryWakeStore } from "./memory/wake-store";
-import { ScopeMutationTimeoutError } from "./scope-lock";
-import { createScopeStateOps, createStateContainer } from "./state-container";
 import type { PersistErrorHandler, StoreRegistry } from "./types";
 import type { StoreAdapter } from "./store-adapter";
 
@@ -59,7 +55,6 @@ export type {
   WakeStore,
   ResourceStateStore,
   VersionedResourceState,
-  ExpectedVersion,
   ResourceIndexEntry,
   ResourceStateSetOptions,
   ResourceIndexBuildState,
@@ -69,11 +64,9 @@ export type {
   OrgRecord,
   OrgStore,
   PersistErrorHandler,
-  PersistErrorInfo,
   RequestActionResult,
   RequestListOptions,
   RequestRecord,
-  RequestStatus,
   RequestStore,
   ScopeRecordBase,
   SessionListOptions,
@@ -93,9 +86,7 @@ export type {
 
 export {
   resolveUserStorageKey,
-  resolveSharedUserCellKey,
-  resolveOrgStorageKey,
-  resolveRequestIncarnation
+  resolveSharedUserCellKey
 } from "./scope-keys";
 export type { IsolationFlow } from "./scope-keys";
 
@@ -108,11 +99,6 @@ export type {
 
 export {
   ConcurrentModificationError,
-  ResourceAlreadyExistsError,
-  ResourceDeletedError,
-  ScopeMutationTimeoutError,
-  createScopeStateOps,
-  createStateContainer,
   createFilesystemActiveRequestRegistry,
   createFilesystemCheckpointStore,
   createFilesystemContentStore,
@@ -129,7 +115,6 @@ export {
   createInMemoryCheckpointStore,
   createInMemoryContentStore,
   createInMemoryResourceStateStore,
-  toBareState,
   toBareStates,
   createInMemoryOrgStore,
   createInMemoryRequestStore,
@@ -138,8 +123,7 @@ export {
   createInMemoryUserStore,
   createInMemorySuspensionStore,
   createInMemoryLeaseStore,
-  createInMemoryWakeStore,
-  runWithCAS
+  createInMemoryWakeStore
 };
 
 export type CreateStoreOptions = {

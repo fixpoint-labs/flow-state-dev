@@ -22,7 +22,7 @@
  * an aborted turn prints `(interrupted)`.
  */
 import type { Content, OutputItem } from "@flow-state-dev/core/items";
-import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
+import type { RequestStreamEventWithId } from "@flow-state-dev/engine/host";
 import type { FlowActionTarget } from "./targets";
 
 export interface ChatRenderer {

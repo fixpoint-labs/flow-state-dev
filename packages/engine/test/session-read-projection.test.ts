@@ -13,7 +13,8 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
-import type { SessionRecord, StoreRegistry } from "../src";
+import type { SessionRecord } from "../src/host";
+import type { StoreRegistry } from "../src";
 
 const SECRET = "server-only-routing-table";
 const JOURNAL_SECRET = "journal-note-for-the-server";

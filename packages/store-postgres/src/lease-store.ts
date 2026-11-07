@@ -6,7 +6,7 @@
  * stale holder's `release` cannot free a lease minted by another process.
  */
 import { randomUUID } from "node:crypto";
-import type { Lease, LeaseOptions, LeaseStore } from "@flow-state-dev/engine";
+import type { Lease, LeaseOptions, LeaseStore } from "@flow-state-dev/engine/host";
 import type { QueryExecutor } from "./types";
 
 function rowToLease(row: Record<string, unknown>): Lease {

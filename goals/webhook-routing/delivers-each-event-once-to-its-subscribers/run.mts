@@ -6,7 +6,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, SubscriptionEvent } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, routeServiceEvent, runAction, type InboundTransportHost } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { routeServiceEvent } from "@flow-state-dev/engine/internal";
+import { type InboundTransportHost } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import {
   MESSAGE_RECEIVED_ENTRY,

@@ -10,9 +10,9 @@ import { createInboundTransportConformanceTests } from "@flow-state-dev/testing/
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  createInboundTransportHost
+  createInMemoryStores
 } from "../../src";
+import { createInboundTransportHost } from "../../src/host";
 import {
   createWebhookTransportAdapter,
   WEBHOOK_TRANSPORT_SOURCE

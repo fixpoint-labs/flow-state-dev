@@ -15,7 +15,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { createFlowState, createModelResolver } from "@flow-state-dev/engine";
+import { createFlowState } from "@flow-state-dev/engine";
+import { createModelResolver } from "@flow-state-dev/core";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {

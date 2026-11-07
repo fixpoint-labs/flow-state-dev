@@ -19,7 +19,8 @@ import { describe, expect, it } from "vitest";
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
-import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
+import type { RequestRecord, SessionRecord } from "../src/host";
+import type { StoreRegistry } from "../src";
 
 /** Identity comes from two verified headers; absent user means anonymous. */
 function twoAxisFlow(kind = "secure") {

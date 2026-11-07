@@ -131,7 +131,7 @@ const scripted = {
   },
 };
 
-const real = engine.createModelResolver();
+const real = core.createModelResolver();
 const modelResolver = Object.assign(
   (id: string, block?: string) => {
     if (id === "goal/real" || (REAL_MODEL !== "" && id === REAL_MODEL)) {

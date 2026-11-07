@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createResponseEmitter } from "../src";
+import { createResponseEmitter } from "../src/host";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
 /**

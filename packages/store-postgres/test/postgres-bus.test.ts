@@ -9,7 +9,7 @@
  * every way the path can go quiet must turn the answer back to "no".
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BusTopic, ChangeNotice } from "@flow-state-dev/engine";
+import type { BusTopic, ChangeNotice } from "@flow-state-dev/engine/host";
 import { BUS_CHANNEL, createPostgresBus, type PostgresBus } from "../src/bus";
 import { FakeNotifyNetwork, delay, until } from "./fake-notify-network";
 import type { PGlite } from "@electric-sql/pglite";

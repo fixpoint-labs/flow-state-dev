@@ -5,7 +5,7 @@
  * lean on: the record goes last.
  */
 import type { PGlite } from "@electric-sql/pglite";
-import type { RequestRecord } from "@flow-state-dev/engine";
+import type { RequestRecord } from "@flow-state-dev/engine/host";
 import {
   createRequestRetentionConformanceTests,
   makeRequestStreamEvent

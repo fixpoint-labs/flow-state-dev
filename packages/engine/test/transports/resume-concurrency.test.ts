@@ -19,9 +19,9 @@ import { z } from "zod";
 import {
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import { createInboundTransportHost } from "../../src/host";
 import { createCheckpointDurabilityProvider } from "../../src/durability/checkpoint-durability-provider";
 import { resumeUnderLease } from "../../src/durability/resume-under-lease";
 import { redriveResolvedGate, stopSuspendedRequest } from "../../src/durability/stop-suspended";

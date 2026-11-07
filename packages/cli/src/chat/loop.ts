@@ -12,7 +12,8 @@
  */
 import * as readline from "node:readline";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import type { RuntimeConfig, StoreRegistry } from "@flow-state-dev/engine";
+import type { RuntimeConfig } from "@flow-state-dev/engine/host";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import { parseInput } from "./parse";
 import { resolveDispatch, type FlowActionTarget } from "./targets";
 import { type HarnessState, newSessionId } from "./state";

@@ -10,10 +10,10 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
-  disposeFlowApiRouter,
-  TransportRouteCollisionError,
-  type InboundTransportAdapter
+  disposeFlowApiRouter
 } from "../../src";
+import { TransportRouteCollisionError } from "../../src/transports/errors";
+import { type InboundTransportAdapter } from "../../src/host";
 
 function makeFlow(kind: string, id = kind) {
   return defineFlow({

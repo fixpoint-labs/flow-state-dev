@@ -9,12 +9,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import {
-  createFlowRegistry,
-  createInboundTransportHost,
-  defaultBodyUserIdPrincipalResolver,
-  RequestOwnerMismatchError
-} from "@flow-state-dev/engine";
+import { createFlowRegistry, defaultBodyUserIdPrincipalResolver } from "@flow-state-dev/engine";
+import { createInboundTransportHost, RequestOwnerMismatchError } from "@flow-state-dev/engine/host";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
 
 const FLOW = "sqlite-owner-fence";

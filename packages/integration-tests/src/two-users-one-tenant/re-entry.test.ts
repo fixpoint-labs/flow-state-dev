@@ -17,7 +17,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import type { InboundTransportAdapter } from "@flow-state-dev/engine";
+import type { InboundTransportAdapter } from "@flow-state-dev/engine/host";
 import { z } from "zod";
 import { startTwoUserServer, waitFor, type TwoUserServer } from "./harness";
 

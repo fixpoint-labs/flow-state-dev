@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { createScopeStateOps, createStateContainer } from "../src";
+import { createScopeStateOps, createStateContainer } from "../src/stores/state-container";
 import type { CASPersist } from "../src/stores/cas";
 
 describe("hot-path cleanup", () => {
