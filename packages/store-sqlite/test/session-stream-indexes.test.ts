@@ -23,7 +23,7 @@
  */
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import type { SessionRecord } from "@flow-state-dev/engine";
+import type { SessionRecord } from "@flow-state-dev/engine/host";
 import { sessionStreamReads } from "@flow-state-dev/engine/testing";
 import { initializeSchema } from "../src/schema";
 import { createSQLiteRequestStore, createSQLiteSessionStore } from "../src";

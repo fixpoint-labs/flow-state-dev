@@ -18,9 +18,9 @@ import { z } from "zod";
 import {
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import { createInboundTransportHost } from "../../src/host";
 
 const FAST_HEARTBEAT_MS = 20;
 

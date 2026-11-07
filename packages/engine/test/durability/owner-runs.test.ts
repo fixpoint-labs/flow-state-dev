@@ -13,12 +13,12 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowState,
-  fireOwnerRunThrough,
   inMemoryStores,
-  resolveUserStorageKey,
-  routeServiceEvent,
-  type InboundTransportHost
+  resolveUserStorageKey
 } from "../../src";
+import { fireOwnerRunThrough } from "../../src/durability/owner-runs";
+import { routeServiceEvent } from "../../src/internal";
+import { type InboundTransportHost } from "../../src/host";
 
 const ORG = "acme";
 

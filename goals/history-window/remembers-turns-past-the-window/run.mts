@@ -19,7 +19,8 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, generator, sequencer, utility } from "@flow-state-dev/core";
-import { createFlowState, createModelResolver } from "@flow-state-dev/engine";
+import { createFlowState } from "@flow-state-dev/engine";
+import { createModelResolver } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
   REPO_ROOT,

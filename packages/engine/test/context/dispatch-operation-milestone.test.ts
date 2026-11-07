@@ -26,10 +26,10 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createDispatchOperation } from "../../src/context/dispatch-operation";
 import {
   createFlowRegistry,
-  createInboundTransportHost,
   createInMemoryStores,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import { createInboundTransportHost } from "../../src/host";
 import type { InboundDispatchHandle, InboundTransportHost } from "../../src/transports/types";
 
 const SPEC = {

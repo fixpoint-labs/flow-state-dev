@@ -1,8 +1,8 @@
 /**
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
+import { createFlowRegistry } from "@flow-state-dev/engine";
 import {
-  createFlowRegistry,
   ensureSessionRecord,
   ownsRecord,
   ReadonlySessionStateError,
@@ -10,7 +10,7 @@ import {
   refuseServerOwnedState,
   SessionCreateRefusedError,
   type SessionRecord
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { UNRESOLVED_INTENT_CODE } from "@flow-state-dev/core/errors/unresolved-intent-error";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -19,17 +19,19 @@ import type { Command } from "commander";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import {
   runAction,
-  resolveInProcessPrincipal,
-  createModelResolver,
   resolveDurabilityProvider,
+  type StoreRegistry
+} from "@flow-state-dev/engine";
+import {
+  resolveInProcessPrincipal,
   withChangeBus,
   createResponseEmitter,
   type ExecutionResult,
   type RequestStreamEventWithId,
   type RuntimeConfig,
-  type RuntimeLoggerLevel,
-  type StoreRegistry
-} from "@flow-state-dev/engine";
+  type RuntimeLoggerLevel
+} from "@flow-state-dev/engine/host";
+import { createModelResolver } from "@flow-state-dev/core";
 import type { FlowInstance, ModelResolver, JsonObject } from "@flow-state-dev/core/types";
 import { formatFailedImportSection } from "../resolve-flow";
 import { resolveRuntimeSource, assertNoFlowDirWithConfig, createCliLogger, resolveLogLevel } from "../resolve-runtime";

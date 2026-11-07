@@ -5,7 +5,7 @@
  * router type that the adapter wraps.
  */
 
-import type { FlowApiRouter } from "@flow-state-dev/engine";
+import type { FlowApiRouter } from "@flow-state-dev/engine/host";
 
 /** The router `createFlowApiRouter` returns: engine's own type, re-exported. */
 export type { FlowApiRouter };

@@ -20,6 +20,7 @@
  * Nothing here writes a row, a session or a notice.
  */
 import { appendFileSync } from "node:fs";
+import { createModelResolver } from "@flow-state-dev/core";
 import * as engine from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import * as workforce from "@flow-state-dev/workforce";
@@ -66,7 +67,7 @@ const noted = (model: any) => {
   });
 };
 
-const real = engine.createModelResolver();
+const real = createModelResolver();
 const modelResolver = Object.assign(
   (id: string, block?: string) => (id === "goal/broken" ? broken : noted((real as any)(id === "goal/real" ? REAL_MODEL : id, block))),
   { resolveId: (id: string) => (id === "goal/real" ? REAL_MODEL : id) },

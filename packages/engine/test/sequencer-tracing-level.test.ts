@@ -11,7 +11,8 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { StateSnapshotItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
-import { createInMemoryStores, createResponseEmitter, runAction } from "../src";
+import { createInMemoryStores, runAction } from "../src";
+import { createResponseEmitter } from "../src/host";
 
 const STATE_SCHEMA = z.object({ count: z.number().default(0) });
 

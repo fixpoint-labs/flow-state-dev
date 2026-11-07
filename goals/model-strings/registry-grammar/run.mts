@@ -18,12 +18,9 @@ import {
   type ModelResolver,
 } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import {
-  createInMemoryStores,
-  createModelResolver,
-  createResponseEmitter,
-  runAction,
-} from "@flow-state-dev/engine";
+import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createModelResolver } from "@flow-state-dev/core";
+import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import { z } from "zod";
 import { REPO_ROOT, fail, loadFixture, runGoal, stripIntentOverrides } from "../../lib/index.mts";
 

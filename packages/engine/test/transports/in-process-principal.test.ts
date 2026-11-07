@@ -22,13 +22,15 @@ import {
   createBearerSecretPrincipalResolver,
   createFlowRegistry,
   createFlowState,
-  inMemoryStores,
+  inMemoryStores
+} from "../../src";
+import {
   resolveInProcessPrincipal,
   type InboundTransportAdapter,
   type InboundTransportHost,
-  type PrincipalResolutionContext,
   type PrincipalResolver
-} from "../../src";
+} from "../../src/host";
+import { type PrincipalResolutionContext } from "@flow-state-dev/core/types";
 
 const echoInput = z.object({ message: z.string() });
 

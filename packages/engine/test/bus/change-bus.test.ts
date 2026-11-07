@@ -7,15 +7,14 @@ import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createInMemoryBus,
-  createInMemoryStores,
   withChangeBus,
   type BusTopic,
   type ChangeBus,
   type ChangeNotice,
   type RequestRecord,
-  type SessionRecord,
-  type StoreRegistry
-} from "../../src";
+  type SessionRecord
+} from "../../src/host";
+import { createInMemoryStores, type StoreRegistry } from "../../src";
 import { resolveStores } from "../../src/routes/http-handlers";
 import { storeIdentity } from "../../src/bus/publish-writes";
 

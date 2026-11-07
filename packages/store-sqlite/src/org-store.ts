@@ -3,7 +3,7 @@ import type {
   OrgListOptions,
   OrgRecord,
   OrgStore
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
 import { createSQLiteRecordStore } from "./sqlite-store";
 
 export function createSQLiteOrgStore(db: Database.Database): OrgStore {

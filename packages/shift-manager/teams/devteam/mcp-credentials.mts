@@ -20,12 +20,8 @@
  * part of it. A read answers each server's name and when its key was set.
  */
 
-import {
-  PrincipalResolutionError,
-  resolveUserStorageKey,
-  type InboundTransportAdapter,
-  type InboundTransportHost,
-} from "@flow-state-dev/engine";
+import { PrincipalResolutionError, resolveUserStorageKey } from "@flow-state-dev/engine";
+import { type InboundTransportAdapter, type InboundTransportHost } from "@flow-state-dev/engine/host";
 import { MCP_CREDENTIALS_PREFIX, mcpCredentialProblem } from "@flow-state-dev/workforce";
 import { MCP_CREDENTIALS_PATH } from "../../src/lib/mcp-credentials.ts";
 

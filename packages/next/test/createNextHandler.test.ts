@@ -4,9 +4,9 @@ import { z } from "zod";
 import {
   createFlowState,
   inMemoryStores,
-  type FlowApiRouter,
   type FlowState
 } from "@flow-state-dev/engine";
+import { type FlowApiRouter } from "@flow-state-dev/engine/host";
 import { createNextHandler } from "../src/createNextHandler";
 
 describe("createNextHandler — delegation", () => {

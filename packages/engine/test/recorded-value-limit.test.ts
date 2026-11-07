@@ -19,9 +19,9 @@ import {
   continueRequest,
   createFlowRegistry,
   createInMemoryStores,
-  createResponseEmitter,
   runAction
 } from "../src";
+import { createResponseEmitter } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { DurabilityProvider } from "../src/durability/types";
 import type { StoreRegistry } from "../src/stores/types";

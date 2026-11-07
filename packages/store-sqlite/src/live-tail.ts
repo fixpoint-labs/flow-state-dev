@@ -23,7 +23,7 @@
  * plain `Error` rather than the server's `StoreSubscriptionError` value.
  */
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { SubscribeToEventsOptions } from "@flow-state-dev/engine";
+import type { SubscribeToEventsOptions } from "@flow-state-dev/engine/host";
 
 /** Default subscription poll interval (ms). */
 export const DEFAULT_POLL_INTERVAL_MS = 100;

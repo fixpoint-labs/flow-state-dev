@@ -11,7 +11,8 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
 import type { ModelResolver } from "@flow-state-dev/core/types";
-import { createInMemoryStores, createResponseEmitter, runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import { GOAL_JUDGE_QUESTION, GOAL_JUDGE_WHY_QUESTION, goalJudge, type HarnessJudgeInput } from "../src";
 
 /** An evaluation model that answers one pick with a confidence, and records the questions it was asked. */

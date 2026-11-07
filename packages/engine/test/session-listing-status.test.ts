@@ -17,9 +17,9 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
-  type RequestRecord,
   type StoreRegistry
 } from "../src";
+import { type RequestRecord } from "../src/host";
 
 const notes = defineFlow({
   kind: "notes",

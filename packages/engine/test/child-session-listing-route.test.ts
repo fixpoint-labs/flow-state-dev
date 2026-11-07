@@ -20,11 +20,12 @@ import { z } from "zod";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  parseFlowRoute
+  createInMemoryStores
 } from "../src";
+import { parseFlowRoute } from "../src/host";
 
-import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
+import type { RequestRecord, SessionRecord } from "../src/host";
+import type { StoreRegistry } from "../src";
 import { dispatchChild, dispatchableFlow } from "./context/seam-harness";
 import { TERMINAL_WIRE_STATUS } from "../src/routes/child-session-routes";
 

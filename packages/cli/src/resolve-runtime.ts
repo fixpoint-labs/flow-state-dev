@@ -15,7 +15,8 @@
  * engine logging.
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import type { FlowState, RuntimeLogger, RuntimeLoggerLevel } from "@flow-state-dev/engine";
+import type { FlowState } from "@flow-state-dev/engine";
+import type { RuntimeLogger, RuntimeLoggerLevel } from "@flow-state-dev/engine/host";
 import {
   discoverFlows,
   getSearchedDirs,

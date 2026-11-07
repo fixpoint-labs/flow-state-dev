@@ -19,9 +19,9 @@ import {
   createExecutionContext,
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../src";
+import { createInboundTransportHost } from "../src/host";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import { claimRequestRecord } from "../src/context/request-principal";
 import { isSameRequest, resolveRequestIncarnation } from "../src/stores/scope-keys";

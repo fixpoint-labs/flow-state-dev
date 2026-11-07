@@ -16,10 +16,10 @@ import { z } from "zod";
 import {
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver,
   PrincipalResolutionError
 } from "../../src";
+import { createInboundTransportHost } from "../../src/host";
 
 function buildFlow(
   kind: string,

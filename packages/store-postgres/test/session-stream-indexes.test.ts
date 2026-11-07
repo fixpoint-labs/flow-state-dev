@@ -29,7 +29,7 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import type { SessionRecord } from "@flow-state-dev/engine";
+import type { SessionRecord } from "@flow-state-dev/engine/host";
 import { sessionStreamReads } from "@flow-state-dev/engine/testing";
 import { freshPglite } from "./shared-pglite";
 import { createPostgresStores, initializeSchema, type PostgresStoreRegistry } from "../src";

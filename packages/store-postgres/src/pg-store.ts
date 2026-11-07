@@ -10,7 +10,8 @@
  * top-level entries in `data` in lockstep.
  */
 
-import type { ExpectedVersion, SetResult } from "@flow-state-dev/engine";
+import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
+import type { SetResult } from "@flow-state-dev/engine/host";
 import type { QueryExecutor, QueryResultRow } from "./types";
 
 /**

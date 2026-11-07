@@ -5,7 +5,7 @@
  * Content is stored as TEXT in a dedicated table, separate from scope record JSONB.
  */
 
-import type { ContentStore, StorageScopeType } from "@flow-state-dev/engine";
+import type { ContentStore, StorageScopeType } from "@flow-state-dev/engine/host";
 import type { QueryExecutor } from "./types";
 
 export function createPostgresContentStore(executor: QueryExecutor): ContentStore {
