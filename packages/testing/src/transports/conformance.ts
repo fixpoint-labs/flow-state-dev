@@ -48,7 +48,7 @@ export type CreateMockTransportHostOptions = {
 
 /**
  * Build a host suitable for adapter tests. Records every dispatch and
- * principal resolution; returns a no-op `DispatchHandle` so adapters can
+ * principal resolution; returns a no-op `InboundDispatchHandle` so adapters can
  * be exercised without spinning up the runtime.
  */
 export function createMockTransportHost(

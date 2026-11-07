@@ -30,7 +30,7 @@ import {
   createInMemoryStores,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
-import type { DispatchHandle, InboundTransportHost } from "../../src/transports/types";
+import type { InboundDispatchHandle, InboundTransportHost } from "../../src/transports/types";
 
 const SPEC = {
   source: "internal" as const,
@@ -46,13 +46,13 @@ const SPEC = {
 };
 
 /** A host that hands back exactly the milestones the test wants to offer. */
-function hostReturning(handle: Partial<DispatchHandle>) {
-  const dispatch = (): DispatchHandle =>
+function hostReturning(handle: Partial<InboundDispatchHandle>) {
+  const dispatch = (): InboundDispatchHandle =>
     ({
       requestId: "req_child",
       finished: new Promise<never>(() => {}),
       ...handle
-    }) as DispatchHandle;
+    }) as InboundDispatchHandle;
   return { dispatch, usesExternalRunner: false } as Pick<
     InboundTransportHost,
     "dispatch" | "usesExternalRunner"

@@ -8,15 +8,10 @@ import {
   testFlow,
   testItems,
   testRouter,
-  testSequencer,
-  testingPackageMarker
+  testSequencer
 } from "../src";
 
 describe("@flow-state-dev/testing", () => {
-  it("exports package marker", () => {
-    expect(testingPackageMarker).toBe("@flow-state-dev/testing");
-  });
-
   it("exports runtime test APIs", () => {
     expect(typeof createTestContext).toBe("function");
     expect(typeof testBlock).toBe("function");

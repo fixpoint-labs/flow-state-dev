@@ -19,12 +19,12 @@ import {
   createInMemoryStores,
   createResponseEmitter,
   executeBlock,
-  isRetryableError,
   mergeRetryPolicy,
   normalizeError,
   retryWithPolicy,
   runAction
 } from "../src";
+import { isRetryableError } from "../src/execution/retry";
 import {
   NOOP_INTERNAL_EXECUTION_SEAMS
 } from "../src/execution/internal/seams";

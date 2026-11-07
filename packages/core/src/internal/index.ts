@@ -35,7 +35,7 @@ export type {
   ResumeWaitResult,
   SessionHistory,
   SessionHistoryQuery,
-  SessionView,
+  PeerSessionView,
   SettleParentTaskInput,
   SettleParentTaskResult,
   SuspensionAddress,

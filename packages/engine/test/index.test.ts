@@ -11,15 +11,10 @@ import {
   replayRequestEvents,
   runAction,
   runWithCAS,
-  serializeSSEFrame,
-  enginePackageMarker
+  serializeSSEFrame
 } from "../src";
 
 describe("@flow-state-dev/engine", () => {
-  it("exports scaffold marker", () => {
-    expect(enginePackageMarker).toBe("@flow-state-dev/engine");
-  });
-
   it("exports server runtime primitives", () => {
     expect(typeof createExecutionContext).toBe("function");
     expect(typeof createInMemoryStores).toBe("function");

@@ -62,7 +62,7 @@ const DEFAULT_MAX_LOOP_GUARD = 250;
  * carries only the restored `state`. Both the same-request continuation path
  * and the legacy two-request resume path populate it for the state restore.
  */
-export type ResumeState = {
+type ResumeState = {
   state?: Record<string, unknown>;
   /**
    * The durable sequencer whose checkpoint `state` is: the one that caught
@@ -802,7 +802,7 @@ export function sideChainTaskCtx(ctx: BlockContext): {
  * false. Both are "nothing was dispatched"; a resume would otherwise re-run
  * every completed step's cleanup on every re-entry.
  */
-export function childWillReplay(ctx: BlockContext, path: string): boolean {
+function childWillReplay(ctx: BlockContext, path: string): boolean {
   const replayLog = (ctx as { _replayLog?: ReplayLog })._replayLog;
   if (replayLog === undefined) return false;
   const cached = replayLog.getCompletedOutput(`${ctx.request.identity.id}:${path}`);

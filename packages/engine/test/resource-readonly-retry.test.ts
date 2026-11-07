@@ -26,10 +26,10 @@ import {
   FlowError,
   NetworkError,
   createInMemoryStores,
-  isRetryableError,
   retryWithPolicy,
   runAction
 } from "../src";
+import { isRetryableError } from "../src/execution/retry";
 import { createScopeResourceRegistry } from "../src/context/resource-registry";
 
 const RETRY_POLICY = {

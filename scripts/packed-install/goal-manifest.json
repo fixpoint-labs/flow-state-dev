@@ -104,7 +104,7 @@
   },
   "ratchets": {
     "export-check": null,
-    "collision-check": null,
+    "collision-check": "scripts/check-collisions.mjs",
     "tracker-id-lint": null
   },
   "control": {

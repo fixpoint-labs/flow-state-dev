@@ -118,14 +118,12 @@ export type {
   CollectionItemHandle,
   ResourceManifest,
   ResourceManifestEntry,
-  ExecuteActionRequestBody,
   ExecuteActionResponse,
   FlowCapabilities,
   FlowListEntry,
   ActionInputSchema,
   ActionFieldSchema,
   ActionFieldType,
-  QueryValue,
   RequestSSECallbacks,
   RequestStreamHandle,
   ResourceSnapshotEntry,
@@ -141,5 +139,3 @@ export type {
 } from "./types";
 
 export { ClientHttpError } from "./types";
-
-export const clientPackageMarker = "@flow-state-dev/client";

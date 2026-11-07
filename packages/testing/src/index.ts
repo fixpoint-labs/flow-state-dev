@@ -126,5 +126,3 @@ export type {
 // make `import "@flow-state-dev/testing"` fail for non-test consumers
 // (e.g. the CLI loading at runtime). They're available via the
 // `@flow-state-dev/testing/conformance` subpath export instead.
-
-export const testingPackageMarker = "@flow-state-dev/testing";
