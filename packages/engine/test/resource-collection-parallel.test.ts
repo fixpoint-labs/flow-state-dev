@@ -29,9 +29,9 @@ import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
   createInMemoryStores,
-  createResponseEmitter,
   runAction
 } from "../src";
+import { createResponseEmitter } from "../src/host";
 
 const memoSchema = z.object({ status: z.string() });
 

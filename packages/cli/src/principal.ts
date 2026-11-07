@@ -15,8 +15,8 @@ import {
   UnattributedOrgError,
   type InProcessPrincipal,
   type InProcessPrincipalQuestion,
-  type SessionRecord,
-} from "@flow-state-dev/engine";
+  type SessionRecord
+} from "@flow-state-dev/engine/host";
 import { CliError } from "./resolve-block";
 import { EXIT_CONFIG_ERROR, EXIT_INVALID_ARGS } from "./exit-codes";
 

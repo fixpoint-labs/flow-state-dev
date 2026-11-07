@@ -18,11 +18,10 @@ import {
   createFlowRegistry,
   createInMemoryStores,
   runAction,
-  FlowInstanceBindingMismatchError,
-  type FlowRegistry,
-  type SessionRecord,
   type StoreRegistry
 } from "../src";
+import { FlowInstanceBindingMismatchError } from "../src/context/binding-errors";
+import { type FlowRegistry, type SessionRecord } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 type Router = ReturnType<typeof createFlowApiRouter>;

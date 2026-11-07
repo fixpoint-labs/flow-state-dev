@@ -8,9 +8,9 @@ import {
   runAction,
   createFlowRegistry,
   createFlowApiRouter,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../src";
+import { createInboundTransportHost } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createParkedStopDeps } from "../src/durability/stop-suspended";
 import { parseFlowRoute } from "../src/routes/parseFlowRoute";

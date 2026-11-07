@@ -20,11 +20,8 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import {
-  createInMemoryStores,
-  createResponseEmitter,
-  runAction
-} from "../src";
+import { createInMemoryStores, runAction } from "../src";
+import { createResponseEmitter } from "../src/host";
 
 type LifecycleEvent =
   | { type: "item.added"; item: BlockTraceItem }

@@ -16,7 +16,8 @@ vi.mock("@flow-state-dev/core/internal", async (original) => {
 });
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
-import { ensureSessionRecord, runAction } from "@flow-state-dev/engine";
+import { ensureSessionRecord } from "@flow-state-dev/engine/host";
+import { runAction } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { callerMetadata } from "../src/conversation-board/ledger";

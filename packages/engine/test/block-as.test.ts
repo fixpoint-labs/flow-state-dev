@@ -23,7 +23,8 @@ import type {
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { continueRequest, createFlowRegistry, createInMemoryStores, createResponseEmitter, runAction } from "../src";
+import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { createResponseEmitter } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 /** Keys under which an item or a suspension record names a block. */

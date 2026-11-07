@@ -17,7 +17,7 @@
  * `flush` is a no-op — better-sqlite3 commits writes synchronously.
  */
 import type Database from "better-sqlite3";
-import type { TraceEvent, TraceStore } from "@flow-state-dev/engine";
+import type { TraceEvent, TraceStore } from "@flow-state-dev/engine/host";
 
 export type SQLiteTraceStoreOptions = {
   maxRequests?: number;

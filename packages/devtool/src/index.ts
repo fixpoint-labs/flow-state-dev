@@ -2,7 +2,7 @@
  * @flow-state-dev/devtool — pre-built DevTool static assets for serving via `fsdev dev`.
  *
  * This package ships the compiled DevTool SPA as static files. The CLI uses
- * `getAssetPath()` to locate the directory and serve it over HTTP alongside
+ * `getDevToolAssetPath()` to locate the directory and serve it over HTTP alongside
  * the flow API routes.
  */
 import { resolve, dirname } from "node:path";
@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * Throws if the assets directory does not exist — this means the package
  * was installed without a prior `build:assets` step.
  */
-export function getAssetPath(): string {
+export function getDevToolAssetPath(): string {
   const assetDir = resolve(__dirname, "..", "dist-client");
   if (!existsSync(assetDir)) {
     throw new Error(

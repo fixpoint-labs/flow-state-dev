@@ -43,7 +43,8 @@ import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { encodeUserSegment, type ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import type { ResourceStateSetOptions, StoreRegistry } from "@flow-state-dev/engine";
+import type { ResourceStateSetOptions } from "@flow-state-dev/engine/host";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,

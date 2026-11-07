@@ -20,13 +20,12 @@ import {
 } from "@flow-state-dev/core";
 import {
   createFlowRegistry,
-  createInboundTransportHost,
   createInMemoryStores,
   defaultBodyUserIdPrincipalResolver,
-  stripeWebhookVerifier,
-  createInMemoryLeaseBackend,
-  type FlowRunner
+  stripeWebhookVerifier
 } from "../../src";
+import { createInboundTransportHost, type FlowRunner } from "../../src/host";
+import { createInMemoryLeaseBackend } from "../../src/internal";
 import { createConcurrencyArbiter } from "../../src/transports/concurrency/arbiter";
 import type { InboundDispatchHandle } from "../../src/transports/types";
 import type { InboundRequestEnvelope, InboundTransportHost } from "../../src/transports/types";

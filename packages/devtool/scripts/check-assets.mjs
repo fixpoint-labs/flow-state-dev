@@ -11,7 +11,7 @@
  *
  * That split is what makes the omission silent. Drop `build:assets` from a
  * release script and every check still passes, the tarball simply ships without
- * its assets, and `getAssetPath()` throws for whoever installed from npm. The
+ * its assets, and `getDevToolAssetPath()` throws for whoever installed from npm. The
  * publish is the last moment anything can notice, so the check lives here:
  * `prepublishOnly` runs inside `pnpm publish` (which `changeset publish` calls)
  * before the tarball is packed, so a missing directory fails the publish instead
@@ -30,7 +30,7 @@ import { fileURLToPath } from "node:url";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
- * The entry point `getAssetPath()` consumers load first. Checking the directory
+ * The entry point `getDevToolAssetPath()` consumers load first. Checking the directory
  * alone would pass on a half-copied build; `index.html` is the file that has to
  * be there for the served app to resolve at all.
  */

@@ -13,7 +13,7 @@
  * FIX-2428's, FIX-1506's and FIX-2429's goal checks use this one rather than
  * build their own.
  */
-import { createInMemoryBus, type ChangeBus } from "@flow-state-dev/engine";
+import { createInMemoryBus, type ChangeBus } from "@flow-state-dev/engine/host";
 
 /** A crossing double: the in-memory bus, whose crossing answer a check can flip. */
 export type CrossingBus = ChangeBus & {

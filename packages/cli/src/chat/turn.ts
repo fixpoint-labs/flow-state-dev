@@ -10,13 +10,12 @@
  * `"aborted"` (a persistent "Request was stopped." status) rather than
  * `"interrupted"` (which the engine treats as a resumable disconnect).
  */
+import { runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import {
-  runAction,
   createResponseEmitter,
   abortRequest,
-  type RuntimeConfig,
-  type StoreRegistry,
-} from "@flow-state-dev/engine";
+  type RuntimeConfig
+} from "@flow-state-dev/engine/host";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowActionTarget } from "./targets";
 import type { ChatRenderer } from "./render";

@@ -29,15 +29,15 @@ import {
   withStoredAbortRequested,
   type ConditionalRequestFields,
   type ConditionalWriteResult,
-  type ExpectedVersion,
   type ReadEventsFn,
   type RequestListOptions,
   type RequestRecord,
-  type RequestStatus,
   type RequestStore,
   type SetResult,
   type SubscribeToEventsOptions
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
+import { type ExpectedVersion } from "@flow-state-dev/core/helpers";
+import { type RequestStatus } from "@flow-state-dev/core/types";
 import type { Pool } from "pg";
 import type { QueryExecutor } from "./types";
 import { openListen, reconnectDelay, type ListenConnection } from "./listen";

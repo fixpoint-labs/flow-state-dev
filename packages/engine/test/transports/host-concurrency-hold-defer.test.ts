@@ -15,9 +15,9 @@ import { z } from "zod";
 import {
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import { createInboundTransportHost } from "../../src/host";
 import { abortRequest } from "../../src/execution/abort-registry";
 import {
   createConcurrencyArbiter,

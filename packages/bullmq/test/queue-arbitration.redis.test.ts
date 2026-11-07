@@ -19,9 +19,9 @@ import {
   createFlowState,
   inMemoryStores,
   runAction,
-  type StoreRegistry,
-  type WorkerMode
+  type StoreRegistry
 } from "@flow-state-dev/engine";
+import { type WorkerMode } from "@flow-state-dev/engine/host";
 import { bullmqWorker, type BullmqWorkerOptions } from "../src/flowstate-adapter";
 import { createRedisLeaseBackend, type RedisLeaseBackend } from "../src/lease-backend";
 import { REDIS_URL, describeWithRedis, isolatedPrefix, until } from "./redis-helpers";

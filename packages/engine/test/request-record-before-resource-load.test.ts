@@ -23,9 +23,9 @@ import {
 import {
   createExecutionContext,
   createInMemoryStores,
-  RequestOwnerMismatchError,
   type StoreRegistry
 } from "../src";
+import { RequestOwnerMismatchError } from "../src/host";
 
 const REQUEST_ID = "req_liveness";
 

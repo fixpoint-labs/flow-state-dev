@@ -4,7 +4,7 @@
  * the scheduler modules.
  */
 import type { RedisOptions } from "ioredis";
-import type { LeasePlace, LeaseTurn } from "@flow-state-dev/engine";
+import type { LeasePlace, LeaseTurn } from "@flow-state-dev/engine/host";
 
 export interface BullmqConnectionOptions {
   /** ioredis connection (URL string or options object). */

@@ -14,7 +14,8 @@ import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler, ownerSegment } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
-import type { ResourceStateSetOptions, StoreRegistry } from "../src";
+import type { ResourceStateSetOptions } from "../src/host";
+import type { StoreRegistry } from "../src";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { createFindByConformanceTests } from "../src/testing";
 

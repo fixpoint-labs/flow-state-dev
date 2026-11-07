@@ -13,8 +13,8 @@ import type {
   StreamPublisher,
   StreamSubscriber,
   StreamBridgeEvent,
-  ExecutionResult,
-} from "@flow-state-dev/engine";
+  ExecutionResult
+} from "@flow-state-dev/engine/host";
 
 export interface CreateRedisStreamBridgeOptions {
   /** ioredis connection (URL string or options object). */

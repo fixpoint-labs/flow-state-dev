@@ -8,7 +8,6 @@
 - The bridge frame `StreamEvent` is renamed `StreamBridgeEvent`. The stream item from contracts and core keeps the name `StreamEvent`.
 - The policy-aware retry predicate (`isRetryableError(error, policy)`) is no longer exported. Core's one-argument helper of that name is unchanged.
 - `ChildSessionStatus` and `ChildSessionSummary` are no longer exported from engine; import them from `@flow-state-dev/client`.
-- The model-resolver retry setting it re-exports from core is renamed `ModelRetryPolicy`.
 - `enginePackageMarker` is removed.
 
 Docs: packages/engine/README.md (the bridge list names `StreamBridgeEvent`, not `StreamEvent`)

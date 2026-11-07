@@ -10,10 +10,9 @@ import { z } from "zod";
 import {
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
-  defaultBodyUserIdPrincipalResolver,
-  UserBindingMismatchError
+  defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import { createInboundTransportHost, UserBindingMismatchError } from "../../src/host";
 import { ConcurrencyRejectedError } from "../../src/transports/errors";
 
 type Gate = { id: string; release: () => void };

@@ -10,7 +10,7 @@
  */
 import Database from "better-sqlite3";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { RequestRecord, RequestStore } from "@flow-state-dev/engine";
+import type { RequestRecord, RequestStore } from "@flow-state-dev/engine/host";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { initializeSchema } from "../src/schema";
 import { createSQLiteRequestStore } from "../src/request-store";
