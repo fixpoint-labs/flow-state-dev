@@ -2,8 +2,9 @@
  * `@flow-state-dev/testing/benchmark`: the cross-pattern benchmark harness.
  *
  * Exports the benchmark contract (`BenchmarkTask`, `BenchmarkSubject`, the
- * adapter and registry shapes pattern adapters implement), the engine (`runBenchmark`), report helpers (`buildBenchmarkReport`,
- * `renderScorecard`), and pricing, plus the convenience layer:
+ * adapter and registry shapes pattern adapters implement), the engine
+ * (`runBenchmark`), report helpers (`buildBenchmarkReport`, `renderScorecard`),
+ * and pricing, plus the convenience layer:
  * - `baselineSubject` — the single-generator control every comparison needs.
  * - `comparePatterns` — resolve pattern names against a registry, append the
  *   baseline, and run. Takes the registry as an argument so `@flow-state-dev/testing`
