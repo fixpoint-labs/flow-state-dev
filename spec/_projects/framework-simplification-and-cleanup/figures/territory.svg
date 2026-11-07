@@ -1,0 +1,63 @@
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The territory. Above the fence, owned by this project: declared equals real, meaning a doc, type, option or default the runtime honours; one of each, meaning two primitives for one job made symmetric where safe with the difference stated once; honest defaults, meaning a reachable host verifies its caller; and one published path, meaning a common job such as keeping a flow alive taught once without a new product noun. To the right, never here: collapsing block kinds or state scopes, removing capabilities, skills, tools, ui or thought-fabric, shipping login, minting a heartbeat product noun, and adding new capability. The fence asks: does it make an existing statement true, or remove a second of something? Below it, touched but owned elsewhere: Public Launch hard gates including session delivery on a queue host, Workforce channels and boards, orchestration dispatch and schedules, and the core block kinds.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-own  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-out  { fill:none; stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-out  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:6 4; fill:none; }
+    .t-fence{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+
+  <g id="owned">
+    <rect class="n-own" x="16" y="16" width="620" height="196" rx="6"/>
+    <text class="t-lbl" x="32" y="36">THIS PROJECT · WHAT FSD SAYS IS WHAT IT DOES</text>
+    <text class="t-b"  x="32" y="62">declared = real</text>
+    <text class="t-s"  x="32" y="78">a doc, type, option or default is honoured, or refused out loud · FIX-1127 · the open bugs</text>
+    <text class="t-b"  x="32" y="104">one of each</text>
+    <text class="t-s"  x="32" y="120">two primitives for one job: symmetric where safe, the difference stated once · FIX-1157</text>
+    <text class="t-b"  x="32" y="146">honest defaults</text>
+    <text class="t-s"  x="32" y="162">a reachable host verifies its caller; the open posture is a named escape · FIX-1503</text>
+    <text class="t-b"  x="32" y="188">one published path</text>
+    <text class="t-s"  x="32" y="204">keeping a flow alive, taught once, with no new product noun · FIX-1637</text>
+  </g>
+
+  <g id="not-here">
+    <rect class="n-out" x="656" y="16" width="268" height="196" rx="6"/>
+    <text class="t-lbl" x="672" y="36">NEVER HERE</text>
+    <text class="t-out" x="672" y="62">collapsing block kinds or state scopes</text>
+    <text class="t-out" x="672" y="86">removing capabilities, skills, tools,</text>
+    <text class="t-out" x="672" y="102">ui or thought-fabric</text>
+    <text class="t-out" x="672" y="126">login, an OAuth UI, a password store</text>
+    <text class="t-out" x="672" y="150">a heartbeat product noun</text>
+    <text class="t-out" x="672" y="174">new capability of any kind</text>
+    <text class="t-s"   x="672" y="200">the review retracted the first two</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M16 242 H924"/>
+    <text class="t-fence" x="16" y="236">Does it make an existing statement true, or remove a second of something?  Yes → above.  It adds a capability → another project.</text>
+  </g>
+
+  <g id="substrate">
+    <rect class="n-sub" x="16" y="258" width="908" height="98" rx="6"/>
+    <text class="t-lbl" x="32" y="278">TOUCHED HERE, OWNED ELSEWHERE</text>
+    <text class="t-b"  x="32" y="302">Public Launch · hard gates</text>
+    <text class="t-s"  x="32" y="318">session delivery on a queue host: documented, not fixed</text>
+    <text class="t-b"  x="480" y="302">Workforce · channels and boards</text>
+    <text class="t-s"  x="480" y="318">taught as consumption patterns, not changed</text>
+    <text class="t-b"  x="32" y="342">Orchestration · dispatch and schedules</text>
+    <text class="t-b"  x="480" y="342">Core Blocks · the block kinds</text>
+  </g>
+</svg>
