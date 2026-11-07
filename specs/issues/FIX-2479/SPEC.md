@@ -47,7 +47,7 @@ real collection and answered the way the Inbox answers it.
 | **Goal check** | `goals/vocabulary/resource-names/a-consumer-meets-one-word/` · model-free · run by the implementer at completion · verdict in the implementation PR |
 | **Signal** | The resource entry at whole-tree scope reports OPEN 0, and its `--control` reports a planted `FooRow` type and a `useFooCollectionItem` export. The integration leg: a task stored with a `kind: "row"` hold is listed by the Inbox read with `"task"`, answered through `updateTask`, and the hold closes |
 | **Input** | The repository; a hold record written in the old shape. A planted name in another package, or a `confirm` hold instead of a question, must pass too |
-| **Anti-game** | Don't assert on the rename list: assert on what the rule finds in the tree. No exemption added beyond the store adapters and UI list modules ([decided](DECISIONS.md#decided-not-asked)) |
+| **Anti-game** | Don't assert on the rename list: assert on what the rule finds in the tree. The check also reads the resource entry and fails if it holds an exemption beyond the store-adapter and UI-list path rules ([decided](DECISIONS.md#decided-not-asked)) and stored field names ([D2](DECISIONS.md#d2)), so OPEN 0 can't be reached by widening one |
 | **Control that must fail** | `main` before this change: FAIL on *OPEN 0*, with the open names listed |
 
 ## What changes
@@ -74,6 +74,13 @@ changeset (minor, pre-1.0) lists every rename for `/release-docs`, which updates
 glossary ("a project is one row"), the collections pages and the task-substrate page's hold
 kinds (ER-7). Package READMEs are written at release.
 
+**Before the rule reads the whole tree, a `docs-fix` PR.** The resource entry's prose half
+already reads published pages, and two released lines call stored data "a collection row": the
+resources overview and core's README. A normal PR can't edit them, so a `docs-fix` PR rewords
+them first, the route FIX-2354 takes for its three published lines. The names half reads code,
+where every export moves in this PR. A published page that names a renamed export describes the
+released API until `/release-docs` rewrites it from the changeset.
+
 ## What stays as it is
 
 - **Store adapters and UI lists**: `VersionedRow`, `ResourceStateRow`, SQL rows, `ToolRow`,
@@ -98,24 +105,26 @@ kinds (ER-7). Package READMEs are written at release.
 | The debt | |
 |---|---|
 | **Removes** | About 80 off-convention exported names; *row* meaning a task; *item* meaning a resource |
-| **Adds** | A dual read of `"row"` at the hold's parse boundary, kept while stores hold old holds. No issue: it is the same shape as every BP-030 read |
+| **Adds** | A dual read of `"row"` at the hold's parse boundary. **Permanent**: stored holds don't expire, and only a one-time rewrite of stored holds would let it go, which no issue plans. The same shape as every BP-030 read |
 | **Leaves** | Stored fields named `state` that hold a status ([D2](DECISIONS.md#d2)). Words that collide but aren't retired (`InboxItem`) |
 
-**Net: down.** One word per stored thing; one dual read added.
+**Net: down.** One word per stored thing; one permanent dual read added.
 
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** about 80 names, the whole
 tree. If wrong: a breaking change for a word, or a partial one the rule can't hold at zero.
 
-**[The debt](#whats-already-here-and-the-debt), net down:** one dual read added. If wrong: a
-read path for `"row"` nobody remembers to remove.
+**[The debt](#whats-already-here-and-the-debt), net down:** one permanent dual read added. If
+wrong: a read path for `"row"` that outlives every client that wrote it.
 
 1. **[D1](DECISIONS.md#d1) · A question held on a task is stored as `"task"`; `"row"` still
    reads.** If wrong: every Inbox client updates for a word.
 2. **[D2](DECISIONS.md#d2) · Exported names move; stored field names stay.** If wrong: a
    `WorktreeStatus` in a field still called `state`.
 
-**Open: none.** D1 is the one to weigh: it fixes a public value.
+**Open: one rule for retired words on the wire** ([Open](DECISIONS.md#open)): rename both
+`"row"` and `external-dispatcher` before 1.0, or keep both. D1 is the one to weigh: it fixes a
+public value.
 
 Improvement · `workforce`, `orchestration`, `client`, `react`, `harness-manager`, `workspace`, `devtool`, `shift-manager`, `engine`, `core`, `scheduled` · large · epic FIX-2600

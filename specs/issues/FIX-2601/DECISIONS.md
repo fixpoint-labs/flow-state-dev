@@ -24,8 +24,8 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 | | |
 |---|---|
-| **Instead of** | A markdown page the checks parse · or a module with a page generated from it |
-| **Because** | A rule is a pattern, a list of paths and a reason. A module holds that as written. A markdown table can't hold a pattern with a `\|` in it, and a parser over prose is one more thing to drift. A generated page holds it too, but adds a generator and a staleness check for a reader who hasn't asked. `docs/mechanisms/mechanisms.yaml` already works this way: the data file is the doc |
+| **Instead of** | A markdown page the checks parse · a module with a page generated from it · a YAML or JSON data file whose patterns the checks compile |
+| **Because** | A rule is a pattern, a list of paths and a reason. A module holds that as written. A markdown table can't hold a pattern with a `\|` in it, and a parser over prose is one more thing to drift. A generated page holds it too, but adds a generator and a staleness check for a reader who hasn't asked. A data file holds it, but each pattern becomes a string (in JSON with every backslash doubled) that each reading check compiles, so a malformed one fails only in the check that compiles it. In the module a pattern is a regex literal, so a malformed one fails when the module loads, in every check at once. It reads no easier than an object literal of the same shape. What `docs/mechanisms/mechanisms.yaml` shares is only that the file the checks read is the contributor doc; its format is data because it holds no patterns |
 | **Locks in** | A word is coined or retired by editing `docs/contributing/glossary.mjs`. Its terms come first, each with a sentence of meaning, and the exemptions follow, so the top reads as a glossary |
 
 ![D1: one module, no page, chosen, beside a page the checks parse and a module with a generated page. Decides it: holding a real rule as written. Price: a person reads a JavaScript file](figures/d1-module.svg)
@@ -33,15 +33,16 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 It comes down to holding a real rule: a markdown cell can't hold a pattern with a pipe in it.
 
 **What would change my mind:** people asking to read the glossary as a page. The generator is
-added then, and no rule moves.
+added then, and no rule moves. A pattern that parses but matches nothing is the module's own
+risk, the same in a data file: the parity leg catches one that matched before the move.
 
 <a name="d2"></a>
 ## D2 · A word's exemptions live in its glossary entry, not in each check
 
 | | |
 |---|---|
-| **Instead of** | The words in the glossary, and each check keeping its own exemptions (`KEEP`, `EXCEPTIONS`, `PERSON_PINS`, `EXEMPT_FILES`) |
-| **Because** | An exemption is half of a rule: *ask* is kept for a person's question, *hand-off* for work already under way. With exemptions in each check, a word can be kept in one check and refused in another, which is the drift the epic exists to stop. The epic's ER-1 names exemptions as part of the rule |
+| **Instead of** | The words in the glossary, and each check keeping its own exemptions (`KEEP`, `EXCEPTIONS`, `PERSON_PINS`, `EXEMPT_FILES`) · or a split: exemptions for a word in its entry, exemptions for a path (`EXEMPT_FILES`, `PERSON_PINS`) in each check |
+| **Because** | An exemption is half of a rule: *ask* is kept for a person's question, *hand-off* for work already under way. With exemptions in each check, a word can be kept in one check and refused in another, which is the drift the epic exists to stop. The epic's ER-1 names exemptions as part of the rule. The split has no clean line: all 48 of the sweep's keeps name a path *and* the rule they keep, and the guard's exceptions can narrow by path too. The five path-only ones are the two rename-boundary tests and three pages where *a person* is a human; each keeps a word in a place, and moving them out would leave about 66 of 71 in the module |
 | **Locks in** | About 60 terms and 70 exemptions in one module. Classifying a hit is a glossary edit, and it is reviewed as one |
 
 ![D2: exemptions in the glossary entry, chosen, beside words only. Decides it: one word, one answer. Price: about 70 exemptions move in. Matching stays in each check either way](figures/d2-exemptions.svg)
@@ -90,12 +91,18 @@ the word (a parse it can't do). That stays in its check, named as such.
 | Merge the sweep and the guard into one check | A rewrite of two working gates for one shared walk. Left for a later look |
 | Keep `rules.mjs` where it is and import it from the other checks | Leaves the rules in a goal folder no contributor looks in when naming |
 
+## Notes from review
+
+Recorded for the implementer, not folded into the design.
+
+- *(PR #4886, second-look pass)* "If the module stays, add a short test that parses the whole module and compiles every pattern, so a bad entry fails loudly rather than silently matching nothing. A bad regex that matches nothing looks the same as a retired word that was cleanly removed."
+
 ## Analysis
 
 2026-11-07 · watermark 2026-11-07 (epic analysis) · **Right approach, with one change.**
 
 1. **Reuse** — `reuse-review` verdict on the one *Adds* row: **extend** `rules.mjs` (move and
-   widen), read like `mechanisms.yaml`. See [Builds on / Adds](SPEC.md#whats-already-here-and-the-debt).
+   widen); like `mechanisms.yaml`, the file the checks read is the doc. See [Builds on / Adds](SPEC.md#whats-already-here-and-the-debt).
 2. **Prior art** — Vale vocabularies and the Kubernetes glossary both put the data first. D1
    takes the data and drops the page until a reader asks for it.
 3. **Other shapes** — a parsed markdown page; a generated page. Both in D1.

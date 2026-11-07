@@ -103,7 +103,7 @@
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
     <text class="t-b" x="32" y="369">A word is coined or retired in glossary.mjs</text>
-    <text class="t-s" x="32" y="387">the mechanisms list is read the same way</text>
+    <text class="t-s" x="32" y="387">a malformed pattern fails when it loads</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>

@@ -98,7 +98,7 @@ contracts page and the skill change in the main PR. No new page.
 |---|---|
 | **Removes** | Six retired-name leftovers; two tree maps that disagree about four trees |
 | **Adds** | Exemptions for live names that collide with retired ones in skills: `AskUserQuestion` (a Claude tool), `openQuestions` (a workflow field), the agent-mailbox board. Permanent by design |
-| **Leaves** | The public `external-dispatcher` refusal code: renaming a public value is a breaking change no issue has asked for; kept by an exemption with that reason, and raised on the PR. English misuse in skills ([D1](DECISIONS.md#d1)) |
+| **Leaves** | The public `external-dispatcher` refusal code: renaming a public value is a breaking change no issue has asked for; kept by an exemption with that reason. Whether the epic keeps or renames retired words on the wire is one rule, open for the owner at the gate ([FIX-2479 Open](../FIX-2479/DECISIONS.md#open)); if renamed, FIX-2479 does it. English misuse in skills ([D1](DECISIONS.md#d1)) |
 
 **Net: down.** Six leftovers go, the two maps agree, and nothing is added but exemptions.
 

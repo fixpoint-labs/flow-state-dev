@@ -23,16 +23,19 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 | | |
 |---|---|
-| **Instead of** | Keeping `"row"` as the stored value and renaming only the types · or `"ask"` |
-| **Because** | Every Inbox client (Shift Manager, the DevTool, an app's own) branches on this value to choose how to answer, so it is a word consumers read, not a storage detail. `"row"` is the store word the epic retires. `"ask"` doesn't say which hold it is: a suspended run's approval is a question to a person too, and FIX-1876's rule keeps *ask* for exactly that. `"task"` names where the hold lives, beside `"suspension"` |
-| **Locks in** | `"task"` is a public wire value. `"row"` is accepted on read and never written (BP-030), until no store holds one. A client built on `"row"` updates when it upgrades; the changeset says so |
+| **Instead of** | Keeping `"row"` as the stored value and renaming only the types · `"ask"` · a value for what is parked, such as `"question"` or `"open"` |
+| **Because** | Every Inbox client (Shift Manager, the DevTool, an app's own) branches on this value to choose how to answer, so it is a word consumers read, not a storage detail. Both kinds of hold sit on `Task.holds`, so the value can't say where a hold sits. `source` says where it comes from. A suspension hold is a mirror of a run's parked stop, answered by resuming that run. The other is the task's own, with nothing parked, answered by a steer on the task. `"task"` says that, as `"row"` did of the row. `"row"` is the store word the epic retires. `"ask"` fits both: a suspended run's approval is a question to a person too, and FIX-1876's rule keeps *ask* for exactly that. `"question"` collides with `ask.kind`, where a `confirm` sits beside a question, and `"open"` says nothing about the source |
+| **Locks in** | `"task"` is a public wire value. `"row"` is accepted on read and never written (BP-030). The dual read is permanent: stored holds don't expire, and only a one-time rewrite of stored holds would let it go, which no issue plans. A client built on `"row"` updates when it upgrades; the changeset says so |
 
 ![D1: task, with row still read, chosen, beside keeping row stored and ask. Decides it: whether the value says which hold it is. Price: a dual read and a client update](figures/d1-hold-marker.svg)
 
-It comes down to what the value says: *ask* fits both holds, *row* names the store.
+It comes down to what the value says: *ask* fits both holds, *row* names the store, and *task*
+says the hold is the task's own rather than a mirror of a parked run.
 
 **What would change my mind:** evidence that no client outside this repository reads the hold
-source. Then it is internal, and keeping `"row"` costs nothing.
+source. Then it is internal, and keeping `"row"` costs nothing. Or an owner's rule that the epic
+keeps retired words on the wire: `external-dispatcher` is kept that way today
+([Open](#open)).
 
 <a name="d2"></a>
 ## D2 · Exported names move; stored field names and storage keys stay
@@ -94,12 +97,30 @@ marker does. That one moves, with its own dual read.
    corrected, and the size here is large.
 5. **Necessity** — earns its place: it is the owner's decision.
 6. **Ergonomics** — one pattern, learned once; the changeset is the map.
-7. **Concerns** — the epic left `RowHold`'s name to this issue. D1 decides it.
+7. **Concerns** — the epic left `RowHold`'s name to this issue. D1 decides the wire value. The
+   type's name follows the owner's table and must not read as the union `TaskHold`; the
+   implementer names it.
 
 ## How it got here
 
 - **Drafted in the spec set (2026-11-07)** — `"task"` for the hold, stored fields left alone.
   The set review counted the names, and drew the UI-row line as a path rule so the whole-tree
   check can hold it.
+- **Review round 1 (2026-11-07)** — D1's reason was wrong: both holds sit on the task, so
+  `"task"` now rests on where a hold comes from, and the dual read is named permanent. The
+  whole-tree goal now waits on a `docs-fix` PR for the published lines the rule already reads,
+  and its exemptions are checked by the goal, not by a reviewer.
 
-**Open: none.**
+<a name="open"></a>
+**Open: one, for the owner at the gate.** One rule for a retired word in a public wire value.
+This set renames `"row"` with a dual read (D1) and keeps `external-dispatcher` by an exemption
+(FIX-2354's debt). Either both are renamed before 1.0, `external-dispatcher` here, since this
+issue already carries the breaking changeset and the `core` and `engine` edits; or both stay as
+documented legacy values, and D1 renames only the types.
+
+## Notes from review
+
+Recorded for the implementer, not folded into the design.
+
+- *(PR #4886, second-look pass)* "About 80 exported names across 11 packages, with no aliases (BP-034), means every open branch that touches any of them conflicts on merge. The spec says the implementer plans the PR split, which is right. But "large" with `architecture-reference.md` shared with FIX-2354 deserves one sentence in the spec: the split should be per package, in dependency order (`core` → `orchestration` → `client` → `react` → apps), so each PR typechecks on its own."
+- *(PR #4886, second-look pass)* "Naming collision. `rowHoldSchema` / `RowHold` sits beside `taskHoldSchema` (the union), so `"task"` as the member value will read badly next to `TaskHold` (the union). The spec leaves `RowHold`'s name "to D1", but D1 doesn't name it."

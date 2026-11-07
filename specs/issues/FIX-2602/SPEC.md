@@ -45,7 +45,7 @@ change nothing. Leg b proves the code follows the glossary's resource entry.
 | **Signal** | Leg a: the sweep and the guard each report the planted word, by the new entry, in `packages/core/src/`, `docs/contributing/` and `.agents/skills/`; a second new entry handed to the side-chain check's matcher is reported in a planted `.ts` file; with the entries removed all three PASS. Leg b: the resource entry at whole-tree scope reports OPEN 0, and a task stored with a `kind: "row"` hold is listed and answered |
 | **Input** | A word generated at run time that no check knows. A different word, or a plant in another file under the same trees, must give the same verdict |
 | **Anti-game** | Leg a's working-copy diff is the glossary file and the plants only. It runs the checks as CI runs them, and reads their output, not their fixture tests. The side-chain check only matches entries that name it, in `.ts` files, since prose is its stated gap |
-| **Control that must fail** | Leg a on the commit before FIX-2601 merged: *each check reports the plant* FAILs. Leg a's `.agents/` plant on the commit before FIX-2354 merged: FAILs on that plant only |
+| **Control that must fail** | Leg a on the commit before FIX-2601 merged: *each check reports the plant* FAILs. Leg a on the commit before FIX-2354 merged: FAILs on its `docs/contributing/` and `.agents/` plants, while the `packages/core/src/` plant is still refused |
 
 ## What changes
 

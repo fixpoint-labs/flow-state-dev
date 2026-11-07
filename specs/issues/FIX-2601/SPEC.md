@@ -90,7 +90,7 @@ pointer. No user-docs impact: the published glossary is unchanged
 | `rules.mjs` (FIX-1876): `ROOTS`, `RETIRED`, `KEEP`, `EXCLUDE`, `COLLECTION_ITEM` | **Extends, by moving.** It becomes the glossary, widened to every check's rules |
 | `check-retired-terms.mjs`: `TERMS`, `EXCEPTIONS`, `PERSON_PINS`, `AREAS`, `GLOSSARY_TERMS` | **Builds on.** Its lists move to the glossary; its areas, ground and added-lines scan stay |
 | `validate-side-chain-vocabulary.mjs` (FIX-766): its name sets and `EXEMPT_FILES` | **Builds on.** Its words move; its four encodings and syntax-tree matching stay |
-| `docs/mechanisms/mechanisms.yaml`: a data file that is the contributor doc, read by checks | **Precedent** for [D1](DECISIONS.md#d1): no page is generated from it |
+| `docs/mechanisms/mechanisms.yaml`: a data file that is the contributor doc, read by checks | **Precedent** for [D1](DECISIONS.md#d1) in one respect only: no page is generated from it. It holds no patterns, so its format is no precedent |
 | The published glossary page | **Leaves alone** ([epic D2](../../epics/FIX-2600/DECISIONS.md#d2)); entries flagged `published` replace `GLOSSARY_TERMS` |
 | FIX-2071 ER-3: a rename adds its identifiers to `RETIRED` | **Amended**: it adds them to the glossary entry |
 | The 2026-11-02 `COLLECTION_ITEM` rule | **Superseded** by the owner's 2026-11-06 resource entry, at added-lines scope, for declarations ([decided](DECISIONS.md#decided-not-asked)) |
@@ -98,7 +98,7 @@ pointer. No user-docs impact: the published glossary is unchanged
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
-| `docs/contributing/glossary.mjs` | `rules.mjs`; the published page; `mechanisms.yaml` | Composed: `rules.mjs` moved and widened, read like `mechanisms.yaml`. The published page can't change per PR |
+| `docs/contributing/glossary.mjs` | `rules.mjs`; the published page; `mechanisms.yaml` | Composed: `rules.mjs` moved and widened, and, like `mechanisms.yaml`, the file the checks read is the doc. The published page can't change per PR |
 
 | The debt | |
 |---|---|

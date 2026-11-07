@@ -48,7 +48,7 @@ control the same edit must change nothing, which is what makes its PASS mean som
 | **Signal** | Leg a: one glossary edit retires a word, and CI reports a planted use under `packages/`, `docs/contributing/` and `.agents/`. Removing the entry clears all three. Leg b: the resource rule reads the whole tree at zero open, and a task stored with a `kind: "row"` hold is answered |
 | **Input** | A word chosen at run time that no check knows today, so no rule can already match it |
 | **Anti-game** | The glossary is the only file the leg-a run edits. Don't assert on a check's own fixture tests: they pass while the CI step reads a different list |
-| **Control that must fail** | The commit before FIX-2601 merges: the glossary edit changes nothing. The commit before FIX-2354: the plant under `.agents/` passes |
+| **Control that must fail** | The commit before FIX-2601 merges: the glossary edit changes nothing. The commit before FIX-2354: the plants under `docs/contributing/` and `.agents/` pass, while the one under `packages/` is refused |
 
 ## What's in the box
 

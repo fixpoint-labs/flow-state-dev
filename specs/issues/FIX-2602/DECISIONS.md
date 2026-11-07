@@ -48,6 +48,12 @@ runs nightly, and is not removed.
 | Fold leg a into FIX-1876's `--control` | Its plants are words the checks already know, so it can't show the glossary is the lever |
 | One leg only | Leg b is the only proof the code follows the resource entry |
 
+## Notes from review
+
+Recorded for the implementer, not folded into the design.
+
+- *(PR #4886, second-look pass)* "FIX-2602 is a closure issue that re-runs the children's checks plus a seam sweep. The one thing that is not in the other three is the committed CI goal check (its D1), and that is a small piece. I haven't read it closely. Consider whether this is an epic-wrap step with that one committed check, rather than a fifth issue with its own spec and PR. Not above the line: it follows the epic's own structure."
+
 ## Analysis
 
 2026-11-07 · watermark 2026-11-07 · **Right approach.**

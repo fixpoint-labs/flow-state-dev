@@ -50,8 +50,11 @@ meaning's entry then reaches contributor trees, one entry at a time.
 - **The three published lines go in a separate `docs-fix` PR.** A normal PR can't edit them.
 - **`issue-multi-pr.js` is a workflow script:** `node .agents/workflows/verify.mjs` runs after
   the edit.
-- **`external-dispatcher` stays.** It is a public refusal value, and renaming one is breaking.
-  Its README line keeps it by an exemption that says so. The prose around it is renamed.
+- **`external-dispatcher` stays here.** It is a public refusal value, and renaming one is
+  breaking. Its README line keeps it by an exemption that says so. The prose around it is
+  renamed. Whether the epic renames retired words on the wire is one rule for `"row"` and this
+  code, open for the owner at the gate ([FIX-2479 Open](../FIX-2479/DECISIONS.md#open)); a
+  rename lands in FIX-2479, not here.
 
 ## Considered and dropped
 
