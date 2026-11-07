@@ -288,6 +288,12 @@ export const CHECKS = [
     },
   },
   {
+    // An adopter unit-tests a step that waits for a person with the installed
+    // testing package alone, answering it through the engine's own routes.
+    name: "the installed testFlow stops on a step that waits for a person, and answers it through the engine's route",
+    run: (project) => runFixture(project, "test-a-stop.mjs", "test-a-stop"),
+  },
+  {
     name: "a server starts and answers an action",
     run: (project) => runFixture(project, "serve.mjs", "serve"),
   },

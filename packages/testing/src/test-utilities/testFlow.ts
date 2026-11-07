@@ -8,9 +8,10 @@
  * — `set()` only fires when the entity is missing, so prior journal entries
  * and resources survive subsequent runs.
  */
-import { createInMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores, resolveDurabilityProvider, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
+import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { cloneValue } from "@flow-state-dev/core/helpers";
 import {
   generateId,
@@ -19,7 +20,8 @@ import {
 } from "../internal/json-helpers";
 import { createMockModelResolver } from "../mocks/mockGenerator";
 import { userSeedCell } from "../internal/user-cell";
-import type { TestFlowOptions, TestFlowResult } from "./types";
+import { answerThroughRoute } from "./answerThroughRoute";
+import type { TestFlowAnswer, TestFlowOptions, TestFlowResult } from "./types";
 
 function normalizeStatus(
   value: RequestStatus | undefined
@@ -119,6 +121,7 @@ async function seedFlowStores(options: {
       await options.stores.session.set(options.sessionId, {
         id: options.sessionId,
         flowKind: options.flow.kind,
+        flowId: options.flow.id,
         userId: options.userId,
         orgId: options.orgId,
         metadata: undefined,
@@ -141,6 +144,7 @@ async function seedFlowStores(options: {
       await options.stores.request.set(options.requestId, {
         id: options.requestId,
         flowKind: options.flow.kind,
+        flowId: options.flow.id,
         actionName: options.action,
         userId: options.userId,
         sessionId: options.sessionId,
@@ -156,6 +160,19 @@ async function seedFlowStores(options: {
       }, "any");
     }
   }
+}
+
+/**
+ * The stops the run is waiting on: its `suspension` items that no
+ * `suspension_resume` item answered.
+ */
+function pendingSuspensions(items: readonly OutputItem[]): SuspensionItem[] {
+  const answered = new Set(
+    items.flatMap((item) => (item.type === "suspension_resume" ? [item.suspensionId] : []))
+  );
+  return items.filter(
+    (item): item is SuspensionItem => item.type === "suspension" && !answered.has(item.suspensionId)
+  );
 }
 
 /**
@@ -180,6 +197,20 @@ export async function testFlow<TInput = unknown>(
     seed: options.seed
   });
 
+  // One runtime config for the run and every continuation of it: the test's
+  // mocks, settings and durability. Durable by default, as a host with
+  // persistent stores is, so a step that waits for a person stops the run.
+  const runtimeConfig = {
+    modelResolver: createMockModelResolver({
+      generators: options.generators,
+      models: options.models,
+      policy: options.unmockedGeneratorPolicy,
+      unmockedDefault: options.unmockedDefault
+    }),
+    settings: options.settings,
+    durabilityProvider: resolveDurabilityProvider({ stores, durable: options.durable ?? true })
+  };
+
   const result = await runAction({
     flow: options.flow,
     actionName: options.action as keyof typeof options.flow.actions & string,
@@ -189,26 +220,65 @@ export async function testFlow<TInput = unknown>(
     userId: options.userId,
     requestId,
     stores,
-    runtimeConfig: {
-      modelResolver: createMockModelResolver({
-        generators: options.generators,
-        models: options.models,
-        policy: options.unmockedGeneratorPolicy,
-        unmockedDefault: options.unmockedDefault
-      }),
-      settings: options.settings
-    }
+    runtimeConfig
   });
 
   const persistedRequest = await stores.request.get(requestId);
 
-  return {
-    status: normalizeStatus(
-      persistedRequest?.status ?? (result.error === undefined ? "completed" : "failed")
-    ),
-    requestId,
-    output: result.output,
-    error: result.error,
-    items: result.items
+  return testFlowResult(
+    { flow: options.flow, stores, runtimeConfig, requestId },
+    {
+      status: normalizeStatus(
+        persistedRequest?.status ?? (result.error === undefined ? "completed" : "failed")
+      ),
+      output: result.output,
+      error: result.error,
+      items: result.items
+    }
+  );
+}
+
+type RunContext = Parameters<typeof answerThroughRoute>[0];
+
+/**
+ * A run's result, with `answer` and `resume` bound to it: each continues the
+ * run through the engine's route and returns the run that followed, which
+ * can be answered in turn.
+ */
+function testFlowResult(
+  context: RunContext,
+  fields: Pick<TestFlowResult, "status" | "output" | "error" | "items">
+): TestFlowResult {
+  const waiting = pendingSuspensions(fields.items as OutputItem[]);
+  const through = (route: "answer" | "resume") => async (answer: TestFlowAnswer): Promise<TestFlowResult> => {
+    const suspensionId = answer.suspensionId ?? onlyStop(waiting, route);
+    const outcome = await answerThroughRoute(context, {
+      route,
+      suspensionId,
+      action: answer.action,
+      data: answer.data,
+      headers: answer.headers
+    });
+    return testFlowResult(context, { status: normalizeStatus(outcome.status), items: outcome.items });
   };
+  return {
+    ...fields,
+    requestId: context.requestId,
+    suspension: waiting.at(-1),
+    answer: through("answer"),
+    resume: through("resume")
+  };
+}
+
+/** The one stop a call without a `suspensionId` answers; throws when there is none, or several. */
+function onlyStop(waiting: SuspensionItem[], route: "answer" | "resume"): string {
+  if (waiting.length === 0) {
+    throw new Error(`run.${route}: this run is not waiting on a stop`);
+  }
+  if (waiting.length > 1) {
+    throw new Error(
+      `run.${route}: this run waits on ${waiting.length} stops (${waiting.map((s) => s.suspensionId).join(", ")}); pass suspensionId`
+    );
+  }
+  return waiting[0]!.suspensionId;
 }
