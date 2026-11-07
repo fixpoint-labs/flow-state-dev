@@ -12,7 +12,6 @@ import { type InboundTransportHost } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import {
   ROSTER_FLOW,
-  SUBSCRIPTION_ROUTE_ENTRY,
   WORKER_MESSAGES_PATTERN,
   createWorkerInstallation,
   defineSubscriptionServiceFlow,
@@ -265,7 +264,7 @@ let unlabelled = 0;
 const route = async (event: SubscriptionEvent) => {
   const routed = await routeServiceEvent(host, {
     flowKind: "github-service",
-    entry: SUBSCRIPTION_ROUTE_ENTRY,
+    entry: "routeSubscriptionEvent",
     input: event,
     principal: { userId: "service:github", orgId: ORG }
   });
