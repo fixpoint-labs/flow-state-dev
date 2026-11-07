@@ -55,15 +55,18 @@ function toTrackedStateChanges(items: OutputItem[]): Array<{
  * The route a router chose in this run, read from the `router_decision` item
  * the engine emits for it. Each run reads its own items, so concurrent runs of
  * one router definition never see each other's choice. Matched by the
- * router's name, which `connectInput` keeps.
+ * router's name, which `connectInput` keeps. The last match wins: a router
+ * that retries decides once per attempt, and the last attempt is the one
+ * that produced the result.
  */
 function selectedRouteOf(router: BlockDefinition<any, any>, items: ReadonlyArray<{ type: string }>): string | undefined {
+  let selected: string | undefined;
   for (const item of items) {
     if (item.type !== "router_decision") continue;
     const decision = item as { routerName?: string; selectedRoute?: string };
-    if (decision.routerName === router.name) return decision.selectedRoute;
+    if (decision.routerName === router.name) selected = decision.selectedRoute;
   }
-  return undefined;
+  return selected;
 }
 
 /**

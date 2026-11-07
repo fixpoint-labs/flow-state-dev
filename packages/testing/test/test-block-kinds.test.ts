@@ -42,6 +42,28 @@ describe("testBlock by the block's kind", () => {
     expect(result.selectedRoute).toBe("right");
   });
 
+  it("a router that retries reports the route of the attempt that produced the result", async () => {
+    const left = handler({
+      name: "left",
+      execute: (_input: { route: string }): string => {
+        throw new Error("left fails");
+      }
+    });
+    const right = handler({ name: "right", execute: (_input: { route: string }) => "right" });
+    let attempt = 0;
+    const chooser = router({
+      name: "chooser",
+      routes: [left, right],
+      retry: { maxAttempts: 2 },
+      execute: () => (attempt++ === 0 ? left : right)
+    });
+
+    const result = await testBlock(chooser, { input: { route: "any" } });
+
+    expect(result.output).toBe("right");
+    expect(result.selectedRoute).toBe("right");
+  });
+
   it("two concurrent runs of one router each report their own route", async () => {
     // A recorder on the shared definition would let one run overwrite the
     // other's route; each run reads its own.
