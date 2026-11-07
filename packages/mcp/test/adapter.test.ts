@@ -17,7 +17,7 @@ import {
   ConcurrencyRejectedError,
   OrgBindingMismatchError,
   UserBindingMismatchError
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
 import {
   createMcpTransportAdapter,
   MCP_TRANSPORT_SOURCE,

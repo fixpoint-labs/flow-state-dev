@@ -11,9 +11,9 @@ import {
   createFlowState,
   createInProcessFetch,
   inMemoryStores,
-  type FlowApiRouter,
   type FlowState
 } from "../src";
+import { type FlowApiRouter } from "../src/host";
 
 /** A router that reflects what it received, for asserting the translation. */
 const echoRouter: FlowApiRouter = {

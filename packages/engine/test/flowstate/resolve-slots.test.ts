@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createInMemoryBus, inMemoryStores, FlowStateConfigError, type ChangeBus, type StoreAdapter } from "../../src";
+import { createInMemoryBus, type ChangeBus } from "../../src/host";
+import { inMemoryStores, type StoreAdapter } from "../../src";
+import { FlowStateConfigError } from "../../src/errors/flow-error";
 import { resolveProfileStores, PRIMARY_REGISTRY_SLOTS } from "../../src/flowstate/resolve-slots";
 
 /** A bare adapter that lies about its capabilities for the mismatch test. */

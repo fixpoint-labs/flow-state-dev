@@ -22,10 +22,10 @@ import { NetworkError } from "../src/errors/flow-error";
 import {
   createInMemoryStores,
   createFilesystemStores,
-  createResponseEmitter,
   runAction,
   type StoreRegistry
 } from "../src";
+import { createResponseEmitter } from "../src/host";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   ContextLengthError,
-  FlowError,
   ProviderUnavailableError,
   RateLimitError,
-  TimeoutError,
-  normalizeError
-} from "../src";
+  TimeoutError
+} from "../src/errors/flow-error";
+import { FlowError } from "@flow-state-dev/core";
+import { normalizeError } from "../src/errors/normalize-error";
 
 /**
  * AI SDK errors are tagged with a shared marker symbol (`vercel.ai.error`)

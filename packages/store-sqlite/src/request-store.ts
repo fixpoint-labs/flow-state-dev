@@ -18,14 +18,14 @@ import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type {
   ConditionalRequestFields,
   ConditionalWriteResult,
-  ExpectedVersion,
   RequestListOptions,
   RequestRecord,
-  RequestStatus,
   RequestStore,
   SetResult,
   SubscribeToEventsOptions
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
+import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
+import type { RequestStatus } from "@flow-state-dev/core/types";
 import { createSQLiteRecordStore } from "./sqlite-store";
 import { createLiveTailRegistry, DEFAULT_POLL_INTERVAL_MS } from "./live-tail";
 

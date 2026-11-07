@@ -24,11 +24,13 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import {
   createExecutionContext,
   createInMemoryStores,
+  runAction
+} from "../src";
+import {
   createResponseEmitter,
   OrgBindingMismatchError,
-  runAction,
   UserBindingMismatchError
-} from "../src";
+} from "../src/host";
 
 function createTestFlow() {
   return defineFlow({

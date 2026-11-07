@@ -16,13 +16,15 @@ import {
 import { publishScopeChange } from "../../src/bus/scope-changes";
 import {
   createFlowRegistry,
-  createInMemoryBus,
   createInMemoryStores,
-  runAction,
+  runAction
+} from "../../src";
+import {
+  createInMemoryBus,
   type BusTopic,
   type ChangeBus,
   type ChangeNotice
-} from "../../src";
+} from "../../src/host";
 
 const ORG = "acme";
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));

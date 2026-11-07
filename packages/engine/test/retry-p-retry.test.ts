@@ -6,11 +6,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { SuspensionError } from "@flow-state-dev/core";
-import {
-  NetworkError,
-  ValidationError,
-  retryWithPolicy
-} from "../src";
+import { NetworkError, ValidationError } from "../src/errors/flow-error";
+import { retryWithPolicy } from "../src/execution/retry";
 import { isRetryableError } from "../src/execution/retry";
 
 describe("retryWithPolicy (p-retry backed)", () => {

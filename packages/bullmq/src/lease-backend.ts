@@ -29,8 +29,8 @@ import type {
   ConcurrencyLeaseBackend,
   LeasePlace,
   LeaseTakeInput,
-  LeaseTakeResult,
-} from "@flow-state-dev/engine";
+  LeaseTakeResult
+} from "@flow-state-dev/engine/host";
 import { resolveProducerConnection } from "./connection";
 import type { BullmqConnectionOptions } from "./types";
 

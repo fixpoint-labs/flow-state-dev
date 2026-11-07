@@ -32,7 +32,8 @@ import {
   createFlowRegistry,
   createInMemoryStores
 } from "../src";
-import type { SessionRecord, RequestRecord, StoreRegistry } from "../src";
+import type { SessionRecord, RequestRecord } from "../src/host";
+import type { StoreRegistry } from "../src";
 
 /**
  * A flow whose identity comes from a verified header — standing in for any real

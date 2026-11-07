@@ -25,7 +25,8 @@ import {
 } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import type { ModelResolver, InitialSkill } from "@flow-state-dev/core/types";
-import { createInMemoryStores, createResponseEmitter, runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import {
   createMockModelResolver,
   mockEvaluationModel,

@@ -25,9 +25,9 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
-  type SessionRecord,
   type StoreRegistry
 } from "../src";
+import { type SessionRecord } from "../src/host";
 
 const reports = defineFlow({
   kind: "reports",

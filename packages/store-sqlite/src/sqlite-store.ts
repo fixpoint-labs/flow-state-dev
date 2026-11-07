@@ -11,7 +11,8 @@
  * the depth-1 paths the contract allows in v1.
  */
 import type Database from "better-sqlite3";
-import type { ExpectedVersion, SetResult } from "@flow-state-dev/engine";
+import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
+import type { SetResult } from "@flow-state-dev/engine/host";
 
 export type SQLiteRecordStoreConfig<TRecord, TListOptions> = {
   tableName: string;

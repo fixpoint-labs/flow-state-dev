@@ -44,11 +44,11 @@ import type {
   ResourceStateSetOptions,
   ResourceStateStore,
   StorageScopeType,
-  ExpectedVersion,
   ResourceStateRow,
   SetResult,
   VersionedResourceState
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
+import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
 
 /** A row as SQLite hands it back: state is TEXT, lifecycle is unnarrowed. */
 type RawRow = { state: string; version: number; lifecycle: string };

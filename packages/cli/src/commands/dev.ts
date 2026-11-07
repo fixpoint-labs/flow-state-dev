@@ -27,12 +27,11 @@ import type { Command } from "commander";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createModelResolver,
   resolveDurabilityProvider,
-  type DevToolConnectionConfig,
-  type FlowApiRouter,
-  type FlowState,
+  type FlowState
 } from "@flow-state-dev/engine";
+import { createModelResolver } from "@flow-state-dev/core";
+import { type DevToolConnectionConfig, type FlowApiRouter } from "@flow-state-dev/engine/host";
 import {
   assertNetworkBindIsAuthenticated,
   createPageHtmlTransform,
@@ -697,7 +696,7 @@ async function resolveDevToolAssets(): Promise<string> {
   // Try the @flow-state-dev/devtool package
   try {
     const devtoolPkg = await import("@flow-state-dev/devtool");
-    return devtoolPkg.getAssetPath();
+    return devtoolPkg.getDevToolAssetPath();
   } catch {
     // Not installed or assets not built — try fallback
   }

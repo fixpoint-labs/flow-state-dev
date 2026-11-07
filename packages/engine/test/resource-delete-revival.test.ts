@@ -30,9 +30,9 @@ import type { JsonObject } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
   createInMemoryStores,
-  ResourceDeletedError,
   type StoreRegistry
 } from "../src";
+import { ResourceDeletedError } from "../src/errors/flow-error";
 
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 const spine = defineResource({

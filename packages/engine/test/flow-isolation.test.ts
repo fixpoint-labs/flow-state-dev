@@ -13,14 +13,14 @@ import {
 import { z } from "zod";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it, vi } from "vitest";
+import { CrossFlowSchemaConflictError } from "../src/registry/errors";
 import {
-  CrossFlowSchemaConflictError,
   createExecutionContext,
   createFlowRegistry,
   createInMemoryStores,
-  resolveOrgStorageKey,
   resolveUserStorageKey
 } from "../src";
+import { resolveOrgStorageKey } from "../src/stores/scope-keys";
 import { resolveResourceScopeId } from "../src/stores/scope-keys";
 import { resourceStorageKeys } from "../src/resources/storage-keys";
 import { compareZodSchemas } from "../src/registry/schema-compat";

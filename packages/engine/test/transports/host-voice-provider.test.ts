@@ -28,9 +28,9 @@ function onlyRunActionCall(): RunActionOptions {
 import {
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import { createInboundTransportHost } from "../../src/host";
 
 function provider(id: string): VoiceProvider {
   return {

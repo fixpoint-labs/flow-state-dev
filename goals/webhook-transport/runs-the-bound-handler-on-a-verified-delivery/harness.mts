@@ -19,11 +19,11 @@ import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core"
 import {
   createFlowRegistry,
   createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver,
   createWebhookTransportAdapter,
-  stripeWebhookVerifier,
+  stripeWebhookVerifier
 } from "@flow-state-dev/engine";
+import { createInboundTransportHost } from "@flow-state-dev/engine/host";
 
 const fixture = JSON.parse(process.env.GOAL_FIXTURE ?? "{}") as {
   invoiceId: string;

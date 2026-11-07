@@ -10,7 +10,7 @@
  */
 import type { PGlite } from "@electric-sql/pglite";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { RequestRecord, RequestStore } from "@flow-state-dev/engine";
+import type { RequestRecord, RequestStore } from "@flow-state-dev/engine/host";
 import { beforeEach, describe, expect, it } from "vitest";
 import { initializeSchema, type QueryExecutor } from "../src";
 import { createPostgresRequestStore } from "../src/request-store";

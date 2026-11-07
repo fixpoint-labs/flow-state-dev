@@ -18,9 +18,9 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
-  createResponseEmitter,
   runAction
 } from "../src";
+import { createResponseEmitter } from "../src/host";
 import { applyScopeStateDefaults } from "../src/context/scope-state-defaults";
 import { createRequestHost } from "../src/context/create-request-host";
 import { createRequestSessions } from "../src/context/request-sessions";

@@ -26,20 +26,21 @@ import {
   holdLeasePlace,
   planDeferWait,
   planQueueWait,
-  settleUnstartedRequest,
-} from "@flow-state-dev/engine";
+  settleUnstartedRequest
+} from "@flow-state-dev/engine/host";
 import { DelayedError, Worker, UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
-import { runAction, withChangeBus } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { withChangeBus } from "@flow-state-dev/engine/host";
 import type {
   FlowRegistry,
   LeasePlace,
   LeaseTakeResult,
-  StoreRegistry,
   RuntimeConfig,
   StreamBridge,
-  StreamPublisher,
-} from "@flow-state-dev/engine";
+  StreamPublisher
+} from "@flow-state-dev/engine/host";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { resolveWorkerConnection } from "./connection";
 import type { JobLeaseBackend, JobLeaseTakeInput } from "./lease-backend";

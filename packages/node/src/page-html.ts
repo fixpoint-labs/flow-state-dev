@@ -8,7 +8,7 @@
  * server's middleware, say) applies the same transform, so there is one writer
  * and one loopback rule for the credential.
  */
-import type { DevToolConnectionConfig } from "@flow-state-dev/engine";
+import type { DevToolConnectionConfig } from "@flow-state-dev/engine/host";
 import { isLoopbackHost } from "./bind-guard";
 import { injectDevtoolConfig, insertBeforeHeadClose } from "./devtool-config-injection";
 

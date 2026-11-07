@@ -1,8 +1,5 @@
 import type Database from "better-sqlite3";
-import type {
-  ActiveRequestEntry,
-  ActiveRequestRegistry
-} from "@flow-state-dev/engine";
+import type { ActiveRequestEntry, ActiveRequestRegistry } from "@flow-state-dev/engine/host";
 
 function serializeEntry(entry: ActiveRequestEntry): unknown[] {
   return [

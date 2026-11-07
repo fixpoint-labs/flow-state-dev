@@ -3,10 +3,7 @@
  * harness against a minimal synthetic adapter and confirms the suite
  * runs end-to-end.
  */
-import {
-  createHttpTransportAdapter,
-  HTTP_TRANSPORT_SOURCE
-} from "@flow-state-dev/engine";
+import { createHttpTransportAdapter, HTTP_TRANSPORT_SOURCE } from "@flow-state-dev/engine/internal";
 import {
   createInboundTransportConformanceTests
 } from "../src/transports/conformance";

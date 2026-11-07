@@ -16,9 +16,9 @@ import { describe, expect, it } from "vitest";
 import {
   createExecutionContext,
   createInMemoryStores,
-  createResponseEmitter,
   runAction
 } from "../src";
+import { createResponseEmitter } from "../src/host";
 
 // ---------------------------------------------------------------------------
 // Helpers

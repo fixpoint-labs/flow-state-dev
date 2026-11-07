@@ -15,11 +15,11 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
-  disposeFlowApiRouter,
-  parseFlowRoute,
-  withChangeBus
+  disposeFlowApiRouter
 } from "../src";
-import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
+import { parseFlowRoute, withChangeBus } from "../src/host";
+import type { RequestRecord, SessionRecord } from "../src/host";
+import type { StoreRegistry } from "../src";
 import { SESSION_STREAM_TIMINGS } from "../src/routes/session-stream-routes";
 
 type Router = ReturnType<typeof createFlowApiRouter>;

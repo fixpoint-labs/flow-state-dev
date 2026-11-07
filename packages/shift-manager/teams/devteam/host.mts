@@ -42,13 +42,12 @@ import {
   createBearerSecretPrincipalResolver,
   createFlowState,
   createInProcessFetch,
-  ensureSessionRecord,
   PrincipalResolutionError,
   resolveUserStorageKey,
   runAction,
-  type FlowState,
-  type PrincipalResolver,
+  type FlowState
 } from "@flow-state-dev/engine";
+import { ensureSessionRecord, type PrincipalResolver } from "@flow-state-dev/engine/host";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import {
   encodeUserSegment,

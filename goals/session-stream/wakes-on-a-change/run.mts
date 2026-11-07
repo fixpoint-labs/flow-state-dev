@@ -28,9 +28,9 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   disposeFlowApiRouter,
-  type ChangeBus,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import { type ChangeBus } from "@flow-state-dev/engine/host";
 import { createPostgresStores, type QueryExecutor } from "@flow-state-dev/store-postgres";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import {

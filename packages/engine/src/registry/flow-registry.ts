@@ -159,7 +159,7 @@ type ScopeParticipant = {
 /**
  * In-memory flow registry implementation for runtime and tests.
  */
-export class InMemoryFlowRegistry implements FlowRegistry {
+class InMemoryFlowRegistry implements FlowRegistry {
   /** The global address index — the one map `get`, `list`, and admission read. */
   private readonly flowsById = new Map<string, FlowInstance>();
 

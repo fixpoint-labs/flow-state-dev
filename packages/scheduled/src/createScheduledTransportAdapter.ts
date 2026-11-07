@@ -6,10 +6,7 @@
  * time at most once (recorded in the host's store), overlap policy, and
  * `source: "scheduled"` provenance.
  */
-import type {
-  InboundTransportAdapter,
-  InboundTransportHost
-} from "@flow-state-dev/engine";
+import type { InboundTransportAdapter, InboundTransportHost } from "@flow-state-dev/engine/host";
 import { handleDispatch, handleList } from "./routes";
 
 export const SCHEDULED_TRANSPORT_SOURCE = "scheduled" as const;

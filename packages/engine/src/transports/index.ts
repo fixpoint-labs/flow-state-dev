@@ -8,19 +8,16 @@
 export type {
   InboundDispatchHandle,
   InboundRequestEnvelope,
-  InboundSource,
   InboundTransportAdapter,
   InboundTransportHost,
-  PrincipalResolutionContext,
   PrincipalResolver,
-  ResolvedPrincipal,
   TransportBindings,
   TransportRoute
 } from "./types";
 
 export type {
   DispatchEnvelope,
-  FlowDispatchHandle,
+  RunnerHandle,
   FlowRunner,
   LeaseTurn,
   StreamBridge,
@@ -31,7 +28,6 @@ export type {
 
 export {
   createInMemoryLeaseBackend,
-  DEFER_PATIENCE_MS,
   holdLeasePlace,
   planDeferWait,
   planQueueWait,
@@ -44,16 +40,12 @@ export {
   type QueueWaitStep
 } from "./concurrency/lease-backend";
 
-export type { AuthenticationConfig, ResolvePrincipalFn } from "@flow-state-dev/core/types";
-
 export {
   ConcurrencyLeaseLostError,
-  ConcurrencyDeferLimitError,
   ConcurrencyQueueTimeoutError,
   ConcurrencyRejectedError,
   OrgRequiredError,
-  PrincipalResolutionError,
-  TransportRouteCollisionError
+  PrincipalResolutionError
 } from "./errors";
 
 export {
@@ -93,13 +85,6 @@ export {
 } from "./host/createInboundTransportHost";
 
 export {
-  createInProcessRunner,
-  type InProcessRunner,
-  type InProcessDispatchContext,
-  type InProcessRunnerDeps
-} from "./host/in-process-runner";
-
-export {
   createHttpTransportAdapter,
   type CreateHttpTransportAdapterOptions,
   HTTP_TRANSPORT_SOURCE
@@ -117,7 +102,6 @@ export {
 
 export {
   createWebhookTransportAdapter,
-  WEBHOOK_TRANSPORT_SOURCE,
   type CreateWebhookTransportAdapterOptions,
   type WebhookProviderDefinition
 } from "./webhook/createWebhookTransportAdapter";

@@ -9,7 +9,7 @@
  * omits the key are the same record, as every scope comparison treats them.
  */
 import { describe, expect, it } from "vitest";
-import type { RequestRecord, SessionRecord } from "../src";
+import type { RequestRecord, SessionRecord } from "../src/host";
 import { isSameRequest, isSameSession } from "../src/stores/scope-keys";
 
 const session: SessionRecord = {

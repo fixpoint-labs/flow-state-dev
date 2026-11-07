@@ -16,7 +16,7 @@
  * per store instance, it holds per process only.
  */
 import { CronExpressionParser } from "cron-parser";
-import type { ResourceStateStore } from "@flow-state-dev/engine";
+import type { ResourceStateStore } from "@flow-state-dev/engine/host";
 import type { ResolvedPrincipal } from "@flow-state-dev/core/types";
 import { firedRecordKey } from "./firedRecords";
 

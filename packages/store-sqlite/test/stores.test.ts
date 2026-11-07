@@ -9,7 +9,7 @@ import type {
   SessionRecord,
   TraceStore,
   UserRecord
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
 import { createTraceStoreConformanceTests } from "@flow-state-dev/engine/testing";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
 import { initializeSchema } from "../src/schema";

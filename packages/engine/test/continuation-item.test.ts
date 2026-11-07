@@ -15,9 +15,9 @@ import {
   continueRequest,
   createFlowRegistry,
   createInMemoryStores,
-  retryRequest,
   runAction
 } from "../src";
+import { retryRequest } from "../src/execution/request-recovery";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { ContinuationItem } from "@flow-state-dev/core/items";

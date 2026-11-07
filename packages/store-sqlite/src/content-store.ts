@@ -8,7 +8,7 @@
  * dependency on the engine package.
  */
 import type Database from "better-sqlite3";
-import type { ContentStore, StorageScopeType } from "@flow-state-dev/engine";
+import type { ContentStore, StorageScopeType } from "@flow-state-dev/engine/host";
 
 /**
  * Create a SQLite-backed `ContentStore` over the provided database handle.

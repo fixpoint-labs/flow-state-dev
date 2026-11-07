@@ -17,7 +17,7 @@ import { EXIT_CONFIG_ERROR } from "../src/exit-codes";
 
 const devtool = vi.hoisted(() => ({ dir: undefined as string | undefined }));
 vi.mock("@flow-state-dev/devtool", () => ({
-  getAssetPath: () => {
+  getDevToolAssetPath: () => {
     if (devtool.dir === undefined) throw new Error("pre-built assets not found");
     return devtool.dir;
   },

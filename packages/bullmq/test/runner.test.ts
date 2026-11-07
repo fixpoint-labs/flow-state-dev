@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { Queue } from "bullmq";
-import type { DispatchEnvelope, StreamBridge } from "@flow-state-dev/engine";
+import type { DispatchEnvelope, StreamBridge } from "@flow-state-dev/engine/host";
 import { createWorkerRunner } from "../src/runner";
 import { leaseJobId } from "../src/lease-backend";
 

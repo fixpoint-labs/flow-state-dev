@@ -22,6 +22,8 @@ export default defineConfig({
       "@flow-state-dev/core/capability": resolve(root, "packages/core/src/capability/index.ts"),
       "@flow-state-dev/core": resolve(root, "packages/core/src/index.ts"),
       "@flow-state-dev/testing": resolve(root, "packages/testing/src/index.ts"),
+      "@flow-state-dev/engine/host": resolve(root, "packages/engine/src/host.ts"),
+      "@flow-state-dev/engine/internal": resolve(root, "packages/engine/src/internal.ts"),
       "@flow-state-dev/engine": resolve(root, "packages/engine/src/index.ts"),
       "@flow-state-dev/tools": resolve(root, "packages/tools/src/index.ts"),
       "@flow-state-dev/tools/search": resolve(root, "packages/tools/src/search/index.ts"),

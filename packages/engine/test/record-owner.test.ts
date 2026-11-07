@@ -5,7 +5,9 @@
  */
 import { defineFlow } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
-import { createFlowRegistry, ownsRecord, resolveRecordOwner } from "../src";
+import { createFlowRegistry } from "../src";
+import { ownsRecord } from "../src/host";
+import { resolveRecordOwner } from "../src/context/record-owner";
 import { foreignRecordRefusal } from "../src/context/record-owner";
 
 function registryWith(...flows: Parameters<ReturnType<typeof createFlowRegistry>["register"]>[0][]) {
