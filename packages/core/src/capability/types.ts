@@ -52,6 +52,8 @@ type MaybePromise<T> = T | Promise<T>;
  */
 export type CapabilityPresetCtx<TSessionState = any> = BlockContext<
   Record<string, unknown>,
+  // `any` passes through on purpose (`[any] extends [object]` holds): it is the
+  // no-schema case above. The type test pins it.
   [TSessionState] extends [object] ? TSessionState : Record<string, unknown>
 >;
 

@@ -101,6 +101,27 @@ defineCapability({
   },
 });
 
+/**
+ * A capability with no `sessionStateSchema` leaves the shape to the block that
+ * uses it, so its preset callback reads session state as `any`, and the rest of
+ * its ctx stays a typed `BlockContext`.
+ */
+defineCapability({
+  name: "preset-ctx-no-schema",
+  presets: {
+    p: {
+      tools: (ctx) => {
+        readsAnyCtx(ctx);
+        expectTypeOf(ctx.session.state.anyField).toBeAny();
+        expectTypeOf(ctx.signal).toEqualTypeOf<AbortSignal>();
+        // @ts-expect-error not a member of `BlockContext`.
+        void ctx.notAMember;
+        return [];
+      },
+    },
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Declared targets
 // ---------------------------------------------------------------------------
