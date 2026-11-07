@@ -4,7 +4,6 @@ import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { UseSuspensionFormResult } from "@flow-state-dev/react";
 import { CheckIcon, CornerDownRightIcon, MinusIcon } from "lucide-react";
 
-// FIX-849.
 /**
  * Shared chrome for the polished non-binary suspension cards: the
  * resolved receipt and the submit/skip footer. The three cards (question,

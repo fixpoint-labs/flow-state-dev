@@ -1,6 +1,5 @@
 "use client";
 
-// FIX-445.
 /**
  * `<TaskPlan />` — generalized renderer for any TaskCollection.
  *
