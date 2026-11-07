@@ -81,7 +81,7 @@ import type {
 } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { isSameRequest, isSameSession, toBareSessionId } from "../stores/scope-keys";
-import type { ChangeKind } from "@flow-state-dev/core";
+import type { ChangeKind } from "@flow-state-dev/core/internal";
 import type { BusTopic, ChangeBus } from "../bus/types";
 import { serializeSSEFrame } from "../streaming/sse";
 import { createSSEStream, type SSEStreamHandle } from "../streaming/sse-stream";

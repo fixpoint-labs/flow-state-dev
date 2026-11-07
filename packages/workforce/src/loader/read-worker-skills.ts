@@ -22,7 +22,7 @@
  */
 
 import path from "node:path";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { InitialSkill } from "@flow-state-dev/core/types";
 import {
   readSkillsDirectory,
 } from "@flow-state-dev/orchestration";

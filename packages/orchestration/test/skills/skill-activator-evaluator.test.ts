@@ -23,9 +23,8 @@ import {
   sequencer,
   DEFAULT_ORG_ID,
 } from "@flow-state-dev/core";
-import type { InitialSkill } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import type { ModelResolver } from "@flow-state-dev/core/types";
+import type { ModelResolver, InitialSkill } from "@flow-state-dev/core/types";
 import { createInMemoryStores, createResponseEmitter, runAction } from "@flow-state-dev/engine";
 import {
   createMockModelResolver,

@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createFilesystemStores, createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { DEFAULT_LOCAL_USER_ID } from "@flow-state-dev/core";
+import { DEFAULT_LOCAL_USER_ID } from "@flow-state-dev/core/types";
 import { executeRunCommand } from "../src/commands/run";
 import { CliError } from "../src/resolve-block";
 import { EXIT_INVALID_ARGS } from "../src/exit-codes";

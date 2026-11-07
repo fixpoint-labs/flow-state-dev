@@ -15,7 +15,7 @@
  * its own stream already carried the change. Request and block-instance
  * state publish nothing: no screen watches them.
  */
-import type { ChangeKind, TopicScope } from "@flow-state-dev/core";
+import type { ChangeKind, TopicScope } from "@flow-state-dev/core/internal";
 import { publishNotices } from "./publish-writes";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import type { ChangeBus } from "./types";

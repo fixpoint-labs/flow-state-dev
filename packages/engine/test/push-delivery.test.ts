@@ -9,7 +9,8 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { DEFAULT_ORG_ID, defineFlow, handler, topic, type PushMintAnswer, type PushServerFrame } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler, topic } from "@flow-state-dev/core";
+import type { PushMintAnswer, PushServerFrame } from "@flow-state-dev/core/internal";
 import {
   createFlowApiRouter,
   createFlowRegistry,

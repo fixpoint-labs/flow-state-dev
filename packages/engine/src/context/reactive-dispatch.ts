@@ -24,12 +24,10 @@ import type {
 import type { RuntimeLogger } from "../execution/logging";
 import { matchesPattern, getPatternPrefix } from "@flow-state-dev/core/types";
 import {
-  normalizeReactiveBinding,
-  buildBlockInstanceId,
   type ResourceChange,
   type ResourceContentChange,
-  type ReactiveBindingKind,
 } from "@flow-state-dev/core";
+import { normalizeReactiveBinding, buildBlockInstanceId, type ReactiveBindingKind } from "@flow-state-dev/core/internal";
 import type { ErrorItem } from "@flow-state-dev/core/items";
 import {
   type ResourceChangeDelta,

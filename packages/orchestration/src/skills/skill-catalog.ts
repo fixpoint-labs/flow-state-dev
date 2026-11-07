@@ -7,8 +7,7 @@
  * a binding allows.
  */
 
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { SkillState } from "@flow-state-dev/core";
+import type { ResourceCollectionRef, SkillState } from "@flow-state-dev/core/types";
 
 /** One skill offered to tier 3: its name and the text that describes it. */
 export interface OfferedSkill {

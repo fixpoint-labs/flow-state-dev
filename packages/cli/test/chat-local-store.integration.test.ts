@@ -14,7 +14,7 @@ import { join, resolve } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { DEFAULT_LOCAL_USER_ID } from "@flow-state-dev/core";
+import { DEFAULT_LOCAL_USER_ID } from "@flow-state-dev/core/types";
 import { executeChatCommand } from "../src/commands/chat";
 
 const fixtureDir = resolve(import.meta.dirname, "fixtures", "chat-durable");

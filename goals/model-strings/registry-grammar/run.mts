@@ -13,10 +13,10 @@ import {
   defineFlow,
   evaluator,
   generator,
-  parseModelString,
   DEFAULT_ORG_ID,
   type ModelResolver,
 } from "@flow-state-dev/core";
+import { parseModelString } from "@flow-state-dev/core/models";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import {
   createInMemoryStores,

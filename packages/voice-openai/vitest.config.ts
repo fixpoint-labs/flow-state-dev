@@ -14,6 +14,7 @@ export default defineConfig({
       "@flow-state-dev/core/graph": resolve(root, "packages/core/src/graph/index.ts"),
       "@flow-state-dev/core/utils": resolve(root, "packages/core/src/utils/index.ts"),
       "@flow-state-dev/core/models": resolve(root, "packages/core/src/models/index.ts"),
+      "@flow-state-dev/core/capability": resolve(root, "packages/core/src/capability/index.ts"),
       "@flow-state-dev/core": resolve(root, "packages/core/src/index.ts"),
     },
   },

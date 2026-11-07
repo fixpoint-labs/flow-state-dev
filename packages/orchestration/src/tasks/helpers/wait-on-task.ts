@@ -57,17 +57,15 @@
  */
 import { owesUserResume, payOwedUserResume } from "./user-stop";
 import {
-  logicalBlockIdOf,
-  parseBlockInstanceId
-} from "@flow-state-dev/core";
-import {
   requestHostOf,
   canHoldWait,
   MAX_WAIT_DEPTH,
   parkOnWait,
   recordedWaitOutcome,
   requireRequestHost,
-  onRequestEnded
+  onRequestEnded,
+  logicalBlockIdOf,
+  parseBlockInstanceId
 } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { WaitGateBinding, WaitOutcome, WaitRow } from "@flow-state-dev/core/internal";

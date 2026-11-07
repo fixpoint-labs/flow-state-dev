@@ -24,7 +24,8 @@
  * this key only picks from what an already-installed door answers for.
  */
 
-import { createManifestRegistry, isManifestDomain } from "@flow-state-dev/core";
+import { createManifestRegistry } from "@flow-state-dev/core";
+import { isManifestDomain } from "@flow-state-dev/core/internal";
 import type { ManifestDomain, ManifestRegistry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { turnConfigOf } from "./workers/verified-worker";
