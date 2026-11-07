@@ -3,13 +3,13 @@
  *
  * The agent block never statically imports the SDK — it is an optional peer
  * dependency. The default resolver lazily `import()`s it on first use and throws
- * {@link ClaudeAgentSdkNotInstalledError} when it is absent. Tests inject a
+ * {@link ClaudeCodeSdkNotInstalledError} when it is absent. Tests inject a
  * scripted `query` via their own resolver and never touch the real SDK.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { readInstalledSdkVersion, type InstalledSdkVersion, type TestedSdk } from "@flow-state-dev/core/internal";
-import { ClaudeAgentSdkNotInstalledError } from "./errors";
-import type { ClaudeAgentQuery, ResolveClaudeAgent, ResolvedClaudeAgent } from "./types";
+import { ClaudeCodeSdkNotInstalledError } from "./errors";
+import type { ClaudeCodeQuery, ResolveClaudeCodeAgent, ResolvedClaudeCodeAgent } from "./types";
 
 /** The SDK module path. Kept as a variable so bundlers don't eagerly resolve it. */
 const SDK_MODULE = "@anthropic-ai/claude-agent-sdk";
@@ -33,35 +33,35 @@ export function readInstalledClaudeCodeSdkVersion(): InstalledSdkVersion {
  * overridable so the absent-SDK path is testable without depending on whether
  * the optional peer dependency happens to be installed.
  */
-export type SdkImporter = () => Promise<{ query?: unknown }>;
+export type ClaudeCodeSdkImporter = () => Promise<{ query?: unknown }>;
 
 /** The lazy dynamic `import` of the SDK every default path loads it through. */
-export const defaultSdkImporter: SdkImporter = () =>
+export const defaultSdkImporter: ClaudeCodeSdkImporter = () =>
   import(/* @vite-ignore */ SDK_MODULE) as Promise<{ query?: unknown }>;
 
 /**
  * Build a resolver that loads the SDK via `importSdk` and returns its `query`.
- * Throws {@link ClaudeAgentSdkNotInstalledError} if the module can't be loaded
+ * Throws {@link ClaudeCodeSdkNotInstalledError} if the module can't be loaded
  * or lacks a `query` export. Exported mainly so tests can supply an importer
  * that rejects (simulating an absent SDK); production uses
- * {@link defaultResolveClaudeAgent}.
+ * {@link defaultResolveClaudeCodeAgent}.
  */
-export function createDefaultResolveClaudeAgent(
-  importSdk: SdkImporter = defaultSdkImporter,
-): ResolveClaudeAgent {
-  return async (_ctx: BlockContext<any>): Promise<ResolvedClaudeAgent> => {
+export function createDefaultResolveClaudeCodeAgent(
+  importSdk: ClaudeCodeSdkImporter = defaultSdkImporter,
+): ResolveClaudeCodeAgent {
+  return async (_ctx: BlockContext<any>): Promise<ResolvedClaudeCodeAgent> => {
     let mod: { query?: unknown };
     try {
       mod = await importSdk();
     } catch (err) {
-      throw new ClaudeAgentSdkNotInstalledError(undefined, { cause: (err as Error).message });
+      throw new ClaudeCodeSdkNotInstalledError(undefined, { cause: (err as Error).message });
     }
     if (typeof mod.query !== "function") {
-      throw new ClaudeAgentSdkNotInstalledError(
+      throw new ClaudeCodeSdkNotInstalledError(
         "`@anthropic-ai/claude-agent-sdk` was found but does not export a `query` function.",
       );
     }
-    return { query: mod.query as ClaudeAgentQuery };
+    return { query: mod.query as ClaudeCodeQuery };
   };
 }
 
@@ -70,4 +70,4 @@ export function createDefaultResolveClaudeAgent(
  * is deferred to call time so merely importing this package (without the SDK
  * installed) never fails.
  */
-export const defaultResolveClaudeAgent: ResolveClaudeAgent = createDefaultResolveClaudeAgent();
+export const defaultResolveClaudeCodeAgent: ResolveClaudeCodeAgent = createDefaultResolveClaudeCodeAgent();

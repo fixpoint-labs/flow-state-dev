@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join, resolve as resolvePath } from "node:path";
 import {
   canonicalFilePathKey,
-  createWorkRecorder,
+  createClaudeCodeWorkRecorder,
   type UpsertableCollection,
 } from "../../src/sdk/work-recorder";
-import { observedFileOpStateSchema } from "../../src/sdk/work-collections";
+import { claudeCodeFileOpStateSchema } from "../../src/sdk/work-collections";
 import type { TranslatedEvent } from "../../src/sdk/types";
 
 /**
@@ -71,7 +71,7 @@ function harness(overrides: { runId?: string; flushIntervalMs?: number } = {}) {
   const plan = fakeCollection();
   const gaps = fakeCollection();
   const notes: string[] = [];
-  const recorder = createWorkRecorder({
+  const recorder = createClaudeCodeWorkRecorder({
     runId: overrides.runId ?? RUN,
     files,
     plan,
@@ -110,7 +110,7 @@ const fileSettled = (
   outcome,
 });
 
-describe("createWorkRecorder — file operations", () => {
+describe("createClaudeCodeWorkRecorder — file operations", () => {
   it("records an attempted mutation before its result arrives, so a killed run keeps it", async () => {
     const { files, recorder } = harness();
     recorder.observe(fileCall("/work/src/checkout.ts"));
@@ -343,8 +343,8 @@ describe("createWorkRecorder — file operations", () => {
     // and the readback would answer for the child session, not the run.
     // One shared store, as a reused child session would have.
     const shared = fakeCollection();
-    const a = createWorkRecorder({ runId: RUN, files: shared, plan: fakeCollection() });
-    const b = createWorkRecorder({ runId: OTHER_RUN, files: shared, plan: fakeCollection() });
+    const a = createClaudeCodeWorkRecorder({ runId: RUN, files: shared, plan: fakeCollection() });
+    const b = createClaudeCodeWorkRecorder({ runId: OTHER_RUN, files: shared, plan: fakeCollection() });
 
     a.observe(fileCall("/work/src/checkout.ts"));
     await a.stop();
@@ -358,13 +358,13 @@ describe("createWorkRecorder — file operations", () => {
   });
 });
 
-describe("observedFileOpStateSchema", () => {
+describe("claudeCodeFileOpStateSchema", () => {
   it("loads a row written before the count existed", () => {
     // BP-030: the recorder must never break the run, and it parses whatever the
     // store hands back. A legacy row reads `null` rather than `0` — the two say
     // different things, and only `null` means "this row predates counting".
     expect(
-      observedFileOpStateSchema.parse({
+      claudeCodeFileOpStateSchema.parse({
         lastKind: "edited",
         outcome: "applied",
         lastTouchedAt: 1_700_000_000_000,
@@ -463,13 +463,13 @@ describe("canonicalFilePathKey — the run's own working directory", () => {
   });
 });
 
-describe("createWorkRecorder — the run's own working directory", () => {
+describe("createClaudeCodeWorkRecorder — the run's own working directory", () => {
   const CHECKOUT = "/work/checkout-a";
 
   /** A recorder whose run was given `cwd`, over a fresh fake. */
   function checkoutHarness(cwd?: string) {
     const files = fakeCollection();
-    const recorder = createWorkRecorder({
+    const recorder = createClaudeCodeWorkRecorder({
       runId: RUN,
       files,
       plan: fakeCollection(),
@@ -524,7 +524,7 @@ describe("createWorkRecorder — the run's own working directory", () => {
   });
 });
 
-describe("createWorkRecorder — plan items", () => {
+describe("createClaudeCodeWorkRecorder — plan items", () => {
   const created = (itemId: string, title: string): TranslatedEvent => ({
     kind: "plan_item_observed",
     callId: `call:create:${itemId}`,
@@ -547,7 +547,7 @@ describe("createWorkRecorder — plan items", () => {
     const planList = fakeCollection();
     const files = fakeCollection();
     const turn = (runId: string, requestId: string) =>
-      createWorkRecorder({ runId, requestId, files, plan, planList, flushIntervalMs: 60_000 });
+      createClaudeCodeWorkRecorder({ runId, requestId, files, plan, planList, flushIntervalMs: 60_000 });
 
     const first = turn("req_1/agent#0", "req_1");
     first.bindConversation("sess_1");
@@ -576,7 +576,7 @@ describe("createWorkRecorder — plan items", () => {
 
   it("starts a new conversation's plan empty, never merging two conversations", async () => {
     const plan = fakeCollection();
-    const recorder = createWorkRecorder({ runId: RUN, files: fakeCollection(), plan });
+    const recorder = createClaudeCodeWorkRecorder({ runId: RUN, files: fakeCollection(), plan });
     recorder.bindConversation("sess_old");
     recorder.observe(created("1", "Old step"));
     await recorder.flush();
@@ -593,7 +593,7 @@ describe("createWorkRecorder — plan items", () => {
     plan.upsert = async () => {
       throw new Error("store unavailable");
     };
-    const recorder = createWorkRecorder({ runId: RUN, files: fakeCollection(), plan, planList, gaps: fakeCollection() });
+    const recorder = createClaudeCodeWorkRecorder({ runId: RUN, files: fakeCollection(), plan, planList, gaps: fakeCollection() });
     recorder.bindConversation("sess_1");
     recorder.observe(created("1", "Step"));
     await recorder.stop();
@@ -803,7 +803,7 @@ describe("createWorkRecorder — plan items", () => {
   });
 });
 
-describe("createWorkRecorder — watching the work never breaks the work", () => {
+describe("createClaudeCodeWorkRecorder — watching the work never breaks the work", () => {
   it("does not propagate a collection write that throws, and leaves a durable gap", async () => {
     const exploding: UpsertableCollection = {
       async upsert() {
@@ -812,7 +812,7 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
     };
     const gaps = fakeCollection();
     const notes: string[] = [];
-    const recorder = createWorkRecorder({
+    const recorder = createClaudeCodeWorkRecorder({
       runId: RUN,
       files: exploding,
       plan: fakeCollection(),
@@ -838,7 +838,7 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
       },
     };
     const gaps = fakeCollection();
-    const recorder = createWorkRecorder({
+    const recorder = createClaudeCodeWorkRecorder({
       runId: RUN,
       files: exploding,
       plan: fakeCollection(),
@@ -862,7 +862,7 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
         throw new Error("store is down");
       },
     };
-    const recorder = createWorkRecorder({
+    const recorder = createClaudeCodeWorkRecorder({
       runId: RUN,
       files: exploding,
       plan: fakeCollection(),
@@ -940,7 +940,7 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
       },
     };
     const gaps = fakeCollection();
-    const recorder = createWorkRecorder({
+    const recorder = createClaudeCodeWorkRecorder({
       runId: RUN,
       files: slowFailingFiles,
       plan: fakeCollection(),
@@ -963,7 +963,7 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
 
   it("keeps working without a gaps collection at all", async () => {
     const notes: string[] = [];
-    const recorder = createWorkRecorder({
+    const recorder = createClaudeCodeWorkRecorder({
       runId: RUN,
       files: fakeCollection(),
       plan: fakeCollection(),
@@ -1068,11 +1068,11 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
 });
 
 /**
- * `createWorkRecorder` is exported, so it is a public door in its own right —
+ * `createClaudeCodeWorkRecorder` is exported, so it is a public door in its own right —
  * and the working-directory rule has to hold at every door, not only the one
  * the agent walks through.
  */
-describe("createWorkRecorder — normalizes cwd at its own boundary", () => {
+describe("createClaudeCodeWorkRecorder — normalizes cwd at its own boundary", () => {
   it("resolves a symlinked cwd to the physical path", async () => {
     // The bug this closes is the highest-value one on this feature: a spawned
     // process reports the PHYSICAL directory, so a recorder keyed against the
@@ -1086,7 +1086,7 @@ describe("createWorkRecorder — normalizes cwd at its own boundary", () => {
     symlinkSync(real, link);
 
     const files = fakeCollection();
-    const recorder = createWorkRecorder({
+    const recorder = createClaudeCodeWorkRecorder({
       runId: RUN,
       files,
       plan: fakeCollection(),
@@ -1112,7 +1112,7 @@ describe("createWorkRecorder — normalizes cwd at its own boundary", () => {
     // stays green if either is removed. That is deliberate belt-and-braces,
     // not redundant coverage: the helper is exported and reachable directly.
     const files = fakeCollection();
-    const recorder = createWorkRecorder({
+    const recorder = createClaudeCodeWorkRecorder({
       runId: RUN,
       files,
       plan: fakeCollection(),

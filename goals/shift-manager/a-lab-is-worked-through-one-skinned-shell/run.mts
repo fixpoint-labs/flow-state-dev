@@ -39,7 +39,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { readShiftManagerTheme } from "../../lib/colour.mts";
-import { probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
+import { probeClaudeCodeAccount } from "@flow-state-dev/claude-code";
 import { claudeCodeEnv } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { PENTEST_CONFIG, TREES, legA, legB, legC, staticFence, type LegCtx, type Report } from "./legs.mts";
@@ -97,7 +97,7 @@ function legVerdict(id: string, prefix: string[], report: ReturnType<typeof coll
  * on it read BLOCKED. A missing Agent SDK is a broken checkout, so it throws.
  */
 async function claudeCodeBlocked(): Promise<string | null> {
-  const account = await probeClaudeAccount({ env: claudeCodeEnv() });
+  const account = await probeClaudeCodeAccount({ env: claudeCodeEnv() });
   if (account.status === "account") return null;
   if (account.status === "sdk-missing") throw new Error(`leg a: ${account.reason}`);
   return `${account.reason}; sign in to Claude Code, or set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN`;

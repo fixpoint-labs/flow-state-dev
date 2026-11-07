@@ -54,7 +54,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { CHECKOUT, CHECKOUTS } from "./fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
-import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
+import { readClaudeCodeUsage } from "@flow-state-dev/claude-code";
 import { claudeCodeEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
 import { LAB_TREE, openLab } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
@@ -105,7 +105,7 @@ export const lab = await openLab({
   // Who Claude Code is signed in as, read when someone opens Usage; its
   // windows come from the coder's runs.
   usage: {
-    "claude-code": ({ signal } = {}) => readClaudeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
+    "claude-code": ({ signal } = {}) => readClaudeCodeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
   readiness: harness.readiness,
 });

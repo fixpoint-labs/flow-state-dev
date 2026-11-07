@@ -25,7 +25,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { harnessEnv } from "@flow-state-dev/core/harness";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { harnessSessionFlow, type HarnessSessionState, type HarnessTurnRecord } from "@flow-state-dev/harness-manager";
 import { runGoal } from "../../lib/index.mts";

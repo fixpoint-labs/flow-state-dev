@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const seen = vi.hoisted(() => ({ options: [] as Array<{ harness: string; options: Record<string, unknown> }> }));
 
-vi.mock("@flow-state-dev/claude-code/sdk", async (importOriginal) => ({
+vi.mock("@flow-state-dev/claude-code", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   claudeCodeAgent: (options: Record<string, unknown>) => (seen.options.push({ harness: "claude-code", options }), {}),
 }));
@@ -30,7 +30,7 @@ vi.mock("@flow-state-dev/cursor", async (importOriginal) => ({
 }));
 
 const { HARNESSES } = await import("../workforce/flows/harness-thread.mts");
-const { CLAUDE_CODE_PASS } = await import("@flow-state-dev/claude-code/sdk");
+const { CLAUDE_CODE_PASS } = await import("@flow-state-dev/claude-code");
 const { CODEX_PASS } = await import("@flow-state-dev/codex");
 const { CURSOR_PASS } = await import("@flow-state-dev/cursor");
 const { harnessEnv } = await import("@flow-state-dev/core/harness");

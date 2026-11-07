@@ -50,7 +50,7 @@ import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { runAction } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
+import { probeClaudeCodeAccount } from "@flow-state-dev/claude-code";
 import { createInboxClient, taskActionName, type InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { reconcileInbox, rowTruthOf, suspensionTruthOf } from "@flow-state-dev/orchestration/inbox/check";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
@@ -393,7 +393,7 @@ await runGoal(async (failures, tell) => {
 
   // ---- a, b: a real coding run --------------------------------------------------------
   if (LEGS.has("a") || LEGS.has("b")) {
-    const probe = await probeClaudeAccount({ env: claudeCodeEnv() } as never);
+    const probe = await probeClaudeCodeAccount({ env: claudeCodeEnv() } as never);
     if (probe.status !== "account") {
       console.error(`a, b: no Claude Code account to run them with (${show(probe)})`);
       tell.over("a · a real Claude Code run (no account: blocked on a real-model run)", []);

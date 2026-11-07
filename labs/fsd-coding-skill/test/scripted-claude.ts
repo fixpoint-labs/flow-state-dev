@@ -3,19 +3,19 @@
  * `packages/claude-code/test/sdk/agent.spec.ts` uses. No runtime, no network.
  */
 import type {
-  ClaudeAgentQueryOptions,
-  ResolveClaudeAgent,
-  SdkMessageLike,
-} from "@flow-state-dev/claude-code/sdk";
+  ClaudeCodeQueryOptions,
+  ResolveClaudeCodeAgent,
+  ClaudeCodeSdkMessage,
+} from "@flow-state-dev/claude-code";
 
 export interface ClaudeRecorder {
   prompts: string[];
-  options: Array<ClaudeAgentQueryOptions | undefined>;
+  options: Array<ClaudeCodeQueryOptions | undefined>;
   cwd: Array<string | undefined>;
   resume: Array<string | undefined>;
 }
 
-function defaultMessages(sessionId: string): SdkMessageLike[] {
+function defaultMessages(sessionId: string): ClaudeCodeSdkMessage[] {
   return [
     { type: "system", subtype: "init", session_id: sessionId },
     {
@@ -30,12 +30,12 @@ function defaultMessages(sessionId: string): SdkMessageLike[] {
 }
 
 export function scriptedClaude(opts: {
-  messages?: SdkMessageLike[];
+  messages?: ClaudeCodeSdkMessage[];
   sessionId?: string;
 } = {}) {
   const sessionId = opts.sessionId ?? "sess_claude";
   const rec: ClaudeRecorder = { prompts: [], options: [], cwd: [], resume: [] };
-  const resolve: ResolveClaudeAgent = () => ({
+  const resolve: ResolveClaudeCodeAgent = () => ({
     query: async function* (args) {
       rec.prompts.push(
         typeof args.prompt === "string" ? args.prompt : JSON.stringify(args.prompt),

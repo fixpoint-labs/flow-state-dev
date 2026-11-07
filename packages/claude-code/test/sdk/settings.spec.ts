@@ -19,17 +19,17 @@ import { describe, expect, it } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
 import { claudeCodeAgent, type ClaudeCodeAgentOptions } from "../../src/sdk/agent";
 import type {
-  ClaudeAgentQuery,
-  ClaudeAgentQueryOptions,
-  ResolveClaudeAgent,
-  SdkMessageLike,
+  ClaudeCodeQuery,
+  ClaudeCodeQueryOptions,
+  ResolveClaudeCodeAgent,
+  ClaudeCodeSdkMessage,
 } from "../../src/sdk/types";
 
 const FAKE_CLI = resolve(import.meta.dirname, "fake-claude-argv.mjs");
 
 /** The real SDK's `query`, pointed at the fake CLI instead of the real one. */
-const realSdkWithFakeCli: ResolveClaudeAgent = async () => {
-  const sdk = (await import("@anthropic-ai/claude-agent-sdk")) as unknown as { query: ClaudeAgentQuery };
+const realSdkWithFakeCli: ResolveClaudeCodeAgent = async () => {
+  const sdk = (await import("@anthropic-ai/claude-agent-sdk")) as unknown as { query: ClaudeCodeQuery };
   return {
     query: (args) =>
       sdk.query({ ...args, options: { ...args.options, pathToClaudeCodeExecutable: FAKE_CLI } as never }),
@@ -60,10 +60,10 @@ function flagValue(argv: string[], flag: string): string | undefined {
   return at === -1 ? undefined : argv[at + 1];
 }
 
-const RESULT_OK: SdkMessageLike = { type: "result", subtype: "success", result: "done", session_id: "sess_settings" };
+const RESULT_OK: ClaudeCodeSdkMessage = { type: "result", subtype: "success", result: "done", session_id: "sess_settings" };
 
 /** A scripted `query` that records the options the block handed it. */
-function scripted(seen: ClaudeAgentQueryOptions[]): ResolveClaudeAgent {
+function scripted(seen: ClaudeCodeQueryOptions[]): ResolveClaudeCodeAgent {
   return () => ({
     query: async function* (args) {
       seen.push(args.options!);
@@ -95,7 +95,7 @@ describe("settings, through the installed SDK", () => {
 
 describe("settings beside mcpTools", () => {
   it("keeps the host's layer and adds the connector switch mcpTools needs", async () => {
-    const seen: ClaudeAgentQueryOptions[] = [];
+    const seen: ClaudeCodeQueryOptions[] = [];
     await testBlock(
       claudeCodeAgent({ settings: { disableAllHooks: true }, mcpTools: {}, resolveClaudeAgent: scripted(seen) }),
       { input: { prompt: "go" } },
@@ -107,7 +107,7 @@ describe("settings beside mcpTools", () => {
   it("lets no host layer turn the connectors back on while mcpTools is the run's whole MCP set", async () => {
     // `mcpTools` promises the handed servers and nothing from the account, so
     // its switch wins over a host's own value for the same key.
-    const seen: ClaudeAgentQueryOptions[] = [];
+    const seen: ClaudeCodeQueryOptions[] = [];
     await testBlock(
       claudeCodeAgent({
         settings: { disableAllHooks: true, disableClaudeAiConnectors: false },
@@ -121,7 +121,7 @@ describe("settings beside mcpTools", () => {
   });
 
   it("hands the host's layer unchanged, and no copy the host could see mutated, when mcpTools is unset", async () => {
-    const seen: ClaudeAgentQueryOptions[] = [];
+    const seen: ClaudeCodeQueryOptions[] = [];
     const settings = { disableAllHooks: true };
     const block = claudeCodeAgent({ settings, resolveClaudeAgent: scripted(seen) });
     await testBlock(block, { input: { prompt: "go" } });

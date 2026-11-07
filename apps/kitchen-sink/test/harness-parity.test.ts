@@ -325,7 +325,7 @@ describe("the contract every harness owes a host", () => {
   const HOSTED = [
     {
       mode: "claude-code",
-      entry: () => import("@flow-state-dev/claude-code/sdk") as Promise<Record<string, unknown>>,
+      entry: () => import("@flow-state-dev/claude-code") as Promise<Record<string, unknown>>,
       pass: "CLAUDE_CODE_PASS",
       list: "listClaudeCodeModels",
       // The SDK importer: Claude Code's `supportedModels()`, the default as its own row.
@@ -413,8 +413,8 @@ describe("the contract every harness owes a host", () => {
     {
       mode: "claude-code",
       block: async (seam: (createDefault: unknown) => Record<string, unknown>) => {
-        const { claudeCodeAgent, createDefaultResolveClaudeAgent } = (await import("@flow-state-dev/claude-code/sdk")) as Record<string, any>;
-        return claudeCodeAgent({ resolveClaudeAgent: scriptedClaudeCode(), cwd: () => repo, ...seam(createDefaultResolveClaudeAgent) });
+        const { claudeCodeAgent, createDefaultResolveClaudeCodeAgent } = (await import("@flow-state-dev/claude-code")) as Record<string, any>;
+        return claudeCodeAgent({ resolveClaudeAgent: scriptedClaudeCode(), cwd: () => repo, ...seam(createDefaultResolveClaudeCodeAgent) });
       },
       absent: (create: any) => ({ resolveClaudeAgent: create(async () => Promise.reject(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"))) }),
     },
@@ -530,7 +530,7 @@ describe("the contract every harness owes a host", () => {
       below: "0.3.315",
       above: "0.4.0",
       ready: async (read: unknown) => {
-        const { checkClaudeCodeReadiness } = (await import("@flow-state-dev/claude-code/sdk")) as Record<string, any>;
+        const { checkClaudeCodeReadiness } = (await import("@flow-state-dev/claude-code")) as Record<string, any>;
         return checkClaudeCodeReadiness({ env: {}, timeoutMs: 1, readInstalledSdkVersion: read });
       },
     },
@@ -591,6 +591,46 @@ describe("the contract every harness owes a host", () => {
     const source = readFileSync(join(import.meta.dirname, "..", "lib/cursor-mode.ts"), "utf8");
     expect(source).not.toMatch(/CURSOR_MODELS\s*[:=]/);
     expect(source).toMatch(/listCursorModels/);
+  });
+
+  /**
+   * Each harness package's published surface, as an installer meets it: the
+   * entries in its exports map and the names each one exports (types too),
+   * read by the same per-entry index the export check reads.
+   */
+  const SURFACES = [
+    { mode: "claude-code", pkg: "@flow-state-dev/claude-code", spelling: /ClaudeCode|claudeCode|CLAUDE_CODE_/ },
+    { mode: "codex", pkg: "@flow-state-dev/codex", spelling: /Codex|codex|CODEX_/ },
+    { mode: "cursor", pkg: "@flow-state-dev/cursor", spelling: /Cursor|cursor|CURSOR_/ },
+  ] as const;
+
+  /** The translation layer and the item emitter: how a harness works, not what a host calls. */
+  const INTERNALS = /translate|Translate|emit[A-Z]|Emit|finalizeOpenItems|closeStreamingItems|drainUnsettledObservations/;
+
+  /** A package's entries and each one's names, from the per-entry export index. */
+  async function surfaceOf(pkg: string): Promise<Map<string, string[]>> {
+    const { fsReader, packageEntryExports } = (await import(join(import.meta.dirname, "../../../scripts/mechanism-exports.mjs"))) as {
+      fsReader: (root: string) => unknown;
+      packageEntryExports: (read: unknown) => Map<string, Map<string, Map<string, unknown>>>;
+    };
+    const entries = packageEntryExports(fsReader(join(import.meta.dirname, "../../.."))).get(pkg) ?? new Map();
+    return new Map([...entries].map(([subpath, names]) => [subpath, [...names.keys()]]));
+  }
+
+  describe.each(SURFACES)("$mode, its published surface", (harness) => {
+    it("is one entry, the package root", async () => {
+      expect([...(await surfaceOf(harness.pkg)).keys()]).toEqual(["."]);
+    });
+
+    it("exports no translation or emitter name", async () => {
+      const names = [...(await surfaceOf(harness.pkg)).values()].flat();
+      expect(names.filter((name) => INTERNALS.test(name))).toEqual([]);
+    });
+
+    it("spells every name it owns with its package's name", async () => {
+      const names = [...(await surfaceOf(harness.pkg)).values()].flat();
+      expect(names.filter((name) => !harness.spelling.test(name))).toEqual([]);
+    });
   });
 
   it("Kitchen Sink checks no harness's SDK by hand: its modes read the package's readiness", () => {

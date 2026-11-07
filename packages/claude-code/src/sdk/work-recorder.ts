@@ -29,11 +29,8 @@ import { realpathSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import { harnessConversationNamespace } from "@flow-state-dev/core/harness";
-import type {
-  ObservedFileOpKind,
-  ObservedGapKind,
-  ObservedOutcome,
-} from "./work-collections";
+import type { ObservedOutcome } from "@flow-state-dev/core/harness";
+import type { ClaudeCodeFileOpKind, ObservedGapKind } from "./work-collections";
 import type { TranslatedEvent } from "./types";
 
 /**
@@ -50,11 +47,11 @@ export interface UpsertableCollection {
   ): Promise<unknown>;
 }
 
-/** Options for {@link createWorkRecorder}. */
-export interface WorkRecorderOptions {
+/** Options for {@link createClaudeCodeWorkRecorder}. */
+export interface ClaudeCodeWorkRecorderOptions {
   /**
    * The run's own namespace, prefixed onto every key. May be more than one
-   * path segment — see {@link WorkRecorderOptions} callers.
+   * path segment — see {@link ClaudeCodeWorkRecorderOptions} callers.
    *
    * A child session is REUSED across runs, so without this a second run
    * would merge its file entries by path into the first run's rows and mix its
@@ -123,7 +120,7 @@ export interface WorkRecorderOptions {
 }
 
 /** A live recorder for one run. */
-export interface WorkRecorder {
+export interface ClaudeCodeWorkRecorder {
   /** Buffer one translated event. Ignores events it does not consume. Never throws. */
   observe(event: TranslatedEvent): void;
   /**
@@ -161,7 +158,7 @@ const DEFAULT_FLUSH_INTERVAL_MS = 1_000;
  *
  * `cwd` is expected already normalized — non-empty and symlink-resolved, which
  * both public doors now guarantee by construction:
- * {@link normalizeWorkingDirectory} runs at {@link createWorkRecorder} and at
+ * {@link normalizeWorkingDirectory} runs at {@link createClaudeCodeWorkRecorder} and at
  * {@link ClaudeCodeAgentOptions.cwd}. The empty-string branch below stays as
  * defence-in-depth for a direct call to this exported helper, which is a third
  * door and the only one that cannot normalize — it is called per file event,
@@ -182,7 +179,7 @@ interface PendingFileEntry {
    * path — the upsert then leaves the row's existing kind alone, so kind and
    * outcome never describe different calls.
    */
-  lastKind?: ObservedFileOpKind;
+  lastKind?: ClaudeCodeFileOpKind;
   outcome: ObservedOutcome;
   lastTouchedAt: number;
   /** Applied operations on this path so far. See the schema's `appliedCount`. */
@@ -231,7 +228,7 @@ interface PendingPlanEntry {
  *
  * **It lives here, beside the recorder, because this is the lower of the two
  * public doors.** {@link ClaudeCodeAgentOptions.cwd} normalizes what a resolver
- * returns, but {@link createWorkRecorder} is exported too — so a caller
+ * returns, but {@link createClaudeCodeWorkRecorder} is exported too — so a caller
  * building a recorder directly reached the symlink bug without ever passing
  * through the agent. Normalizing at both entry points makes the precondition
  * {@link canonicalFilePathKey} documents true by construction rather than by
@@ -248,7 +245,7 @@ export function normalizeWorkingDirectory(
   }
 }
 
-export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
+export function createClaudeCodeWorkRecorder(options: ClaudeCodeWorkRecorderOptions): ClaudeCodeWorkRecorder {
   const {
     runId,
     requestId,
@@ -313,7 +310,7 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
    * it. That is the same can't-tell rule as everywhere else: while a mutation
    * on this subject is unresolved, the honest outcome is "unresolved".
    */
-  const outstandingCalls = new Map<string, Map<string, ObservedFileOpKind | undefined>>();
+  const outstandingCalls = new Map<string, Map<string, ClaudeCodeFileOpKind | undefined>>();
   /**
    * Rows that have had two calls open at once.
    *
@@ -348,8 +345,8 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     subjectKey: string,
     callId: string,
     outcome: ObservedOutcome,
-    meta?: ObservedFileOpKind,
-  ): { outcome: ObservedOutcome; meta: ObservedFileOpKind | undefined } => {
+    meta?: ClaudeCodeFileOpKind,
+  ): { outcome: ObservedOutcome; meta: ClaudeCodeFileOpKind | undefined } => {
     // Files and plan items are keyed the same way (`<runId>/<segment>`) into two
     // DIFFERENT collections, so the two keyspaces are only distinct by accident
     // of what a segment usually looks like. Scoping the bookkeeping key means a
@@ -357,7 +354,7 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     // file's row at `pending`, or mark its ordering unknowable.
     const key = `${scope}:${subjectKey}`;
     if (outcome === "pending") {
-      const open = outstandingCalls.get(key) ?? new Map<string, ObservedFileOpKind | undefined>();
+      const open = outstandingCalls.get(key) ?? new Map<string, ClaudeCodeFileOpKind | undefined>();
       if (open.size > 0 && !open.has(callId)) orderingUnknowable.add(key);
       open.set(callId, meta);
       outstandingCalls.set(key, open);

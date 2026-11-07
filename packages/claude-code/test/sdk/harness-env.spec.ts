@@ -16,14 +16,14 @@ import { join, resolve } from "node:path";
 import { testBlock } from "@flow-state-dev/testing";
 import { harnessEnv } from "@flow-state-dev/core/harness";
 import { claudeCodeAgent } from "../../src/sdk/agent";
-import type { ClaudeAgentQuery, ResolveClaudeAgent } from "../../src/sdk/types";
+import type { ClaudeCodeQuery, ResolveClaudeCodeAgent } from "../../src/sdk/types";
 
 const FAKE_CLI = resolve(import.meta.dirname, "fake-claude-env.mjs");
 const SECRET = "HARNESS_ENV_SPEC_SERVER_SECRET";
 
 /** The real SDK's `query`, pointed at the fake CLI instead of the real one. */
-const realSdkWithFakeCli: ResolveClaudeAgent = async () => {
-  const sdk = (await import("@anthropic-ai/claude-agent-sdk")) as unknown as { query: ClaudeAgentQuery };
+const realSdkWithFakeCli: ResolveClaudeCodeAgent = async () => {
+  const sdk = (await import("@anthropic-ai/claude-agent-sdk")) as unknown as { query: ClaudeCodeQuery };
   return {
     query: (args) =>
       sdk.query({ ...args, options: { ...args.options, pathToClaudeCodeExecutable: FAKE_CLI } as never }),

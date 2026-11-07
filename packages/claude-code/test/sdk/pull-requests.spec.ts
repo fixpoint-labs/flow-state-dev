@@ -14,9 +14,9 @@ import { createTestContext } from "@flow-state-dev/testing";
 import { OBSERVED_PULL_REQUESTS, observedPullRequestsCollection } from "@flow-state-dev/core/harness";
 import { REQUEST_END_SEAM, type RequestEndHook } from "@flow-state-dev/core/internal";
 import { claudeCodeAgent, type ClaudeCodeAgentOptions } from "../../src/sdk/agent";
-import type { ResolveClaudeAgent, SdkMessageLike } from "../../src/sdk/types";
+import type { ResolveClaudeCodeAgent, ClaudeCodeSdkMessage } from "../../src/sdk/types";
 
-function scriptedQuery(messages: SdkMessageLike[]): ResolveClaudeAgent {
+function scriptedQuery(messages: ClaudeCodeSdkMessage[]): ResolveClaudeCodeAgent {
   return () => ({
     query: async function* () {
       for (const m of messages) yield m;
@@ -25,11 +25,11 @@ function scriptedQuery(messages: SdkMessageLike[]): ResolveClaudeAgent {
 }
 
 /** One tool call and its result, as the SDK streams them. */
-function call(id: string, name: string, input: Record<string, unknown>, content: unknown): SdkMessageLike[] {
+function call(id: string, name: string, input: Record<string, unknown>, content: unknown): ClaudeCodeSdkMessage[] {
   return [
     { type: "assistant", message: { content: [{ type: "tool_use", id, name, input }] } },
     { type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content }] } },
-  ] as SdkMessageLike[];
+  ] as ClaudeCodeSdkMessage[];
 }
 
 const RESULT_OK = {
@@ -38,12 +38,12 @@ const RESULT_OK = {
   result: "done",
   session_id: "sess_1",
   usage: { input_tokens: 1, output_tokens: 1 },
-} as SdkMessageLike;
+} as ClaudeCodeSdkMessage;
 
 /** Run the block once in a context with the record and a request-end seam; end the request; return the rows. */
-async function run(messages: SdkMessageLike[], options: Partial<ClaudeCodeAgentOptions> = {}) {
+async function run(messages: ClaudeCodeSdkMessage[], options: Partial<ClaudeCodeAgentOptions> = {}) {
   const block = claudeCodeAgent({
-    resolveClaudeAgent: scriptedQuery([{ type: "system", subtype: "init", session_id: "sess_1" } as SdkMessageLike, ...messages, RESULT_OK]),
+    resolveClaudeAgent: scriptedQuery([{ type: "system", subtype: "init", session_id: "sess_1" } as ClaudeCodeSdkMessage, ...messages, RESULT_OK]),
     detached: true,
     includePartialMessages: false,
     ...options,

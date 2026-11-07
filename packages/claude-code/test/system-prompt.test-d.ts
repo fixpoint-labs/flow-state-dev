@@ -3,7 +3,7 @@
  * every prompt shape the Agent SDK takes, and refuse an object that is not one.
  *
  * The SDK is an optional peer, so its union is declared in this package
- * (`ClaudeAgentSystemPrompt`). This file is what goes red if that declaration
+ * (`ClaudeCodeSystemPrompt`). This file is what goes red if that declaration
  * drops a shape a host is documented to pass, or widens to any object.
  */
 import { claudeCodeAgent } from "../src/sdk/agent";

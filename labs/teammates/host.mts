@@ -49,7 +49,7 @@ import { checkCodexReadiness, CODEX_PASS, codexAgent } from "@flow-state-dev/cod
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { harnessEnv } from "@flow-state-dev/core/harness";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
-import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { checkCursorReadiness, CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
   ASK_MARKER_IGNORED,
