@@ -30,6 +30,8 @@ function stubClients(options: {
   stateFails?: unknown;
   /** The session read answers this instead of a page. */
   stateAnswers?: unknown;
+  /** The session read never answers. */
+  stateStalls?: boolean;
   /** Only the reads of suspensions reject; the line's read-back still answers. */
   suspensionsFail?: boolean;
 }): { client: Client; sent: unknown[]; reads: { sessionSuspensions: number; suspendedRequests: number } } {
@@ -70,6 +72,7 @@ function stubClients(options: {
     }),
     sessions: {
       state: async (_id: string, read: { offset?: number; limit?: number; itemTypes?: string[] } = {}) => {
+        if (options.stateStalls === true) await new Promise(() => {});
         if (options.stateFails !== undefined) throw options.stateFails;
         if (options.stateAnswers !== undefined) return options.stateAnswers;
         if (read.itemTypes?.includes("suspension") === true) reads.sessionSuspensions += 1;
@@ -280,6 +283,14 @@ describe("sendTurn", () => {
     const error = await workerFlowOf(sendTurn(client, TARGET, "fire eng.coder", { pollMs: 1 }));
     expect(error.kind).toBe("unconfirmed");
   });
+
+  it("says a refusal at once, even while its look for the line in the session hangs", async () => {
+    // The door's request failed; the held-line look that started beside it never answers.
+    const { client } = stubClients({ status: "failed", failure: "This task has finished.", stateStalls: true });
+    const error = await workerFlowOf(sendTurn(client, TARGET, "hello", { pollMs: 1, onHeld: () => {} }));
+    expect(error.kind).toBe("refused");
+    expect(error.message).toBe("This task has finished.");
+  }, 2_000);
 
   it("is refused, in the door's own words, when the door's request failed", async () => {
     const { client } = stubClients({ status: "failed", failure: "This task has finished and can't take a message here." });

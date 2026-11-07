@@ -133,20 +133,17 @@ async function sessionHoldsLine(client: Client, sessionId: string, requestId: st
  * While the door's request runs, look every {@link HELD_POLL_MS} for the line
  * in the session, and call `onHeld` once it is there. A read that fails only
  * means "not yet": the read after the request ends decides. Stops when
- * `ended` aborts, and never calls `onHeld` after that. Resolves whether it
- * saw the line.
+ * `ended` aborts, and never calls `onHeld` after that.
  */
-async function watchHeld(client: Client, sessionId: string, requestId: string, onHeld: () => void, ended: AbortSignal): Promise<boolean> {
+async function watchHeld(client: Client, sessionId: string, requestId: string, onHeld: () => void, ended: AbortSignal): Promise<void> {
   while (!ended.aborted) {
     if (await sessionHoldsLine(client, sessionId, requestId).catch(() => false)) {
-      if (ended.aborted) return true;
-      onHeld();
-      return true;
+      if (!ended.aborted) onHeld();
+      return;
     }
     // The client's pause lets go of its abort listener each time; an abort just ends the loop.
     await pause(HELD_POLL_MS, ended).catch(() => undefined);
   }
-  return false;
 }
 
 /**
@@ -244,8 +241,13 @@ export async function sendTurn(
   const unconfirmed = (why: string) => new TurnNotDelivered("unconfirmed", `${why} Check the worker's session before sending it again.`);
   try {
     // The request's one wait, with the door's answer; while it runs, look for the line for `onHeld`.
+    // Not awaited: a look still in flight when the request settles must not hold up its answer.
     const ended = new AbortController();
-    const watching = options.onHeld === undefined ? Promise.resolve(false) : watchHeld(client, target.sessionId, requestId, options.onHeld, ended.signal);
+    let held = false;
+    const onHeld = options.onHeld;
+    if (onHeld !== undefined) {
+      void watchHeld(client, target.sessionId, requestId, () => ((held = true), onHeld()), ended.signal);
+    }
     let settled: RequestResult;
     try {
       settled = await call(() => actions.request(requestId).result({ pollMs: options.pollMs ?? SEND_POLL_MS, timeoutMs }));
@@ -257,7 +259,6 @@ export async function sendTurn(
     } finally {
       ended.abort();
     }
-    const held = await watching;
     if (settled.status === "failed") {
       throw new TurnNotDelivered("refused", settled.error?.message ?? "The worker refused the message and gave no reason.");
     }
