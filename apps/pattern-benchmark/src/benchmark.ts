@@ -10,8 +10,8 @@
  * Adding a pattern to the registry and to the `patterns` list below is all it
  * takes to get it benchmarked — no per-pattern harness wiring.
  */
-import { defineBenchmark } from "@flow-state-dev/testing";
-import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns";
+import { defineBenchmark } from "@flow-state-dev/testing/benchmark";
+import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns/benchmark";
 import { tasks } from "./tasks";
 
 export default defineBenchmark({

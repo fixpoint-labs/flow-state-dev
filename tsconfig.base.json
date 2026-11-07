@@ -38,6 +38,7 @@
       "@flow-state-dev/client": ["./packages/client/src/index.ts"],
       "@flow-state-dev/react": ["./packages/react/src/index.ts"],
       "@flow-state-dev/react/workforce": ["./packages/react/src/workforce/index.ts"],
+      "@flow-state-dev/react/internal": ["./packages/react/src/internal.ts"],
       "@flow-state-dev/testing": ["./packages/testing/src/index.ts"],
       "@flow-state-dev/mcp": ["./packages/mcp/src/index.ts"],
       "@flow-state-dev/scheduled": ["./packages/scheduled/src/index.ts"],

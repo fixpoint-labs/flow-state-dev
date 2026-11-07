@@ -3,7 +3,6 @@ import { generator, sequencer } from "@flow-state-dev/core";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { testBlock } from "../src/test-utilities/testBlock";
-import { testSequencer } from "../src/test-utilities/testSequencer";
 
 // ---------------------------------------------------------------------------
 // Regression guard: an injected real `modelResolver` must route
@@ -68,7 +67,7 @@ describe("testBlock modelResolver injection", () => {
       })
     );
 
-    const result = await testSequencer(subject, {
+    const result = await testBlock(subject, {
       input: { prompt: "hi" },
       modelResolver: resolver
     });

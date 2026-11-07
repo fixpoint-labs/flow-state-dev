@@ -139,7 +139,7 @@ Three tiers, picked by what kind of regression you want to catch:
 
 | Layer | Where | Use when |
 |---|---|---|
-| Block / router / sequencer unit | `packages/<pkg>/test/*.test.ts` via `testBlock`, `testRouter`, `testSequencer` | A single block's logic — state changes, output shape, error paths. Default tier for new code. |
+| Block / router / sequencer unit | `packages/<pkg>/test/*.test.ts` via `testBlock` (a sequencer's result carries its `steps`, a router's its `selectedRoute`) | A single block's logic — state changes, output shape, error paths. Default tier for new code. |
 | Flow integration | `packages/integration-tests/src/scenarios/*.test.ts` via `testFlow` | A regression that only emerges from full `runAction` composition: pattern factory wiring, claim systems, dispatcher loops, multi-pattern interactions, session resume across runs. |
 | UI e2e (Playwright) | `apps/kitchen-sink/e2e/*.spec.ts` — CI, LLMs mocked | Browser-only regressions the lower tiers can't catch (see `apps/docs/docs/testing/end-to-end-tests.md`). Out of scope for most changes. |
 

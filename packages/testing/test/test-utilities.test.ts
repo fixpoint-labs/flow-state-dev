@@ -6,7 +6,6 @@ import {
   mockGenerator,
   testBlock,
   testFlow,
-  testRouter,
   testItems,
   snapshotTrace
 } from "../src";
@@ -38,7 +37,7 @@ describe("testing utilities", () => {
   });
 
   it("registers a block's declared resources so ctx.resources is wired without explicit seeding", async () => {
-    // Regression: testBlock/testSequencer ran a block that declared a resource on
+    // Regression: testBlock ran a block that declared a resource on
     // its `resources:` slot without registering it, so `ctx.resources.X` was
     // undefined and writing to it threw "Cannot read properties of undefined
     // (reading 'setState')". Production wires it via flow.resources collected from
@@ -64,31 +63,6 @@ describe("testing utilities", () => {
 
     expect(result.error).toBeNull();
     expect(result.output).toEqual({ ok: true });
-  });
-
-  it("testRouter reports selected route", async () => {
-    const left = handler({
-      name: "left",
-      execute: (_input: { route: string }) => "left"
-    });
-    const right = handler({
-      name: "right",
-      execute: (_input: { route: string }) => "right"
-    });
-
-    const routeBlock = router({
-      name: "chooser",
-      routes: [left, right],
-      execute: (input: { route: string }) => (input.route === "right" ? right : left)
-    });
-
-    const result = await testRouter(routeBlock, {
-      input: { route: "right" }
-    });
-
-    expect(result.error).toBeNull();
-    expect(result.output).toBe("right");
-    expect(result.selectedRoute).toBe("right");
   });
 
   it("testFlow executes one flow action end-to-end", async () => {

@@ -9,10 +9,12 @@
  * each `key` the session's pull-request record's key (`pullRequestKey`).
  * {@link pullRequestWait} reads that wait back with the record's rows, so a
  * card or a thread draws one line: *PR open · #7*, with the link.
+ * {@link readSessionPullRequests} reads those rows off the run session.
  *
  * Browser-safe: no Node built-in on this module's graph (`./browser`).
  */
-import { pullRequestKey } from "@flow-state-dev/core/harness";
+import { OBSERVED_PULL_REQUESTS, pullRequestKey } from "@flow-state-dev/core/harness";
+import type { RecordedWorkClient } from "./recorded-work";
 
 /** The event an external wait on a pull request names on each releaser. */
 export const PULL_REQUEST_EVENT = "pull-request";
@@ -37,6 +39,58 @@ export interface PullRequestRecordRow {
   readonly url?: string | null;
   readonly title?: string | null;
   readonly state?: string | null;
+}
+
+/** One pull request a run session's record holds, as {@link readSessionPullRequests} reads it: what a line draws. */
+export interface SessionPullRequest extends PullRequestRecordRow {
+  /** `github.com`, or a GitHub Enterprise host. `null` when the row names none. */
+  readonly host: string | null;
+  /** `owner/name`. `null` when the row names none. */
+  readonly repository: string | null;
+  readonly number: number;
+  /** Its link on GitHub. */
+  readonly url: string;
+  readonly title: string | null;
+  /** GitHub's state when it was last seen (`open`, `closed`, `merged`), `null` when no sighting named one. */
+  readonly state: string | null;
+}
+
+/** Rows per read: one page. A session's record holds one row per pull request, far fewer than this. */
+const SESSION_PULL_REQUESTS_PAGE = 200;
+
+/**
+ * The pull requests run session `runSessionId` records (`observed-pull-requests`),
+ * every request's: a task's wait spans its turns, so a later turn's pull request
+ * counts as the first one's does. Each has its number, link, title and state, and
+ * the host and repository {@link pullRequestWait} matches its wait's keys by.
+ * A row with no number or no link is left out. A session that records none, or
+ * whose record the client can't read, reads as none.
+ *
+ * A read that fails throws the client's own error unchanged; the caller words it
+ * for its own screen, as for `readRecordedWork`.
+ *
+ * ```ts
+ * const records = await readSessionPullRequests(client, task.run.sessionId);
+ * const wait = pullRequestWait(task, records); // each pull request linked
+ * ```
+ */
+export async function readSessionPullRequests(client: RecordedWorkClient, runSessionId: string): Promise<SessionPullRequest[]> {
+  const manifest = await client.resources.getResourceManifest(runSessionId);
+  const ref = manifest.resources.find(
+    (r) => r.kind === "collection" && r.pattern === `${OBSERVED_PULL_REQUESTS}/**` && r.client.state?.read === true,
+  )?.ref;
+  if (ref === undefined) return [];
+  const page = await client.resources.listCollectionItems(runSessionId, ref, {
+    limit: SESSION_PULL_REQUESTS_PAGE,
+    topicPrefix: `${OBSERVED_PULL_REQUESTS}/`,
+  });
+  const text = (value: unknown) => (typeof value === "string" && value !== "" ? value : null);
+  return page.items.flatMap((item) => {
+    const data = (item.clientData ?? {}) as Record<string, unknown>;
+    const url = text(data.url);
+    if (typeof data.number !== "number" || !Number.isInteger(data.number) || url === null) return [];
+    return [{ host: text(data.host), repository: text(data.repository), number: data.number, url, title: text(data.title), state: text(data.state) }];
+  });
 }
 
 /** One pull request a task waits on. */

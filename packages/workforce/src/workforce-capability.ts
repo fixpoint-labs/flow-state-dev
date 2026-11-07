@@ -32,7 +32,6 @@ import type {
   ManifestDomain,
   ManifestRegistry,
 } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   workforceManifestSources,
   type DeclaredWorkforce,
@@ -137,7 +136,7 @@ export function createWorkforceCapability(
         // because its worker flow composed this capability, so there is nothing for a
         // `tools:` fence to check, and fencing it would leave the worker
         // advertising a tool in its prompt that it cannot call.
-        controlTools: (ctx) => [doorFor(workerDiscoverSelection(ctx as unknown as BlockContext))],
+        controlTools: (ctx) => [doorFor(workerDiscoverSelection(ctx))],
       },
       default: ["door"],
     },

@@ -19,6 +19,7 @@ export {
   type ListSessionsOptions,
   type SessionListInclude,
   type RequestHandle,
+  type RequestResult,
   type RequestStreamOptions,
   type ResourceContentResponse,
   type ResourcesApi,
@@ -33,7 +34,8 @@ export {
   type TypedFlow,
   type UntypedFlow,
   type UpdateResourceContentOptions,
-  type UpdateSessionMetadataOptions
+  type UpdateSessionMetadataOptions,
+  type WaitOptions
 } from "./client";
 
 export type { SubscribeOptions, Subscription } from "./subscribe/push-hub";

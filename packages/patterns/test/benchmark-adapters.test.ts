@@ -21,10 +21,10 @@ import { describe, expect, it } from "vitest";
 import {
   createMockModelResolver,
   mockGenerator,
-  testSequencer,
+  testBlock,
 } from "@flow-state-dev/testing";
 import type { ModelResolver } from "@flow-state-dev/core/types";
-import type { BenchmarkTask } from "@flow-state-dev/core";
+import type { BenchmarkTask } from "@flow-state-dev/testing/benchmark";
 import {
   defaultBenchmarkRegistry,
   supervisorBenchmarkAdapter,
@@ -33,7 +33,7 @@ import {
   roundRobinBenchmarkAdapter,
   debateBenchmarkAdapter,
   routedSpecialistsBenchmarkAdapter,
-} from "@flow-state-dev/patterns";
+} from "@flow-state-dev/patterns/benchmark";
 
 const MODEL = "openai/gpt-5.4-mini";
 
@@ -109,7 +109,7 @@ describe("benchmark adapters", () => {
       },
     });
 
-    const result = await testSequencer(subject.sequencer, {
+    const result = await testBlock(subject.sequencer, {
       input: subject.mapTask(TASK),
       modelResolver: resolver,
     });
@@ -151,7 +151,7 @@ describe("benchmark adapters", () => {
       },
     });
 
-    const result = await testSequencer(subject.sequencer, {
+    const result = await testBlock(subject.sequencer, {
       input: subject.mapTask(TASK),
       modelResolver: resolver,
     });
@@ -177,7 +177,7 @@ describe("benchmark adapters", () => {
       },
     });
 
-    const result = await testSequencer(subject.sequencer, {
+    const result = await testBlock(subject.sequencer, {
       input: subject.mapTask(TASK),
       modelResolver: resolver,
     });
@@ -211,7 +211,7 @@ describe("benchmark adapters", () => {
       },
     });
 
-    const result = await testSequencer(subject.sequencer, {
+    const result = await testBlock(subject.sequencer, {
       input: subject.mapTask(TASK),
       modelResolver: resolver,
       // Round-robin's transcript lives in a session-scoped writable resource
@@ -256,7 +256,7 @@ describe("benchmark adapters", () => {
       },
     });
 
-    const result = await testSequencer(subject.sequencer, {
+    const result = await testBlock(subject.sequencer, {
       input: subject.mapTask(TASK),
       modelResolver: resolver,
       // Debate's transcript lives in a session-scoped writable resource under
@@ -309,7 +309,7 @@ describe("benchmark adapters", () => {
       },
     });
 
-    const result = await testSequencer(subject.sequencer, {
+    const result = await testBlock(subject.sequencer, {
       input: subject.mapTask(TASK),
       modelResolver: resolver,
       // Routed-specialists' shared workspace is a session-scoped writable

@@ -247,8 +247,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       if (ref.get(input.id) === undefined) {
         await ref.createTask({
           id: input.id,
@@ -268,8 +267,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       const claimed = await ref.claim("drain", { leaseDurationMs: 120_000, eligibility: (t) => t.id === input.id });
       return claimed === null ? null : (JSON.parse(JSON.stringify(claimed)) as unknown);
     },
@@ -281,8 +279,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       const found = ref.get(input.id);
       return found === undefined ? null : (JSON.parse(JSON.stringify(found)) as unknown);
     },
@@ -294,8 +291,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       const row = ref.get(input.id);
       const hold = row === undefined ? undefined : openRowHolds(row)[0];
       if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
@@ -309,9 +305,19 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       return (await steerFromLine(ref, input.id, input.message, ctx as never)) ?? null;
+    },
+  });
+  // A steer from the board, as the Inbox's steer and an app's Steer box write it (`updateTask`'s message).
+  const steer = handler({
+    name: "claim-host-steer",
+    inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string(), message: z.string() }),
+    outputSchema: z.unknown(),
+    uses: [ledgerResources],
+    execute: async (input, ctx) => {
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
+      return ref.steer!(input.id, { message: input.message, from: "user", by: ALICE });
     },
   });
   const cancel = handler({
@@ -320,8 +326,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       return ref.cancel(input.id, "cancelled by the test");
     },
   });
@@ -352,6 +357,7 @@ export function claimHost(options: HostOptions) {
       row: { block: rowAction },
       answer: { block: answer },
       line: { block: line },
+      steer: { block: steer },
       cancel: { block: cancel },
       records: { block: records },
       putRecord: { block: putRecordBlock },

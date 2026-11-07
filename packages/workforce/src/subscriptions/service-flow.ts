@@ -192,8 +192,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     inputSchema: subscriptionEventSchema,
     outputSchema: screeningSchema,
     resources: subscriptionResources,
-    execute: async (event, rawCtx): Promise<Screening> => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (event, ctx): Promise<Screening> => {
       const index = subscriptionIndexOf(ctx);
       const closed = closedThreadOf(event);
       const pending: Screening["pending"] = [];
@@ -361,8 +360,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     inputSchema: deliverInputSchema,
     outputSchema: deliveredSchema,
     resources: { ...subscriptionResources, ...workerMessagesResources },
-    execute: async ({ subscription, event, endOnly }, rawCtx): Promise<Delivered> => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async ({ subscription, event, endOnly }, ctx): Promise<Delivered> => {
       const identity = ctx.session.identity as { userId?: string; orgId?: string };
       // The row decides: this user's, this org's, on, and on this event's thread.
       const row: SubscriptionRow | undefined = (await subscriptionsOf(ctx).getOptional(subscription))?.state;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createTestContext, testBlock, testSequencer } from "../src";
+import { createTestContext, testBlock } from "../src";
 
 describe("sequencer state testing utilities", () => {
   it("basic: testBlock supports seeded sequencer state and captures sequencer mutations", async () => {
@@ -54,7 +54,7 @@ describe("sequencer state testing utilities", () => {
       stateSchema: z.object({ count: z.number().default(7) })
     }).step(inner);
 
-    const result = await testSequencer(outer, { input: 1 });
+    const result = await testBlock(outer, { input: 1 });
     expect(result.output).toEqual({ nearest: "inner", count: 11 });
   });
 

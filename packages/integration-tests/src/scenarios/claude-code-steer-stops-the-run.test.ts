@@ -138,10 +138,10 @@ function host() {
     uses: [board.capability],
     execute: async (input, ctx) => {
       const tasks = await getOrCreateTaskCollection({
-        ctx: ctx as never,
+        ctx: ctx,
         backing: "resource",
         collectionId: BOARD_ID,
-        collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
+        collection: resolveResourceCollection(ctx, BOARD_ID)!,
       });
       return tasks.steer!(TASK_ID, { message: input.message, from: "user", by: USER });
     },

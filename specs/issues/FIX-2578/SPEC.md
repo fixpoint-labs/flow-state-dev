@@ -130,7 +130,8 @@ The calling code, in each coding host:
     `waitsOnUser` (`task-board/shared.ts`), board-meta's `waiting-on-a-user` reason, the
     goal-seek loop's `WAITING_ON_A_USER`. The Inbox already does.
   - **`steerFromLine`** answers an open `external` hold with the line, as it answers the oldest
-    question today (`tasks/steers.ts`).
+    question today (`tasks/steers.ts`). So does a board steer (`steerWrite`, under `updateTask`'s
+    message: the Inbox's steer, an app's Steer box), which sets `answers` and `turnOwed` in its write.
   - **The steer and answer sources** gain `"service"`, for words from outside the app.
 - **harness-manager: `awaitPullRequests`**, off by default. At the settle, after the judge and
   the review, the manager takes every PR in the record stamped with one of this task's requests,
@@ -181,7 +182,7 @@ other task-level wait on an outside event.
 | Row holds, the `ask` op, `released` → `turnOwed` (`orchestration/tasks/collection/holds.ts`) | **Extended**: an `external` kind with its own constructor (`newRowHolds` writes `actor: "user"`) |
 | `{ by: "event", event, key }` releaser (`tasks/schema/hold.ts:32`), stored, never written | **Used** for the first time |
 | `waitsOnUser`, board-meta, the goal-seek loop | **Extended** to read `actor` |
-| `steerFromLine` (`tasks/steers.ts`) | **Extended** to answer an `external` hold |
+| `steerFromLine` and `steerWrite` (`tasks/steers.ts`) | **Extended** to answer an `external` hold |
 | `askStep` / `HeldOnQuestion` (`harness-manager/src/ask-step.ts`) | **Reused** shape: the wait ends the turn as a question does |
 | The PR record and `writePullRequests` (FIX-2268) | **Read** at the settle; the write rule **extended** so `state` stays current |
 | `pullRequestHead` (`workspace/src/branch-pull-requests.ts:245`) | **Extended** to return `state` and `merged`, forks readable |

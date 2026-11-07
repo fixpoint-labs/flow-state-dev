@@ -40,7 +40,7 @@
  * `llmReadable`, so no resource tool lists or reads it.
  */
 
-import { defineCapability, handler, type GeneratorTool, type LooseBlockContext } from "@flow-state-dev/core";
+import { defineCapability, handler, type GeneratorTool } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { MCP_TOOL_META, type MCPClient, type MCPServerConfig, type MCPToolMeta } from "@flow-state-dev/tools/mcp";
 import { z } from "zod";
@@ -189,9 +189,8 @@ export function projectMcpCapability(servers: ProjectMcpServers, options: Projec
     return entry;
   };
 
-  const tools = async (given: unknown): Promise<GeneratorTool[]> => {
-    const ctx = given as BlockContext;
-    const plan = await planProjectMcp(servers, options, ctx as unknown as LooseBlockContext, missingKeys);
+  const tools = async (ctx: BlockContext): Promise<GeneratorTool[]> => {
+    const plan = await planProjectMcp(servers, options, ctx, missingKeys);
     if (plan === undefined) return [];
     for (const { name, why } of plan.skipped) {
       say(
@@ -222,7 +221,7 @@ export function projectMcpCapability(servers: ProjectMcpServers, options: Projec
     name: PROJECT_MCP_CAPABILITY,
     uses: [projectWorkspaceCapability, mcpCredentialsCapability],
     presets: {
-      tools: { tools: tools as never },
+      tools: { tools },
       default: []
     }
   });

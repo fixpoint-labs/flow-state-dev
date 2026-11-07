@@ -7,7 +7,9 @@
  * What it holds, each against the installed tarballs:
  *   - the run comes back `suspended`, with the stop (`kind`, `message`) on it;
  *   - `run.answer({ action: "approve" })` returns the run that followed,
- *     `completed`, and the block saw a yes; `reject` reaches it as a no;
+ *     `completed` with the step's output, and the block saw a yes; `reject`
+ *     reaches it as a no; a run that throws after its answer comes back
+ *     `failed` with the error a first run's result carries;
  *   - a second answer is refused with the route's 409, and so is a stop a
  *     screen already answered through the installed engine's own answer
  *     route on the same stores, which only the route can know;
@@ -83,8 +85,36 @@ function refunds(seen) {
   if (typeof run.answer !== "function") fail("answer", "the result has no answer()");
   const after = await run.answer({ action: "approve" });
   if (after.status !== "completed") fail("answer", `status ${after.status}`);
+  if (JSON.stringify(after.output) !== JSON.stringify({ refunded: 5 })) fail("output", JSON.stringify(after.output));
   if (seen.join() !== "yes") fail("answer", `the block saw ${seen.join() || "nothing"}`);
   await refusedWith("second answer", run.answer({ action: "approve" }), 409);
+}
+
+// A run that throws after its answer carries the error a first run's result does.
+{
+  const boom = () => {
+    throw new Error("post-stop failure");
+  };
+  const pay = handler({
+    name: "pay",
+    inputSchema: z.object({}),
+    outputSchema: z.object({}),
+    execute: async (_input, ctx) => {
+      await ctx.suspendForUser({ kind: "approval", prompt: "Pay?" });
+      return boom();
+    }
+  });
+  const direct = await testFlow({
+    flow: defineFlow({ kind: "fails", actions: { pay: { inputSchema: z.object({}), block: handler({ name: "pay", inputSchema: z.object({}), outputSchema: z.object({}), execute: boom }) } } })({ id: "fails" }),
+    action: "pay",
+    input: {},
+    userId: "u1"
+  });
+  const run = await testFlow({ flow: defineFlow({ kind: "pays", actions: { pay: { inputSchema: z.object({}), block: pay } } })({ id: "pays" }), action: "pay", input: {}, userId: "u1" });
+  const after = await run.answer({ action: "approve" });
+  if (after.status !== "failed" || !(after.error instanceof Error)) fail("error after the answer", `status ${after.status}, error ${after.error}`);
+  if (after.error.message !== direct.error?.message || after.error.code !== direct.error?.code)
+    fail("error after the answer", `${after.error.code}: ${after.error.message} vs ${direct.error?.code}: ${direct.error?.message}`);
 }
 
 // A no reaches the block as a no.

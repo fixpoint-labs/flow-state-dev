@@ -82,6 +82,10 @@ export interface RunProject {
  * @returns The project, its visibility and the run's owner, or a refusal.
  */
 export async function runProjectOf(ctx: LooseBlockContext): Promise<RunProject | RunSourceRefusal> {
+  // The run source hands a `LooseBlockContext` (`@flow-state-dev/workspace`'s
+  // `RunSource`), narrower than the block context it is at runtime. Retyping
+  // `RunSource` is a published change of its own.
+  // eslint-disable-next-line no-restricted-syntax
   const held = (await claimedTask(ctx as unknown as BlockContext))?.row;
   const named = namedProjectOf(held);
   if (named.kind === "malformed") return named.refusal;

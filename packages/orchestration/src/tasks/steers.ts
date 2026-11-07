@@ -6,7 +6,7 @@
  * count.
  */
 import type { Task } from "./schema/task";
-import { hasOpenHold, openRowHolds, steerPlacesTaken, type QuestionAnswer } from "./collection/holds";
+import { externalHoldOf, hasOpenHold, openRowHolds, steerPlacesTaken, type QuestionAnswer } from "./collection/holds";
 import { MAX_STEERS, type TaskSteer } from "./schema/steer";
 
 /** What a sender hands the `steer` verb. */
@@ -63,6 +63,9 @@ export function steersTakenIn(task: Pick<Task, "steers" | "attempts">, takenIn: 
  * steers and the open questions reach it.
  * A task running nothing while it waits on work it filed now waits on the
  * steer instead: a turn is owed for it (D2).
+ * A running task's open external wait (FIX-2578) is answered by the steer, as
+ * a line answers it: the steer wakes the wait and the same attempt is owed its
+ * turn, in this write. Its answer has its place kept, so the cap never refuses it.
  */
 export function steerWrite(
   task: Task,
@@ -72,19 +75,22 @@ export function steerWrite(
 ): { patch: Partial<Task> } | "unchanged" | "limit" {
   const steers = task.steers ?? [];
   if (input.key !== undefined && steers.some((steer) => steer.id === input.key)) return "unchanged";
-  if (steerPlacesTaken(task) >= MAX_STEERS) return "limit";
+  const wait = task.status === "in_progress" ? externalHoldOf(task) : undefined;
+  if (wait === undefined && steerPlacesTaken(task) >= MAX_STEERS) return "limit";
   const steer: TaskSteer = {
     id: input.key ?? id,
     message: input.message,
     from: input.from,
     ...(input.by !== undefined ? { by: input.by } : {}),
     at,
+    ...(wait !== undefined ? { answers: wait.id } : {}),
   };
   return {
     patch: {
       steers: [...steers, steer],
       // The turn owed for it is marked on the row (FIX-2133 D3), so the claim can take it when no wake does.
       ...(task.status === "in_progress" && task.keptOpenBy === "filed" ? { keptOpenBy: "steer" as const, turnOwed: true as const } : {}),
+      ...(wait !== undefined ? { turnOwed: true as const } : {}),
     },
   };
 }

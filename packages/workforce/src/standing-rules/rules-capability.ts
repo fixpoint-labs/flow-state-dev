@@ -85,7 +85,7 @@ const readTool = handler({
   outputSchema: listOutputSchema,
   resources,
   execute: async (_input, ctx) => {
-    const list = await readStandingRules(ctx as never);
+    const list = await readStandingRules(ctx);
     return listOutput(list);
   }
 });
@@ -99,7 +99,7 @@ const addTool = handler({
   inputSchema: z.object({ text: z.string() }).strict(),
   outputSchema: toolOutputSchema,
   resources,
-  execute: async (input, ctx) => toolWrite(ctx as never, { op: "add", text: input.text })
+  execute: async (input, ctx) => toolWrite(ctx, { op: "add", text: input.text })
 });
 
 const changeTool = handler({
@@ -109,7 +109,7 @@ const changeTool = handler({
   inputSchema: z.object({ number: z.number().int(), current: z.string(), text: z.string() }).strict(),
   outputSchema: toolOutputSchema,
   resources,
-  execute: async (input, ctx) => toolWrite(ctx as never, { op: "change", ...input })
+  execute: async (input, ctx) => toolWrite(ctx, { op: "change", ...input })
 });
 
 const removeTool = handler({
@@ -119,7 +119,7 @@ const removeTool = handler({
   inputSchema: z.object({ number: z.number().int(), current: z.string() }).strict(),
   outputSchema: toolOutputSchema,
   resources,
-  execute: async (input, ctx) => toolWrite(ctx as never, { op: "remove", ...input })
+  execute: async (input, ctx) => toolWrite(ctx, { op: "remove", ...input })
 });
 
 /** The four rule tools. */
@@ -131,8 +131,8 @@ export const standingRulesCapability = defineCapability({
   resources,
   presets: {
     rules: {
-      context: (_input, ctx) => rulesContext(ctx as never),
-      controlTools: (ctx) => (isUserTurn(ctx as never) ? ruleTools : [])
+      context: (_input, ctx) => rulesContext(ctx),
+      controlTools: (ctx) => (isUserTurn(ctx) ? ruleTools : [])
     },
     default: ["rules"]
   }

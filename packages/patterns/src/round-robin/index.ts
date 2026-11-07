@@ -308,7 +308,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       when: (_value: unknown, ctx: any) => {
         const state = ctx.sequencer!.state;
         if (state.round >= maxRounds) return false;
-        if (terminateWhen !== undefined && terminateWhen(ctx as BlockContext)) {
+        if (terminateWhen !== undefined && terminateWhen(ctx)) {
           return false;
         }
         return true;

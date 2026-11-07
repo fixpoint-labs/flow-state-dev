@@ -41,7 +41,7 @@ async function readRecipients(ctx: BlockContext, installation: WorkerInstallatio
   const messageable: RosterWorker[] = [];
   const taskOnly: RosterWorker[] = [];
   let me: RosterWorker | undefined;
-  for (const worker of await installation.roster(ctx as never)) {
+  for (const worker of await installation.roster(ctx)) {
     if (worker.id === self) {
       me = worker;
       continue;

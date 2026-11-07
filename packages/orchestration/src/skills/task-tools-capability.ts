@@ -83,7 +83,7 @@ import type { TaskUpdateField } from "../tasks/collection/field-rules";
 import { withoutNoticeMarkers, cancelledDependents } from "../tasks/notice/task-notice";
 import { MAX_STEERS } from "../tasks/schema/steer";
 import { MAX_QUESTION_PROMPT } from "../tasks/schema/hold";
-import { isRowHold, steerPlacesTaken } from "../tasks/collection/holds";
+import { externalHoldOf, isRowHold, steerPlacesTaken } from "../tasks/collection/holds";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
 // the task-board's public API to advertise it.
@@ -1506,7 +1506,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         try {
           // A model's own cancel in its own turn: the call's result tells its filer, so it owes no notice (FIX-2078 D2).
           // A task waiting on a user is cancelled under its stop's fence, and its run resumes `cancelled` (FIX-2129).
-          const outcome: TaskWriteOutcome | undefined = await cancelAndResume(ctx as never, collection, input.id, undefined, {
+          const outcome: TaskWriteOutcome | undefined = await cancelAndResume(ctx, collection, input.id, undefined, {
             via,
             ...(via === "tool" ? { viaTool: true } : {}),
           });
@@ -1551,8 +1551,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // or release, decided by the write, aside) and the steer limit.
       if (message !== undefined) {
         if (isTerminalStatus(current.status)) return lockedError(current, ["message"]);
-        // Each open question keeps its answer's place under the cap (FIX-2133).
-        if (steerPlacesTaken(current) >= MAX_STEERS) return steerLimitError(input.id);
+        // Each open question keeps its answer's place under the cap (FIX-2133), and a message to
+        // a running task's open external wait answers it in that place (FIX-2578), as the write decides.
+        const answersWait = current.status === "in_progress" && externalHoldOf(current) !== undefined;
+        if (!answersWait && steerPlacesTaken(current) >= MAX_STEERS) return steerLimitError(input.id);
         if (collection.steer === undefined) {
           return {
             ok: false as const,
@@ -1712,7 +1714,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     let outcome: TaskWriteOutcome | undefined;
     try {
       // Fenced on the confirm still open, in the cancel's own write: a No after a yes, or racing one, can't cancel.
-      outcome = await cancelAndResume(ctx as never, collection, row.id, reason, { via, whileHoldOpen: hold.id });
+      outcome = await cancelAndResume(ctx, collection, row.id, reason, { via, whileHoldOpen: hold.id });
     } catch (err) {
       if (err instanceof TaskWriteRefusedError) return refusedError(err);
       throw err;

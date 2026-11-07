@@ -48,7 +48,7 @@ export function takeTurnWait(
   const already = taken.get(key);
   if (already !== undefined) return already === by ? undefined : already;
   taken.set(key, by);
-  onRequestEnded(ctx as never, () => {
+  onRequestEnded(ctx, () => {
     taken.delete(key);
   });
   return undefined;

@@ -30,7 +30,7 @@ export type FakeClientParts = {
   /** Flow-level calls; `send` gets `(action, input, options)` without `stream`, `abort` gets the request id. */
   flow?: Partial<Record<"send" | "abort" | "createSession" | "read", AnyFn>>;
   /** Request-level calls, each given the request id first (and the flow address last). */
-  request?: Partial<Record<"status" | "continue" | "retry" | "resume" | "answer", AnyFn>>;
+  request?: Partial<Record<"status" | "result" | "continue" | "retry" | "resume" | "answer", AnyFn>>;
   resources?: Partial<Client["resources"]>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each test types its own capture
   requestStream?: (options: RequestStreamOptions & { url: string } & Record<string, any>) => RequestStreamHandle;
@@ -54,6 +54,7 @@ export function fakeClient(parts: FakeClientParts): Client {
       flow,
       status: async () => call(parts.request?.status, "request.status", id),
       wait: async () => call(parts.request?.status, "request.status", id),
+      result: async () => call(parts.request?.result, "request.result", id),
       abort: async () => {
         await call(parts.flow?.abort, "flow.abort", id);
       },

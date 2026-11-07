@@ -15,7 +15,7 @@ import { Spend } from "./flow-state/spend";
 import { taskCounts } from "./flow-state/task-signals";
 import { TaskActions } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
-import { harnessLabelOf } from "./ThreadStatus";
+import { harnessLabelOf, PULL_REQUEST_HINT, PullRequestOpen, waitsOnPullRequest } from "./ThreadStatus";
 import { TaskCard, TaskDoneRow } from "./TaskCard";
 
 /**
@@ -118,7 +118,9 @@ export function TasksPane({
 /**
  * One task's work in a sheet over the main thread, live while it runs, with
  * its action row at the foot. The sheet has no composer, so the row carries
- * the Steer box. A failed task's error shows as an error.
+ * the Steer box. A task waiting on its pull request says *PR open · #7*, with
+ * the link, and that a line in the Steer box wakes it. A failed task's error
+ * shows as an error.
  */
 function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter; sessionId: string; task: TaskRow; onClose: () => void }) {
   const actions = useMemo(() => adapter.taskActions(sessionId), [adapter, sessionId]);
@@ -149,18 +151,28 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
         </>
       }
       onClose={onClose}
-      footer={<TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer />}
+      footer={
+        <>
+          {waitsOnPullRequest(task) ? (
+            <p role="note" data-testid="pull-request-hint" className="mb-2 text-xs text-muted-foreground">
+              {PULL_REQUEST_HINT}
+            </p>
+          ) : null}
+          <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer />
+        </>
+      }
     >
       {task.status === "errored" && task.error !== undefined ? (
         <div role="alert" className="mb-3 flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive [overflow-wrap:anywhere]">
           <ErrorBody message={task.error} />
         </div>
       ) : null}
+      {waitsOnPullRequest(task) ? <PullRequestOpen task={task} className="mb-3 block" /> : null}
       {work === undefined || work.entries.length === 0 ? <p className="text-sm text-muted-foreground">Nothing yet.</p> : null}
       <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
-      {task.status === "in_progress" && task.waitingOn === undefined ? (
+      {task.status === "in_progress" && task.waitingOn === undefined && !waitsOnPullRequest(task) ? (
         <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
     </SessionOverlay>

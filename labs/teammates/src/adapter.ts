@@ -89,7 +89,7 @@ import {
   type RefileRow,
   type TaskRowView,
 } from "@flow-state-dev/orchestration/inbox";
-import { readRecordedWork, reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitRow, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
@@ -178,6 +178,12 @@ export interface BoardTask {
   waiting?: TaskWaiting;
   /** For an accepted coding task, where its work went: the pull request opened, or the merge into your checkout. */
   landed?: LandedWork;
+  /**
+   * For a coding task whose work is a pull request, the ones it waits on to
+   * merge or close (harness-manager's `awaitPullRequests`), by number: its run
+   * is done and its work is not, so it stays open. Absent while it waits on none.
+   */
+  pullRequests?: { number: number | null }[];
   /** The row as orchestration's `taskRowView` reads it, once per read: its state and times, for its time signal and the panel's counts. */
   view?: TaskRowView;
   /**
@@ -416,6 +422,11 @@ export interface LabAdapter {
   watchTasks(sessionId: string, onChange: (tasks: BoardTask[]) => void, onStale?: (stale: boolean) => void): Unsubscribe;
   /** A task's run, by the session its row names, read only: the worker that runs it takes no messages. */
   watchRun(runSessionId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
+  /**
+   * The pull requests a run session's record holds (`observed-pull-requests`), with their links:
+   * what a task waiting on one links to. Empty when the session keeps none or it can't be read.
+   */
+  readPullRequests(runSessionId: string): Promise<{ number: number; url: string; title: string | null }[]>;
   /** The run's latest review, read from its stop; `undefined` until it stops for one. */
   watchReview(runSessionId: string, onChange: (review: ReviewDetail | undefined) => void): Unsubscribe;
   /** Answer what a task waits on you for; the run goes on, or the task completes on an accept. */
@@ -796,7 +807,14 @@ export function toBoardTask(
     ...(view === null ? {} : { view }),
     ...runOf(row),
     ...landedOf(row.output?.landed),
+    ...pullRequestsOf(row),
   };
+}
+
+/** A row's open pull-request wait, as harness-manager's browser reader reads it: the pull requests by number, or nothing. */
+function pullRequestsOf(row: Record<string, any>): Pick<BoardTask, "pullRequests"> {
+  const wait = pullRequestWait(row as PullRequestWaitRow);
+  return wait === null ? {} : { pullRequests: wait.pullRequests.map(({ number }) => ({ number })) };
 }
 
 /** Where an accepted run's work went, from harness-manager's output, or nothing when it names none readable. */
@@ -1175,10 +1193,9 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const runLab = async (flow: string, action: string, input: unknown): Promise<any> => {
     const sessionId = await labSession(flow);
     const sent = await client.flow(flow).send(action, input, { sessionId });
-    const { status } = await sent.wait();
-    const found = (await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === sent.id);
-    if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}`);
-    return found?.result?.output;
+    const { status, error, output } = await sent.result();
+    if (status !== "completed") throw new Error(error?.message ?? `${action} ended ${status}`);
+    return output;
   };
 
   return {
@@ -1496,6 +1513,15 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     watchRun(runSessionId, onChange) {
       return watchFeed(runSessionId, runSteps, stableList(onChange));
     },
+    async readPullRequests(runSessionId) {
+      try {
+        const rows = await readSessionPullRequests(client, runSessionId);
+        return rows.map(({ number, url, title }) => ({ number, url, title }));
+      } catch (error) {
+        console.warn(`teammates: the pull requests of run session ${runSessionId} couldn't be read`, error);
+        return [];
+      }
+    },
     watchReview(runSessionId, onChange) {
       let last: string | undefined;
       return watchFeed(runSessionId, reviewOf, (review) => {
@@ -1525,11 +1551,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const withBrief = async (task: BoardTask): Promise<BoardTask> => {
         const flow = client.flow(await flowOf());
         const { id: requestId } = await flow.send(GET_TASK, { id: task.id }, { sessionId });
-        const { status } = await flow.request(requestId).wait();
-        const found = (await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === requestId);
-        const output = found?.result?.output as { ok?: boolean; error?: string; task?: Record<string, any> } | undefined;
+        const { status, error, output: answered } = await flow.request(requestId).result();
+        const output = answered as { ok?: boolean; error?: string; task?: Record<string, any> } | undefined;
         if (status !== "completed" || output?.ok === false || output?.task === undefined) {
-          throw new Error(output?.error ?? found?.result?.error?.message ?? "The task couldn't be read, so it wasn't filed again.");
+          throw new Error(output?.error ?? error?.message ?? "The task couldn't be read, so it wasn't filed again.");
         }
         const held = output.task;
         const { context: _context, labels: _labels, priority: _priority, ...rest } = task;

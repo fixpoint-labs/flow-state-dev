@@ -10,7 +10,7 @@
  */
 import { resolveDurabilityProvider, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, FlowError } from "@flow-state-dev/core";
 import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { cloneValue } from "@flow-state-dev/core/helpers";
@@ -260,7 +260,17 @@ function testFlowResult(
       data: answer.data,
       headers: answer.headers
     });
-    return testFlowResult(context, { status: normalizeStatus(outcome.status), items: outcome.items });
+    return testFlowResult(context, {
+      status: normalizeStatus(outcome.status),
+      output: outcome.result?.output,
+      // The stored error is FlowError's code and message: rebuilt as the
+      // FlowError a first run's result carries.
+      error:
+        outcome.result?.error === undefined
+          ? undefined
+          : new FlowError(outcome.result.error.message, { code: outcome.result.error.code }),
+      items: outcome.items
+    });
   };
   return {
     ...fields,

@@ -822,7 +822,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   };
   const recordFailure = handler({
     name: "record-turn-failure",
-    execute: async (error: Error, ctx): Promise<unknown> => recordTurnFailure(error, ctx as unknown as BlockContext),
+    execute: async (error: Error, ctx): Promise<unknown> => recordTurnFailure(error, ctx),
   });
   // A harness can also report a run it saw end in failure as a result, not a
   // throw. That turn is recorded as failed too, so the page shows its error
@@ -1244,7 +1244,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
     ask: ((request, ctx) => {
       const requestId = ctx.request.identity.id;
       const call = heldToolCallOf(request, workspace.locate(workPlaceOf(kind, ctx)));
-      const { grants } = turnApprovalsOf(ctx as never);
+      const { grants } = turnApprovalsOf(ctx);
       const spent = spentGrants.get(requestId) ?? new Set<number>();
       const granted = grants.findIndex((grant, at) => !spent.has(at) && grantMatches(grant, call));
       if (granted >= 0) {
@@ -1336,7 +1336,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
               outputSchema: z.unknown(),
               execute: async (error: unknown, ctx) => {
                 if (heldCalls.has(ctx.request.identity.id)) return STOPPED_FOR_APPROVAL;
-                return recordTurnFailure(error as Error, ctx as unknown as BlockContext);
+                return recordTurnFailure(error as Error, ctx);
               },
             }),
           },
@@ -1355,7 +1355,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
           const spent = spentGrants.get(requestId);
           heldCalls.delete(requestId);
           spentGrants.delete(requestId);
-          const approvals = turnApprovalsOf(ctx as never);
+          const approvals = turnApprovalsOf(ctx);
           const grants = approvals.grants.filter((_, at) => spent?.has(at) !== true);
           if (held === undefined && grants.length === approvals.grants.length) return value;
           if (held !== undefined) {
@@ -1377,7 +1377,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
         outputSchema: z.unknown(),
         sequencerStateSchema: turnApprovalsSchema,
         execute: async (value: unknown, ctx) => {
-          const approvals = turnApprovalsOf(ctx as never);
+          const approvals = turnApprovalsOf(ctx);
           const call = approvals.pending;
           if (call === null) return value;
           const steps = approvals.steps + 1;
@@ -1388,7 +1388,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
                 `[harness-session] the turn has already been resumed for ${MAX_APPROVAL_STEPS} tool approvals, ` +
                   `the most one turn takes; it asked again for ${call.toolName}${call.touches === null ? "" : ` (${call.touches})`}.`,
               ),
-              ctx as unknown as BlockContext,
+              ctx,
             );
           }
           const confirmed = (ctx.session.state as HarnessSessionState).binding?.confirmed ?? null;
@@ -1399,7 +1399,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
                 `[harness-session] the turn asked to use ${call.toolName}, and its harness confirmed no ` +
                   `conversation to continue after an answer.`,
               ),
-              ctx as unknown as BlockContext,
+              ctx,
             );
           }
           const asked = await ctx.suspendForUser(toolApprovalStop(call));

@@ -62,6 +62,8 @@ describe("testFlow and a step that waits for a person", () => {
 
     expect(after.status).toBe("completed");
     expect(after.requestId).toBe(run.requestId);
+    // The step's output, read as a client reads it: from the status route.
+    expect(after.output).toEqual({ refunded: 5 });
     expect(after.suspension).toBeUndefined();
     expect(seen).toEqual(["draft", "answered:yes"]);
     // The items after the stop: its answer, and none of the ones before it.
@@ -239,6 +241,32 @@ describe("testFlow and a step that waits for a person", () => {
     expect(answered.status).toBe("suspended");
     const resumed = await answered.resume({ action: "approve" });
     expect(resumed.status).toBe("completed");
+  });
+
+  it("carries the error of a run that fails after the answer, as the first run's result does", async () => {
+    const step = handler({
+      name: "pay",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: async (_input, ctx) => {
+        await ctx.suspendForUser({ kind: "approval", prompt: "Pay?" });
+        throw new Error("post-stop failure");
+      }
+    });
+    const flow = defineFlow({ kind: "pays", actions: { pay: { inputSchema: z.object({}), block: step } } })({ id: "pays" });
+    const failing = defineFlow({
+      kind: "fails",
+      actions: { pay: { inputSchema: z.object({}), block: handler({ name: "pay", inputSchema: z.object({}), outputSchema: z.object({}), execute: () => { throw new Error("post-stop failure"); } }) } }
+    })({ id: "fails" });
+    const direct = await testFlow({ flow: failing, action: "pay", input: {}, userId: "u1" });
+
+    const run = await testFlow({ flow, action: "pay", input: {}, userId: "u1" });
+    const after = await run.answer({ action: "approve" });
+
+    expect(after.status).toBe("failed");
+    expect(after.error).toBeInstanceOf(Error);
+    expect(after.error?.message).toBe(direct.error?.message);
+    expect((after.error as { code?: string }).code).toBe((direct.error as { code?: string }).code);
   });
 
   it("with durable: false, a stop fails the run", async () => {

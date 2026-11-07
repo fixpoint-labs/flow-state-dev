@@ -42,22 +42,20 @@ type MaybePromise<T> = T | Promise<T>;
  * a runtime backstop in the block factories.
  */
 /**
- * Lightweight context shape for preset callbacks. Inferred from the
- * capability's sessionStateSchema so `(ctx) =>` is typed automatically.
- * Defaults to `any` for backwards compatibility.
+ * The `ctx` a preset callback receives: the consuming block's `BlockContext`,
+ * which is what the runtime passes it (`collectOwnPresets`). Session state is
+ * typed from the capability's `sessionStateSchema`; a capability that declares
+ * none reads it as `any`, since the block supplies the shape.
  *
- * Resources live at `ctx.resources` (FIX-435); they're a flat namespace
- * routed by each resource's intrinsic `scope`.
+ * Being a `BlockContext`, it passes to any helper that takes one, and a key
+ * `BlockContext` does not declare is a compile error rather than `any`.
  */
-export type CapabilityPresetCtx<TSessionState = any> = {
-  session: {
-    state: Readonly<TSessionState>;
-    identity: { id: string; userId?: string; orgId?: string };
-    [key: string]: any;
-  };
-  resources: Record<string, any>;
-  [key: string]: any;
-};
+export type CapabilityPresetCtx<TSessionState = any> = BlockContext<
+  Record<string, unknown>,
+  // `any` passes through on purpose (`[any] extends [object]` holds): it is the
+  // no-schema case above. The type test pins it.
+  [TSessionState] extends [object] ? TSessionState : Record<string, unknown>
+>;
 
 /**
  * A preset definition — a partial block config. TSessionState flows from
@@ -647,10 +645,18 @@ type InferCapabilitySessionStateEntry<T> =
   T extends DefinedCapability<any, any, any, any, infer S, any, any, any, any>
     ? T extends { sessionStateType?: infer O }
       ? unknown extends O
-        ? S extends ZodTypeAny ? import("zod").infer<S> : {}
+        ? InferDeclaredSessionState<S>
         : NonNullable<O>
-      : S extends ZodTypeAny ? import("zod").infer<S> : {}
+      : InferDeclaredSessionState<S>
     : {};
+
+/**
+ * A capability's declared session state. One that declares no schema carries
+ * the open `ZodTypeAny` default, which contributes no fields: the runtime
+ * merge (`mergeScopeStateSchemas`) fills none from it, so the type adds none.
+ */
+type InferDeclaredSessionState<S> =
+  S extends ZodTypeAny ? (ZodTypeAny extends S ? {} : import("zod").infer<S>) : {};
 
 /**
  * Infer the merged `ctx.resources` shape contributed by static capabilities.
@@ -707,7 +713,10 @@ export type InferCapabilityTargetSchemas<TUses extends readonly UsesEntry[]> =
 
 type InferCapabilityTargetSchemasEntry<T> =
   T extends DefinedCapability<any, any, any, any, any, any, infer S, any, any>
-    ? S extends Record<string, ZodTypeAny> ? S : {}
+    // A capability that declares no targets carries the open default map;
+    // read that as "no targets", or every block using it gets an open
+    // `ctx.targets` that no `BlockContext` helper accepts.
+    ? S extends Record<string, ZodTypeAny> ? (string extends keyof S ? {} : S) : {}
     : {};
 
 /**

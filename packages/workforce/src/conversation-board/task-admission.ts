@@ -134,8 +134,7 @@ export function markAdmittedTask(name: string) {
     transient: true,
     inputSchema: z.unknown(),
     resources: { ...conversationLedgerResources },
-    execute: async (_input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (_input, ctx) => {
       const running = await runningTaskOf(ledgerAboveOf, ctx);
       if (running !== undefined) ctx._markTaskScope?.(running.row.id);
     }

@@ -72,7 +72,7 @@ export async function checkTargetSession(
     );
   }
   const workerId = state[WORKER_ID_STATE_KEY];
-  const worker = typeof workerId === "string" ? await installation.rosterWorker(ctx as never, workerId) : undefined;
+  const worker = typeof workerId === "string" ? await installation.rosterWorker(ctx, workerId) : undefined;
   if (worker === undefined) return refuse(`no_worker: the worker in "${sessionId}" isn't on your roster now.`);
   if (worker.problem !== undefined) return refuse(`worker_unavailable: worker "${worker.id}" can't be messaged: ${worker.problem}.`);
   if ((view.flowId ?? view.flowKind) !== worker.flow) {

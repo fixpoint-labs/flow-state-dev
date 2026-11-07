@@ -1,5 +1,5 @@
 /** Fixture: a minimal valid benchmark definition for CLI loader tests. */
-import { defineBenchmark } from "@flow-state-dev/testing";
+import { defineBenchmark } from "@flow-state-dev/testing/benchmark";
 
 export default defineBenchmark({
   name: "fixture-benchmark",

@@ -288,6 +288,12 @@ export const CHECKS = [
     },
   },
   {
+    // Benchmarking is reached only through its two subpaths; the testing and
+    // patterns roots carry none of it, and the repo-only scanners aren't published.
+    name: "benchmarking is on testing/benchmark and patterns/benchmark, not on either root",
+    run: (project) => runFixture(project, "benchmark-subpaths.mjs", "benchmark-subpaths"),
+  },
+  {
     // An adopter unit-tests a step that waits for a person with the installed
     // testing package alone, answering it through the engine's own routes.
     name: "the installed testFlow stops on a step that waits for a person, and answers it through the engine's route",

@@ -10,7 +10,7 @@
  *
  * Rounding matches the eval report (4 decimals) for consistency.
  */
-import type { BenchmarkCategory } from "@flow-state-dev/core";
+import type { BenchmarkCategory } from "./contract";
 import type {
   BenchmarkRanking,
   BenchmarkReport,

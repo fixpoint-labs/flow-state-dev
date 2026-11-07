@@ -17,7 +17,7 @@
  * resource reads a ref and topic as well.
  */
 import { useDevTool } from "../context/devtool-context";
-import { useReadFence, type ReadFence } from "@flow-state-dev/react";
+import { useReadFence, type ReadFence } from "@flow-state-dev/react/internal";
 
 export function useWorkspaceFence(
   extra: readonly unknown[],

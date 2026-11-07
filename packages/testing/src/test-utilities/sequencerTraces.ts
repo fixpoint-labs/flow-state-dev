@@ -1,14 +1,16 @@
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+/**
+ * A sequencer's step and side-chain traces, read from the items its run
+ * emitted. `testBlock` attaches them to a sequencer's result.
+ */
 import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
-import { testBlock } from "./testBlock";
-import type {
-  BlockInput,
-  BlockOutput,
-  StepTrace,
-  TestBlockOptions,
-  TestSequencerResult,
-  SideChainTrace
-} from "./types";
+import type { SequencerDefinition } from "@flow-state-dev/core";
+import type { StepTrace, SideChainTrace, TestBlockResult } from "./types";
+
+/** The fields a sequencer's result carries beyond every block's. */
+type SequencerTraces = Pick<
+  TestBlockResult<unknown, SequencerDefinition<any, any, any, any>>,
+  "steps" | "sideChainResults" | "loopIterations"
+>;
 
 type StepAccumulator = {
   stepName: string;
@@ -91,19 +93,10 @@ function inferLoopIterations(items: Array<OutputItem | BlockTraceItem>): number 
   return maxStep < 0 ? 0 : maxStep + 1;
 }
 
-/**
- * Executes a sequencer block and returns sequencer-focused traces.
- */
-export async function testSequencer<TBlock extends BlockDefinition<any, any>>(
-  sequencer: TBlock,
-  options: TestBlockOptions<BlockInput<TBlock>>
-): Promise<TestSequencerResult<BlockOutput<TBlock>>> {
-  const base = await testBlock(sequencer, options);
-  const items = base.items as Array<OutputItem | BlockTraceItem>;
+/** The step, side-chain and loop traces of a sequencer's items. */
+export function sequencerTraces(items: Array<OutputItem | BlockTraceItem>): SequencerTraces {
   const steps = buildStepTraces(items);
-
   return {
-    ...base,
     steps,
     sideChainResults: buildSideChainTraces(steps),
     loopIterations: inferLoopIterations(items)

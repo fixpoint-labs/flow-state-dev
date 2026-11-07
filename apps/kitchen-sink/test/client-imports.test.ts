@@ -20,7 +20,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { findImportsFromEntry } from "@flow-state-dev/testing";
+import { findImportsFromEntry } from "@flow-state-dev/testing/bundle";
 import { describe, expect, it } from "vitest";
 
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "..");

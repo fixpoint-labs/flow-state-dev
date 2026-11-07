@@ -26,8 +26,10 @@ export { shellWord, workPlace, type WorkPlace, type WorkPlaceCommands, type Work
 export {
   PULL_REQUEST_EVENT,
   pullRequestWait,
+  readSessionPullRequests,
   type PullRequestRecordRow,
   type PullRequestWait,
   type PullRequestWaitRow,
+  type SessionPullRequest,
   type WaitedPullRequest,
 } from "./pull-request-wait";

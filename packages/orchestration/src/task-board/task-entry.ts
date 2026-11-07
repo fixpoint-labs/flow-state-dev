@@ -624,7 +624,7 @@ const STOPPED_WHILE_WAITING = "Stopped while it waited for a user.";
  * request, and for an answered resume.
  */
 function userResumeOf(ctx: BlockContext, row: Task): "cancelled" | "stopped" | undefined {
-  const resumed = requestResumeOf(ctx as never);
+  const resumed = requestResumeOf(ctx);
   if (resumed === undefined || !resumed.userSuspension || row.run?.requestId !== ctx.request.identity.id) return undefined;
   return resumed.resolution === "cancelled" || resumed.resolution === "stopped" ? resumed.resolution : undefined;
 }

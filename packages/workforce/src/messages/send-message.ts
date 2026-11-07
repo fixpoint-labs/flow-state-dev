@@ -137,7 +137,7 @@ export async function recheckRecipient(
     }
     return undefined;
   }
-  const recipient = await installation.rosterWorker(ctx as never, row.to);
+  const recipient = await installation.rosterWorker(ctx, row.to);
   return recipientRefusal(installation, row.from, row.to, recipient, row.inReplyTo !== undefined);
 }
 
@@ -302,7 +302,7 @@ export async function sendMessage(
     destination = { sessionId: checked.target.sessionId, flow: checked.target.worker.flow };
   } else {
     // ---- by name: on the roster, and hearing by name ------------------------
-    const named = await installation.rosterWorker(ctx as never, to);
+    const named = await installation.rosterWorker(ctx, to);
     const refused = recipientRefusal(installation, sender, to, named, input.inReplyTo !== undefined);
     if (refused !== undefined || named === undefined) return refuse(refused ?? `no_worker: no worker "${to}" on your roster.`);
     recipientId = named.id;
