@@ -19,7 +19,8 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import { handleAbortRequest } from "../src/routes/abort-routes";
 

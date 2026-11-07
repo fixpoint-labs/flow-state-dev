@@ -15,7 +15,7 @@ import type { ContentStore } from "../src/stores/types";
 import {
   createInMemoryContentStore,
   createFilesystemContentStore
-} from "../src";
+} from "../src/host";
 import { createContentStoreConformanceTests } from "../src/testing";
 import { createFilesystemStoreGuardConformanceTests } from "./filesystem-store-guard-conformance";
 import { InMemoryContentStore } from "../src/stores/memory/content-store";

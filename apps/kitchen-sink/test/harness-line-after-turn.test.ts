@@ -24,7 +24,8 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "@flow-state-dev/engine";
+import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 
 import { CLAUDE_CODE_SESSION, claudeCodeSessionFlow } from "@/lib/claude-code-mode";

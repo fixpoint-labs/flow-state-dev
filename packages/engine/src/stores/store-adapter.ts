@@ -3,8 +3,8 @@
  *
  * `StoreAdapter` is the user-facing layer above the flat `StoreRegistry`.
  * A profile (`CapabilitySlotMap`) names which adapter backs each capability
- * slot — `primary` for the catch-all state, plus the forward-compatible
- * `blobs` / `queue` / `scheduler` slots. `createFlowState` resolves the
+ * slot — `primary` for the catch-all state, `bus` for the change bus, and the
+ * reserved `blobs` slot. `createFlowState` resolves the
  * active profile into a concrete `StoreRegistry` (see `resolve-slots.ts`).
  *
  * Adapter packages (`store-postgres`, `store-sqlite`, `vercel/store`) import
@@ -19,10 +19,8 @@ import type { StoreRegistry } from "./types";
  *
  * - `primary` — required. The catch-all state slot: backs sessions, requests,
  *   users, orgs, active requests, checkpoints, content, and traces.
- * - `blobs` — binary object storage. Forward-compatible: declaring it is a
- *   no-op until a binary-aware blob store ships.
- * - `queue` — async work delivery. Forward-compatible.
- * - `scheduler` — wake-at-time-T scheduling. Forward-compatible.
+ * - `blobs` — binary object storage. Reserved: declaring it is a no-op until
+ *   the attachment store that backs it ships.
  * - `bus` — the change bus (FIX-2426): the adapter resolves `{ bus }`. When
  *   the profile names none, the primary backs it if it declares `bus`;
  *   otherwise the bus is in memory and reaches this process only.
@@ -31,8 +29,6 @@ export interface CapabilitySlotMap {
   primary: StoreAdapter;
   bus?: StoreAdapter;
   blobs?: StoreAdapter;
-  queue?: StoreAdapter;
-  scheduler?: StoreAdapter;
 }
 
 /** A single capability slot name. */

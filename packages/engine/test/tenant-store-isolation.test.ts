@@ -10,9 +10,11 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowRegistry,
-  createInMemoryStores,
   runAction
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { createResponseEmitter } from "../src/host";
 import { retryRequest } from "../src/execution/request-recovery";
 import { resolveSessionStorageKey } from "../src/stores/scope-keys";

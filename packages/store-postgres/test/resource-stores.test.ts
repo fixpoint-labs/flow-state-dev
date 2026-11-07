@@ -13,7 +13,7 @@ import {
   createPostgresResourceStateStore,
   initializeSchema,
   type QueryExecutor
-} from "../src";
+} from "../src/host";
 import {
   createContentStoreConformanceTests,
   createResourceStateStoreConformanceTests

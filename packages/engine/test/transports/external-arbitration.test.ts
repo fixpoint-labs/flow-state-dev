@@ -28,11 +28,13 @@ import {
 import {
   createFlowRegistry,
   createFlowState,
-  createInMemoryStores,
   defaultBodyUserIdPrincipalResolver,
   inMemoryStores,
   runAction
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import { createInMemoryLeaseBackend } from "../../src/internal";
 import type { FlowStateRuntime } from "../../src/flowstate/types";
 import type { ExecutionResult } from "../../src/execution/types";

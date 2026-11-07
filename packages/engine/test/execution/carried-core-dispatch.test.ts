@@ -24,7 +24,8 @@ import { describe, it, expect } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { bindTaskDispatcher, defineFlow, dispatcher, generator, handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createInMemoryStores, runAction } from "../../src";
+import { runAction } from "../../src";
+import { createInMemoryStores } from "../../src/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const SCHEDULED_SOURCE = "scheduled";

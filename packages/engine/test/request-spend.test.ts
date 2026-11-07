@@ -30,7 +30,8 @@ import {
 import { reportHarnessSpend } from "@flow-state-dev/core/harness";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import { createRequestSpendLedger } from "../src/execution/request-spend-ledger";

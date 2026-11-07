@@ -16,9 +16,11 @@ import {
   continueRequest,
   createCheckpointDurabilityProvider,
   createFlowRegistry,
-  createInMemoryStores,
-  runAction,
+  runAction
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { z } from "zod";
 import {
   askMidway,

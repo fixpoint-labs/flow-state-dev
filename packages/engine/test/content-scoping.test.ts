@@ -17,7 +17,8 @@ import {
   defineResourceCollection,
   handler
 } from "@flow-state-dev/core";
-import { createExecutionContext, createInMemoryStores } from "../src";
+import { createExecutionContext } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 const noopHandler = handler({ name: "noop", execute: () => "ok" });
 

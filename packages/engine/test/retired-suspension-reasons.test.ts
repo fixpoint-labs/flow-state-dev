@@ -9,7 +9,8 @@ import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/
 import { isUserSuspension, suspendForUserKindOf } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 /** A flow whose one step stops for `reason`, noting when it finishes and what `ctx.suspend` threw. */

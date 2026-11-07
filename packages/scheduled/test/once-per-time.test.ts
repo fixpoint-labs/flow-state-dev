@@ -11,10 +11,12 @@ import {
   createBearerSecretPrincipalResolver,
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { createScheduledTransportAdapter } from "../src";
 import { recentTimes } from "./recent-times";
 

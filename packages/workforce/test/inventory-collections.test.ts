@@ -16,7 +16,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { defineWorkerInventoryCollection, workerInventoryRowSchema } from "../src/index";

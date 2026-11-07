@@ -10,7 +10,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { REVIEW_KIND, digestDefinition, reviewDefinition } from "./fixtures/reviewer";

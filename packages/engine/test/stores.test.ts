@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { createFilesystemStores, createInMemoryStores } from "../src";
+import { createFilesystemStores, createInMemoryStores } from "../src/host";
 import {
   type OrgRecord,
   type RequestRecord,

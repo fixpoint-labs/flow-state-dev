@@ -18,7 +18,8 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
+import { createFlowApiRouter, createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { RequestRecord, SessionRecord } from "../src/host";
 import type { StoreRegistry } from "../src";
 

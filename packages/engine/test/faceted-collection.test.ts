@@ -39,7 +39,8 @@ import {
 } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores, type StoreRegistry } from "../src";
+import { type StoreRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 // ---------------------------------------------------------------------------
 // Fixtures

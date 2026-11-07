@@ -22,9 +22,11 @@ import {
 } from "@flow-state-dev/core";
 import {
   createExecutionContext,
-  createInMemoryStores,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { RequestOwnerMismatchError } from "../src/host";
 
 const REQUEST_ID = "req_liveness";

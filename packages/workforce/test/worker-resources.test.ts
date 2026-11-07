@@ -33,7 +33,8 @@ import {
   type DeclaredResources
 } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createExecutionContext, createInMemoryStores } from "@flow-state-dev/engine";
+import { createExecutionContext } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { runForTest } from "@flow-state-dev/testing";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";

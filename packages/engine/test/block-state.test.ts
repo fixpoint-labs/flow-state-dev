@@ -11,7 +11,8 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { GeneratorModel, GeneratorModelCallOptions, GeneratorModelResult } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 type StepFn = (options: GeneratorModelCallOptions) => GeneratorModelResult;
 

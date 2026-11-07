@@ -20,10 +20,12 @@ import { createModelResolver, defineFlow, generator, handler, sequencer } from "
 import {
   continueRequest,
   createFlowRegistry,
-  createInMemoryStores,
   createCheckpointDurabilityProvider,
-  runAction,
+  runAction
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { z } from "zod";
 
 const out = (r: unknown) => console.log("__GOAL__" + JSON.stringify(r));

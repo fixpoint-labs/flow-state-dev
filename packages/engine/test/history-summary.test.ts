@@ -12,7 +12,8 @@ import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer, utility } fr
 import type { GeneratorModel, LLMMessage } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { StoreRegistry } from "../src/stores/types";
 
 type ModelCall = { messages: LLMMessage[] };

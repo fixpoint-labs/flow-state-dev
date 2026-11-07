@@ -15,7 +15,7 @@ import type { Job } from "bullmq";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createFlowJobProcessor } from "@flow-state-dev/bullmq";
 import type { FlowJobData } from "@flow-state-dev/bullmq";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { REPO_ROOT, intentFreeEnv, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { REVIEW_KIND, reviewInstance } from "./fixtures/review";

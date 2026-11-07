@@ -3,7 +3,7 @@
  */
 import { afterAll } from "vitest";
 import { createWakeStoreConformanceTests } from "@flow-state-dev/engine/testing";
-import { createSQLiteStores, type SQLiteStoreRegistry } from "../src/index";
+import { createSQLiteStores, type SQLiteStoreRegistry } from "../src/host";
 
 const open: SQLiteStoreRegistry[] = [];
 

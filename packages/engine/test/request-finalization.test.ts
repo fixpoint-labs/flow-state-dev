@@ -12,7 +12,8 @@
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 

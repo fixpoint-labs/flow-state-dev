@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { createInMemorySessionStore } from "../src";
+import { createInMemorySessionStore } from "../src/host";
 import { createScopeStateOps, createStateContainer } from "../src/stores/state-container";
 import { type SessionRecord } from "../src/host";
 import type { CASPersist } from "../src/stores/cas";

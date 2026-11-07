@@ -14,9 +14,11 @@ import type { PushMintAnswer, PushServerFrame } from "@flow-state-dev/core/inter
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import {
   createInMemoryBus,
   enablePushDelivery,

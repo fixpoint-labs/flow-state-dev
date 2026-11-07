@@ -8,7 +8,7 @@
  * over (`createWorkerLookup(...).state`), never from the task's input.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { bootHost, FIXTURE } from "./worker-model-harness";
 
 const envelope = (worker: string, taskId: string) => ({

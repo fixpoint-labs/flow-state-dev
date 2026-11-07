@@ -23,7 +23,8 @@ import type {
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createResponseEmitter } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 

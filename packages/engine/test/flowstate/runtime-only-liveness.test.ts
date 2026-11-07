@@ -33,12 +33,14 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createFlowState,
-  createInMemoryStores,
   disposeFlowApiRouter,
   inMemoryStores,
   runAction,
   type StoreAdapter
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import type { FlowApiRouter } from "../../src/routes/createFlowApiRouter";
 import type { StoreRegistry } from "../../src/stores/types";
 

@@ -24,7 +24,7 @@ import type { PoolConfig } from "pg";
  * `@flow-state-dev/store-postgres`' `poolOptions` input:
  *
  * ```ts
- * import { createPostgresStores } from "@flow-state-dev/store-postgres";
+ * import { createPostgresStores } from "@flow-state-dev/store-postgres/host";
  * import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
  *
  * const stores = await createPostgresStores({

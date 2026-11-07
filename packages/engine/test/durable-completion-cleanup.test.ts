@@ -10,7 +10,8 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { SuspensionRecord } from "@flow-state-dev/core/types";
 

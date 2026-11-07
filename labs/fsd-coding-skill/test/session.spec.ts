@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { testFlow } from "@flow-state-dev/testing";
 import { INTERNAL_CURSOR_SDK_VERSION_READER as CURSOR_GATE, type CursorAgentOptions } from "../../../packages/cursor/src/agent";
 import { INTERNAL_CODEX_SDK_VERSION_READER as CODEX_GATE, type CodexAgentOptions } from "../../../packages/codex/src/agent";

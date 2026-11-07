@@ -42,10 +42,12 @@ import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter,
-  runAction,
+  runAction
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import type { RequestRecord } from "@flow-state-dev/engine/host";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import {

@@ -14,7 +14,7 @@ import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { SessionStreamEvent } from "@flow-state-dev/core/items";
 import { createFlowApiRouter, createFlowRegistry, disposeFlowApiRouter, type StoreRegistry } from "@flow-state-dev/engine";
 import { PGlite } from "@electric-sql/pglite";
-import { createPostgresStores, type QueryExecutor } from "../src";
+import { createPostgresStores, type QueryExecutor } from "../src/host";
 import { createPostgresBus, type PostgresBus } from "../src/bus";
 import { FakeNotifyNetwork, delay, until } from "./fake-notify-network";
 

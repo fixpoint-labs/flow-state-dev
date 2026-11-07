@@ -12,10 +12,12 @@
  * Not typechecked by `goals/tsconfig.json`. See goals/README.md → "Harnesses".
  */
 import {
-  createFilesystemStores,
   createCheckpointDurabilityProvider,
-  runAction,
+  runAction
 } from "@flow-state-dev/engine";
+import {
+  createFilesystemStores
+} from "@flow-state-dev/engine/host";
 import flow from "./flows/chat-agent/flow";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 

@@ -26,7 +26,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionRecord } from "@flow-state-dev/engine/host";
 import { sessionStreamReads } from "@flow-state-dev/engine/testing";
 import { initializeSchema } from "../src/schema";
-import { createSQLiteRequestStore, createSQLiteSessionStore } from "../src";
+import { createSQLiteRequestStore, createSQLiteSessionStore } from "../src/host";
 
 type PlanRow = { detail: string };
 

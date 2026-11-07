@@ -14,9 +14,11 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { createMcpTransportAdapter } from "../src";
 
 function buildRouter(adapter = createMcpTransportAdapter()) {

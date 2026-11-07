@@ -34,7 +34,8 @@ import { z } from "zod";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import type { ResourceRef } from "@flow-state-dev/core/types";
-import { createExecutionContext, createFlowRegistry, createInMemoryStores } from "../src";
+import { createExecutionContext, createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { getPersistedData } from "../src/resources/internal";
 import { handleGetSessionState } from "../src/routes/state-routes";
 import {

@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { StoreSubscriptionError } from "@flow-state-dev/engine/host";
-import { createPostgresRequestStore, initializeSchema, type QueryExecutor } from "../src";
+import { createPostgresRequestStore, initializeSchema, type QueryExecutor } from "../src/host";
 import { FakeNotifyNetwork, until } from "./fake-notify-network";
 import { openListen } from "../src/listen";
 import { freshPglite } from "./shared-pglite";

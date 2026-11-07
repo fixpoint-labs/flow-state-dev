@@ -17,9 +17,11 @@ import {
   continueRequest,
   createCheckpointDurabilityProvider,
   createFlowRegistry,
-  createInMemoryStores,
   runAction
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { type RuntimeConfig } from "@flow-state-dev/engine/host";
 import { createMockModelResolver, runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";

@@ -12,7 +12,8 @@
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createFlowState, createInProcessFetch, createInMemoryStores, inMemoryStores } from "../src";
+import { createFlowState, createInProcessFetch, inMemoryStores } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createFlowRegistry } from "../src/registry/flow-registry";
 import { handleGetRequestStatus } from "../src/routes/request-status-routes";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";

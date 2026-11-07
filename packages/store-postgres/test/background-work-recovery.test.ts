@@ -42,7 +42,7 @@ import type { StoreRegistry } from "@flow-state-dev/engine";
 import { runAction } from "@flow-state-dev/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createPostgresStores, type QueryExecutor } from "../src";
+import { createPostgresStores, type QueryExecutor } from "../src/host";
 
 /** Wrap PGlite to match the QueryExecutor interface (same shape as stores.test.ts). */
 function pgliteExecutor(pglite: PGlite): QueryExecutor {

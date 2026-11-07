@@ -11,7 +11,7 @@ import type {
   UserRecord
 } from "@flow-state-dev/engine/host";
 import { createTraceStoreConformanceTests } from "@flow-state-dev/engine/testing";
-import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
+import { createSQLiteStores, type SQLiteStoreRegistry } from "../src/host";
 import { initializeSchema } from "../src/schema";
 import { createSQLiteSuspensionStore } from "../src/suspension-store";
 import { createSQLiteRequestStore } from "../src/request-store";

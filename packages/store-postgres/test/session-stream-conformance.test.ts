@@ -6,7 +6,7 @@
  */
 import type { PGlite } from "@electric-sql/pglite";
 import { createSessionStreamConformanceTests } from "@flow-state-dev/engine/testing";
-import { createPostgresStores, type QueryExecutor } from "../src";
+import { createPostgresStores, type QueryExecutor } from "../src/host";
 import { freshPglite } from "./shared-pglite";
 
 function pgliteExecutor(pglite: PGlite): QueryExecutor {

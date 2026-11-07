@@ -8,7 +8,8 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineProjectedResourceCollection, defineFlow, handler } from "@flow-state-dev/core";
 import { parseResourceTemplate } from "@flow-state-dev/core/resource-template";
-import { createInMemoryStores, createFlowRegistry } from "../src";
+import { createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { StoreRegistry, SessionRecord } from "../src/stores/types";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import {

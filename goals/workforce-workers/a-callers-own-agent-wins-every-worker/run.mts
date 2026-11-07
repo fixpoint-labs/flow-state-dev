@@ -22,7 +22,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry, createInProcessFetch } from "@flow-state-dev/engine";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { AGENT_FLOW, type WorkerManifest } from "@flow-state-dev/workforce";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { installWorkers, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";

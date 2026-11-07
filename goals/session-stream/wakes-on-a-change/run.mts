@@ -31,7 +31,7 @@ import {
   type StoreRegistry
 } from "@flow-state-dev/engine";
 import { type ChangeBus } from "@flow-state-dev/engine/host";
-import { createPostgresStores, type QueryExecutor } from "@flow-state-dev/store-postgres";
+import { createPostgresStores, type QueryExecutor } from "@flow-state-dev/store-postgres/host";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import {
   REPO_ROOT,

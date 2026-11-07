@@ -19,7 +19,8 @@ import {
   type BlockDefinition,
 } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createModelResolver } from "@flow-state-dev/core";
 import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import { z } from "zod";

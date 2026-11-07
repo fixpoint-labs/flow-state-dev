@@ -51,8 +51,8 @@ import {
   taskSchema
 } from "@flow-state-dev/orchestration/tasks";
 import { findTaskPartitions, taskLedgerResources } from "@flow-state-dev/orchestration/internal";
-import { createPostgresStores } from "@flow-state-dev/store-postgres";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createPostgresStores } from "@flow-state-dev/store-postgres/host";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { resolveTaskPartition } from "../../../packages/orchestration/src/tasks/collection/partition.ts";
 import { goalTmpDir, loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 

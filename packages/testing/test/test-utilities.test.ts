@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResource, generator, handler, router } from "@flow-state-dev/core";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   mockGenerator,
   testBlock,
