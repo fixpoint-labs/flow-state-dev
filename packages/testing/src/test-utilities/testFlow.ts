@@ -20,7 +20,8 @@ import {
 } from "../internal/json-helpers";
 import { createMockModelResolver } from "../mocks/mockGenerator";
 import { userSeedCell } from "../internal/user-cell";
-import type { TestFlowOptions, TestFlowResult } from "./types";
+import { answerThroughRoute } from "./answerThroughRoute";
+import type { TestFlowAnswer, TestFlowOptions, TestFlowResult } from "./types";
 
 function normalizeStatus(
   value: RequestStatus | undefined
@@ -160,17 +161,16 @@ async function seedFlowStores(options: {
 }
 
 /**
- * The stop the run is waiting on: the last `suspension` item no
- * `suspension_resume` item answered. Undefined when nothing waits.
+ * The stops the run is waiting on: its `suspension` items that no
+ * `suspension_resume` item answered.
  */
-function pendingSuspension(items: readonly OutputItem[]): SuspensionItem | undefined {
+function pendingSuspensions(items: readonly OutputItem[]): SuspensionItem[] {
   const answered = new Set(
     items.flatMap((item) => (item.type === "suspension_resume" ? [item.suspensionId] : []))
   );
-  const waiting = items.filter(
+  return items.filter(
     (item): item is SuspensionItem => item.type === "suspension" && !answered.has(item.suspensionId)
   );
-  return waiting.at(-1);
 }
 
 /**
@@ -223,14 +223,60 @@ export async function testFlow<TInput = unknown>(
 
   const persistedRequest = await stores.request.get(requestId);
 
-  return {
-    status: normalizeStatus(
-      persistedRequest?.status ?? (result.error === undefined ? "completed" : "failed")
-    ),
-    requestId,
-    output: result.output,
-    error: result.error,
-    items: result.items,
-    suspension: pendingSuspension(result.items)
+  return testFlowResult(
+    { flow: options.flow, stores, runtimeConfig, requestId },
+    {
+      status: normalizeStatus(
+        persistedRequest?.status ?? (result.error === undefined ? "completed" : "failed")
+      ),
+      output: result.output,
+      error: result.error,
+      items: result.items
+    }
+  );
+}
+
+type RunContext = Parameters<typeof answerThroughRoute>[0];
+
+/**
+ * A run's result, with `answer` and `resume` bound to it: each continues the
+ * run through the engine's route and returns the run that followed, which
+ * can be answered in turn.
+ */
+function testFlowResult(
+  context: RunContext,
+  fields: Pick<TestFlowResult, "status" | "output" | "error" | "items">
+): TestFlowResult {
+  const waiting = pendingSuspensions(fields.items as OutputItem[]);
+  const through = (route: "answer" | "resume") => async (answer: TestFlowAnswer): Promise<TestFlowResult> => {
+    const suspensionId = answer.suspensionId ?? onlyStop(waiting, route);
+    const outcome = await answerThroughRoute(context, {
+      route,
+      suspensionId,
+      action: answer.action,
+      data: answer.data,
+      headers: answer.headers
+    });
+    return testFlowResult(context, { status: normalizeStatus(outcome.status), items: outcome.items });
   };
+  return {
+    ...fields,
+    requestId: context.requestId,
+    suspension: waiting.at(-1),
+    answer: through("answer"),
+    resume: through("resume")
+  };
+}
+
+/** The one stop a call without a `suspensionId` answers; throws when there is none, or several. */
+function onlyStop(waiting: SuspensionItem[], route: "answer" | "resume"): string {
+  if (waiting.length === 0) {
+    throw new Error(`run.${route}: this run is not waiting on a stop`);
+  }
+  if (waiting.length > 1) {
+    throw new Error(
+      `run.${route}: this run waits on ${waiting.length} stops (${waiting.map((s) => s.suspensionId).join(", ")}); pass suspensionId`
+    );
+  }
+  return waiting[0]!.suspensionId;
 }

@@ -7,6 +7,7 @@ export { testBlock } from "./test-utilities/testBlock";
 export { testSequencer } from "./test-utilities/testSequencer";
 export { testRouter } from "./test-utilities/testRouter";
 export { testFlow } from "./test-utilities/testFlow";
+export { StopRefusedError } from "./test-utilities/answerThroughRoute";
 export { testItems } from "./test-utilities/testItems";
 export { runForTest } from "./test-utilities/runForTest";
 export { createReplayingRef, type ReplayingRef } from "./test-utilities/replayingRef";
@@ -21,6 +22,7 @@ export type {
   StepTrace,
   TestBlockOptions,
   TestBlockResult,
+  TestFlowAnswer,
   TestFlowOptions,
   TestFlowResult,
   TestRouterResult,
