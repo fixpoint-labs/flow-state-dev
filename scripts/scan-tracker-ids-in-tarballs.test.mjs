@@ -48,6 +48,13 @@ describe("scanPackage", () => {
     assert.deepEqual(outside, []);
   });
 
+  it("still reads a JSDoc block that follows an interpolated template-literal type", () => {
+    const dir = unpacked(root, "react", {
+      "dist/index.d.ts": "export type Key = `prefix${string}`;\n/** FIX-123 */\nexport declare const a: Key;\n",
+    });
+    assert.deepEqual(scanPackage(dir, "react").hovers.map((h) => h.id), ["FIX-123"]);
+  });
+
   it("passes a package with no ids where an adopter reads them", () => {
     const dir = unpacked(root, "engine", {
       "dist/index.d.ts": "/** Holds the slot. */\nexport declare const a = 1;\n",

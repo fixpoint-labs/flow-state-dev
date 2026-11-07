@@ -54,12 +54,26 @@ const idsIn = (text, file) => [...text.matchAll(IDS)].map((m) => ({ id: m[0], fi
 
 /** JSDoc ids in a `.d.ts`: tsc copies JSDoc, and only JSDoc, into one. */
 function hoversIn(text, file) {
-  const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, text);
+  // Parsed, not scanned token by token: a bare scanner misreads the closing
+  // backtick of a template-literal type and swallows the comments after it.
+  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const seen = new Set();
   const found = [];
-  for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
-    const token = scanner.getTokenText();
-    if (kind === ts.SyntaxKind.MultiLineCommentTrivia && /^\/\*[*!]/.test(token)) found.push(...idsIn(token, file));
-  }
+  const read = (ranges) => {
+    for (const r of ranges ?? []) {
+      if (seen.has(r.pos) || r.kind !== ts.SyntaxKind.MultiLineCommentTrivia) continue;
+      seen.add(r.pos);
+      const comment = text.slice(r.pos, r.end);
+      if (/^\/\*[*!]/.test(comment)) found.push(...idsIn(comment, file));
+    }
+  };
+  // Every comment sits in some token's leading or trailing trivia.
+  const visit = (node) => {
+    read(ts.getLeadingCommentRanges(text, node.pos));
+    read(ts.getTrailingCommentRanges(text, node.end));
+    for (const child of node.getChildren(source)) visit(child);
+  };
+  visit(source);
   return found;
 }
 

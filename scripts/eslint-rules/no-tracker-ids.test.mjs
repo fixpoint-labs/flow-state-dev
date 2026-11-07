@@ -60,6 +60,10 @@ describe("fsd/no-tracker-ids in shipped source", () => {
     assert.deepEqual(reported("/*! Licence note (LAB-7). */\nexport const a = 1;\n"), ["LAB-7"]);
   });
 
+  it("reads a JSDoc block that follows an interpolated template-literal type", () => {
+    assert.deepEqual(reported("export type Key = `prefix${string}`;\n/** FIX-123 */\nexport const a = 1;\n"), ["FIX-123"]);
+  });
+
   it("reports an id on an exported interface member's JSDoc", () => {
     assert.deepEqual(reported("export interface Row {\n  /** Per BP-030, dual-read. */\n  owner?: string;\n}\n"), ["BP-030"]);
   });
