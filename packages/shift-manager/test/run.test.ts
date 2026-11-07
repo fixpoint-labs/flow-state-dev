@@ -21,7 +21,7 @@ import {
   RunReadError,
   taskItems,
 } from "../src/lib/run";
-import { ClientHttpError } from "@flow-state-dev/client";
+import { ClientHttpError, createClient } from "@flow-state-dev/client";
 import { readRecordedWork } from "@flow-state-dev/harness-manager/browser";
 import { openRunLab, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -192,14 +192,20 @@ describe("Interrupt (V3; BR-11, BR-12, BR-14)", () => {
   /** Clients whose abort is refused with `refusal`, and whose record reads `status`. */
   function refusing(refusal: ClientHttpError, status: string): { client: Client; statusReads: () => number } {
     let reads = 0;
+    // The record is read through the real client's wait, over a fetcher that counts status reads.
+    const real = createClient({
+      userId: "u",
+      baseUrl: "",
+      fetcher: async () => {
+        reads += 1;
+        return new Response(JSON.stringify({ id: "r", status, startedAtMs: 1, ageMs: 1 }), { headers: { "content-type": "application/json" } });
+      },
+    }).flow("f").request("r");
     const request = {
       abort: async () => {
         throw refusal;
       },
-      status: async () => {
-        reads += 1;
-        return { status };
-      },
+      wait: real.wait,
     };
     return { client: { flow: () => ({ request: () => request }) } as unknown as Client, statusReads: () => reads };
   }

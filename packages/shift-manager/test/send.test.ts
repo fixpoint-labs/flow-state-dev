@@ -50,7 +50,22 @@ function stubClients(options: {
         sent.push({ flowId, action, input, opts });
         return { id: "req_door", response: { request: { id: "req_door" } } };
       },
-      request: () => ({ status: async () => ({ status: nextStatus() }) }),
+      request: () => ({
+        status: async () => ({ status: nextStatus() }),
+        // As the client's: polls until the request settles, rejects past its timeout
+        // with a status-0 error, and carries a failed request's error.
+        result: async ({ pollMs = 1, timeoutMs = Infinity }: { pollMs?: number; timeoutMs?: number } = {}) => {
+          const until = Date.now() + timeoutMs;
+          for (;;) {
+            const status = nextStatus();
+            if (status !== "in_progress") {
+              return status === "failed" && options.failure !== undefined ? { status, error: { code: "refused", message: options.failure } } : { status };
+            }
+            if (Date.now() >= until) throw new ClientHttpError("did not finish", { status: 0, body: null });
+            await new Promise((resolve) => setTimeout(resolve, pollMs));
+          }
+        },
+      }),
     }),
     sessions: {
       state: async (_id: string, read: { offset?: number; limit?: number; itemTypes?: string[] } = {}) => {
@@ -75,7 +90,8 @@ function stubClients(options: {
           const own = items.filter((item) => item.requestId === "req_door" && item.type !== "message");
           return [{ id: "req_door", status, ...(list.includeItems === true ? { items: own } : {}) }];
         }
-        return options.failure === undefined ? [] : [{ id: "req_door", result: { error: { message: options.failure } } }];
+        // A refusal is read off the door's own request (`result()`), never by listing the session.
+        throw new Error(`unexpected listing of the session's ${list.status ?? "all"} requests`);
       },
     },
   } as unknown as Client;

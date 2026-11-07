@@ -688,10 +688,9 @@ export function createWiredLab(fsd: Client): LabAdapter {
   /** Run one action in a session and hand back its output, or throw why it failed. */
   const run = async (flow: string, sessionId: string, action: string, input: unknown): Promise<any> => {
     const started = await fsd.flow(flow).send(action, input, { sessionId });
-    const { status } = await started.wait();
-    const found = (await fsd.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === started.id);
-    if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}`);
-    const output = found?.result?.output as { ok?: boolean; error?: string } | undefined;
+    const { status, error, output: answered } = await started.result();
+    if (status !== "completed") throw new Error(error?.message ?? `${action} ended ${status}`);
+    const output = answered as { ok?: boolean; error?: string } | undefined;
     if (output?.ok === false) throw new Error(output.error);
     return output;
   };

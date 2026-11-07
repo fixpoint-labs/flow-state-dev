@@ -437,19 +437,13 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
   /** Run one action in `sessionId` on `flow` and return its output, or reject with the reason it failed. */
   const runIn = async (flow: string, sessionId: string, action: string, input: unknown): Promise<unknown> => {
     const started = await fsd.flow(flow).send(action, input, { sessionId });
-    const requestId = started.id;
-    const until = Date.now() + ACTION_TIMEOUT_MS;
-    let status: Awaited<ReturnType<typeof started.status>>["status"] = started.response.status;
-    while (status === "in_progress") {
-      if (Date.now() > until) throw new Error(`${action} did not finish in time.`);
-      await new Promise((resolve) => setTimeout(resolve, ACTION_POLL_MS));
-      status = (await started.status()).status;
-    }
-    const listed = await sessions.requests(sessionId, { status, includeResultOutput: true, limit: 100 });
-    const found = listed.find((request) => request.id === requestId);
-    if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}.`);
-    if (found === undefined) throw new Error(`${action} finished, but its answer could not be read.`);
-    return found.result?.output;
+    const settled = await started.result({ pollMs: ACTION_POLL_MS, timeoutMs: ACTION_TIMEOUT_MS }).catch((error: unknown) => {
+      if (error instanceof ClientHttpError && error.status === 0) throw new Error(`${action} did not finish in time.`);
+      throw error;
+    });
+    if (settled.status !== "completed") throw new Error(settled.error?.message ?? `${action} ended ${settled.status}.`);
+    if (settled.outputNotRecorded === true) throw new Error(`${action} finished, but its answer could not be read.`);
+    return settled.output;
   };
 
   const client: WorkforceClient = {

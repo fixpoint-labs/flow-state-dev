@@ -10,8 +10,8 @@
  * binds one board, and cancel, steer, release, retry and re-file go to that
  * board's own actions through the routine a row answer goes through.
  */
-import { ClientHttpError, type Client } from "@flow-state-dev/client";
-import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
+import { ClientHttpError, type Client, type RequestResult } from "@flow-state-dev/client";
+import type { ResumeAction } from "@flow-state-dev/core/types";
 import { taskToolSuffix } from "../skills/task-tool-suffix";
 import type { InboxAnswer, InboxAskKind, InboxHold, InboxItem, RowHoldSource } from "./types";
 
@@ -37,10 +37,6 @@ function updateOf(kind: InboxAskKind, answer: InboxAnswer): { message?: string; 
 /** How long the board's answer is waited on, and how often the request's wait looks at it. */
 const ANSWER_TIMEOUT_MS = 30_000;
 const ANSWER_POLL_MS = 150;
-/** Requests listed per page while looking for the one that just ended, and how many pages. */
-const REQUEST_PAGE = 100;
-/** The listing is newest first, so the answer is almost always on page 0; the cap only bounds a miss in a long session (2,000 requests), which then rejects. */
-const REQUEST_PAGES = 20;
 
 /** The task tools a board takes from outside a run, each an action on the flow that holds the board. */
 export type TaskActionTool = "createTask" | "getTask" | "listTasks" | "updateTask" | "retryTask";
@@ -80,23 +76,16 @@ async function sendBoardAction(client: Client, route: BoardRoute, input: Record<
     if (error instanceof ClientHttpError && error.status >= 400 && error.status < 500) throw new Error(error.message);
     throw error;
   }
-  let status: RequestStatus;
+  let settled: RequestResult;
   try {
-    status = (await flow.request(requestId).wait({ pollMs: ANSWER_POLL_MS, timeoutMs: ANSWER_TIMEOUT_MS })).status;
+    settled = await flow.request(requestId).result({ pollMs: ANSWER_POLL_MS, timeoutMs: ANSWER_TIMEOUT_MS });
   } catch (error) {
     if (error instanceof ClientHttpError && error.status === 0) throw new Error(`The ${what} was sent, and the board didn't say in time whether it took it.`);
     throw error;
   }
-  // The status carries no output: the session's listing does, a page at a time.
-  let found: Awaited<ReturnType<Client["sessions"]["requests"]>>[number] | undefined;
-  for (let page = 0; page < REQUEST_PAGES && found === undefined; page += 1) {
-    const listed = await client.sessions.requests(sessionId, { status, includeResultOutput: true, limit: REQUEST_PAGE, offset: page * REQUEST_PAGE });
-    found = listed.find((request) => request.id === requestId);
-    if (listed.length < REQUEST_PAGE) break;
-  }
-  if (status !== "completed") throw new Error(found?.result?.error?.message ?? `The board's ${what} ended ${status}.`);
-  if (found === undefined) throw new Error(`The board finished the ${what}, but its answer couldn't be read, so check the board before trying again.`);
-  const output = found.result?.output as BoardOutput | undefined;
+  if (settled.status !== "completed") throw new Error(settled.error?.message ?? `The board's ${what} ended ${settled.status}.`);
+  if (settled.outputNotRecorded === true) throw new Error(`The board finished the ${what}, but its answer couldn't be read, so check the board before trying again.`);
+  const output = settled.output as BoardOutput | undefined;
   if (output?.ok === false) throw new Error(output.error ?? `The board refused the ${what}.`);
   return output ?? {};
 }

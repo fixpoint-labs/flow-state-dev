@@ -75,36 +75,24 @@ export type LabData = {
   answered: { sessionId: string; count: number } | undefined;
 };
 
-/** How often, and how many times, an answered request's status is read while it runs on. */
+/** How often an answered request's status is read while it runs on, and for how long. */
 const SETTLE_POLL_MS = 1_000;
-const SETTLE_POLLS = 130;
-/** Polls a request may still read `suspended` right after its answer, before that counts as stopped again. */
-const RESUME_GRACE_POLLS = 3;
-/** Status reads in a row that may fail before the wait gives up. */
-const SETTLE_FAILED_READS = 3;
+const SETTLE_TIMEOUT_MS = 130_000;
 
 /**
- * Wait until the request an answer resumed stops running, or `live()` turns
- * false (the provider is gone, or reads another Lab), whichever is first. A
- * read that fails is tried again on the next poll; {@link SETTLE_FAILED_READS}
- * in a row end the wait, and the snapshot read after it says what it can.
- * A run still going after {@link SETTLE_POLLS} reads ends the wait too, and
- * its result is drawn on the conversation's next read.
+ * Wait until the request an answer resumed stops running (`wait()`: a resumed
+ * run counts as running while the server holds it, even before its record
+ * leaves `suspended`), or `stop` aborts (the provider is gone, or reads
+ * another Lab), whichever is first. A read that fails, or a run still going
+ * after {@link SETTLE_TIMEOUT_MS}, ends the wait too, and the snapshot read
+ * after it says what it can.
  */
-async function settled(client: Client, flowId: string, requestId: string, live: () => boolean): Promise<void> {
-  let failed = 0;
-  for (let poll = 0; poll < SETTLE_POLLS && live(); poll += 1) {
-    let status: string | undefined;
-    try {
-      status = (await client.flow(flowId).request(requestId).status()).status;
-      failed = 0;
-    } catch {
-      failed += 1;
-      if (failed >= SETTLE_FAILED_READS) return;
-    }
-    if (status !== undefined && status !== "in_progress" && (status !== "suspended" || poll >= RESUME_GRACE_POLLS)) return;
-    await new Promise((resolve) => setTimeout(resolve, SETTLE_POLL_MS));
-  }
+async function settled(client: Client, flowId: string, requestId: string, stop: AbortSignal): Promise<void> {
+  await client
+    .flow(flowId)
+    .request(requestId)
+    .wait({ pollMs: SETTLE_POLL_MS, timeoutMs: SETTLE_TIMEOUT_MS, signal: stop })
+    .catch(() => undefined);
 }
 
 const LabContext = createContext<LabData | null>(null);
@@ -122,14 +110,13 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   const [answered, setAnswered] = useState<LabData["answered"]>(undefined);
   // The snapshot on screen is a good read of this client's Lab: a later unreachable one doesn't replace it.
   const loaded = useRef(false);
-  // The client a following answer was given: once they change or the provider unmounts, it stops.
-  const current = useRef<Client | null>(client);
+  // The client a following answer was given: once it changes or the provider unmounts, this aborts and the wait stops.
+  const following = useRef(new AbortController());
   useEffect(() => {
-    current.current = client;
     loaded.current = false;
-    return () => {
-      current.current = null;
-    };
+    const controller = new AbortController();
+    following.current = controller;
+    return () => controller.abort();
   }, [client]);
   const bump = useCallback((sessionId: string) => setAnswered((last) => ({ sessionId, count: (last?.count ?? 0) + 1 })), []);
   // Only the latest refresh may land: an older one finishing late would draw
@@ -219,9 +206,9 @@ export function LabProvider({ connection, children }: { connection: Connection; 
       await refresh();
       // The run goes on without this page: follow it, so what it did with the answer is drawn too.
       if (ask.flowId !== null) {
-        const live = () => current.current === client;
-        void settled(client, ask.flowId, ask.item.requestId, live).then(() => {
-          if (!live()) return;
+        const stop = following.current.signal;
+        void settled(client, ask.flowId, ask.item.requestId, stop).then(() => {
+          if (stop.aborted) return;
           bump(ask.sessionId);
           void readLab(false);
         });
