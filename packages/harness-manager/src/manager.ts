@@ -1680,7 +1680,7 @@ export function resolveOwnership(options: {
  * inference, the capability's resources are a literal object type, which
  * narrows `ctx.resources` AND `ctx.targets` on every block that lists it — and
  * a narrowed `BlockContext` is not assignable to a plain one, so all fourteen
- * helper calls in this file would need `ctx as BlockContext` back. That is the
+ * helper calls in this file would need a cast to `BlockContext` back. That is the
  * invariance trap {@link RequestIdentityContext} describes, reached from the
  * `uses` side. The accessor set is genuinely open here (a phase brings its
  * own), so declaring it open is the honest type as well as the usable one.
@@ -2058,12 +2058,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * read from the claim, the fence reads the row through the resolver at the
    * claim's ledger and partition, and compares its incarnation too.
    *
-   * Typed by what it reads, like {@link harnessCtxState}: a harness feed is
-   * handed a narrower context than a block, and the resolver needs only what
-   * every block context carries.
+   * Every caller holds a block or harness-callback context, both a
+   * `BlockContext`, which is what the row resolver reads through.
    */
   const identityOf = (
-    ctx: { sequencer?: { state?: unknown } | undefined },
+    ctx: BlockContext,
     state: ManagerState | undefined,
   ): AttemptIdentity => {
     const claim = state?.claim ?? null;
@@ -2073,7 +2072,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (claim === null) return incarnationId === undefined ? base : { ...base, incarnationId };
     return {
       ...base,
-      readBoardRow: async () => (await claimLedger(ctx as BlockContext, claim))?.get(base.taskId),
+      readBoardRow: async () => (await claimLedger(ctx, claim))?.get(base.taskId),
       ...(claim.incarnationId !== null ? { incarnationId: claim.incarnationId } : {}),
     };
   };
@@ -3036,7 +3035,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // reclaim or a cancel: a replacement's checkout must not get this
         // attempt's commands. Read from the committed row, as the steer watch
         // does, since the request's own reads can be older than the wait.
-        const rowNow = await committedRow(ctx as BlockContext);
+        const rowNow = await committedRow(ctx);
         if (
           rowNow === undefined ||
           rowNow.status !== "in_progress" ||
@@ -3233,10 +3232,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // the error this handler is unwinding.
       // Its repository work is held the same way, first, while the place is
       // in hand; a hold `decide` already wrote is unchanged and writes nothing.
-      await holdWork(ctx as BlockContext).catch(() => undefined);
+      await holdWork(ctx).catch(() => undefined);
       await saveKeptFiles(ctx).catch(() => undefined);
       // A failed run's pull requests are still its own.
-      await checkBranchPullRequests(ctx as BlockContext, await recordRunCheckout(ctx as BlockContext));
+      await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state;

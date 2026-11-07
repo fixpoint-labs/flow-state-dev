@@ -247,7 +247,7 @@ function afterAnswerStep(block: BlockDefinition<any, any>) {
     name: "agent-after-answer-rescue",
     inputSchema: z.unknown(),
     execute: async (error, ctx) => {
-      if (!(await worksConversationResultTask(ctx as never))) throw error;
+      if (!(await worksConversationResultTask(ctx))) throw error;
       // eslint-disable-next-line no-console
       console.error(
         `[agent] Background work "${block.name}" failed; the task's result goes to the conversation, so it keeps its answer:`,

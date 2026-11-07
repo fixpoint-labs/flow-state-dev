@@ -49,7 +49,7 @@ export function createRecordContribution(opts: {
       });
 
       const collection = await getOrCreateTaskCollection({
-        ctx: ctx as unknown as BlockContext,
+        ctx: ctx,
         backing: "state",
         collectionId: opts.collectionId,
         state: ctx.sequencer!,

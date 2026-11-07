@@ -1506,7 +1506,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         try {
           // A model's own cancel in its own turn: the call's result tells its filer, so it owes no notice (FIX-2078 D2).
           // A task waiting on a user is cancelled under its stop's fence, and its run resumes `cancelled` (FIX-2129).
-          const outcome: TaskWriteOutcome | undefined = await cancelAndResume(ctx as never, collection, input.id, undefined, {
+          const outcome: TaskWriteOutcome | undefined = await cancelAndResume(ctx, collection, input.id, undefined, {
             via,
             ...(via === "tool" ? { viaTool: true } : {}),
           });
@@ -1712,7 +1712,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     let outcome: TaskWriteOutcome | undefined;
     try {
       // Fenced on the confirm still open, in the cancel's own write: a No after a yes, or racing one, can't cancel.
-      outcome = await cancelAndResume(ctx as never, collection, row.id, reason, { via, whileHoldOpen: hold.id });
+      outcome = await cancelAndResume(ctx, collection, row.id, reason, { via, whileHoldOpen: hold.id });
     } catch (err) {
       if (err instanceof TaskWriteRefusedError) return refusedError(err);
       throw err;

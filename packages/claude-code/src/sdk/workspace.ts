@@ -325,7 +325,7 @@ export function createClaudeCodeWorkspaceCapability(
         place: createHostPlace(root),
         mounts: discoverMounts(ctx as WorkspaceContext, collections, exclude),
       });
-      const workspaceId = `${runNamespace(ctx as BlockContext)}#${nextWorkspaceId++}`;
+      const workspaceId = `${runNamespace(ctx)}#${nextWorkspaceId++}`;
       await (ctx as WorkspaceContext).sequencer!.patchState({
         workspaceId,
         root,

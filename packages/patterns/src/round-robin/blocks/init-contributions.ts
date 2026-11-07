@@ -35,7 +35,7 @@ export function createInitContributions(opts: {
       // Materialize the collection so its `tasks` slot exists in
       // sequencer state from turn one.
       getOrCreateTaskCollection({
-        ctx: ctx as unknown as BlockContext,
+        ctx: ctx,
         backing: "state",
         collectionId: opts.collectionId,
         state: ctx.sequencer!,

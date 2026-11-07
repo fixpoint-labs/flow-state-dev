@@ -142,7 +142,7 @@ function scheduledTaskBlock(installation: WorkerInstallation) {
       if (task.assignee === filer) {
         throw new Error(`The scheduled task wasn't filed: its assignee is its filer, "${filer}". Name one of "${filer}"'s delegates.`);
       }
-      const worker = await installation.rosterWorker(ctx as never, filer);
+      const worker = await installation.rosterWorker(ctx, filer);
       if (worker === undefined) throw new Error(`The scheduled task wasn't filed: no worker "${filer}" on your roster.`);
       if (worker.problem !== undefined) throw new Error(`The scheduled task wasn't filed: worker "${filer}" can't run: ${worker.problem}.`);
       const entries = (installation.workerFlows()[worker.flow]?.flow as { internal?: { actions?: Record<string, unknown> } } | undefined)
@@ -158,7 +158,7 @@ function scheduledTaskBlock(installation: WorkerInstallation) {
       }
       const criteria = { worker: filer };
       const sessionId = await deriveWorkerSessionId({ userId: identity.userId, orgId: identity.orgId, flow: worker.flow, criteria });
-      const outcome = await dispatchThroughSeam(ctx as BlockContext, {
+      const outcome = await dispatchThroughSeam(ctx, {
         type: "internal",
         action: FILE_SCHEDULED_TASK_ENTRY,
         flowKind: worker.flow,

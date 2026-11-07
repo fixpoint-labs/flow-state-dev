@@ -293,8 +293,8 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
     inputSchema: z.unknown(),
     sequencerStateSchema: taskBoardWorkerBodyStateSchema,
     execute: async (payload: TaskWorkerInput, ctx) => {
-      if (wait === undefined) return handOver(payload, ctx as unknown as BlockContext);
-      return handOverAndWait(payload, ctx as unknown as BlockContext);
+      if (wait === undefined) return handOver(payload, ctx);
+      return handOverAndWait(payload, ctx);
     },
   });
 

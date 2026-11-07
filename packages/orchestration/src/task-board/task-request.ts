@@ -751,13 +751,13 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
       // FIRST STATEMENTS, before any await: past the first await both publish to nobody.
       openWorkerClaimScope();
       await withLeaseRenewalScope(async () => {
-        const found = await options.find(ctx as never);
+        const found = await options.find(ctx);
         if (found === undefined) return;
         const { ref, row } = found;
         if (row.status !== "in_progress" || (row.keptOpenBy == null && row.turnOwed !== true)) return;
         let admittedAs: Awaited<ReturnType<typeof admitClaimedTask>>;
         try {
-          admittedAs = await admitClaimedTask(ctx as never, {
+          admittedAs = await admitClaimedTask(ctx, {
             ref,
             row,
             ticket: ticketForClaim(ref.collectionId, row, ref.partition),
@@ -773,7 +773,7 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
           if (error instanceof TaskAdmissionLost) return;
           throw error;
         }
-        stampCurrentClaim(admittedAs.ticket, ctx as never);
+        stampCurrentClaim(admittedAs.ticket, ctx);
         if (admittedAs.renewal !== undefined) stampLeaseRenewal(admittedAs.renewal);
       });
     },
@@ -789,7 +789,7 @@ export const noteTaskAnswer = handler({
   transient: true,
   inputSchema: z.unknown(),
   execute: async (output, ctx) => {
-    await noteAnswer(ctx as never, output);
+    await noteAnswer(ctx, output);
   },
 });
 

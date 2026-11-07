@@ -226,7 +226,7 @@ export function subscriptionTools(options: { readonly providers: readonly Subscr
     inputSchema: subscribeInputSchema,
     outputSchema: subscribeOutputSchema,
     resources: subscriptionResources,
-    execute: async (input, ctx) => subscribe(ctx as never, options.providers, input)
+    execute: async (input, ctx) => subscribe(ctx, options.providers, input)
   });
   const unsubscribeTool = handler({
     name: SUBSCRIPTION_TOOLS.unsubscribe,

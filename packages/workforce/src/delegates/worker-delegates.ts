@@ -148,7 +148,7 @@ export async function withRoster(
   defaults: DelegateDefaults
 ): Promise<DelegateDefaults> {
   if (defaults.all !== true) return defaults;
-  const roster = await installation.roster(ctx as never);
+  const roster = await installation.roster(ctx);
   return { ...defaults, delegates: roster.map((worker) => worker.id) };
 }
 
@@ -237,7 +237,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     const listed = listOutput(await list(ctx));
     const delegates: Array<DelegateRecord & { description: string | null; takes: DelegateTakes }> = [];
     for (const record of listed.delegates) {
-      const checked = await check(ctx as never, record.worker, "add");
+      const checked = await check(ctx, record.worker, "add");
       delegates.push(
         checked.ok
           ? { ...record, description: checked.worker.description, takes: flowTakes(installation, checked.worker.flow) }
@@ -263,14 +263,14 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     inputSchema: addInputSchema,
     outputSchema: delegateListOutputSchema,
     ...blockBase,
-    execute: async (input, ctx) => orRefuse(await add(ctx as never, input))
+    execute: async (input, ctx) => orRefuse(await add(ctx, input))
   });
   const removeDelegateAction = handler({
     name: "delegates-remove",
     inputSchema: nameInputSchema,
     outputSchema: delegateListOutputSchema,
     ...blockBase,
-    execute: async (input, ctx) => orRefuse(await change(ctx as never, { remove: { worker: input.worker } }))
+    execute: async (input, ctx) => orRefuse(await change(ctx, { remove: { worker: input.worker } }))
   });
   const setFallbackAction = handler({
     name: "delegates-set-fallback",
@@ -278,14 +278,14 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     outputSchema: delegateListOutputSchema,
     ...blockBase,
     execute: async (input, ctx) =>
-      orRefuse(await change(ctx as never, { fallback: input.worker === null ? null : { worker: input.worker } }))
+      orRefuse(await change(ctx, { fallback: input.worker === null ? null : { worker: input.worker } }))
   });
   const listDelegatesAction = handler({
     name: "delegates-list",
     inputSchema: z.object({}).strict(),
     outputSchema: delegateReadOutputSchema,
     ...blockBase,
-    execute: async (_input, ctx) => read(ctx as never)
+    execute: async (_input, ctx) => read(ctx)
   });
 
   const addDelegateTool = handler({
@@ -295,7 +295,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     inputSchema: addInputSchema,
     outputSchema: toolOutputSchema,
     ...blockBase,
-    execute: async (input, ctx) => (turnEditsOwn(ctx as never) ? orTell(await add(ctx as never, input)) : notOwnToChange)
+    execute: async (input, ctx) => (turnEditsOwn(ctx) ? orTell(await add(ctx, input)) : notOwnToChange)
   });
   const removeDelegateTool = handler({
     name: REMOVE_DELEGATE,
@@ -304,7 +304,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     outputSchema: toolOutputSchema,
     ...blockBase,
     execute: async (input, ctx) =>
-      turnEditsOwn(ctx as never) ? orTell(await change(ctx as never, { remove: { worker: input.worker } })) : notOwnToChange
+      turnEditsOwn(ctx) ? orTell(await change(ctx, { remove: { worker: input.worker } })) : notOwnToChange
   });
   const setFallbackTool = handler({
     name: SET_FALLBACK,
@@ -314,8 +314,8 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     outputSchema: toolOutputSchema,
     ...blockBase,
     execute: async (input, ctx) =>
-      turnEditsOwn(ctx as never)
-        ? orTell(await change(ctx as never, { fallback: input.worker === null ? null : { worker: input.worker } }))
+      turnEditsOwn(ctx)
+        ? orTell(await change(ctx, { fallback: input.worker === null ? null : { worker: input.worker } }))
         : notOwnToChange
   });
   const listDelegatesTool = handler({
@@ -325,7 +325,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     inputSchema: z.object({}).strict(),
     outputSchema: delegateReadOutputSchema,
     ...blockBase,
-    execute: async (_input, ctx) => read(ctx as never)
+    execute: async (_input, ctx) => read(ctx)
   });
 
   /**
@@ -342,7 +342,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     const unavailable = new Map<string, string>();
     for (const record of listed.delegates) {
       if (available.has(record.worker) || unavailable.has(record.worker)) continue;
-      const checked = await check(ctx as never, record.worker, "task");
+      const checked = await check(ctx, record.worker, "task");
       if (checked.ok) available.set(record.worker, checked.worker.flow);
       else unavailable.set(record.worker, checked.message);
     }
@@ -361,7 +361,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     presets: {
       tools: {
         controlTools: async (ctx) =>
-          turnEditsOwn(ctx as never)
+          turnEditsOwn(ctx)
             ? [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool]
             : [listDelegatesTool]
       },

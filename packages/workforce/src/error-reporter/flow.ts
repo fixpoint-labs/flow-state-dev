@@ -246,7 +246,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       : Object.assign(
           async (ctx: HarnessCallbackContext) => {
             const servers = await options.mcpTools!(withTrackerProject(ctx));
-            const secrets = await secretsOf(ctx as never);
+            const secrets = await secretsOf(ctx);
             const wrapped: Record<string, RelayedMcpServer> = {};
             for (const [name, server] of Object.entries(servers)) {
               wrapped[name] = {
@@ -274,7 +274,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
 
   /** The worker's instructions and the operator's standing rules, for a run's prompt. */
   const instructionsOf = async (ctx: BlockContext): Promise<string> => {
-    const config = turnConfigOf(ctx as never);
+    const config = turnConfigOf(ctx);
     const body = typeof config.instructions === "string" ? config.instructions : "";
     let rules: string | undefined;
     try {
@@ -306,7 +306,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     inputSchema: reportInputSchema,
     resources: { ...errorReportsResources },
     execute: async (_input, ctx) => {
-      const id = reportIdOf(ctx as never);
+      const id = reportIdOf(ctx);
       const sessionId = ctx.session.identity.id;
       // Only the operator's run drafts: the dossier reads every user's failures.
       if (ctx.session.identity.userId !== reporter.operator.userId) {
@@ -314,7 +314,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       }
       const by = ctx.request.identity.id;
       const now = Date.now();
-      const reports = reportsOf(ctx as never);
+      const reports = reportsOf(ctx);
       const row = await updateReport(reports, id, (current) => {
         const free = current.claim === undefined || current.claim.until <= now || current.claim.by === by;
         if (current.status === "owed" || (current.status === "drafting" && free)) {
@@ -333,7 +333,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
           ...(row.approved?.instructions === undefined ? {} : { instructions: row.approved.instructions })
         };
       }
-      const secrets = await secretsOf(ctx as never);
+      const secrets = await secretsOf(ctx);
       const dossier = redact(await reporter.dossierOf(row), secrets);
       // What the Context section names beside the ids, kept so the draft needs no second dossier.
       const project = typeof dossier.project === "string" ? dossier.project : undefined;
@@ -343,7 +343,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       }
       let text = JSON.stringify(dossier, null, 2);
       if (text.length > DOSSIER_LIMIT) text = `${text.slice(0, DOSSIER_LIMIT)}\n… (cut)`;
-      const instructions = await instructionsOf(ctx as never);
+      const instructions = await instructionsOf(ctx);
       const prompt = [
         instructions,
         "",
@@ -371,8 +371,8 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     inputSchema: z.unknown(),
     resources: { ...errorReportsResources },
     execute: async (handle, ctx) => {
-      const id = reportIdOf(ctx as never);
-      const reports = reportsOf(ctx as never);
+      const id = reportIdOf(ctx);
+      const reports = reportsOf(ctx);
       const row = await readReport(reports, id);
       if (row === undefined) throw new Error(`Error report "${id}" is gone.`);
       const said = (handle as { finalMessage?: string | null } | undefined)?.finalMessage ?? null;
@@ -388,7 +388,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       const parsed = [said, ...runMessages]
         .map((text) => draftSchema.safeParse(lastJson(text)))
         .find((attempt) => attempt.success) ?? draftSchema.safeParse(undefined);
-      const secrets = await secretsOf(ctx as never);
+      const secrets = await secretsOf(ctx);
       const draft: Draft = redact(
         parsed.success
           ? parsed.data
@@ -412,8 +412,8 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     inputSchema: z.object({ title: z.string(), body: z.string(), questions: z.array(z.string()) }),
     resources: { ...errorReportsResources },
     execute: async (draft, ctx): Promise<PreviewAnswer & { title: string; body: string }> => {
-      const id = reportIdOf(ctx as never);
-      const row = await readReport(reportsOf(ctx as never), id);
+      const id = reportIdOf(ctx);
+      const row = await readReport(reportsOf(ctx), id);
       const autoFile = reporter.preview?.autoFile ?? [];
       if (row !== undefined && (autoFile.includes(row.errorClass) || autoFile.includes(row.source))) {
         return { decision: "file", ...draft };
@@ -447,10 +447,10 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     inputSchema: z.unknown(),
     resources: { ...errorReportsResources },
     execute: async (_input, ctx) => {
-      const id = reportIdOf(ctx as never);
+      const id = reportIdOf(ctx);
       const now = Date.now();
       const holdMs = reporter.limits?.dismissForMs ?? 24 * 60 * 60_000;
-      await updateReport(reportsOf(ctx as never), id, (row) => ({ ...row, status: "dismissed", claim: undefined, dismissedUntil: now + holdMs }));
+      await updateReport(reportsOf(ctx), id, (row) => ({ ...row, status: "dismissed", claim: undefined, dismissedUntil: now + holdMs }));
       return { filed: false as const };
     }
   });
@@ -464,10 +464,10 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     inputSchema: z.object({ title: z.string(), body: z.string(), instructions: z.string().optional() }).passthrough(),
     resources: { ...errorReportsResources },
     execute: async (draft, ctx) => {
-      const id = reportIdOf(ctx as never);
+      const id = reportIdOf(ctx);
       const by = ctx.request.identity.id;
       const now = Date.now();
-      const row = await updateReport(reportsOf(ctx as never), id, (current) =>
+      const row = await updateReport(reportsOf(ctx), id, (current) =>
         current.status === "previewing" || (current.status === "filing" && current.claim?.by === by)
           ? {
               ...current,
@@ -488,8 +488,8 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     resources: { ...errorReportsResources },
     execute: async (input, ctx) => {
       const tracker = reporter.tracker;
-      const row = await readReport(reportsOf(ctx as never), reportIdOf(ctx as never));
-      const body = row?.kind === "storm" ? redact(refreshContext(input.body, row), await secretsOf(ctx as never)) : input.body;
+      const row = await readReport(reportsOf(ctx), reportIdOf(ctx));
+      const body = row?.kind === "storm" ? redact(refreshContext(input.body, row), await secretsOf(ctx)) : input.body;
       const draft = { ...input, body };
       return {
         prompt: [
@@ -516,12 +516,12 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     inputSchema: z.unknown(),
     resources: { ...errorReportsResources },
     execute: async (handle, ctx) => {
-      const id = reportIdOf(ctx as never);
+      const id = reportIdOf(ctx);
       const said = (handle as { finalMessage?: string | null } | undefined)?.finalMessage ?? null;
       const parsed = z.object({ url: z.string().min(1), identifier: z.string().optional() }).safeParse(lastJson(said));
       if (!parsed.success) {
         // The run couldn't file (a refusal, a tracker that was down): the row stays owed a filing, retried later.
-        await updateReport(reportsOf(ctx as never), id, (row) => ({
+        await updateReport(reportsOf(ctx), id, (row) => ({
           ...row,
           claim: undefined,
           lastRunError: `not filed: ${(said ?? "no answer").slice(0, 300)}`
@@ -530,7 +530,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
         return { filed: false as const, retry: true as const };
       }
       const now = Date.now();
-      const row = await updateReport(reportsOf(ctx as never), id, (current) => ({
+      const row = await updateReport(reportsOf(ctx), id, (current) => ({
         ...current,
         status: "filed",
         issue: parsed.data,
@@ -542,7 +542,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       }));
       const line = `Filed ${parsed.data.identifier ?? "an issue"}: ${row?.draft?.title ?? id} ${parsed.data.url}`;
       ctx.emit.message(line);
-      await sayInConversation(ctx as never, line);
+      await sayInConversation(ctx, line);
       return { filed: true as const, ...parsed.data };
     }
   });
@@ -553,8 +553,8 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     inputSchema: z.unknown(),
     resources: { ...errorReportsResources },
     execute: async (_input, ctx) => {
-      const id = reportIdOf(ctx as never);
-      await updateReport(reportsOf(ctx as never), id, (row) => ({ ...row, status: "filed", filedAt: Date.now(), claim: undefined, approved: undefined }));
+      const id = reportIdOf(ctx);
+      await updateReport(reportsOf(ctx), id, (row) => ({ ...row, status: "filed", filedAt: Date.now(), claim: undefined, approved: undefined }));
       ctx.emit.message("This Lab names no tracker, so the report is kept here and nothing was filed.");
       return { filed: false as const };
     }
@@ -585,7 +585,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     resources: { ...errorReportsResources },
     execute: async (_input, ctx) => {
       const by = ctx.request.identity.id;
-      await updateReport(reportsOf(ctx as never), reportIdOf(ctx as never), (row) => (row.claim?.by === by ? { ...row, claim: undefined } : undefined));
+      await updateReport(reportsOf(ctx), reportIdOf(ctx), (row) => (row.claim?.by === by ? { ...row, claim: undefined } : undefined));
     }
   });
 
@@ -596,10 +596,10 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     inputSchema: z.unknown(),
     resources: { ...errorReportsResources },
     execute: async (_input, ctx) => {
-      const id = reportIdOf(ctx as never);
-      const row = await readReport(reportsOf(ctx as never), id);
+      const id = reportIdOf(ctx);
+      const row = await readReport(reportsOf(ctx), id);
       if (row === undefined || row.status !== "filed" || row.issue === undefined || row.commentOwed !== true) return { skip: true as const, prompt: "" };
-      const secrets = await secretsOf(ctx as never);
+      const secrets = await secretsOf(ctx);
       const since = row.count - (row.countAtLastComment ?? 1);
       const newest = row.occurrences.slice(-3).map((o) => [o.requestId && `request ${o.requestId}`, o.sessionId && `session ${o.sessionId}`, o.taskId && `task ${o.taskId}`].filter(Boolean).join(", "));
       return {
@@ -622,24 +622,24 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     inputSchema: z.unknown(),
     resources: { ...errorReportsResources },
     execute: async (handle, ctx) => {
-      const id = reportIdOf(ctx as never);
+      const id = reportIdOf(ctx);
       const said = (handle as { finalMessage?: string | null }).finalMessage ?? null;
       const parsed = z.object({ closed: z.boolean() }).safeParse(lastJson(said));
       if (!parsed.success) {
         // No confirmed result: the comment stays owed, and the next start tries it again.
-        await updateReport(reportsOf(ctx as never), id, (current) => ({ ...current, lastRunError: `not commented: ${(said ?? "no answer").slice(0, 300)}` }));
+        await updateReport(reportsOf(ctx), id, (current) => ({ ...current, lastRunError: `not commented: ${(said ?? "no answer").slice(0, 300)}` }));
         ctx.emit.message(`The counted comment was not added yet; it will be tried again: ${(said ?? "the run gave no answer").slice(0, 500)}`);
         return { closed: false, commented: false };
       }
       const now = Date.now();
-      const row = await updateReport(reportsOf(ctx as never), id, (current) =>
+      const row = await updateReport(reportsOf(ctx), id, (current) =>
         parsed.data.closed
           ? { ...current, status: "closed", commentOwed: false }
           : { ...current, commentOwed: false, lastCommentAt: now, countAtLastComment: current.count, lastRunError: undefined }
       );
       if (row?.issue !== undefined) {
         await sayInConversation(
-          ctx as never,
+          ctx,
           parsed.data.closed
             ? `${row.issue.identifier ?? row.issue.url} is closed; its failure starts a new report next time.`
             : `Commented on ${row.issue.identifier ?? "the issue"}: seen ${row.count} times. ${row.issue.url}`
@@ -675,7 +675,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       if (userId === undefined) throw new Error("A problem is reported by a user; this session names none.");
       const named = { sessionId: input.sessionId, taskId: input.taskId, project: input.project };
       const decision = await intakeOccurrence(
-        reportsOf(ctx as never),
+        reportsOf(ctx),
         {
           kind: "manual",
           at: Date.now(),
@@ -684,7 +684,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
           sessionId: ctx.session.identity.id,
           ...(Object.values(named).some((v) => v !== undefined) ? { named } : {})
         },
-        { reporterFlow: flowKind, limits: reporter.limits, secrets: await secretsOf(ctx as never) }
+        { reporterFlow: flowKind, limits: reporter.limits, secrets: await secretsOf(ctx) }
       );
       reporter.follow(decision);
       return { decision: decision.decision, ...("reportId" in decision ? { reportId: decision.reportId } : {}) };
@@ -790,14 +790,14 @@ export function defineErrorReporterIntakeFlow(options: ErrorReporterIntakeFlowOp
       if (occurrence.kind === "request" && !reporter.takes(failureOf(occurrence))) {
         return { decision: "ignored", reason: "the Lab's filter left it out" };
       }
-      const decision = await intakeOccurrence(reportsOf(ctx as never), occurrence, {
+      const decision = await intakeOccurrence(reportsOf(ctx), occurrence, {
         reporterFlow: reporter.flowKind,
         limits: reporter.limits,
-        secrets: await secretsFor(ctx as never, reporter)
+        secrets: await secretsFor(ctx, reporter)
       });
       // Taken: the board's owed mark is cleared here, once the report holds it, never on the send alone.
       if (occurrence.kind === "task" && occurrence.partition !== undefined) {
-        const ledger = await conversationLedgerAt(ctx as never, occurrence.partition);
+        const ledger = await conversationLedgerAt(ctx, occurrence.partition);
         await ledger?.patchMetadata(occurrence.taskId, { [reportOwedKey(occurrence.attempt)]: null });
       }
       reporter.follow(decision);
@@ -810,7 +810,7 @@ export function defineErrorReporterIntakeFlow(options: ErrorReporterIntakeFlowOp
     inputSchema: z.discriminatedUnion("op", [z.object({ op: z.literal("get"), id: z.string() }), z.object({ op: z.literal("all") })]),
     resources: { ...errorReportsResources },
     execute: async (input, ctx) => {
-      const reports = reportsOf(ctx as never);
+      const reports = reportsOf(ctx);
       if (input.op === "get") return { rows: [await readReport(reports, input.id)].filter((r) => r !== undefined) };
       return { rows: await listReports(reports) };
     }

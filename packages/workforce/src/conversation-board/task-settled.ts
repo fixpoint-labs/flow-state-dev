@@ -308,7 +308,7 @@ const runPass = handler({
   inputSchema: z.unknown(),
   outputSchema: z.object({}),
   execute: async (_input, ctx) => {
-    await triggerPass(ctx as never);
+    await triggerPass(ctx);
     return {};
   }
 });

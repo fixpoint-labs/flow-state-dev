@@ -22,7 +22,7 @@ export const taskSteers = defineCapability({
   name: "taskSteers",
   resources: { ...conversationLedgerResources },
   presets: {
-    steers: { context: (input, ctx) => steerContext(input, ctx as never) },
+    steers: { context: (input, ctx) => steerContext(input, ctx) },
     default: ["steers"]
   }
 });

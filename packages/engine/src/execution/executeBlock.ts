@@ -249,7 +249,7 @@ export async function executeBlock(
       if (blockCaps && blockCaps.length > 0) {
         (options.ctx as any).cap = buildCapObject(
           options.block.config as any,
-          options.ctx as BlockContext
+          options.ctx
         );
       }
 
