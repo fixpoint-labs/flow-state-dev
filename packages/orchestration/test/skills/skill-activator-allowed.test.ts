@@ -5,7 +5,7 @@
  * (e.g. `/draft please research` with `allowed: ["research"]`).
  */
 import { describe, expect, it } from "vitest";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { InitialSkill } from "@flow-state-dev/core/types";
 import { runForTest } from "@flow-state-dev/testing";
 import { createSkillSlashMatch } from "../../src/skills/skill-slash-match";
 import { createSkillKeywordMatch } from "../../src/skills/skill-keyword-match";

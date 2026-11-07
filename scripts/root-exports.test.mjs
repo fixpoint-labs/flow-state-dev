@@ -15,27 +15,19 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { fsReader, packageEntryExports } from "./mechanism-exports.mjs";
-import { ROOT, collisions, compare, render, rootReport } from "./check-root-exports.mjs";
+import { fsReader, overlayReader, packageEntryExports } from "./mechanism-exports.mjs";
+import { ROOT, collisions, compare, render, rootReport, violations } from "./check-root-exports.mjs";
 import { importCensus, importsIn, importsInCode } from "./import-census.mjs";
 
 const real = fsReader(ROOT);
 
 /** The real tree, with some files' text replaced or added. */
-function overlay(files) {
-  const read = (path) => (path in files ? files[path] : real(path));
-  read.packageDirs = real.packageDirs;
-  read.list = real.list;
-  read.tracked = () => [...new Set([...real.tracked(), ...Object.keys(files)])];
-  read.grep = (text, dirs) => {
-    const under = (f) => dirs.some((d) => f.startsWith(`${d}/`));
-    const planted = Object.keys(files).filter((f) => under(f));
-    return [...new Set([...real.grep(text, dirs).filter((f) => !(f in files)), ...planted.filter((f) => files[f].includes(text))])];
-  };
-  return read;
-}
+const overlay = (files) => overlayReader(real, files);
 
 const CORE = "packages/core/src/index.ts";
 const ENGINE = "packages/engine/src/index.ts";
@@ -274,6 +266,62 @@ describe("the collision assertion", () => {
     const names = new Set(violations.map((v) => v.name));
     assert.deepEqual([...names].sort(), [...collisions(real).keys()].sort());
     for (const v of violations) assert.match(v.package, /^@flow-state-dev\//);
+  });
+});
+
+describe("the export check's strict run, for the adopter goal", () => {
+  it("lists every failing root name and every adopter /internal import, base set aside", () => {
+    const got = violations(planted);
+    const names = new Set(got.map((v) => `${v.package} ${v.name}`));
+    // A name that already fails on this commit is a violation too: the strict run has no base.
+    const already = [...base.roots.get("@flow-state-dev/core")].find(([, v]) => v.why === "failing");
+    assert.ok(already, "core has a failing root name to set the base aside on");
+    for (const n of [`@flow-state-dev/core ${already[0]}`, "@flow-state-dev/core zzNobody", "@flow-state-dev/engine zzSiblingOnly"]) assert.ok(names.has(n), n);
+    for (const n of ["zzAppUsed", "zzChangesetDoc", "UsedOptions"]) assert.ok(!names.has(`@flow-state-dev/core ${n}`), n);
+    // An adopter import of `<pkg>/internal` is the imported package's violation.
+    assert.ok(names.has("@flow-state-dev/engine @flow-state-dev/engine/internal"));
+    assert.ok(got.every((v) => v.package && v.name && v.detail));
+  });
+
+  it("prints the whole verdict through a pipe, however long, as the goal judge reads it", () => {
+    // A verdict far over a pipe's 64 KiB buffer: exiting before stdout drains cuts it short.
+    const tree = mkdtempSync(join(tmpdir(), "root-exports-long-"));
+    try {
+      const names = Array.from({ length: 3000 }, (_, i) => `zzUnusedName${i}`);
+      mkdirSync(join(tree, "packages/zz/src"), { recursive: true });
+      writeFileSync(join(tree, "packages/zz/package.json"), JSON.stringify({ name: "@flow-state-dev/zz", exports: { ".": "./src/index.ts" } }));
+      writeFileSync(join(tree, "packages/zz/src/index.ts"), names.map((n) => `export const ${n} = 1;\n`).join(""));
+      const run = spawnSync(process.execPath, [fileURLToPath(new URL("./check-root-exports.mjs", import.meta.url)), "--strict", "--json", "--root", tree], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+      assert.ok(run.stdout.length > 64 * 1024, `verdict is ${run.stdout.length} bytes`);
+      assert.equal(JSON.parse(run.stdout.trim().split("\n").pop()).violations.length, names.length);
+    } finally {
+      rmSync(tree, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a tree that is not a git checkout, and prints its verdict as the last line", () => {
+    const tree = mkdtempSync(join(tmpdir(), "root-exports-strict-"));
+    try {
+      const put = (path, text) => { mkdirSync(dirname(join(tree, path)), { recursive: true }); writeFileSync(join(tree, path), text); };
+      put("packages/zz/package.json", JSON.stringify({ name: "@flow-state-dev/zz", exports: { ".": "./src/index.ts" } }));
+      put("packages/zz/src/index.ts", "export const zzUsed = 1;\nexport const zzUnused = 1;\n");
+      put("apps/app/main.ts", `import { zzUsed } from "@flow-state-dev/zz";\nimport type { X } from "@flow-state-dev/zz/internal";\n`);
+      // A published package with no "." entry has no root an adopter can import: a violation, not a vacuous pass.
+      put("packages/zznoroot/package.json", JSON.stringify({ name: "@flow-state-dev/zznoroot", exports: { "./sdk": "./src/sdk.ts" } }));
+      put("packages/zznoroot/src/sdk.ts", "export const zzSdk = 1;\n");
+      // A private package is not published, so its missing root is no one's concern.
+      put("packages/zzprivate/package.json", JSON.stringify({ name: "@flow-state-dev/zzprivate", private: true, exports: { "./x": "./src/x.ts" } }));
+      const run = spawnSync(process.execPath, [fileURLToPath(new URL("./check-root-exports.mjs", import.meta.url)), "--strict", "--json", "--root", tree], { encoding: "utf8" });
+      const verdict = JSON.parse(run.stdout.trim().split("\n").pop());
+      assert.deepEqual(verdict.violations.map((v) => `${v.package} ${v.name}`).sort(), [
+        "@flow-state-dev/zz @flow-state-dev/zz/internal",
+        "@flow-state-dev/zz zzUnused",
+        "@flow-state-dev/zznoroot (root)",
+      ]);
+      assert.match(verdict.violations.find((v) => v.package === "@flow-state-dev/zznoroot").detail, /root entry missing/);
+    } finally {
+      rmSync(tree, { recursive: true, force: true });
+    }
   });
 });
 

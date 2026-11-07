@@ -150,3 +150,32 @@ export { isFiveFieldCron } from "../types/schedules";
  * and their resolvers.
  */
 export * from "../items/internal";
+
+/**
+ * Runtime helpers our packages share and no app imports: the block-instance-id
+ * builders the engine stamps traces with, the reactive-binding normalizer, the
+ * slash-command grammar, the evaluator check, the binding cache, error and
+ * abort readers, and the trace-observability switch.
+ */
+export {
+  ROOT_BLOCK_PATH,
+  blockPathObserver,
+  buildBlockInstanceId,
+  logicalBlockIdOf,
+} from "../blocks/internal/block-instance-id";
+/** Block-level rescue (FIX-742), for the engine's top-level `executeBlock` on a bare action-root block. */
+export { runRescue } from "../blocks/sequencer";
+export { normalizeReactiveBinding } from "../types/resource-change";
+export type { ReactiveBindingKind } from "../types/resource-change";
+export { SLASH_COMMAND_PATTERN } from "../helpers/slash-command";
+export { assertEvaluatorBlock } from "../blocks/evaluator";
+export { createBindingCache } from "../bindings";
+export { errorDetailsWithCause } from "../errors";
+export { isTraceObservabilityEnabled } from "../helpers/trace-observability";
+
+/**
+ * The change-notice and push-delivery wire the engine and the node host serve,
+ * and the manifest-domain guard workforce reads, from `@flow-state-dev/contracts`.
+ */
+export { PUSH_CLOSE_CODES, PUSH_MINT_MAX_TOPICS, isManifestDomain, wireTopicKey } from "@flow-state-dev/contracts";
+export type { ChangeKind, PushCapability, PushMintAnswer, PushServerFrame, TopicScope } from "@flow-state-dev/contracts";

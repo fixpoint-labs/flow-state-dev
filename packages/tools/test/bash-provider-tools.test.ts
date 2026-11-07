@@ -9,7 +9,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
-import { generator, providerTool, wrapAiSdkModel } from "@flow-state-dev/core";
+import { generator, providerTool } from "@flow-state-dev/core";
+import { wrapAiSdkModel } from "@flow-state-dev/core/models";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { runForTest } from "@flow-state-dev/testing";
 import { createBashTool } from "../src/bash/create-bash-tool";

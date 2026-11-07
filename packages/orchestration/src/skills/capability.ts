@@ -32,11 +32,11 @@ import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type {
   DeclaredResourceEntry,
   ResourceScope,
+  InitialSkill,
+  ToolCatalog,
 } from "@flow-state-dev/core/types";
 import type {
-  InitialSkill,
   ItemVisibility,
-  ToolCatalog,
 } from "@flow-state-dev/core";
 import {
   defineSkillsCollection,

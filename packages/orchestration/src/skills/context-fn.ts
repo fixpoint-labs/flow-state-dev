@@ -15,8 +15,7 @@
  *      otherwise concatenated bodies with `$ARGUMENTS` substituted.
  */
 
-import type { BlockContext } from "@flow-state-dev/core/types";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { BlockContext, InitialSkill } from "@flow-state-dev/core/types";
 import { readActiveSkills } from "./active-skill-state";
 import { resolveSkillsCollection } from "./partition";
 import { renderActiveSkillBody } from "./render-skill-body";

@@ -35,15 +35,15 @@ import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type {
   DeclaredResourceEntry,
   ResourceScope,
+  InitialSkill,
+  SkillContextMode,
+  ToolCatalog,
 } from "@flow-state-dev/core/types";
 import type { CapabilityConfigResolveCtx } from "@flow-state-dev/core/capability";
 import type {
   GeneratorTool,
-  InitialSkill,
   ItemVisibility,
   PresetDef,
-  SkillContextMode,
-  ToolCatalog,
 } from "@flow-state-dev/core";
 import { activeSkillsArraySchema } from "./active-skill-state";
 import type { ActivationLocation } from "./activation-store";

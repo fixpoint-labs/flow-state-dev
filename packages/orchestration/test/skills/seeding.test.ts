@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ensureSeeded } from "../../src/skills/seeding";
 import { createMockSkillsCollection } from "./mocks";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { InitialSkill } from "@flow-state-dev/core/types";
 
 const linearSkill: InitialSkill = {
   name: "linear",

@@ -4,7 +4,8 @@
  * it runs on its own path, and what the action's block emits stays in the
  * session's items.
  */
-import { defineFlow, handler, parseBlockInstanceId } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { parseBlockInstanceId } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";

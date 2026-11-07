@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type { SkillState } from "@flow-state-dev/core";
+import type { SkillState } from "@flow-state-dev/core/types";
 import { resolveSkillsCollection } from "./partition";
 import { skillActivatorStateSchema } from "./skill-activation-types";
 
