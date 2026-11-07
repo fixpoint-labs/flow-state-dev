@@ -8,6 +8,7 @@ import js from "@eslint/js";
 import reactHooks from "eslint-plugin-react-hooks";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
+import trackerIds, { COPIED_WHOLE, SHIPPED_SOURCE } from "./scripts/eslint-rules/no-tracker-ids.mjs";
 
 export default defineConfig(
   {
@@ -43,7 +44,7 @@ export default defineConfig(
     files: ["**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}"],
     languageOptions: { parser: tseslint.parser },
     // Existing eslint-disable comments name these plugins. Neither plugin's rules are on.
-    plugins: { "@typescript-eslint": tseslint.plugin, "react-hooks": reactHooks },
+    plugins: { "@typescript-eslint": tseslint.plugin, "react-hooks": reactHooks, fsd: trackerIds },
     linterOptions: { reportUnusedDisableDirectives: "off" },
     rules: {
       ...js.configs.recommended.rules,
@@ -93,5 +94,15 @@ export default defineConfig(
         },
       ],
     },
+  },
+  {
+    // No tracker or process id where an adopter reads it: a hover, an error, a
+    // test title, a file they copy. A pointer lives in a `//` comment (BP-006).
+    ...SHIPPED_SOURCE,
+    rules: { "fsd/no-tracker-ids": "error" },
+  },
+  {
+    ...COPIED_WHOLE,
+    rules: { "fsd/no-tracker-ids": ["error", { comments: "all" }] },
   },
 );

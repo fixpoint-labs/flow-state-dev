@@ -105,7 +105,7 @@
   "ratchets": {
     "export-check": "scripts/check-root-exports.mjs",
     "collision-check": "scripts/check-collisions.mjs",
-    "tracker-id-lint": null
+    "tracker-id-lint": "scripts/check-tracker-ids.mjs"
   },
   "control": {
     "commit": "ebec5326b1a1fbb8090705154de1ef58fb0be59a",

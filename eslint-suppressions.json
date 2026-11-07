@@ -1,0 +1,3317 @@
+{
+  "examples/knowledge-base/fsdev.config.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "examples/knowledge-base/src/capability.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "examples/knowledge-base/src/concepts.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "examples/knowledge-base/src/flow.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "examples/knowledge-base/src/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "examples/knowledge-base/src/okf/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "examples/knowledge-base/src/okf/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/bullmq/src/worker.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/claude-code/src/sdk/agent.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 10
+    }
+  },
+  "packages/claude-code/src/sdk/process-exit.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/claude-code/src/sdk/translate.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/claude-code/src/sdk/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/claude-code/src/sdk/work-collections.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/claude-code/src/sdk/work-recorder.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/claude-code/src/sdk/workspace-collections.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/claude-code/src/sdk/workspace.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/cli/src/chat/render.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/cli/src/commands/run.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/cli/src/local-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/cli/src/principal.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/cli/src/resolve-block.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/cli/src/resolve-runtime.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/client/src/session-client/session-query.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/client/src/subscribe/push-hub.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/client/src/types/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 9
+    }
+  },
+  "packages/codex/src/agent.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/codex/src/errors.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/codex/src/translate.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/codex/src/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/contracts/src/block-instance-id.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/contracts/src/items/canonical-log.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/contracts/src/items/resolve-value.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/contracts/src/items/resolve-visibility.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/contracts/src/items/task-attribution.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/contracts/src/items/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 16
+    }
+  },
+  "packages/contracts/src/types/child-session.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/contracts/src/types/manifest.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/contracts/src/types/push-delivery.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/contracts/src/types/suspension.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/core/src/blocks/dispatcher.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/core/src/blocks/generator.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 17
+    }
+  },
+  "packages/core/src/blocks/handler.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/core/src/blocks/internal/arg-shapes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/core/src/blocks/internal/build-block.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/core/src/blocks/internal/cache-tool-call.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/blocks/internal/emit-tool-output.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/core/src/blocks/internal/evaluator-model-result.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/blocks/internal/generator-resume.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/blocks/internal/replay-log.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/core/src/blocks/internal/resolve-capabilities.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/core/src/blocks/internal/sequencer-kernel.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/core/src/blocks/internal/tool-executor.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/core/src/blocks/internal/utils.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/core/src/blocks/router.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/core/src/blocks/sequencer-methods.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/core/src/blocks/sequencer.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 11
+    }
+  },
+  "packages/core/src/blocks/wait-on-request.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/capability/merge.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/core/src/capability/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/core/src/errors/abort.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/errors/recorded-value-omitted-error.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/errors/route-unavailable-error.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/errors/strict-schema-error.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/errors/suspension-error.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/core/src/flow/defineFlow.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/core/src/harness/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/helpers/block-graph.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/core/src/helpers/client-projection.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/helpers/flow-config.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/helpers/harness-activity.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/helpers/harness-sdk-version.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/helpers/lifecycle-schema.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/helpers/text-match.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/helpers/tracing-level.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/internal/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/core/src/manifest/discovery-tools.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/manifest/registry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/manifest/resources-source.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/models/createModelResolver.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/models/fallbackModel.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/prompt/prompt-file.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/resource-template/resource-template.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/tools/resource-tools.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/core/src/types/auth.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/core/src/types/block.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 31
+    }
+  },
+  "packages/core/src/types/checkpoints.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/core/src/types/dispatch.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/core/src/types/flow.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 13
+    }
+  },
+  "packages/core/src/types/harness-plan.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/core/src/types/harness.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 11
+    }
+  },
+  "packages/core/src/types/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/types/projected-resource-collection.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/core/src/types/pull-requests.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/types/request-end.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 14
+    }
+  },
+  "packages/core/src/types/request-host.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 14
+    }
+  },
+  "packages/core/src/types/request-resume.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/types/resource-change.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/core/src/types/resource-collection.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 6
+    }
+  },
+  "packages/core/src/types/resource.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/core/src/types/schedules.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/core/src/types/scope.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/core/src/types/skill.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/core/src/types/speech.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/types/subscription-event.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/types/suspend-for-user.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/types/suspension.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/core/src/types/voice-error.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/types/voice-provider.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/types/wait-gate.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/core/src/utility/consult-session-history.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/core/src/utility/history-summary.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/utility/keyed-router.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/core/src/utility/upsert-resource.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/cursor/src/agent.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/cursor/src/errors.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/cursor/src/translate.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/cursor/src/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/devtool/src/react/components/detail/item-detail.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/devtool/src/react/components/detail/resources-tree.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/components/detail/sequencer-state-panel.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/components/flows/flow-rail.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/components/items/continuation-item.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/components/items/suspension-item.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/components/items/suspension-resume-item.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/components/shared/block-value-view.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/devtool/src/react/components/workspace/dispatch-run-nodes.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/components/workspace/request-separator.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/devtool/src/react/components/workspace/stream-view.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/devtool/src/react/components/workspace/suspensions-view.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/devtool/src/react/components/workspace/task-collections-view.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/components/workspace/task-row-actions.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/components/workspace/trace-view.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/devtool/src/react/hooks/use-continue-request.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/hooks/use-dispatch-runs.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/hooks/use-list-suspensions.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/hooks/use-request-stream.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/hooks/use-resume-suspension.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/lib/dispatch-run-links.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/devtool/src/react/lib/instance-ownership.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/lib/request-status.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/lib/side-chain-task-count.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/devtool/src/react/lib/source-block.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/lib/task-actions.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/devtool/src/react/lib/task-collection-state.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/devtool/src/react/lib/trace-tree.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/devtool/src/react/lib/utils.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/bus/publish-writes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/bus/scope-changes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/bus/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/context/binding-errors.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/context/create-request-host.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 9
+    }
+  },
+  "packages/engine/src/context/createExecutionContext.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 15
+    }
+  },
+  "packages/engine/src/context/dispatch-operation.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/context/dispatch-run.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/context/history.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/context/initial-request-record.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/context/liveness-gate.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/context/liveness-read.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/context/org-attribution.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/context/reactive-dispatch.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/context/record-owner.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/context/request-principal.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/context/request-sessions.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/context/resource-registry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 18
+    }
+  },
+  "packages/engine/src/context/scope-emit.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/context/session-birth.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/context/settled-turns.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/context/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 14
+    }
+  },
+  "packages/engine/src/durability/cancel-user-suspension.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/durability/default-durability.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/durability/dispatch-internal.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/durability/durability-sweeper.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/engine/src/durability/owner-runs.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/durability/park-owed.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/durability/request-wakes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/durability/resume-under-lease.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/durability/stop-suspended.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/engine/src/durability/suspension-deadlines.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/durability/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/durability/wait-chain.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/engine/src/durability/wait-deadlines.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/errors/error-capture.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/execution/dispatch-metadata.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/execution/internal/response.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/execution/record-request-stop.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/execution/request-action-result.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/execution/request-continuation.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/execution/request-end-hooks.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/execution/request-recovery.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/engine/src/execution/request-spend-ledger.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/execution/resume-metadata.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/execution/runAction.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/engine/src/execution/runRead.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/execution/stale-request-sweeper.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/execution/transport-sources.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/execution/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/engine/src/flowstate/createFlowState.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/flowstate/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 6
+    }
+  },
+  "packages/engine/src/push/push-delivery.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/push/socket-session.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/push/ticket.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/registry/flow-registry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/resources/content-paths.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/resources/internal.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/engine/src/resources/lineage-scope.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/resources/normalize-resource-state.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/resources/own-key-record.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/resources/projected-ref.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/resources/storage-keys.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/routes/abort-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/routes/action-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/routes/answer-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/routes/child-session-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 6
+    }
+  },
+  "packages/engine/src/routes/client-session.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/routes/concurrency-refusal.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/routes/createFlowApiRouter.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 9
+    }
+  },
+  "packages/engine/src/routes/debug-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/routes/debug-snapshot.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 6
+    }
+  },
+  "packages/engine/src/routes/http-handlers.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/routes/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/routes/public-reentry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/routes/read-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/routes/recovery-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/engine/src/routes/resource-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/routes/resume-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/routes/route-auth.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/routes/route-utils.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/engine/src/routes/session-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/routes/session-stream-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/routes/state-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/routes/stream-routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/runtime-config.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 15
+    }
+  },
+  "packages/engine/src/stores/filesystem/active-request-registry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/stores/filesystem/checkpoint-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/filesystem/lease-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/filesystem/request-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/engine/src/stores/filesystem/resource-path.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/filesystem/shared.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/filesystem/suspension-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/filesystem/trace-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/filesystem/wake-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/stores/list-order.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/memory/active-request-registry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/memory/checkpoint-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/stores/memory/content-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/memory/request-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/memory/resource-state-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/stores/memory/suspension-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/memory/trace-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/memory/wake-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/resource-state-predicate.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/scope-keys.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 15
+    }
+  },
+  "packages/engine/src/stores/scope-persist.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/shared.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 6
+    }
+  },
+  "packages/engine/src/stores/store-adapter.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/subscribe-helpers.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/stores/testing/request-store-conformance.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/testing/session-stream-conformance.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 28
+    }
+  },
+  "packages/engine/src/stores/testing/wake-store-conformance.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/stores/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 50
+    }
+  },
+  "packages/engine/src/streaming/live-stream.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/engine/src/streaming/recorded-value.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/streaming/response-emitter.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 10
+    }
+  },
+  "packages/engine/src/transports/auth/defaultBodyUserIdPrincipalResolver.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/transports/concurrency/arbiter.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/engine/src/transports/errors.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/transports/host/createInboundTransportHost.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/engine/src/transports/host/in-process-runner.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/engine/src/transports/runner.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/engine/src/transports/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/harness-manager/src/ask-step.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/harness-manager/src/ask.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/harness-manager/src/await-pull-requests.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/harness-manager/src/commits.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/harness-manager/src/guards.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/harness-manager/src/harness-usage.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/harness-manager/src/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/harness-manager/src/issue-spec.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/harness-manager/src/manager.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 53
+    }
+  },
+  "packages/harness-manager/src/progress-note.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/harness-manager/src/pull-request-wait.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/harness-manager/src/run-changes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/harness-manager/src/run-owner.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/harness-manager/src/run-record.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 17
+    }
+  },
+  "packages/harness-manager/src/session-door.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/harness-manager/src/session-flow.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/harness-manager/src/tool-approval.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/harness-manager/src/upgrade-kept-turns.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/harness-manager/src/workspace.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/mcp/src/createMcpTransportAdapter.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/mcp/src/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/mcp/src/tool-conversion.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/capabilities.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/digest-blocks.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/memory/src/digest-memory.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/episodic-memory.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/memory/src/formatter.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/internal/config.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/memory/src/internal/recall.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/janitor-blocks.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/memory-capability.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/memory/src/memory-system-blocks.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/memory/src/memory-system.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 10
+    }
+  },
+  "packages/memory/src/semantic-memory.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/tools/connect-tool.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/tools/recall-tool.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/tools/strategies/graph-expand.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/tools/strategies/llm-filter-strategy.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/tools/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/memory/src/working-memory-helpers.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/memory/src/working-memory.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/node/src/serve.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/inbox/check.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/inbox/client.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/inbox/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/inbox/row-view.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/inbox/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/shared/resolve-catalog-tools.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/skills/activation-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/skills/active-skill-state.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/skills/apply-skill-activation.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/skills/capability.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/skills/collection.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/skills/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/skills/library.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/skills/load-tool.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/skills/manifest-source.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/skills/render-skill-body.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/skills/run-skill-tool.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/skills/skill-activator.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/skills/skill-classifier-gen.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/skills/steer-context.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/orchestration/src/skills/task-tools-capability.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 44
+    }
+  },
+  "packages/orchestration/src/task-board/apply-replan.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 6
+    }
+  },
+  "packages/orchestration/src/task-board/blocks/board-meta.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/orchestration/src/task-board/blocks/check-board.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/task-board/blocks/dispatch-row.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/task-board/blocks/json-safe.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/task-board/blocks/raise-recorder-failures.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/task-board/blocks/record-result.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/orchestration/src/task-board/blocks/recorder-failure.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/task-board/blocks/seed-collection.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/task-board/blocks/worker-step.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/orchestration/src/task-board/board-mode.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/task-board/capability.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/task-board/dispatch-assignee.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/task-board/flow-policy-wiring.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 6
+    }
+  },
+  "packages/orchestration/src/task-board/goal-seek-loop.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/orchestration/src/task-board/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 20
+    }
+  },
+  "packages/orchestration/src/task-board/predicates.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/orchestration/src/task-board/quiescence.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/task-board/resolve-resource.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/task-board/schemas.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/orchestration/src/task-board/shared.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/orchestration/src/task-board/task-entry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/orchestration/src/task-board/task-request.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 21
+    }
+  },
+  "packages/orchestration/src/task-board/task-turn.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/task-board/turn-wait.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/claim-orders/fifo.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/claim-orders/priority.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/claim-orders/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/claim-ticket.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/orchestration/src/tasks/collection/advisory-write-back.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/tasks/collection/cascade.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/orchestration/src/tasks/collection/change-event.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 14
+    }
+  },
+  "packages/orchestration/src/tasks/collection/define-task-collection.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/orchestration/src/tasks/collection/ending.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/tasks/collection/filing.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/orchestration/src/tasks/collection/find-task-partitions.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/collection/get-or-create.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/orchestration/src/tasks/collection/holds.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 9
+    }
+  },
+  "packages/orchestration/src/tasks/collection/internal.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 52
+    }
+  },
+  "packages/orchestration/src/tasks/collection/method-table.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 10
+    }
+  },
+  "packages/orchestration/src/tasks/collection/partition.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/orchestration/src/tasks/collection/predicates.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/collection/read-committed.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/collection/refused-write.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/collection/resource-backed.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 17
+    }
+  },
+  "packages/orchestration/src/tasks/collection/state-backed.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/orchestration/src/tasks/collection/task-caps.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/orchestration/src/tasks/collection/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 62
+    }
+  },
+  "packages/orchestration/src/tasks/helpers/filed-work.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/helpers/request-states.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/tasks/helpers/session-rows.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/helpers/user-stop.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/helpers/wait-on-task.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 16
+    }
+  },
+  "packages/orchestration/src/tasks/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/items/extract-window.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/items/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/lease-renewal-scope.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/tasks/lease-renewal.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/orchestration/src/tasks/notice/delivery.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 10
+    }
+  },
+  "packages/orchestration/src/tasks/notice/pass.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/orchestration/src/tasks/notice/task-notice.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 30
+    }
+  },
+  "packages/orchestration/src/tasks/notice/task-settled-entry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/orchestration/src/tasks/schema/hold.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/orchestration/src/tasks/schema/retired-shapes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/orchestration/src/tasks/schema/spend.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/orchestration/src/tasks/schema/steer.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/orchestration/src/tasks/schema/task-init.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/orchestration/src/tasks/schema/task-status.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/orchestration/src/tasks/schema/task.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 45
+    }
+  },
+  "packages/orchestration/src/tasks/spend.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/orchestration/src/tasks/steers.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/orchestration/src/tasks/workers/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/orchestration/src/tasks/write-provenance.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/patterns/src/eventActors/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/patterns/src/parallelTasks/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/patterns/src/plan-and-execute/blocks/capture-and-plan.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/patterns/src/plan-and-execute/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 5
+    }
+  },
+  "packages/patterns/src/plan-and-execute/schemas.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/patterns/src/response-auditor/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/patterns/src/routedSpecialists/schemas.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/patterns/src/shared/planning-entry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/patterns/src/supervisor/blocks/capture-and-plan.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/patterns/src/supervisor/blocks/label-failed-reviews.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/patterns/src/supervisor/blocks/reviewer-check.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/patterns/src/supervisor/blocks/synthesize.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/patterns/src/supervisor/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/patterns/src/supervisor/schemas.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/components/QuestionRenderer.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/components/SchemaFormRenderer.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/components/SelectionRenderer.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/components/flow-navigator/FlowNavigator.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/react/src/components/flow-navigator/dispatch-runs.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/react/src/components/flow-navigator/grouping.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/components/flow-navigator/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/components/flow-navigator/reads.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/react/src/components/panels/BoardColumns.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/react/src/components/panels/BoardList.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/components/panels/Roster.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/react/src/components/panels/WorkerDetail.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/react/src/components/panels/cards.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/components/panels/chrome.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/components/panels/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/components/panels/reads.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/react/src/components/suspensionFormShared.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/hooks/useResource.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/hooks/useResourceCollection.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/react/src/hooks/useResourceCollectionItem.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/react/src/hooks/useResourceCollectionList.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/react/src/hooks/useResourceManifest.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/hooks/useSession.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/react/src/hooks/useSubscription.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/hooks/useSuspensionForm.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/hooks/useSuspensions.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/react/src/internal/mergeResourceChangeIntoSnapshot.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/internal/mergeStateChangeIntoSnapshot.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/internal/scopeNotices.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/voice/audio-player.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/react/src/voice/useVoice.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/scheduled/src/createResourceCollectionScheduleResolver.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/scheduled/src/defineScheduleCollection.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/scheduled/src/routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/scheduled/src/scheduleIndex.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/scheduled/src/scheduledTime.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/scheduled/src/testing.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/App.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/AskCard.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/ReceivedMessage.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/StandingRules.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/TasksPanel.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/ToolLine.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/shift-manager/src/components/TurnComposer.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/shift-manager/src/components/flow-state/form.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/flow-state/question.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/flow-state/selection.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/flow-state/suspension-card-shell.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/flow-state/suspension-card.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/flow-state/suspension-resolution.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/flow-state/task-plan-state.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/shift-manager/src/components/flow-state/task-plan.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/components/flow-state/tool.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/gaps.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 22
+    }
+  },
+  "packages/shift-manager/src/lib/ask-session.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/lib/columns.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/shift-manager/src/lib/conversation-tasks.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/lib/conversation.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/lib/derive.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/shift-manager/src/lib/first-run.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/lib/lab-data.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/lib/messages.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/lib/projects.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/shift-manager/src/lib/reads.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 10
+    }
+  },
+  "packages/shift-manager/src/lib/routes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/shift-manager/src/lib/rules.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/lib/run.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/shift-manager/src/lib/schedules.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/lib/send.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/shift-manager/src/lib/task.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/shift-manager/src/lib/usage.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/surfaces/Inbox.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/shift-manager/src/surfaces/JumpTo.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/surfaces/Messages.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/surfaces/Project.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/shift-manager/src/surfaces/Resource.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/surfaces/Schedules.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/surfaces/ShiftCoordinator.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/shift-manager/src/surfaces/Sidebar.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/shift-manager/src/surfaces/TaskFrame.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/shift-manager/src/surfaces/TaskInspector.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/shift-manager/src/surfaces/TaskSession.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/surfaces/Tasks.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/surfaces/Usage.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/shift-manager/src/surfaces/WorkerSettings.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/store-postgres/src/active-request-registry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-postgres/src/bus.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-postgres/src/checkpoint-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-postgres/src/lease-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-postgres/src/pg-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/store-postgres/src/registry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/store-postgres/src/request-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/store-postgres/src/schema.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 9
+    }
+  },
+  "packages/store-postgres/src/suspension-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-postgres/src/types.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-postgres/src/wake-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-sqlite/src/active-request-registry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-sqlite/src/checkpoint-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-sqlite/src/lease-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-sqlite/src/live-tail.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/store-sqlite/src/request-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/store-sqlite/src/schema.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 11
+    }
+  },
+  "packages/store-sqlite/src/sqlite-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/store-sqlite/src/suspension-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-sqlite/src/trace-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/store-sqlite/src/wake-store.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/testing/src/test-utilities/runForTest.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/tools/src/bash/blocks.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/tools/src/fetch/errors.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/ui/registry/components/chat-assistant.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/ui/registry/components/form.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/ui/registry/components/question.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/ui/registry/components/selection.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/ui/registry/components/suspension-card-shell.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/ui/registry/components/suspension-card.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/ui/registry/components/suspension-resolution.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/ui/registry/components/task-plan-state.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/ui/registry/components/task-plan.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/ui/registry/components/tool.tsx": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/agent-worker-flow.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/workforce/src/clear-shadowed-references.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/conversation-board/backfill-wakes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/conversation-board/board-above.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/conversation-board/board-entries.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/workforce/src/conversation-board/board.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 44
+    }
+  },
+  "packages/workforce/src/conversation-board/cascade.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/conversation-board/chain.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/conversation-board/delegate-answer.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/conversation-board/delivery.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/conversation-board/filing-session.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/workforce/src/conversation-board/held-task.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/workforce/src/conversation-board/ledger.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/workforce/src/conversation-board/plan.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 13
+    }
+  },
+  "packages/workforce/src/conversation-board/report-owed.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/workforce/src/conversation-board/routed-session.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/conversation-board/session-board.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 12
+    }
+  },
+  "packages/workforce/src/conversation-board/steer-turn-start.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/conversation-board/steer.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/workforce/src/conversation-board/take-finished.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/conversation-board/task-admission.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/workforce/src/conversation-board/task-ending-read.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/conversation-board/task-entry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/workforce/src/conversation-board/task-message.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/workforce/src/conversation-board/task-progress.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/conversation-board/task-settled.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/workforce/src/conversation-board/task-steers.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/conversation-board/user-waits.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/coordinator/coordinator-config.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/coordinator/coordinator-flow.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/workforce/src/coordinator/coordinator-rounds.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/coordinator/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/coordinator/routed-brief.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/delegates/delegate-check.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/delegates/delegate-keys.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/delegates/delegate-list.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/delegates/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/delegates/worker-delegates.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/workforce/src/error-reporter/fingerprint.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/error-reporter/flow.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/error-reporter/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/error-reporter/keys.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/error-reporter/redact.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/error-reporter/reporter.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/error-reporter/reports.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/inventory/collections.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 8
+    }
+  },
+  "packages/workforce/src/manifest-sources.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/messages/consult.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/messages/delivery.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 6
+    }
+  },
+  "packages/workforce/src/messages/hop.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 6
+    }
+  },
+  "packages/workforce/src/messages/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/messages/keys.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/workforce/src/messages/log-row.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 12
+    }
+  },
+  "packages/workforce/src/messages/message-limits.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/messages/message-log.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/messages/message-received-entry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/workforce/src/messages/message-target.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/messages/message-tool.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/messages/midway-question.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/messages/owed-replies.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/messages/queue.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/messages/received-mark.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 4
+    }
+  },
+  "packages/workforce/src/messages/recipients.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/messages/send-message.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 7
+    }
+  },
+  "packages/workforce/src/messages/wait-for-reply.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/messages/worker-identity.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/projects/collections.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 6
+    }
+  },
+  "packages/workforce/src/projects/mcp-credentials.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/projects/membership-gate.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/projects/project-checks.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/projects/project-coordinator.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/projects/project-files.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/projects/project-mcp-capability.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/projects/project-mcp-tools.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/projects/project-workspace.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/workforce/src/projects/run-project.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/projects/work-project.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/projects/workstream-collections.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/workforce/src/projects/workstream-writes.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/references-from-docs.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/resources-from-docs.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/schedules/file-scheduled-task.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/schedules/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/schedules/keys.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/schedules/listed-schedule.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/schedules/scheduled-work.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/standing-rules/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/standing-rules/keys.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/standing-rules/rules-action.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/standing-rules/rules-capability.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/standing-rules/rules-list.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/standing-rules/rules-record.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/standing-rules/user-turn.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/subscriptions/index.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/subscriptions/keys.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/subscriptions/rows.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/subscriptions/screens.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/subscriptions/service-flow.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/subscriptions/subscribe.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/worker-capabilities.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/worker-config.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/worker-discovery.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/worker-door.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/worker-references.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/worker-resources.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/worker-task-entry.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/workers/chain-limit.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/workers/client.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/workers/derive-session-id.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/workers/installation.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/workers/keys.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 12
+    }
+  },
+  "packages/workforce/src/workers/register.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/workers/roster-flow.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/workers/shown-settings.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/workers/standard-workers.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workforce/src/workers/worker-row.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  },
+  "packages/workforce/src/workers/worker-usage.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 3
+    }
+  },
+  "packages/workforce/src/workforce-capability.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workspace/src/projection.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workspace/src/run-source.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workspace/src/scope-identity.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workspace/src/source-read.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 1
+    }
+  },
+  "packages/workspace/src/worktrees.ts": {
+    "fsd/no-tracker-ids": {
+      "count": 2
+    }
+  }
+}
