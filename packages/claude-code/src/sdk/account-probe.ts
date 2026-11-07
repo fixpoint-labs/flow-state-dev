@@ -1,6 +1,6 @@
 /**
  * Ask Claude Code, before anything is started on it, whether it has a
- * credential to run on: `probeClaudeAccount()`.
+ * credential to run on: `probeClaudeCodeAccount()`.
  *
  * A host that runs Claude Code calls it once at start, so a person with no
  * credential is told then rather than at their first run. It opens one
@@ -20,10 +20,10 @@
 import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 import { sdkVersionReadiness, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
 import { runIdleQuery } from "./idle-query";
-import { readInstalledClaudeCodeSdkVersion, TESTED_CLAUDE_CODE_SDK, type SdkImporter } from "./sdk-client";
+import { readInstalledClaudeCodeSdkVersion, TESTED_CLAUDE_CODE_SDK, type ClaudeCodeSdkImporter } from "./sdk-client";
 
-/** What {@link probeClaudeAccount} found. */
-export type ClaudeAccountProbe =
+/** What {@link probeClaudeCodeAccount} found. */
+export type ClaudeCodeAccountProbe =
   /**
    * A credential source came back: the SDK's `apiKeySource`, its `tokenSource`,
    * or a sign-in (`email`, `subscriptionType`). A subscription login (the
@@ -39,8 +39,8 @@ export type ClaudeAccountProbe =
   /** `@anthropic-ai/claude-agent-sdk` could not be loaded. `reason` carries the load error. */
   | { status: "sdk-missing"; reason: string };
 
-/** Options for {@link probeClaudeAccount}. */
-export interface ProbeClaudeAccountOptions {
+/** Options for {@link probeClaudeCodeAccount}. */
+export interface ProbeClaudeCodeAccountOptions {
   /**
    * The environment Claude Code is started with. Pass the one the run gets
    * (for example `harnessEnv({ pass })`), so a credential the run can't see
@@ -52,7 +52,7 @@ export interface ProbeClaudeAccountOptions {
   /** Stops waiting and closes Claude Code when it aborts; the answer is then `none`, as on a timeout. */
   signal?: AbortSignal;
   /** How the SDK module is loaded. A seam for tests; the default imports the installed SDK. */
-  importSdk?: SdkImporter;
+  importSdk?: ClaudeCodeSdkImporter;
 }
 
 /** The part of the SDK's query handle the probe uses. */
@@ -61,7 +61,7 @@ interface AccountQuery {
   close?: () => void;
 }
 
-/** {@link ProbeClaudeAccountOptions.timeoutMs}'s default. */
+/** {@link ProbeClaudeCodeAccountOptions.timeoutMs}'s default. */
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
@@ -71,7 +71,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * @returns `account` with the source(s) the SDK named, `none` with a reason,
  *   or `sdk-missing`. Never throws for any of those.
  */
-export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Promise<ClaudeAccountProbe> {
+export async function probeClaudeCodeAccount(options: ProbeClaudeCodeAccountOptions): Promise<ClaudeCodeAccountProbe> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const asked = await runIdleQuery<AccountQuery, Awaited<ReturnType<AccountQuery["accountInfo"]>>>(
     {
@@ -108,10 +108,10 @@ export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Pr
 }
 
 /** What the user does when Claude Code has no credential. */
-export const CLAUDE_SIGN_IN_REMEDY = "Sign in with `claude`, or set ANTHROPIC_API_KEY";
+export const CLAUDE_CODE_SIGN_IN_REMEDY = "Sign in with `claude`, or set ANTHROPIC_API_KEY";
 
 /** Options for {@link checkClaudeCodeReadiness}: the probe's, and how the installed SDK is read. */
-export interface ClaudeCodeReadinessOptions extends ProbeClaudeAccountOptions {
+export interface ClaudeCodeReadinessOptions extends ProbeClaudeCodeAccountOptions {
   /**
    * Which `@anthropic-ai/claude-agent-sdk` is installed. Default: the one
    * beside this package. A seam for a host's own check and for tests; the
@@ -123,16 +123,16 @@ export interface ClaudeCodeReadinessOptions extends ProbeClaudeAccountOptions {
 /**
  * Whether Claude Code can run on this machine, as core's neutral readiness:
  * an installed SDK in the range this package tested, then the answer of
- * {@link probeClaudeAccount}, with what to do when there is no
+ * {@link probeClaudeCodeAccount}, with what to do when there is no
  * credential. A cold start can miss the probe's window, so an unanswered
  * probe is asked once more before it counts. Never throws.
  */
 export async function checkClaudeCodeReadiness(options: ClaudeCodeReadinessOptions): Promise<HarnessReadiness> {
   const version = sdkVersionReadiness(TESTED_CLAUDE_CODE_SDK, options.readInstalledSdkVersion ?? readInstalledClaudeCodeSdkVersion);
   if (version !== null) return version;
-  let account = await probeClaudeAccount(options);
+  let account = await probeClaudeCodeAccount(options);
   if (account.status === "none" && account.unanswered === true && options.signal?.aborted !== true) {
-    account = await probeClaudeAccount(options);
+    account = await probeClaudeCodeAccount(options);
   }
   if (account.status === "account") return { ready: true };
   if (account.status === "sdk-missing") {
@@ -140,5 +140,5 @@ export async function checkClaudeCodeReadiness(options: ClaudeCodeReadinessOptio
   }
   return account.unanswered === true
     ? { ready: false, reason: `${account.reason}, so Claude Code's sign-in is unknown`, unanswered: true }
-    : { ready: false, reason: `Claude Code has no credential: ${account.reason}`, remedy: CLAUDE_SIGN_IN_REMEDY };
+    : { ready: false, reason: `Claude Code has no credential: ${account.reason}`, remedy: CLAUDE_CODE_SIGN_IN_REMEDY };
 }

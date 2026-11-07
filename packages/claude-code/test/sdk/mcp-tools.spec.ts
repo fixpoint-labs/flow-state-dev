@@ -11,17 +11,17 @@ import { describe, expect, it, vi } from "vitest";
 import { createTestContext, testBlock } from "@flow-state-dev/testing";
 import { abortExitGrace, claudeCodeAgent } from "../../src/sdk/agent";
 import { inProcessMcpServer, toCallToolResult, type ClaudeCodeMcpTools } from "../../src/sdk/mcp-tools";
-import type { ClaudeAgentQueryOptions, ResolveClaudeAgent, SdkMessageLike } from "../../src/sdk/types";
+import type { ClaudeCodeQueryOptions, ResolveClaudeCodeAgent, ClaudeCodeSdkMessage } from "../../src/sdk/types";
 
 const shippedGraceMs = abortExitGrace.ms;
 
-const RESULT_OK: SdkMessageLike = { type: "result", subtype: "success", result: "done", session_id: "sess_mcp" };
+const RESULT_OK: ClaudeCodeSdkMessage = { type: "result", subtype: "success", result: "done", session_id: "sess_mcp" };
 
 /** A scripted `query` that records its options and, when given, does something with them mid-run. */
 function scripted(
-  seen: ClaudeAgentQueryOptions[],
-  options: { messages?: SdkMessageLike[]; during?: (options: ClaudeAgentQueryOptions) => Promise<void>; fail?: Error } = {},
-): ResolveClaudeAgent {
+  seen: ClaudeCodeQueryOptions[],
+  options: { messages?: ClaudeCodeSdkMessage[]; during?: (options: ClaudeCodeQueryOptions) => Promise<void>; fail?: Error } = {},
+): ResolveClaudeCodeAgent {
   return () => ({
     query: async function* (args) {
       seen.push(args.options!);
@@ -74,7 +74,7 @@ async function client(instance: { connect(t: any): Promise<void> }) {
 
 describe("mcpTools unset", () => {
   it("hands the SDK exactly the options it hands with no mcpTools, key for key (BR-27)", async () => {
-    const seen: ClaudeAgentQueryOptions[] = [];
+    const seen: ClaudeCodeQueryOptions[] = [];
     const common = { allowedTools: ["Read"], disallowedTools: ["Bash"], env: { PATH: "/usr/bin" } };
     await testBlock(claudeCodeAgent({ ...common, resolveClaudeAgent: scripted(seen) }), { input: { prompt: "go" } });
     await testBlock(claudeCodeAgent({ ...common, mcpTools: {}, resolveClaudeAgent: scripted(seen) }), { input: { prompt: "go" } });
@@ -99,7 +99,7 @@ describe("mcpTools unset", () => {
 
 describe("mcpTools set", () => {
   it("hands each server in-process, and nothing from settings files or the account (BR-12, BR-28)", async () => {
-    const seen: ClaudeAgentQueryOptions[] = [];
+    const seen: ClaudeCodeQueryOptions[] = [];
     await testBlock(claudeCodeAgent({ mcpTools: linearTools(), resolveClaudeAgent: scripted(seen) }), { input: { prompt: "go" } });
     const options = seen[0]!;
     expect(options.strictMcpConfig).toBe(true);
@@ -113,7 +113,7 @@ describe("mcpTools set", () => {
   });
 
   it("allows each relayed tool without asking, and leaves disallowedTools to block one (BR-17)", async () => {
-    const seen: ClaudeAgentQueryOptions[] = [];
+    const seen: ClaudeCodeQueryOptions[] = [];
     await testBlock(
       claudeCodeAgent({
         allowedTools: ["Read"],
@@ -128,7 +128,7 @@ describe("mcpTools set", () => {
   });
 
   it("lists each tool with its schema as handed, and answers a call through the tool's own call (BR-17)", async () => {
-    const seen: ClaudeAgentQueryOptions[] = [];
+    const seen: ClaudeCodeQueryOptions[] = [];
     const log: string[] = [];
     const answers: any[] = [];
     await testBlock(
@@ -188,7 +188,7 @@ describe("mcpTools set", () => {
   });
 
   it("says so when the run reports a server it wasn't handed (BR-12)", async () => {
-    const seen: ClaudeAgentQueryOptions[] = [];
+    const seen: ClaudeCodeQueryOptions[] = [];
     const { items } = await testBlock(
       claudeCodeAgent({
         mcpTools: linearTools(),
@@ -202,7 +202,7 @@ describe("mcpTools set", () => {
                 { name: "linear", status: "connected" },
                 { name: "claude.ai Gmail", status: "connected" },
               ],
-            } as SdkMessageLike,
+            } as ClaudeCodeSdkMessage,
             RESULT_OK,
           ],
         }),
@@ -215,7 +215,7 @@ describe("mcpTools set", () => {
   });
 
   it("calls a resolver once per run, with that run's context, before the SDK call (BR-28)", async () => {
-    const seen: ClaudeAgentQueryOptions[] = [];
+    const seen: ClaudeCodeQueryOptions[] = [];
     const calls: string[] = [];
     const block = claudeCodeAgent({
       mcpTools: (ctx) => {
@@ -249,9 +249,9 @@ describe("closing the servers (BR-18)", () => {
     const aborted: string[] = [];
     let started: () => void = () => {};
     const running = new Promise<void>((resolve) => (started = resolve));
-    const hang: ResolveClaudeAgent = () => ({
+    const hang: ResolveClaudeCodeAgent = () => ({
       query: async function* () {
-        yield { type: "system", subtype: "init", session_id: "sess_mcp" } as SdkMessageLike;
+        yield { type: "system", subtype: "init", session_id: "sess_mcp" } as ClaudeCodeSdkMessage;
         started();
         await new Promise(() => {});
       },
@@ -283,7 +283,7 @@ describe("closing the servers (BR-18)", () => {
 
   it("closes what the resolver opened when setup throws before the run starts", async () => {
     const log: string[] = [];
-    const seen: ClaudeAgentQueryOptions[] = [];
+    const seen: ClaudeCodeQueryOptions[] = [];
     // A server with no tools list: building its in-process server throws.
     const broken = { linear: { tools: undefined as never, close: () => void log.push("close") } };
     const { error } = await testBlock(claudeCodeAgent({ mcpTools: async () => broken, resolveClaudeAgent: scripted(seen) }), {
@@ -296,7 +296,7 @@ describe("closing the servers (BR-18)", () => {
 
   it("stops waiting on a resolver still connecting when the run is aborted, and closes what it answers later", async () => {
     const log: string[] = [];
-    const seen: ClaudeAgentQueryOptions[] = [];
+    const seen: ClaudeCodeQueryOptions[] = [];
     let connected: () => void = () => {};
     let asked: () => void = () => {};
     const resolving = new Promise<void>((resolve) => (asked = resolve));

@@ -17,8 +17,8 @@ import { HARNESS_BASE_PASS } from "@flow-state-dev/core/harness";
  *
  * It filters what a run starts with, not what it can read: a command the run
  * starts as the server's OS user can still read the server's own environment
- * (on Linux, from `/proc`). Pass the same environment to `probeClaudeAccount`,
- * `listClaudeCodeModels` and `readClaudeUsage`, so they see the account the run
+ * (on Linux, from `/proc`). Pass the same environment to `probeClaudeCodeAccount`,
+ * `listClaudeCodeModels` and `readClaudeCodeUsage`, so they see the account the run
  * sees. A host that needs more passes its own list.
  */
 export const CLAUDE_CODE_PASS = [...HARNESS_BASE_PASS, "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "NODE_EXTRA_CA_CERTS"] as const;

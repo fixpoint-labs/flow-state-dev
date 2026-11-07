@@ -3,7 +3,8 @@
  *
  * The file and gap records are Claude Code's own and are defined here. The plan
  * record and its per-run list marker are the shape every harness shares, so
- * they are defined in `@flow-state-dev/core` and re-exported below.
+ * they are defined in `@flow-state-dev/core/harness`, and this module
+ * declares them beside its own.
  *
  * All of them are collected here rather than inside the agent block so the block and
  * the capability contribute the SAME definitions — a capability's `tools` do
@@ -27,32 +28,18 @@ import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /**
- * The plan record's shape lives in `@flow-state-dev/core`, shared by every
- * harness. Re-exported here as the SAME objects, so code importing them from
- * this package keeps working and gets exactly what core exports.
- */
-export {
-  OBSERVED_PLAN,
-  OBSERVED_PLAN_LIST,
-  observedPlanCollection,
-  observedPlanItemStateSchema,
-  observedPlanListCollection,
-  type ObservedOutcome,
-} from "@flow-state-dev/core/harness";
-
-/**
  * Accessor key AND storage prefix for the observed file operations. The two are
  * deliberately the same string: the HTTP resource route addresses a collection
  * by its accessor key in `flow.resources`, while the store keys rows by the
  * pattern prefix, so keeping them equal means one name appears in the URL, in
  * `ctx.resources`, and in the storage key.
  */
-export const OBSERVED_FILE_OPS = "observed-file-ops" as const;
+export const CLAUDE_CODE_FILE_OPS = "observed-file-ops" as const;
 /** Accessor key AND storage prefix for the mutations the recorder could not record. */
-export const OBSERVED_GAPS = "observed-gaps" as const;
+export const CLAUDE_CODE_GAPS = "observed-gaps" as const;
 
 /** How a file tool touched a path. */
-export type ObservedFileOpKind = "created" | "edited";
+export type ClaudeCodeFileOpKind = "created" | "edited";
 
 /**
  * One observed file operation, keyed by `<runId>/<canonical path>`.
@@ -61,7 +48,7 @@ export type ObservedFileOpKind = "created" | "edited";
  * older or newer shape still parses instead of throwing inside a recorder that
  * is required never to break the run (BP-030).
  */
-export const observedFileOpStateSchema = z.object({
+export const claudeCodeFileOpStateSchema = z.object({
   /** How the path was last touched. */
   lastKind: z.enum(["created", "edited"]).nullable().default(null),
   /** How the last touch settled. */
@@ -96,11 +83,11 @@ export const observedFileOpStateSchema = z.object({
  * `list()`/`count()` are what would trigger a full-prefix load, so the recorder
  * must never call them.
  */
-export const observedFileOpsCollection = defineResourceCollection({
-  pattern: `${OBSERVED_FILE_OPS}/**`,
+export const claudeCodeFileOpsCollection = defineResourceCollection({
+  pattern: `${CLAUDE_CODE_FILE_OPS}/**`,
   scope: "session",
   prefetchMode: "lazy",
-  stateSchema: observedFileOpStateSchema,
+  stateSchema: claudeCodeFileOpStateSchema,
   // Without `state.read` the list-collection-state route answers 403, so the
   // record would exist and be unreadable. `expose` names the client contract
   // explicitly: adding a field to the schema does not silently publish it.
@@ -137,8 +124,8 @@ export const observedFileOpsCollection = defineResourceCollection({
  * two identical skips collapse to one, and reading a gap back out of prose is
  * the substring-grading mistake this codebase keeps paying for.
  */
-export const observedGapsCollection = defineResourceCollection({
-  pattern: `${OBSERVED_GAPS}/**`,
+export const claudeCodeGapsCollection = defineResourceCollection({
+  pattern: `${CLAUDE_CODE_GAPS}/**`,
   scope: "session",
   prefetchMode: "lazy",
   stateSchema: z.object({
@@ -182,9 +169,9 @@ export type ObservedGapKind = "file" | "plan" | "run";
  * would stop accepting that context. The recorder reads the two refs by name at
  * run time anyway, so the narrower type buys nothing.
  */
-export const workRecorderResources: Record<string, DeclaredResourceEntry> = {
-  [OBSERVED_FILE_OPS]: observedFileOpsCollection,
+export const claudeCodeWorkRecorderResources: Record<string, DeclaredResourceEntry> = {
+  [CLAUDE_CODE_FILE_OPS]: claudeCodeFileOpsCollection,
   [OBSERVED_PLAN]: observedPlanCollection,
   [OBSERVED_PLAN_LIST]: observedPlanListCollection,
-  [OBSERVED_GAPS]: observedGapsCollection,
+  [CLAUDE_CODE_GAPS]: claudeCodeGapsCollection,
 };

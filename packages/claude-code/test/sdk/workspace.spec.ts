@@ -23,12 +23,12 @@ import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { defineFlow, defineResourceCollection, generator } from "@flow-state-dev/core";
 import { z, type ZodType } from "zod";
 import {
-  createWorkspaceAgentCapability,
-  containmentSandbox,
+  createClaudeCodeWorkspaceCapability,
+  claudeCodeContainmentSandbox,
   discoverMountsForTest,
   RELOCATION_TOOLS,
 } from "../../src/sdk/workspace";
-import { WORKSPACE_OUTCOMES } from "../../src/sdk/workspace-collections";
+import { CLAUDE_CODE_WORKSPACE_OUTCOMES } from "../../src/sdk/workspace-collections";
 import {
   claimKey,
   collectionIdFor,
@@ -36,12 +36,12 @@ import {
   sharedClaimRegistry,
 } from "@flow-state-dev/workspace";
 import type {
-  ClaudeAgentQueryOptions,
-  ResolveClaudeAgent,
-  SdkMessageLike,
+  ClaudeCodeQueryOptions,
+  ResolveClaudeCodeAgent,
+  ClaudeCodeSdkMessage,
 } from "../../src/sdk/types";
 
-const RESULT_OK: SdkMessageLike = {
+const RESULT_OK: ClaudeCodeSdkMessage = {
   type: "result",
   subtype: "success",
   result: "done",
@@ -51,8 +51,8 @@ const RESULT_OK: SdkMessageLike = {
 };
 
 function scriptedQuery(
-  spy?: (args: { prompt: unknown; options?: ClaudeAgentQueryOptions }) => void,
-): ResolveClaudeAgent {
+  spy?: (args: { prompt: unknown; options?: ClaudeCodeQueryOptions }) => void,
+): ResolveClaudeCodeAgent {
   return () => ({
     query: async function* (args) {
       spy?.(args);
@@ -173,9 +173,9 @@ describe("what auto-discovery will and will not mount", () => {
   });
 });
 
-describe("createWorkspaceAgentCapability", () => {
+describe("createClaudeCodeWorkspaceCapability", () => {
   it("exposes one sequencer that hydrates, runs, and flushes", () => {
-    const cap = createWorkspaceAgentCapability({ root: () => "/tmp/x" });
+    const cap = createClaudeCodeWorkspaceCapability({ root: () => "/tmp/x" });
     const tool = toolOf(cap) as { kind: string; name: string };
 
     expect(tool.kind).toBe("sequencer");
@@ -187,16 +187,16 @@ describe("createWorkspaceAgentCapability", () => {
     // so declaring it on the blocks alone would leave the read route at 404.
     // Readable, because a caller who cannot read the conflicts is not being
     // told about them; lazy, because a session is reused across runs.
-    const cap = createWorkspaceAgentCapability({ root: () => "/tmp/x" }) as unknown as {
+    const cap = createClaudeCodeWorkspaceCapability({ root: () => "/tmp/x" }) as unknown as {
       resources: Record<
         string,
         { client?: { state?: { read?: boolean } }; prefetchMode?: string }
       >;
     };
 
-    expect(Object.keys(cap.resources)).toEqual([WORKSPACE_OUTCOMES]);
-    expect(cap.resources[WORKSPACE_OUTCOMES]!.client?.state?.read).toBe(true);
-    expect(cap.resources[WORKSPACE_OUTCOMES]!.prefetchMode).toBe("lazy");
+    expect(Object.keys(cap.resources)).toEqual([CLAUDE_CODE_WORKSPACE_OUTCOMES]);
+    expect(cap.resources[CLAUDE_CODE_WORKSPACE_OUTCOMES]!.client?.state?.read).toBe(true);
+    expect(cap.resources[CLAUDE_CODE_WORKSPACE_OUTCOMES]!.prefetchMode).toBe("lazy");
   });
 
   it("hands the run the directory it created, and confines it to the same one", async () => {
@@ -207,7 +207,7 @@ describe("createWorkspaceAgentCapability", () => {
     const base = scratch();
     const spy = vi.fn();
     let calls = 0;
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       resolveClaudeAgent: scriptedQuery(spy),
       root: () => {
         calls += 1;
@@ -220,7 +220,7 @@ describe("createWorkspaceAgentCapability", () => {
     const options = spy.mock.calls[0][0].options;
     const expected = join(base, "run-1");
     expect(options?.cwd).toBe(expected);
-    expect(options?.sandbox).toEqual(containmentSandbox(expected));
+    expect(options?.sandbox).toEqual(claudeCodeContainmentSandbox(expected));
     // Once. Not once per reader.
     expect(calls).toBe(1);
     expect(existsSync(expected)).toBe(true);
@@ -242,7 +242,7 @@ describe("createWorkspaceAgentCapability", () => {
     symlinkSync(real, link);
 
     const spy = vi.fn();
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       resolveClaudeAgent: scriptedQuery(spy),
       root: () => link,
     });
@@ -252,7 +252,7 @@ describe("createWorkspaceAgentCapability", () => {
     const options = spy.mock.calls[0][0].options;
     const physical = realpathSync(real);
     expect(options?.cwd).toBe(physical);
-    expect(options?.sandbox).toEqual(containmentSandbox(physical));
+    expect(options?.sandbox).toEqual(claudeCodeContainmentSandbox(physical));
 
     discard(base);
   });
@@ -263,7 +263,7 @@ describe("createWorkspaceAgentCapability", () => {
     // among them configures the agent reading it.
     const base = scratch();
     const spy = vi.fn();
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       resolveClaudeAgent: scriptedQuery(spy),
       root: () => base,
     });
@@ -279,7 +279,7 @@ describe("createWorkspaceAgentCapability", () => {
     // `cwd` is a working directory, not a fence — absolute paths still
     // resolve — so the boundary has to be declared. And a command that can ask
     // to run unsandboxed can ask its way out of that boundary.
-    expect(containmentSandbox("/work/run-1")).toEqual({
+    expect(claudeCodeContainmentSandbox("/work/run-1")).toEqual({
       enabled: true,
       allowUnsandboxedCommands: false,
       filesystem: { allowWrite: ["/work/run-1"] },
@@ -292,7 +292,7 @@ describe("createWorkspaceAgentCapability", () => {
     // afterwards would be reconciling a tree the run had already left.
     const base = scratch();
     const spy = vi.fn();
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       resolveClaudeAgent: scriptedQuery(spy),
       root: () => base,
     });
@@ -311,7 +311,7 @@ describe("createWorkspaceAgentCapability", () => {
     // responsible for re-adding a boundary they did not know they had.
     const base = scratch();
     const spy = vi.fn();
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       resolveClaudeAgent: scriptedQuery(spy),
       root: () => base,
       disallowedTools: ["WebFetch"],
@@ -332,7 +332,7 @@ describe("createWorkspaceAgentCapability", () => {
     // did get done goes nowhere.
     const base = scratch();
     let callersHookRan = false;
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       resolveClaudeAgent: () => ({
         query: async function* () {
           // The run wrote something, then died.
@@ -394,7 +394,7 @@ describe("createWorkspaceAgentCapability", () => {
       client: { state: { read: true }, expose: ["path", "hash", "updatedAt", "title"] },
     });
 
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       resolveClaudeAgent: () => ({
         query: async function* () {
           mkdirSync(join(base, "artifacts"), { recursive: true });
@@ -454,7 +454,7 @@ describe("createWorkspaceAgentCapability", () => {
       client: { state: { read: true }, expose: ["path", "hash", "updatedAt", "title"] },
     });
 
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       resolveClaudeAgent: () => ({
         query: async function* () {
           mkdirSync(join(base, "artifacts"), { recursive: true });
@@ -492,7 +492,7 @@ describe("createWorkspaceAgentCapability", () => {
     // workspace has to be able to say so without giving up the projection.
     const base = scratch();
     const spy = vi.fn();
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       resolveClaudeAgent: scriptedQuery(spy),
       root: () => base,
       settingSources: ["user"],
@@ -510,7 +510,7 @@ describe("createWorkspaceAgentCapability", () => {
     // be a partial boundary nobody asked for.
     const base = scratch();
     const spy = vi.fn();
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       resolveClaudeAgent: scriptedQuery(spy),
       root: () => base,
       contain: false,
@@ -537,7 +537,7 @@ describe("createWorkspaceAgentCapability", () => {
     // here simulates the mechanism, only supplies the other party.
     const base = scratch();
     const otherRun = Symbol("other-run");
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       resolveClaudeAgent: (ctx: never) => ({
         query: async function* () {
           mkdirSync(join(base, "artifacts"), { recursive: true });
@@ -569,7 +569,7 @@ describe("createWorkspaceAgentCapability", () => {
 
       // And the path is on the record, because the fix for a contested path
       // is to stop two runs sharing it, which needs its name.
-      const rows = await result.resources[WORKSPACE_OUTCOMES]!.list();
+      const rows = await result.resources[CLAUDE_CODE_WORKSPACE_OUTCOMES]!.list();
       expect(rows).toHaveLength(1);
       expect(rows[0]!.state.kind).toBe("contested");
       expect(rows[0]!.state.path).toBe("artifacts/shared.md");
@@ -584,7 +584,7 @@ describe("createWorkspaceAgentCapability", () => {
     // two runs sharing a collection while touching different files.
     const base = scratch();
     const otherRun = Symbol("other-run");
-    const cap = createWorkspaceAgentCapability({
+    const cap = createClaudeCodeWorkspaceCapability({
       // Claimed off the same context, for the same reason as above: a key
       // spelled by hand would match nothing the projection asks about, and
       // this test would then pass with no claim held at all.
@@ -614,7 +614,7 @@ describe("createWorkspaceAgentCapability", () => {
       };
 
       expect(await result.resources.artifacts!.list()).toHaveLength(1);
-      expect(await result.resources[WORKSPACE_OUTCOMES]!.list()).toHaveLength(0);
+      expect(await result.resources[CLAUDE_CODE_WORKSPACE_OUTCOMES]!.list()).toHaveLength(0);
     } finally {
       sharedClaimRegistry.releaseAll(otherRun);
       discard(base);

@@ -21,7 +21,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
+import { readClaudeCodeUsage } from "@flow-state-dev/claude-code";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
@@ -92,7 +92,7 @@ const lab = await openLab({
   usage: {
     "claude-code": () => {
       const { reader } = JSON.parse(readFileSync(SETUP, "utf8")) as Setup;
-      return readClaudeUsage({
+      return readClaudeCodeUsage({
         env: { PATH: process.env.PATH ?? "", HOME: reader.home, ...(reader.apiKey === undefined ? {} : { ANTHROPIC_API_KEY: reader.apiKey }) },
       });
     },

@@ -41,8 +41,8 @@ import {
   checkClaudeCodeReadiness,
   claudeCodeAgent,
   listClaudeCodeModels,
-  type ResolveClaudeAgent,
-} from "@flow-state-dev/claude-code/sdk";
+  type ResolveClaudeCodeAgent,
+} from "@flow-state-dev/claude-code";
 
 import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
@@ -117,7 +117,7 @@ export const PRE_ALLOWED_TOOLS = ["Read", "Glob", "Grep"] as const;
 /** Test seams for the block: a stand-in for the Agent SDK. */
 export interface ClaudeCodeSeams {
   /** Replaces the SDK (and the scripted one test mode picks). */
-  readonly resolveClaudeAgent?: ResolveClaudeAgent;
+  readonly resolveClaudeAgent?: ResolveClaudeCodeAgent;
   /**
    * `false` builds the session flow without tool approvals, for a test of
    * something else on a host without durable execution (a turn with approvals

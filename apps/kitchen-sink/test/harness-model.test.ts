@@ -17,7 +17,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { testFlow } from "@flow-state-dev/testing";
-import type { ClaudeAgentQueryOptions, ResolveClaudeAgent } from "@flow-state-dev/claude-code/sdk";
+import type { ClaudeCodeQueryOptions, ResolveClaudeCodeAgent } from "@flow-state-dev/claude-code";
 import type { ResolveCodexClient } from "@flow-state-dev/codex";
 import type { ResolveCursorClient } from "@flow-state-dev/cursor";
 
@@ -76,11 +76,11 @@ interface Mode {
 function claudeCode(): Mode {
   const models: Array<string | undefined> = [];
   const scripted = scriptedClaudeCode();
-  const resolve: ResolveClaudeAgent = async (...args) => {
+  const resolve: ResolveClaudeCodeAgent = async (...args) => {
     const agent = await scripted(...args);
     return {
       query: (query) => {
-        models.push((query.options ?? ({} as ClaudeAgentQueryOptions)).model);
+        models.push((query.options ?? ({} as ClaudeCodeQueryOptions)).model);
         return agent.query(query);
       },
     };

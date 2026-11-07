@@ -4,7 +4,7 @@ import {
   drainUnsettledObservations,
   translateSdkMessage,
 } from "../../src/sdk/translate";
-import type { SdkMessageLike } from "../../src/sdk/types";
+import type { ClaudeCodeSdkMessage } from "../../src/sdk/types";
 
 /**
  * Translate a single message against a fresh state and return the events.
@@ -12,7 +12,7 @@ import type { SdkMessageLike } from "../../src/sdk/types";
  * surface their text/thinking content (the partials-ON skip is covered by its
  * own dedicated tests with an explicit `createTranslateState({ partialMessages: true })`).
  */
-function translateOne(msg: SdkMessageLike) {
+function translateOne(msg: ClaudeCodeSdkMessage) {
   const state = createTranslateState({ partialMessages: false });
   return translateSdkMessage(msg, state);
 }
@@ -429,14 +429,14 @@ describe("translateSdkMessage", () => {
       max_retries: 5,
       retry_delay_ms: 4200,
       error_status: 529,
-    } as SdkMessageLike);
+    } as ClaudeCodeSdkMessage);
     expect(events).toEqual([
       { kind: "status", message: "Claude Code is retrying a failed API call (attempt 2 of 5, in 5 s)…" },
     ]);
   });
 
   it("leaves the wait out of a retry that names none", () => {
-    const events = translateOne({ type: "system", subtype: "api_retry", attempt: 1, max_retries: 3 } as SdkMessageLike);
+    const events = translateOne({ type: "system", subtype: "api_retry", attempt: 1, max_retries: 3 } as ClaudeCodeSdkMessage);
     expect(events).toEqual([{ kind: "status", message: "Claude Code is retrying a failed API call (attempt 1 of 3)…" }]);
   });
 
@@ -448,7 +448,7 @@ describe("translateSdkMessage", () => {
         description: "Review the Codex package",
         last_tool_name: "Read",
         summary: "Reading the translate layer",
-      } as SdkMessageLike),
+      } as ClaudeCodeSdkMessage),
     ).toEqual([{ kind: "status", message: "Reading the translate layer" }]);
     expect(
       translateOne({
@@ -456,20 +456,20 @@ describe("translateSdkMessage", () => {
         subtype: "task_progress",
         description: "Review the Codex package",
         last_tool_name: "Read",
-      } as SdkMessageLike),
+      } as ClaudeCodeSdkMessage),
     ).toEqual([{ kind: "status", message: "Review the Codex package (Read)" }]);
   });
 
   it("says nothing for a sub-agent progress message with nothing to say", () => {
-    expect(translateOne({ type: "system", subtype: "task_progress" } as SdkMessageLike)).toEqual([]);
+    expect(translateOne({ type: "system", subtype: "task_progress" } as ClaudeCodeSdkMessage)).toEqual([]);
   });
 
   // A status line from a quiet stretch has to go when the stretch does: the
   // request's status slot shows the latest value for the whole run, so a line
   // left behind sits beside the answer that follows.
   describe("a status line for a quiet stretch", () => {
-    const retry = { type: "system", subtype: "api_retry", attempt: 1, max_retries: 3 } as SdkMessageLike;
-    const answer = { type: "assistant", message: { content: [{ type: "text", text: "hi" }] } } as SdkMessageLike;
+    const retry = { type: "system", subtype: "api_retry", attempt: 1, max_retries: 3 } as ClaudeCodeSdkMessage;
+    const answer = { type: "assistant", message: { content: [{ type: "text", text: "hi" }] } } as ClaudeCodeSdkMessage;
 
     it("clears once Claude Code produces output", () => {
       const state = createTranslateState({ partialMessages: false });
@@ -504,7 +504,7 @@ describe("translateSdkMessage", () => {
 
   it("falls back to the description when a sub-agent's summary is only whitespace", () => {
     expect(
-      translateOne({ type: "system", subtype: "task_progress", summary: "   ", description: "Review it" } as SdkMessageLike),
+      translateOne({ type: "system", subtype: "task_progress", summary: "   ", description: "Review it" } as ClaudeCodeSdkMessage),
     ).toEqual([{ kind: "status", message: "Review it" }]);
   });
 
@@ -538,7 +538,7 @@ describe("translateSdkMessage", () => {
       subtype: "error_some_future_mode",
       errors: ["nope"],
       session_id: "s",
-    } as SdkMessageLike);
+    } as ClaudeCodeSdkMessage);
     expect(events.map((e) => e.kind)).toEqual(["error", "result"]);
     expect(events.find((e) => e.kind === "error")).toMatchObject({ code: "error_some_future_mode" });
     // Unknown subtype normalizes to null on the result event (no typed value),
@@ -558,12 +558,12 @@ describe("translateSdkMessage", () => {
  */
 describe("translateSdkMessage — observed work", () => {
   /** Run a whole script against ONE state, so calls and results correlate. */
-  function translateScript(msgs: SdkMessageLike[]) {
+  function translateScript(msgs: ClaudeCodeSdkMessage[]) {
     const state = createTranslateState({ partialMessages: false });
     return msgs.flatMap((m) => translateSdkMessage(m, state));
   }
 
-  const writeCall: SdkMessageLike = {
+  const writeCall: ClaudeCodeSdkMessage = {
     type: "assistant",
     message: {
       content: [
@@ -581,7 +581,7 @@ describe("translateSdkMessage — observed work", () => {
    * The measured result shape: the block's `content` is the PROSE the model
    * sees, and the structured Output rides on the message as `tool_use_result`.
    */
-  const writeResult: SdkMessageLike = {
+  const writeResult: ClaudeCodeSdkMessage = {
     type: "user",
     tool_use_result: { type: "create", filePath: "/work/notes.txt", structuredPatch: [] },
     message: {
@@ -898,7 +898,7 @@ describe("translateSdkMessage — observed work", () => {
     expect(kinds).toEqual(["tool_call", "status", "file_op_observed", "tool_result", "file_op_observed", "status"]);
   });
 
-  const createCall: SdkMessageLike = {
+  const createCall: ClaudeCodeSdkMessage = {
     type: "assistant",
     message: {
       content: [
@@ -1260,7 +1260,7 @@ describe("translateSdkMessage — observed work", () => {
     // the honest answer, and the gap is what stops a reader trusting the
     // wording the row still carries.
     const state = createTranslateState({ partialMessages: false, inputsMayBeRevised: true });
-    const script: SdkMessageLike[] = [
+    const script: ClaudeCodeSdkMessage[] = [
       {
         type: "assistant",
         message: {
@@ -1295,7 +1295,7 @@ describe("translateSdkMessage — observed work", () => {
     // `tool_use` block showed, so the call-time value IS the confirmed one —
     // and refusing to record it would lose real information for no reason.
     const state = createTranslateState({ partialMessages: false, inputsMayBeRevised: false });
-    const script: SdkMessageLike[] = [
+    const script: ClaudeCodeSdkMessage[] = [
       {
         type: "assistant",
         message: {
