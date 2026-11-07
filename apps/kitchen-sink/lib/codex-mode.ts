@@ -45,7 +45,6 @@ import { mkdirSync } from "node:fs";
 import { delimiter } from "node:path";
 import { harnessEnv } from "@flow-state-dev/core/harness";
 import {
-  assertTestedSdkVersion,
   CODEX_PASS,
   CodexAgentAbortedError,
   checkCodexReadiness,
@@ -53,12 +52,9 @@ import {
   createDefaultResolveCodexClient,
   findCodexProgram,
   listCodexModels,
-  readInstalledCodexSdkVersion,
-  TESTED_SDK_VERSION,
   type CodexAgentOptions,
   type CodexClientOptions,
   type CodexThreadOptions,
-  type InstalledSdkVersionReader,
   type ResolveCodexClient,
 } from "@flow-state-dev/codex";
 
@@ -128,12 +124,12 @@ export function codexRepoLine(trust: HarnessTrust = harnessTrust()): RepoLine {
 }
 
 /** Whether this server runs the scripted Codex instead of the SDK. */
-export function codexIsScripted(env: Record<string, string | undefined> = process.env): boolean {
+function codexIsScripted(env: Record<string, string | undefined> = process.env): boolean {
   return env.KITCHEN_SINK_TEST_MODE === "1" && env.KITCHEN_SINK_REAL_HARNESS !== "1";
 }
 
 /** The SDK's thread options Codex mode runs with. The model is the session's, through the block's `model`. */
-export function codexThreadOptions(): CodexThreadOptions {
+function codexThreadOptions(): CodexThreadOptions {
   return {
     // No approval prompts: nobody is there to answer one, and nothing fences
     // the run either — Kitchen Sink confines no run (see the header).
@@ -259,7 +255,7 @@ export function codexBlockOptions(feeds: HarnessSessionFeeds, seams: CodexSeams 
  * neutral `HarnessBlock` (core's own note on that type). The other modes cast
  * the same way.
  */
-export function codexBlock(feeds: HarnessSessionFeeds, seams: CodexSeams = {}): HarnessBlock {
+function codexBlock(feeds: HarnessSessionFeeds, seams: CodexSeams = {}): HarnessBlock {
   return codexAgent(codexBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 
@@ -287,11 +283,9 @@ export function codexSessionFlow(seams: CodexSeams = {}) {
 
 /** What the mode's check asks of the host. Each a seam for tests. */
 export interface CodexHostChecks {
-  /** Which `@openai/codex-sdk` is installed beside the Codex package. */
-  readonly sdk: InstalledSdkVersionReader;
   /** Make the worktree root and return it, or throw why it can't be made. */
   readonly makeRoot: (repository: string) => string;
-  /** Whether Codex can run over the run's own environment (its SDK and sign-in), from the Codex package. No run. */
+  /** Whether Codex can run over the run's own environment (its SDK, in the range the package tested, and a sign-in), from the Codex package. No run. */
   readonly readiness: (env: Record<string, string>) => Promise<HarnessReadiness>;
 }
 
@@ -327,8 +321,7 @@ export async function userMcpServers(env: Record<string, string>): Promise<reado
 }
 
 /** The host's own answers. */
-export const HOST_CHECKS: CodexHostChecks = {
-  sdk: readInstalledCodexSdkVersion,
+export const CODEX_HOST_CHECKS: CodexHostChecks = {
   makeRoot: (repository) => {
     const root = worktreeRoot(repository);
     mkdirSync(root, { recursive: true });
@@ -340,28 +333,18 @@ export const HOST_CHECKS: CodexHostChecks = {
 };
 
 /**
- * Codex mode's own check, for the gate's mode-check slot: the pinned Codex SDK
- * is installed (the Codex package's own version refusal is the reason
- * otherwise), the worktree root can be made, and Codex is signed in over the
- * run's environment. The first that fails is the reason. Nothing is asked
- * about a sandbox: Kitchen Sink runs Codex with its sandbox off (see the
- * header).
+ * Codex mode's own check, for the gate's mode-check slot: the worktree root
+ * can be made, and the Codex package's readiness check passes over the run's
+ * environment (an SDK in the range the package tested, and a sign-in). The
+ * first that fails is the reason. Nothing is asked about a sandbox: Kitchen
+ * Sink runs Codex with its sandbox off (see the header).
  *
  * The block itself is built only once the mode is available, so another SDK
  * version is a reason here and never a crash at server start.
  */
-export function codexModeCheck(checks: CodexHostChecks = HOST_CHECKS): ModeCheck {
+export function codexModeCheck(checks: CodexHostChecks = CODEX_HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
     if (codexIsScripted()) return { available: true };
-    if (checks.sdk().kind === "absent") {
-      return { available: false, reason: `The Codex SDK is not installed. Install @openai/codex-sdk ${TESTED_SDK_VERSION}, then restart.` };
-    }
-    try {
-      // The gate `codexAgent` runs when it is built: it names both versions.
-      assertTestedSdkVersion(checks.sdk);
-    } catch (error) {
-      return { available: false, reason: error instanceof Error ? error.message : String(error) };
-    }
     let root: string;
     try {
       root = checks.makeRoot(repository);

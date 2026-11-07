@@ -528,7 +528,8 @@ export async function createTestContext<TInput = unknown>(
     orgId,
     response,
     stores,
-    modelResolver
+    modelResolver,
+    ...(options.signal === undefined ? {} : { signal: options.signal })
   });
 
   wrapScopeStateOps("request", ctx.request as unknown as Record<string, unknown>, stateChanges);

@@ -7,11 +7,26 @@
  * scripted `query` via their own resolver and never touch the real SDK.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { readInstalledSdkVersion, type InstalledSdkVersion, type TestedSdk } from "@flow-state-dev/core/internal";
 import { ClaudeAgentSdkNotInstalledError } from "./errors";
 import type { ClaudeAgentQuery, ResolveClaudeAgent, ResolvedClaudeAgent } from "./types";
 
 /** The SDK module path. Kept as a variable so bundlers don't eagerly resolve it. */
 const SDK_MODULE = "@anthropic-ai/claude-agent-sdk";
+
+/**
+ * The `@anthropic-ai/claude-agent-sdk` this package is tested against: its
+ * `peerDependencies` range. The lower bound is the version the lockfile pins;
+ * the span is the SDK's patch line, so an SDK patch needs no release of ours.
+ * `claudeCodeAgent` refuses to build against a version outside it, and the
+ * readiness check says so first (core's SDK gate).
+ */
+export const TESTED_CLAUDE_CODE_SDK: TestedSdk = { harness: "Claude Code", sdk: SDK_MODULE, range: ">=0.3.316 <0.4.0" };
+
+/** Which `@anthropic-ai/claude-agent-sdk` is installed beside this package, read the way core's SDK gate reads every harness's. */
+export function readInstalledClaudeCodeSdkVersion(): InstalledSdkVersion {
+  return readInstalledSdkVersion(SDK_MODULE, import.meta.url);
+}
 
 /**
  * How the resolver loads the SDK module. Defaults to a lazy dynamic `import`;

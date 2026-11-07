@@ -28,6 +28,7 @@ const INTERNAL_FILES = [
   "packages/core/src/blocks/wait-on-request.ts",
   "packages/core/src/execution/request-side-chain-pool.ts",
   "packages/core/src/helpers/cache-tokens.ts",
+  "packages/core/src/helpers/harness-sdk-version.ts",
   "packages/core/src/blocks/internal/replay-log.ts",
   "packages/core/src/blocks/internal/resolve-active-status-message.ts",
 ];
