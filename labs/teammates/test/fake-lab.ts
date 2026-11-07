@@ -5,8 +5,8 @@
  * in `src/` imports it.
  *
  * Three teammates, each with one conversation, and three hidden coding
- * workers, one per harness (Claude Code, Codex, Cursor). Your first ask to Chief of Staff makes it message researcher;
- * researcher looks the fact up and replies. Ask Chief of Staff to fix something and Chief of Staff
+ * workers, one per harness (Claude Code, Codex, Cursor). Your first ask to Lead makes it message researcher;
+ * researcher looks the fact up and replies. Ask Lead to fix something and Lead
  * starts a coding task on the agent you name, or on Claude Code, which runs in the working folder;
  * one on a harness the double is told isn't set up fails at once, saying so. Told to, a run asks
  * you a question before it edits, and waits for your review once it has committed. A run reports
@@ -17,7 +17,7 @@
  * publish and it waits for your yes first. Each worker
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
- * Chief of Staff's conversation starts past the 50-turn history window.
+ * Lead's conversation starts past the 50-turn history window.
  * `failTurn` leaves a failed turn in a conversation, as an engine `error` item
  * would; Retry runs that turn's line again.
  */
@@ -116,7 +116,7 @@ const WINDOW_TURNS = 50;
 const MINUTE = 60_000;
 
 const ROSTER: WorkerRow[] = [
-  { id: "teammates.chief-of-staff", name: "Chief of Staff", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
+  { id: "teammates.chief-of-staff", name: "Lead", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
   { id: "teammates.researcher", name: "researcher", icon: "🔎", color: "teal", role: "Finds facts for the team, and replies to whoever asked." },
   { id: "teammates.writer", name: "writer", icon: "✎", color: "violet", role: "Drafts and tightens copy when you or another worker asks." },
   { id: "teammates.claude-code", name: "Claude Code", role: "Runs coding tasks on Claude Code.", takesTasks: true, harness: "claude-code" },
@@ -126,7 +126,7 @@ const ROSTER: WorkerRow[] = [
 const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
 const WRITER = "teammates.writer";
-/** The coding worker a task that names no harness goes to: Chief of Staff's default. */
+/** The coding worker a task that names no harness goes to: Lead's default. */
 const DEFAULT_CODER = "teammates.cursor";
 
 type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: TalkRow } | { kind: "result"; task: BoardTask };
@@ -150,7 +150,7 @@ interface FixtureWorker {
 /** A scripted step: wait, then run. */
 type Step = [delayMs: number, run: () => void];
 
-/** Planning chatter for Chief of Staff's older turns. */
+/** Planning chatter for Lead's older turns. */
 const OLDER_TURNS: [string, string][] = [
   ["Who is the post for?", "Teams that sync files across offices. I'd write for the person who sets it up."],
   ["List the launch channels.", "The blog, the changelog, and the newsletter a day later."],
@@ -407,7 +407,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
         [600, sendMessage(w, RESEARCHER, "What's our launch date?")],
       ];
     }
-    // Chief of Staff thinks longer than researcher looks a fact up, so a reply can arrive while you talk to Chief of Staff.
+    // Lead thinks longer than researcher looks a fact up, so a reply can arrive while you talk to Lead.
     return [[w.row.id === LEAD ? 6000 : 900, say(w, `Noted: "${job.text}" I've folded it into the plan.`)]];
   };
 
@@ -441,7 +441,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     startNext(w);
   };
 
-  // Seed: Chief of Staff's conversation runs two turns past the window, with an exchange with writer near its end.
+  // Seed: Lead's conversation runs two turns past the window, with an exchange with writer near its end.
   const seed = (w: FixtureWorker, entries: ConversationEntry[], lastActiveAt: number) => {
     w.entries = entries;
     w.lastActiveAt = lastActiveAt;
@@ -663,7 +663,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       return watch(() => onChange(reviews.get(runSessionId)));
     },
 
-    async answerTask(_sessionId, taskId, answer) {
+    async answerOpenHold(_sessionId, taskId, answer) {
       const go = waits.get(taskId);
       if (go === undefined) throw new Error(`This task isn't waiting on you.`);
       go(answer);

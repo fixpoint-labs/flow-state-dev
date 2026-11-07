@@ -21,7 +21,7 @@ import { TeammatePanel } from "../src/components/TeammatePanel";
 afterEach(cleanup);
 
 const MIN = 60_000;
-const worker = { id: "cos", name: "Chief of Staff", role: "Runs the team", own: false } as WorkerRow;
+const worker = { id: "lead", name: "Lead", role: "Runs the team", own: false } as WorkerRow;
 
 /** A board row as `listTasks` answers it. */
 const listed = (id: string, status: string, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }) => ({
@@ -48,7 +48,7 @@ function panel(rows: Record<string, any>[], connection: SessionConnectionState =
   render(
     <TeammatePanel adapter={adapter} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} onOpen={() => {}} />,
   );
-  return screen.getByRole("complementary", { name: "Chief of Staff's panel" });
+  return screen.getByRole("complementary", { name: "Lead's panel" });
 }
 
 describe("a teammate's task rows and their time", () => {

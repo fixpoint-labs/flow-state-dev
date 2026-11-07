@@ -26,7 +26,7 @@ describe("the worker list follows the roster", () => {
   it("shows a teammate hired elsewhere, and drops it when it is fired elsewhere", async () => {
     const lab = createFixtureLab({ speed: 0.05 });
     render(<App adapter={lab} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
     expect(listed()).not.toContain("scribe");
 
     // Another tab's hire: the adapter, not this page, makes it.
@@ -48,7 +48,7 @@ describe("the worker list follows the roster", () => {
       },
     };
     render(<App adapter={counted} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
     await act(async () => void (await lab.hire({ name: "scribe", role: "Takes notes", instructions: "" })));
     await waitFor(() => expect(listed()).toContain("scribe"));
     expect(watches).toBe(1);
@@ -63,14 +63,14 @@ describe("the worker list follows the roster", () => {
         workerId === "scribe" && refuse ? Promise.reject(new TypeError("fetch failed")) : lab.openConversation(workerId),
     };
     render(<App adapter={flaky} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
 
     // The hire's conversation fails to open: the roster still lands, and so does the next change.
     await act(async () => void (await lab.hire({ name: "scribe", role: "Takes notes", instructions: "" })));
     await waitFor(() => expect(listed()).toContain("scribe"));
     await act(async () => void (await lab.hire({ name: "editor", role: "Edits", instructions: "" })));
     await waitFor(() => expect(listed()).toContain("editor"));
-    expect(screen.getByLabelText("Message Chief of Staff")).toBeTruthy();
+    expect(screen.getByLabelText("Message Lead")).toBeTruthy();
 
     // Picked once the lab answers again, its conversation opens.
     refuse = false;
@@ -82,7 +82,7 @@ describe("the worker list follows the roster", () => {
   it("opens a teammate hired here with the cursor in its composer, once its row lands", async () => {
     const lab = createFixtureLab({ speed: 0.05 });
     render(<App adapter={lab} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
     fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
     const form = screen.getByRole("form", { name: "Hire a teammate" });
     fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "scribe" } });

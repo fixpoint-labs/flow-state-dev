@@ -138,6 +138,55 @@ describe("words with live meanings elsewhere count on Workforce's ground only", 
   });
 });
 
+describe("contributor docs and skills are read for retired names, not English meanings", () => {
+  // A skill author writing plain English shouldn't fight CI; a retired name in a skill misleads an agent.
+  it("counts a retired name in a skill and a contributor doc, and leaves the English 'room' alone there", () => {
+    const r = run({
+      ".agents/skills/zz/SKILL.md": "Each seat runs on its own branch.\nKeep the room tidy.\n",
+      "docs/contributing/zz.md": "Locality is decided by `isInProcessDispatcher`.\n", // retired-name-refusal: a planted name
+    });
+    expect(counted(r)).toEqual([".agents/skills/zz/SKILL.md:1:seat", "docs/contributing/zz.md:1:isInProcessDispatcher"]); // retired-name-refusal: the planted name
+  });
+
+  it("still counts the meaning in code, where the same line is refused", () => {
+    const r = run({ "packages/workforce/src/zz.ts": "// Keep the room tidy.\n" });
+    expect(counted(r)).toEqual(["packages/workforce/src/zz.ts:1:room"]);
+  });
+
+  // A name rule keeps its encoding in the contributor trees: a code rule reads their scripts, a page
+  // rule their markdown. If the two swapped, a retired symbol in a skill's prose would be refused as code.
+  const PATHS = [
+    ".agents/workflows/zz.js",
+    ".agents/skills/zz/SKILL.md",
+    "CLAUDE.md",
+    "docs/contributing/zz.md",
+    "labs/zz/NOTES.md",
+    "labs/zz/src/zz.ts",
+  ];
+  const reads = (id: string): string[] => {
+    const rule = (SWEEP_RULES as { id: string; files: RegExp }[]).find((r) => r.id === id);
+    if (rule === undefined) throw new Error(`no sweep rule ${id}`);
+    return PATHS.filter((p) => rule.files.test(p));
+  };
+
+  it("reads a code name rule in the contributor trees' scripts, not their markdown", () => {
+    expect(reads("ask-symbol")).toEqual([".agents/workflows/zz.js", "labs/zz/src/zz.ts"]);
+  });
+
+  it("reads a page name rule in the contributor trees' markdown, not their scripts", () => {
+    expect(reads("ask-symbol-in-docs")).toEqual([
+      ".agents/skills/zz/SKILL.md",
+      "CLAUDE.md",
+      "docs/contributing/zz.md",
+      "labs/zz/NOTES.md",
+    ]);
+  });
+
+  it("keeps a meaning rule out of the contributor trees", () => {
+    expect(reads("ask-prose")).toEqual(["labs/zz/src/zz.ts"]);
+  });
+});
+
 describe("totality: every file has an area, every exception earns its place", () => {
   it("passes a fixture with nothing retired in it", () => {
     const r = run({ "packages/workforce/src/zz.ts": "// a coordinator hands each post to a delegate\n" });

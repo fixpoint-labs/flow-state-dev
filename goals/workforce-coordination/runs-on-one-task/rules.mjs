@@ -12,7 +12,10 @@
  * {@link TOOLS_ALLOWED}, and added the worker's `holdTaskForUser` and `suspendForUser`; FIX-2383
  * added `retryTask`, an action a turn is never offered.
  */
-import { REFUSAL_MARKER, ROOTS } from "../../../docs/contributing/glossary.mjs";
+import { REFUSAL_MARKER } from "../../../docs/contributing/glossary.mjs";
+
+/** The roots this sweep reads: the code, published docs, pending notes and goals the removed rule could reach. */
+const ROOTS = ["packages", "apps", "docs/architecture", ".changeset", "goals"];
 
 export { REFUSAL_MARKER, ROOTS };
 

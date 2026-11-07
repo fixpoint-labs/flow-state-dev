@@ -131,11 +131,14 @@ const applyStrip = (e, path, line) => {
 export function scanFile(path, text, exceptions, stripped = {}) {
   const hits = [];
   const onGround = workforceGround(path, text);
+  // A contributor area reads retired names only, never an English meaning (FIX-2354 D1).
+  const namesOnly = areaOf(path)?.reach === "name";
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     for (const term of TERMS) {
       if (term.ground === "workforce" && !onGround(i)) continue;
+      if (namesOnly && term.reach === "meaning") continue;
       if (count(term.re, raw) === 0) continue;
       let line = raw;
       for (const e of exceptions) {
@@ -450,6 +453,9 @@ export const PLANTS = [
   // A resource in a collection named as a row, refused on an added line. In memory, so the control does not need a dirty tree.
   { path: "packages/orchestration/src/tasks/collection/zz-planted.ts", line: "export type WidgetRow = { id: string };", term: "collection-row" },
   { path: "apps/docs/docs/zz-collection-planted.md", line: "Each collection row is stored beside the worker.", term: "collection-row" },
+  // A retired name in a contributor doc and in a skill, the trees agents read most (FIX-2354).
+  { path: "docs/contributing/zz-planted.md", line: "Locality is decided by `isInProcessDispatcher`.", term: "isInProcessDispatcher" },
+  { path: ".agents/skills/zz-planted/SKILL.md", line: "Locality is decided by `isInProcessDispatcher`.", term: "isInProcessDispatcher" },
 ];
 
 /** An exception that matches nothing, which the run must report stale. */

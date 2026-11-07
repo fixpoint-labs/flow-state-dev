@@ -192,7 +192,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
     task && waiting === "review" ? (
       <TaskReview adapter={adapter} sessionId={popup.sessionId} task={task} onAnswered={decided} />
     ) : task && waiting === "question" ? (
-      <TaskQuestion adapter={adapter} sessionId={popup.sessionId} task={task} />
+      <QuestionPopup adapter={adapter} sessionId={popup.sessionId} task={task} />
     ) : null;
   const waitsOnPullRequest = task?.boardStatus === "in_progress" && task.pullRequests !== undefined;
   const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : waitsOnPullRequest ? "PR open" : task?.status;
@@ -288,7 +288,7 @@ function TaskReview({ adapter, sessionId, task, onAnswered }: {
       review={review}
       prompt={review === undefined ? task.waiting?.prompt : undefined}
       answer={async (answer) => {
-        await adapter.answerTask(sessionId, task.id, answer);
+        await adapter.answerOpenHold(sessionId, task.id, answer);
         onAnswered(answer);
       }}
       unanswerable={task.waiting?.unanswerable ?? null}
@@ -298,7 +298,7 @@ function TaskReview({ adapter, sessionId, task, onAnswered }: {
 }
 
 /** A question the task's run asked you, with a box for your answer; the run goes on with it. */
-function TaskQuestion({ adapter, sessionId, task }: { adapter: LabAdapter; sessionId: string; task: BoardTask }) {
+function QuestionPopup({ adapter, sessionId, task }: { adapter: LabAdapter; sessionId: string; task: BoardTask }) {
   const [words, setWords] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -309,7 +309,7 @@ function TaskQuestion({ adapter, sessionId, task }: { adapter: LabAdapter; sessi
     setPending(true);
     setError(null);
     try {
-      await adapter.answerTask(sessionId, task.id, { text });
+      await adapter.answerOpenHold(sessionId, task.id, { text });
       setWords("");
     } catch (failed) {
       setError(failed instanceof Error ? failed.message : String(failed));

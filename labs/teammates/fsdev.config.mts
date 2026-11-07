@@ -2,7 +2,7 @@
  * The Teammates lab's server, as `fsdev dev --app @flow-state-dev/teammates`
  * loads it from this folder. Everything is read from the environment:
  *
- * - `TEAMMATES_MODEL`: the model Chief of Staff, researcher and writer answer on
+ * - `TEAMMATES_MODEL`: the model Lead, researcher and writer answer on
  *   (default `openai/gpt-6-luna`).
  * - `TEAMMATES_WORKDIR`: the working folder, an absolute path to a git
  *   checkout (default: the root of the repository this lab lives in). Coding

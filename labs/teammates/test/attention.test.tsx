@@ -165,7 +165,7 @@ describe("a teammate waiting on your yes, on screen", () => {
     await act(async () => fireEvent.click(within(workers()).getByRole("checkbox", { name: "Notify me" })));
     expect((within(workers()).getByRole("checkbox", { name: "Notify me" }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(row("writer"));
-    // The tab goes to the background before the ask arrives.
+    // The tab goes to the background before the question arrives.
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
     const box = await screen.findByLabelText("Message writer");
     await act(async () => {

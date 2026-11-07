@@ -4,7 +4,7 @@
  * coding flow, and a store. `fsdev.config.mts` calls
  * {@link openTeammates} and default-exports the `FlowState` it returns.
  *
- * - **Chief of Staff, researcher and writer** run on the built-in `agent` flow, so each
+ * - **Lead, researcher and writer** run on the built-in `agent` flow, so each
  *   has `sendMessage` and one conversation where messages land. Memory is
  *   composed in through `uses` (read) and `afterAnswer` (record each turn).
  *   A history summary keeps what was said before the history window: its
@@ -21,7 +21,7 @@
  *   with a sentence that names it and says what to run.
  * - **Readiness** (harness-manager's `harnessReadiness`, one check per
  *   harness from its integration): read once at start and logged as a table,
- *   put in the workers' context so Chief of Staff files coding work only on a
+ *   put in the workers' context so Lead files coding work only on a
  *   ready harness, and served as the `harness-readiness` flow's `read` action,
  *   which `{ refresh: true }` reads again.
  * - **The working folder** is one git checkout the operator names. It is the
@@ -90,7 +90,7 @@ const UTILITY_MODEL = "openai/gpt-6-luna";
 export interface TeammatesOptions {
   /** The SQLite file the lab keeps everything in. */
   store: string;
-  /** The model Chief of Staff, researcher and writer answer on, and memory records with. */
+  /** The model Lead, researcher and writer answer on, and memory records with. */
   model: string;
   /** The user the page acts as. */
   userId: string;
@@ -355,7 +355,7 @@ export async function openTeammates(options: TeammatesOptions) {
         uses: [
           mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }),
           earlier.capability,
-          // Offered to a worker whose file picks `consultSessions: [consult]` (Chief of Staff).
+          // Offered to a worker whose file picks `consultSessions: [consult]` (Lead).
           consultSessionsCapability(installation),
           // Which harnesses can run here, so a coding task is filed only on a ready one.
           harnessReadinessCapability(readiness),

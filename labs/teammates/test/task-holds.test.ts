@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { holdsOfRows, reviewOf, toBoardTask } from "../src/adapter";
 
-const CONVERSATION = "sess-cos";
+const CONVERSATION = "sess-lead";
 const RUN = "sess-run";
 
 /** A coding task's row as the board's stream carries it, holding `holds`. */

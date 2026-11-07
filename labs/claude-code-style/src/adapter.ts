@@ -175,7 +175,7 @@ export interface TaskRow {
   /** The worker's last one-line progress note. */
   statusNote?: string;
   /** What the task waits on you for: a question it holds on, or its run's stop for your approval or review. */
-  waitingOn?: { kind: "approval" | "input" | "review" | "question"; prompt: string };
+  openHold?: { kind: "approval" | "input" | "review" | "question"; prompt: string };
   /** The coding harness the assignee runs through, from its `harness` setting; none for a plain worker. */
   harness?: string;
   /**
@@ -910,7 +910,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
     return new Map(items.flatMap((item) => (item.task === null ? [] : [[item.task.taskId, [...item.holds]] as const])));
   };
 
-  /** A session's tasks, each with what its first open hold waits on you for: the one place a hold becomes a row's `waitingOn`. */
+  /** A session's tasks, each with what its first open hold waits on you for: the one place a hold becomes a row's `openHold`. */
   const listedWithWaitingOn = async (sessionId: string): Promise<Listed[]> => {
     const listed = await tasksOf(sessionId);
     const holds = await holdsOf(sessionId, listed);
@@ -918,7 +918,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
       const hold = holds.get(task.id)?.[0];
       return hold === undefined
         ? task
-        : { ...task, waitingOn: { kind: hold.ask.kind === "confirm" ? "input" : hold.ask.kind, prompt: hold.ask.prompt } };
+        : { ...task, openHold: { kind: hold.ask.kind === "confirm" ? "input" : hold.ask.kind, prompt: hold.ask.prompt } };
     });
   };
 

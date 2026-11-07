@@ -10,7 +10,7 @@ import { ReviewHold } from "./flow-state/review-hold";
  * than the stop's raw prompt.
  */
 export function ReviewCard({ task, review }: { task: TaskRow; review: ReviewDetail | undefined }) {
-  const note = review === undefined && task.harness === undefined ? task.waitingOn?.prompt : undefined;
+  const note = review === undefined && task.harness === undefined ? task.openHold?.prompt : undefined;
   return (
     <div className="min-w-0">
       <ReviewHold review={review} prompt={note} />

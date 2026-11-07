@@ -1,6 +1,6 @@
 /**
  * Goal check: the closure's seven asks in the Teammates lab (FIX-2541). A user
- * of the lab asks Chief of Staff the date, a one-line question, a task its
+ * of the lab asks Lead the date, a one-line question, a task its
  * skill fits, a code change, and (after a long conversation) a decision made
  * at its start; and asks researcher a multi-file question and a knowledge
  * question over the working folder. Each reply is graded on what the user

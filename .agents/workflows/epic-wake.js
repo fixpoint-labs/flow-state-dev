@@ -1310,7 +1310,7 @@ function nextRow(row, { worker, action, landed, folded }) {
     // spec PR actually existing, ends it.
     specRequired: worker.specRequired || row.specRequired || null,
     blocker: worker.blocker || unsettledBlocker || null,
-    // CONSUMED by this dispatch, which carried it in the prompt. A one-shot handoff, not durable
+    // CONSUMED by this dispatch, which carried it in the prompt. Carried once, not durable
     // state: left set, every later worker on this row would be told an already-implemented decision
     // was fresh. A worker that DIED never reaches `nextRow`, so a failed dispatch leaves the
     // resolution intact for the retry — the same rule as the cursor.
@@ -1692,7 +1692,7 @@ function foldMultiPrScan(row, fresh, refreshedLive) {
     // blocker goes with it. Same rule every other scan-derived field in this function follows.
     //
     // But only on a LIVE, COMPLETE scan. A dead scout leaves `fresh` empty and a partial multi-PR scan can
-    // omit the handle, and in both cases "no closed handle reported" is indistinguishable from "reopened" —
+    // omit the handle, and in both cases "no closed handle reported" is indistinguishable from a reopened handle —
     // so clearing on absence released the row on the strength of an observation nobody made, and dispatched
     // work against a handle that is still dead. Absence of evidence is the one thing this file has learned
     // never to read as evidence.
@@ -3272,10 +3272,10 @@ crossSpecHold =
 // No "and the set has two entries" clause: the hold already requires `set + coming > 1`, so with nothing
 // still coming the set holds at least two by construction. Adding it back would be a guard that cannot
 // fire, and the surfaced `issueIds` relies on that derivation rather than on a second test of it.
-const crossSpecAskable = crossSpecHold && crossSpecComing.length === 0
+const crossSpecReady = crossSpecHold && crossSpecComing.length === 0
 if (crossSpecHold && refreshed.some((r) => r.specApproved && !POST_SPEC_PHASES.has(r.phase))) {
   log(
-    crossSpecAskable
+    crossSpecReady
       ? `All ${crossSpecSet.length} specs in the set are individually approved — holding implementation until the cross-spec coherence pass clears. Surface it: the user approves running it.`
       : `Holding approved specs: the cross-spec coherence pass has not cleared, and the set is checked before any of it is built. Not askable yet — ${crossSpecComing.map((r) => r.id).join(', ')} ${crossSpecComing.length === 1 ? 'has' : 'have'} no approved spec.`,
   )
@@ -3455,7 +3455,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
               // feature spec that says so up front). Sending only the generic line makes the fresh
               // worker redo the diagnosis that produced the promotion — and it may well conclude the
               // issue is a clear-repro bug and refuse the spec route, which cycles the row between
-              // promotion and reclassification forever. Same handoff rule as a blocker resolution.
+              // promotion and reclassification forever. Same carry-once rule as a blocker resolution.
               (item.row.specRequired
                 ? `This bug was PROMOTED to the spec route by an earlier worker. Its reason, verbatim: "${item.row.specRequired}". Shape the spec around that override (see issue-spec → "Who gets a spec") and do not re-litigate the promotion.\n`
                 : '')) +
@@ -4179,8 +4179,8 @@ return {
   // hold above would be a silent stall rather than a question waiting on an answer.
   // The set the ask was decided on, verbatim — a list derived a second time here is a list that can
   // disagree with the question, which is how the pass came to be handed a subset and told the rest was
-  // reviewed. Askable already guarantees this has at least two entries.
-  ...(crossSpecAskable ? { crossSpecGate: { issueIds: crossSpecSet.map((r) => r.id) } } : {}),
+  // reviewed. crossSpecReady already guarantees this has at least two entries.
+  ...(crossSpecReady ? { crossSpecGate: { issueIds: crossSpecSet.map((r) => r.id) } } : {}),
   // The evidence behind every row-level INCONCLUSIVE, so the coordinator can put the question with
   // what the POC found rather than just the claim text.
   unsettled: issues.filter((r) => (r.unsettled || []).length).map((r) => ({ issueId: r.id, unsettled: r.unsettled })),

@@ -29,7 +29,7 @@
  * |                     | and each linked run's session, where the run writes its row (its holds)      |
  * |                     | and `taskRowView` with the Inbox's holds (`inboxItems`), for what it waits on |
  * |                     | you for, and what its runs spent (the harness and model they reported)       |
- * | `answerTask`        | the Inbox client's `answerOne`, on the task's open question or review         |
+ * | `answerOpenHold`        | the Inbox client's `answerOne`, on the task's open question or review         |
  * | `taskActions`       | the Inbox client's `board(at)` on the conversation that filed the task, its   |
  * |                     | `"tasks"` board: cancel, steer, release, retry, and `refile` for a re-run      |
  * | `watchReview`       | the run's review stop, read by harness-manager's browser `reviewDetail`        |
@@ -135,7 +135,7 @@ export interface WorkerRow {
 export interface NewTeammate {
   /** Its name, which is its id on the roster: one word, lowercase. */
   name: string;
-  /** One line on what it does: Chief of Staff reads it to know who to ask. */
+  /** One line on what it does: Lead reads it to know who to ask. */
   role: string;
   instructions: string;
 }
@@ -430,7 +430,7 @@ export interface LabAdapter {
   /** The run's latest review, read from its stop; `undefined` until it stops for one. */
   watchReview(runSessionId: string, onChange: (review: ReviewDetail | undefined) => void): Unsubscribe;
   /** Answer what a task waits on you for; the run goes on, or the task completes on an accept. */
-  answerTask(sessionId: string, taskId: string, answer: TaskAnswer): Promise<void>;
+  answerOpenHold(sessionId: string, taskId: string, answer: TaskAnswer): Promise<void>;
   /** The board's actions on the tasks conversation `sessionId` filed, sent to that conversation's board. */
   taskActions(sessionId: string): TaskActions;
   /**
@@ -1146,7 +1146,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const inbox = createInboxClient(client);
   /** The flow each run session belongs to, where a run's stop is answered. Kept, since a session's flow never changes. */
   const runFlows = new Map<string, string>();
-  /** Each conversation's tasks' open holds, from its last read: what `answerTask` answers. */
+  /** Each conversation's tasks' open holds, from its last read: what `answerOpenHold` answers. */
   const openHolds = new Map<string, Map<string, InboxHold[]>>();
   const feeds = sessionFeeds(client);
   /** Each worker's conversation, and the flow it runs on, once opened. */
@@ -1576,7 +1576,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         },
       };
     },
-    async answerTask(sessionId, taskId, answer) {
+    async answerOpenHold(sessionId, taskId, answer) {
       const kind = "text" in answer ? "question" : "review";
       const hold = openHolds.get(sessionId)?.get(taskId)?.find((h) => h.ask.kind === kind);
       if (hold === undefined) throw new Error(`This task isn't waiting on your ${kind === "question" ? "answer" : "review"} any more.`);

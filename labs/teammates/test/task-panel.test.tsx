@@ -38,7 +38,7 @@ const TASKS: BoardTask[] = [
   task("c1", { status: "cancelled", boardStatus: "cancelled" }, { completedAt: NOW - MIN }),
 ];
 
-const worker: WorkerRow = { id: "chief", name: "Chief of Staff", role: "Routes work", instructions: "", own: false } as WorkerRow;
+const worker: WorkerRow = { id: "chief", name: "Lead", role: "Routes work", instructions: "", own: false } as WorkerRow;
 
 /** Just what the panel watches: one conversation's tasks, and a connection that never went stale. */
 const adapter = {
@@ -48,7 +48,7 @@ const adapter = {
 
 function renderPanel() {
   render(<TeammatePanel adapter={adapter} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => lookOf({ id: "x", name: "x" })} isCoding={() => false} onOpen={() => {}} />);
-  return screen.getByRole("complementary", { name: "Chief of Staff's panel" });
+  return screen.getByRole("complementary", { name: "Lead's panel" });
 }
 
 const rows = (list: HTMLElement) => within(list).getAllByRole("button").map((b) => b.getAttribute("aria-label"));

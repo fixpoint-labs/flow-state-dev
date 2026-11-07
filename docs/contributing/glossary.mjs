@@ -17,7 +17,8 @@
  * 1. {@link ENTRIES}: each term, what it means, the decision behind it, and the words it retires.
  *    The published glossary page defines every entry flagged `published: true`.
  * 2. {@link EXEMPTIONS}: each place a retired word is kept on purpose, with its reason.
- * 3. Where the checks read: {@link ROOTS} and {@link EXCLUDE} (the sweep), {@link AREAS} (the guard).
+ * 3. Where the checks read: {@link CONTRIBUTOR} (both, for names), {@link EXCLUDE} (the sweep), {@link AREAS}
+ *    (the guard).
  *
  * ## Retiring a word
  *
@@ -30,8 +31,9 @@
  * `"guard"` (a global `re`, optionally on Workforce's `ground` only), `"side-chain"` (an identifier,
  * matched on the syntax tree), or `"added-lines"` (the guard's scan of the lines a change adds).
  *
- * `reach` is `"name"` (an identifier or a term, read in every tree the checks read; the default) or
- * `"meaning"` (an English word refused in one sense, read in code and published pages only).
+ * `reach` is `"name"` (an identifier or a term, read in every tree the checks read, the contributor
+ * trees included; the default) or `"meaning"` (an English word refused in one sense, read in code
+ * and published pages only).
  *
  * ## Keeping a word
  *
@@ -49,14 +51,26 @@ export const REFUSAL_MARKER = "retired-name-refusal";
 // File scopes the entries below use. A sweep retirement's `files` is one of these.
 // ---------------------------------------------------------------------------------------------
 
-const CODE = /^(packages|apps)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/;
+// A lab or an example is read like a package (FIX-2354).
+const CODE = /^(packages|apps|labs|examples)\/.*\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/;
 const PUBLISHED = /^(apps\/docs\/(docs|guides)\/.*\.(md|mdx|svg)|packages\/[^/]+\/README\.md|docs\/architecture\/.*\.md)$/;
 const CODE_OR_PUBLISHED = new RegExp(`${CODE.source}|${PUBLISHED.source}`);
 const PENDING_NOTES = /^(\.changeset\/.*\.md|goals\/.*\.(md|mts|ts))$/;
 const CODE_PUBLISHED_OR_NOTES = new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`);
 
+/**
+ * The trees a contributor or an agent reads: the contributor docs, the skills and workflows, the
+ * root instruction files, the pending release notes, and the notes beside a lab or an example.
+ * Both checks read them for retired names, never for English meanings (FIX-2354 D1).
+ */
+const CONTRIBUTOR = /^(docs\/contributing\/|\.agents\/|docs\/(philosophy|objectives)\.md$|docs\/mechanisms\/|(CLAUDE|AGENTS|CONTRIBUTING|README)\.md$|\.changeset\/[^/]+\.md$|(labs|examples)\/.*\.(md|mdx)$)/;
+
 /** Where a retirement of each reach is read by the sweep, when it names no `files` of its own. */
-const REACH_FILES ={ name: CODE_PUBLISHED_OR_NOTES, meaning: CODE_OR_PUBLISHED };
+const REACH_FILES = { name: CODE_PUBLISHED_OR_NOTES, meaning: CODE_OR_PUBLISHED };
+
+/** FIX-2354: the contributor files that name the fixpoint-labs/agent-mailbox board, where agents outside a session talk. */
+const AGENT_MAILBOX_FILES =
+  /^(\.agents\/skills\/(agent-mailbox|epic-lifecycle|fsd-coding|issue-implement|issue-lifecycle|review)\/SKILL\.md|\.agents\/subagents\/issue-worker\.md|\.agents\/workflows\/(epic-wake\.js|verify\.mjs)|CLAUDE\.md|docs\/contributing\/(development-setup|orchestration|spec-template)\.md)$/;
 
 /** FIX-2248: the goal folders that named a seat or a mailbox (or a person for the user), exact names only. */
 const SEAT_MAILBOX_GOAL_NAMES = [
@@ -244,13 +258,34 @@ export const ENTRIES = [
     means: "The dispatcher block, and only it.",
     decision: "FIX-2245",
     retires: [
+      // A board's rule for the next task is a ClaimOrder; what decides where a flow action runs is a
+      // FlowRunner. Their old names are bare, so the sweep and the guard both refuse them (FIX-2354).
+      ...[
+        "TaskDispatcher",
+        "fifoDispatcher",
+        "topologicalDispatcher",
+        "priorityDispatcher",
+        "runOwnerDispatcher",
+        "TaskBoardDispatcherInput",
+        "resolveDispatcher",
+        "FlowDispatcher",
+        "InProcessDispatcher",
+        "InProcessDispatcherDeps",
+        "createInProcessDispatcher",
+        "isInProcessDispatcher",
+        "createWorkerDispatcher",
+        "CreateWorkerDispatcher",
+        "createWorkerDispatcherOptions",
+        "CreateWorkerDispatcherOptions",
+        "WorkerDispatcher",
+        "usesExternalDispatcher",
+      ].map((name) => ({ name })),
       {
-        id: "dispatcher-names",
+        id: "dispatcher-paths",
         check: "sweep",
         files: CODE_OR_PUBLISHED,
-        // A board's rule for the next task is a ClaimOrder; what decides where a flow action runs is a
-        // FlowRunner. Both pick up their old helpers and files.
-        pattern: /\b(TaskDispatcher|(fifo|topological|priority|runOwner)Dispatcher|TaskBoardDispatcherInput|resolveDispatcher|FlowDispatcher|InProcessDispatcher(Deps)?|(create|is)InProcessDispatcher|(create|Create)WorkerDispatcher(Options)?|WorkerDispatcher|usesExternalDispatcher)\b|tasks\/dispatchers\/|in-process-dispatcher/,
+        // The old files and folders, by path and where a line names one.
+        pattern: /tasks\/dispatchers\/|in-process-dispatcher/,
         pathName: /(^|\/)(in-process-dispatcher\.ts|run-owner-dispatcher\.spec\.ts)$|\/tasks\/dispatchers\/|^packages\/engine\/src\/transports\/dispatcher\.ts$|^packages\/bullmq\/(src|test)\/dispatcher\.(test\.)?ts$/,
       },
     ],
@@ -533,6 +568,8 @@ export const ENTRIES = [
       {
         id: "room",
         check: "guard",
+        // An English word too ("room to grow"): read in code and published pages only (FIX-2354 D1).
+        reach: "meaning",
         re: /\b[Rr]ooms?\b|room-(?:lines|seq|answers|deliveries)|Room[A-Z]\w*|\broom[A-Z]\w*|\bROOM_\w*/g,
         say: "the project coordinator",
       },
@@ -685,6 +722,12 @@ const EXEMPTIONS = [
     line: /^\| \d{4}-\d{2}-\d{2} \|/,
     rules: ["human-reasons"],
     why: "FIX-2151: a goal's dated verdict row records a past run under the reasons it ran with: history",
+  },
+  {
+    path: /^labs\/teammates\/(?:src|test)\/|^labs\/teammates\/workforce\/teams\/teammates\/workers\/chief-of-staff\/WORKER\.md$/,
+    line: /\bteammates\.chief-of-staff\b|^\(file path\)$/,
+    rules: ["shift-coordinator-names"],
+    why: "FIX-2354: the Teammates lab's Lead keeps its stored worker id `teammates.chief-of-staff` (its folder and roster key): stored worker id — renaming strands persisted conversations (BP-030). The name a person reads is Lead",
   },
   {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
@@ -851,7 +894,7 @@ const EXEMPTIONS = [
     why: "WR-25b: FIX-1872's sentences that the tool was named handOff and a worker file naming it is refused; a page can't carry the marker",
   },
   {
-    path: /^(packages|apps|docs\/architecture)\//,
+    path: /^(packages|apps|labs|examples|docs\/architecture|\.agents)\//,
     // A capitalized English verb ("Ask the team anything.", "Asked of the host here", "Self-Ask"),
     // on a line naming no identifier built on ask: the symbol rules' pattern can't tell them apart.
     line: /^(?!.*\b\w+Ask)(?!.*\bask[A-Z])(?!.*\bASK_)(?!.*\bAsk[A-Z]).*\b(Ask|Asks|Asked|Asking)\b/,
@@ -956,7 +999,52 @@ const EXEMPTIONS = [
     why: "FIX-2243: an example app's own block or action that answers a person's question, not a task tool",
   },
 
+  // ---- sweep, in the contributor trees and the labs (FIX-2354) ----
+  {
+    path: /^labs\//,
+    line: /\.ask\.(kind|prompt)\b|^\s*ask: \{|\bask: \{ kin/,
+    rules: ["ask-mark"],
+    why: "FIX-2354: a lab reading a task hold's `ask`, what it asks the user, as orchestration's `TaskHold` names it",
+  },
+  {
+    path: /^labs\//,
+    line: /\bASK_MARKER_IGNORED\b/,
+    rules: ["ask-symbol"],
+    why: "FIX-2354: a lab importing harness-manager's live ASK_MARKER_IGNORED, kept there by the harness question inbox's own exemption",
+  },
+  {
+    path: CONTRIBUTOR,
+    line: /\bAskUserQuestion\b/,
+    rules: ["ask-symbol", "ask-symbol-in-docs"],
+    why: "FIX-2354: Claude Code's AskUserQuestion tool, a question to a person, named as the harness spells it",
+  },
+  {
+    path: /^\.agents\//,
+    line: /\bopenQuestions\b/,
+    rules: ["question-hold-names"],
+    why: "FIX-2354: the epic-wake schema's openQuestions field, an epic's questions for its owner: a workflow field, not a task's hold",
+  },
+  {
+    path: /^\.agents\/skills\/reuse-review\/SKILL\.md$/,
+    line: /`waitingOn: "user"` \+ `waitingFor`/,
+    rules: ["hold-names"],
+    why: "FIX-2354: the skill's worked example names the row fields two old specs added, to show the duplication it catches",
+  },
+  {
+    path: /^\.changeset\/no-compat-[\w-]+\.md$/,
+    rules: ["question-hold-names", "task-tool-names", "handoff-symbol-in-docs", "message-budget"],
+    why: "FIX-2454: the release notes that list what was removed, by its old name, so a consumer can find the uses to delete",
+  },
+
   // ---- guard ("Seat" has no exemption at all, a task board's included) ----
+  {
+    id: "agent-mailbox-board",
+    terms: ["mailbox"],
+    // Only the files that name the board, so a stale Workforce mailbox anywhere else still counts.
+    where: (path) => AGENT_MAILBOX_FILES.test(path),
+    strip: /mailbox/gi,
+    why: "FIX-2354: the fixpoint-labs/agent-mailbox board, where agents outside a session talk: a different thing with that name, not Workforce's coordinator",
+  },
   {
     id: "field-named-kind",
     terms: ["kind"],
@@ -1022,7 +1110,7 @@ const EXEMPTIONS = [
   {
     id: "type-member",
     terms: ["member"],
-    strip: /\b(?:inherited|prototype|required|union) member\b|\bany member of a union\b|\bObject\.prototype member\b/g,
+    strip: /\b(?:inherited|prototype|required|union) member\b|\bany member of a union\b|\bObject\.prototype member\b|\bno exported member\b/g,
     why: "a member of a type or an object, in TypeScript's sense",
   },
   {
@@ -1105,18 +1193,28 @@ const EXEMPTIONS = [
 // 3. Where the checks read
 // ---------------------------------------------------------------------------------------------
 //
-// The sweep lists every tracked file under ROOTS and scans it or excludes it by an EXCLUDE rule.
+// The sweep lists every tracked file and scans it or excludes it by an EXCLUDE rule.
 // The guard puts every tracked file in exactly one area of AREAS and scans the in-scope ones.
-// Widen what the checks read here, in both.
+// Both read CONTRIBUTOR for names. Widen what the checks read here, in both.
 
-/** The roots the sweep owns. Every tracked file under one is scanned or excluded by name. */
-export const ROOTS = ["packages", "apps", "docs/architecture", ".changeset", "goals"];
+/** History: dated records the checks never rewrite. Both checks keep it out by this one rule. */
+const HISTORY = /^specs\/|^spec\/|^spec-poc|^docs\/internal\/|(^|\/)CHANGELOG\.md$|^apps\/docs\/blog\/|^docs\/atlas\/|^docs\/superpowers\/|^pnpm-lock\.yaml$/;
 
-/** Tracked files under ROOTS that the sweep deliberately does not read, each with its reason. */
+/** A worked example a skill keeps for its shape, and says so in its header: history, not instruction. */
+const KEPT_EXAMPLES = /^\.agents\/skills\/concept-doc\/example\//;
+
+/**
+ * Tooling the checks can't read as prose: scripts, CI and hook config, other harnesses' settings
+ * (`.claude/skills` and `.claude/workflows` are symlinks to `.agents/`, read there), the plugin.
+ */
+const TOOLING = /^scripts\/|^\.github\/|^\.husky\/|^\.omp\/|^\.claude\/|^\.cursor\/|^plugins\//;
+
+/** Tracked files the sweep deliberately does not read, each with its reason. */
 export const EXCLUDE = [
   { path: /^docs\/contributing\/glossary\.mjs$/, over: true, why: "the glossary: it names every retired word on purpose" },
-  { path: /(^|\/)CHANGELOG\.md$/, over: true, why: "release history: records what shipped under the old names" },
-  { path: /^apps\/docs\/blog\//, over: true, why: "dated blog posts: history, not reference" },
+  { path: HISTORY, over: true, why: "history: specs, internal notes, changelogs, blog posts, the lockfile" },
+  { path: KEPT_EXAMPLES, over: true, why: "a skill's worked example, kept for its shape: history" },
+  { path: TOOLING, over: true, why: "tooling: scripts, CI and hook config, other harnesses' settings, the plugin" },
   {
     path: /^goals\/hand-offs\//,
     over: true, why: "the FIX-1816 and FIX-1820 regression checks: ER-11 allows names only, and the closure renames them by map"
@@ -1125,11 +1223,12 @@ export const EXCLUDE = [
   { path: /^goals\/vocabulary\/one-word-per-thing\//, over: true, why: "this sweep: it plants retired words on purpose" },
   { path: /^goals\/workforce-coordinators\/a-routed-post-gets-one-answer\//, over: true, why: "epic coordinator check: renamed only by the closure's map (ER-11)" },
   {
-    path: /\.(png|jpe?g|gif|webp|ico|woff2?|ttf|otf|json|jsonl|ya?ml|lock|css|scss|html|txt|toml|sh|py|sql|snap|map|gitignore|npmignore|env|example|d\.ts\.map)$|(^|\/)\.[^/]+$|(^|\/)(LICENSE|Dockerfile)$/,
+    path: /\.(png|jpe?g|gif|webp|ico|woff2?|ttf|otf|json|jsonl|jq|ya?ml|lock|css|scss|html|txt|toml|sh|py|sql|snap|map|gitignore|npmignore|env|example|d\.ts\.map)$|(^|\/)\.[^/]+$|(^|\/)(LICENSE|Dockerfile)$/,
     why: "no prose or symbols in scope (data, assets, config)"
   },
-  { path: /^(apps|packages)\/.*\.(md|mdx|svg)$/, why: "markdown outside the published docs and package READMEs (fixtures, worker files, app notes)" },
+  { path: /^(apps|packages|labs|examples)\/.*\.(md|mdx|svg)$/, why: "markdown outside the published docs and package READMEs (fixtures, worker files, app notes)" },
   { path: /^goals\/.*$/, why: "other goal files: only the rules that read goals read them" },
+  { path: /(^|\/)LICENSE\.upstream$|^docs\/contributing\/figures\/.*\.svg$|^docs\/(assets\/|PROMPT_CACHING\.md$)|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\.local)\.md$|^[^/]+\.(json|ya?ml|mjs)$/, why: "root config, assets and pages no rule reads" },
 ];
 
 /** The guard's own test plants retired words on purpose, so it is process tooling. */
@@ -1137,10 +1236,15 @@ const GUARD_TEST = "packages/core/test/retired-terms-check.test.ts";
 
 /** The guard's areas. First match wins. `scope: true` is read; `false` keeps its words by design. */
 export const AREAS = [
-  { id: "history", scope: false, re: /^specs\/|^spec\/|^spec-poc|^docs\/internal\/|(^|\/)CHANGELOG\.md$|^\.changeset\/|^apps\/docs\/blog\/|^docs\/atlas\/|^docs\/superpowers\/|^pnpm-lock\.yaml$/, why: "dated records: no rewriting history" },
-  { id: "process", scope: false, re: new RegExp(`^\\.agents\\/|^\\.husky\\/|^\\.omp\\/|^\\.github\\/|^\\.claude\\/|^\\.cursor\\/|^plugins\\/|^scripts\\/|^docs\\/contributing\\/|^docs\\/(philosophy|objectives|PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CLAUDE|AGENTS|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`), why: "process tooling and contributor instructions (this glossary among them)" },
+  { id: "history", scope: false, re: new RegExp(`${HISTORY.source}|${KEPT_EXAMPLES.source}`), why: "dated records: no rewriting history" },
+  {
+    id: "process",
+    scope: false,
+    re: new RegExp(`${TOOLING.source}|^docs\\/contributing\\/glossary\\.mjs$|^docs\\/(PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`),
+    why: "process tooling (this glossary and the guard's own test among them)",
+  },
   { id: "goals", scope: false, re: /^goals\//, why: "tests of behaviour: renamed identifiers reach them through typecheck, their words stay" },
-  { id: "config", scope: false, re: /^[^/]+\.(json|ya?ml)$|^eslint\.config\.mjs$|^LICENSE$|^\.gitignore$|^\.ignore$/, why: "root configuration" },
+  { id: "config", scope: false, re: /^[^/]+\.(json|ya?ml)$|^\.changeset\/config\.json$|^eslint\.config\.mjs$|^LICENSE$|^\.gitignore$|^\.ignore$/, why: "root configuration" },
   { id: "package-src", scope: true, re: /^packages\/[^/]+\/src\// },
   { id: "package-tests", scope: true, re: /^packages\/[^/]+\/(test|tests|e2e)\// },
   { id: "package-other", scope: true, re: /^packages\// },
@@ -1148,7 +1252,11 @@ export const AREAS = [
   { id: "apps", scope: true, re: /^apps\// },
   { id: "labs", scope: true, re: /^labs\// },
   { id: "examples", scope: true, re: /^examples\// },
+  // The root README is the repository's front page for readers, so it stays read for meanings too.
+  // It matches here before `contributor` below, which reads it for names only in the sweep.
   { id: "reference-docs", scope: true, re: /^docs\/architecture\/|^docs\/mechanisms\/|^README\.md$/ },
+  // Read for retired names only, never English meanings (FIX-2354 D1).
+  { id: "contributor", scope: true, reach: "name", re: CONTRIBUTOR },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -1165,11 +1273,31 @@ const RETIREMENTS = ENTRIES.flatMap((entry) =>
 
 const textChecksOf = (r) => (r.check === undefined ? ["sweep", "guard"] : [r.check]);
 
+/**
+ * A name is read in the contributor trees too (FIX-2354 D1), in the encoding its rule already
+ * reads: a code rule over the contributor trees' scripts, a page rule over their markdown. A rule
+ * that names narrower files of its own (one package's surface) keeps them.
+ */
+const CONTRIBUTOR_CODE = new RegExp(`^(?=.*\\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$)(?:${CONTRIBUTOR.source})`);
+const CONTRIBUTOR_DOCS = new RegExp(`^(?=.*\\.(md|mdx)$)(?:${CONTRIBUTOR.source})`);
+const IN_CONTRIBUTOR_TREES = new Map([
+  [CODE, [CONTRIBUTOR_CODE]],
+  [PUBLISHED, [CONTRIBUTOR_DOCS]],
+  [CODE_OR_PUBLISHED, [CONTRIBUTOR_CODE, CONTRIBUTOR_DOCS]],
+  [CODE_PUBLISHED_OR_NOTES, [CONTRIBUTOR_CODE, CONTRIBUTOR_DOCS]],
+]);
+const withContributor = (r) => {
+  const more = r.reach === "name" ? IN_CONTRIBUTOR_TREES.get(r.files) : undefined;
+  return more === undefined ? r : { ...r, files: new RegExp([r.files, ...more].map((re) => re.source).join("|")) };
+};
+
 /** The sweep's rules: `{ id, files, pattern, pathName? }`. */
 export const SWEEP_RULES = RETIREMENTS.filter((r) => textChecksOf(r).includes("sweep")).map((r) =>
-  r.check === "sweep"
-    ? r
-    : { ...r, files: REACH_FILES[r.reach], pattern: new RegExp(`(?<![\\w$])${escapeRe(r.name)}(?![\\w$])`) },
+  withContributor(
+    r.check === "sweep"
+      ? r
+      : { ...r, files: REACH_FILES[r.reach], pattern: new RegExp(`(?<![\\w$])${escapeRe(r.name)}(?![\\w$])`) },
+  ),
 );
 
 /** The guard's terms: `{ id, re, say, ground? }`, each `re` global. */

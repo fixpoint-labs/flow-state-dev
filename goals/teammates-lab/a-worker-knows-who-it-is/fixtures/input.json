@@ -1,6 +1,6 @@
 {
   "workers": [
-    { "id": "teammates.chief-of-staff", "name": "Chief of Staff" },
+    { "id": "teammates.chief-of-staff", "name": "Lead" },
     { "id": "teammates.researcher", "name": "researcher" },
     { "id": "teammates.writer", "name": "writer" }
   ],
