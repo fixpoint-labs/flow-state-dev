@@ -13,9 +13,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import {
+  changelogLines,
+  gradeMovedNames,
   judge,
   judgeControl,
   outcomeOf,
+  plantLineRemoval,
   probeNeverPublished,
   ratchetFailures,
   readManifest,
@@ -34,14 +37,23 @@ const manifest = (expect) => ({
 const outcomes = (entries) => new Map(Object.entries(entries).map(([id, outcome]) => [id, { outcome, detail: [] }]));
 
 // The committed manifest moves: each child flips its own lines to "pass" as its
-// fix lands. So this checks only what never moves (shape, six rows, 28 pinned
+// fix lands. So this checks only what never moves (shape, seven rows, 28 pinned
 // controls). The all-fail starting state is pinned on a fixed fixture below.
 test("the committed manifest is well formed and pins the 28 control tarballs", () => {
   const m = readManifest();
-  assert.equal(m.rows.length, 6);
+  assert.equal(m.rows.length, 7);
   assert.ok(Object.values(m.expect).every((e) => e === "fail" || e === "pass"));
   assert.equal(m.control.packages.length, 28);
   assert.ok(m.control.packages.every((p) => /^sha512-/.test(p.integrity)));
+});
+
+// The closure adds rows and never edits one: its journey is the seventh row,
+// expected to pass, after the epic's six.
+test("the closure row is last and carries the upgrade journey, expected to pass", () => {
+  const m = readManifest();
+  assert.deepEqual(m.rows.slice(0, 6).map((r) => r.id), ["surface", "onepath", "first-hour", "leakage", "shims", "types"]);
+  assert.deepEqual(m.rows[6], { id: "closure", title: "Closure", assertions: ["closure.j5:moved-name-named"] });
+  assert.equal(m.expect["closure.j5:moved-name-named"], "pass");
 });
 
 test("the all-fail starting state is green with 0 rows, and the control accepts it", () => {
@@ -190,4 +202,86 @@ test("the never-published probe names a refusal or a legacy read, ignores a live
   } finally {
     rmSync(nm, { recursive: true, force: true });
   }
+});
+
+// ── closure.j5:moved-name-named ─────────────────────────────────────────────
+
+test("a package's changelog lines are its pending changesets' and its CHANGELOG sections newer than the version upgraded from", () => {
+  const changesets = [
+    '---\n"@flow-state-dev/core": minor\n"@flow-state-dev/engine": minor\n---\n\n- `foo` is on `@flow-state-dev/core/types`.\n',
+    '---\n"@flow-state-dev/react": patch\n---\n\n- `bar` is gone.\n',
+  ];
+  const changelog =
+    "# @flow-state-dev/core\n\n## 0.6.0\n\n- `six` moved.\n\n## 0.5.0\n\n- `five` moved.\n\n## 0.4.0\n\n- `four` moved.\n\n## 0.3.9\n\n- `old` moved.\n";
+  const lines = changelogLines("@flow-state-dev/core", { changesets, changelog, since: "0.4.0" });
+  assert.ok(lines.includes("- `foo` is on `@flow-state-dev/core/types`."));
+  assert.ok(lines.includes("- `six` moved.") && lines.includes("- `five` moved."));
+  assert.ok(!lines.some((l) => /bar|four|old/.test(l)), "another package's changeset, and sections at or below 0.4.0, are not the upgrade's");
+  assert.deepEqual(changelogLines("@flow-state-dev/core", { changesets: [], changelog: null, since: "0.4.0" }), []);
+});
+
+const dropped = (pkg, name, homes = [], extra = {}) => ({ pkg, name, homes, failsOnNew: true, ...extra });
+
+test("a moved name passes only when a changelog line of its package names it with its new home", () => {
+  const lines = new Map([
+    ["@flow-state-dev/core", ["- Import these from `@flow-state-dev/core/types`: `Moved`, `Other`.", "- `Elsewhere` is on the root still."]],
+  ]);
+  const failures = gradeMovedNames(
+    [
+      dropped("@flow-state-dev/core", "Moved", ["@flow-state-dev/core/types"]),
+      dropped("@flow-state-dev/core", "Elsewhere", ["@flow-state-dev/core/models"]),
+      dropped("@flow-state-dev/core", "Unnamed", ["@flow-state-dev/core/types"]),
+    ],
+    lines,
+  );
+  assert.equal(failures.length, 2);
+  assert.match(failures[0], /@flow-state-dev\/core Elsewhere: no changelog line names it with its new home \(@flow-state-dev\/core\/models\)/);
+  assert.match(failures[1], /@flow-state-dev\/core Unnamed: no changelog line names it/);
+});
+
+test("a home may be written as its short subpath or its ./ subpath, a name must be whole, and a name with no home in its package needs only its line", () => {
+  const lines = new Map([
+    [
+      "@flow-state-dev/engine",
+      [
+        "- On `engine/host`: `SessionStore`.",
+        "- **Moved to `./internal`** from the root: `splitFrontmatter`.",
+        "- `ValidationError` is no longer exported.",
+        "- `RequestStoreX` moved.",
+        "- `Spread` is on `./hostile`.",
+      ],
+    ],
+  ]);
+  const failures = gradeMovedNames(
+    [
+      dropped("@flow-state-dev/engine", "SessionStore", ["@flow-state-dev/engine/host"]),
+      dropped("@flow-state-dev/engine", "splitFrontmatter", ["@flow-state-dev/engine/internal"]),
+      dropped("@flow-state-dev/engine", "ValidationError"),
+      dropped("@flow-state-dev/engine", "RequestStore", ["@flow-state-dev/engine/host"]),
+      dropped("@flow-state-dev/engine", "Spread", ["@flow-state-dev/engine/host"]),
+    ],
+    lines,
+  );
+  assert.equal(failures.length, 2);
+  assert.match(failures[0], /RequestStore: no changelog line names it$/);
+  assert.match(failures[1], /Spread: no changelog line names it with its new home/, "`./hostile` is not `./host`");
+});
+
+test("a dropped name that still compiles from the root fails, and a journey that walked no name fails", () => {
+  const lines = new Map([["@flow-state-dev/core", ["- `Kept` moved to `@flow-state-dev/core/types`."]]]);
+  const failures = gradeMovedNames([dropped("@flow-state-dev/core", "Kept", ["@flow-state-dev/core/types"], { failsOnNew: false })], lines);
+  assert.match(failures.join("\n"), /Kept: still compiles from the root on these tarballs/);
+  assert.match(gradeMovedNames([], lines).join("\n"), /walked no name/);
+});
+
+test("the planted control removes every line naming one name, and only that name then fails", () => {
+  const lines = new Map([["@flow-state-dev/core", ["- `A` and `B` are on `@flow-state-dev/core/types`.", "- `B` again, on `core/types`."]]]);
+  const names = [dropped("@flow-state-dev/core", "A", ["@flow-state-dev/core/types"]), dropped("@flow-state-dev/core", "B", ["@flow-state-dev/core/types"])];
+  assert.deepEqual(gradeMovedNames(names, lines), []);
+  const planted = plantLineRemoval(lines, names[0]);
+  assert.deepEqual(planted.get("@flow-state-dev/core"), ["- `B` again, on `core/types`."]);
+  assert.equal(lines.get("@flow-state-dev/core").length, 2, "the plant copies; it does not edit the real lines");
+  const failures = gradeMovedNames(names, planted);
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /core A: no changelog line names it/);
 });

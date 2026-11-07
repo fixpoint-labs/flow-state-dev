@@ -85,6 +85,13 @@
         "types.typed-handler",
         "types.fresh-session-default"
       ]
+    },
+    {
+      "id": "closure",
+      "title": "Closure",
+      "assertions": [
+        "closure.j5:moved-name-named"
+      ]
     }
   ],
   "expect": {
@@ -136,7 +143,8 @@
     "shims.human-approval-throws": "pass",
     "shims.stored-human-approval": "pass",
     "types.typed-handler": "pass",
-    "types.fresh-session-default": "pass"
+    "types.fresh-session-default": "pass",
+    "closure.j5:moved-name-named": "pass"
   },
   "ratchets": {
     "export-check": "scripts/check-root-exports.mjs",
