@@ -100,6 +100,10 @@ lab fails. That re-opens FIX-2500 late, at wrap, by one issue.
 - **The driver answers what an app stops to ask the person.** A tool approval gets "yes" for the
   run, a review of a run's changes gets "accepted", as the person at the page would to let the
   work they asked for go on. A question a run asks is left waiting.
+- **The closure passes run on Haiku (owner, Nov 7).** With `GOAL_HAIKU=1` every app's agents
+  and evaluators, and Claude Code, run on one Haiku model on Anthropic directly. The control and
+  the cut run use the same model, so they stay comparable. Each sheet records its model, and the
+  verdict refuses a pass whose sheets mix models.
 
 ## Considered and dropped
 
