@@ -78,7 +78,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { publishableDists } from "../add-esm-extensions.mjs";
 import {
@@ -92,7 +92,7 @@ import {
   readManifest,
   runRatchet,
 } from "./goal.mjs";
-import { exampleRun, QUICKSTART_PAGE, runQuickstart } from "./first-hour.mjs";
+import { copyOutRecipe, EXAMPLES_README, exampleCells, exampleRun, QUICKSTART_PAGE, runQuickstart } from "./first-hour.mjs";
 import { runSuite } from "./suite.mjs";
 import { runVitestJson } from "./vitest-json.mjs";
 
@@ -415,42 +415,53 @@ const RATCHET_CELLS = [
 ];
 
 /**
- * The admitted `first-hour.example.<name>.<step>` cells: each example under
- * `examples/` copied out and run by the copy-out recipe (`first-hour.mjs`),
- * one cell per step. Only a step that fails under the control is admitted:
- * `install` passes there for both examples, so it runs as every step's
- * prerequisite and is no cell of its own. The examples under
- * `examples/guides/` are not cells yet; the copy-out work that writes the
- * recipe in `examples/README.md` admits them, by the same rule.
+ * The examples that run with no model key: their README's `fsdev run` blocks
+ * are a `run` cell each. The others name a key their runs need.
  */
-const FIRST_HOUR_EXAMPLE_CELLS = [
-  ["hello-chat", "typecheck"],
-  ["hello-chat", "test"],
-  ["hello-chat", "fsdev"],
-  ["hello-chat", "build"],
-  ["knowledge-base", "typecheck"],
-  ["knowledge-base", "test"],
-  ["knowledge-base", "fsdev"],
-];
+const KEYLESS_EXAMPLES = new Set(["board-lifecycle", "custom-pattern", "research-team"]);
+
+/**
+ * The `first-hour.example.<name>.<step>` cells: each example under
+ * `examples/`, found by a folder walk, copied out and run by the copy-out
+ * recipe (`first-hour.mjs`), one cell per step. An example added later
+ * reports cells the manifest does not list, which the judge refuses until
+ * they are admitted. `install` is every step's prerequisite, not a cell.
+ */
+const FIRST_HOUR_EXAMPLE_CELLS = exampleCells(join(ROOT, "examples"), KEYLESS_EXAMPLES).map(({ name, dir, step }) => ({
+  name,
+  path: relative(ROOT, dir),
+  step,
+}));
+
+/**
+ * The copy-out recipe, read from this checkout's `examples/README.md`: the
+ * reader's procedure, which the control applies to the pinned commit's
+ * examples too.
+ */
+function recipe() {
+  const readme = join(ROOT, EXAMPLES_README);
+  return existsSync(readme) ? copyOutRecipe(readFileSync(readme, "utf8")) : null;
+}
 
 /** One copy-out run per example per goal run, shared by its cells. */
-function exampleCopy(project, example) {
-  if (!project.exampleRuns.has(example)) {
-    const dir = mkdtempSync(join(tmpdir(), `fsd-first-hour-${example}-`));
-    mkdirSync(join(dir, example));
+function exampleCopy(project, { name, path }) {
+  if (!project.exampleRuns.has(name)) {
+    const dir = mkdtempSync(join(tmpdir(), `fsd-first-hour-${name}-`));
+    mkdirSync(join(dir, name));
     project.cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
     project.exampleRuns.set(
-      example,
+      name,
       exampleRun({
-        src: join(project.tree, "examples", example),
-        dir: join(dir, example),
+        src: join(project.tree, path),
+        dir: join(dir, name),
+        recipe: recipe(),
         repoRoot: ROOT,
         tarballs: project.tarballs,
         log,
       }),
     );
   }
-  return project.exampleRuns.get(example);
+  return project.exampleRuns.get(name);
 }
 
 /** The TypeScript the consumer project reads core's `.d.ts` with: the workspace's own. */
@@ -528,10 +539,10 @@ export const GOAL_CHECKS = [
       }
     },
   },
-  ...FIRST_HOUR_EXAMPLE_CELLS.map(([example, step]) => ({
-    id: `first-hour.example.${example}.${step}`,
-    name: `examples/${example}, copied to an empty folder by the copy-out recipe: ${step}`,
-    run: (project) => exampleCopy(project, example).step(step),
+  ...FIRST_HOUR_EXAMPLE_CELLS.map((cell) => ({
+    id: `first-hour.example.${cell.name}.${cell.step}`,
+    name: `${cell.path}, copied to an empty folder by the copy-out recipe: ${cell.step}`,
+    run: (project) => exampleCopy(project, cell).step(cell.step),
   })),
   {
     id: "shims.never-published",

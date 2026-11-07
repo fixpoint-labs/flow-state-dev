@@ -14,18 +14,18 @@ across a worker, then fold the outputs — and a `word-count` flow that uses it.
 
 ## Run it with fsdev
 
-Run from this directory (config discovery is cwd-only). No API key — the plan
+Run from this directory (config discovery is cwd-only), after `pnpm install`
+in the repository. To run it outside this repository, copy it out with [the recipe](https://github.com/fixpoint-labs/flow-state-dev/blob/main/examples/README.md#copy-an-example-out) first. No API key — the plan
 and map blocks are deterministic handlers:
 
 ```bash
-cd examples/guides/custom-pattern
-pnpm fsdev run word-count count -i '{"documents":["a b c","one two","single"]}'
+npx fsdev run word-count count -i '{"documents":["a b c","one two","single"]}'
 # → { total: 6 }
 ```
 
 ## Test it
 
 ```bash
-pnpm --filter @flow-state-dev/example-guide-custom-pattern test
-pnpm --filter @flow-state-dev/example-guide-custom-pattern typecheck
+npm test
+npm run typecheck
 ```

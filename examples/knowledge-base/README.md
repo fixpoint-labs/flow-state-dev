@@ -14,32 +14,36 @@ This is **not a published package** (`private: true`). OKF v0.1 is a proof-of-co
 | Concept collection (OKF frontmatter → state, links → edges; `scope: "user"`) | `src/concepts.ts` | Collection |
 | `createKnowledgeBaseCapability()` — nav tools + CRUD `fns` (`listConcepts` / `readConcept` / `createConcept` / `updateConcept` / `deleteConcept` / `relate` / `importBundle` / `exportBundle`) | `src/capability.ts` | Capability |
 | MCP server flow (`knowledge`) — 8 CRUD/search tools over MCP, bearer-secret auth, CLI-only import/export | `src/flow.ts` | MCP server |
-| Server entry (`pnpm serve` → `fsdev serve`, no hand-written entry) | `package.json` / `fsdev.config.ts` | MCP server |
+| Server entry (`npm run serve` → `fsdev serve`, no hand-written entry) | `package.json` / `fsdev.config.ts` | MCP server |
 | Sample OKF bundle | `sample-bundle/` | Fixture |
 
 ## Run it
 
+Run from this directory, after `pnpm install` in the repository. To run it outside the
+repository, copy it out with [the recipe](https://github.com/fixpoint-labs/flow-state-dev/blob/main/examples/README.md#copy-an-example-out) first.
+
 ```bash
 # Serve the MCP endpoint locally (in-memory dev profile, no secret required locally).
-pnpm fsdev dev
+npx fsdev dev
 
 # Mount an OKF bundle into the corpus from the CLI (model-free).
-pnpm fsdev run knowledge importBundle -i '{"dir":"'"$(pwd)"'/sample-bundle"}'
+npx fsdev run knowledge importBundle -i '{"dir":"'"$(pwd)"'/sample-bundle"}'
 
 # Back the corpus up to a portable OKF bundle directory.
-pnpm fsdev run knowledge exportBundle -i '{"dir":"/tmp/kb-backup"}'
+npx fsdev run knowledge exportBundle -i '{"dir":"/tmp/kb-backup"}'
 
 # Round-trip the sample bundle and check OKF v0.1 conformance + the link graph.
-pnpm okf:smoke
+npm run okf:smoke
 
-# Unit tests, including the export -> import -> export idempotency gate and the
-# real end-to-end MCP round-trip check (see "Verify it works" below).
-pnpm test
+# Typecheck, and the unit tests, including the export -> import -> export
+# idempotency gate and the real end-to-end MCP round-trip check (see "Verify it works" below).
+npm run typecheck
+npm test
 ```
 
 ## Use it as an MCP server
 
-The `knowledge` flow exposes 8 tools over MCP at `POST /api/flows/knowledge/mcp`: `list_concepts`, `read_concept`, `search_concepts`, `grep_concepts`, `create_concept`, `update_concept`, `delete_concept`, `relate_concepts`. OKF `import_bundle`/`export_bundle` are **not** MCP tools — they take server-side filesystem paths, so exposing them over a hosted endpoint would let a remote client read/write/prune arbitrary host paths; they stay CLI-only (`pnpm fsdev run knowledge importBundle|exportBundle ...`).
+The `knowledge` flow exposes 8 tools over MCP at `POST /api/flows/knowledge/mcp`: `list_concepts`, `read_concept`, `search_concepts`, `grep_concepts`, `create_concept`, `update_concept`, `delete_concept`, `relate_concepts`. OKF `import_bundle`/`export_bundle` are **not** MCP tools — they take server-side filesystem paths, so exposing them over a hosted endpoint would let a remote client read/write/prune arbitrary host paths; they stay CLI-only (`npx fsdev run knowledge importBundle|exportBundle ...`).
 
 Auth is a single bearer secret, read from `KB_MCP_SECRET`. A request with no `Authorization` header, or the wrong one, is rejected (401) — there is no anonymous fallback. Every request that authenticates resolves to the same principal (`owner`), which is what makes the corpus durable and shared across calls: MCP v1 is **stateless** (every `tools/call` runs in a fresh session), so a `scope: "user"` corpus keyed by that one principal is what lets call N+1 read call N's write.
 
@@ -62,10 +66,10 @@ curl -X POST http://localhost:3000/api/flows/knowledge/mcp \
 
 ## Stand it up
 
-The app is served by `pnpm serve`, which runs `fsdev serve` — no hand-written entry, no Next.js, no `app/`, no React. `fsdev serve` starts the flow API and MCP endpoints from the committed `fsdev.config.ts` and binds `0.0.0.0:$PORT`. Deploy it to a long-lived host (Railway, Render, Fly, a container, a VPS):
+The app is served by `npm run serve`, which runs `fsdev serve` — no hand-written entry, no Next.js, no `app/`, no React. `fsdev serve` starts the flow API and MCP endpoints from the committed `fsdev.config.ts` and binds `0.0.0.0:$PORT`. Deploy it to a long-lived host (Railway, Render, Fly, a container, a VPS):
 
 ```bash
-KB_MCP_SECRET=<a-strong-secret> DATABASE_URL=<postgres-url> pnpm serve
+KB_MCP_SECRET=<a-strong-secret> DATABASE_URL=<postgres-url> npm run serve
 ```
 
 `fsdev.config.ts` picks the `prod` (Postgres) profile automatically once `FSD_DB_URL` or `DATABASE_URL` is set, and **fails closed at config load** if `KB_MCP_SECRET` is missing on that profile — a deploy can never silently fall back to an unauthenticated resolver. With no Postgres URL set, it runs the `dev` profile (in-memory, no secret required) for local iteration. Provisioning the Postgres database and the host's project/secrets is a manual operator step; the example ships the deployable code, not a live deployment.
@@ -89,7 +93,7 @@ Frontmatter is parsed as **YAML 1.2** (gray-matter on the eemeli `yaml` engine) 
 
 ## Verify it works
 
-`pnpm test` (from this directory) runs the CI specs, including a real MCP round-trip against `createFlowApiRouter` (no real HTTP socket). For a stronger, real-path proof — the actual `serve()` host, over the loopback socket, backed by a real (PGlite) Postgres store — run the goal check:
+`npm test` (from this directory) runs the CI specs, including a real MCP round-trip against `createFlowApiRouter` (no real HTTP socket). For a stronger, real-path proof — the actual `serve()` host, over the loopback socket, backed by a real (PGlite) Postgres store — run the goal check from the repository root (it lives in the repository, not in this folder):
 
 ```bash
 pnpm tsx goals/personal-knowledge-mcp/persists-a-concept-across-stateless-calls/run.mts

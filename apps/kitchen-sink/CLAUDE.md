@@ -174,7 +174,7 @@ The `components/flow-state/` directory contains components installed from the `@
 
 **When modifying any component in `components/flow-state/`:**
 
-1. Make the change in `packages/ui/registry/components/` first (the upstream source)
-2. Then apply the same change to the kitchen-sink copy in `components/flow-state/`
+1. Make the change in `packages/ui/registry/components/` (the upstream source), never in the copy.
+2. Run `pnpm registry:refresh` here. It copies every component Kitchen Sink installs from the registry into `components/flow-state/`.
 
-This ensures the registry stays in sync and other consumers get the fix when they next install.
+The refresh and the drift test (`test/registry-drift.test.ts`) read one options object, `scripts/registry-copies.ts`: which components Kitchen Sink never installed, and which files are its own. So what the refresh copies is what the test checks, and a forgotten refresh fails the test. To install a new registry component here, or stop installing one, change that file.

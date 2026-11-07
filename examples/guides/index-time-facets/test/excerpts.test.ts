@@ -6,13 +6,21 @@
  * Trailing `//` comments and blank lines are ignored, and a line with `…`
  * marks elided code. Only the excerpts that claim to be the example's code are
  * checked; the illustrative filters on the page are not.
+ *
+ * The page lives in the repository, not in a copy of this example. In the
+ * repository (told by its root package name, since a copy inside any pnpm
+ * monorepo has a pnpm-workspace.yaml above it too) a missing page fails
+ * loudly; copied out, there is no page and nothing to compare.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = join(__dirname, "..");
 const GUIDE = join(ROOT, "../../../apps/docs/docs/resources/searching.md");
+const ROOT_MANIFEST = join(ROOT, "../../../package.json");
+const IN_REPO =
+  existsSync(ROOT_MANIFEST) && JSON.parse(readFileSync(ROOT_MANIFEST, "utf8")).name === "flow-state-dev";
 const SOURCE = ["src/facets.ts", "src/flow.ts"];
 
 /** First lines of the excerpts that must be verbatim cuts of the source. */
@@ -41,11 +49,11 @@ function firstMissing(excerpt: string[], source: string[]): string | undefined {
 }
 
 const source = normalize(SOURCE.map((f) => readFileSync(join(ROOT, f), "utf8")).join("\n"));
-const excerpts = tsBlocks(readFileSync(GUIDE, "utf8")).filter((b) =>
+const excerpts = tsBlocks(IN_REPO ? readFileSync(GUIDE, "utf8") : "").filter((b) =>
   CHECKED.some((first) => b.trimStart().startsWith(first)),
 );
 
-describe("the guide's excerpts are cut from the example", () => {
+describe.runIf(IN_REPO)("the guide's excerpts are cut from the example", () => {
   it("finds every checked excerpt on the page", () => {
     expect(excerpts).toHaveLength(CHECKED.length);
   });
