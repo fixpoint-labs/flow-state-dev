@@ -226,7 +226,7 @@ export function subscriptionTools(options: { readonly providers: readonly Subscr
     inputSchema: subscribeInputSchema,
     outputSchema: subscribeOutputSchema,
     resources: subscriptionResources,
-    execute: async (input, ctx) => subscribe(ctx as never, options.providers, input)
+    execute: async (input, ctx) => subscribe(ctx, options.providers, input)
   });
   const unsubscribeTool = handler({
     name: SUBSCRIPTION_TOOLS.unsubscribe,
@@ -234,8 +234,7 @@ export function subscriptionTools(options: { readonly providers: readonly Subscr
     inputSchema: z.object({ id: z.string().min(1) }).strict(),
     outputSchema: unsubscribeOutputSchema,
     resources: subscriptionResources,
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (input, ctx) => {
       const row = (await subscriptionsOf(ctx).getOptional(input.id))?.state;
       if (row === undefined || !madeHere(ctx, row)) {
         return { refused: `not_yours: this conversation has no subscription "${input.id}".` };

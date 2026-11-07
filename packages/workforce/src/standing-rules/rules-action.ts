@@ -60,10 +60,10 @@ export const standingRulesActionBlock = handler({
   outputSchema: standingRulesActionOutputSchema,
   resources: { [STANDING_RULES_RESOURCE]: standingRulesCollection },
   execute: async (input, ctx) => {
-    if (input.op === "read") return answer(await readStandingRules(ctx as never));
+    if (input.op === "read") return answer(await readStandingRules(ctx));
     const { version, ...edit } = input;
     // Added here, not in a conversation: the page shows it as "added here".
-    const outcome = await writeStandingRules(ctx as never, version, edit, null);
+    const outcome = await writeStandingRules(ctx, version, edit, null);
     if (!outcome.ok) throw new Error(`Refused: ${outcome.reason}.`);
     return answer(outcome.list, outcome.line);
   }

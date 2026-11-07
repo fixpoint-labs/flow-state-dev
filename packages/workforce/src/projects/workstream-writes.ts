@@ -60,7 +60,7 @@
 
 import { dispatcher, dispatchHandleSchema, handler, router, sequencer } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import { DispatchRefusedError, type ActionConfig, type BlockDefinition, type ResourceRef } from "@flow-state-dev/core/types";
+import { DispatchRefusedError, type ActionConfig, type BlockContext, type BlockDefinition, type ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { MAX_DELEGATES } from "../delegates/delegate-keys";
 import { withWrittenBy, type SharedWriteContext } from "../shared-resource";
@@ -569,7 +569,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
    * is a record, a done one isn't. `before` is `undefined` for an open.
    */
   const recordFor = async (
-    ctx: WriteContext,
+    ctx: BlockContext,
     workstream: WorkstreamView,
     before: string | undefined
   ): Promise<RecordChange | undefined> => {
@@ -593,7 +593,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     // lead may have left the roster since.
     const here = before === undefined || change === "remove";
     if (here && coordinatorSessionId === (ctx.session.identity as { id?: string }).id) {
-      await changeWorkstreamRecordHere(ctx as never, record, options.installation);
+      await changeWorkstreamRecordHere(ctx, record, options.installation);
       return undefined;
     }
     return { ...record, coordinatorSessionId };

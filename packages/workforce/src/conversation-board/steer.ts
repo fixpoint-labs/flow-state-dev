@@ -87,14 +87,14 @@ const steerSessionTask = handler({
   outputSchema: steeredSchema,
   resources: { ...conversationLedgerResources },
   execute: async (input, ctx) => {
-    const open = await sessionOpenTask(ctx as never);
+    const open = await sessionOpenTask(ctx);
     if (open === undefined) throw new SteerRefused(LINE_STEER_REFUSALS.finished);
-    const refused = await steerFromLine(open.ledger, open.row.id, input.message, ctx as never);
+    const refused = await steerFromLine(open.ledger, open.row.id, input.message, ctx);
     if (refused !== undefined) throw new SteerRefused(LINE_STEER_REFUSALS[refused]);
     const row = open.ledger.get(open.row.id);
     // In this session already: the turn runs on this flow. A line that answered
     // the task's last open question owes it its turn too (FIX-2133).
-    if (row?.keptOpenBy === "steer" || row?.turnOwed === true) await startOwedSteerTurn(ctx as never, row);
+    if (row?.keptOpenBy === "steer" || row?.turnOwed === true) await startOwedSteerTurn(ctx, row);
     return { steered: open.row.id };
   }
 });
@@ -159,7 +159,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     resources: { ...conversationLedgerResources },
     execute: async (_input, ctx): Promise<Taken> => {
       // Admitted, the claim is stamped and names the row; otherwise there is nothing to run.
-      const running = await runningTaskOf(ledgerAboveOf, ctx as never);
+      const running = await runningTaskOf(ledgerAboveOf, ctx);
       if (running === undefined) return SKIP;
       // Shown in the session as it takes them, as a model call's take shows
       // them (FIX-2113): the turn's own message isn't kept, so a later turn
@@ -178,7 +178,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     execute: async (value, ctx) => {
       const taken = value as Exclude<Taken, { skip: true }>;
       if (options.turn !== undefined) return { message: renderSteers(taken.steers, STEERED_AFTER_ANSWER) };
-      const running = await runningTaskOf(ledgerAboveOf, ctx as never);
+      const running = await runningTaskOf(ledgerAboveOf, ctx);
       if (running === undefined) throw new Error(`"${name}" lost the claim it was admitted with before its block ran.`);
       const { claim, ledger } = running;
       const row = ledger.get(taken.taskId) ?? running.row;
@@ -203,8 +203,8 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     inputSchema: z.unknown(),
     resources: { ...conversationLedgerResources },
     execute: async (_input, ctx) => {
-      await afterTaskCheck(ctx as never, async () => {
-        const ledger = await ledgerAboveOf(ctx as never);
+      await afterTaskCheck(ctx, async () => {
+        const ledger = await ledgerAboveOf(ctx);
         const sessionId = ctx.session.identity.id;
         const row = ledger?.list({ status: "in_progress" }).find((task) => task.run?.sessionId === sessionId);
         if (row?.keptOpenBy === "steer" || row?.turnOwed === true) return;

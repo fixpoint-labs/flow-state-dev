@@ -463,7 +463,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         if (state.round >= maxRounds) return false;
         if (
           terminateWhen !== undefined &&
-          terminateWhen(ctx as BlockContext)
+          terminateWhen(ctx)
         ) {
           return false;
         }
@@ -611,7 +611,7 @@ export function debate<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         if (last !== undefined && last.done) return false;
         if (
           terminateWhen !== undefined &&
-          terminateWhen(ctx as BlockContext)
+          terminateWhen(ctx)
         ) {
           return false;
         }

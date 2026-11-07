@@ -7,7 +7,6 @@ import type { RuntimeItem } from "../items/internal";
 import { SuspensionError } from "../errors/suspension-error";
 import { RecordedValueOmittedError } from "../errors/recorded-value-omitted-error";
 import type {
-  BranchStep,
   BranchStepOutput,
   InlineBlockFactory,
   IterationOptions,
@@ -1158,6 +1157,16 @@ function wrapWithOutputValidation(
   };
 }
 
+/**
+ * A branch arm as the implementation runs it. The public `BranchStep` types
+ * the condition's ctx as the sequencer's `SequencerCtx`; the implementation
+ * hands it the run's `BlockContext`, as `stepIf`'s implementation does.
+ */
+type BranchArm<TInput> = readonly [
+  connector: ConnectorFn<TInput, any>,
+  condition: (input: any, ctx: BlockContext) => boolean | Promise<boolean>,
+  block: BlockDefinition<any, any>,
+];
 
 function createSequencer<
   TInput,
@@ -2103,12 +2112,12 @@ function createSequencer<
       return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, ownDeclaredResources, childBlocks);
     },
 
-    branch<TBranches extends Record<string, BranchStep<TOutput>>>(
+    branch<TBranches extends Record<string, BranchArm<TOutput>>>(
       branches: TBranches
     ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>, TStateSchema> {
       // Branch output schema is ambiguous (depends on which branch matches at runtime),
       // so we take the first branch block's outputSchema as a best-effort propagation.
-      const branchEntries = Object.values(branches) as Array<BranchStep<TOutput>>;
+      const branchEntries = Object.values(branches) as Array<BranchArm<TOutput>>;
       const firstBranchSchema = branchEntries.length > 0
         ? branchEntries[0][2].config.outputSchema
         : undefined;

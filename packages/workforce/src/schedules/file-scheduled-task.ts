@@ -38,7 +38,7 @@ export function fileScheduledTaskEntry(
     execute: async (input, ctx) => {
       const assignee = (input as { assignee?: unknown } | undefined)?.assignee;
       if (typeof assignee === "string") return;
-      if ((await soleDelegate(ctx as never)) !== undefined) return;
+      if ((await soleDelegate(ctx)) !== undefined) return;
       throw new Error(
         "The scheduled task wasn't filed: it names no assignee, and its filer has no one delegate that takes tasks to give it to. Name one in the schedule's `assignee`."
       );

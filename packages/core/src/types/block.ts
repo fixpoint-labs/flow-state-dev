@@ -309,7 +309,11 @@ export interface BlockContext<
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
   TSequencerState extends object = Record<string, unknown>,
   TParentInput = unknown,
-  TTargets extends Record<string, ZodTypeAny> | undefined = undefined,
+  // FIX-2457: the default is the open target map, so a helper typed plain
+  // `BlockContext` accepts a block whatever targets it declared. A block says
+  // "no targets" explicitly: its factory passes `undefined`, which reads as a
+  // closed `Record<string, never>`.
+  TTargets extends Record<string, ZodTypeAny> | undefined = Record<string, ZodTypeAny>,
   // Derive-once: capability helper namespaces from the `uses` array
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = {},
   // FIX-914: own state (from this block's `stateSchema`) and the immediate
@@ -1449,5 +1453,8 @@ export type InferBlockResources<TSchemas, TDefs> =
  */
 export type InferTargetStatesFromSchemas<TSchemas> =
   TSchemas extends Record<string, ZodTypeAny>
-    ? { [K in keyof TSchemas]: StateRef<z.infer<TSchemas[K]>> | undefined }
+    ? string extends keyof TSchemas
+      // The open map (`BlockContext`'s default): any name, an untyped handle.
+      ? Record<string, StateRef | undefined>
+      : { [K in keyof TSchemas]: StateRef<z.infer<TSchemas[K]>> | undefined }
     : Record<string, never>;

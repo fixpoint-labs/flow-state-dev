@@ -311,7 +311,7 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     inputSchema: z.unknown(),
     resources: { ...planLedgerResources },
     execute: async (_input, ctx) => {
-      const own = await ownPlanLedger(ctx as never);
+      const own = await ownPlanLedger(ctx);
       const seen = (own?.list() ?? []).filter((row) => isTerminalStatus(row.status)).map((row) => row.id);
       await ctx.request.patchState({ [PLAN_SEEN_STATE]: seen } as never);
     }
@@ -327,7 +327,7 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     outputSchema: z.object({ message: z.string() }),
     resources: { ...planLedgerResources },
     execute: async (_input, ctx) => {
-      const own = await ownPlanLedger(ctx as never);
+      const own = await ownPlanLedger(ctx);
       const rows = own?.list() ?? [];
       for (const row of rows.filter(isWorkable)) {
         await own!.cancel(row.id, "A step it depends on didn't complete, so it couldn't run.");
@@ -372,12 +372,12 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     resources: { ...planLedgerResources },
     sessionStateSchema: planWaitingSessionState,
     execute: async (_input, ctx) => {
-      const own = await ownPlanLedger(ctx as never);
+      const own = await ownPlanLedger(ctx);
       const workable = (own?.list() ?? []).filter(isWorkable);
       // The answer-again step starts afresh for this turn: nothing briefed, nothing answered again yet.
       await ctx.request.patchState({ [PLAN_OWED_STATE]: workable.length > 0, [PLAN_BRIEFED_STATE]: false, [ANSWERS_AGAIN_STATE]: 0, [ANSWER_ROUND_MESSAGES_STATE]: [] } as never);
       // A step in a session of its own: this request waits on it, and its turn isn't over until it answers.
-      if (workable.some((row) => row.session === "new")) await markPlanWaiting(ctx as never);
+      if (workable.some((row) => row.session === "new")) await markPlanWaiting(ctx);
     }
   });
 
@@ -387,18 +387,17 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     inputSchema: z.unknown(),
     sessionStateSchema: planWaitingSessionState,
     execute: async (_input, ctx) => {
-      await clearPlanWaiting(ctx as never);
+      await clearPlanWaiting(ctx);
     }
   });
 
   /** Whether the turn left steps to work, as {@link decidePlan} recorded it. */
-  const owesPlan = (_answer: unknown, ctx: unknown): boolean =>
-    ((ctx as BlockContext).request?.state as Record<string, unknown> | undefined)?.[PLAN_OWED_STATE] === true;
+  const owesPlan = (_answer: unknown, ctx: BlockContext): boolean =>
+    ctx.request.state[PLAN_OWED_STATE] === true;
 
   /** The plan's source: due once, when the turn left steps to work. */
-  const planDue = (value: unknown, ctx: unknown): boolean =>
-    owesPlan(value, ctx) &&
-    ((ctx as BlockContext).request?.state as Record<string, unknown> | undefined)?.[PLAN_BRIEFED_STATE] !== true;
+  const planDue = (value: unknown, ctx: BlockContext): boolean =>
+    owesPlan(value, ctx) && ctx.request.state[PLAN_BRIEFED_STATE] !== true;
 
   /** Keep what a source asked the worker to answer about, when it asked anything. */
   const keepMessage = handler({
@@ -523,7 +522,7 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
       .step(turn)
       .tap(decidePlan)
       // A request with no plan and no source runs the turn alone.
-      .stepIf((value: unknown, ctx: unknown) => answerAgain !== undefined || owesPlan(value, ctx), (answer: unknown) => ({ answer }), answers);
+      .stepIf((value: unknown, ctx) => answerAgain !== undefined || owesPlan(value, ctx), (answer: unknown) => ({ answer }), answers);
     const forTurn = byTurn.get(turn) ?? new Map<object | undefined, BlockDefinition<any, any>>();
     forTurn.set(answerAgain, block);
     byTurn.set(turn, forTurn);

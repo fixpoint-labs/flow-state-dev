@@ -899,15 +899,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     inputSchema: z.unknown(),
     resources: { ...conversationLedgerResources },
     execute: async (_input, ctx) => {
-      await afterTaskCheck(ctx as never, async () => {
-        const own = await conversationLedgerAt(ctx as never, await filingSessionIdOf(ctx.session));
+      await afterTaskCheck(ctx, async () => {
+        const own = await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
         const owed = (own?.list() ?? []).filter((row) => noticeDueAt(row) !== undefined);
         if (own === undefined || owed.length === 0) return;
         for (const row of owed) {
           const patch = resendNowPatch(row);
           if (Object.keys(patch).length > 0) await own.patchMetadata(row.id, patch);
         }
-        await triggerPass(ctx as never);
+        await triggerPass(ctx);
       });
     }
   });
@@ -1144,7 +1144,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
             `Read your delegates with listDelegates, and name an assignee with the target its record names. Nothing was filed.`
         );
       }
-      const resolved = await resolveWorkstreamTarget(ctx as never, { worker: assignee, target: init.target });
+      const resolved = await resolveWorkstreamTarget(ctx, { worker: assignee, target: init.target });
       if ("problem" in resolved) {
         throw new TaskWriteRefusedError("target_unreachable", `workstream "${init.target}" can't take it now: ${resolved.problem}. Nothing was filed.`);
       }
@@ -1749,26 +1749,26 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     resources: { ...conversationLedgerResources, ...taskChainResources, ...routedSessionResources, ...(options.messages?.resources ?? {}) },
     requestStateSchema: passStateSchema,
     execute: async (_input, ctx) => {
-      notePassStarted(ctx as never);
+      notePassStarted(ctx);
       const wake = await requestHostOf(ctx)?.wakes?.read(DISPATCH_ENTRY);
       await ctx.request.patchState({ passWake: wake === undefined ? undefined : { dueAt: wake.dueAt, landBy: wake.landBy, version: wake.version }, passRounds: 0 });
       const partition = await filingSessionIdOf(ctx.session);
       const ref = await conversationLedgerAt(ctx, partition);
-      if (ref !== undefined) await repairs(ctx as never, ref, partition);
+      if (ref !== undefined) await repairs(ctx, ref, partition);
       // A step handed to a session of its own resumes the drain that waits on
       // it from here (FIX-2082 D2): the plan ledger owes no notice, only that.
-      const plan = planning.wired() ? await planLedgerAt(ctx as never, partition) : undefined;
+      const plan = planning.wired() ? await planLedgerAt(ctx, partition) : undefined;
       // A resume it couldn't pay (the drain still parking reads `busy`) stays
       // owed: the settle keeps its due time, or nothing would retry it before
       // the wait's deadline.
       if (plan !== undefined) {
-        const planDebts = await payBoardDebts(ctx as never, plan, { filerOf: filerResolver(planDelivery, plan.partition), resend: false });
+        const planDebts = await payBoardDebts(ctx, plan, { filerOf: filerResolver(planDelivery, plan.partition), resend: false });
         if (planDebts.nextDue !== undefined) await ctx.request.patchState({ passPlanDue: planDebts.nextDue });
       }
       // The messages this session sent that haven't landed (FIX-2240), in
       // any session that sends, filing or not: sent again, or ended and told.
       if (options.messages !== undefined) {
-        const messagesDue = await options.messages.payDebts(ctx as never);
+        const messagesDue = await options.messages.payDebts(ctx);
         if (messagesDue !== undefined) await ctx.request.patchState({ passMessagesDue: messagesDue });
       }
       return {};
@@ -1793,10 +1793,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const partition = await filingSessionIdOf(ctx.session);
       const ref = await conversationLedgerAt(ctx, partition);
       if (ref === undefined) return { again: false };
-      const nextDue = await repairs(ctx as never, ref, partition, false);
+      const nextDue = await repairs(ctx, ref, partition, false);
       const top = taskChainOf(ctx)?.top;
       if (top !== undefined) await markAddedInChain(ctx, top, ref.list().map((row) => chainEntryKey(partition, row.id)));
-      const rounds = (passStateOf(ctx as never).passRounds ?? 0) + 1;
+      const rounds = (passStateOf(ctx).passRounds ?? 0) + 1;
       await ctx.request.patchState({ passRounds: rounds });
       const again = hasStartable(ref) && rounds < MAX_PASS_ROUNDS;
       return nextDue === undefined ? { again } : { again, nextDue };
@@ -1810,11 +1810,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     outputSchema: z.object({ nextDue: z.number().optional() }),
     requestStateSchema: passStateSchema,
     execute: async (round, ctx) => {
-      notePassEnded(ctx as never);
-      const { passPlanDue, passMessagesDue } = passStateOf(ctx as never);
+      notePassEnded(ctx);
+      const { passPlanDue, passMessagesDue } = passStateOf(ctx);
       const dues = [round.nextDue, passPlanDue, passMessagesDue].filter((at): at is number => at !== undefined);
       const due = dues.length === 0 ? undefined : Math.min(...dues);
-      await settlePassWake(ctx as never, DISPATCH_ENTRY, passStateOf(ctx as never).passWake, due);
+      await settlePassWake(ctx, DISPATCH_ENTRY, passStateOf(ctx).passWake, due);
       return round.nextDue === undefined ? {} : { nextDue: round.nextDue };
     }
   });
@@ -1854,15 +1854,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     resources: { ...conversationLedgerResources, ...planLedgerResources, ...taskChainResources },
     presets: {
       tools: {
-        controlTools: async (ctx) => ((await turnFiles(ctx as never)) ? eight(ctx as never) : []),
+        controlTools: async (ctx) => ((await turnFiles(ctx)) ? eight(ctx) : []),
         // The session's project, read from its server-written fields (BP-031),
         // so a filer in a workstream or a project's conversation never has to
         // guess one: the board writes it on every task filed here anyway. On
         // a turn routing a message, how to hand it on (FIX-2083).
         context: async (_input, ctx) => {
-          const routing = routes !== undefined && routes.routing(ctx as never) && (await files(ctx as never)) ? routes.description : undefined;
+          const routing = routes !== undefined && routes.routing(ctx) && (await files(ctx)) ? routes.description : undefined;
           const own = filingProjectAddressOf(ctx.session.state);
-          if (own === undefined || !(await files(ctx as never))) return routing;
+          if (own === undefined || !(await files(ctx))) return routing;
           // A project id is its creator's text and may hold quotes, so it goes
           // in as a JSON string: it can't close the name and start a sentence.
           const project =
@@ -1941,7 +1941,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       inputSchema: z.unknown(),
       outputSchema: z.object({}),
       execute: async (_input, ctx) => {
-        await triggerPass(ctx as never);
+        await triggerPass(ctx);
         return {};
       }
     }),

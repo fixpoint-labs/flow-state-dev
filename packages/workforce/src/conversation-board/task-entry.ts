@@ -193,10 +193,10 @@ const noteRoutedFrom = handler({
   execute: async (_task: unknown, ctx) => {
     const state = (ctx.session.state ?? {}) as Record<string, unknown>;
     if (typeof state[FILING_SESSION_STATE_KEY] === "string") return {};
-    const claim = currentWorkerClaim(ctx as never);
+    const claim = currentWorkerClaim(ctx);
     const partition = claim?.collectionId === CONVERSATION_LEDGER_ID ? claim.partition : undefined;
     if (partition === undefined) return {};
-    await noteRoutedSession(ctx as never, ctx.session.identity.id, { partition, taskId: claim!.taskId });
+    await noteRoutedSession(ctx, ctx.session.identity.id, { partition, taskId: claim!.taskId });
     if (state[ROUTED_FROM_STATE_KEY] !== partition) await ctx.session.patchState({ [ROUTED_FROM_STATE_KEY]: partition });
     return {};
   }
@@ -214,11 +214,11 @@ const startAtFiledHop = handler({
   outputSchema: z.object({}),
   requestStateSchema: messageTurnStateSchema,
   execute: async (_task: unknown, ctx) => {
-    const claim = currentWorkerClaim(ctx as never);
+    const claim = currentWorkerClaim(ctx);
     if (claim === undefined) return {};
-    const ledger = await conversationLedgers(claim.collectionId, ctx as never, claim.partition, claim.taskId);
+    const ledger = await conversationLedgers(claim.collectionId, ctx, claim.partition, claim.taskId);
     const mark = hopMarkOf(ledger?.get(claim.taskId)?.metadata?.[FILED_HOP]);
-    if (mark !== undefined) await startTurnAtHop(ctx as never, mark.hop, mark.chain);
+    if (mark !== undefined) await startTurnAtHop(ctx, mark.hop, mark.chain);
     return {};
   }
 });
@@ -299,7 +299,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   const block =
     options.block !== undefined
       ? base.step(
-          (task: TaskWorkerInput, ctx): WorkerTaskBlockInput => ({ ...task, claim: verifiedClaimOf(ctx as never, name) }),
+          (task: TaskWorkerInput, ctx): WorkerTaskBlockInput => ({ ...task, claim: verifiedClaimOf(ctx, name) }),
           options.block
         )
       : base

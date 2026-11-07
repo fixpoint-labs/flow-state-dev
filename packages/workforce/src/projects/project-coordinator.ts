@@ -195,12 +195,12 @@ export function workstreamDelegateEntry(options: {
     execute: async (input: WorkstreamDelegateChange, ctx) => {
       const record: DelegateRecord = { worker: input.worker, target: input.target };
       if (input.change === "add") {
-        const found = await workstreamOf(ctx as never, record as { worker: string; target: string });
+        const found = await workstreamOf(ctx, record as { worker: string; target: string });
         if ("problem" in found) throw new ProjectRefusedError("no-such-workstream", `${found.problem}.`);
-        const checked = await options.check(ctx as never, record.worker, "add");
+        const checked = await options.check(ctx, record.worker, "add");
         if (!checked.ok) throw new Error(checked.message);
       }
-      return { changed: await applyWorkstreamRecord(ctx.session, await options.defaults(ctx as never), input.change, record) };
+      return { changed: await applyWorkstreamRecord(ctx.session, await options.defaults(ctx), input.change, record) };
     }
   });
   return { inputSchema: workstreamDelegateChangeSchema, block };
@@ -240,7 +240,7 @@ async function applyWorkstreamRecord(
  *   reads its roster, as the coordinator's own defaults do.
  */
 export async function changeWorkstreamRecordHere(
-  ctx: CoordinatorContext & { readonly session: Parameters<typeof changeDelegates>[0] },
+  ctx: BlockContext,
   change: WorkstreamDelegateChange,
   installation: WorkerInstallation
 ): Promise<void> {
@@ -248,7 +248,7 @@ export async function changeWorkstreamRecordHere(
   const state = ctx.session.state as Readonly<Record<string, unknown>>;
   const records = state[DELEGATES_STATE] == null ? await workstreamDelegateSeed(ctx) : undefined;
   const defaults: DelegateDefaults = {
-    ...(await withRoster(installation, ctx as never, delegateDefaultsOf(config))),
+    ...(await withRoster(installation, ctx, delegateDefaultsOf(config))),
     ...(records === undefined ? {} : { records })
   };
   await applyWorkstreamRecord(

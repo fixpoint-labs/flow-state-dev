@@ -40,7 +40,7 @@ export const taskProgress = defineCapability({
   name: "taskProgress",
   resources: { ...conversationLedgerResources, ...planLedgerResources },
   presets: {
-    tools: { controlTools: async (ctx) => ((await progress.offered(ctx as never)) ? [progress.tool] : []) },
+    tools: { controlTools: async (ctx) => ((await progress.offered(ctx)) ? [progress.tool] : []) },
     default: ["tools"]
   }
 });
