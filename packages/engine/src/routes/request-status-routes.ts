@@ -13,7 +13,13 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { ResolvedPrincipal } from "../transports/types";
 import { ownsRecord } from "../context/record-owner";
 import { terminalAtMs } from "../stores/request-ended-at";
-import { callerReachesRequest, jsonResponse, unknownRequestResponse } from "./route-utils";
+import {
+  callerReachesRequest,
+  getBooleanFlag,
+  jsonResponse,
+  projectRequestResult,
+  unknownRequestResponse
+} from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 type RequestStatusRouteContext = {
@@ -37,9 +43,13 @@ type RequestStatusRouteContext = {
  * `lastHeartbeatAt` is best-effort: the registry entry may have already
  * been deregistered (terminal status), in which case the field is omitted.
  * `sessionId` is omitted for a request that has no session.
+ *
+ * `?include_result_output=true` adds the request's stored action `result`
+ * (output, `outputNotRecorded`, `error`, `hasOutput`), the projection the
+ * session request list sends; without it the snapshot carries no result.
  */
 export async function handleGetRequestStatus(
-  _request: Request,
+  request: Request,
   route: Extract<ParsedFlowRoute, { kind: "request_status" }>,
   ctx: RequestStatusRouteContext
 ): Promise<Response> {
@@ -57,6 +67,7 @@ export async function handleGetRequestStatus(
     return unknownRequestResponse(requestId);
   }
 
+  const includeResult = getBooleanFlag(new URL(request.url).searchParams.get("include_result_output"));
   const active = await ctx.stores.activeRequests.get(requestId);
   const now = Date.now();
 
@@ -71,7 +82,12 @@ export async function handleGetRequestStatus(
     ...(active?.lastHeartbeatAt !== undefined
       ? { lastHeartbeatAt: active.lastHeartbeatAt }
       : {}),
-    ...(record.sessionId != null ? { sessionId: record.sessionId } : {})
+    ...(record.sessionId != null ? { sessionId: record.sessionId } : {}),
+    // The stored result, only when asked: the session list's projection, so
+    // one request reads the same by id as listed (FIX-2455 D1).
+    ...(includeResult && record.result != null
+      ? { result: projectRequestResult(record.result, true) }
+      : {})
   };
 
   return jsonResponse(200, snapshot);
