@@ -59,7 +59,7 @@ export async function answerThroughRoute(
   });
   try {
     const fetcher = createInProcessFetch(router);
-    const base = `/api/flows/${encodeURIComponent(context.flow.kind)}/requests/${encodeURIComponent(context.requestId)}`;
+    const base = `/api/flows/${encodeURIComponent(context.flow.id)}/requests/${encodeURIComponent(context.requestId)}`;
     const res = await fetcher(`${base}/${answer.route}`, {
       method: "POST",
       headers: { ...answer.headers, "content-type": "application/json", accept: "text/event-stream" },

@@ -213,6 +213,32 @@ describe("testFlow and a step that waits for a person", () => {
     expect(seen).toHaveLength(1);
   });
 
+  it("answers and resumes a collection flow, addressed by its instance id, not its kind", async () => {
+    const step = handler({
+      name: "gate",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: async (_input, ctx) => {
+        await ctx.suspendForUser({ kind: "approval", prompt: "Go?" });
+        await ctx.suspend!({ reason: "external_event", message: "waiting on a webhook" });
+        return {};
+      }
+    });
+    const desk = defineFlow({
+      kind: "desk",
+      cardinality: "collection",
+      actions: { run: { inputSchema: z.object({}), block: step } }
+    })({ id: "desk-east" });
+
+    const run = await testFlow({ flow: desk, action: "run", input: {}, userId: "u1" });
+    expect(run.status).toBe("suspended");
+
+    const answered = await run.answer({ action: "approve" });
+    expect(answered.status).toBe("suspended");
+    const resumed = await answered.resume({ action: "approve" });
+    expect(resumed.status).toBe("completed");
+  });
+
   it("with durable: false, a stop fails the run", async () => {
     const run = await testFlow({ flow: refunds(), action: "refund", input: { amount: 5 }, userId: "u1", durable: false });
 

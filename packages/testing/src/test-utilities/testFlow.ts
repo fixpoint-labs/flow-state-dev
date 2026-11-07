@@ -121,6 +121,7 @@ async function seedFlowStores(options: {
       await options.stores.session.set(options.sessionId, {
         id: options.sessionId,
         flowKind: options.flow.kind,
+        flowId: options.flow.id,
         userId: options.userId,
         orgId: options.orgId,
         metadata: undefined,
@@ -143,6 +144,7 @@ async function seedFlowStores(options: {
       await options.stores.request.set(options.requestId, {
         id: options.requestId,
         flowKind: options.flow.kind,
+        flowId: options.flow.id,
         actionName: options.action,
         userId: options.userId,
         sessionId: options.sessionId,
