@@ -17,7 +17,7 @@ function stubGh(answer: unknown, fail?: string): { path: string; calls: () => st
   writeFileSync(
     path,
     `#!/usr/bin/env node
-require("node:fs").appendFileSync(${JSON.stringify(log)}, (process.argv[3] ?? "") + "\\n");
+require("node:fs").appendFileSync(${JSON.stringify(log)}, process.argv.slice(3).join(" ") + "\\n");
 ${fail === undefined ? "" : `process.stderr.write(${JSON.stringify(fail)} + "\\n"); process.exit(4);`}
 process.stdout.write(${JSON.stringify(JSON.stringify(answer))});
 `,
@@ -91,6 +91,19 @@ describe("readPullRequest", () => {
     const gh = stubGh(pr("acme/app"));
     const refusal = await refusalOf(readPullRequest({ cwd: tempDir("checkout"), number: 812, gh: gh.path }));
     expect(refusal.reason).toBe("pull-request-unreadable");
+  });
+
+  // A host named is always passed on, github.com too: gh otherwise asks GH_HOST, which on a
+  // machine set up for GitHub Enterprise would read a github.com pull request from the wrong forge.
+  it("asks the named host, github.com included, and leaves gh's default host alone when none is named", async () => {
+    for (const host of ["github.com", "ghe.acme.dev"]) {
+      const gh = stubGh({ ...pr("acme/app"), state: "open", merged: false });
+      await readPullRequest({ cwd: tempDir("anywhere"), number: 812, repository: "acme/app", host, gh: gh.path });
+      expect(gh.calls()).toEqual([`--hostname ${host} repos/acme/app/pulls/812`]);
+    }
+    const gh = stubGh({ ...pr("acme/app"), state: "open", merged: false });
+    await readPullRequest({ cwd: tempDir("anywhere"), number: 812, repository: "acme/app", gh: gh.path });
+    expect(gh.calls()).toEqual(["repos/acme/app/pulls/812"]);
   });
 
   it("refuses when gh can't say", async () => {

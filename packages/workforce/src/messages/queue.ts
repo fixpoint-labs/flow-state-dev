@@ -62,21 +62,29 @@ async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
  * The answer owes the task one more turn on the same attempt, which reads
  * them. Keyed by the message, so a copy sent again answers once.
  *
- * @returns `true` once the hold took it; `false` when the session runs no
- *   task, the task holds no open external wait, or the write was declined
- *   (an answer landed first), and the message goes on as any other.
+ * A message whose steer is on the task already (an earlier take answered the
+ * wait, then died before it marked the message delivered) counts as taken
+ * whether or not a wait is open now: the retry finishes its delivery, and
+ * never runs it as an ordinary turn, nor answers a wait opened since.
+ *
+ * @returns `true` once the hold took it, now or on an earlier take; `false`
+ *   when the session runs no task, the task holds no open external wait, or
+ *   the write was declined (an answer landed first), and the message goes on
+ *   as any other.
  */
 export async function answerExternalWait(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "from" | "text">): Promise<boolean> {
   const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
   if (typeof taskId !== "string" || taskId.length === 0) return false;
   const sessionId = ctx.session.identity.id;
+  const key = `message:${row.id}`;
   for (const partition of await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId)) {
     const ledger = await conversationLedgerAt(ctx, partition);
     if (ledger?.answer === undefined) continue;
     for (const task of rowsInSession(ledger, sessionId)) {
+      if ((task.steers ?? []).some((steer) => steer.id === key)) return true;
       const hold = externalHoldOf(task);
       if (hold === undefined) continue;
-      const outcome = await ledger.answer(task.id, { questionId: hold.id, message: row.text, from: "service", by: row.from, key: `message:${row.id}` });
+      const outcome = await ledger.answer(task.id, { questionId: hold.id, message: row.text, from: "service", by: row.from, key });
       return outcome.outcome === "recorded";
     }
   }

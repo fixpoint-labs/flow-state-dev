@@ -72,10 +72,25 @@ describe("a message to a task waiting on its pull request", () => {
     expect(row.steers).toEqual([expect.objectContaining({ message: message.text, from: "service", by: "github.reviewer", answers: holdId })]);
   });
 
-  it("answers once for a copy sent again", async () => {
+  // A retry after the answer landed but delivery didn't finish (the item or the delivered mark
+  // failed) must finish delivery, not run the message through an ordinary turn: its words
+  // are on the task already.
+  it("answers once for a copy sent again, and the copy still counts as taken by the wait", async () => {
     const ref = await board(true);
     expect(await answerExternalWait(ctx as never, message)).toBe(true);
-    expect(await answerExternalWait(ctx as never, message)).toBe(false);
+    expect(await answerExternalWait(ctx as never, message)).toBe(true);
+    expect(ref.get("t1")!.steers).toHaveLength(1);
+  });
+
+  it("counts a copy sent again as taken when another external wait opened meanwhile, leaving that wait open", async () => {
+    const ref = await board(true);
+    expect(await answerExternalWait(ctx as never, message)).toBe(true);
+    const claim = ticketForClaim("conversations", ref.get("t1")! as never);
+    await ref.awaitExternal!("t1", { prompt: "Waiting for pull request #8 to merge or close.", events: [{ event: "pull-request", key: "github.com/acme/app/8" }] }, { claim });
+    const reopened = externalHoldOf(ref.get("t1")!);
+    expect(reopened).toBeDefined();
+    expect(await answerExternalWait(ctx as never, message)).toBe(true);
+    expect(externalHoldOf(ref.get("t1")!)?.id).toBe(reopened!.id);
     expect(ref.get("t1")!.steers).toHaveLength(1);
   });
 

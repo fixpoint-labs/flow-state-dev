@@ -225,7 +225,7 @@ export interface ReadPullRequestOptions {
   readonly number: number;
   /** `owner/name`, when known: asked directly, with no remote to resolve. */
   readonly repository?: string;
-  /** The forge's host, when it is not `github.com` (a GitHub Enterprise host). */
+  /** The forge's host (`github.com`, or a GitHub Enterprise host), passed to `gh` as `--hostname`. Absent, `gh` picks its own default. */
   readonly host?: string;
   /** The wall clock for the one `gh` call. Default {@link BRANCH_PULL_REQUESTS_TIMEOUT_MS}. */
   readonly timeoutMs?: number;
@@ -270,7 +270,8 @@ async function fetchPullRequest(options: ReadPullRequestOptions): Promise<Fetche
     base?: { repo?: { full_name?: unknown } | null };
   };
   const repo = options.repository ?? "{owner}/{repo}";
-  const host = options.host !== undefined && options.host.toLowerCase() !== "github.com" ? ["--hostname", options.host] : [];
+  // Named, it is passed on even when it is github.com: left to gh, a `GH_HOST` set for an Enterprise host would win.
+  const host = options.host !== undefined ? ["--hostname", options.host] : [];
   try {
     const { stdout } = await run(options.gh ?? "gh", ["api", ...host, `repos/${repo}/pulls/${options.number}`], {
       cwd: options.cwd,
