@@ -1,4 +1,5 @@
 import type { RuntimeItem as TestItem } from "@flow-state-dev/core/internal";
+import type { SuspensionItem } from "@flow-state-dev/core/items";
 import type { BlockInput, BlockOutput, FlowInstance, FlowStateSettings, ModelResolver } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import type {
@@ -168,6 +169,13 @@ export type TestFlowOptions<TInput = unknown> = {
    * journal entries and resource state from prior calls.
    */
   stores?: StoreRegistry;
+  /**
+   * Run with durable execution, as a host whose stores persist does. Default
+   * `true`: a step that calls `ctx.suspendForUser` or `ctx.suspend` stops the
+   * run with status `suspended`. `false` runs without it, where such a step
+   * fails the run.
+   */
+  durable?: boolean;
 };
 
 export type TestFlowResult = {
@@ -176,6 +184,8 @@ export type TestFlowResult = {
   output?: unknown;
   error?: Error;
   items: TestItem[];
+  /** The stop the run is waiting on, as a screen sees it. Absent when nothing waits. */
+  suspension?: SuspensionItem;
 };
 
 export type { BlockInput, BlockOutput };

@@ -8,9 +8,10 @@
  * — `set()` only fires when the entity is missing, so prior journal entries
  * and resources survive subsequent runs.
  */
-import { createInMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores, resolveDurabilityProvider, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
+import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { cloneValue } from "@flow-state-dev/core/helpers";
 import {
   generateId,
@@ -159,6 +160,20 @@ async function seedFlowStores(options: {
 }
 
 /**
+ * The stop the run is waiting on: the last `suspension` item no
+ * `suspension_resume` item answered. Undefined when nothing waits.
+ */
+function pendingSuspension(items: readonly OutputItem[]): SuspensionItem | undefined {
+  const answered = new Set(
+    items.flatMap((item) => (item.type === "suspension_resume" ? [item.suspensionId] : []))
+  );
+  const waiting = items.filter(
+    (item): item is SuspensionItem => item.type === "suspension" && !answered.has(item.suspensionId)
+  );
+  return waiting.at(-1);
+}
+
+/**
  * Executes one flow action in an isolated in-memory runtime and returns item/status artifacts.
  */
 export async function testFlow<TInput = unknown>(
@@ -180,6 +195,20 @@ export async function testFlow<TInput = unknown>(
     seed: options.seed
   });
 
+  // One runtime config for the run and every continuation of it: the test's
+  // mocks, settings and durability. Durable by default, as a host with
+  // persistent stores is, so a step that waits for a person stops the run.
+  const runtimeConfig = {
+    modelResolver: createMockModelResolver({
+      generators: options.generators,
+      models: options.models,
+      policy: options.unmockedGeneratorPolicy,
+      unmockedDefault: options.unmockedDefault
+    }),
+    settings: options.settings,
+    durabilityProvider: resolveDurabilityProvider({ stores, durable: options.durable ?? true })
+  };
+
   const result = await runAction({
     flow: options.flow,
     actionName: options.action as keyof typeof options.flow.actions & string,
@@ -189,15 +218,7 @@ export async function testFlow<TInput = unknown>(
     userId: options.userId,
     requestId,
     stores,
-    runtimeConfig: {
-      modelResolver: createMockModelResolver({
-        generators: options.generators,
-        models: options.models,
-        policy: options.unmockedGeneratorPolicy,
-        unmockedDefault: options.unmockedDefault
-      }),
-      settings: options.settings
-    }
+    runtimeConfig
   });
 
   const persistedRequest = await stores.request.get(requestId);
@@ -209,6 +230,7 @@ export async function testFlow<TInput = unknown>(
     requestId,
     output: result.output,
     error: result.error,
-    items: result.items
+    items: result.items,
+    suspension: pendingSuspension(result.items)
   };
 }
