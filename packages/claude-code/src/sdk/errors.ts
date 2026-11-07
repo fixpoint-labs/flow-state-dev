@@ -1,5 +1,5 @@
 /**
- * Typed errors for the in-process Agent SDK path (`./sdk`). Both carry a stable
+ * Typed errors for the in-process Agent SDK path (`./sdk`). Each carries a stable
  * `code` so hosts and the orchestrator can branch on the failure class without
  * string-matching messages, mirroring the CLI path's error-class style.
  */
@@ -43,6 +43,40 @@ export class ClaudeAgentRunError extends Error implements ClassifiedHarnessError
     this.name = "ClaudeAgentRunError";
     this.harnessFailure = harnessFailure;
   }
+}
+
+/**
+ * The caller's signal fired. A stopped run is a throw and never a handle, and
+ * this is what tells "you stopped it" from "it broke" for a host deciding
+ * whether to retry.
+ *
+ * A host tells it with core's `isAbortLike`, whatever stopped the run: the
+ * root of its `cause` chain is always an `AbortError`, whose message is the
+ * signal's reason. The reason itself (a deadline's `TimeoutError`, a plain
+ * `Error`, or none) is on {@link reason}.
+ */
+export class ClaudeCodeAgentAbortedError extends Error {
+  readonly code = "CLAUDE_CODE_AGENT_ABORTED";
+  constructor(
+    /** The session Claude Code had named when the run was stopped, which a host resumes; `null` before it named one. */
+    readonly sessionId: string | null,
+    /** The stopping signal's reason, as the caller gave it. */
+    readonly reason?: unknown,
+  ) {
+    super(
+      sessionId === null
+        ? "The Claude Code run was aborted before it named a session."
+        : `The Claude Code run was aborted. Session ${sessionId} can be resumed.`,
+      { cause: stopCause(reason) },
+    );
+    this.name = "ClaudeCodeAgentAbortedError";
+  }
+}
+
+/** An `AbortError` carrying a stop's reason as its message: the root of every stop's `cause` chain. */
+function stopCause(reason: unknown): DOMException {
+  const said = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
+  return new DOMException(said === "" ? "This operation was aborted." : said, "AbortError");
 }
 
 /**

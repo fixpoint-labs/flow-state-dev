@@ -284,7 +284,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       }
       // A deadline that has already fired must not spawn a process it will
       // immediately have to kill.
-      if (ctx.signal?.aborted) throw new CodexAgentAbortedError(null);
+      if (ctx.signal?.aborted) throw new CodexAgentAbortedError(null, ctx.signal.reason);
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       // Both resolved once per invocation, before anything is spawned, so the
@@ -514,7 +514,7 @@ function toRunFailure(
   // Re-minted rather than passed through: the abort raised inside the race
   // knows no thread id, and the id is the whole point of the error — it is what
   // lets a manager resume the run its own deadline killed.
-  if (err instanceof CodexAgentAbortedError) return new CodexAgentAbortedError(sessionId);
+  if (err instanceof CodexAgentAbortedError) return new CodexAgentAbortedError(sessionId, err.reason);
   // Already ours. Wrapping again buries the class under a second
   // "Codex run failed:" prefix and tells a caller nothing new.
   if (err instanceof CodexSdkNotInstalledError) return err;
@@ -584,13 +584,13 @@ function abortRace(signal: AbortSignal | undefined): {
   // leave the block waiting on the vendor's stream — the exact hang the race
   // exists to prevent, arrived at by the one path the race did not cover.
   if (signal.aborted) {
-    const rejected = Promise.reject(new CodexAgentAbortedError(null));
+    const rejected = Promise.reject(new CodexAgentAbortedError(null, signal.reason));
     rejected.catch(() => {});
     return { promise: rejected, dispose: () => {} };
   }
   let onAbort: () => void = () => {};
   const promise = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(new CodexAgentAbortedError(null));
+    onAbort = () => reject(new CodexAgentAbortedError(null, signal.reason));
     signal.addEventListener("abort", onAbort, { once: true });
   });
   // Claimed here so the loser of the race is never an unhandled rejection. The
