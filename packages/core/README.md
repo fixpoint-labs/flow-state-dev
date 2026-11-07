@@ -773,7 +773,7 @@ At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-r
 | `key-occupied` | A `key` derived a child id already held by a record that is not this request's child. |
 | `no-dispatch-operation` | This process executes requests but was not wired to dispatch one. |
 | `dispatch-rejected` | The host refused before starting, such as a `reject` concurrency policy whose key is held. |
-| `external-dispatcher` | An `id` target (or `{ from: true }`) on a host whose dispatcher runs requests in another process and can't apply the recipient's concurrency policy there: a dispatcher passed directly, or a `worker` adapter that supplies no shared lease backend. `bullmqWorker` supplies one. |
+| `external-dispatcher` | An `id` target (or `{ from: true }`) on a host whose flow runner runs requests in another process and can't apply the recipient's concurrency policy there: a flow runner passed directly, or a `worker` adapter that supplies no shared lease backend. `bullmqWorker` supplies one. |
 
 Every refusal is decided before anything is dispatched, so a `.rescue()` on the dispatcher can branch on `refused` knowing nothing started. A `key` or `id` function that returns an empty string throws a plain `Error` naming the block. On a context no runtime wired (a hand-built test context), the block throws `NoDispatchSeamError` (`code: "no-dispatch-seam"`); attach a `DispatchSeam` under the `DISPATCH_SEAM` symbol key to test one.
 
