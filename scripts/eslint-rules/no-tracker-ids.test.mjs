@@ -52,6 +52,10 @@ describe("fsd/no-tracker-ids in shipped source", () => {
     assert.deepEqual(reported("it(`resumes ${kind} (FIX-2426)`, () => {});\n"), ["FIX-2426"]);
   });
 
+  it("reports an id right after an escape in a template literal, as a string does", () => {
+    assert.deepEqual(reported("throw new Error(`Details:\\nFIX-123`);\n"), ["FIX-123"]);
+  });
+
   it("reports an id in JSX text, which an adopter reads as UI copy", () => {
     assert.deepEqual(reported("export const Gap = () => <p>Not built yet (FIX-2418)</p>;\n"), ["FIX-2418"]);
   });

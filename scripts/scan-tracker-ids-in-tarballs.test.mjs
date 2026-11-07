@@ -55,6 +55,11 @@ describe("scanPackage", () => {
     assert.deepEqual(scanPackage(dir, "react").hovers.map((h) => h.id), ["FIX-123"]);
   });
 
+  it("reads a .js template's text as an adopter sees it, an id right after an escape included", () => {
+    const dir = unpacked(root, "client", { "dist/index.js": "export const e = () => new Error(`Details:\\nFIX-123`);\n" });
+    assert.deepEqual(scanPackage(dir, "client").runtimeText.map((h) => h.id), ["FIX-123"]);
+  });
+
   it("passes a package with no ids where an adopter reads them", () => {
     const dir = unpacked(root, "engine", {
       "dist/index.d.ts": "/** Holds the slot. */\nexport declare const a = 1;\n",

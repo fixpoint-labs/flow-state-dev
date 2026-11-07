@@ -75,7 +75,9 @@ const rule = {
         if (typeof node.value === "string") report(node, node.value, "a string");
       },
       TemplateElement(node) {
-        report(node, node.value.raw, "a template literal");
+        // The text an adopter reads: `\nFIX-1` raw has no word boundary before
+        // `FIX`. `cooked` is null for an invalid escape in a tagged template.
+        report(node, node.value.cooked ?? node.value.raw, "a template literal");
       },
       JSXText(node) {
         report(node, node.value, "JSX text");
