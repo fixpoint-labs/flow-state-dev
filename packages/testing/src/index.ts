@@ -5,6 +5,7 @@ export { createTestContext, type CreateTestContextOptions } from "./runtime/crea
 
 export { testBlock } from "./test-utilities/testBlock";
 export { testFlow } from "./test-utilities/testFlow";
+export { StopRefusedError } from "./test-utilities/answerThroughRoute";
 export { testItems } from "./test-utilities/testItems";
 export { runForTest } from "./test-utilities/runForTest";
 export { createReplayingRef, type ReplayingRef } from "./test-utilities/replayingRef";
@@ -14,6 +15,7 @@ export type {
   StepTrace,
   TestBlockOptions,
   TestBlockResult,
+  TestFlowAnswer,
   TestFlowOptions,
   TestFlowResult,
   TestSequencerSeed,
