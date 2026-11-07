@@ -109,8 +109,8 @@ decision.
 **The owner's decision, 2026-11-07** ("Rename all 4"), recorded as given. **One rule for a
 retired word on the wire: rename it before 1.0.** Every value an app can see that carries a
 retired word is renamed in FIX-2479's one breaking changeset: the hold marker `"row"` (still
-read, BP-030), the `external-dispatcher` refusal, and the owner-collection refusal and overlap
-messages. No child keeps a retired word as a documented legacy value. The new names are
+read, BP-030), the `external-dispatcher` refusal, and every message that says *row* for a stored thing (81,
+the owner-collection refusals and overlap error among them). No child keeps a retired word as a documented legacy value. The new names are
 FIX-2479's ([D3](../../issues/FIX-2479/DECISIONS.md#d3)).
 
 **Decided while drafting (engineering calls, under the EM posture):**

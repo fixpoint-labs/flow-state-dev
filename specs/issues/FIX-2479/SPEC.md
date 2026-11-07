@@ -8,7 +8,7 @@
 |---|---|---|
 | **builds an app on the packages** | Meets stored data as `WorkerRow`, `ProjectRow`, `WorktreeRow`, the client's handle as `CollectionItemHandle`, a lifecycle as `WorktreeState` | Meets `WorkerResourceState`, `ProjectResourceState`, `CollectionResourceHandle`, `WorktreeStatus`. The changeset lists each old name and its new one; the old names are gone |
 | **writes an Inbox client** | Branches on a hold's `source.kind: "row"` | Branches on `"task"`. A hold stored as `"row"` reads as `"task"` and can still be answered ([D1](DECISIONS.md#d1)) |
-| **handles a refusal or an error** | Branches on `refused: "external-dispatcher"`; matches "A row of an owner-private collection…" or "…can reach the rows of owner-private collection" | Branches on `"external-flow-runner"`; matches "A resource in an owner-private collection…" or "…can reach the resources of…". The changeset lists all four values ([D3](DECISIONS.md#d3)) |
+| **handles a refusal or an error** | Branches on `refused: "external-dispatcher"`; matches "A row of an owner-private collection…" or "…can reach the rows of owner-private collection" | Branches on `"external-flow-runner"`; matches "A resource in an owner-private collection…" or "…can reach the resources of…". No error, refusal or tool description says *row* for a stored thing: 2 wire values and 81 messages, every one [listed](app-visible-text.md) ([D3](DECISIONS.md#d3)) |
 | **reads the architecture or contributor docs** | "The task's row", "collection item" | "The task", "resource" |
 | **adds a new `FooRow` type for a resource, anywhere in the tree** | Caught only on an added line in a collection module | Refused wherever it is: the resource rule reads the whole tree at zero open |
 | **writes a store adapter or a UI list** | `VersionedRow`, `TaskRowActions`, `ToolRow` | Unchanged. *Row* stays there, and only there |
@@ -30,7 +30,7 @@ for a lifecycle, and no exported name outside the store adapters and UI lists sa
 | **The real need** | The owner's 2026-11-06 decision, applied ([epic ER-5, ER-6](../../epics/FIX-2600/DECISIONS.md#who-owns-what)) |
 | **Smaller, and rejected** | "Rename the fifteen `*Row` types the issue lists." Measured on `main`, about 80 exported names say *row*, *item* or *state* for a resource or a lifecycle, client methods and hooks among them |
 | **Bigger, and not this issue's** | Stored field names and storage keys ([D2](DECISIONS.md#d2)). Words that collide but aren't retired (`InboxItem`, *kind*) |
-| **Not done if** | The resource rule passes on added lines only · an old name survives as an alias · a stored `"row"` hold no longer reads or can't be answered · *row* still means a task in an exported name (`RowDecision`, `ticketClaimsRow`) · an app still sees `"row"` written, `external-dispatcher`, or *row* in an owner-collection error ([D3](DECISIONS.md#d3)) |
+| **Not done if** | A message on [the list](app-visible-text.md) still says *row* or *collection items* · the resource rule passes on added lines only · an old name survives as an alias · a stored `"row"` hold no longer reads or can't be answered · *row* still means a task in an exported name (`RowDecision`, `ticketClaimsRow`) · an app still sees `"row"` written, `external-dispatcher`, or *row* in an owner-collection error ([D3](DECISIONS.md#d3)) |
 
 ```mermaid
 flowchart LR
@@ -74,7 +74,9 @@ Read down the right column. Each name says what is stored; the bottom box didn't
 + if (!outcome.ok && outcome.refused === "external-flow-runner") …
 ```
 
-**Four values an app can see, renamed** ([D3](DECISIONS.md#d3)):
+**Every value an app can see, renamed** ([D3](DECISIONS.md#d3)): 2 wire values and 81 message
+sites, each listed in [app-visible-text.md](app-visible-text.md). The ones an app is likeliest
+to branch on or match:
 
 | Value | Today | After |
 |---|---|---|
@@ -82,11 +84,13 @@ Read down the right column. Each name says what is stored; the bottom box didn't
 | The dispatch refusal | `"external-dispatcher"` | `"external-flow-runner"` |
 | The owner-collection refusal | "A row of an owner-private collection is readable only by…" · "A row of an owner-writes collection is written only by…" | "A resource in an owner-private collection is readable only by…" · "A resource in an owner-writes collection is written only by…" |
 | The overlap error at startup | `Collection pattern "…" can reach the rows of owner-private collection "…"` | `…can reach the resources of owner-private collection "…"` |
+| The owner-segment refusal | "…reserved for the user an owner-private collection's row belongs to, …" | "…collection's resource belongs to, …" |
+| The other 77 messages | *row* for a task, or for a resource; "collection items" | *task* where it is a task, *resource* elsewhere ([the list](app-visible-text.md)) |
 
 **Docs:** contributor and architecture docs say *resource* (or *task*, or *flow runner*) in the
 same PR. One changeset (minor, pre-1.0) lists every rename for `/release-docs`, and lists the
-four values above (the hold marker, the refusal code and three message texts) for client
-developers under their own heading, old beside new: code that
+2 wire values and the messages an app matches (the four owner-collection texts) for client
+developers under their own heading, old beside new, and points to the rule for the other 77: code that
 branches on a value or matches a message changes when it upgrades. `/release-docs` updates the
 published glossary ("a project is one row"), the collections pages, the task-substrate page's
 hold kinds and the refusal tables (ER-7). Package READMEs are written at release.
@@ -158,7 +162,7 @@ wrong: a read path for `"row"` that outlives every client that wrote it.
    `/release-docs`, under one named exemption.** If wrong: a quote kept past the release that
    should have rewritten it, which FIX-2602's closure check catches.
 
-**Decided by the owner, 2026-11-07:** rename all four values an app can see before 1.0, in
+**Decided by the owner, 2026-11-07:** rename every retired word an app can see before 1.0 ("Rename all 4"; a full sweep found 2 wire values and 81 messages), in
 this issue's one breaking changeset ([D3](DECISIONS.md#d3)). Recorded as given, not asked.
 
 Improvement · `workforce`, `orchestration`, `client`, `react`, `harness-manager`, `workspace`, `devtool`, `shift-manager`, `engine`, `core`, `scheduled` · large · epic FIX-2600

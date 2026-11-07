@@ -72,10 +72,15 @@ breaking changeset. It replaces the open fork of the first draft, where `"row"` 
 | Refusal `"external-dispatcher"` | `"external-flow-runner"` | The glossary's *Dispatcher* is the dispatcher block only; what hands a request to another process is the deployment's *flow runner* (`FlowRunner`). Engine already calls the branch `usesExternalRunner`. One word swapped, so the code still reads as the same refusal |
 | "A row of an owner-private collection is readable only by the user it belongs to." · "A row of an owner-writes collection is written only by the user it belongs to." | "A resource in an owner-private collection is readable only by the user it belongs to." · "A resource in an owner-writes collection is written only by the user it belongs to." | *Resource*: a resource in a collection is a resource. Only the noun changes, so the sentence says the same thing and still does not say whether the resource exists |
 | `Collection pattern "<P>" can reach the rows of owner-<mode> collection "<Q>".` | `…can reach the resources of owner-<mode> collection "<Q>".` | The same noun. The rest of the message, and the held-flow sentence after it, stay |
+| "That segment is reserved for the user an owner-private collection's row belongs to, …" | "…collection's resource belongs to, …" | The same noun (found in review, Gitar) |
+| 77 more messages, in `core`, `devtool`, `engine`, `orchestration`, `harness-manager`, `workforce` and `scheduled` | *task* where *row* is a task, *resource* elsewhere, *collection resources* for *collection items* | The glossary's *Resource*, and the rule that *row* never means a task. Each is listed in [app-visible-text.md](app-visible-text.md), with how the list was found |
+
+The owner named four; under the rule, a complete sweep of `packages/*/src` finds 2 wire values
+and 81 message sites. The rule, not the count, is what the owner decided, so all of them move.
 
 | | |
 |---|---|
-| **Locks in** | Four breaking values, three of them message texts, in one minor changeset, listed old beside new for client developers. `"row"` is still read (D1); the other three get no dual read: a refusal and a message are produced per call, and no schema parses one back (the refusal is a type union, not a stored enum). The engine's constants holding the messages follow the type names (`OWNER_ROW_REFUSAL` is the implementer's to rename); tests that match the old text change with it. The Flow runner entry retires `external-dispatcher` in code only, so a published page keeps describing the released value until `/release-docs` |
+| **Locks in** | 2 breaking wire values and 81 reworded messages in one minor changeset. The changeset lists old beside new for the wire values and the four owner-collection messages an app is likeliest to match, and states the rule for the rest. `"row"` is still read (D1); nothing else gets a dual read: a refusal and a message are produced per call, and no schema parses one back (the refusal is a type union, not a stored enum). The engine's constants holding the messages follow the type names (`OWNER_ROW_REFUSAL` is the implementer's to rename); tests that match the old text change with it. The Flow runner entry retires `external-dispatcher` in code only, so a published page keeps describing the released value until `/release-docs` |
 
 **What would change my mind:** none to weigh; it is the owner's call. What it costs: every
 client that branches on the refusal or matches a message updates when it upgrades.
@@ -154,8 +159,9 @@ would never exist. It ties this issue's check to a release date, which is why it
   `"task"` now rests on where a hold comes from, and the dual read is named permanent. The
   whole-tree goal now waits on a `docs-fix` PR for the published lines the rule already reads,
   and its exemptions are checked by the goal, not by a reviewer.
-- **Amended after merge (2026-11-07)** — the owner closed the open fork: rename all four values
-  an app can see (D3). Measured on `main`, the whole-tree rule meets 14 published lines in 10
+- **Amended after merge (2026-11-07)** — the owner closed the open fork: rename every retired word
+  an app can see (D3): 2 wire values and 81 messages, after a complete sweep found more than the
+  four named. Measured on `main`, the whole-tree rule meets 14 published lines in 10
   files, not 2: 8 plain, for the `docs-fix` PR, and 6 quotes of three released
   messages (the owner-private and owner-writes refusals, and the overlap error), kept by D4's exemption until `/release-docs`.
 
