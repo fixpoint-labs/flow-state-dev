@@ -34,6 +34,7 @@ import { RouteLink } from "./RouteLink";
 import { chatAssistantRenderers } from "./flow-state/chat-assistant";
 import { CoordinatorRoute } from "./CoordinatorRoute";
 import { ReceivedMessage } from "./ReceivedMessage";
+import { MessageOrBrief } from "./TaskBrief";
 import { TaskBoardMeta } from "./TaskBoardMeta";
 import { ToolInput, ToolOutput } from "./flow-state/tool";
 
@@ -294,9 +295,11 @@ export function ToolLine({ item }: { item: ToolOutputItem }) {
   return <ToolLineGroup items={[item]} />;
 }
 
-/** The chat registry with tool calls drawn as quiet lines. */
+/** The chat registry with tool calls drawn as quiet lines and a task's brief folded. */
 export const shiftManagerRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
+  // A task's brief folds to one line; every other message is the registry's copy.
+  message: MessageOrBrief,
   tool_output: ToolLine,
   // A coordinator's routing record, drawn apart from the conversation's lines.
   // Its task board, with each row opening that task's session. Another
