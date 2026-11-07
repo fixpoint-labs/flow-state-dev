@@ -76,6 +76,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: The one-compiler rule admits only examples at the root's version
+        run: node --test scripts/compiler-declarations.test.mjs
+
       - name: OMP mailbox regressions
         run: node --test .omp/test/mailbox.test.mjs
 

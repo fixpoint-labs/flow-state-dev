@@ -11,9 +11,12 @@ import { classifyTicket } from "../src/classify";
 
 const exampleDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // The guide page lives in the repository, not in a copy of this example. In
-// the repository (its workspace root above this folder) a missing page fails
+// the repository (told by its root package name, since a copy inside any pnpm
+// monorepo has a pnpm-workspace.yaml above it too) a missing page fails
 // loudly; copied out, there is no page and nothing to compare.
-const inRepo = existsSync(path.resolve(exampleDir, "../../../pnpm-workspace.yaml"));
+const rootManifest = path.resolve(exampleDir, "../../../package.json");
+const inRepo =
+  existsSync(rootManifest) && JSON.parse(readFileSync(rootManifest, "utf8")).name === "flow-state-dev";
 const guidePath = path.resolve(exampleDir, "../../../apps/docs/guides/routing-with-evaluators.md");
 const guide = inRepo ? readFileSync(guidePath, "utf8") : "";
 

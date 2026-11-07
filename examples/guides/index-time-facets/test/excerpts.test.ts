@@ -8,7 +8,8 @@
  * checked; the illustrative filters on the page are not.
  *
  * The page lives in the repository, not in a copy of this example. In the
- * repository (its workspace root above this folder) a missing page fails
+ * repository (told by its root package name, since a copy inside any pnpm
+ * monorepo has a pnpm-workspace.yaml above it too) a missing page fails
  * loudly; copied out, there is no page and nothing to compare.
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -17,7 +18,9 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = join(__dirname, "..");
 const GUIDE = join(ROOT, "../../../apps/docs/docs/resources/searching.md");
-const IN_REPO = existsSync(join(ROOT, "../../../pnpm-workspace.yaml"));
+const ROOT_MANIFEST = join(ROOT, "../../../package.json");
+const IN_REPO =
+  existsSync(ROOT_MANIFEST) && JSON.parse(readFileSync(ROOT_MANIFEST, "utf8")).name === "flow-state-dev";
 const SOURCE = ["src/facets.ts", "src/flow.ts"];
 
 /** First lines of the excerpts that must be verbatim cuts of the source. */
