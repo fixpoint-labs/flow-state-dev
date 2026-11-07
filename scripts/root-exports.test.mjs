@@ -306,9 +306,19 @@ describe("the export check's strict run, for the adopter goal", () => {
       put("packages/zz/package.json", JSON.stringify({ name: "@flow-state-dev/zz", exports: { ".": "./src/index.ts" } }));
       put("packages/zz/src/index.ts", "export const zzUsed = 1;\nexport const zzUnused = 1;\n");
       put("apps/app/main.ts", `import { zzUsed } from "@flow-state-dev/zz";\nimport type { X } from "@flow-state-dev/zz/internal";\n`);
+      // A published package with no "." entry has no root an adopter can import: a violation, not a vacuous pass.
+      put("packages/zznoroot/package.json", JSON.stringify({ name: "@flow-state-dev/zznoroot", exports: { "./sdk": "./src/sdk.ts" } }));
+      put("packages/zznoroot/src/sdk.ts", "export const zzSdk = 1;\n");
+      // A private package is not published, so its missing root is no one's concern.
+      put("packages/zzprivate/package.json", JSON.stringify({ name: "@flow-state-dev/zzprivate", private: true, exports: { "./x": "./src/x.ts" } }));
       const run = spawnSync(process.execPath, [fileURLToPath(new URL("./check-root-exports.mjs", import.meta.url)), "--strict", "--json", "--root", tree], { encoding: "utf8" });
       const verdict = JSON.parse(run.stdout.trim().split("\n").pop());
-      assert.deepEqual(verdict.violations.map((v) => `${v.package} ${v.name}`).sort(), ["@flow-state-dev/zz @flow-state-dev/zz/internal", "@flow-state-dev/zz zzUnused"]);
+      assert.deepEqual(verdict.violations.map((v) => `${v.package} ${v.name}`).sort(), [
+        "@flow-state-dev/zz @flow-state-dev/zz/internal",
+        "@flow-state-dev/zz zzUnused",
+        "@flow-state-dev/zznoroot (root)",
+      ]);
+      assert.match(verdict.violations.find((v) => v.package === "@flow-state-dev/zznoroot").detail, /root entry missing/);
     } finally {
       rmSync(tree, { recursive: true, force: true });
     }

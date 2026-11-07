@@ -77,7 +77,7 @@
     "surface.root.testing": "fail",
     "surface.root.orchestration": "pass",
     "surface.root.patterns": "fail",
-    "surface.root.claude-code": "pass",
+    "surface.root.claude-code": "fail",
     "surface.root.codex": "fail",
     "surface.root.cursor": "fail",
     "surface.root.store-sqlite": "fail",

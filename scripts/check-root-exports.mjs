@@ -192,10 +192,11 @@ function typeMentions(read, memo, resolve, file, name) {
 /**
  * Every published root's names and why each passes or fails, read through `read`.
  *
- * Returns `{ roots, internalImports, collisions }`:
+ * Returns `{ roots, missingRoots, internalImports, collisions }`:
  *   collisions       name → [{ entry, file, decl }], from {@link collisions}
  *   roots            package → Map(name → { file, why }), `why` one of
  *                    "adopter" | "docs" | "readme" | "reached" | "failing"
+ *   missingRoots     published packages with no "." entry: no root an adopter can import
  *   internalImports  [{ file, spec, form }] from the import census
  */
 export function rootReport(read) {
@@ -205,6 +206,7 @@ export function rootReport(read) {
   const pending = changesetDocs(read);
   const memo = new Map();
   const roots = new Map();
+  const missingRoots = [...published.keys()].filter((pkg) => !entries.get(pkg)?.has(".")).sort();
   for (const [pkg, dir] of [...published].sort(([a], [b]) => a.localeCompare(b))) {
     const exp = entries.get(pkg)?.get(".") ?? new Map();
     const readmePath = `packages/${dir}/README.md`;
@@ -234,7 +236,7 @@ export function rootReport(read) {
     }
     roots.set(pkg, out);
   }
-  return { roots, internalImports, collisions: collisions(read, entries) };
+  return { roots, missingRoots, internalImports, collisions: collisions(read, entries) };
 }
 
 const failing = (report) =>
@@ -299,10 +301,11 @@ export function render({ newFailing, newInternal, readmeCleared, newCollisions =
 /**
  * Every failing root name and every adopter `/internal` import in `report`, with no base: the
  * strict-run protocol's `violations`. An `/internal` import is the violation of the package
- * whose `/internal` it reaches, named by its specifier.
+ * whose `/internal` it reaches, named by its specifier. A published package with no root entry
+ * is a violation too (`(root)`): its `surface.root.*` cell would otherwise pass on nothing.
  */
 export function violations(report) {
-  const out = [];
+  const out = (report.missingRoots ?? []).map((pkg) => ({ package: pkg, name: "(root)", detail: "root entry missing: the package publishes no \".\" export" }));
   for (const [pkg, m] of report.roots) {
     for (const [name, { file, why }] of m) {
       if (why === "failing") out.push({ package: pkg, name, detail: `on the root (${file}); no app, example, lab or docs page imports it and the README doesn't name it` });
