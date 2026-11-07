@@ -150,7 +150,7 @@ const messageReceivedOutputSchema = z.object({ reply: z.string().optional(), tur
 
 /**
  * Build the `onMessageReceived` entry for a flow: spread it under
- * `internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ ... }) } }`.
+ * `internal: { actions: { onMessageReceived: messageReceivedEntry({ ... }) } }`.
  * The session factory's `entries(turn)` spreads it already.
  *
  * @param options.turn The flow's turn for a message ({@link MessageReceived}

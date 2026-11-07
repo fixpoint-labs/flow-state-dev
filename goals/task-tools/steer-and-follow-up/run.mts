@@ -13,8 +13,6 @@ import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing"
 import { harnessManager, harnessSessionDoor, taskIssueSegment, type HarnessFeeds } from "@flow-state-dev/harness-manager";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
-  STEER_TURN_ENTRY,
-  WORKER_TASK_ENTRY,
   conversationLedgers,
   createWorkerInstallation,
   defineAgentWorkerFlow,
@@ -293,11 +291,11 @@ function defineCoderFlow(installation: WorkerInstallation, repo: string, checkou
     actions: { respond: message },
     internal: {
       actions: {
-        [STEER_TURN_ENTRY]: steerTurnEntry({ name: "steer-goal-coder-steer-turn", block: manager as never }),
+        onTaskSteered: steerTurnEntry({ name: "steer-goal-coder-steer-turn", block: manager as never }),
         ...hearsMessages(installation, "coder")
       }
     },
-    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "steer-goal-coder-work", block: manager as never }) } }
+    task: { actions: { work: workerTaskEntry({ name: "steer-goal-coder-work", block: manager as never }) } }
   } as never);
 }
 

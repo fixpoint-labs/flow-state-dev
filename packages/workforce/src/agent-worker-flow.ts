@@ -86,7 +86,8 @@ import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
 import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
 import { finishedTasksAnswerAgain } from "./conversation-board/take-finished";
-import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
+import { workstreamOpenedEntry } from "./projects/workstream-lead";
+import { WORKSTREAM_OPENED_ENTRY } from "./projects/workstream-ref";
 import { WORKER_PACKAGES_KEY, WORKER_SKILLS_KEY, WORKER_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
   catalogWorkerCapabilities,

@@ -481,8 +481,17 @@ function isRetiredTierLiteral(literal) {
   // can see it — and a fixture renamed without its assertion is a test that
   // now pins the retired spelling. Narrowed to the enclosing STATEMENT
   // mentioning the field, so an unrelated `"work"` in the same file is not
-  // swept up.
-  const statement = literal.getFirstAncestor((a) => Node.isExpressionStatement(a));
+  // swept up. The NEAREST statement of any kind: an `if (…["work"]…)` inside a
+  // callback otherwise walks up to the call holding the whole callback, and a
+  // worker's `work` entry name reads as a tier assertion because the callback
+  // mentions `.phase` lines away.
+  const nearest = literal.getFirstAncestor((a) => Node.isStatement(a));
+  // An assertion stands as an expression, is returned, or is held in a const.
+  const statement =
+    nearest !== undefined &&
+    (Node.isExpressionStatement(nearest) || Node.isReturnStatement(nearest) || Node.isVariableStatement(nearest))
+      ? nearest
+      : undefined;
   if (statement !== undefined && /\.(phase|scope)\b/.test(statement.getText())) return true;
 
   // A tier passed positionally into a provenance/phase builder:

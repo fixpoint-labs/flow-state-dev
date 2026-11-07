@@ -13,7 +13,6 @@ import {
   DONE_STATUS,
   projectProgress,
   STALE_AFTER_MS,
-  WORKSTREAM_OPENED_ENTRY,
   WORKSTREAM_RESOURCES,
   WORKSTREAMS_RESOURCE,
   workstreamEntryKey,
@@ -115,14 +114,14 @@ const age = handler({
 async function boot() {
   const counting = countingStores();
   const projects = defineProjectBlocks();
-  const leadFlow = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+  const leadFlow = { kind: "lead", internal: { actions: { onWorkstreamOpened: {} } } };
   const h = await bootProjectsHost({
     lab: (installation) => ({
       ...projects.actions,
       ...defineWorkstreamBlocks({ installation, leadFlows: [leadFlow] }).actions,
       age: { block: age }
     }),
-    leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() })
+    leadInternal: () => ({ onWorkstreamOpened: workstreamOpenedEntry() })
   }, { stores: counting.stores });
   const lab = (user: string) => h.openSession(user, "lab");
   await h.ok("alice", "lab", await lab("alice"), "createProject", { id: "apollo", title: "Apollo", members: ["bob"] });

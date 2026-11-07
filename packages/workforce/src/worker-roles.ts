@@ -23,9 +23,17 @@
  * contract check, `workerFlowProblems` and the delegate check all read it.
  * A leaf over the entry names' own leaves, so the factories import their mark
  * from here without importing the table's readers.
+ *
+ * Beside it, the entries the framework calls by name, whatever the role
+ * ({@link ENTRY_PIECES}): an app names each by its documented string, as it
+ * names an action, and the hire refuses a piece an entry factory built under
+ * any other name, naming the string, because nothing would ever call it there.
  */
-import { DISPATCH_ENTRY, TASK_SETTLED_ENTRY } from "./conversation-board/board-entries";
+import { DISPATCH_ENTRY, STEER_TURN_ENTRY, TASK_SETTLED_ENTRY } from "./conversation-board/board-entries";
 import { ROUND_DEADLINE_ACTION, ROUTE_ON_ACTION, WORKSTREAM_DELEGATE_ACTION } from "./coordinator/coordinator-keys";
+import { MESSAGE_RECEIVED_ENTRY } from "./messages/keys";
+import { RECEIVED_MARK } from "./messages/received-mark";
+import { WORKSTREAM_OPENED_ENTRY } from "./projects/workstream-ref";
 import { WORKER_TASK_ENTRY, takesConversationTasks } from "./worker-task-entry";
 
 /** The roles a worker flow may declare, beside every worker's door. */
@@ -46,6 +54,22 @@ const ROLE_PIECE = Symbol.for("@flow-state-dev/workforce/role-piece");
 /** Mark `piece` as built by `role`'s factory. Returns it. */
 export function markRolePiece<T extends object>(piece: T, role: WorkerRole): T {
   (piece as Record<symbol, unknown>)[ROLE_PIECE] = role;
+  return piece;
+}
+
+/**
+ * The mark on what an entry factory with no mark of its own builds: the
+ * factory's name. Enumerable and registered, as {@link markRolePiece}'s is.
+ * `workerTaskEntry` and `messageReceivedEntry` keep their own older marks.
+ */
+const ENTRY_PIECE = Symbol.for("@flow-state-dev/workforce/entry-piece");
+
+/** The entry factories that mark what they build with {@link markEntryPiece}. */
+type MarkedEntryFactory = "steerTurnEntry" | "workstreamOpenedEntry";
+
+/** Mark `piece` as built by `factory`. Returns it. */
+export function markEntryPiece<T extends object>(piece: T, factory: MarkedEntryFactory): T {
+  (piece as Record<symbol, unknown>)[ENTRY_PIECE] = factory;
   return piece;
 }
 
@@ -132,6 +156,39 @@ const ROLE_TABLE: Readonly<Record<WorkerRole, RoleRow>> = {
   }
 };
 
+/** One entry the framework calls by name: the factory that builds it, and where the framework looks for it. */
+interface EntryPiece {
+  readonly factory: MarkedEntryFactory | "workerTaskEntry" | "messageReceivedEntry";
+  readonly name: string;
+  readonly section: Section;
+  /** Whether `entry` is one `factory` built. */
+  readonly built: (entry: unknown) => boolean;
+}
+
+const entryMarkedBy =
+  (factory: MarkedEntryFactory) =>
+  (entry: unknown): boolean =>
+    typeof entry === "object" && entry !== null && (entry as Record<symbol, unknown>)[ENTRY_PIECE] === factory;
+
+/**
+ * The entries the framework calls by their documented string, each with the
+ * factory that builds it. A piece one of these built, found under any other
+ * name or in another section, is refused at hire ({@link roleProblems}).
+ * Orchestration's `onTaskSettled` isn't here: `defineFlow` refuses a flow
+ * that holds a board without it.
+ */
+const ENTRY_PIECES: readonly EntryPiece[] = [
+  { factory: "workerTaskEntry", name: WORKER_TASK_ENTRY, section: "task", built: isWorkerTaskEntry },
+  { factory: "steerTurnEntry", name: STEER_TURN_ENTRY, section: "internal", built: entryMarkedBy("steerTurnEntry") },
+  {
+    factory: "messageReceivedEntry",
+    name: MESSAGE_RECEIVED_ENTRY,
+    section: "internal",
+    built: (entry) => typeof entry === "object" && entry !== null && (entry as Record<symbol, unknown>)[RECEIVED_MARK] !== undefined
+  },
+  { factory: "workstreamOpenedEntry", name: WORKSTREAM_OPENED_ENTRY, section: "internal", built: entryMarkedBy("workstreamOpenedEntry") }
+];
+
 type SchemaLike = { safeParse?: (value: unknown) => { success: boolean } };
 type EntryLike = { inputSchema?: SchemaLike; block?: { inputSchema?: SchemaLike } };
 
@@ -153,6 +210,9 @@ function sectionOf(flow: FlowLike, section: Section | "actions"): Readonly<Recor
 }
 
 const SECTION_NAME: Record<Section, string> = { task: "task entry", internal: "internal entry" };
+
+/** Where a section's entries are declared on a flow. */
+const SECTION_KEY: Record<Section | "actions", string> = { actions: "actions", internal: "internal.actions", task: "task.actions" };
 
 const quoted = (names: readonly string[]): string => names.map((name) => `"${name}"`).join(", ");
 
@@ -222,6 +282,19 @@ export function roleProblems(name: string, flow: unknown, roles: readonly unknow
         `but doesn't declare "${role}". Declare it in its registration's \`roles\` ` +
         `(\`workerFlow(build, { roles: ["${role}"] })\` or \`{ flow, roles: ["${role}"] }\`), or leave the pieces off.`
     );
+  }
+
+  // Every piece an entry factory built, under a name the framework never calls.
+  for (const section of ["actions", "internal", "task"] as const) {
+    for (const [entryName, entry] of Object.entries(sectionOf(definition, section))) {
+      const piece = ENTRY_PIECES.find((candidate) => candidate.built(entry));
+      if (piece === undefined || (entryName === piece.name && section === piece.section)) continue;
+      problems.push(
+        `worker flow "${name}" carries "${entryName}" in \`${SECTION_KEY[section]}\`, built by \`${piece.factory}\`, ` +
+          `but the framework calls that entry only as the ${SECTION_NAME[piece.section]} "${piece.name}", so nothing would ever run it. ` +
+          `Name it "${piece.name}" in \`${SECTION_KEY[piece.section]}\`.`
+      );
+    }
   }
   return problems;
 }

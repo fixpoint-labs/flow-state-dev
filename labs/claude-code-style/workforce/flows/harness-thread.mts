@@ -59,15 +59,12 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
   filingConversationBoard,
-  MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   messageReceivedSchema,
   projectChecks,
   projectWorkspaceCapability,
   startOwedSteerTurn,
-  STEER_TURN_ENTRY,
   steerTurnEntry,
-  WORKER_TASK_ENTRY,
   workerConfigSchema,
   workerMessagesResources,
   workerTaskEntry,
@@ -322,7 +319,7 @@ export function defineHarnessThreadFlow({ installation, workspace, scriptedStepM
     internal: {
       actions: {
         // Another worker's message lands in a task's session only, and a finished task's coding session answers it.
-        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({
+        onMessageReceived: messageReceivedEntry({
           installation,
           flowKind: HARNESS_THREAD_FLOW,
           hears: "task-sessions",
@@ -331,7 +328,7 @@ export function defineHarnessThreadFlow({ installation, workspace, scriptedStepM
             byHarness("harness-thread-message", z.object({ message: z.string() }), (b) => b.talk),
           ),
         }),
-        [STEER_TURN_ENTRY]: steerTurnEntry({
+        onTaskSteered: steerTurnEntry({
           name: `${HARNESS_THREAD_FLOW}-steer-turn`,
           block: byHarness("harness-thread-steer", taskWorkerInputSchema.passthrough(), (b) => b.manager),
         }),
@@ -339,8 +336,8 @@ export function defineHarnessThreadFlow({ installation, workspace, scriptedStepM
     },
     task: {
       actions: {
-        [WORKER_TASK_ENTRY]: workerTaskEntry({
-          name: `${HARNESS_THREAD_FLOW}-${WORKER_TASK_ENTRY}`,
+        work: workerTaskEntry({
+          name: `${HARNESS_THREAD_FLOW}-work`,
           block: byHarness("harness-thread-by-harness", taskWorkerInputSchema.passthrough(), (b) => b.manager),
         }),
       },

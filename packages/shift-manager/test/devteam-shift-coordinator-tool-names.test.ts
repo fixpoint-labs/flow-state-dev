@@ -10,7 +10,6 @@ import {
   createWorkerInstallation,
   defineProjectBlocks,
   defineWorkstreamBlocks,
-  WORKSTREAM_OPENED_ENTRY,
 } from "@flow-state-dev/workforce";
 import { shiftCoordinatorProjectTools, shiftCoordinatorRosterTools } from "../teams/devteam/host.mts";
 
@@ -18,7 +17,7 @@ import { shiftCoordinatorProjectTools, shiftCoordinatorRosterTools } from "../te
 function projectTools() {
   const installation = createWorkerInstallation({ standardWorkers: [], workerFlows: () => ({}) });
   const blocks = defineProjectBlocks();
-  const lead = { kind: "agent", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+  const lead = { kind: "agent", internal: { actions: { onWorkstreamOpened: {} } } };
   const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [lead] });
   return { blocks, workstreams, tools: shiftCoordinatorProjectTools(blocks, workstreams) };
 }

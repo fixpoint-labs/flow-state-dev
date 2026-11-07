@@ -4,6 +4,6 @@
  * flow keeps and fires them; `hireWorkforce`'s `schedules` takes an optional
  * schedule index.
  */
-export { FILE_SCHEDULED_TASK_ENTRY, LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN, SCHEDULES_RESOURCE, TASK_SCHEDULE_HANDLER } from "./keys";
+export { LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN, SCHEDULES_RESOURCE, TASK_SCHEDULE_HANDLER } from "./keys";
 export { listedScheduleSchema, type ListedSchedule } from "./listed-schedule";
 export { scheduledTaskInputSchema, type ScheduledTaskInput, type ScheduledWorkOptions } from "./scheduled-work";

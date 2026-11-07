@@ -49,11 +49,8 @@ import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board"
 import type { TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
-  STEER_TURN_ENTRY,
   steerTurnEntry,
-  MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
-  WORKER_TASK_ENTRY,
   workerConfigSchema,
   workerFlow,
   workerConfigOf,
@@ -198,14 +195,14 @@ export function coderFlow(options: CoderFlowOptions) {
         },
         internal: {
           actions: {
-            [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: CODER_FLOW, hears: "task-sessions" }),
+            onMessageReceived: messageReceivedEntry({ installation, flowKind: CODER_FLOW, hears: "task-sessions" }),
             // The turn a steer or a delivered message owes a task it woke from its pull-request wait.
-            [STEER_TURN_ENTRY]: steerTurnEntry({ name: `${CODER_FLOW}-steer-turn`, block: byHarness }),
+            onTaskSteered: steerTurnEntry({ name: `${CODER_FLOW}-steer-turn`, block: byHarness }),
           },
         },
         task: {
           actions: {
-            [WORKER_TASK_ENTRY]: workerTaskEntry({ name: `${CODER_FLOW}-${WORKER_TASK_ENTRY}`, block: byHarness }),
+            work: workerTaskEntry({ name: `${CODER_FLOW}-work`, block: byHarness }),
           },
         },
       } as never);
