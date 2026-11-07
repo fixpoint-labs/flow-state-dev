@@ -258,7 +258,7 @@ describe("the denylist is closed, so ordinary use of the word stays legal", () =
     const text = `
       run(async () => {
         const kept = item.phase;
-        if (!sameSet(entriesOf(seat), ["work"])) note("wanted only work");
+        if (!sameSet(entriesOf(worker), ["work"])) note("wanted only work");
       });`;
     expect(encodings(text)).not.toContain("E2");
   });
