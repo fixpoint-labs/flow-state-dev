@@ -1,7 +1,7 @@
 {
   "port": 4620,
-  "lead": "teammates.chief-of-staff",
-  "leadName": "Chief of Staff",
+  "lead": "teammates.lead",
+  "leadName": "Lead",
   "researcher": "teammates.researcher",
   "ask": "Ask researcher for our launch date, and help me outline the post.",
   "second": "Make section 2 about pricing.",

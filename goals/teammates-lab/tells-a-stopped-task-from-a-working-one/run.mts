@@ -22,7 +22,7 @@ import { startTeammates } from "../lab.mts";
 
 const USER = "u_goal";
 /** The teammate whose conversation files the tasks, its name in the list, and the coding worker they go to. */
-const FILER = { id: "teammates.chief-of-staff", name: "Chief of Staff" };
+const FILER = { id: "teammates.lead", name: "Lead" };
 const CODER = "teammates.cursor";
 const BOARD = "tasks";
 

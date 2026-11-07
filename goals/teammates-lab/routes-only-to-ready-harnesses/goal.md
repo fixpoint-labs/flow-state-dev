@@ -2,19 +2,19 @@
 
 **Issue:** FIX-2391
 
-**Outcome:** The Teammates lab knows which coding harnesses this machine can run. It says so at start, with what to run for one that can't. It reads again when asked, so a sign-in made after start counts. Chief of Staff files coding work only on a ready harness. Asked for one that isn't ready, it files nothing there and tells the user what to run.
+**Outcome:** The Teammates lab knows which coding harnesses this machine can run. It says so at start, with what to run for one that can't. It reads again when asked, so a sign-in made after start counts. Lead files coding work only on a ready harness. Asked for one that isn't ready, it files nothing there and tells the user what to run.
 
-**Input:** `fixtures/input.json`: two wordings of "have Codex add a line to the README", one drawn per run. **Held out**: no worker file or prompt names a harness's sign-in state. Chief of Staff's own `WORKER.md` says to assign a task to the agent the user names, so only the readiness rows in its context can stop it.
+**Input:** `fixtures/input.json`: two wordings of "have Codex add a line to the README", one drawn per run. **Held out**: no worker file or prompt names a harness's sign-in state. Lead's own `WORKER.md` says to assign a task to the agent the user names, so only the readiness rows in its context can stop it.
 
 **Signal:** `fsdev dev --app @flow-state-dev/teammates` on a fresh store over an empty git checkout, driven over HTTP. Cursor is ready, from a `CURSOR_API_KEY` in the lab's environment. Codex is not: there's no `CODEX_API_KEY`, and `CODEX_HOME` is an empty folder, so the SDK's own `codex login status` finds no login. `PATH` doesn't pick the program; the SDK does.
 
 - *start log*: the server log has the Codex row, and it names `codex login`.
 - *re-check*: the `harness-readiness` flow's `read` returns Codex as not ready, with a remedy. The goal then runs the SDK's own program with `login --with-api-key` and a dummy key into that `CODEX_HOME`. After that, `{ refresh: true }` returns Codex as ready.
-- *routes*: asked to have Codex change the README, Chief of Staff calls `createTask` on `teammates.codex` zero times, and its reply names `codex login`. It may offer Cursor, or use it.
+- *routes*: asked to have Codex change the README, Lead calls `createTask` on `teammates.codex` zero times, and its reply names `codex login`. It may offer Cursor, or use it.
 
 Each run passes all three. 3 runs of 3 (`GOAL_RUNS`, default 3).
 
-**Anti-game:** Graded on the server log, the read action's output and Chief of Staff's tool outputs, through the public client. The Codex sign-in really changes between the two reads, through Codex's own program, so a read that never checks again can't pass *re-check*.
+**Anti-game:** Graded on the server log, the read action's output and Lead's tool outputs, through the public client. The Codex sign-in really changes between the two reads, through Codex's own program, so a read that never checks again can't pass *re-check*.
 
 **Model:** real: `openai/gpt-6-luna` (the lab's default) for *routes*. *start log* and *re-check* call no model.
 

@@ -8,13 +8,13 @@ module, `goals/lib/task-signals.mts`.
 stopped, and sees how long each running task has worked on this attempt, from the teammate's
 panel, without opening the task or asking a model.
 
-**Input:** coding tasks filed on Chief of Staff's conversation board through its own `createTask`
+**Input:** coding tasks filed on Lead's conversation board through its own `createTask`
 action, as a screen files one, for `teammates.cursor` on the lab's scripted harness
 (`GOAL_HARNESS=stub`, a 4-minute pause before each step). It is **held-out**: no worker file, flow
 or page names the tasks' titles or goals.
 
 **Signal:** `fsdev dev --app @flow-state-dev/teammates` on a fresh store over a scratch git
-checkout, one browser on Chief of Staff's panel. Each leg grades the row's words on the page
+checkout, one browser on Lead's panel. Each leg grades the row's words on the page
 against the board's own `listTasks` row.
 
 - **clock**: a task runs 30 s, is cancelled and retried. Within 20 s its row reads `working · …`
@@ -36,7 +36,7 @@ against the board's own `listTasks` row.
 compared with the board's row. A row the board took back before the page could be read is CAN'T
 TELL (`tell.over`), not PASS; so are no reads of the alive row.
 
-**Model:** n/a. The server gets no model credential; Chief of Staff's turns woken by a task's
+**Model:** n/a. The server gets no model credential; Lead's turns woken by a task's
 ending fail without one, and nothing here waits on them.
 
 **Run:** `pnpm tsx goals/teammates-lab/tells-a-stopped-task-from-a-working-one/run.mts` (about

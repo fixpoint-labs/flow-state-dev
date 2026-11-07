@@ -2,22 +2,22 @@
 
 **Issue:** FIX-2334
 
-**Outcome:** Asked who it is, each worker in the Teammates lab gives its own name and role, never "ChatGPT". Asked who its teammates are, Chief of Staff names them from what it already knows: no tool call. None of it is written in the lab's worker files. It comes from the built-in worker flow's default prompt layer, read from the roster.
+**Outcome:** Asked who it is, each worker in the Teammates lab gives its own name and role, never "ChatGPT". Asked who its teammates are, Lead names them from what it already knows: no tool call. None of it is written in the lab's worker files. It comes from the built-in worker flow's default prompt layer, read from the roster.
 
 **Input:** `fixtures/input.json`: the three workers and the names they go by, and two wordings of each question. A wording is drawn per ask. **Held out**: another wording of either question passes a correct lab.
 
 **Signal:** `fsdev dev --app @flow-state-dev/teammates` on the lab's own workers and a fresh store, driven over HTTP.
 
-- **Leg 1:** each of `teammates.chief-of-staff`, `teammates.researcher` and `teammates.writer` is asked who it is, in its own conversation.
-  - *named*: the reply holds the worker's name (`Chief of Staff`, `researcher`, `writer`).
+- **Leg 1:** each of `teammates.lead`, `teammates.researcher` and `teammates.writer` is asked who it is, in its own conversation.
+  - *named*: the reply holds the worker's name (`Lead`, `researcher`, `writer`).
   - *not ChatGPT*: the reply doesn't say ChatGPT.
-- **Leg 2:** Chief of Staff is asked who its teammates are.
+- **Leg 2:** Lead is asked who its teammates are.
   - *names researcher*, *names writer*: the reply holds both.
   - *no tool call*: the turn holds no tool output.
 
 Each leg passes in 3 runs of 3 (`GOAL_RUNS`, default 3).
 
-**Anti-game:** Graded on the replies and the turn's items. The lab's worker files carry no "You are …" or teammates line, so a worker's own name in a reply comes from the prompt layer. Leg 2 is weaker: the team's `TEAM.md` and Chief of Staff's body still mention researcher and writer, so the names alone could come from there. What leg 2 adds is *no tool call*: without the layer the model looks its teammates up (`listDelegates`).
+**Anti-game:** Graded on the replies and the turn's items. The lab's worker files carry no "You are …" or teammates line, so a worker's own name in a reply comes from the prompt layer. Leg 2 is weaker: the team's `TEAM.md` and Lead's body still mention researcher and writer, so the names alone could come from there. What leg 2 adds is *no tool call*: without the layer the model looks its teammates up (`listDelegates`).
 
 **Model:** real: `openai/gpt-5.4-mini` (the lab's workers).
 

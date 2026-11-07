@@ -4,9 +4,9 @@
  * `fsdev dev --app @flow-state-dev/teammates`. See goal.md for the contract.
  *
  * Legs, each graded from the reply and the turn's items:
- *   1. each of Chief of Staff, researcher and writer is asked who it is: its
+ *   1. each of Lead, researcher and writer is asked who it is: its
  *      reply names it, and never says it is ChatGPT.
- *   2. Chief of Staff is asked who its teammates are: its reply names
+ *   2. Lead is asked who its teammates are: its reply names
  *      researcher and writer, and the turn made no tool call.
  *
  * Control (`GOAL_CONTROL=no-identity`, same command): the built-in worker
@@ -93,7 +93,7 @@ await runGoal(async (failures, tell) => {
         notes.push(`run ${n} ${worker.name}: ${JSON.stringify(reply.slice(0, 80))}`);
       }
 
-      // ── Leg 2: Chief of Staff names its teammates, with no tool call.
+      // ── Leg 2: Lead names its teammates, with no tool call.
       const { reply, toolCalls } = await ask(me, fixture.lead, pick(fixture.whoAreYourTeammates));
       for (const teammate of fixture.teammates) {
         if (!names(reply, teammate)) fail(`leg 2 · names ${teammate}: ${JSON.stringify(reply.slice(0, 400))}`);

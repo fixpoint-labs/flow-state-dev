@@ -68,6 +68,10 @@ const CONTRIBUTOR = /^(docs\/contributing\/|\.agents\/|docs\/(philosophy|objecti
 /** Where a retirement of each reach is read by the sweep, when it names no `files` of its own. */
 const REACH_FILES = { name: CODE_PUBLISHED_OR_NOTES, meaning: CODE_OR_PUBLISHED };
 
+/** FIX-2354: the contributor files that name the fixpoint-labs/agent-mailbox board, where agents outside a session talk. */
+const AGENT_MAILBOX_FILES =
+  /^(\.agents\/skills\/(agent-mailbox|epic-lifecycle|fsd-coding|issue-implement|issue-lifecycle|review)\/SKILL\.md|\.agents\/subagents\/issue-worker\.md|\.agents\/workflows\/(epic-wake\.js|verify\.mjs)|CLAUDE\.md|docs\/contributing\/(development-setup|orchestration|spec-template)\.md)$/;
+
 /** FIX-2248: the goal folders that named a seat or a mailbox (or a person for the user), exact names only. */
 const SEAT_MAILBOX_GOAL_NAMES = [
   "mailbox-boards",
@@ -1030,7 +1034,8 @@ const EXEMPTIONS = [
   {
     id: "agent-mailbox-board",
     terms: ["mailbox"],
-    where: (path) => CONTRIBUTOR.test(path),
+    // Only the files that name the board, so a stale Workforce mailbox anywhere else still counts.
+    where: (path) => AGENT_MAILBOX_FILES.test(path),
     strip: /mailbox/gi,
     why: "FIX-2354: the fixpoint-labs/agent-mailbox board, where agents outside a session talk: a different thing with that name, not Workforce's coordinator",
   },
@@ -1241,6 +1246,8 @@ export const AREAS = [
   { id: "apps", scope: true, re: /^apps\// },
   { id: "labs", scope: true, re: /^labs\// },
   { id: "examples", scope: true, re: /^examples\// },
+  // The root README is the repository's front page for readers, so it stays read for meanings too.
+  // It matches here before `contributor` below, which reads it for names only in the sweep.
   { id: "reference-docs", scope: true, re: /^docs\/architecture\/|^docs\/mechanisms\/|^README\.md$/ },
   // Read for retired names only, never English meanings (FIX-2354 D1).
   { id: "contributor", scope: true, reach: "name", re: CONTRIBUTOR },
