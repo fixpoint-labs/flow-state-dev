@@ -1,17 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { generator, handler, sequencer } from "@flow-state-dev/core";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
-import type {
-  BenchmarkRegistry,
-  BenchmarkSubject,
-  BenchmarkTask,
-  SequencerDefinition,
-} from "@flow-state-dev/core";
+import type { SequencerDefinition } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   comparePatterns,
   defineBenchmark,
   runBenchmark,
+  type BenchmarkRegistry,
+  type BenchmarkSubject,
+  type BenchmarkTask,
 } from "../src/benchmark";
 import { withoutSearch } from "../src/benchmark/runBenchmark";
 

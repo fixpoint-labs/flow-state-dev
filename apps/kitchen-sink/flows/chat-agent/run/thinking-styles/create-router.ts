@@ -41,7 +41,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const backgroundWorkPipeline = createBackgroundWorkPipeline(pipelineConfig);
 
   // connectInput delegates through the original block's .run, so route
-  // interception (e.g. testRouter) works transparently.
+  // interception (e.g. testBlock's `selectedRoute`) works transparently.
   const thinkingStyleRouter = router({
     name: "thinking-style-router",
     routes: [defaultPipeline, backgroundWorkPipeline],

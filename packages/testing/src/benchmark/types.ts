@@ -5,7 +5,7 @@
  * `@flow-state-dev/testing`: the run config, the per-cell result the engine
  * collects, the aggregated report, and the `defineBenchmark` discovery shape.
  * The pattern-agnostic contract types (`BenchmarkTask`, `BenchmarkSubject`,
- * etc.) live in `@flow-state-dev/core` and are imported here.
+ * etc.) live beside them in `./contract`.
  *
  * Type-only module: no runtime values.
  */
@@ -16,7 +16,7 @@ import type {
   BenchmarkTask,
   BenchmarkCategory,
   BenchmarkRegistry
-} from "@flow-state-dev/core";
+} from "./contract";
 
 /** Configuration for a single `runBenchmark` invocation. */
 export interface RunBenchmarkConfig {

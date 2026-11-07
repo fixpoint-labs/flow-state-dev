@@ -1,7 +1,8 @@
 /**
- * Benchmark harness public surface.
+ * `@flow-state-dev/testing/benchmark`: the cross-pattern benchmark harness.
  *
- * Re-exports the engine (`runBenchmark`), report helpers (`buildBenchmarkReport`,
+ * Exports the benchmark contract (`BenchmarkTask`, `BenchmarkSubject`, the
+ * adapter and registry shapes pattern adapters implement), the engine (`runBenchmark`), report helpers (`buildBenchmarkReport`,
  * `renderScorecard`), and pricing, plus the convenience layer:
  * - `baselineSubject` — the single-generator control every comparison needs.
  * - `comparePatterns` — resolve pattern names against a registry, append the
@@ -12,10 +13,7 @@
 import { z } from "zod";
 import { generator, sequencer } from "@flow-state-dev/core";
 import type { SequencerDefinition, UsesSlot } from "@flow-state-dev/core";
-import type {
-  BenchmarkRegistry,
-  BenchmarkSubject,
-} from "@flow-state-dev/core";
+import type { BenchmarkRegistry, BenchmarkSubject } from "./contract";
 import { runBenchmark } from "./runBenchmark";
 import type {
   BenchmarkDefinition,
@@ -139,6 +137,14 @@ export { runBenchmark } from "./runBenchmark";
 export { buildBenchmarkReport, renderScorecard } from "./report";
 export type { BuildBenchmarkReportMeta } from "./report";
 export { estimateCostUsd } from "./pricing";
+export type {
+  BenchmarkCategory,
+  BenchmarkTask,
+  BenchmarkSubject,
+  BenchmarkAdapterOptions,
+  BenchmarkAdapter,
+  BenchmarkRegistry,
+} from "./contract";
 export type {
   RunBenchmarkConfig,
   SubjectCategoryStat,

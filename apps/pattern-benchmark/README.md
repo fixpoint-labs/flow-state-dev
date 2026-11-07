@@ -56,7 +56,7 @@ best-effort and the `--max-cost` ceiling stops the sweep early when exceeded.
 
 ## Adding a pattern
 
-Add a benchmark adapter to `@flow-state-dev/patterns`' `defaultBenchmarkRegistry`,
+Add a benchmark adapter to `defaultBenchmarkRegistry` (`@flow-state-dev/patterns/benchmark`),
 then add its name to the `patterns` list in `src/benchmark.ts`. No per-pattern
 harness wiring.
 

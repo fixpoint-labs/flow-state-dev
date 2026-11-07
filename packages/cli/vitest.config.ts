@@ -32,6 +32,7 @@ export default defineConfig({
       "@flow-state-dev/core/blocks/sequencer": resolve(root, "packages/core/src/blocks/sequencer-builder.ts"),
       "@flow-state-dev/core": resolve(root, "packages/core/src/index.ts"),
       "@flow-state-dev/engine": resolve(root, "packages/engine/src/index.ts"),
+      "@flow-state-dev/testing/benchmark": resolve(root, "packages/testing/src/benchmark/index.ts"),
       "@flow-state-dev/testing": resolve(root, "packages/testing/src/index.ts"),
     },
   },

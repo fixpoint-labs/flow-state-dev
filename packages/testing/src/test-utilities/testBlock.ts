@@ -1,10 +1,12 @@
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition, BlockRuntime } from "@flow-state-dev/core/types";
+import { asRuntime } from "@flow-state-dev/core/types";
 import { sequencer } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
-import type { OutputItem, StateChangeItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem, StateChangeItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { asRecord } from "../internal/json-helpers";
 import { createTestContext } from "../runtime/createTestContext";
+import { sequencerTraces } from "./sequencerTraces";
 import type {
   BlockInput,
   BlockOutput,
@@ -51,13 +53,65 @@ function toTrackedStateChanges(items: OutputItem[]): Array<{
     }));
 }
 /**
+ * Wraps a router's substrate `run` to inject an `onRouteSelected` hook that
+ * records the chosen route's name, and returns the restore. Works through
+ * `connectInput`, which builds a new block but keeps the original's name.
+ */
+function recordSelectedRoute(router: BlockDefinition<any, any>, record: (route: string) => void): () => void {
+  const runtime = asRuntime(router) as BlockRuntime<any, any>;
+  const originalRun = runtime.run;
+  runtime.run = async (input: unknown, ctx: unknown) => {
+    const blockCtx = ctx as { _runtimeHooks?: Record<string, Function> };
+    const existingOnRouteSelected = blockCtx._runtimeHooks?.onRouteSelected;
+    blockCtx._runtimeHooks = {
+      ...blockCtx._runtimeHooks,
+      onRouteSelected: (routerName: string, routeName: string, instanceId?: string) => {
+        record(routeName);
+        // Forward the wrapped hook's promise so the router's decision-anchor
+        // await still covers the original hook's write.
+        return existingOnRouteSelected?.(routerName, routeName, instanceId);
+      }
+    };
+    return originalRun.call(runtime, input as any, ctx as any);
+  };
+  return () => {
+    runtime.run = originalRun;
+  };
+}
+
+/**
  * Executes one block with seeded scope state and returns deterministic test artifacts.
  *
  * Types are inferred from the block's Zod schema parameters:
  * - Input type is derived from the block's `inputSchema` property
  * - Output type is derived from the block's `outputSchema` property
+ *
+ * The result depends on the block's kind: a sequencer's also carries its
+ * `steps`, `sideChainResults` and `loopIterations`; a router's names the
+ * route it chose in `selectedRoute`.
  */
 export async function testBlock<TBlock extends BlockDefinition<any, any>>(
+  block: TBlock,
+  options: TestBlockOptions<BlockInput<TBlock>>
+): Promise<TestBlockResult<BlockOutput<TBlock>, TBlock>> {
+  let selectedRoute: string | undefined;
+  const restore =
+    block.kind === "router" ? recordSelectedRoute(block, (route) => (selectedRoute = route)) : undefined;
+  try {
+    const base = await runBlock(block, options);
+    const kindFields =
+      block.kind === "sequencer"
+        ? sequencerTraces(base.items as Array<OutputItem | BlockTraceItem>)
+        : selectedRoute !== undefined
+          ? { selectedRoute }
+          : {};
+    return { ...base, ...kindFields } as TestBlockResult<BlockOutput<TBlock>, TBlock>;
+  } finally {
+    restore?.();
+  }
+}
+
+async function runBlock<TBlock extends BlockDefinition<any, any>>(
   block: TBlock,
   options: TestBlockOptions<BlockInput<TBlock>>
 ): Promise<TestBlockResult<BlockOutput<TBlock>>> {

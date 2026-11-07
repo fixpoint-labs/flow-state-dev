@@ -428,16 +428,6 @@ export type {
   ScoreQuestion
 } from "./types/evaluation";
 
-// Cross-pattern benchmark contract types (shared by patterns + testing engine)
-export type {
-  BenchmarkCategory,
-  BenchmarkTask,
-  BenchmarkSubject,
-  BenchmarkAdapterOptions,
-  BenchmarkAdapter,
-  BenchmarkRegistry
-} from "./benchmark/types";
-
 export type { TTSConfig, VoiceConfig } from "./types/speech";
 
 export type {

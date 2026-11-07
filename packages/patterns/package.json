@@ -59,6 +59,10 @@
     "./debate": {
       "types": "./dist/debate/index.d.ts",
       "default": "./src/debate/index.ts"
+    },
+    "./benchmark": {
+      "types": "./dist/benchmark/index.d.ts",
+      "default": "./src/benchmark/index.ts"
     }
   },
   "license": "MIT",
@@ -102,6 +106,10 @@
       "./debate": {
         "types": "./dist/debate/index.d.ts",
         "default": "./dist/debate/index.js"
+      },
+      "./benchmark": {
+        "types": "./dist/benchmark/index.d.ts",
+        "default": "./dist/benchmark/index.js"
       }
     }
   },
@@ -113,6 +121,14 @@
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "zod": "^3.24.1"
+  },
+  "peerDependencies": {
+    "@flow-state-dev/testing": "workspace:>=0.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@flow-state-dev/testing": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@flow-state-dev/testing": "workspace:*",

@@ -1,5 +1,6 @@
 import type { RuntimeItem as TestItem } from "@flow-state-dev/core/internal";
-import type { BlockInput, BlockOutput, FlowInstance, FlowStateSettings, ModelResolver } from "@flow-state-dev/core/types";
+import type { SequencerDefinition } from "@flow-state-dev/core";
+import type { BlockDefinition, BlockInput, BlockOutput, FlowInstance, FlowStateSettings, ModelResolver } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import type {
   MockGeneratorInstance,
@@ -76,7 +77,13 @@ export type StateChange = {
   targetInstanceId?: string;
 };
 
-export type TestBlockResult<TOutput> = {
+/**
+ * What `testBlock` returns. The fields depend on the block's kind: a
+ * sequencer's result also carries its `steps`, `sideChainResults` and
+ * `loopIterations`, read from the items it emitted, and a router's names the
+ * route it chose in `selectedRoute`.
+ */
+export type TestBlockResult<TOutput, TBlock = BlockDefinition<any, any>> = {
   output: TOutput;
   error: Error | null;
   items: TestItem[];
@@ -108,7 +115,14 @@ export type TestBlockResult<TOutput> = {
     blockName: string;
     retryAttempts: number;
   };
-};
+  /**
+   * The route a router chose, by the chosen block's name. Absent for every
+   * other kind, and for a router that chose none.
+   */
+  selectedRoute?: string;
+} & ([TBlock] extends [SequencerDefinition<any, any, any, any>]
+  ? { steps: StepTrace[]; sideChainResults: SideChainTrace[]; loopIterations: number }
+  : unknown);
 
 export type StepTrace = {
   stepName: string;
@@ -127,16 +141,6 @@ export type SideChainTrace = {
   output: unknown;
   error: Error | null;
   items: TestItem[];
-};
-
-export type TestSequencerResult<TOutput> = TestBlockResult<TOutput> & {
-  steps: StepTrace[];
-  sideChainResults: SideChainTrace[];
-  loopIterations: number;
-};
-
-export type TestRouterResult<TOutput> = TestBlockResult<TOutput> & {
-  selectedRoute: string;
 };
 
 export type TestFlowOptions<TInput = unknown> = {
