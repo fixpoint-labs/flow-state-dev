@@ -19,7 +19,7 @@
  */
 import { createModelResolver } from "@flow-state-dev/core";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
-import { testSequencer } from "../test-utilities/testSequencer";
+import { testBlock } from "../test-utilities/testBlock";
 import { analyzerScorer } from "../eval/analyzerScorer";
 import { createLimiter } from "../eval/concurrency";
 import { sumCostFromItems, isModelPriced } from "../eval/cost";
@@ -29,7 +29,7 @@ import type {
   BenchmarkReport,
   RunBenchmarkConfig,
 } from "./types";
-import type { BenchmarkSubject, BenchmarkTask } from "@flow-state-dev/core";
+import type { BenchmarkSubject, BenchmarkTask } from "./contract";
 
 /**
  * Returns a copy of `model` with provider-native web search stripped, so a
@@ -190,7 +190,7 @@ export async function runBenchmark(
         const codeScores: Record<string, number> = {};
 
         try {
-          const res = await testSequencer(subject.sequencer, {
+          const res = await testBlock(subject.sequencer, {
             input: subject.mapTask(task),
             modelResolver: resolverForSubject(subject),
           });

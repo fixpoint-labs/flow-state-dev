@@ -381,7 +381,6 @@ To enable real Vercel Sandbox microVMs on a deployment, configure either OIDC Fe
 `test/` is the Vitest suite:
 
 - `testFlow` and `testBlock` for flow-level and block-level tests
-- `testRouter` for router decision testing
 - Seeded state and resources
 - Item type and content assertions
 

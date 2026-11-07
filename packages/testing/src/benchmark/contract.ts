@@ -6,15 +6,13 @@
  * sequencer plus the mapping from the generic task onto its input), and the
  * adapter/registry shape patterns expose so they can be benchmarked uniformly.
  *
- * They live in `@flow-state-dev/core` — not `@flow-state-dev/testing` — because
- * `@flow-state-dev/testing` is only a devDependency of pattern packages, so the
- * contract types must be importable from both the benchmark engine (testing)
- * and the pattern adapters (patterns). The engine itself lives in testing.
+ * Published on `@flow-state-dev/testing/benchmark` beside the engine. Pattern
+ * adapters (`@flow-state-dev/patterns/benchmark`) read them from there, through
+ * patterns' optional peer dependency on testing.
  *
  * Type-only module: no runtime values.
  */
-import type { SequencerDefinition } from "../blocks";
-import type { UsesSlot } from "../capability";
+import type { SequencerDefinition, UsesSlot } from "@flow-state-dev/core";
 
 /**
  * Coarse task family used to bucket and rank subjects in the scorecard. The

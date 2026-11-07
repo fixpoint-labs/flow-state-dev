@@ -25,6 +25,7 @@ export default defineConfig({
       "@flow-state-dev/engine/host": resolve(root, "packages/engine/src/host.ts"),
       "@flow-state-dev/engine/internal": resolve(root, "packages/engine/src/internal.ts"),
       "@flow-state-dev/engine": resolve(root, "packages/engine/src/index.ts"),
+      "@flow-state-dev/testing/bundle": resolve(root, "packages/testing/src/bundle.ts"),
       "@flow-state-dev/testing": resolve(root, "packages/testing/src/index.ts"),
       "@flow-state-dev/orchestration/task-board": resolve(root, "packages/orchestration/src/task-board/index.ts"),
       "@flow-state-dev/orchestration": resolve(root, "packages/orchestration/src/index.ts"),

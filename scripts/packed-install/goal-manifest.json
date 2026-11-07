@@ -70,13 +70,13 @@
     }
   ],
   "expect": {
-    "surface.root.core": "fail",
+    "surface.root.core": "pass",
     "surface.root.engine": "fail",
     "surface.root.client": "pass",
     "surface.root.react": "fail",
-    "surface.root.testing": "fail",
+    "surface.root.testing": "pass",
     "surface.root.orchestration": "pass",
-    "surface.root.patterns": "fail",
+    "surface.root.patterns": "pass",
     "surface.root.claude-code": "pass",
     "surface.root.codex": "fail",
     "surface.root.cursor": "fail",

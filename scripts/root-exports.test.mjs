@@ -274,9 +274,12 @@ describe("the export check's strict run, for the adopter goal", () => {
     const got = violations(planted);
     const names = new Set(got.map((v) => `${v.package} ${v.name}`));
     // A name that already fails on this commit is a violation too: the strict run has no base.
-    const already = [...base.roots.get("@flow-state-dev/core")].find(([, v]) => v.why === "failing");
-    assert.ok(already, "core has a failing root name to set the base aside on");
-    for (const n of [`@flow-state-dev/core ${already[0]}`, "@flow-state-dev/core zzNobody", "@flow-state-dev/engine zzSiblingOnly"]) assert.ok(names.has(n), n);
+    // Core's own root holds none once its cleanup lands, so take one from any published root.
+    const already = [...base.roots]
+      .flatMap(([pkg, root]) => [...root].map(([name, v]) => ({ pkg, name, why: v.why })))
+      .find((r) => r.why === "failing");
+    assert.ok(already, "some published root has a failing name to set the base aside on");
+    for (const n of [`${already.pkg} ${already.name}`, "@flow-state-dev/core zzNobody", "@flow-state-dev/engine zzSiblingOnly"]) assert.ok(names.has(n), n);
     for (const n of ["zzAppUsed", "zzChangesetDoc", "UsedOptions"]) assert.ok(!names.has(`@flow-state-dev/core ${n}`), n);
     // An adopter import of `<pkg>/internal` is the imported package's violation.
     assert.ok(names.has("@flow-state-dev/engine @flow-state-dev/engine/internal"));
