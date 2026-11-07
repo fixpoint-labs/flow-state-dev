@@ -189,8 +189,8 @@ function fakeServer(rows: Array<{ id: string; kind: string; title: string } & Re
 /** A mode's models: two, the first preselected. */
 const TWO_MODELS: ModelChoices = {
   models: [
-    { id: "model-a", label: "Model A" },
-    { id: "model-b", label: "Model B" },
+    { id: "model-a", label: "Model A", isDefault: true },
+    { id: "model-b", label: "Model B", isDefault: false },
   ],
   defaultId: "model-a",
   reason: null,
@@ -275,7 +275,7 @@ describe("V6 · a harness mode's frame", () => {
       <HarnessFrame
         label="Codex"
         flowKind="codex-session"
-        models={{ models: [{ id: "model-c", label: "Model C" }], defaultId: "model-c", reason: null, fallbackId: null }}
+        models={{ models: [{ id: "model-c", label: "Model C", isDefault: true }], defaultId: "model-c", reason: null, fallbackId: null }}
         client={clientOf(server)}
         stream={(sessionId) => <p data-testid="opened">{sessionId}</p>}
       />,

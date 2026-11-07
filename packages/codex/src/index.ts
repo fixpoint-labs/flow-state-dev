@@ -22,7 +22,7 @@ export {
 export { translateCodexEvent } from "./translate";
 export { estimateCodexCost } from "./cost";
 export { findCodexProgram, readCodexUsage, type CodexProgram, type ReadCodexUsageOptions } from "./usage";
-export { listCodexModels, type CodexModelInfo, type CodexModelList, type ListCodexModelsOptions } from "./model-list";
+export { listCodexModels, type ListCodexModelsOptions } from "./model-list";
 export {
   checkCodexReadiness,
   CODEX_SIGN_IN_REMEDY,

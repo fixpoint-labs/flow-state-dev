@@ -2,8 +2,8 @@
  * What each harness mode's New session offers to pick: the models, the one
  * preselected, and why the list is short or empty when it is.
  *
- * Server only. Each list is the harness's own where its SDK can list (Claude
- * Code) and one Kitchen Sink keeps otherwise (Codex, Cursor). The mode
+ * Server only. Each list is the harness's own, read with its package's
+ * model-list function, in core's shared `HarnessModelInfo` shape. The mode
  * files read them (`claudeCodeModelChoices`, `codexModelChoices`,
  * `cursorModelChoices`); this module shares one read among the page loads that
  * arrive during it, keeps a list that was read in full until the server
@@ -16,18 +16,13 @@
 import { claudeCodeModelChoices } from "./claude-code-mode";
 import { codexModelChoices } from "./codex-mode";
 import { cursorModelChoices } from "./cursor-mode";
+import type { HarnessModelInfo } from "@flow-state-dev/core/harness";
 import type { HarnessModeId } from "./modes";
-
-/** One model a mode offers: the id the harness takes, and a name for a person. */
-export interface HarnessModel {
-  readonly id: string;
-  readonly label: string;
-}
 
 /** What New session offers in one harness mode. */
 export interface ModelChoices {
   /** The models to pick from. Empty: New session can't start a session, and `reason` says why. */
-  readonly models: readonly HarnessModel[];
+  readonly models: readonly HarnessModelInfo[];
   /** The model preselected, or `null` when there is none to pick. */
   readonly defaultId: string | null;
   /** Why the list is short or empty, for a person; `null` when it is the harness's whole list. */

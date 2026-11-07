@@ -6,7 +6,7 @@
  * that was not named must never reach it.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { harnessEnv } from "../src/harness";
+import { HARNESS_BASE_PASS, harnessEnv } from "../src/harness";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -98,5 +98,29 @@ describe("harnessEnv", () => {
     vi.stubEnv("HARNESS_ENV_TEST_LATER", "second");
 
     expect(env).toEqual({ HARNESS_ENV_TEST_LATER: "first" });
+  });
+});
+
+// The base every harness's pass-list starts from: what a coding agent's shell
+// needs on any machine, and nothing that names a vendor. A host building the
+// environment for a harness of its own spreads it and adds its own key.
+describe("HARNESS_BASE_PASS", () => {
+  it("is the shell's own variables and the proxy settings, in both cases", () => {
+    expect([...HARNESS_BASE_PASS].sort()).toEqual(
+      [
+        "PATH", "HOME", "USER", "SHELL", "TMPDIR",
+        "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
+        "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy",
+      ].sort(),
+    );
+  });
+
+  it("names no credential: a key reaches a run only when its host adds it", () => {
+    for (const name of HARNESS_BASE_PASS) expect(name).not.toMatch(/KEY|TOKEN|SECRET|CERT/i);
+  });
+
+  it("is the pass value for harnessEnv, with a host's own names after it", () => {
+    const env = harnessEnv({ pass: [...HARNESS_BASE_PASS, "MY_KEY"], env: { PATH: "/bin", MY_KEY: "k", OTHER: "x" } });
+    expect(env).toEqual({ PATH: "/bin", MY_KEY: "k" });
   });
 });

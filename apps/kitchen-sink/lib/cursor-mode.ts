@@ -33,9 +33,11 @@ import {
   TESTED_SDK_VERSION,
   checkCursorReadiness,
   cursorAgent,
+  listCursorModels,
   readInstalledCursorSdkVersion,
   type CursorAgentOptions,
   type CursorModelSelection,
+  type CursorModelVariant,
   type InstalledSdkVersion,
   type ResolveCursorClient,
 } from "@flow-state-dev/cursor";
@@ -44,12 +46,12 @@ import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/harness";
+import type { HarnessBlock, HarnessModelInfo, HarnessReadiness } from "@flow-state-dev/core/harness";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
 import { fromReadiness } from "./mode-readiness";
-import type { HarnessModel, ModelChoices } from "./harness-models";
+import type { ModelChoices } from "./harness-models";
 import { flowKindOf, modeById } from "./modes";
 import { scriptedCursor } from "./scripted-cursor";
 
@@ -144,49 +146,76 @@ export function cursorSessionFlow(seams: CursorSeams = {}) {
   });
 }
 
-/** The efforts Grok 4.7 is offered at, as Cursor names them (`reasoning_effort`). */
-const GROK_EFFORTS = [
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "Extra High" },
-] as const;
-
-/** A Grok 4.7 entry's id in the picker: the model, then the effort. Stored on the session as the pick. */
-const grokPickerId = (effort: string) => `grok-4.7:${effort}`;
+/** The model the scripted Cursor offers. It runs no model; the id only travels. */
+const SCRIPTED_CURSOR_MODEL = { id: CURSOR_DEFAULT_MODEL, label: "Scripted Cursor", isDefault: true };
 
 /**
- * The models Cursor mode offers in New session. Kept by hand: each is a
- * model Cursor's catalog lists, which is a different set for each account
- * and moves faster than this list does. A model with settings runs on
- * Cursor's own defaults for them, except Grok 4.7, whose effort is part of
- * the pick. Availability still depends on the signed-in account; when Cursor
- * ships or retires a model, edit this list.
+ * A picker entry's id for one way Cursor runs a model: the model, then the
+ * variant's settings (`grok-4.7?reasoning_effort=high`). Stored on the session
+ * as the pick; {@link cursorModelSelection} reads it back.
  */
-const CURSOR_MODELS: readonly HarnessModel[] = [
-  ...GROK_EFFORTS.map(({ value, label }) => ({ id: grokPickerId(value), label: `Grok 4.7 · ${label}` })),
-  { id: CURSOR_DEFAULT_MODEL, label: "Composer 2.5" },
-  { id: "gemini-4-argon", label: "Gemini 4 Argon" },
-  { id: "muse-wonder-1.0", label: "Muse Wonder" },
-  { id: "kimi-k3", label: "Kimi K3" },
-  { id: "glm-5p3", label: "GLM 5.3" },
-  { id: "glm-5p3-flash", label: "GLM 5.3 Flash" },
-  { id: "default", label: "Auto (Cursor picks)" },
-];
+function variantPickerId(model: string, params: CursorModelVariant["params"]): string {
+  if (params.length === 0) return model;
+  return `${model}?${new URLSearchParams(params.map(({ id, value }) => [id, value])).toString()}`;
+}
 
 /**
- * What Cursor is handed for a pick: the model and its settings for a Grok 4.7
+ * What Cursor is handed for a pick: the model and its settings for a variant's
  * entry, and the pick itself otherwise (an id Cursor takes as it is, or one
  * Kitchen Sink doesn't know, which Cursor judges).
  */
 export function cursorModelSelection(picked: string | undefined): string | CursorModelSelection | undefined {
-  const grok = GROK_EFFORTS.find(({ value }) => grokPickerId(value) === picked);
-  return grok === undefined ? picked : { id: "grok-4.7", params: [{ id: "reasoning_effort", value: grok.value }] };
+  const at = picked?.indexOf("?") ?? -1;
+  if (picked === undefined || at < 0) return picked;
+  const params = [...new URLSearchParams(picked.slice(at + 1))].map(([id, value]) => ({ id, value }));
+  return { id: picked.slice(0, at), params };
 }
 
-/** What Cursor mode's New session offers: the list above, Composer 2.5 preselected. */
-export async function cursorModelChoices(): Promise<ModelChoices> {
-  return { models: CURSOR_MODELS, defaultId: CURSOR_DEFAULT_MODEL, reason: null, fallbackId: CURSOR_DEFAULT_MODEL };
+/**
+ * Cursor's list as New session's entries: a model Cursor runs one way is one
+ * entry, and a model it runs several ways (Grok 4.7's efforts) is one entry
+ * per way, since the way is part of the pick.
+ */
+function pickerEntries(found: Extract<Awaited<ReturnType<typeof listCursorModels>>, { status: "models" }>): HarnessModelInfo[] {
+  return found.models.flatMap(({ variants, ...model }) =>
+    variants.length < 2
+      ? [model]
+      : variants.map((variant) => ({
+          id: variantPickerId(model.id, variant.params),
+          label: `${model.label} · ${variant.label}`,
+          ...(variant.description === undefined ? {} : { description: variant.description }),
+          isDefault: false,
+        })),
+  );
+}
+
+/**
+ * What Cursor mode's New session offers: Cursor's own list for the account a
+ * run signs in as (the Cursor package's `listCursorModels`), Composer 2.5
+ * preselected when the account has it. Cursor's catalog marks no default
+ * model, and its SDK refuses a local agent with none, so a session with no
+ * saved model runs Composer 2.5. When the list can't be read, nothing is
+ * offered and New session can't start; the next load asks again. `list` is a
+ * seam for tests.
+ */
+export async function cursorModelChoices(
+  list: (env: Record<string, string>) => ReturnType<typeof listCursorModels> = (env) => listCursorModels({ env }),
+): Promise<ModelChoices> {
+  if (cursorIsScripted()) {
+    return { models: [SCRIPTED_CURSOR_MODEL], defaultId: SCRIPTED_CURSOR_MODEL.id, reason: null, fallbackId: CURSOR_DEFAULT_MODEL };
+  }
+  const found = await list(cursorEnv());
+  if (found.status === "failed") {
+    return {
+      models: [],
+      defaultId: null,
+      reason: `Cursor's model list can't be read (${found.reason}), so a new session can't name its model. Reload to try again.`,
+      fallbackId: CURSOR_DEFAULT_MODEL,
+    };
+  }
+  const models = pickerEntries(found);
+  const preselected = models.find((model) => model.id === CURSOR_DEFAULT_MODEL) ?? models[0]!;
+  return { models, defaultId: preselected.id, reason: null, fallbackId: CURSOR_DEFAULT_MODEL };
 }
 
 /** What the mode's check asks of the host. Each a seam for tests. */
