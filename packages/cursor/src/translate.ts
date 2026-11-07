@@ -1,7 +1,7 @@
 /**
  * The pure interpretation layer: one Cursor wire message in, the framework's
  * vocabulary out. No side effects, no context, no vendor word past this
- * boundary — everything downstream reads {@link TranslatedEvent}.
+ * boundary — everything downstream reads {@link CursorTranslatedEvent}.
  *
  * **Stateless on purpose.** Cursor's stream carries whole messages, except for
  * text: an answer and the thinking before it arrive as runs of small
@@ -31,7 +31,7 @@ import type {
   CursorRunUsage,
   CursorSdkMessage,
   CursorWireUsage,
-  TranslatedEvent,
+  CursorTranslatedEvent,
 } from "./types";
 
 /**
@@ -42,7 +42,7 @@ import type {
  * sent, echoed back, and re-emitting it would show the caller their own words as
  * if the agent had said them.
  */
-export function translateCursorMessage(message: CursorSdkMessage): TranslatedEvent[] {
+export function translateCursorMessage(message: CursorSdkMessage): CursorTranslatedEvent[] {
   switch (message.type) {
     case "system":
       return translateSystem(message as { subtype?: unknown; model?: { id?: unknown } });
@@ -100,8 +100,8 @@ export function translateCursorMessage(message: CursorSdkMessage): TranslatedEve
  * cost estimate should be priced against — a host that left the selection to a
  * per-account default has no other source for it.
  */
-function translateSystem(message: { subtype?: unknown; model?: { id?: unknown } }): TranslatedEvent[] {
-  const events: TranslatedEvent[] = [{ kind: "status", message: "Cursor agent started" }];
+function translateSystem(message: { subtype?: unknown; model?: { id?: unknown } }): CursorTranslatedEvent[] {
+  const events: CursorTranslatedEvent[] = [{ kind: "status", message: "Cursor agent started" }];
   const model = readString(message.model?.id);
   if (model !== undefined && model !== "") events.push({ kind: "model", model });
   return events;
@@ -115,11 +115,11 @@ function translateSystem(message: { subtype?: unknown; model?: { id?: unknown } 
  * opening it twice would put two items in the stream for one invocation — the
  * second of which never settles.
  */
-function translateAssistant(content: unknown): TranslatedEvent[] {
+function translateAssistant(content: unknown): CursorTranslatedEvent[] {
   if (!Array.isArray(content)) {
     return [{ kind: "status", message: "Cursor emitted an assistant message with no content." }];
   }
-  const events: TranslatedEvent[] = [];
+  const events: CursorTranslatedEvent[] = [];
   for (const block of content as CursorContentBlock[]) {
     if (block?.type === "text") {
       const text = readString((block as { text?: unknown }).text);
@@ -142,14 +142,14 @@ function translateAssistant(content: unknown): TranslatedEvent[] {
  * long after the run ended is worse than one closed on a status we did not
  * recognise, and the emitter's end-of-run sweep is a backstop, not a plan.
  */
-function translateToolCall(message: Record<string, unknown>): TranslatedEvent[] {
+function translateToolCall(message: Record<string, unknown>): CursorTranslatedEvent[] {
   const callId = readString(message.call_id) ?? "unknown";
   const name = readString(message.name) ?? "unknown";
   const args = safeStringify(message.args ?? {});
   if (message.status === "running") {
     return [{ kind: "tool_call", callId, name, arguments: args }];
   }
-  const settled: TranslatedEvent = {
+  const settled: CursorTranslatedEvent = {
     kind: "tool_result",
     callId,
     name,
@@ -195,7 +195,7 @@ function confirmedTodoList(message: Record<string, unknown>): PlanListItem[] | n
  * second source here would let a stream that ends early disagree with the SDK
  * about how the run finished.
  */
-function translateStatus(message: { status?: unknown; message?: unknown }): TranslatedEvent[] {
+function translateStatus(message: { status?: unknown; message?: unknown }): CursorTranslatedEvent[] {
   const status = readString(message.status) ?? "unknown";
   const detail = readString(message.message);
   const words = STATUS_WORDS[status] ?? `Cursor run ${status.toLowerCase()}`;

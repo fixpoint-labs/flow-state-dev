@@ -59,6 +59,12 @@ export type TestBlockOptions<TInput> = {
   modelResolver?: ModelResolver;
   /** Fallback script for unmocked generators when policy is "default". */
   unmockedDefault?: UnmockedDefault;
+  /**
+   * The signal the block runs under, as `ctx.signal`. Abort it to stop the
+   * run the way a host does (a deadline, a user's stop). Omit it and the
+   * block runs under a signal that never fires.
+   */
+  signal?: AbortSignal;
 };
 
 export type StateChange = {

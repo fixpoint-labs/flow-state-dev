@@ -14,11 +14,11 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { defineCapability, defineResourceCollection } from "@flow-state-dev/core";
 import { createCodexAgentCapability } from "../src/capability";
-import { INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
-import { TESTED_SDK_VERSION } from "../src/types";
+import { INTERNAL_CODEX_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
+import { TESTED_CODEX_SDK } from "../src/types";
 
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_CODEX_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CODEX_SDK.range }),
 } as CodexAgentOptions;
 
 describe("createCodexAgentCapability", () => {
@@ -44,7 +44,7 @@ describe("createCodexAgentCapability", () => {
   it("forwards its options to the block, so the version gate still refuses here", () => {
     expect(() =>
       createCodexAgentCapability({
-        [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: "0.153.4" }),
+        [INTERNAL_CODEX_SDK_VERSION_READER]: () => ({ kind: "version", version: "0.153.4" }),
       } as CodexAgentOptions),
     ).toThrow();
   });
