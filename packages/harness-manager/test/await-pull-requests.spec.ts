@@ -22,8 +22,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { pullRequestKey } from "@flow-state-dev/core/harness";
 import { untakenSteers } from "@flow-state-dev/orchestration/internal";
 import { openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
-import { CLOSED_WITHOUT_MERGING, pullRequestWait } from "../src";
-import { CONVERSATIONS, claimHost, cleanUpHosts, messageOf } from "./claim-host";
+import { CLOSED_WITHOUT_MERGING, pullRequestWait, runTopic } from "../src";
+import { runBoardSegment } from "../src/workspace";
+import { CONVERSATIONS, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
 const PR_7 = pullRequestKey({ host: "github.com", owner: "acme", name: "app", number: 7 });
 
@@ -32,6 +33,8 @@ interface GhState {
   listed: number[];
   states: Record<number, "open" | "merged" | "closed">;
   fail?: boolean;
+  /** A file the stub waits for before it answers a pull request's read: the read is in flight until the test writes it. */
+  gate?: string;
 }
 
 const PATH = process.env.PATH;
@@ -68,6 +71,7 @@ if (path.includes("/pulls?")) {
 }
 const read = /pulls\\/(\\d+)$/.exec(path);
 if (read !== null) {
+  if (state.gate) while (!fs.existsSync(state.gate)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
   if (state.fail) { process.stderr.write("gh: not logged in\\n"); process.exit(1); }
   const n = Number(read[1]);
   const s = state.states[n] ?? "open";
@@ -114,6 +118,8 @@ const run = async (lab: Lab) => {
 const row = (lab: Lab) => lab.row(CONVERSATIONS, "t1", "conv-a");
 /** A person's line typed in the task's session. */
 const line = (lab: Lab, message: string) => lab.act("line", { ...AT, id: "t1", message });
+/** The task's run record: the coding session it confirmed is what a later message to the task resumes. */
+const record = (lab: Lab) => lab.record(runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "t1", PHASE));
 const statusText = (result: { items?: unknown[] }) => JSON.stringify(result.items ?? []);
 /** The wait's pull requests, as a screen reads them. */
 const waitedOn = (task: Task) => pullRequestWait(task)?.pullRequests.map((pr) => pr.number);
@@ -211,6 +217,8 @@ describe("a coding task whose run opened a pull request", () => {
     expect(result.output).toMatchObject({ pullRequests: [{ number: 7, state: "merged" }] });
     // The wake's line is taken with it: nothing is left owed on the finished task.
     expect(untakenSteers(done)).toEqual([]);
+    // The coding session the run confirmed stays on its record, so a later message to the finished task can resume it.
+    expect((await record(lab))?.sessionId).toBe("sess_1");
   }, 60_000);
 
   it("closed without merging: a line cancels the task with the reason, and no harness run", async () => {
@@ -228,6 +236,35 @@ describe("a coding task whose run opened a pull request", () => {
     expect(ended.status).toBe("cancelled");
     expect(JSON.stringify(ended)).toContain(CLOSED_WITHOUT_MERGING);
     expect(openHolds(ended)).toEqual([]);
+    expect((await record(lab))?.sessionId).toBe("sess_1");
+  }, 60_000);
+
+  it("a line typed while the settle reads the pull request is not lost: it wakes the wait, and runs", async () => {
+    const gate = join(bin, "gate");
+    rmSync(gate, { force: true });
+    setGh({ listed: [7], states: { 7: "open" }, gate });
+    const lab = await waitingLab();
+    const first = lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    // The settle's read of pull request 7 is in flight: the steer checks before the settle have run.
+    while (prReads().length === 0) await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await line(lab, "also fix the lint")).toMatchObject({ output: null });
+    writeFileSync(gate, "");
+    const settled = await first;
+    expect(settled.result.error, messageOf(settled.result.error)).toBeUndefined();
+
+    // The wait the settle opened is already answered by the line, so the same attempt is owed a turn.
+    const owed = await row(lab);
+    expect(openHolds(owed)).toEqual([]);
+    expect(owed).toMatchObject({ status: "in_progress", attempts: 1, turnOwed: true });
+
+    setGh({ listed: [7], states: { 7: "open" } });
+    await run(lab);
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.resume).toBe("sess_1");
+    expect(lab.seen[1]!.prompt).toContain("also fix the lint");
+    const again = await row(lab);
+    expect(openHolds(again).map((hold) => hold.ask.kind)).toEqual(["external"]);
+    expect(untakenSteers(again)).toEqual([]);
   }, 60_000);
 
   it("one merged and one closed: completes, the closed one noted on the output", async () => {

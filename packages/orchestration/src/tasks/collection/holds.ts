@@ -20,6 +20,7 @@ import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import { MAX_QUESTION_PROMPT, type ExternalWait, type QuestionInit, type RowHold, type SuspensionHold, type TaskHold } from "../schema/hold";
 import { MAX_STEERS, type TaskSteer } from "../schema/steer";
+import { untakenSteers } from "../steers";
 import type { TaskWriteDeclineReason } from "./types";
 
 /** What the board's steer says when it closes a question at a deadline a host set. */
@@ -236,7 +237,11 @@ function released(before: Task, next: Pick<Task, "status" | "holds" | "steers">)
  *
  * - `ask`: refused `open-question` while a suspension questions the row (one wait per
  *   turn, one source at a time), and `steer-limit` when its answers would
- *   take the row past {@link MAX_STEERS} places.
+ *   take the row past {@link MAX_STEERS} places. An external wait (FIX-2578)
+ *   opened over a line no request of the attempt took, one that landed after
+ *   the turn's last steer check, opens answered by it: the line is what wakes
+ *   the wait, so the same attempt is owed its turn in this write, and the line
+ *   is never left behind a wait nobody else may end.
  * - `answer`: the same words from the same sender again are `unchanged`, even
  *   on a row that has since finished (a retry after a lost response). Other
  *   words, or another sender, are refused `answered`; a finished row,
@@ -254,7 +259,13 @@ export function holdWrite(task: Task, change: HoldChange): HoldWriteResult {
       if (isTerminalStatus(task.status)) return { decline: "terminal" };
       if (openHolds(task).some(isSuspensionHold)) return { decline: "open-question" };
       if (steerPlacesTaken(task) + change.holds.length > MAX_STEERS) return { decline: "steer-limit" };
-      return { patch: { holds: [...(task.holds ?? []), ...change.holds], leaseUntil: undefined, askedInTurn: task.turn ?? 0 } };
+      const holds = [...(task.holds ?? []), ...change.holds];
+      const opened = { holds, leaseUntil: undefined, askedInTurn: task.turn ?? 0 };
+      const wait = change.holds.length === 1 && isExternalHold(change.holds[0]!) ? change.holds[0]! : undefined;
+      const waiting = wait === undefined ? undefined : untakenSteers(task).find((steer) => steer.answers === undefined);
+      if (wait === undefined || waiting === undefined || task.status !== "in_progress") return { patch: opened };
+      const steers = (task.steers ?? []).map((steer) => (steer.id === waiting.id ? { ...steer, answers: wait.id } : steer));
+      return { patch: { ...opened, steers, turnOwed: true } };
     }
     case "answer": {
       const { answer } = change;

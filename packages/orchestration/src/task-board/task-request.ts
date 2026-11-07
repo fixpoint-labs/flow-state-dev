@@ -70,7 +70,7 @@ import { readCommittedTask } from "../tasks/collection/read-committed";
 import { untakenSteers } from "../tasks/steers";
 import { ticketClaimsRow } from "../tasks/collection/internal";
 import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
-import { advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
+import { advisoryCancel, advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
 import { startLeaseRenewal, startTicker, type LeaseRenewalDriver, type Ticker } from "../tasks/lease-renewal";
 import { stampLeaseRenewal, withLeaseRenewalScope } from "../tasks/lease-renewal-scope";
@@ -921,4 +921,26 @@ export async function waitExternally(ctx: BlockContext, ledger: TaskCollectionRe
     record.renewal?.stop();
   }
   return waited;
+}
+
+/** What {@link cancelFromTurn} answers: the board's write, or that the request holds no claim to cancel with. */
+export type TurnCancel = Awaited<ReturnType<TaskCollectionRef["cancel"]>> | { readonly outcome: "declined"; readonly reason: "no-claim" };
+
+/**
+ * Cancel the task from the turn holding its claim, when what it worked toward
+ * was closed by a person and another attempt would end the same way (FIX-2578
+ * D2: its pull requests were closed without merging). The claim is the one
+ * this request holds, server-set, as {@link waitExternally}'s is, so only the
+ * turn holding the current ticket cancels; a later turn's claim declines it.
+ * Once the row ends this request stops renewing its lease, and the check at
+ * the request's end finds the row no longer its claim's and writes nothing.
+ *
+ * @param ledger The board the task is on, as the request resolves it.
+ */
+export async function cancelFromTurn(ctx: BlockContext, ledger: TaskCollectionRef, reason: string): Promise<TurnCancel> {
+  const { record, claim } = heldClaimOn(ctx, ledger);
+  if (claim === undefined) return { outcome: "declined", reason: "no-claim" };
+  const cancelled = await advisoryCancel(ledger, claim.taskId, reason, { claim });
+  if (cancelled.outcome !== "declined") record?.renewal?.stop();
+  return cancelled;
 }

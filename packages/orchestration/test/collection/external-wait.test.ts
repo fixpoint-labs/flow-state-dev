@@ -115,6 +115,23 @@ describe.each([
     expect(await board.claim("w", { leaseDurationMs: 10_000 })).toMatchObject({ id: "t", attempts: 1, turn: 2 });
   });
 
+  it("opened over a line its turn never took, opens answered by it, and the same attempt is owed its turn", async () => {
+    const made = await make();
+    await made.board.createTask({ id: "t", goal: "fix the bug" });
+    const claimed = (await made.board.claim("w", { leaseDurationMs: 10_000 }))!;
+    // The line lands after the turn's last steer check, before its wait opens: no wait to answer yet.
+    await steerFromLine(made.board, "t", "fix the lint", { user: { identity: { userId: "alice" } }, request: { identity: { id: "req_line" } } });
+    const outcome = await made.board.awaitExternal!("t", WAIT, { claim: ticketForClaim("tasks", claimed) });
+    expect(outcome).toMatchObject({ outcome: "recorded" });
+    const row = made.board.get("t")!;
+    // Never stranded behind a wait only an event would end.
+    expect(openHolds(row)).toEqual([]);
+    expect(row).toMatchObject({ status: "in_progress", turnOwed: true });
+    expect(row.leaseUntil).toBeUndefined();
+    expect(row.steers).toEqual([expect.objectContaining({ message: "fix the lint", answers: outcome.questions![0] })]);
+    expect(await made.board.claim("w", { leaseDurationMs: 10_000 })).toMatchObject({ id: "t", attempts: 1, turn: 2 });
+  });
+
   it("a delivered message answers it as the service, its words shown quoted as the sender's, never as the user's", async () => {
     const { board } = await waiting();
     const holdId = externalHoldOf(board.get("t")!)!.id;

@@ -76,7 +76,7 @@ import {
   untakenSteers,
   type ShownSteer,
 } from "@flow-state-dev/orchestration/internal";
-import { TaskEndsForGoodError, currentWorkerClaim, taskWorkerInputSchema, waitExternally } from "@flow-state-dev/orchestration/task-board";
+import { TaskEndsForGoodError, cancelFromTurn, currentWorkerClaim, taskWorkerInputSchema, waitExternally } from "@flow-state-dev/orchestration/task-board";
 import {
   getOrCreateTaskCollection,
   isExternalHold,
@@ -3482,16 +3482,20 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       );
     }
     const settled = { ...output, pullRequests: "unreadable" in reads ? null : reads.read.map(outputPullRequest) };
+    // A wake that settles runs no harness, and its open cleared the session the run confirmed:
+    // put it back, so a later message to the finished task still resumes it.
+    const confirmed = woken !== undefined ? { sessionId: state.previousSessionId } : {};
     if (verdict === "complete") {
       // A wake's own words go with it: the task is done, and nothing is left owed.
       if (woken !== undefined) await takeSteersFor(ctx, `pull-request-wake:${ctx.request.identity.id}`, () => []);
-      await fenced(writeRunRow(ctx, identity, { outcome: "succeeded", reason: null }), "the row was completed");
+      await fenced(writeRunRow(ctx, identity, { outcome: "succeeded", reason: null, ...confirmed }), "the row was completed");
       return settled;
     }
     const board = await runBoard(ctx);
     if (verdict === "cancel") {
+      if (woken !== undefined) await fenced(writeRunRow(ctx, identity, confirmed), "the run's session was kept");
       // A person closed the work (D2): a cancel, by the claim holder, which reaches the filer through the task notice.
-      const cancelled = await board.cancel(state.taskId!, CLOSED_WITHOUT_MERGING, { claim: state.ticket ?? undefined });
+      const cancelled = await cancelFromTurn(ctx, board, CLOSED_WITHOUT_MERGING);
       if (cancelled.outcome === "declined" && cancelled.reason !== "terminal") {
         throw new HarnessAttemptSuperseded("its pull request was closed without merging");
       }
