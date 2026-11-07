@@ -14,6 +14,12 @@
  * mode's coder); one without it completes on the run's own check. Either
  * way `goalJudge` first reads a run that passed against its task's goal.
  *
+ * **A task whose run opened a pull request is done when the pull request
+ * merges** (`awaitPullRequests`): until then it stays open, waiting on it, and
+ * a line typed in its run's session (the door below) wakes it to read the pull
+ * request again. Merged completes it, closed unmerged cancels it, still open
+ * runs the line on the same coding session.
+ *
  * **Where a run works** is the host's `workspace`, over `projectWorkspace()`:
  * the task inherits its session's project through `filingProjectId`, and a
  * run with no project is refused `no-project` before any checkout (spec D3).
@@ -240,6 +246,8 @@ export function defineHarnessThreadFlow({ installation, workspace, scriptedStepM
       harness,
       reviewChanges,
       judge: goalJudge({ name: `harness-thread-${name}${reviewChanges ? "-reviewed" : ""}-judge` }),
+      // A run that opened a pull request leaves its task open until the pull request merges or closes.
+      awaitPullRequests: true,
       uses: [projectWorkspaceCapability],
     } as never) as unknown as BlockDefinition<any, any>;
   // Per builder: the managers that run a task, and the door a line typed in its run's session takes.

@@ -21,14 +21,18 @@
  * |                 | is the session's requests, read on each request notice                     |
  * | `watchTasks`    | the conversation board's `listTasks` read, and the rows' open holds        |
  * |                 | again on each notice of the board, through `client.subscribe`; a failed   |
- * |                 | row's error from its `getTask`, once per attempt                           |
+ * |                 | row's error from its `getTask`, once per attempt; a row waiting on its pull |
+ * |                 | request (harness-manager's `pullRequestWait`), with each one's link from its |
+ * |                 | run session's pull-request record                                            |
  * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`, with   |
  * |                 | its `loadEarlier` too, from the moment the board's read names that session; |
  * |                 | while the task runs, the tool call in flight (the UI registry's            |
  * |                 | `working-status`), from the run request's own stream too, which sends a   |
  * |                 | call as it starts; and harness-manager's `readRecordedWork`, for the plan |
  * |                 | its harness recorded, read on each write to it and on a re-run's request  |
- * | `sayInThread`   | the Inbox client's answer to the thread's open question, else the board's `steer` |
+ * | `sayInThread`   | the Inbox client's answer to the thread's open question; to a task waiting on |
+ * |                 | its pull request, the run session's own door (`respond`), which wakes it; else |
+ * |                 | the board's `steer`                                                          |
  * | `taskActions`   | the Inbox client's `board(at)` on the session that holds the board: `cancel`, |
  * |                 | `steer`, `release` and `retry`, each the board's own action                 |
  * | `resolve`       | the Inbox client's answer to the thread's review: `{ verdict: "accepted" }` |
@@ -53,7 +57,14 @@ import {
   taskRowView,
 } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
-import { readRecordedWork, reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import {
+  pullRequestWait,
+  readRecordedWork,
+  reviewDetail,
+  type PullRequestRecordRow,
+  type PullRequestWaitRow,
+  type ReviewDetail,
+} from "@flow-state-dev/harness-manager/browser";
 import {
   createWorkforceClient,
   delegateAnswerOf,
@@ -64,7 +75,7 @@ import {
   WORKER_ID_STATE_KEY,
 } from "@flow-state-dev/workforce/browser";
 import { isSuspensionWait } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, OBSERVED_PULL_REQUESTS } from "@flow-state-dev/core/harness";
 import { modeById, modeOfWorker, MODES, type ModeId } from "./modes";
 import { projectIdOf, refuseExisting } from "./lib/new-project";
 import type { HarnessReadinessChipRow } from "./components/flow-state/harness-readiness";
@@ -168,6 +179,13 @@ export interface TaskRow {
   waitingOn?: { kind: "approval" | "input" | "review" | "question"; prompt: string };
   /** The coding harness the assignee runs through, from its `harness` setting; none for a plain worker. */
   harness?: string;
+  /**
+   * The pull requests the task waits on to merge or close (harness-manager's
+   * `awaitPullRequests`): its run is done and its work is not, so it stays
+   * open. Each with its link when its run session's record has one. Absent
+   * while it waits on none.
+   */
+  pullRequests?: { number: number | null; url: string | null; title: string | null }[];
   /**
    * How a harness run's review ended, from its output: `accepted` when you
    * resolved it, `deadline` when nobody answered by the review deadline
@@ -951,6 +969,49 @@ export function createWiredLab(fsd: Client): LabAdapter {
     );
   };
 
+  /**
+   * The rows of a run session's pull-request record (`observed-pull-requests`), each as the
+   * record keeps it; none when the session declares no record or it can't be read, so a wait
+   * still shows its numbers, without links.
+   */
+  const pullRequestRecords = async (runSession: string): Promise<PullRequestRecordRow[]> => {
+    try {
+      const manifest = await fsd.resources.getResourceManifest(runSession);
+      const ref = manifest.resources.find(
+        (r) => r.kind === "collection" && r.pattern === `${OBSERVED_PULL_REQUESTS}/**` && r.client.state?.read === true,
+      )?.ref;
+      if (ref === undefined) return [];
+      const page = await fsd.resources.listCollectionItems(runSession, ref, { limit: 200, topicPrefix: `${OBSERVED_PULL_REQUESTS}/` });
+      return page.items.map((item) => (item.clientData ?? {}) as PullRequestRecordRow);
+    } catch (cause) {
+      console.warn(`[claude-code-style] couldn't read the pull requests of run session ${runSession}:`, cause);
+      return [];
+    }
+  };
+
+  /** What a listed task's open pull-request wait reads, or `undefined` when it waits on none. */
+  const waitOf = (task: Listed, records: readonly PullRequestRecordRow[] = []) =>
+    pullRequestWait({ status: task.status, holds: (task.holds ?? []) as unknown as PullRequestWaitRow["holds"] }, records);
+
+  /** The pull requests a listed task waits on, each with its link from its run session's record; `undefined` when it waits on none. */
+  const pullRequestsOf = async (task: Listed): Promise<TaskRow["pullRequests"]> => {
+    if (waitOf(task) === null) return undefined;
+    const records = task.runSessionId === undefined ? [] : await pullRequestRecords(task.runSessionId);
+    return waitOf(task, records)?.pullRequests.map(({ number, url, title }) => ({ number, url, title }));
+  };
+
+  /**
+   * A line for a task waiting on its pull request, through its run session's own door
+   * (`respond`): the door's line wakes the wait, and the task reads its pull request again
+   * before anything runs. `false` when the task waits on none, and the line goes as a steer.
+   */
+  const wakePullRequestWait = async (sessionId: string, taskId: string, line: string): Promise<boolean> => {
+    const task = (await tasksOf(sessionId)).find((t) => t.id === taskId);
+    if (task === undefined || task.runSessionId === undefined || waitOf(task) === null) return false;
+    await run(await flowOfSession(task.runSessionId), task.runSessionId, "respond", { message: line });
+    return true;
+  };
+
   /** Session `sessionId`'s board, bound once its flow is known: every task change goes through it. */
   const boardAt = async (sessionId: string): Promise<BoardActions> =>
     inbox.board({ flowId: await flowOfSession(sessionId), sessionId, board: TASKS_BOARD });
@@ -966,10 +1027,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
         const harness = task.spend?.harness ?? (await harnessOf(task));
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
         const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
+        const pullRequests = await pullRequestsOf(task);
         return {
           ...row,
           ...(Object.keys(run).length === 0 ? {} : { run }),
           ...(harness === undefined ? {} : { harness }),
+          ...(pullRequests === undefined ? {} : { pullRequests }),
           ...(review === undefined ? {} : { review }),
           ...(error === undefined ? {} : { error }),
         };
@@ -1323,12 +1386,16 @@ export function createWiredLab(fsd: Client): LabAdapter {
         await inbox.answerOne(question, { text: line });
         return;
       }
+      // A task waiting on its pull request takes the line through its run's door, which wakes it.
+      if (await wakePullRequestWait(sessionId, taskId, line)) return;
       await (await boardAt(sessionId)).steer(taskId, line);
     },
     // Bound per call, so the session's flow is read when a button is pressed, not when the row draws.
     taskActions: (sessionId) => ({
       cancel: async (id) => (await boardAt(sessionId)).cancel(id),
-      steer: async (id, message) => (await boardAt(sessionId)).steer(id, message),
+      steer: async (id, message) => {
+        if (!(await wakePullRequestWait(sessionId, id, message))) await (await boardAt(sessionId)).steer(id, message);
+      },
       release: async (id) => (await boardAt(sessionId)).release(id),
       retry: async (id) => (await boardAt(sessionId)).retry(id),
     }),

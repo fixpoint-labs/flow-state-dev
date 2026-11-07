@@ -12,7 +12,7 @@ import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
 import { TaskActions } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
-import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
+import { HarnessTag, PULL_REQUEST_HINT, PullRequestOpen, statusColumn, statusLine, ThreadIcon, waitsOnPullRequest } from "./ThreadStatus";
 
 /**
  * One task, as a sheet over the main thread, the same flyout session mode's
@@ -22,7 +22,9 @@ import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus
  * accepts it and *Request changes* sends your words back. Under the header,
  * the task's action row: Cancel and Release while it is open, Retry once it
  * failed or was cancelled, and Pin beside them. It has no Steer box, since the
- * composer steers. A failed task's error shows as an error. A finished task's
+ * composer steers. A task waiting on its pull request says *PR open · #7*,
+ * with the link, and keeps its composer: your line wakes it to read the pull
+ * request again. A failed task's error shows as an error. A finished task's
  * composer is off. Cmd+Enter (Ctrl+Enter) does what the box's main button
  * does: answer or send, or request changes when it is ready for review. Plain
  * Enter is a new line.
@@ -117,6 +119,11 @@ export function ThreadView({
               <span className="font-semibold">Waiting on you</span> · {question.prompt}
             </div>
           ) : null}
+          {waitsOnPullRequest(task) ? (
+            <p role="note" data-testid="pull-request-hint" className="text-xs text-muted-foreground">
+              {PULL_REQUEST_HINT}
+            </p>
+          ) : null}
           {finished ? (
             <p role="note" className="text-xs text-muted-foreground">
               This task is finished.
@@ -182,7 +189,11 @@ export function ThreadView({
         </div>
       ) : null}
       {/* Ready for review is said once, by its card at the end of the feed; a failure's reason, by the alert above. */}
-      {column === "review" || (task.status === "errored" && task.error !== undefined) ? null : <div className="truncate text-xs text-muted-foreground" title={statusLine(task)}>{statusLine(task)}</div>}
+      {column === "review" || (task.status === "errored" && task.error !== undefined) ? null : waitsOnPullRequest(task) ? (
+        <PullRequestOpen task={task} className="block" />
+      ) : (
+        <div className="truncate text-xs text-muted-foreground" title={statusLine(task)}>{statusLine(task)}</div>
+      )}
       <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => (
         <Entry key={entry.id} entry={entry} mark={entry.kind === "user" ? feed.mine(entry.id) : undefined} />
@@ -190,7 +201,7 @@ export function ThreadView({
       {/* Ready for review closes the feed, in the one scroll area, so a long review reads like the rest of it. Resolve and the request for changes stay under it. */}
       {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
-      {task.status === "in_progress" && task.waitingOn === undefined ? (
+      {task.status === "in_progress" && task.waitingOn === undefined && !waitsOnPullRequest(task) ? (
         <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
     </SessionOverlay>

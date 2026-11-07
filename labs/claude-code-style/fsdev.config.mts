@@ -57,7 +57,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code";
 import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
 import { defineFlow, utility } from "@flow-state-dev/core";
@@ -171,8 +171,12 @@ const readinessFlow = defineFlow({ kind: "harness-readiness", actions: { read: h
   id: "harness-readiness",
 } as never) as { id: string };
 
+// A goal check's own flows beside the lab's: `GOAL_FLOWS` names a module whose default export lists
+// them, as a stand-in for a service the lab doesn't run (a goal's delivered message). Never set otherwise.
+const goalFlows = process.env.GOAL_FLOWS ? ((await import(pathToFileURL(process.env.GOAL_FLOWS).href)).default as { id: string }[]) : [];
+
 export default createFlowState({
-  flows: Object.fromEntries([...workers, projects, pins, readinessFlow].map((copy) => [copy.id, copy])),
+  flows: Object.fromEntries([...workers, projects, pins, readinessFlow, ...goalFlows].map((copy) => [copy.id, copy])),
   stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
   // A coding run's review and a thread's question wait on you across a restart.
   durable: true,
