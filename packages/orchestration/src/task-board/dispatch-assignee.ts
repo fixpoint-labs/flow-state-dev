@@ -41,7 +41,8 @@
  * policy on the entry wins), so two rows dispatched into one child do not
  * interleave their writes.
  */
-import { getBaseCapability, type DispatchHandle } from "@flow-state-dev/core";
+import { type DispatchHandle } from "@flow-state-dev/core";
+import { getBaseCapability } from "@flow-state-dev/core/capability";
 import type { BlockDefinition, DispatchAddress, TaskDispatchInput } from "@flow-state-dev/core/types";
 import type { DefinedTaskCollection, TaskWorker } from "../tasks";
 import type { TaskWorkerRegistry } from "../tasks/workers/types";

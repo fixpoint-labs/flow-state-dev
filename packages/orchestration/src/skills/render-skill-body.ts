@@ -34,8 +34,7 @@
  */
 
 import path from "node:path";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { SkillState } from "@flow-state-dev/core";
+import type { ResourceCollectionRef, SkillState } from "@flow-state-dev/core/types";
 import { skillManifestKey } from "./collection";
 import { substitute } from "./skill-md";
 import { stripFrontmatter } from "./internal/strip-frontmatter";

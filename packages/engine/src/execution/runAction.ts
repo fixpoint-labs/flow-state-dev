@@ -15,8 +15,8 @@ import { OrgRequiredError } from "../transports/errors";
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
-import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildBlockInstanceId, blockPathObserver, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
+import { RESUME_ACTION_STATUS, addressEntries } from "@flow-state-dev/core/types";
+import { SuspensionError, resolveEntry as resolveTypedEntry, taskBindingOf } from "@flow-state-dev/core";
 import {
   buildReplayLog,
   REQUEST_SPEND_SEAM,
@@ -29,7 +29,12 @@ import {
   WAIT_DEADLINE_ENTRY,
   isWaitGate,
   continuesAtExpiry,
-  waitGateDataOf
+  waitGateDataOf,
+  errorDetailsWithCause,
+  buildBlockInstanceId,
+  blockPathObserver,
+  parseBlockInstanceId,
+  ROOT_BLOCK_PATH
 } from "@flow-state-dev/core/internal";
 import {
   type TaskEntry

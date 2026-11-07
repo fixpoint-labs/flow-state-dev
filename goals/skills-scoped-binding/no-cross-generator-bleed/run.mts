@@ -22,8 +22,7 @@
  * Run: pnpm tsx goals/skills-scoped-binding/no-cross-generator-bleed/run.mts
  */
 import { generator } from "@flow-state-dev/core";
-import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { ResourceCollectionRef, ResourceRef, InitialSkill } from "@flow-state-dev/core/types";
 import { createSkillsLibrary } from "@flow-state-dev/orchestration";
 import { DEFAULT_MODEL, loadFixture, runGoal } from "../../lib/index.mts";
 

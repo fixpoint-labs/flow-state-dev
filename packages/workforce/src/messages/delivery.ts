@@ -29,7 +29,8 @@
  *   told by the tool's answer instead.
  */
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import { getBaseCapability, type CapabilityRef } from "@flow-state-dev/core";
+import { type CapabilityRef } from "@flow-state-dev/core";
+import { getBaseCapability } from "@flow-state-dev/core/capability";
 import { type BlockContext, type DispatchOutcome, type DispatchRefusal, type ResourceRef } from "@flow-state-dev/core/types";
 import { requestHostOf, dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import { decideTake, hasEnded, nextResendAt, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";

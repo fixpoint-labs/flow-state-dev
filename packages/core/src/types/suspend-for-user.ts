@@ -32,6 +32,7 @@
 import type { ZodTypeAny } from "zod";
 import { SuspensionRejectedError, SuspensionTimeoutError, type SuspendOptions } from "../errors/suspension-error";
 import type { SuspendForUserKind } from "./suspension";
+import { requestHostOf } from "./request-host";
 
 /** What {@link SuspendForUser} takes. */
 export interface SuspendForUserOptions<K extends SuspendForUserKind = SuspendForUserKind> {
@@ -79,10 +80,12 @@ export interface SuspendForUser {
   <T = unknown>(options: SuspendForUserOptions<"review" | "input">): Promise<UserAnswer<T>>;
 }
 
-/** What {@link suspendForUserOn} reads off the context. */
+/**
+ * What {@link suspendForUserOn} reads off the context. The host's deadline for a
+ * user's stop is read with `requestHostOf`, so this public type names no host.
+ */
 export interface SuspendForUserContext {
   suspend?(options: SuspendOptions): Promise<unknown>;
-  readonly requestHost?: { readonly userDeadlineMs?: number };
 }
 
 /** The suspension one wait for a user is. */
@@ -103,7 +106,7 @@ function suspendOptionsOf(options: SuspendForUserOptions, deadline: number | und
 
 /** The deadline a call waits for: its own, else the host's, else none. */
 function deadlineOf(ctx: SuspendForUserContext, options: SuspendForUserOptions): number | undefined {
-  const deadline = options.deadline ?? ctx.requestHost?.userDeadlineMs;
+  const deadline = options.deadline ?? requestHostOf(ctx)?.userDeadlineMs;
   if (deadline === undefined) return undefined;
   if (!Number.isFinite(deadline) || deadline <= 0) {
     throw new TypeError(`suspendForUser: deadline must be a positive number of milliseconds, got ${String(deadline)}`);

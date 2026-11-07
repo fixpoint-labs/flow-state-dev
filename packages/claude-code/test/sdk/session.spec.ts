@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createBindingCache } from "@flow-state-dev/core";
+import { createBindingCache } from "@flow-state-dev/core/internal";
 import { createClaudeCodeSessionProvider } from "../../src/sdk/session";
 
 describe("createClaudeCodeSessionProvider", () => {

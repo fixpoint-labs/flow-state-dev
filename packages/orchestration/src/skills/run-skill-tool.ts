@@ -22,8 +22,9 @@ import { router } from "@flow-state-dev/core";
 import type {
   BlockDefinition,
   ResourceCollectionRef,
+  InitialSkill,
+  SkillState,
 } from "@flow-state-dev/core/types";
-import type { InitialSkill, SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
 import { resolveSkillsCollection } from "./partition";
 import { listEnabledSkills } from "./internal/list-enabled-skills";

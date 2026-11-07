@@ -6,7 +6,8 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler, topic, type PushMintAnswer, type PushServerFrame } from "@flow-state-dev/core";
+import { defineFlow, handler, topic } from "@flow-state-dev/core";
+import type { PushMintAnswer, PushServerFrame } from "@flow-state-dev/core/internal";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { createServerApp } from "../src/app";
 import { serve, type ServeHandle, type ServeOptions } from "../src/serve";

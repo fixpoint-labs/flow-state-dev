@@ -9,7 +9,7 @@
  * `WorkerManifest`; a file-declared document is a `ResourceDoc`.
  */
 
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { InitialSkill } from "@flow-state-dev/core/types";
 
 /**
  * One worker, as declared on disk or hand-built. Declared once, in this module; the loader

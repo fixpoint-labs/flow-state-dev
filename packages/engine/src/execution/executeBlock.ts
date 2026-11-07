@@ -4,10 +4,9 @@
 import type { BlockContext, BlockDefinition, BlockOutputHint, GeneratorModelResultPayload, ModelIdentity } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
-import { SuspensionError, runRescue } from "@flow-state-dev/core";
-import { getBaseCapability } from "@flow-state-dev/core";
-import { resolveActiveStatusMessage, cacheTokensOf } from "@flow-state-dev/core/internal";
-import { buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
+import { SuspensionError } from "@flow-state-dev/core";
+import { getBaseCapability } from "@flow-state-dev/core/capability";
+import { resolveActiveStatusMessage, cacheTokensOf, buildBlockInstanceId, ROOT_BLOCK_PATH, runRescue } from "@flow-state-dev/core/internal";
 import { normalizeError } from "../errors/normalize-error";
 import { getResponseItems } from "./internal/response";
 import {

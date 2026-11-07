@@ -20,7 +20,7 @@
  * file an author writes by hand so the two never drift apart.
  */
 
-import type { SkillState } from "@flow-state-dev/core";
+import type { SkillState } from "@flow-state-dev/core/types";
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import {
   parseFrontmatterYaml,

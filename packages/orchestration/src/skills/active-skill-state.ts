@@ -13,7 +13,7 @@
  */
 
 import { z } from "zod";
-import type { SkillActivationSource, SkillContextMode } from "@flow-state-dev/core";
+import type { SkillActivationSource, SkillContextMode } from "@flow-state-dev/core/types";
 import { skillActivationSourceSchema } from "./skill-activation-types";
 
 /** A single active-skill record stored in session state. */

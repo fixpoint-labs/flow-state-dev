@@ -17,8 +17,7 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
-import type { SkillState } from "@flow-state-dev/core";
+import type { BlockContext, SkillState } from "@flow-state-dev/core/types";
 import { activeSkillsArraySchema } from "./active-skill-state";
 import {
   appendActivation,

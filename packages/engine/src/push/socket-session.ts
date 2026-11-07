@@ -18,7 +18,8 @@
  *   socket says whether its process's bus hears other processes. A control
  *   frame about the socket, never a notice kind.
  */
-import { PUSH_CLOSE_CODES, wireTopicKey, type PushServerFrame, type WireTopic } from "@flow-state-dev/core";
+import { type WireTopic } from "@flow-state-dev/core";
+import { PUSH_CLOSE_CODES, wireTopicKey, type PushServerFrame } from "@flow-state-dev/core/internal";
 import type { BusTopic, ChangeBus, ChangeNotice } from "../bus/types";
 import { verifyPushTicket } from "./ticket";
 

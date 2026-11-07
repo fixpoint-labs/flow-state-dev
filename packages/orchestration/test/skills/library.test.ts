@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { generator, handler } from "@flow-state-dev/core";
 import { mergeCapabilities } from "@flow-state-dev/core/capability";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { InitialSkill } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
 import { createMockSkillsCollection } from "./mocks";
