@@ -57,7 +57,7 @@ import {
   isUnknownThreadFailure,
 } from "./errors";
 import {
-  TESTED_SDK,
+  TESTED_CODEX_SDK,
   CODEX_SOURCE,
   codexAgentHandleSchema,
   type CodexAgentHandle,
@@ -179,11 +179,11 @@ export interface CodexAgentOptions {
  * import this symbol from the module directly; a consumer of the package cannot
  * name it, so the only reachable behaviour is the real gate.
  */
-export const INTERNAL_SDK_VERSION_READER = Symbol("codex.internal.readInstalledSdkVersion");
+export const INTERNAL_CODEX_SDK_VERSION_READER = Symbol("codex.internal.readInstalledSdkVersion");
 
 /** The shape the specs pass through the symbol above. */
 interface InternalTestSeams {
-  [INTERNAL_SDK_VERSION_READER]?: InstalledSdkVersionReader;
+  [INTERNAL_CODEX_SDK_VERSION_READER]?: InstalledSdkVersionReader;
 }
 
 /** Option-group keys the block owns and therefore refuses to forward. */
@@ -237,8 +237,8 @@ export function codexAgent(options: CodexAgentOptions = {}) {
   } = options;
 
   assertTestedSdkVersion(
-    TESTED_SDK,
-    (options as InternalTestSeams)[INTERNAL_SDK_VERSION_READER] ?? readInstalledCodexSdkVersion,
+    TESTED_CODEX_SDK,
+    (options as InternalTestSeams)[INTERNAL_CODEX_SDK_VERSION_READER] ?? readInstalledCodexSdkVersion,
   );
   assertNoOwnedKeys(
     threadOptions as Record<string, unknown> | undefined,

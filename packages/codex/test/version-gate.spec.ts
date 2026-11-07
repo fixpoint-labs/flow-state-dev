@@ -18,12 +18,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { HarnessSdkVersionMismatchError, type InstalledSdkVersion } from "@flow-state-dev/core/internal";
-import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
+import { codexAgent, INTERNAL_CODEX_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 import { checkCodexReadiness } from "../src/index";
 
 /** Build against a stated installed-SDK answer, through the private seam. */
 const withInstalled = (installed: InstalledSdkVersion): CodexAgentOptions =>
-  ({ [INTERNAL_SDK_VERSION_READER]: () => installed }) as CodexAgentOptions;
+  ({ [INTERNAL_CODEX_SDK_VERSION_READER]: () => installed }) as CodexAgentOptions;
 
 /** The range this package peers its SDK at: the range it tested. */
 const PEER_RANGE = (JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as {
@@ -65,6 +65,6 @@ describe("the installed-SDK version gate", () => {
 
   it("readiness refuses the same SDK before a host builds the block", async () => {
     const answer = await checkCodexReadiness({ env: {}, readInstalledSdkVersion: () => ({ kind: "version", version: "0.164.1" }) });
-    expect(answer).toMatchObject({ ready: false, remedy: `Install @openai/codex-sdk ${PEER_RANGE}` });
+    expect(answer).toMatchObject({ ready: false, remedy: `npm install @openai/codex-sdk@${PEER_RANGE}` });
   });
 });

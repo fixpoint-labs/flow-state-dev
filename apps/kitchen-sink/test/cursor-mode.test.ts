@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkCursorReadiness, type CursorReadinessOptions } from "@flow-state-dev/cursor";
 
-import { HOST_CHECKS, cursorEnv, cursorModeCheck, cursorSessionFlow, type CursorHostChecks } from "@/lib/cursor-mode";
+import { CURSOR_HOST_CHECKS, cursorEnv, cursorModeCheck, cursorSessionFlow, type CursorHostChecks } from "@/lib/cursor-mode";
 import { availableHarnessFlows, resetModeAvailabilityForTests } from "@/lib/harness-gate";
 
 /** What the package reads the installed SDK as. */
@@ -119,16 +119,16 @@ describe("Cursor mode's check (V7)", () => {
 
 describe("Cursor mode's check, on this host's own answers", () => {
   it("finds the pinned SDK, starts a process with only the run's environment, and reads the sign-in", async () => {
-    expect(HOST_CHECKS.childStarts(cursorEnv())).toBeNull();
+    expect(CURSOR_HOST_CHECKS.childStarts(cursorEnv())).toBeNull();
 
     // A home with no stored login, so the developer's own never answers.
     const home = mkdtempSync(join(tmpdir(), "ks-cursor-home-"));
     try {
       vi.stubEnv("HOME", home);
       vi.stubEnv("CURSOR_API_KEY", "");
-      expect(await HOST_CHECKS.readiness(cursorEnv())).toMatchObject({ ready: false, remedy: expect.stringContaining("CURSOR_API_KEY") });
+      expect(await CURSOR_HOST_CHECKS.readiness(cursorEnv())).toMatchObject({ ready: false, remedy: expect.stringContaining("CURSOR_API_KEY") });
       vi.stubEnv("CURSOR_API_KEY", "key");
-      expect(await HOST_CHECKS.readiness(cursorEnv())).toEqual({ ready: true });
+      expect(await CURSOR_HOST_CHECKS.readiness(cursorEnv())).toEqual({ ready: true });
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

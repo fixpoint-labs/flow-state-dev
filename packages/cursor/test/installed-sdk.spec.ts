@@ -28,7 +28,7 @@ import { promisify } from "node:util";
 import { readInstalledCursorSdkVersion } from "../src/cursor-client";
 import { createDefaultResolveCursorClient } from "../src/cursor-client";
 import { CursorSdkNotInstalledError } from "../src/errors";
-import { TESTED_SDK } from "../src/types";
+import { TESTED_CURSOR_SDK } from "../src/types";
 import { cursorProjectName, cursorWorkingDirectory } from "../src/workspace-alias";
 
 const PACKAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -60,7 +60,7 @@ describe("the installed SDK", () => {
     // `./package.json`, so this cannot be done by asking the module resolver.
     expect(readInstalledCursorSdkVersion()).toEqual({
       kind: "version",
-      version: TESTED_SDK.range,
+      version: TESTED_CURSOR_SDK.range,
     });
   });
 

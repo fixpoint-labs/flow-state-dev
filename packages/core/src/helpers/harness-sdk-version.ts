@@ -43,6 +43,16 @@ export interface TestedSdk {
   range: string;
 }
 
+/**
+ * The command that installs a tested SDK, safe to paste into a shell: the
+ * spec is quoted whenever the range is more than a bare version, since a shell
+ * reads `>=` and `<` as redirections.
+ */
+function installCommand(tested: TestedSdk): string {
+  const spec = `${tested.sdk}@${tested.range}`;
+  return /^\d+\.\d+\.\d+$/.test(tested.range) ? `npm install ${spec}` : `npm install "${spec}"`;
+}
+
 /** A harness's SDK is installed at a version outside the range its package tested. Thrown when the block is built. */
 export class HarnessSdkVersionMismatchError extends Error {
   readonly code = "HARNESS_SDK_VERSION_MISMATCH";
@@ -64,7 +74,7 @@ export class HarnessSdkVersionMismatchError extends Error {
         ? `${tested.sdk} is installed, but its version can't be read (${unreadableReason ?? "reason unknown"}).`
         : `${tested.sdk} ${installed} is installed.`) +
         ` The ${tested.harness} harness is tested against ${tested.sdk} ${tested.range}, and refuses an SDK outside it:` +
-        ` its wire can change between versions. Install ${tested.sdk} ${tested.range}.`,
+        ` its wire can change between versions. Install a tested version: ${installCommand(tested)}`,
     );
     this.name = "HarnessSdkVersionMismatchError";
     this.sdk = tested.sdk;
@@ -139,7 +149,7 @@ export function assertTestedSdkVersion(tested: TestedSdk, read: InstalledSdkVers
  * installed or one outside the range is.
  */
 export function sdkVersionReadiness(tested: TestedSdk, read: InstalledSdkVersionReader): HarnessReadiness | null {
-  const remedy = `Install ${tested.sdk} ${tested.range}`;
+  const remedy = installCommand(tested);
   const installed = read();
   if (installed.kind === "absent") return { ready: false, reason: `The ${tested.harness} SDK (${tested.sdk}) is not installed.`, remedy };
   try {

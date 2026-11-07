@@ -20,7 +20,7 @@
 import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 import { sdkVersionReadiness, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
 import { runIdleQuery } from "./idle-query";
-import { readInstalledClaudeCodeSdkVersion, TESTED_SDK, type SdkImporter } from "./sdk-client";
+import { readInstalledClaudeCodeSdkVersion, TESTED_CLAUDE_CODE_SDK, type SdkImporter } from "./sdk-client";
 
 /** What {@link probeClaudeAccount} found. */
 export type ClaudeAccountProbe =
@@ -128,7 +128,7 @@ export interface ClaudeCodeReadinessOptions extends ProbeClaudeAccountOptions {
  * probe is asked once more before it counts. Never throws.
  */
 export async function checkClaudeCodeReadiness(options: ClaudeCodeReadinessOptions): Promise<HarnessReadiness> {
-  const version = sdkVersionReadiness(TESTED_SDK, options.readInstalledSdkVersion ?? readInstalledClaudeCodeSdkVersion);
+  const version = sdkVersionReadiness(TESTED_CLAUDE_CODE_SDK, options.readInstalledSdkVersion ?? readInstalledClaudeCodeSdkVersion);
   if (version !== null) return version;
   let account = await probeClaudeAccount(options);
   if (account.status === "none" && account.unanswered === true && options.signal?.aborted !== true) {

@@ -14,7 +14,7 @@
 import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 import { sdkVersionReadiness, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
 import { readInstalledCursorSdkVersion } from "./cursor-client";
-import { TESTED_SDK } from "./types";
+import { TESTED_CURSOR_SDK } from "./types";
 
 /** The sign-in `cursorSignIn` found. */
 export type CursorSignIn = { readonly status: "key" | "login" } | { readonly status: "none"; readonly reason: string };
@@ -57,7 +57,7 @@ export async function checkCursorReadiness(
   env: Readonly<Record<string, string>>,
   options: CursorReadinessOptions = {},
 ): Promise<HarnessReadiness> {
-  const version = sdkVersionReadiness(TESTED_SDK, options.readInstalledSdkVersion ?? readInstalledCursorSdkVersion);
+  const version = sdkVersionReadiness(TESTED_CURSOR_SDK, options.readInstalledSdkVersion ?? readInstalledCursorSdkVersion);
   if (version !== null) return version;
   let signIn: CursorSignIn;
   try {

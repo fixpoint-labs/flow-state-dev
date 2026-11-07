@@ -124,12 +124,12 @@ export function codexRepoLine(trust: HarnessTrust = harnessTrust()): RepoLine {
 }
 
 /** Whether this server runs the scripted Codex instead of the SDK. */
-export function codexIsScripted(env: Record<string, string | undefined> = process.env): boolean {
+function codexIsScripted(env: Record<string, string | undefined> = process.env): boolean {
   return env.KITCHEN_SINK_TEST_MODE === "1" && env.KITCHEN_SINK_REAL_HARNESS !== "1";
 }
 
 /** The SDK's thread options Codex mode runs with. The model is the session's, through the block's `model`. */
-export function codexThreadOptions(): CodexThreadOptions {
+function codexThreadOptions(): CodexThreadOptions {
   return {
     // No approval prompts: nobody is there to answer one, and nothing fences
     // the run either — Kitchen Sink confines no run (see the header).
@@ -255,7 +255,7 @@ export function codexBlockOptions(feeds: HarnessSessionFeeds, seams: CodexSeams 
  * neutral `HarnessBlock` (core's own note on that type). The other modes cast
  * the same way.
  */
-export function codexBlock(feeds: HarnessSessionFeeds, seams: CodexSeams = {}): HarnessBlock {
+function codexBlock(feeds: HarnessSessionFeeds, seams: CodexSeams = {}): HarnessBlock {
   return codexAgent(codexBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 
@@ -321,7 +321,7 @@ export async function userMcpServers(env: Record<string, string>): Promise<reado
 }
 
 /** The host's own answers. */
-export const HOST_CHECKS: CodexHostChecks = {
+export const CODEX_HOST_CHECKS: CodexHostChecks = {
   makeRoot: (repository) => {
     const root = worktreeRoot(repository);
     mkdirSync(root, { recursive: true });
@@ -342,7 +342,7 @@ export const HOST_CHECKS: CodexHostChecks = {
  * The block itself is built only once the mode is available, so another SDK
  * version is a reason here and never a crash at server start.
  */
-export function codexModeCheck(checks: CodexHostChecks = HOST_CHECKS): ModeCheck {
+export function codexModeCheck(checks: CodexHostChecks = CODEX_HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
     if (codexIsScripted()) return { available: true };
     let root: string;

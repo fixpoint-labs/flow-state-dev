@@ -18,12 +18,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { HarnessSdkVersionMismatchError, type InstalledSdkVersion } from "@flow-state-dev/core/internal";
-import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
+import { cursorAgent, INTERNAL_CURSOR_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import { checkCursorReadiness } from "../src/index";
 
 /** Build against a stated installed-SDK answer, through the private seam. */
 const withInstalled = (installed: InstalledSdkVersion): CursorAgentOptions =>
-  ({ [INTERNAL_SDK_VERSION_READER]: () => installed }) as CursorAgentOptions;
+  ({ [INTERNAL_CURSOR_SDK_VERSION_READER]: () => installed }) as CursorAgentOptions;
 
 /** The range this package peers its SDK at: the range it tested. */
 const PEER_RANGE = (JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as {
@@ -65,6 +65,6 @@ describe("the installed-SDK version gate", () => {
 
   it("readiness refuses the same SDK before a host builds the block", async () => {
     const answer = await checkCursorReadiness({}, { readInstalledSdkVersion: () => ({ kind: "version", version: "1.0.41" }) });
-    expect(answer).toMatchObject({ ready: false, remedy: `Install @cursor/sdk ${PEER_RANGE}` });
+    expect(answer).toMatchObject({ ready: false, remedy: `npm install @cursor/sdk@${PEER_RANGE}` });
   });
 });

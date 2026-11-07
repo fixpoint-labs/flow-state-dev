@@ -68,7 +68,7 @@ import {
   OBSERVED_PLAN_LIST,
   workRecorderResources,
 } from "./work-collections";
-import { defaultResolveClaudeAgent, readInstalledClaudeCodeSdkVersion, TESTED_SDK } from "./sdk-client";
+import { defaultResolveClaudeAgent, readInstalledClaudeCodeSdkVersion, TESTED_CLAUDE_CODE_SDK } from "./sdk-client";
 import { CLAUDE_CODE_HARNESS, usageWindowOf } from "./usage";
 import { trackProcess } from "./process-exit";
 import { inProcessMcpServer, type ClaudeCodeMcpToolServer, type ClaudeCodeMcpTools } from "./mcp-tools";
@@ -838,17 +838,17 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
  * of the package cannot name it, so the only reachable behaviour is the real
  * gate. A host's own check passes a reader to `checkClaudeCodeReadiness`.
  */
-export const INTERNAL_SDK_VERSION_READER = Symbol("claude-code.internal.readInstalledSdkVersion");
+export const INTERNAL_CLAUDE_CODE_SDK_VERSION_READER = Symbol("claude-code.internal.readInstalledSdkVersion");
 
 /** The shape the specs pass through the symbol above. */
 interface InternalTestSeams {
-  [INTERNAL_SDK_VERSION_READER]?: InstalledSdkVersionReader;
+  [INTERNAL_CLAUDE_CODE_SDK_VERSION_READER]?: InstalledSdkVersionReader;
 }
 
 export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
   // Refused when the block is built: an SDK outside the tested range would
   // run an untested wire and show it as malformed items.
-  assertTestedSdkVersion(TESTED_SDK, (options as InternalTestSeams)[INTERNAL_SDK_VERSION_READER] ?? readInstalledClaudeCodeSdkVersion);
+  assertTestedSdkVersion(TESTED_CLAUDE_CODE_SDK, (options as InternalTestSeams)[INTERNAL_CLAUDE_CODE_SDK_VERSION_READER] ?? readInstalledClaudeCodeSdkVersion);
   const {
     resolveClaudeAgent = defaultResolveClaudeAgent,
     sessionProvider = createClaudeAgentSessionProvider(),

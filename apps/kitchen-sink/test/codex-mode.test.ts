@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkCodexReadiness, type CodexReadinessOptions } from "@flow-state-dev/codex";
 
-import { HOST_CHECKS, codexEnv, codexModeCheck, codexSessionFlow, type CodexHostChecks } from "@/lib/codex-mode";
+import { CODEX_HOST_CHECKS, codexEnv, codexModeCheck, codexSessionFlow, type CodexHostChecks } from "@/lib/codex-mode";
 import { availableHarnessFlows, resetModeAvailabilityForTests } from "@/lib/harness-gate";
 
 /** What the package reads the installed SDK as. */
@@ -93,7 +93,7 @@ describe("Codex mode's check (V4)", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "");
     vi.stubEnv("CODEX_API_KEY", "sk-key");
     // The real check: a key answers before Codex is started, so nothing runs here.
-    const result = await codexModeCheck({ ...able, readiness: HOST_CHECKS.readiness })({ repository: "/repo" });
+    const result = await codexModeCheck({ ...able, readiness: CODEX_HOST_CHECKS.readiness })({ repository: "/repo" });
     expect(result).toEqual({ available: true });
   });
 
@@ -132,7 +132,7 @@ describe("Codex mode's check, on this host's own answers", () => {
       vi.stubEnv("HOME", home);
       vi.stubEnv("CODEX_HOME", home);
       // Codex's own answer, not a failure to ask.
-      const readiness = await HOST_CHECKS.readiness(codexEnv());
+      const readiness = await CODEX_HOST_CHECKS.readiness(codexEnv());
       expect(readiness).toMatchObject({ ready: false, remedy: expect.stringContaining("codex login") });
       expect(readiness).not.toHaveProperty("unanswered");
     } finally {

@@ -15,7 +15,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { probeCursorSandbox } from "../src/sandbox-probe";
-import { TESTED_SDK } from "../src/types";
+import { TESTED_CURSOR_SDK } from "../src/types";
 
 const RUNTIME_DIR = resolve(import.meta.dirname, "..", "runtime");
 
@@ -47,7 +47,7 @@ describe("Cursor's sandbox helper", () => {
     // A bump of `@cursor/sdk` that leaves the platform packages behind would
     // pair the SDK with another release's helper.
     const manifest = join(dirname(dirname(findHelper(RUNTIME_DIR) as string)), "package.json");
-    expect(JSON.parse(readFileSync(manifest, "utf8")).version).toBe(TESTED_SDK.range);
+    expect(JSON.parse(readFileSync(manifest, "utf8")).version).toBe(TESTED_CURSOR_SDK.range);
   });
 });
 

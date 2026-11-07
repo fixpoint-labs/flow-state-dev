@@ -14,11 +14,11 @@ import { describe, it, expect } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
 import { OBSERVED_PULL_REQUESTS, observedPullRequestsCollection } from "@flow-state-dev/core/harness";
 import { REQUEST_END_SEAM, type RequestEndHook } from "@flow-state-dev/core/internal";
-import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
-import { TESTED_SDK, type CursorSdkMessage, type ResolvedCursorClient } from "../src/types";
+import { cursorAgent, INTERNAL_CURSOR_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
+import { TESTED_CURSOR_SDK, type CursorSdkMessage, type ResolvedCursorClient } from "../src/types";
 
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK.range }),
+  [INTERNAL_CURSOR_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CURSOR_SDK.range }),
 } as CursorAgentOptions;
 
 /** A Cursor shell call, opened and settled with the result shape a real run carried. */

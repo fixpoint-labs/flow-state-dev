@@ -83,7 +83,7 @@ import {
   isUnknownAgentFailure,
 } from "./errors";
 import {
-  TESTED_SDK,
+  TESTED_CURSOR_SDK,
   CURSOR_SOURCE,
   cursorAgentHandleSchema,
   type CursorAgentHandle,
@@ -288,18 +288,18 @@ export interface CursorAgentOptions {
  * import this symbol from the module directly; a consumer of the package cannot
  * name it, so the only reachable behaviour is the real gate.
  */
-export const INTERNAL_SDK_VERSION_READER = Symbol("cursor.internal.readInstalledSdkVersion");
+export const INTERNAL_CURSOR_SDK_VERSION_READER = Symbol("cursor.internal.readInstalledSdkVersion");
 
 /**
  * The module the `env` child process loads the SDK from, keyed
- * by a symbol for the same reason as {@link INTERNAL_SDK_VERSION_READER}: the
+ * by a symbol for the same reason as {@link INTERNAL_CURSOR_SDK_VERSION_READER}: the
  * specs point the child at a scripted SDK, and no host can.
  */
 export const INTERNAL_CHILD_SDK_MODULE = Symbol("cursor.internal.childSdkModule");
 
 /** The shape the specs pass through the symbols above. */
 interface InternalTestSeams {
-  [INTERNAL_SDK_VERSION_READER]?: InstalledSdkVersionReader;
+  [INTERNAL_CURSOR_SDK_VERSION_READER]?: InstalledSdkVersionReader;
   [INTERNAL_CHILD_SDK_MODULE]?: string;
 }
 
@@ -437,8 +437,8 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
   } = options;
 
   assertTestedSdkVersion(
-    TESTED_SDK,
-    (options as InternalTestSeams)[INTERNAL_SDK_VERSION_READER] ?? readInstalledCursorSdkVersion,
+    TESTED_CURSOR_SDK,
+    (options as InternalTestSeams)[INTERNAL_CURSOR_SDK_VERSION_READER] ?? readInstalledCursorSdkVersion,
   );
   assertNoOwnedKeys(agentOptions, sendOptions);
   if (model !== undefined && (agentOptions?.model !== undefined || sendOptions?.model !== undefined)) {

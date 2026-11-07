@@ -12,10 +12,10 @@ import { describe, it, expect, vi } from "vitest";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { isAbortLike } from "@flow-state-dev/core";
 import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core/harness";
-import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
+import { codexAgent, INTERNAL_CODEX_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 import { CodexAgentAbortedError, CodexAgentConfigError, CodexAgentRunError } from "../src/errors";
 import {
-  TESTED_SDK,
+  TESTED_CODEX_SDK,
   type CodexAgentHandle,
 
   type CodexThreadEvent,
@@ -23,7 +23,7 @@ import {
 
 /** Every spec below builds against a stubbed version gate; slice 1 owns the gate itself. */
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK.range }),
+  [INTERNAL_CODEX_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CODEX_SDK.range }),
 } as CodexAgentOptions;
 
 interface Recorder {

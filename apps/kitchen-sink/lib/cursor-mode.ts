@@ -83,7 +83,7 @@ export function cursorRepoLine(trust: HarnessTrust = harnessTrust()): RepoLine {
 }
 
 /** Whether this server runs the scripted Cursor instead of the SDK. */
-export function cursorIsScripted(env: Record<string, string | undefined> = process.env): boolean {
+function cursorIsScripted(env: Record<string, string | undefined> = process.env): boolean {
   return env.KITCHEN_SINK_TEST_MODE === "1" && env.KITCHEN_SINK_REAL_HARNESS !== "1";
 }
 
@@ -130,7 +130,7 @@ export function cursorBlockOptions(feeds: HarnessSessionFeeds, seams: CursorSeam
  * neutral `HarnessBlock` (core's own note on that type). Claude Code mode casts
  * the same way.
  */
-export function cursorBlock(feeds: HarnessSessionFeeds, seams: CursorSeams = {}): HarnessBlock {
+function cursorBlock(feeds: HarnessSessionFeeds, seams: CursorSeams = {}): HarnessBlock {
   return cursorAgent(cursorBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 
@@ -238,7 +238,7 @@ function childStarts(env: Record<string, string>): string | null {
 }
 
 /** The host's own answers. */
-export const HOST_CHECKS: CursorHostChecks = {
+export const CURSOR_HOST_CHECKS: CursorHostChecks = {
   makeRoot: (repository) => {
     mkdirSync(worktreeRoot(repository), { recursive: true });
   },
@@ -254,7 +254,7 @@ export const HOST_CHECKS: CursorHostChecks = {
  * tested, and a sign-in). The first that fails is the reason. Nothing is asked about a sandbox: Kitchen Sink runs Cursor with its
  * sandbox off (see the header).
  */
-export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeCheck {
+export function cursorModeCheck(checks: CursorHostChecks = CURSOR_HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
     if (cursorIsScripted()) return { available: true };
     try {

@@ -28,18 +28,18 @@ import { harnessEnv, harnessFailureKind } from "@flow-state-dev/core/harness";
 import {
   cursorAgent,
   INTERNAL_CHILD_SDK_MODULE,
-  INTERNAL_SDK_VERSION_READER,
+  INTERNAL_CURSOR_SDK_VERSION_READER,
   type CursorAgentOptions,
 } from "../src/agent";
 import { CursorAgentAbortedError } from "../src/errors";
 import { CURSOR_PASS } from "../src/index";
-import { TESTED_SDK, type ResolvedCursorClient } from "../src/types";
+import { TESTED_CURSOR_SDK, type ResolvedCursorClient } from "../src/types";
 
 const FAKE_SDK = pathToFileURL(resolve(import.meta.dirname, "fixtures/fake-cursor-sdk.mjs")).href;
 const CANARY = "FIX1917_CANARY";
 
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK.range }),
+  [INTERNAL_CURSOR_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CURSOR_SDK.range }),
 } as CursorAgentOptions;
 
 /** Fenced: the child process, loading the scripted SDK. */

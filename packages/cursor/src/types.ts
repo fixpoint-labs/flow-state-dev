@@ -11,7 +11,7 @@
  *   Declared here rather than imported so this package never type-depends on
  *   the optional peer, exactly as `codex/types.ts` does for the Codex SDK and
  *   `claude-code/sdk/types.ts` for the Agent SDK. The declarations mirror
- *   `@cursor/sdk` {@link TESTED_SDK}; the version gate is what keeps
+ *   `@cursor/sdk` {@link TESTED_CURSOR_SDK}; the version gate is what keeps
  *   them true (see `./cursor-client`).
  * - The **seam types** the block calls the SDK through, so a scripted client
  *   satisfies them in tests with no runtime and no network.
@@ -39,7 +39,7 @@ export const CURSOR_SOURCE = "cursor/sdk" as const;
  * version is a tested bump of ours. `cursorAgent` refuses to build against
  * another, and the readiness check says so first (core's SDK gate).
  */
-export const TESTED_SDK: TestedSdk = { harness: "Cursor", sdk: "@cursor/sdk", range: "1.0.40" };
+export const TESTED_CURSOR_SDK: TestedSdk = { harness: "Cursor", sdk: "@cursor/sdk", range: "1.0.40" };
 
 /**
  * Cursor's full token breakdown for a run.

@@ -22,7 +22,7 @@ import { delimiter } from "node:path";
 import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 import { sdkVersionReadiness, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
 import { readInstalledCodexSdkVersion } from "./codex-client";
-import { TESTED_SDK } from "./types";
+import { TESTED_CODEX_SDK } from "./types";
 import { findCodexProgram, type CodexProgram } from "./usage";
 
 /** What {@link probeCodexAccount} found. */
@@ -136,7 +136,7 @@ export interface CodexReadinessOptions extends ProbeCodexAccountOptions {
  * `harnessReadiness`). Never throws.
  */
 export async function checkCodexReadiness(options: CodexReadinessOptions): Promise<HarnessReadiness> {
-  const version = sdkVersionReadiness(TESTED_SDK, options.readInstalledSdkVersion ?? readInstalledCodexSdkVersion);
+  const version = sdkVersionReadiness(TESTED_CODEX_SDK, options.readInstalledSdkVersion ?? readInstalledCodexSdkVersion);
   if (version !== null) return version;
   let account = await probeCodexAccount(options);
   if (account.status === "account" && account.source === "api-key" && options.program === undefined) {

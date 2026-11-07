@@ -83,12 +83,21 @@ describe("sdkVersionReadiness", () => {
     expect(sdkVersionReadiness(TESTED, () => ({ kind: "absent" }))).toEqual({
       ready: false,
       reason: "The Example SDK (@example/sdk) is not installed.",
-      remedy: "Install @example/sdk >=1.2.3 <1.3.0",
+      remedy: 'npm install "@example/sdk@>=1.2.3 <1.3.0"',
     });
     const above = sdkVersionReadiness(TESTED, () => ({ kind: "version", version: "1.3.0" }));
-    expect(above).toMatchObject({ ready: false, remedy: "Install @example/sdk >=1.2.3 <1.3.0" });
+    expect(above).toMatchObject({ ready: false, remedy: 'npm install "@example/sdk@>=1.2.3 <1.3.0"' });
     expect((above as { reason: string }).reason).toContain("1.3.0");
     expect((above as { reason: string }).reason).toContain(">=1.2.3 <1.3.0");
+  });
+});
+
+describe("the install remedy", () => {
+  it("is a command safe to paste into a shell: a range is quoted, a bare version needs no quotes", () => {
+    const absent = () => ({ kind: "absent" }) as const;
+    // Unquoted, a shell would read `>=1.2.3` and `<1.3.0` as redirections.
+    expect(sdkVersionReadiness(TESTED, absent)).toMatchObject({ remedy: 'npm install "@example/sdk@>=1.2.3 <1.3.0"' });
+    expect(sdkVersionReadiness({ ...TESTED, range: "0.164.0" }, absent)).toMatchObject({ remedy: "npm install @example/sdk@0.164.0" });
   });
 });
 

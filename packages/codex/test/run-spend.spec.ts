@@ -11,11 +11,11 @@ import { describe, expect, it } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
 import { REQUEST_SPEND_SEAM } from "@flow-state-dev/core/internal";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
-import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
-import { TESTED_SDK, type CodexThreadEvent } from "../src/types";
+import { codexAgent, INTERNAL_CODEX_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
+import { TESTED_CODEX_SDK, type CodexThreadEvent } from "../src/types";
 
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK.range }),
+  [INTERNAL_CODEX_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CODEX_SDK.range }),
 } as CodexAgentOptions;
 
 /** A client whose thread replays `events`, then throws when `fail` is set. */

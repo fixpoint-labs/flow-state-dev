@@ -10,7 +10,7 @@
  *   `ThreadItem` kinds `codex exec --experimental-json` emits. Declared here
  *   rather than imported so this package never type-depends on the optional
  *   peer, exactly as `claude-code/sdk/types.ts` does for the Agent SDK. The
- *   declarations mirror `@openai/codex-sdk` {@link TESTED_SDK}; the
+ *   declarations mirror `@openai/codex-sdk` {@link TESTED_CODEX_SDK}; the
  *   version gate is what keeps them true (see `./codex-client`).
  * - The **seam types** the block calls the SDK through, so a scripted client
  *   satisfies them in tests with no subprocess.
@@ -37,7 +37,7 @@ export const CODEX_SOURCE = "codex/sdk" as const;
  * version is a tested bump of ours. `codexAgent` refuses to build against
  * another, and the readiness check says so first (core's SDK gate).
  */
-export const TESTED_SDK: TestedSdk = { harness: "Codex", sdk: "@openai/codex-sdk", range: "0.164.0" };
+export const TESTED_CODEX_SDK: TestedSdk = { harness: "Codex", sdk: "@openai/codex-sdk", range: "0.164.0" };
 
 /**
  * Codex's full token breakdown for a turn.

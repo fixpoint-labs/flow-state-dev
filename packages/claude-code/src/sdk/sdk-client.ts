@@ -21,7 +21,7 @@ const SDK_MODULE = "@anthropic-ai/claude-agent-sdk";
  * `claudeCodeAgent` refuses to build against a version outside it, and the
  * readiness check says so first (core's SDK gate).
  */
-export const TESTED_SDK: TestedSdk = { harness: "Claude Code", sdk: SDK_MODULE, range: ">=0.3.316 <0.4.0" };
+export const TESTED_CLAUDE_CODE_SDK: TestedSdk = { harness: "Claude Code", sdk: SDK_MODULE, range: ">=0.3.316 <0.4.0" };
 
 /** Which `@anthropic-ai/claude-agent-sdk` is installed beside this package, read the way core's SDK gate reads every harness's. */
 export function readInstalledClaudeCodeSdkVersion(): InstalledSdkVersion {
