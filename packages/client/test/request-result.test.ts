@@ -43,9 +43,12 @@ describe("request.result()", () => {
     const settled = await handleFor(fetcher).result({ pollMs: 1 });
 
     expect(settled).toEqual({ status: "completed", output: { squared: 49 } });
-    expect(urls.at(-1)).toBe("GET /api/flows/demo/requests/req_1/status?include_result_output=true");
-    // The polls stay the plain snapshot; only the one read after settling asks for the result.
-    expect(urls.slice(0, -1).every((url) => !url.includes("include_result_output"))).toBe(true);
+    // Each read asks for the result, so the read that settles it is the one returned; a running
+    // request has none, so the poll before it is the plain snapshot.
+    expect(urls).toEqual([
+      "GET /api/flows/demo/requests/req_1/status?include_result_output=true",
+      "GET /api/flows/demo/requests/req_1/status?include_result_output=true"
+    ]);
     expect(urls.some((url) => /\/sessions\//.test(url))).toBe(false);
   });
 
@@ -68,6 +71,18 @@ describe("request.result()", () => {
 
     const nothing = statusRoute([{ id: "req_1", status: "completed", startedAtMs: 1, ageMs: 1, result: { hasOutput: false } }]);
     await expect(handleFor(nothing.fetcher).result()).resolves.toEqual({ status: "completed" });
+  });
+
+  it("returns the settled snapshot it read, even when the request runs again right after", async () => {
+    // Settled, then continued and live again, then settled once more. The read that
+    // satisfied the settle rule must be the one returned: never a running request.
+    const { fetcher } = statusRoute([
+      { id: "req_1", status: "completed", startedAtMs: 1, ageMs: 1, result: { output: { round: 1 }, hasOutput: true } },
+      { id: "req_1", status: "in_progress", startedAtMs: 1, ageMs: 2, lastHeartbeatAt: 2 },
+      { id: "req_1", status: "completed", startedAtMs: 1, ageMs: 3, result: { output: { round: 2 }, hasOutput: true } }
+    ]);
+
+    await expect(handleFor(fetcher).result({ pollMs: 1 })).resolves.toEqual({ status: "completed", output: { round: 1 } });
   });
 
   it("rejects past its timeout, as wait does", async () => {

@@ -330,8 +330,9 @@ export interface RequestHandle {
    */
   wait(options?: WaitOptions): Promise<RequestStatusSnapshot>;
   /**
-   * What the request answered: `wait()`, then one read of this request by
-   * its id with its stored result. Resolves for every way a request settles
+   * What the request answered: `wait()`'s polls of this request by its id,
+   * each asking for its stored result, and the read that finds it settled is
+   * the one returned. Resolves for every way a request settles
    * and says which, so branch on `status`: `output` is the action's return
    * value on `completed` or `incomplete`, `error` says why on `failed`, and a
    * run that stops for a person resolves `suspended` with neither. Rejects
@@ -798,17 +799,28 @@ function requestHandle(
   let session: Promise<string | null> | undefined =
     knownSession === undefined ? undefined : Promise.resolve(knownSession);
 
-  const status = (signal?: AbortSignal): Promise<RequestStatusSnapshot> =>
-    t.json<RequestStatusSnapshot>(`${base}/status`, signal === undefined ? undefined : { signal });
+  /** One status read; `withResult` asks for the stored result too (`include_result_output`). */
+  const status = (signal?: AbortSignal, withResult = false): Promise<RequestStatusSnapshot> =>
+    t.json<RequestStatusSnapshot>(
+      `${base}/status`,
+      signal === undefined ? undefined : { signal },
+      withResult ? { include_result_output: "true" } : undefined
+    );
 
-  /** The one wait: polls the status until the request has settled. */
-  const wait = async (waitOptions?: WaitOptions): Promise<RequestStatusSnapshot> => {
+  /**
+   * The one wait: polls the status until the request has settled, and returns
+   * the read that settled it. With `withResult` every read carries the stored
+   * result, so `result()` hands back that same read, with no second read a
+   * resumed run could slip in front of. A running request has no stored
+   * result, so those polls stay small.
+   */
+  const settle = async (waitOptions: WaitOptions | undefined, withResult: boolean): Promise<RequestStatusSnapshot> => {
     const pollMs = waitOptions?.pollMs ?? 250;
     const signal = waitOptions?.signal;
     const until = waitOptions?.timeoutMs === undefined ? Infinity : Date.now() + waitOptions.timeoutMs;
     for (;;) {
       signal?.throwIfAborted();
-      const snapshot = await status(signal);
+      const snapshot = await status(signal, withResult);
       // A continued or resumed run is registered before its route answers, and
       // keeps the status it was carried on from until it gets its turn: while
       // the server holds a live run (`lastHeartbeatAt`), it isn't settled.
@@ -817,6 +829,7 @@ function requestHandle(
       await pause(pollMs, signal);
     }
   };
+  const wait = (waitOptions?: WaitOptions): Promise<RequestStatusSnapshot> => settle(waitOptions, false);
 
   const sessionPath = async (verb: "continue" | "retry"): Promise<string> => {
     session ??= status().then(
@@ -879,16 +892,11 @@ function requestHandle(
   const handle: RequestHandle = {
     id,
     flow,
-    status,
+    status: () => status(),
     wait,
     result: async (waitOptions) => {
-      await wait(waitOptions);
-      // One read by id, with the stored result: the session's length changes nothing.
-      const read = await t.json<RequestStatusSnapshot>(
-        `${base}/status`,
-        { signal: waitOptions?.signal },
-        { include_result_output: "true" }
-      );
+      // Read by id, with the stored result: the session's length changes nothing.
+      const read = await settle(waitOptions, true);
       const { hasOutput: _hasOutput, ...stored } = read.result ?? {};
       return { status: read.status, ...stored };
     },
