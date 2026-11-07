@@ -12,16 +12,18 @@
  * public routes as its owner, with the owner's bearer as the page carries it.
  * The project is a scratch `file://` repository holding the draw's files and
  * the coder ask's failing check, created through the Lab's `projects` flow.
- * The coder ask needs a Claude Code sign-in.
+ * The coder ask needs a Claude Code sign-in, or, on Haiku (`GOAL_HAIKU=1`),
+ * the key every other ask runs on (`../model.mts`).
  *
  * Run:  GOAL_PASS=cut pnpm tsx goals/closure-smarter-agents/shift-manager/run.mts
- *       GOAL_PASS=control (serves 0df5c85) · GOAL_PASS=wrap (sets nothing)
+ *       GOAL_PASS=control (serves 0df5c85) · GOAL_PASS=wrap (sets nothing) · GOAL_HAIKU=1 (on Haiku)
  *       GOAL_ASKS=date,sizing (a subset) · GOAL_RUNS
  */
 import { join } from "node:path";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { LAB_USERS } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { act, askWorker, clientFor, gitRepository, heldSkills, runChecks, runClosure, serveFsdev, skillFiles, type AppDriver } from "../closure.mts";
+import { claudeCodeSettings } from "../model.mts";
 
 const OWNER = LAB_USERS.owner;
 // Organization-level workers carry no team prefix.
@@ -36,13 +38,15 @@ const driver: AppDriver = {
   plant: (d, p) => skillFiles(join(tree(p.root), "org", "workers", "shift-coordinator"), d.skill, p.switches),
   start: async (d, p, scratch) => {
     const store = join(scratch, "devteam.sqlite");
-    const repo = gitRepository(join(scratch, "repo"), { ...d.files, [d.coder.file]: d.coder.script });
+    // On Haiku, the project settings set the coder's Claude Code runs to Haiku.
+    const repo = gitRepository(join(scratch, "repo"), { ...d.files, [d.coder.file]: d.coder.script, ...claudeCodeSettings(p.model) });
     const served = await serveFsdev({
       root: p.root,
       cwd: team(p.root),
       args: ["--config", join(team(p.root), "fsdev.config.mts")],
       logTo: join(scratch, "server.log"),
       env: { DEVTEAM_STORE: store, DEVFORCE_LAB_HARNESS: "claude-code" },
+      model: p.model,
     });
     const fsd = clientFor(served.origin, OWNER.userId, OWNER.bearer);
     const projectId = "closure";

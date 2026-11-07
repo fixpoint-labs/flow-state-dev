@@ -481,7 +481,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       }
       // A deadline that has already fired must not start a runtime it will
       // immediately have to kill.
-      if (ctx.signal?.aborted) throw new CursorAgentAbortedError(null);
+      if (ctx.signal?.aborted) throw new CursorAgentAbortedError(null, ctx.signal.reason);
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       const emitState = createEmitState();
@@ -515,7 +515,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // have to cancel — the resolvers, the client, create/resume and
         // `onSession` all await before this, and a signal that is already
         // aborted never fires `abort` again.
-        if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId);
+        if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId, ctx.signal.reason);
         const run = await agent.send(prompt, sendOptions);
         // Reported from here on as the run goes (FIX-2288), under one id for
         // the run: its configured model and no tokens at once, then each
@@ -1024,7 +1024,7 @@ function toRunFailure(err: unknown, sessionId: string | null): CursorAgentError 
   // Re-minted rather than passed through: the abort raised inside the race
   // knows no agent id, and the id is the whole point of the error — it is what
   // lets a manager resume the run its own deadline killed.
-  if (err instanceof CursorAgentAbortedError) return new CursorAgentAbortedError(sessionId);
+  if (err instanceof CursorAgentAbortedError) return new CursorAgentAbortedError(sessionId, err.reason);
   // Already ours. Wrapping again buries the class under a second
   // "Cursor run failed:" prefix and tells a caller nothing new.
   if (err instanceof CursorSdkNotInstalledError) return err;
@@ -1103,13 +1103,13 @@ function abortRace(signal: AbortSignal | undefined): {
   // would leave the block waiting on the vendor's stream — the exact hang the
   // race exists to prevent, arrived at by the one path the race did not cover.
   if (signal.aborted) {
-    const rejected = Promise.reject(new CursorAgentAbortedError(null));
+    const rejected = Promise.reject(new CursorAgentAbortedError(null, signal.reason));
     rejected.catch(() => {});
     return { promise: rejected, dispose: () => {} };
   }
   let onAbort: () => void = () => {};
   const promise = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(new CursorAgentAbortedError(null));
+    onAbort = () => reject(new CursorAgentAbortedError(null, signal.reason));
     signal.addEventListener("abort", onAbort, { once: true });
   });
   // Claimed here so the loser of the race is never an unhandled rejection. The

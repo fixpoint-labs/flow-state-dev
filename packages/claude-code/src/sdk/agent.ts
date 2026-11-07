@@ -76,7 +76,7 @@ import {
   type ClaudeAgentSession,
 } from "./session";
 
-import { ClaudeAgentRunError, isUnknownConversationFailure } from "./errors";
+import { ClaudeAgentRunError, ClaudeCodeAgentAbortedError, isUnknownConversationFailure } from "./errors";
 import type { ClaudeAgentSettingSource, ClaudeAgentSystemPrompt } from "./types";
 import {
   CLAUDE_SDK_SOURCE,
@@ -723,9 +723,9 @@ function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null 
 }
 
 /**
- * Rejects the instant `signal` fires, with its abort reason — an
- * AbortError-shaped value `@flow-state-dev/core`'s `isAbortLike` recognizes —
- * so racing it (via `Promise.race`) against other work settles on THIS
+ * Rejects the instant `signal` fires, with a {@link ClaudeCodeAgentAbortedError}
+ * holding its reason — abort-like to `@flow-state-dev/core`'s `isAbortLike`
+ * whatever the reason — so racing it (via `Promise.race`) against other work settles on THIS
  * signal firing rather than on whatever that other work eventually does
  * (FIX-1301: a fired deadline bounds the harness step, not the commands the
  * vendor ran). Already-aborted fires synchronously.
@@ -744,7 +744,7 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
   let onAbort = () => {};
   const promise = new Promise<never>((_, reject) => {
     onAbort = () =>
-      reject(signal.reason ?? new DOMException("This operation was aborted.", "AbortError"));
+      reject(new ClaudeCodeAgentAbortedError(null, signal.reason));
     if (signal.aborted) {
       onAbort();
     } else {
@@ -1476,18 +1476,19 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             );
           }
           if (abortedByOurSignal) {
-            // Surfaced as the signal's OWN reason, unwrapped — never
-            // `ClaudeAgentRunError` — so a caller that supplied e.g. a
-            // timeout signal gets its `TimeoutError` back rather than a
-            // generic run-failure wrapper. `err` itself may not be this
-            // reason (the loop could have already thrown something else in
-            // the same tick our signal fired), so read it from the signal
-            // directly.
+            // A stop, never `ClaudeAgentRunError`: abort-like to core's
+            // reader whatever the signal's reason (a deadline's
+            // `TimeoutError`, a plain `Error` for a steer), with the reason on
+            // it for a caller that wants to know why, and the session to
+            // resume. `err` itself may not be this reason (the loop could have
+            // already thrown something else in the same tick our signal
+            // fired), so read it from the signal directly.
             const reason =
               ctx.signal.reason ?? new DOMException("This operation was aborted.", "AbortError");
+            const stopped = new ClaudeCodeAgentAbortedError(newSessionId, ctx.signal.reason);
             // A turn stopped for a held call has its "Waiting on approval"
             // status already; the stop is that wait, so it shows no error.
-            if (heldACall) throw reason;
+            if (heldACall) throw stopped;
             await emitTranslatedEvent(
               {
                 kind: "error",
@@ -1498,7 +1499,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               emitState,
               name,
             );
-            throw reason;
+            throw stopped;
           }
           // The SDK's own exit errors carry the process's stderr only when the
           // SDK spawned it; this block does, so it carries the tail instead.

@@ -20,7 +20,7 @@ import {
 } from "../../src/sdk/agent";
 import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
 import { createDefaultResolveClaudeAgent } from "../../src/sdk/sdk-client";
-import { ClaudeAgentSdkNotInstalledError, ClaudeAgentRunError } from "../../src/sdk/errors";
+import { ClaudeAgentSdkNotInstalledError, ClaudeAgentRunError, ClaudeCodeAgentAbortedError } from "../../src/sdk/errors";
 import {
   CLAUDE_SDK_SOURCE,
   sdkAgentHandleSchema,
@@ -641,6 +641,41 @@ describe("claudeCodeAgent", () => {
       expect(isAbortLike(caught)).toBe(true);
     });
 
+    // A host tells a stop from a failure with core's `isAbortLike`, whatever
+    // stopped it: harness-manager stops runs with a deadline (a TimeoutError),
+    // a plain Error for a steer, and no reason at all. The signal's own reason
+    // failed that reader for the first two, so a stopped run read as a broken
+    // one, and a harness used as a generator's tool handed the model a failed
+    // call instead of stopping it.
+    it.each([
+      ["no reason", undefined],
+      ["a timeout", new DOMException("The deadline passed.", "TimeoutError")],
+      ["a plain Error", new Error("[harness-manager] stopped for a steer")],
+    ])("throws a stop that is abort-like by core's reader for a stop with %s, naming the session to resume", async (_label, reason) => {
+      let sawFirstMessage: () => void = () => {};
+      const firstMessageSeen = new Promise<void>((resolve) => {
+        sawFirstMessage = resolve;
+      });
+      const block = claudeCodeAgent({
+        resolveClaudeAgent: hangingQueryAfterFirstMessage(() => sawFirstMessage()),
+      });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      const controller = new AbortController();
+      (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
+      await firstMessageSeen;
+      controller.abort(reason);
+      const caught = await withRaceTimeout(runPromise.then(() => null, (err: unknown) => err), 500);
+
+      expect(isAbortLike(caught)).toBe(true);
+      expect(caught).toBeInstanceOf(ClaudeCodeAgentAbortedError);
+      expect((caught as ClaudeCodeAgentAbortedError).sessionId).toBe("sess_seen_before_abort");
+      expect((caught as ClaudeCodeAgentAbortedError).reason).toBe(controller.signal.reason);
+      // The stable code a host that must branch without the class reads.
+      expect((caught as ClaudeCodeAgentAbortedError).code).toBe("CLAUDE_CODE_AGENT_ABORTED");
+    });
+
     it("still writes the session id observed before the abort into session state", async () => {
       let sawFirstMessage: () => void = () => {};
       const firstMessageSeen = new Promise<void>((resolve) => {
@@ -696,10 +731,13 @@ describe("claudeCodeAgent", () => {
         return { caught, errors: runtime.getItems().filter((i) => i.type === "error") };
       }
 
-      it("leaves no error item, and still throws the stop's reason for the host to read", async () => {
+      it("leaves no error item, and still throws the stop with its reason for the host to read", async () => {
         const { caught, errors } = await runStoppedFromTheFeed("held");
         expect(errors).toEqual([]);
-        expect((caught as Error | null)?.message).toBe("[harness-session] stopped for a tool approval");
+        expect(isAbortLike(caught)).toBe(true);
+        expect(((caught as ClaudeCodeAgentAbortedError | null)?.reason as Error | undefined)?.message).toBe(
+          "[harness-session] stopped for a tool approval",
+        );
       });
 
       it("still shows the error item when the call stopped on was not held", async () => {
@@ -1053,14 +1091,14 @@ describe("claudeCodeAgent", () => {
       expect(events.slice(doneIndex + 1).some((e) => e.type === "content.delta")).toBe(false);
     });
 
-    it("classifies the abort branch by which racer won, not by the reason's error shape — a TimeoutError reason still gets the in-flight-write wait and an unwrapped rethrow", async () => {
+    it("classifies the abort branch by which racer won, not by the reason's error shape — a TimeoutError reason still gets the in-flight-write wait and a stop error", async () => {
       // A caller-supplied `AbortSignal.timeout(...)` rejects with a
       // `TimeoutError` DOMException, which `isAbortLike` does not recognize
       // (it only matches `AbortError`-shaped reasons). Deciding the abort
       // branch from `isAbortLike(err)` therefore misses this signal
       // entirely — skipping the in-flight-write wait and wrapping the
-      // reason as `ClaudeAgentRunError` instead of handing it back
-      // unwrapped. The branch must be decided by which racer won
+      // reason as `ClaudeAgentRunError` instead of throwing a stop. The
+      // branch must be decided by which racer won
       // (`ctx.signal.aborted`), never by the reason's shape.
       const messages: SdkMessageLike[] = [
         {
@@ -1111,12 +1149,12 @@ describe("claudeCodeAgent", () => {
         500,
       );
 
-      // Rethrown unwrapped: the caller gets its own TimeoutError back,
-      // never a ClaudeAgentRunError — and never mind that isAbortLike
-      // doesn't recognize it.
-      expect(caught).toBe(timeoutReason);
+      // A stop, never a ClaudeAgentRunError: abort-like to core's reader
+      // though the reason is a TimeoutError, with the caller's own reason on it.
+      expect(caught).toBeInstanceOf(ClaudeCodeAgentAbortedError);
       expect(caught).not.toBeInstanceOf(ClaudeAgentRunError);
-      expect(isAbortLike(caught)).toBe(false);
+      expect((caught as ClaudeCodeAgentAbortedError).reason).toBe(timeoutReason);
+      expect(isAbortLike(caught)).toBe(true);
 
       const messageItems = runtime.getItems().filter((i) => i.type === "message") as Array<{
         status: string;
