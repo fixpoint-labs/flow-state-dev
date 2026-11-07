@@ -126,6 +126,19 @@ export type {
 export { buildReplayLog } from "../blocks/internal/replay-log";
 export type { ReplayLog } from "../blocks/internal/replay-log";
 
+/**
+ * The SDK version gate every harness package calls: its range match, the
+ * installed-version reader, the readiness half, and the one error class.
+ */
+export {
+  HarnessSdkVersionMismatchError,
+  assertTestedSdkVersion,
+  readInstalledSdkVersion,
+  satisfiesSdkRange,
+  sdkVersionReadiness,
+} from "../helpers/harness-sdk-version";
+export type { InstalledSdkVersion, InstalledSdkVersionReader, TestedSdk } from "../helpers/harness-sdk-version";
+
 /** Runtime helpers the engine shares with core. */
 export { resolveActiveStatusMessage } from "../blocks/internal/resolve-active-status-message";
 export { resolveAllowedActions } from "../errors/resolve-allowed-actions";

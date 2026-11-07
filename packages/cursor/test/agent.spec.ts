@@ -16,7 +16,7 @@ import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { isAbortLike } from "@flow-state-dev/core";
 import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core/harness";
 import type { HarnessSteer } from "@flow-state-dev/core/harness";
-import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
+import { cursorAgent, INTERNAL_CURSOR_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import {
   CursorAgentAbortedError,
   CursorAgentConfigError,
@@ -24,7 +24,7 @@ import {
   CursorSdkNotInstalledError,
 } from "../src/errors";
 import {
-  TESTED_SDK_VERSION,
+  TESTED_CURSOR_SDK,
   type CursorAgentHandle,
   type CursorAgentLike,
   type CursorCreateOptions,
@@ -38,7 +38,7 @@ import { CURSOR_PROJECT_NAME_LIMIT, cursorProjectName } from "../src/workspace-a
 
 /** Every spec below builds against a stubbed version gate; slice 1 owns the gate itself. */
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_CURSOR_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CURSOR_SDK.range }),
 } as CursorAgentOptions;
 
 interface Recorder {

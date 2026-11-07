@@ -13,11 +13,11 @@ import { describe, it, expect } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
 import { OBSERVED_PULL_REQUESTS, observedPullRequestsCollection } from "@flow-state-dev/core/harness";
 import { REQUEST_END_SEAM, type RequestEndHook } from "@flow-state-dev/core/internal";
-import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
-import { TESTED_SDK_VERSION, type CodexThreadEvent } from "../src/types";
+import { codexAgent, INTERNAL_CODEX_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
+import { TESTED_CODEX_SDK, type CodexThreadEvent } from "../src/types";
 
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_CODEX_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CODEX_SDK.range }),
 } as CodexAgentOptions;
 
 /** A Codex command, started and settled. */

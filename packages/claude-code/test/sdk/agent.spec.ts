@@ -1906,15 +1906,11 @@ describe("claudeCodeAgent — resume and onSession", () => {
 
     const { error } = await testBlock(block, {
       input: { prompt: "go" },
-      // @ts-expect-error — source bug FIX-1317: testBlock takes no signal, so this one never reaches the block.
       signal: controller.signal,
     });
 
-    // The executor wraps a block's throw, so the class is asserted through the
-    // message the block produced rather than through `instanceof`.
-    expect((error as Error | null)?.message).toMatch(
-      /Claude Code agent run failed/,
-    );
+    // The run was stopped, not broken: the signal reaches the block now.
+    expect(isAbortLike(error)).toBe(true);
     expect(onSession).toHaveBeenCalledWith("sess_named", expect.anything());
   });
 

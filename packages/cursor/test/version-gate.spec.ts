@@ -1,93 +1,70 @@
 /**
- * The version gate: the block refuses to be BUILT against any installed Cursor
- * SDK but the exact version this package was tested against.
+ * The block refuses to be BUILT against an installed @cursor/sdk outside the
+ * range this package tested (FIX-2458 D2), through core's one SDK gate.
  *
- * Cursor's SDK ships its local runtime as a native binary and its message wire
- * can change between patch releases, so a host must not be able to run an
- * untested wire without a release from us. There is no override option — that is
- * the point — so the only seam here is how the installed version is READ, and it
- * is keyed by a symbol the package root does not export. A host that could
- * substitute a reader could answer with the tested version and defeat the whole
- * guarantee, which is why these specs reach for the module's own internals
- * rather than an option.
+ * The package translates its vendor's wire, so an untested SDK would produce
+ * malformed items, not an error. There is no override option: the seam here
+ * is how the installed version is READ, keyed by a symbol no public entry
+ * exports. A host that could substitute a reader could answer with a tested
+ * version and defeat the guarantee, which is why these specs reach for the
+ * module's own internals rather than an option. A host's readiness check does
+ * take a reader: a check told the wrong version only misreports, while the
+ * block still reads the installed one.
  *
- * The gate FAILS CLOSED. Three answers, not two: nothing installed is safe, the
- * tested version is safe, and "I cannot tell" is refused — because an SDK the
- * walk cannot see is still an SDK the dynamic import will happily load and run.
+ * The gate FAILS CLOSED: nothing installed is safe, a tested version is safe,
+ * and "I cannot tell" is refused.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
-import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
-import { CursorSdkVersionMismatchError } from "../src/errors";
-import { TESTED_SDK_VERSION, type InstalledSdkVersion } from "../src/types";
+import { HarnessSdkVersionMismatchError, type InstalledSdkVersion } from "@flow-state-dev/core/internal";
+import { cursorAgent, INTERNAL_CURSOR_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
+import { checkCursorReadiness } from "../src/index";
 
 /** Build against a stated installed-SDK answer, through the private seam. */
 const withInstalled = (installed: InstalledSdkVersion): CursorAgentOptions =>
-  ({ [INTERNAL_SDK_VERSION_READER]: () => installed }) as CursorAgentOptions;
+  ({ [INTERNAL_CURSOR_SDK_VERSION_READER]: () => installed }) as CursorAgentOptions;
+
+/** The range this package peers its SDK at: the range it tested. */
+const PEER_RANGE = (JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as {
+  peerDependencies: Record<string, string>;
+}).peerDependencies["@cursor/sdk"]!;
 
 describe("the installed-SDK version gate", () => {
-  it("refuses at build time when the installed SDK is not the tested version", () => {
-    expect(() => cursorAgent(withInstalled({ kind: "version", version: "1.0.30" }))).toThrow(
-      CursorSdkVersionMismatchError,
-    );
+  it("peers its SDK at a bounded range", () => {
+    expect(PEER_RANGE).toBe("1.0.40");
   });
 
-  it("names BOTH versions and the upgrade path, so the error is actionable", () => {
-    let message = "";
+  it.each([
+    ["one step below", "1.0.39"],
+    ["one step above", "1.0.41"],
+  ])("refuses at build time an SDK %s the tested range, naming both versions", (_side, version) => {
+    let thrown: unknown;
     try {
-      cursorAgent(withInstalled({ kind: "version", version: "1.0.30" }));
-    } catch (err) {
-      message = (err as Error).message;
+      cursorAgent(withInstalled({ kind: "version", version }));
+    } catch (error) {
+      thrown = error;
     }
-    expect(message).toContain("1.0.30");
-    expect(message).toContain(TESTED_SDK_VERSION);
-    expect(message).toMatch(/release/i);
+    expect(thrown).toBeInstanceOf(HarnessSdkVersionMismatchError);
+    expect(thrown).toMatchObject({ sdk: "@cursor/sdk", installed: version, tested: PEER_RANGE });
+    expect((thrown as Error).message).toContain(version);
+    expect((thrown as Error).message).toContain(PEER_RANGE);
   });
 
-  it("builds when the installed SDK is exactly the tested version", () => {
-    expect(() =>
-      cursorAgent(withInstalled({ kind: "version", version: TESTED_SDK_VERSION })),
-    ).not.toThrow();
+  it("builds against a version inside the range", () => {
+    expect(() => cursorAgent(withInstalled({ kind: "version", version: "1.0.40" }))).not.toThrow();
   });
 
-  it("builds when no SDK is installed — a missing SDK has no version to check", () => {
-    // Absence stays the first-RUN install hint, not a build-time refusal, because
-    // a block can legitimately be constructed on a host that never runs it.
+  it("builds when no SDK is installed: its absence surfaces on the first run", () => {
     expect(() => cursorAgent(withInstalled({ kind: "absent" }))).not.toThrow();
   });
 
-  it("REFUSES when an SDK is present but its version cannot be read", () => {
-    // The fail-open hole: a layout the manifest walk cannot see (Yarn PnP, a
-    // custom loader) read as "absent" would pass the gate while the dynamic
-    // import went on loading and running the very SDK we failed to check.
-    // "Nothing is installed" is safe; "I cannot tell" is not.
-    expect(() =>
-      cursorAgent(withInstalled({ kind: "unreadable", reason: "a custom loader" })),
-    ).toThrow(CursorSdkVersionMismatchError);
+  it("refuses an SDK whose version can't be read", () => {
+    expect(() => cursorAgent(withInstalled({ kind: "unreadable", reason: "no manifest on the walk" }))).toThrow(HarnessSdkVersionMismatchError);
   });
 
-  it("says WHY it could not read the version, so the host can fix the layout", () => {
-    let message = "";
-    try {
-      cursorAgent(withInstalled({ kind: "unreadable", reason: "a custom loader" }));
-    } catch (err) {
-      message = (err as Error).message;
-    }
-    expect(message).toContain("a custom loader");
-    expect(message).toContain(TESTED_SDK_VERSION);
-  });
-
-  it("a public-looking reader option is ignored — the host gets the REAL gate, not their answer", () => {
-    // The guarantee this package sells is that a host cannot run an unvalidated
-    // wire. A public seam would make that a claim rather than a guarantee. That
-    // the option does not exist on the type is asserted at compile time in
-    // `harness-conformance.test-d.ts`; this is the runtime half.
-    expect(() =>
-      cursorAgent({ readInstalledSdkVersion: () => ({ kind: "absent" }) } as CursorAgentOptions),
-    ).not.toThrow();
-  });
-
-  it("the private seam is not exported from the package root under any name", async () => {
-    const root = await import("../src/index");
-    expect(Object.values(root)).not.toContain(INTERNAL_SDK_VERSION_READER);
+  it("readiness refuses the same SDK before a host builds the block", async () => {
+    const answer = await checkCursorReadiness({}, { readInstalledSdkVersion: () => ({ kind: "version", version: "1.0.41" }) });
+    expect(answer).toMatchObject({ ready: false, remedy: `npm install @cursor/sdk@${PEER_RANGE}` });
   });
 });
