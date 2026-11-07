@@ -108,7 +108,7 @@ await runGoal((failures, tell) => {
   const plants = {
     "packages/core/src/zz-goal-plant.ts": `export const ${retired} = 1;\nexport const ${untouched} = 2;\n`,
     "packages/engine/src/zz-goal-plant.ts": `export const ${retired} = 1;\n`,
-    "apps/docs/docs/zz-goal-plant.md": `# Planted\n\nCall \`${retired}\` here, or \`${untouched}\`.\n`,
+    "apps/docs/docs/zz-goal-plant.md": `# Planted\n\nCall \`${retired}\` here.\n\nOr call \`${untouched}\`.\n`,
     "packages/orchestration/src/zz-goal-plant.ts": `export function ${sideChainOnly}() {}\n`,
   };
   writeFileSync(
@@ -147,7 +147,8 @@ await runGoal((failures, tell) => {
   if (sideChain.status === 0 || !findings.some((f) => f.file === "packages/orchestration/src/zz-goal-plant.ts" && f.detail === sideChainOnly)) {
     failures.push(`lever: the plant is refused — the side-chain check did not report ${sideChainOnly}`);
   }
-  if (sweep.out.includes(untouched) || guard.out.includes(untouched) || findings.some((f) => f.detail === untouched)) {
+  // Each plant of an unretired word sits on its own line, so a report naming it is a report of it.
+  if (sweep.out.includes(untouched) || guard.out.includes(untouched) || findings.some((f) => f.detail.includes(untouched))) {
     failures.push(`lever: a word no entry retires (${untouched}) was reported`);
   }
   if (sweep.out.includes(sideChainOnly) || guard.out.includes(sideChainOnly)) {
