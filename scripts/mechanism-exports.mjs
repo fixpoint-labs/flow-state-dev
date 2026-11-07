@@ -47,6 +47,38 @@ export const fsReader = (root) => {
 };
 
 /**
+ * Read files under `root`, a tree that is not a git checkout (a `git archive` of a commit, as the
+ * adopter goal's control reads): every file under it is "tracked" but `node_modules` and `.git`.
+ */
+export const dirReader = (root) => {
+  const read = fsReader(root);
+  let files;
+  read.tracked = () => (files ??= readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => join(e.parentPath ?? e.path, e.name).slice(root.length).replace(/^[\\/]+/, ""))
+    .filter((f) => !/(^|\/)(node_modules|\.git)\//.test(f)));
+  read.grep = (text, dirs) => read.tracked().filter((f) => dirs.some((d) => f.startsWith(`${d}/`)) && (read(f) ?? "").includes(text));
+  return read;
+};
+
+/**
+ * `base`, with some files' text replaced or added (path → text): how the export check's plants
+ * and the root-is-for-app-authors goal's control reach the real walk without touching the tree.
+ */
+export const overlayReader = (base, files) => {
+  const read = (path) => (path in files ? files[path] : base(path));
+  read.packageDirs = base.packageDirs;
+  read.list = base.list;
+  read.tracked = () => [...new Set([...base.tracked(), ...Object.keys(files)])];
+  read.grep = (text, dirs) => {
+    const under = (f) => dirs.some((d) => f.startsWith(`${d}/`));
+    const planted = Object.keys(files).filter((f) => under(f) && files[f].includes(text));
+    return [...new Set([...base.grep(text, dirs).filter((f) => !(f in files)), ...planted])];
+  };
+  return read;
+};
+
+/**
  * Read files as they were at git `ref`. A file is read with the rest of its directory two
  * levels down (`packages/core`, `apps/docs`) in one `git cat-file --batch`, not one
  * `git show` each, so a walk over a whole tree takes seconds.

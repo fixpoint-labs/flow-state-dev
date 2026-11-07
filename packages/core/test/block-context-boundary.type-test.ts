@@ -43,6 +43,7 @@ import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM } from "../src/types/request-end";
 import { BOARD_NOTICE_SEAM } from "../src/types/board-notice";
 import { REQUEST_RESUME_SEAM } from "../src/types/request-resume";
 import type { InternalBlockContext } from "../src/internal";
+import type { SuspendForUserContext } from "../src/types/suspend-for-user";
 
 declare const ctx: BlockContext;
 
@@ -122,6 +123,12 @@ void ctx[BOARD_NOTICE_SEAM];
 
 // @ts-expect-error the resume seam slot is internal.
 void ctx[REQUEST_RESUME_SEAM];
+
+// `suspendForUserOn`'s public context type is a slice of a context, not a second
+// door to the host: it reads the user deadline through `requestHostOf`.
+declare const suspendCtx: SuspendForUserContext;
+// @ts-expect-error `requestHost` is not on the public SuspendForUserContext.
+void suspendCtx.requestHost;
 
 // The internal context type the engine builds declares them. This is the line
 // that fails if someone removes the member — the readers alone would not catch

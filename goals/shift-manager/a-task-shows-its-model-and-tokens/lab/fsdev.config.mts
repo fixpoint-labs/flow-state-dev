@@ -30,7 +30,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { codexAgent } from "@flow-state-dev/codex";
 import { cursorAgent } from "@flow-state-dev/cursor";
-import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled } from "@flow-state-dev/core/internal";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";

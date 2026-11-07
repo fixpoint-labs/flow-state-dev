@@ -11,7 +11,8 @@
  * the check.
  */
 import { randomBytes } from "node:crypto";
-import { DEFAULT_ORG_ID, PUSH_MINT_MAX_TOPICS, type PushCapability, type PushMintAnswer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { PUSH_MINT_MAX_TOPICS, type PushCapability, type PushMintAnswer } from "@flow-state-dev/core/internal";
 import type { ResolvedPrincipal } from "../transports/types";
 import type { ChangeBus } from "../bus/types";
 import type { FlowApiRouter } from "../routes/createFlowApiRouter";

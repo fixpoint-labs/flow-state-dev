@@ -8,7 +8,7 @@
  * mirror-image one about `ensureSeeded` never deleting anything.
  */
 import { describe, expect, it } from "vitest";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { InitialSkill } from "@flow-state-dev/core/types";
 import { refreshSeededSkills } from "../../src/skills/refresh";
 import { ensureSeeded } from "../../src/skills/seeding";
 import { createMockSkillsCollection } from "./mocks";

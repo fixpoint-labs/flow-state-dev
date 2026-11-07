@@ -85,12 +85,11 @@ import {
   defineFlow,
   dispatcher,
   handler,
-  logicalBlockIdOf,
   router,
   sequencer
 } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import { requestHostOf, dispatchThroughSeam } from "@flow-state-dev/core/internal";
+import { requestHostOf, dispatchThroughSeam, logicalBlockIdOf } from "@flow-state-dev/core/internal";
 import type { BlockContext, BlockDefinition, EvaluationModel } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { defineFitCheck, failedFitSchema } from "../fit-check";

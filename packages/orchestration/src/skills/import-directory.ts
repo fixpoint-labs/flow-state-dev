@@ -7,8 +7,7 @@
  * mechanism that respects user deletions.
  */
 
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { ResourceCollectionRef, InitialSkill } from "@flow-state-dev/core/types";
 import { readSkillsDirectory } from "./read-directory";
 import { skillFileKey, skillManifestKey } from "./collection";
 import { parseSkillMd } from "./skill-md";

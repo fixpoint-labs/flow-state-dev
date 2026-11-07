@@ -54,7 +54,11 @@ import {
   REQUEST_RESUME_SEAM,
   REQUEST_SPEND_SEAM,
   type RequestResume,
-  type RequestSpendSeam
+  type RequestSpendSeam,
+  isTraceObservabilityEnabled,
+  errorDetailsWithCause,
+  buildBlockInstanceId,
+  ROOT_BLOCK_PATH
 } from "@flow-state-dev/core/internal";
 import type { BlockContext, BlockOutputHint, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
@@ -95,7 +99,7 @@ import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth"
 import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
-import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
+import { estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, getTransientKeys, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
@@ -4177,14 +4181,14 @@ export async function createExecutionContext<
       // FIX-2129: built on this scope's `suspend`, with the host's deadline
       // for a user's stop: the request host's, else the runtime config's, so
       // a caller that runs the action with no request host keeps the one it set.
-      suspendForUser: ((waitOptions: Parameters<SuspendForUser>[0]) =>
-        suspendForUserOn(
-          {
-            suspend: context.suspend,
-            requestHost: { userDeadlineMs: context.requestHost?.userDeadlineMs ?? options.effectiveRuntimeConfig?.userDeadlineMs }
-          },
-          waitOptions
-        )) as SuspendForUser,
+      suspendForUser: ((waitOptions: Parameters<SuspendForUser>[0]) => {
+        // `suspendForUserOn` reads the deadline with `requestHostOf`, as off any context.
+        const waitCtx = {
+          suspend: context.suspend,
+          requestHost: { userDeadlineMs: context.requestHost?.userDeadlineMs ?? options.effectiveRuntimeConfig?.userDeadlineMs }
+        };
+        return suspendForUserOn(waitCtx, waitOptions);
+      }) as SuspendForUser,
       saveCheckpoint: undefined,
       // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
       // as running `taskId`. The task-board worker body calls this once per

@@ -8,7 +8,8 @@
  * the ask; `--user` alone keeps the app's organization and replaces its user.
  * A refusal stops the command before anything is written.
  */
-import { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
+import { DEFAULT_LOCAL_USER_ID } from "@flow-state-dev/core/types";
 import {
   isOrgAttributed,
   pinRejectsCaller,

@@ -19,14 +19,14 @@
  * Every refusal names why and changes nothing: a refused create writes no
  * session, and a refused turn leaves the row and the session for a fix.
  */
-import type { InitialSkill } from "@flow-state-dev/core";
 import { SESSION_REQUEST_END_HOOK } from "@flow-state-dev/core/internal";
 import type {
   FlowInstance,
   ResourceCollectionRef,
   SessionCreateCheck,
   SessionCreateCheckInput,
-  SessionCreateCheckResult
+  SessionCreateCheckResult,
+  InitialSkill
 } from "@flow-state-dev/core/types";
 import type {
   SessionRequestEndHook

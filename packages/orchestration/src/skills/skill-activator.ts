@@ -33,7 +33,8 @@
  */
 
 import { z } from "zod";
-import { assertEvaluatorBlock, sequencer } from "@flow-state-dev/core";
+import { sequencer } from "@flow-state-dev/core";
+import { assertEvaluatorBlock } from "@flow-state-dev/core/internal";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import type { ExplicitActivationScope } from "./activation-store";
 import {

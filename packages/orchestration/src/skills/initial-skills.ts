@@ -20,8 +20,7 @@
  * configuration time) and read it here.
  */
 
-import type { BlockContext } from "@flow-state-dev/core/types";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { BlockContext, InitialSkill } from "@flow-state-dev/core/types";
 
 /**
  * Bundled defaults, as a fixed array or as a per-execution resolver.

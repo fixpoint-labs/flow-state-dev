@@ -67,11 +67,9 @@ import type {
   CapabilityRef,
   DeclaredResources,
   GeneratorTool,
-  InitialSkill,
-  ToolCatalog,
   UsesSlot
 } from "@flow-state-dev/core";
-import type { BlockContext, DeclaredResourceEntry, LLMMessage, ResourceVisibilityRule, SessionConfig } from "@flow-state-dev/core/types";
+import type { BlockContext, DeclaredResourceEntry, LLMMessage, ResourceVisibilityRule, SessionConfig, InitialSkill, ToolCatalog } from "@flow-state-dev/core/types";
 import {
   activeSkillsArraySchema,
   createSkillActivator,

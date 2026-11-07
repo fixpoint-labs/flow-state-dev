@@ -1,4 +1,5 @@
-import { assertEvaluatorBlock, generator, handler, sequencer } from '@flow-state-dev/core'
+import { generator, handler, sequencer } from '@flow-state-dev/core'
+import { assertEvaluatorBlock } from '@flow-state-dev/core/internal'
 import { z } from 'zod'
 import { workingMemoryResource } from './working-memory'
 import type { WorkingMemoryHelperConfig } from './working-memory-helpers'

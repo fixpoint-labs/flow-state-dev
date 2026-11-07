@@ -39,11 +39,12 @@ import {
   isProjectedResourceCollection,
   readProjectedRecord,
   searchProjectedRecords,
+  applyGetOrPatchState,
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
 import { OWNER_ROW_REFUSAL, ownerKeyAdmits, ownerWritesRefusalForKey } from "../resources/owner-private";
 import { cloneValue, resolveClientData } from "@flow-state-dev/core/helpers";
-import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled } from "@flow-state-dev/core/internal";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type {
   ContentScopeType,
