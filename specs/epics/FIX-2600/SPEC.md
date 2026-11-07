@@ -6,7 +6,7 @@
 
 | A team that… | Today | After this epic |
 |---|---|---|
-| **names a new thing** (a contributor or an agent) | Has nowhere to check. Vocabulary rules sit in six places, and none says it is current | Looks the word up in one glossary. The PR that coins a public term adds its entry, and CI says so when it doesn't |
+| **names a new thing** (a contributor or an agent) | Has nowhere to check. Vocabulary rules sit in six places, and none says it is current | Looks the word up in one glossary, which the naming skills send them to. The PR that coins a public term adds its entry, and CI refuses a new name built on a retired word |
 | **decides a word** (the owner) | Edits a goal file, a script header and a Linear issue, and hopes they agree. The 2026-11-06 "resource" call reversed a 2026-11-02 "item" call that CI still enforces | Changes one glossary entry. Every check enforces the new word from that one edit |
 | **builds on the packages** | Meets a resource in a collection as `WorkerRow`, `ProjectRow`, `CollectionItemHandle`, and a lifecycle enum as `WorktreeState` | Meets `WorkerResourceState`, `WorkerResourceRef`, `WorktreeStatus`. *Item* means a stream item, *state* means scope or resource state |
 | **reads contributor docs and skills** | The contracts page teaches the retired `isInProcessDispatcher`, and both vocabulary checks pass because neither reads `docs/contributing/` or `.agents/` | Those trees are read. A retired word fails CI there, as it does in package source |
@@ -14,7 +14,7 @@
 **Why now.** The owner settled the resource convention on 2026-11-06, and it supersedes a
 decision CI already enforces: `rules.mjs` → `COLLECTION_ITEM` still tells every PR to say
 "collection item". The reversal was found only by searching Linear. FIX-2479 is about to rename
-about twenty exported names, and with no single source the next decision can contradict this
+about eighty exported names, and with no single source the next decision can contradict this
 one in the same way.
 
 ## The goal, and how we'll know it's met
@@ -48,7 +48,7 @@ control the same edit must change nothing, which is what makes its PASS mean som
 | **Signal** | Leg a: one glossary edit retires a word, and CI reports a planted use under `packages/`, `docs/contributing/` and `.agents/`. Removing the entry clears all three. Leg b: the resource rule reads the whole tree at zero open, and a task stored with a `kind: "row"` hold is answered |
 | **Input** | A word chosen at run time that no check knows today, so no rule can already match it |
 | **Anti-game** | The glossary is the only file the leg-a run edits. Don't assert on a check's own fixture tests: they pass while the CI step reads a different list |
-| **Control that must fail** | The commit before FIX-2601 merges: the glossary edit changes nothing. The commit before FIX-2354: the plant under `.agents/` passes |
+| **Control that must fail** | The commit before FIX-2601 merges: the glossary edit changes nothing. The commit before FIX-2354: the plants under `docs/contributing/` and `.agents/` pass, while the one under `packages/` is refused |
 
 ## What's in the box
 
@@ -78,7 +78,8 @@ The reviewed snapshot. Live state is on [FIX-2600 in Linear](https://linear.app/
 FIX-2354 is the one to fold, into FIX-2601, since both edit the sweep's file scope. It stays,
 because it also renames six lines in released pages and code. **Collapse trigger:** if
 FIX-2601's spec makes every check read every tracked tree by construction, FIX-2354 shrinks to
-the six renames and goes direct.
+the six renames and goes direct. The spec set answered it: FIX-2601 moves the tree map without
+widening it, so the trigger didn't fire and FIX-2354 stays.
 
 ## How the issues flow into each other
 
@@ -127,7 +128,7 @@ waits on all three.
 
 | The debt | |
 |---|---|
-| **Removes** | Six places a rule is written, down to one; about twenty off-convention exported names; the superseded `COLLECTION_ITEM` wording |
+| **Removes** | Six places a rule is written, down to one; about eighty off-convention exported names; the superseded `COLLECTION_ITEM` wording |
 | **Adds** | One glossary file, permanent by design |
 | **Leaves** | Two pages titled "glossary", one for contributors and one for users. The published one lags until the next release |
 
