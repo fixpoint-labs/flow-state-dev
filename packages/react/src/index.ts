@@ -150,11 +150,6 @@ export {
 } from "./components/flow-navigator";
 
 export {
-  useReadFence,
-  type ReadFence
-} from "./hooks/useReadFence";
-
-export {
   useJumpToLatest,
   type JumpToLatest,
   type JumpToLatestOptions,
