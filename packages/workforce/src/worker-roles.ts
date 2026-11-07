@@ -158,7 +158,7 @@ const ROLE_TABLE: Readonly<Record<WorkerRole, RoleRow>> = {
 
 /** One entry the framework calls by name: the factory that builds it, and where the framework looks for it. */
 interface EntryPiece {
-  readonly factory: string;
+  readonly factory: MarkedEntryFactory | "workerTaskEntry" | "messageReceivedEntry";
   readonly name: string;
   readonly section: Section;
   /** Whether `entry` is one `factory` built. */
