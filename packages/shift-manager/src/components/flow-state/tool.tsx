@@ -194,9 +194,10 @@ function getToolArgs(item: ToolItem): unknown {
   try { return JSON.parse(raw); } catch { return raw; }
 }
 
+// FIX-413.
 /**
  * Extract the raw tool payload. `tool_output.output` is always raw.
- * `block_trace.output` is a BlockValue discriminated union (FIX-413); for
+ * `block_trace.output` is a BlockValue discriminated union; for
  * tool-call items the generator is a leaf, so we only see the `inline` case.
  */
 function unwrapToolOutput(item: ToolItem): unknown {

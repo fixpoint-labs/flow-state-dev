@@ -141,12 +141,13 @@ export type WorkerTaskEntryOptions = {
     }
 );
 
+// FIX-2082 D2.
 /**
  * The ledger resolver a `work` entry's gate uses for a conversation's board,
  * and the one a harness manager takes for boards it resolves per claim: the
  * conversation ledger at `partition`, at the running user's scope, for the
  * conversation the running session was opened for, or, for a worker's step
- * filed `session: "new"` (FIX-2082 D2), the plan ledger at that same
+ * filed `session: "new"`, the plan ledger at that same
  * partition; or, for another conversation's ledger, only when the row it names
  * was filed for this very session (a routed task for a workstream, whose
  * filing resolved its session: `Task.targetSessionId`, server-written).
@@ -202,9 +203,10 @@ const noteRoutedFrom = handler({
   }
 });
 
+// FIX-2106.
 /**
  * Start the task's turn at the hop count and chain its filing recorded on the
- * row (FIX-2106): read off the row the gate just verified, through the ledger
+ * row: read off the row the gate just verified, through the ledger
  * the claim names, never off the dispatch's payload. A row with none (one
  * filed before rows recorded it, or a step) leaves the turn at its session's.
  */

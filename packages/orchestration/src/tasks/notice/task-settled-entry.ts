@@ -1,5 +1,6 @@
+// FIX-2078; FIX-2123; FIX-2136; FIX-2149.
 /**
- * The `onTaskSettled` internal entry (FIX-2078): how the session that filed a
+ * The `onTaskSettled` internal entry: how the session that filed a
  * task hears it end, on any flow that hands rows out, with Workforce or
  * without.
  *
@@ -13,23 +14,23 @@
  * ```
  *
  * One request per ending. The entry admits a notice only while its row still
- * owes it, takes it (FIX-2123: one conditional write, so a wait's drop and this
+ * owes it, takes it (one conditional write, so a wait's drop and this
  * delivery never both go through), runs the flow's block with it, and then
  * acknowledges it (clears the row's marker), so a block that fails leaves the
  * notice owed and the filer's next pass sends it again, taken over from the
  * request that failed. Queued on the session by default, so a second copy of
  * one notice waits behind the first and finds it no longer owed.
  *
- * A failure's or a cancel's notice is completed here before the block runs
- * (FIX-2136): a touch of the board cancels any dependent the ending's own
+ * A failure's or a cancel's notice is completed here before the block runs:
+ * a touch of the board cancels any dependent the ending's own
  * cascade never read, and the notice names it, as it names the ones that
  * cascade cancelled.
  *
  * While the request that filed the task is running (not while it is parked),
- * its notice is turned away as `defer` turns one away (FIX-2123): a wait in
+ * its notice is turned away as `defer` turns one away: a wait in
  * that request reads the ending first and drops it, and the request sends
  * what is still owed as it ends; at a park, the filer's pass sends it shortly
- * after, past its backoff (FIX-2149).
+ * after, past its backoff.
  *
  * Woken with an empty input, by the wake a board's delivery owes when it
  * names this entry as its pass (the default): it pays what this session's
@@ -92,9 +93,10 @@ export interface TaskSettledEntryOptions {
   readonly defer?: (ctx: BlockContext, notice: TaskSettledInput) => Promise<boolean>;
 }
 
+// FIX-2123.
 /**
  * Whether a request of this session is running its own work now, neither
- * parked nor ended (FIX-2123), as the engine records it ({@link requestStates}).
+ * parked nor ended, as the engine records it ({@link requestStates}).
  * A host that keeps no such record answers `false`: there no notice is held for it.
  */
 async function isRunning(ctx: BlockContext, requestId: string): Promise<boolean> {
@@ -106,14 +108,15 @@ async function boardOf(ctx: BlockContext, boardId: string) {
   return (await delegatingBoardsOf(ctx, boardId)).find((board) => board.ref.collectionId === boardId);
 }
 
+// FIX-2136; FIX-2080 D2.
 /**
  * A failure's or a cancel's notice, naming every dependent its ending
- * cancelled (FIX-2136). The request that wrote the ending cascades over the
+ * cancelled. The request that wrote the ending cascades over the
  * rows it has read, so a dependent another request filed after that read is
  * missed there, and the notice it sent names none. This request read the
  * board after the ending: a touch here cancels such a dependent, and the
  * notice names it before the flow's block runs. A cascaded cancel owes no
- * notice of its own (FIX-2080 D2), so this notice is the filer's one hearing
+ * notice of its own, so this notice is the filer's one hearing
  * of it. The names are read off this request's board even when the touch
  * fails part way, so a dependent it cancelled before failing is named too.
  *
@@ -135,8 +138,9 @@ export async function withCascadeNamed(
   return named.length > 0 ? { ...rest, cancelled: named } : rest;
 }
 
+// FIX-2123.
 /**
- * Take `notice` for the running request (FIX-2123), in one conditional write,
+ * Take `notice` for the running request, in one conditional write,
  * so a wait's drop and this delivery can't both go through: the notice with
  * the dependents its ending cancelled named, ready to handle. `"busy"` when a
  * request that hasn't ended, running or parked, took it first: that request
@@ -162,8 +166,9 @@ async function takeFor(
   return withCascadeNamed(board, row, notice);
 }
 
+// FIX-2159.
 /**
- * Take an owed notice in the running request, in its name (FIX-2159), the way
+ * Take an owed notice in the running request, in its name, the way
  * `onTaskSettled` takes one before its block runs: through the row's take
  * record, never the hold on a running filer, so the copy `onTaskSettled`
  * queued finds it taken and runs nothing while this request runs, takes it

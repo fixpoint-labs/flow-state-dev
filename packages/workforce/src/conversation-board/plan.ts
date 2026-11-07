@@ -1,5 +1,6 @@
+// FIX-2076 D1, D2; FIX-2159; FIX-2082 D2; FIX-2110; FIX-2080.
 /**
- * A worker's plan (FIX-2076 D1, D2): the steps it files for itself, worked by
+ * A worker's plan: the steps it files for itself, worked by
  * its own request, in order, each seeing the one before.
  *
  * - **The ledger.** A step is a row on the session's *plan ledger*, apart from
@@ -15,7 +16,7 @@
  *   then the worker answers once more, told how every step ended, a failed one
  *   included. That answer is the request's result. A request that filed no
  *   step runs the turn alone and costs nothing more.
- * - **One answer-again step, two sources** (FIX-2159). The answer after the
+ * - **One answer-again step, two sources**. The answer after the
  *   plan is one source of the step that answers again after the turn; a flow
  *   may pass a second (`planned(turn, answerAgain)`), a block whose
  *   `{ message }` the worker answers again about in the same request: the
@@ -27,7 +28,7 @@
  *   telling it to do the work or answer (`PLAN_ANSWERING_STATE`). A task it
  *   files for a delegate is dispatched as usual.
  *
- * - **A step in a session of its own** (FIX-2082 D2). A step filed
+ * - **A step in a session of its own**. A step filed
  *   `session: "new"` is handed to a new session of the same worker, through
  *   its own `work` entry, and the drain waits on it until it ends, waiting
  *   again at each deadline; the next step sees its result. Its ending
@@ -35,10 +36,10 @@
  *   paid by the worker's board pass. Whether the request answers after its
  *   plan is decided once, after the turn, and kept across that resume, so a
  *   step in a session of its own that was the plan's last still gets its
- *   answer (FIX-2110).
+ *   answer.
  *
  * A failed attempt's open steps stay open and the next attempt adopts them.
- * The task-ending cascade (FIX-2080) doesn't reach them: a request that
+ * The task-ending cascade doesn't reach them: a request that
  * crashes mid-step records no ending, so its step stays `in_progress` until
  * its lease runs out. Ending or adopting that step is a follow-up.
  */
@@ -67,11 +68,12 @@ import { requestHostOf } from "@flow-state-dev/core/internal";
  */
 export const PLAN_LEDGER_ID = "plan";
 
+// FIX-2082.
 /**
  * The plan ledger's one declaration. A browser may read it as it reads the
  * conversation ledger: the user's own rows, each under its session's partition,
  * so a screen lists a worker's steps beside the tasks it dispatched. A step's
- * ending owes no notice (FIX-2082): the drain that waits on it is resumed by
+ * ending owes no notice: the drain that waits on it is resumed by
  * it, through the worker's board pass, as a conversation's are.
  */
 const planLedger = Object.assign(
@@ -122,17 +124,19 @@ const PLAN_STEPPING_STATE = "planStepping";
 /** Request state: the steps already ended when this request's drain began, so the answer reports only the rest. */
 const PLAN_SEEN_STATE = "planSeen";
 
+// FIX-2110.
 /**
  * Request state: whether the turn left steps to work, decided once, right
- * after the turn (FIX-2110). A drain that waits on a step in a session of its
+ * after the turn. A drain that waits on a step in a session of its
  * own suspends the request; on its resume the sequencer asks again whether to
  * answer, and by then the plan ledger may hold no open step. The answer is
  * this recorded decision, not a fresh read of the ledger.
  */
 const PLAN_OWED_STATE = "planOwed";
 
+// FIX-2159.
 /**
- * The most times one request answers again after its turn (FIX-2159): the
+ * The most times one request answers again after its turn: the
  * answer after its plan and each answer a source asked for count alike, so a
  * source that always has a message can't loop a turn forever. After the last
  * one no source runs, and what it would have taken stays for after the turn.
@@ -155,9 +159,10 @@ export function isAnsweringTurn(ctx: BlockContext): boolean {
   return (ctx.request?.state as Record<string, unknown> | undefined)?.[PLAN_ANSWERING_STATE] === true;
 }
 
+// FIX-2113.
 /**
  * Session state: the requests whose plan has a step in a session of its own
- * to wait on (FIX-2113), each from its turn's end until it answers, keyed by
+ * to wait on, each from its turn's end until it answers, keyed by
  * request id. Each request writes and clears only its own key, so two that
  * plan in one session never overwrite each other. A request that dies leaves
  * its key, which then holds nothing (`anotherTurnWaitsOnItsPlan` asks whether
@@ -174,9 +179,10 @@ function markedRequests(ctx: BlockContext): string[] {
   return marked !== null && typeof marked === "object" ? Object.keys(marked) : [];
 }
 
+// FIX-2113.
 /**
  * Whether another request in this session is working a plan with a step in a
- * session of its own, and hasn't answered (FIX-2113). That request's turn is
+ * session of its own, and hasn't answered. That request's turn is
  * not over while it waits on the step, and one turn of a task runs at a time
  * in its session, so a notice's turn or a steer's turn waits until it ends.
  * Read off the session's state, never the plan ledger: a request reads a
@@ -195,8 +201,9 @@ export async function anotherTurnWaitsOnItsPlan(ctx: BlockContext): Promise<bool
   return others.some((requestId) => answers[requestId] !== true);
 }
 
+// FIX-2113.
 /**
- * Mark the session as waiting on the running request's plan (FIX-2113),
+ * Mark the session as waiting on the running request's plan,
  * under its own key; first, drop the keys of requests that have ended. A key
  * of a request that is interrupted and not yet driven again reads as ended
  * and is dropped too: if the sweeper drives it into its step's wait later, it
@@ -214,7 +221,8 @@ export async function markPlanWaiting(ctx: BlockContext): Promise<void> {
   await ctx.session.setStateRecord(PLAN_WAITING_STATE, own, true);
 }
 
-/** Clear the running request's own mark (FIX-2113): it answered. Another request's is left. */
+// FIX-2113.
+/** Clear the running request's own mark: it answered. Another request's is left. */
 export async function clearPlanWaiting(ctx: BlockContext): Promise<void> {
   const own = ctx.request.identity.id;
   if (markedRequests(ctx).includes(own)) await ctx.session.deleteStateRecord(PLAN_WAITING_STATE, own);
@@ -225,7 +233,8 @@ export function isSteppingTurn(ctx: BlockContext): boolean {
   return (ctx.request?.state as Record<string, unknown> | undefined)?.[PLAN_STEPPING_STATE] === true;
 }
 
-/** A step the drain would work now: open. A step is never held (FIX-2080): its filing refuses `held`, and so does a hold. */
+// FIX-2080.
+/** A step the drain would work now: open. A step is never held: its filing refuses `held`, and so does a hold. */
 function isWorkable(row: Task): boolean {
   return row.status === "pending" || row.status === "in_progress";
 }
@@ -270,12 +279,13 @@ function answerMessage(steps: readonly Task[]): string {
 
 /** A worker flow's planning: wrap a turn so the steps it files are worked in its request. */
 export interface Planning {
+  // FIX-2159.
   /**
    * The turn, with its plan: `{ message }` in, the answer out. Wrapping the
    * same turn twice (with the same `answerAgain`) returns the same block, and
    * a planned turn is returned as it is.
    *
-   * @param answerAgain A second source for the answer-again step (FIX-2159),
+   * @param answerAgain A second source for the answer-again step,
    *   beside the plan: a block run after each answer, whose `{ message }`, when
    *   it returns one, the worker answers again about in the same request.
    */
@@ -286,16 +296,18 @@ export interface Planning {
 
 /** What one flow's planning is built from. */
 export interface PlanningOptions {
+  // FIX-2082 D2.
   /**
    * The hand-over of a step filed `session: "new"` to a new session of the
-   * same worker (FIX-2082 D2): a dispatcher to its own `work` entry. Omitted,
+   * same worker: a dispatcher to its own `work` entry. Omitted,
    * every step runs inline.
    */
   readonly newSession?: BlockDefinition<any, any>;
+  // FIX-2113.
   /**
    * Run as the last step of a request that worked its plan, once its turn
    * answered: a `.tap()`. The conversation board's sends the notices that
-   * waited for this turn (FIX-2113).
+   * waited for this turn.
    */
   readonly afterPlan?: BlockDefinition<any, any>;
 }
@@ -381,7 +393,8 @@ export function definePlanning(options: PlanningOptions = {}): Planning {
     }
   });
 
-  /** The request answered after its plan: its turn is over (FIX-2113). */
+  // FIX-2113.
+  /** The request answered after its plan: its turn is over. */
   const endPlanWaiting = handler({
     name: "plan-end-waiting",
     inputSchema: z.unknown(),

@@ -46,8 +46,9 @@ export async function requestStates(
   return states;
 }
 
+// FIX-2123.
 /**
- * Whether a request of this session has stopped running (FIX-2123), as the
+ * Whether a request of this session has stopped running, as the
  * engine records it ({@link requestStates}). A host that keeps no such record
  * answers `true`: there a notice's taker is never waited on.
  */
@@ -56,9 +57,10 @@ export async function hasEnded(ctx: BlockContext, requestId: string): Promise<bo
   return states === undefined || states[requestId] === "ended";
 }
 
+// FIX-2123, FIX-2240.
 /**
- * What a request may do with a delivery another request may have taken
- * (FIX-2123, FIX-2240): take it as its own, leave it to a taker still
+ * What a request may do with a delivery another request may have taken:
+ * take it as its own, leave it to a taker still
  * running or parked, or take it over from a taker that ended without
  * finishing it (its block failed, or its process died).
  */

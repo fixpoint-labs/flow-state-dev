@@ -42,34 +42,41 @@ export const GAPS = {
     recordsNoPullRequests: "This harness records no pull requests. Reading a run that records none arrives in a later release.",
     briefFields: "This board doesn't publish a task's input to a browser, so it doesn't show here. Showing it is not planned in the first cut.",
   },
+  // FIX-1690's rules.
   /**
-   * Why a message to a worker can't be sent (FIX-1690's rules). Not gaps that
+   * Why a message to a worker can't be sent. Not gaps that
    * an owner fills: each is the answer for a state a task or a worker is in. A
    * line that takes the worker's name is drawn after it.
    */
   turn: {
-    /** BR-14: the row has no linked run. */
+    // BR-14.
+    /** The row has no linked run. */
     notStarted: "This task hasn't started, so there's no session to write into.",
     /** The run's worker flow declares no door. Drawn after the worker's name. */
     noDoor: "takes no message.",
-    /** BR-22: Inbox's reply, to a worker flow with no door. Drawn after the worker's name. */
+    // BR-22.
+    /** Inbox's reply, to a worker flow with no door. Drawn after the worker's name. */
     replyNoDoor: "takes no message. Answer its ask with Approve or Reject.",
   },
-  /** Roster's gaps, and the partial mark every status screen shares (FIX-1723). */
+  // FIX-1723.
+  /** Roster's gaps, and the partial mark every status screen shares. */
   roster: {
     // FIX-1672.
     workerMatch:
       "Which worker holds a task is a best match on the task's assignee: its id, then a unique name. A task whose assignee matches no single worker counts for no one. A declared map arrives in a later release.",
     partial: "Asks did not load, so on shift may be missing workers waiting on you.",
   },
-  /** The Shift Coordinator view's named states (BR-11, BR-12). */
+  // BR-11, BR-12.
+  /** The Shift Coordinator view's named states. */
   shiftCoordinator: {
-    /** BR-11: the Lab's inventory holds no shift-coordinator worker. */
+    // BR-11.
+    /** The Lab's inventory holds no shift-coordinator worker. */
     none: {
       title: "This Lab declares no shift coordinator",
       body: "Shift Manager talks to the worker named shift-coordinator. Declare one on the coordinator flow at org/workers/shift-coordinator/.",
     },
-    /** BR-12: drawn before the workers' ids. */
+    // BR-12.
+    /** Drawn before the workers' ids. */
     several: "More than one worker is named shift-coordinator, so Shift Manager talks to neither:",
   },
   resources: "This Lab serves no documents to the browser, so there is nothing to open here yet.",

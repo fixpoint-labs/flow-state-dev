@@ -14,6 +14,7 @@
  */
 import type { StoreRegistry } from "./types";
 
+// FIX-2426.
 /**
  * Capability slots a profile can declare.
  *
@@ -21,7 +22,7 @@ import type { StoreRegistry } from "./types";
  *   users, orgs, active requests, checkpoints, content, and traces.
  * - `blobs` — binary object storage. Reserved: declaring it is a no-op until
  *   the attachment store that backs it ships.
- * - `bus` — the change bus (FIX-2426): the adapter resolves `{ bus }`. When
+ * - `bus` — the change bus: the adapter resolves `{ bus }`. When
  *   the profile names none, the primary backs it if it declares `bus`;
  *   otherwise the bus is in memory and reaches this process only.
  */

@@ -51,12 +51,13 @@ import { mapLimit } from "../helpers/concurrency";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
+// FIX-811.
 /**
  * Resume state injected by runAction when re-invoking a durable action. Carried
  * on `ctx._resumeState` so a re-entered durable sequencer restores its
  * accumulator state from the saved checkpoint before running children.
  *
- * Step skipping is NOT positional anymore (FIX-811): completed blocks are
+ * Step skipping is NOT positional anymore: completed blocks are
  * injected per-logical-path via `ctx._replayLog` in `executeBlock`, so this
  * carries only the restored `state`. Both the same-request continuation path
  * and the legacy two-request resume path populate it for the state restore.
@@ -71,10 +72,11 @@ type ResumeState = {
   blockInstanceId?: string;
   /** The wait the checkpoint was taken at (`SequencerCheckpoint.suspensionId`). */
   suspensionId?: string;
+  // FIX-2444.
   /**
    * The state the restore produced (the checkpoint over schema defaults), set
    * by the owning sequencer when it restores. The engine resets the restored
-   * state to this when a replay reaches its logged gate (FIX-2444).
+   * state to this when a replay reaches its logged gate.
    */
   restored?: Record<string, unknown>;
 };
@@ -111,8 +113,9 @@ type SequencerOpResult = {
   value: unknown;
   jumpTo?: string;
   exit?: boolean;
+  // FIX-413.
   /**
-   * BlockValue hint for the sequencer's output after this op runs (FIX-413).
+   * BlockValue hint for the sequencer's output after this op runs.
    * - Unset: op did not change the sequencer's output kind. The running
    *   descriptor from prior ops carries over (e.g., `.tap`, `.sideChain`, no-op
    *   `.stepIf`).
@@ -262,8 +265,9 @@ type GeneratorModelUsageMeta = {
   cacheCreationTokens?: number;
 };
 
+// FIX-401; FIX-406 6H; FIX-2444.
 /**
- * Emits a state_snapshot item at sequencer step boundaries (FIX-401).
+ * Emits a state_snapshot item at sequencer step boundaries.
  *
  * One logical snapshot per sequencer instance, keyed by `blockInstanceId`.
  * Each emission overwrites the prior frame on the wire (clients dedupe on
@@ -274,7 +278,7 @@ type GeneratorModelUsageMeta = {
  * idle steps from cutting needless events. The first call (`lastStateJson`
  * undefined) always emits so the durability writer sees a baseline frame.
  *
- * Non-durable sequencers gate on the effective `tracingLevel` (FIX-406 6H) —
+ * Non-durable sequencers gate on the effective `tracingLevel` —
  * there's no consumer for the snapshot in production unless the operator opted
  * in. Durable sequencers always emit because the snapshot drives the
  * persistence write; gating it would silently break checkpointing.
@@ -284,7 +288,7 @@ type GeneratorModelUsageMeta = {
  * frames as a delete signal.
  *
  * `suspensionId` names the wait a snapshot taken at a suspension holds the
- * state of; such a snapshot is never skipped as unchanged (FIX-2444).
+ * state of; such a snapshot is never skipped as unchanged.
  */
 async function emitStateSnapshot(
   ctx: BlockContext,
@@ -403,6 +407,7 @@ function currentPath(ctx: BlockContext): string {
   return ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
 }
 
+// FIX-643.
 /**
  * Builds the child path for a block invoked by a sequencer operation.
  * The op segment identifies the structural position; an optional iteration
@@ -411,7 +416,7 @@ function currentPath(ctx: BlockContext): string {
  * When a `loopBack` jump is active (`runtime.activeLoopGeneration > 0`), a
  * `loop[N]` segment is inserted *before* the op segment so the whole
  * re-executed pass groups under one iteration scope and each pass yields a
- * distinct `blockInstanceId` (FIX-643). Generation 0 inserts nothing.
+ * distinct `blockInstanceId`. Generation 0 inserts nothing.
  */
 function childBlockPath(
   ctx: BlockContext,
@@ -450,7 +455,8 @@ export async function executeBlock(
   options?: {
     phase?: "main" | "sideChain";
     signalOverride?: AbortSignal;
-    /** The background signal this child's SUBTREE dispatches read (FIX-1005). */
+    // FIX-1005.
+    /** The background signal this child's SUBTREE dispatches read. */
     sideChainSignalOverride?: AbortSignal;
   }
 ): Promise<unknown> {
@@ -681,10 +687,11 @@ export async function executeBlock(
   );
 }
 
+// per FIX-742.
 /**
  * Run the first rescue handler whose `when` matches `error`, at a rescue path
  * under `basePath`, using `ctx` (the block's scoped context — so the handler can
- * read sequencer state, per FIX-742). Returns the handler's output and a
+ * read sequencer state). Returns the handler's output and a
  * BlockValue descriptor for it, or `undefined` when nothing matched (the caller
  * must then re-throw the original error).
  *
@@ -735,13 +742,14 @@ function createRuntimeState(): SequencerRuntimeState {
   };
 }
 
+// FIX-1005; FIX-663.
 /**
  * The background signal a subtree's `.sideChain()` dispatches should read, once
- * `extra` has been composed into it (FIX-1005).
+ * `extra` has been composed into it.
  *
  * `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` deliberately do NOT run
  * under `ctx.signal` — they substitute the request's background signal so a
- * task tree survives transport teardown (FIX-663). That substitution is right
+ * task tree survives transport teardown. That substitution is right
  * about the transport signal and wrong about everything else composed on top:
  * a caller that added a signal to this subtree via `.step(block, { abortSignal })`
  * has that signal silently dropped the moment the subtree dispatches background
@@ -785,9 +793,10 @@ export function sideChainTaskCtx(ctx: BlockContext): {
   return { taskCtx: { ...ctx, signal: bgSignal }, signalOverride: bgSignal };
 }
 
+// FIX-811.
 /**
  * True when the child at `path` will be INJECTED from the resume replay log
- * rather than executed (FIX-811).
+ * rather than executed.
  *
  * A pure query over the same log and the same key `executeBlock`'s
  * short-circuit uses — deliberately a shared predicate rather than a flag the

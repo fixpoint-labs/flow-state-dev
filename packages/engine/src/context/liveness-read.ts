@@ -1,5 +1,6 @@
+// FIX-999.
 /**
- * The liveness read backing the seam's batch liveness verb (FIX-999).
+ * The liveness read backing the seam's batch liveness verb.
  *
  * Answers, per request id the caller supplied, whether that request still has a
  * live registration. Nothing else crosses: not an entry, not a record, not
@@ -14,7 +15,7 @@
  *
  * **`true` means "still live", which includes "queued and not yet started."** A
  * request handed to an external runner is live from the moment it is
- * accepted, not from the moment a worker picks it up (FIX-999).
+ * accepted, not from the moment a worker picks it up.
  */
 import type { ActiveRequestEntry, ActiveRequestRegistry } from "../stores/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -48,9 +49,10 @@ export type LivenessReadInputs = {
   principal: { userId: string; tenantId: string | undefined; orgId?: string };
   /** Whether a session lies in the caller's descendant chain. */
   isDescendantSession: (sessionId: string | undefined) => Promise<boolean>;
+  // FIX-1440.
   /**
    * Whether a session is a dispatch run of this caller's own flow and principal
-   * (FIX-1440) — the second arm, beside the descendant walk.
+   * — the second arm, beside the descendant walk.
    *
    * Work a dispatcher started is a session of the flow in its own right, and
    * asking whether it is still running should not depend on where it hangs. So
@@ -69,6 +71,7 @@ export type LivenessReadInputs = {
   now?: () => number;
 };
 
+// FIX-999.
 /**
  * Whether an entry is fresh enough to count as live.
  *
@@ -82,7 +85,7 @@ export type LivenessReadInputs = {
  *
  * A queued-but-unclaimed entry is the one case where that comparison asks the
  * wrong question, so it is answered before the comparison rather than by tuning
- * it — see `queuedAt` on `ActiveRequestEntry` (FIX-999).
+ * it — see `queuedAt` on `ActiveRequestEntry`.
  */
 export function isFresh(
   entry: Pick<ActiveRequestEntry, "lastHeartbeatAt" | "queuedAt">,

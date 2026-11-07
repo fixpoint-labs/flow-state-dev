@@ -173,8 +173,9 @@ export interface BuildWorkerStepOptions {
   /** Block-name prefix for the synthesised router (registry path only). */
   name: string;
   workers: TaskWorker | TaskWorkerRegistry;
+  // FIX-940.
   /**
-   * Optional default worker (the delegation floor, FIX-940). Registry
+   * Optional default worker (the delegation floor). Registry
    * path only: wired as the `keyedRouter` `fallback`, it runs any task
    * whose `assignee` is unknown or absent. Omit it and a registry miss
    * throws exactly as before (I2). Declared workers are never routed
@@ -188,8 +189,9 @@ export interface BuildWorkerStepOptions {
    * state.
    */
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
+  // FIX-610.
   /**
-   * Optional flow-policy resolver (FIX-610). When the resolver returns
+   * Optional flow-policy resolver. When the resolver returns
    * a `{ flowPolicy, ledger }` pair, `packWorkerInput` stamps the
    * worker input's `priorWork` slot with the policy's selection.
    * Returning `undefined` skips the field entirely (back-compat).

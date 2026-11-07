@@ -68,8 +68,9 @@ const REQUESTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at)"
 ];
 
+// FIX-1010.
 /**
- * FIX-1010 — the two composite indexes the parent-to-child read adds, built
+ * The two composite indexes the parent-to-child read adds, built
  * **concurrently**.
  *
  * They are the only indexes in this file that can land on an already-populated
@@ -288,6 +289,7 @@ BEGIN
 END $$;
 `;
 
+// BP-030.
 /**
  * Add the nullable `flow_id` column — the owning flow instance — to
  * `sessions`, `requests` and `active_requests` tables created before instance
@@ -299,10 +301,11 @@ END $$;
  * registered instance. A blanket `flow_id = flow_kind` would silently assign a
  * collection's history to whichever member happens to share the kind's name.
  * Known singleton rows need no backfill to keep working — the runtime reads a
- * NULL owner on a singleton kind compatibly (BP-030).
+ * NULL owner on a singleton kind compatibly.
  */
+// FIX-1442.
 /**
- * FIX-1442: add the nullable `org_id` column to a `schedule_index` created
+ * Add the nullable `org_id` column to a `schedule_index` created
  * before schedules carried an organization.
  *
  * Nullable with **no backfill**: the organization a standing instruction fires
@@ -314,13 +317,14 @@ const ADD_SCHEDULE_INDEX_ORG_ID_MIGRATION = `
 ALTER TABLE IF EXISTS schedule_index ADD COLUMN IF NOT EXISTS org_id TEXT;
 `;
 
+// FIX-1546; BP-030.
 /**
- * FIX-1546: re-key a `schedule_index` created before rows carried their
+ * Re-key a `schedule_index` created before rows carried their
  * storage cell from `(user_id, key)` to `(cell, key)`.
  *
  * Every existing row is adopted as the person's own app-wide cell: every
  * released version wrote index rows only from that cell, so the value is known,
- * not guessed (BP-030). The cell is the engine's storage key for it — the user
+ * not guessed. The cell is the engine's storage key for it — the user
  * id with `\` and `:` escaped — so the next write from that cell updates the
  * same row rather than adding a second one.
  *

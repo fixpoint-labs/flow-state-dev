@@ -39,8 +39,9 @@ export interface ResolvedEpisodicConfig {
   maxEpisodes: number
 }
 
+// FIX-745.
 /**
- * Concrete relations (typed-edge graph) config after defaulting (FIX-745).
+ * Concrete relations (typed-edge graph) config after defaulting.
  * Present on `ResolvedSemanticConfig.relations` only when the relations tier is
  * enabled — absence means edges are disabled entirely.
  */
@@ -93,8 +94,9 @@ export interface MemoryTierOptions {
   digest?: DigestSystemConfig | true
 }
 
+// FIX-745.
 /**
- * Resolve the relations tier config (FIX-745). `undefined`/`false` disables
+ * Resolve the relations tier config. `undefined`/`false` disables
  * relations (returns `undefined` — no edge field, no behaviour). `true`
  * resolves to defaults; an object overrides selected fields.
  * `createImplicitEntities` defaults to false.

@@ -40,9 +40,10 @@ interface CommonOptions {
   collectionId: string;
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
+  // FIX-918.
   /**
    * Visibility stamped on the `task-change` component items emitted on every
-   * lifecycle transition (FIX-918). Omit for the default (client + history).
+   * lifecycle transition. Omit for the default (client + history).
    * A board that runs *inside* a tool-wrapped drain passes
    * `{ client: true, history: false }` so its O(tasks × transitions) change
    * stream still drives the live `<Plan />` UI but never re-enters the calling
@@ -93,9 +94,9 @@ export interface ResourceBackingSpec extends CommonOptions {
   backing: "resource";
   /** The parameterized resource collection ref. Pattern: `someTopic/{id}`. */
   collection: ResourceCollectionRef<JsonObject>;
+  // FIX-982, narrowed by FIX-1780.
   /**
-   * Refuse `setAssignee` on an `in_progress` task in this collection (FIX-982,
-   * narrowed by FIX-1780). Set by a task board with dispatcher assignees, whose
+   * Refuse `setAssignee` on an `in_progress` task in this collection. Set by a task board with dispatcher assignees, whose
    * child's routing key is derived from the assignee. Only this backing carries it — a dispatched board is refused at
    * construction on any other.
    */
@@ -331,16 +332,17 @@ function assertKnownBacking(options: GetOrCreateTaskCollectionOptions): void {
   }
 }
 
+// FIX-1005; BP-030.
 /**
  * Read the execution coordinate a claim on this board should record
- * (FIX-1005) — `{ sessionId, requestId, tenantId? }`.
+ * — `{ sessionId, requestId, tenantId? }`.
  *
  * Sourced from `ctx.request` / `ctx.session`, which are plain public
  * `BlockContext` members carrying a `ScopeIdentity`. Nothing here reaches the
  * store registry or a request-host seam.
  *
  * Returns `undefined` when either handle is missing — a mock context in a unit
- * test. Absent is a supported state that means "no coordinate" (BP-030), so a
+ * test. Absent is a supported state that means "no coordinate", so a
  * partial identity is never synthesized from one half.
  */
 function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
@@ -355,8 +357,9 @@ function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
   };
 }
 
+// FIX-2133.
 /**
- * What every row this ref files is stamped with beside its filer (FIX-2133):
+ * What every row this ref files is stamped with beside its filer:
  * the tenant and org of the request filing it, from its verified identity
  * (D1, the caller check on answering a question), and how long a question
  * waits unanswered when the host sets a deadline for a person's stop

@@ -1,5 +1,6 @@
+// FIX-811.
 /**
- * Canonical item-log view (FIX-811).
+ * Canonical item-log view.
  *
  * The physical item log of a resumed request can carry superseded copies of a
  * block's emissions. When a request continues under its own id, the suspending

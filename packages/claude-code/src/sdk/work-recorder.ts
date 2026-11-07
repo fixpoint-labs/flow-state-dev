@@ -100,13 +100,14 @@ export interface ClaudeCodeWorkRecorderOptions {
    * produces the wrong design.
    */
   flushIntervalMs?: number;
+  // BP-030.
   /**
    * The directory the run was given, when the block forwarded one to the SDK.
    *
    * Relative paths the run addressed are keyed inside it. Omit it and keys
    * resolve against this process's directory, which is what every caller that
    * configures no working directory gets — byte for byte the previous
-   * behaviour (BP-030).
+   * behaviour.
    *
    * See {@link canonicalFilePathKey}: forwarding the directory to the SDK and
    * threading it here are two halves of one change, and doing only the first

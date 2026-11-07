@@ -1,5 +1,6 @@
+// FIX-443 §2.
 /**
- * Task schema (FIX-443 §2).
+ * Task schema.
  *
  * The Task schema is the canonical work-unit shape that every claim order,
  * worker, and pattern in the substrate operates on. `input` and `output`
@@ -109,65 +110,72 @@ export const taskSchema = z.object({
    */
   abandonments: z.number().int().nonnegative().optional(),
 
+  // FIX-2086; BP-030.
   /**
-   * Words sent into this task while it was open (FIX-2086): `updateTask`'s
+   * Words sent into this task while it was open: `updateTask`'s
    * `message`, or a line typed in its session. Server-written by the
    * collection's `steer`, append-only, at most `MAX_STEERS`; never patched. Each
    * names its sender and the attempt that took it (`../steers`). Every later
    * attempt reads every steer, and a finished task takes none. **Absent** on
-   * a task never steered (BP-030).
+   * a task never steered.
    */
   steers: z.array(taskSteerSchema).optional(),
 
+  // FIX-1817; BP-030.
   /**
-   * The finished task this one follows up (FIX-1817): its root, never another
+   * The finished task this one follows up: its root, never another
    * follow-up, so a chain of follow-ups names one task. A follow-up runs in
    * that task's session, with its worker. Written once, by the add that files
    * it, after the add checked it in the same partition; never patched.
-   * **Absent** on every task that is not a follow-up (BP-030).
+   * **Absent** on every task that is not a follow-up.
    */
   followUpOf: z.string().optional(),
 
+  // FIX-2081; BP-030.
   /**
-   * The task whose request filed this one (FIX-2081): a piece of that task,
+   * The task whose request filed this one: a piece of that task,
    * or a step it planned. Server-written at filing from the filer's own
    * claim or session, never from input, and never patched. `listTasks`
    * filters by it (`filedByTask`). **Absent** on a task filed by no task: a
-   * conversation's turn, a screen, a schedule (BP-030).
+   * conversation's turn, a screen, a schedule.
    */
   filedByTask: z.string().optional(),
 
+  // FIX-2080; BP-030.
   /**
-   * Where the task runs (FIX-2080, a filing setting): `"new"`, a session of
+   * Where the task runs (a filing setting): `"new"`, a session of
    * its own (the default for a delegated task), or `"ongoing"`, the
    * delegate's session for this conversation. A follow-up runs in its root's
    * session and takes none. Chosen at filing, refused there by a board that
-   * can't honour it, and never changed. **Absent reads as `"new"`** (BP-030).
+   * can't honour it, and never changed. **Absent reads as `"new"`**.
    */
   session: z.enum(["new", "ongoing"]).optional(),
 
+  // FIX-2080; BP-030.
   /**
-   * Who hears the task's result (FIX-2080, a filing setting): `"filer"`, the
+   * Who hears the task's result (a filing setting): `"filer"`, the
    * one that filed it (the default), or `"conversation"`, the conversation
    * it was filed from. A conversation-result task has one attempt. Chosen at
-   * filing and never changed. **Absent reads as `"filer"`** (BP-030).
+   * filing and never changed. **Absent reads as `"filer"`**.
    */
   resultTo: z.enum(["filer", "conversation"]).optional(),
 
+  // FIX-2083.
   /**
-   * The workstream record the task goes to (FIX-2083, a filing setting): the
+   * The workstream record the task goes to (a filing setting): the
    * target of a delegate record whose worker leads that workstream. Chosen at
    * filing, refused there by a filer with no such record, and never changed.
    * **Absent** on every task filed for a delegate record with no target.
    */
   target: z.string().optional(),
 
+  // FIX-2083; BP-031; BP-030.
   /**
-   * The session `target` resolved to when the task was filed (FIX-2083): the
+   * The session `target` resolved to when the task was filed: the
    * workstream's session, where a task filed `session: "ongoing"` runs.
    * Server-written by the filing, top level beside `session` so no
-   * caller-writable surface reaches it (BP-031), and never patched.
-   * **Absent** on a task with no `target` (BP-030).
+   * caller-writable surface reaches it, and never patched.
+   * **Absent** on a task with no `target`.
    */
   targetSessionId: z.string().optional(),
 
@@ -233,8 +241,9 @@ export const taskSchema = z.object({
     })
     .optional(),
 
+  // FIX-1668; BP-030.
   /**
-   * Which run is working this task, or last worked it (FIX-1668) — the
+   * Which run is working this task, or last worked it — the
    * session a dispatched attempt executes in, that attempt's request there,
    * and the attempt number.
    *
@@ -258,7 +267,7 @@ export const taskSchema = z.object({
    *
    * Server-set: absent from `TaskInit` and every patch surface. **Absent on
    * rows stored before this shipped, on inline boards, and between a claim and
-   * its run's start** — one `== null` guard, nothing inferred (BP-030).
+   * its run's start** — one `== null` guard, nothing inferred.
    */
   run: z
     .object({
@@ -268,18 +277,20 @@ export const taskSchema = z.object({
       requestId: z.string(),
       /** The attempt that started the run — equal to `attempts` while it is the latest. */
       attempt: z.number().int().nonnegative(),
+      // FIX-2077; BP-030.
       /**
-       * When this attempt's first run started, in ms (FIX-2077): what "during
+       * When this attempt's first run started, in ms: what "during
        * this attempt" is measured from. A resume or a lapsed lease taken back
        * relinks the same attempt and keeps it. **Absent** on links written
-       * before it was (BP-030).
+       * before it was.
        */
       startedAt: z.number().optional(),
     })
     .optional(),
 
+  // FIX-2288; BP-030.
   /**
-   * What the task's runs spent (FIX-2288): per request admitted for the task,
+   * What the task's runs spent: per request admitted for the task,
    * the spend its endings settled and what it has spent so far while it runs,
    * with the harness and model it last reported. Read it folded, through
    * `taskSpendView`: model, harness and tokens.
@@ -293,41 +304,43 @@ export const taskSchema = z.object({
    * across attempts: a retry adds to it.
    *
    * **Absent** on rows stored before it, and on a task that never ran in a
-   * request of its own: one `== null` guard (BP-030).
+   * request of its own: one `== null` guard.
    */
   spend: taskSpendSchema.nullable().optional(),
 
   input: z.unknown().optional(),
   output: z.unknown().optional(),
+  // FIX-2081; BP-030.
   /**
-   * `output` is a checkpoint its worker reported while it ran (FIX-2081,
-   * `reportProgress`), not a result handed back at the end. The latest
+   * `output` is a checkpoint its worker reported while it ran (`reportProgress`), not a result handed back at the end. The latest
    * checkpoint is the task's output: completing the task keeps it, and the
    * worker's final result is written only when no checkpoint was made. A
    * failed attempt or a reclaimed lease keeps it. **Absent** when the worker
-   * never checkpointed (BP-030).
+   * never checkpointed.
    */
   checkpointed: z.literal(true).optional(),
+  // FIX-2081.
   /**
-   * The one-line note its worker last reported while it ran (FIX-2081,
-   * `reportProgress`), for task views. Never the task's status: done still
+   * The one-line note its worker last reported while it ran (`reportProgress`), for task views. Never the task's status: done still
    * follows the worker's return. **Absent** until one is reported.
    */
   statusNote: z.string().optional(),
+  // FIX-2081; BP-031.
   /**
-   * How the cancel that ended this task was made (FIX-2081): `"tool"`, its
+   * How the cancel that ended this task was made: `"tool"`, its
    * filer's model calling `updateTask` in its own turn, or `"action"`, a
    * public `updateTask_<board>` action. Written by the cancel from how the
-   * caller was built, never from input (BP-031). **Absent** on a cancel that
+   * caller was built, never from input. **Absent** on a cancel that
    * named no source: a cascade, a substrate write-back, an older row.
    */
   cancelledVia: z.enum(["tool", "action"]).optional(),
+  // FIX-2080, BP-030; FIX-2081.
   /**
-   * The row was stored `blocked` and read as `held` (FIX-2080, BP-030). Set
+   * The row was stored `blocked` and read as `held`. Set
    * only at the read boundary, and persisted with the row when it is next
    * written; a release clears it. Such a row may have started before it was
    * blocked, and a release alone is how it runs again; no current path holds
-   * a row that has started (FIX-2081).
+   * a row that has started.
    */
   heldFromBlocked: z.literal(true).optional(),
   error: z.string().optional(),
@@ -352,8 +365,9 @@ export const taskSchema = z.object({
    * (BP-030) — never treat an absent revision as "nothing has happened".
    */
   revision: z.number().int().optional(),
+  // FIX-989.
   /**
-   * Bounded, newest-last log of write receipts (FIX-989).
+   * Bounded, newest-last log of write receipts.
    *
    * Appended only when a caller handed a write token in, so this is not an
    * audit trail of all activity — `task-change` events already carry that. It
@@ -374,8 +388,9 @@ export const taskSchema = z.object({
       })
     )
     .optional(),
+  // FIX-989.
   /**
-   * Has `writeLog` ever dropped a receipt (FIX-989)?
+   * Has `writeLog` ever dropped a receipt?
    *
    * A field rather than a derivation, and that was checked rather than assumed.
    * The tempting derivation — *"the log is under the cap, so it never
@@ -390,9 +405,10 @@ export const taskSchema = z.object({
    * substrate wrote. Absent means legacy or a non-provenance ref.
    */
   writeLogTruncated: z.boolean().optional(),
+  // FIX-989 follow-up; BP-030.
   /**
    * A per-incarnation identity nonce, minted once when the task is created and
-   * never touched again (FIX-989 follow-up).
+   * never touched again.
    *
    * `createdAt` cannot serve as incarnation identity: it is a millisecond
    * clock, and a delete-then-recreate under the same id lands in the same
@@ -411,16 +427,17 @@ export const taskSchema = z.object({
    * **Absent on any task persisted before this shipped**, and on any task
    * written by a hand-written `TaskCollectionRef` that maintains no
    * provenance. Read it only through `didWriteLand`'s incarnation arm, which
-   * withholds rather than guessing when either side lacks it (BP-030).
+   * withholds rather than guessing when either side lacks it.
    */
   incarnationId: z.string().optional(),
+  // BP-031; BP-030.
   /**
    * The user whose request added this task, stamped by the substrate from the
    * running session when the task is built and never patched. Not a field a
    * caller supplies (`TaskInit` has none), so a hand-over can resolve "the
-   * filer's own" worker against it (BP-031). Absent on a task added with no
+   * filer's own" worker against it. Absent on a task added with no
    * user in the session, and on any task persisted before it shipped: read it
-   * as "filer unknown", never as a match (BP-030). Server-only: never emitted
+   * as "filer unknown", never as a match. Server-only: never emitted
    * to a client (`SERVER_ONLY_TASK_FIELDS`).
    */
   createdBy: z.string().optional(),
@@ -446,32 +463,36 @@ export const taskSchema = z.object({
     .object({
       gateId: z.string(),
       deadline: z.number(),
-      /** The waiting request (FIX-2082). Absent on a slot a filing wrote before it. */
+      // FIX-2082.
+      /** The waiting request. Absent on a slot a filing wrote before it. */
       requestId: z.string().optional(),
-      /** The deadline passed with the row still open (FIX-2082): nobody is parked on it now. */
+      // FIX-2082.
+      /** The deadline passed with the row still open: nobody is parked on it now. */
       lapsed: z.literal(true).optional(),
+      // BP-030.
       /**
        * The waiting request is a plan's drain, on a row it handed to another
        * session: written by the drain's own wait, never from
        * input, and kept while the slot is lapsed, so `getTask`'s wait refuses
        * the row (`wait_on_plan_step`) rather than take the slot the drain
        * waits with. **Absent** on every other slot, and on a drain's slot
-       * written before it, which its next round marks (BP-030).
+       * written before it, which its next round marks.
        */
       drain: z.literal(true).optional(),
     })
     .optional(),
 
+  // FIX-1816; BP-031; BP-030.
   /**
    * The waiting turn is owed its answer: written in the same write that ends a
    * waited-on row (`wait` set), whoever ends it, and cleared once the turn has its
-   * answer (FIX-1816). A touch of the board replays it by resuming the parked
+   * answer. A touch of the board replays it by resuming the parked
    * turn, so an ending that lands while nothing is listening, or a resume lost
    * to a restart, is never lost.
    *
-   * Top level and server-written for `abandonments`' reason (BP-031): it
+   * Top level and server-written for `abandonments`' reason: it
    * drives a resume, so no caller-writable surface reaches it. **Absent reads
-   * as not owed** (BP-030).
+   * as not owed**.
    */
   resumeOwed: z.boolean().optional(),
 
@@ -512,8 +533,9 @@ export const taskSchema = z.object({
    */
   holds: z.array(taskHoldSchema).optional(),
 
+  // FIX-2133 D3.
   /**
-   * The row's turn generation (FIX-2133 D3): advanced by every claim of the
+   * The row's turn generation: advanced by every claim of the
    * row, a same-attempt re-entry's included, and carried on the claim ticket,
    * so a turn's late write never lands after its successor's claim. **Absent
    * reads as 0**, a row never claimed.
@@ -529,8 +551,9 @@ export const taskSchema = z.object({
    */
   turnOwed: z.literal(true).optional(),
 
+  // FIX-2133.
   /**
-   * The turn generation that asked questions midway (FIX-2133): written by
+   * The turn generation that asked questions midway: written by
    * the midway question, so the request working that turn may not stop for the user and
    * never settles, whether its questions are answered yet or not, across a
    * resume too. A later turn's claim leaves it behind (its generation is
@@ -538,36 +561,40 @@ export const taskSchema = z.object({
    */
   askedInTurn: z.number().int().nonnegative().optional(),
 
+  // FIX-2383; BP-030.
   /**
-   * Reopened by a user's retry (FIX-2383) and not claimed since: the row
+   * Reopened by a user's retry and not claimed since: the row
    * waits like a newly filed one, so it holds no session its last attempt ran
    * in until a claim takes it again. Written by `retry`, cleared by the next
-   * claim. Server-written. **Absent** on every other row (BP-030).
+   * claim. Server-written. **Absent** on every other row.
    */
   retryPending: z.literal(true).optional(),
 
+  // FIX-2133 D1.
   /**
    * The tenant and organization the filing request ran under, from its
-   * verified identity (FIX-2133 D1), beside the user in `createdBy`. The board's
+   * verified identity, beside the user in `createdBy`. The board's
    * `updateTask` reaches a row's holds only for a caller in the same user,
    * tenant and org. Server-only (`SERVER_ONLY_TASK_FIELDS`). **Absent** on a
    * row filed with neither.
    */
   filedUnder: z.object({ tenantId: z.string().optional(), orgId: z.string().optional() }).optional(),
 
+  // FIX-1844; BP-031; BP-030.
   /**
    * The wait on this row is over (its turn was stopped, or it timed out) but
-   * the cancel that should have ended the row failed (FIX-1844). A touch of
+   * the cancel that should have ended the row failed. A touch of
    * the board pays it by cancelling the row. Whatever ends the row pays it,
    * in that ending's write, and owes the turn no resume: nobody waits.
    *
-   * Top level and server-written, as `resumeOwed` is (BP-031): it drives a
-   * cancel. **Absent reads as not owed** (BP-030).
+   * Top level and server-written, as `resumeOwed` is: it drives a
+   * cancel. **Absent reads as not owed**.
    */
   cancelOwed: z.boolean().optional(),
 
+  // FIX-2080 D2; BP-031; BP-030.
   /**
-   * A cascade is owed for this row's ending (FIX-2080 D2): written in the
+   * A cascade is owed for this row's ending: written in the
    * same write as the ending, so a crash between the ending and the cascade
    * leaves it owed, not lost. Covers both cascades: the open dependents of a
    * failed or cancelled row on this board, and the open tasks a task filed
@@ -576,56 +603,60 @@ export const taskSchema = z.object({
    * once, and a touch of the board pays it once past due. Cleared by the pass
    * that paid it.
    *
-   * Top level and server-written for `abandonments`' reason (BP-031): it
+   * Top level and server-written for `abandonments`' reason: it
    * drives cancels, so no caller-writable surface reaches it. **Absent reads
-   * as not owed** (BP-030).
+   * as not owed**.
    */
   cascadeOwed: z
     .object({
       due: z.number(),
+      // BP-030.
       /**
        * When the ending that owes it was written. A late payment cancels only
        * what was filed by then: a retry's next attempt files under the same
-       * parent. **Absent on a debt written before it** (BP-030): read with
+       * parent. **Absent on a debt written before it**: read with
        * `cascadeEndedAt`.
        */
       endedAt: z.number().optional(),
     })
     .optional(),
 
+  // FIX-2078; BP-031; BP-030; FIX-2123.
   /**
-   * Who filed this row (FIX-2078): the session whose request filed it, stamped
-   * at filing from the request's server-set identity, never from caller input
-   * (BP-031). A follow-up copies its root's, so the filer is the one that
+   * Who filed this row: the session whose request filed it, stamped
+   * at filing from the request's server-set identity, never from caller input.
+   * A follow-up copies its root's, so the filer is the one that
    * filed the work, not the session a follow-up was typed in. Where its ending
    * is delivered. Its flow is read from the session's own record when needed.
-   * **Absent** on a row filed before it (BP-030): a composing layer may name a
+   * **Absent** on a row filed before it: a composing layer may name a
    * fallback, and with none its notice is settled undeliverable.
    *
    * `requestId` is the request that filed it, when that request runs in the
-   * filer's session (FIX-2123), from the engine's request identity: the row's
+   * filer's session, from the engine's request identity: the row's
    * notice waits until that request ends, so a wait in it reads the ending
    * first. Absent on a row filed before it, and on a follow-up filed outside
    * the filer's session: its notice is admitted at once, as before.
    */
   filer: z.object({ sessionId: z.string(), requestId: z.string().optional() }).optional(),
 
+  // FIX-2080; BP-030.
   /**
-   * The task whose ending cancelled this row (FIX-2080): set by a cascade's
+   * The task whose ending cancelled this row: set by a cascade's
    * cancel, server-written, so whatever reports the cancel names its cause.
-   * **Absent** on every row no cascade cancelled (BP-030).
+   * **Absent** on every row no cascade cancelled.
    */
   causedBy: z.string().optional(),
 
+  // BP-031; BP-030.
   /**
    * A payload the code that filed the row wrote with it, for whatever runs the
    * row: which entry and session it goes to, and what that entry reads. Written
    * once, in the write that files the row, by a caller filing through the ref.
    * No task tool and no update reaches it, so a model can neither set nor
    * change it, the reason `metadata` (model-writable through `updateTask`)
-   * can't carry it (BP-031). Packed to the worker as `TaskWorkerInput.sealed`;
+   * can't carry it. Packed to the worker as `TaskWorkerInput.sealed`;
    * `TaskFilter.sealed` matches on its plain values. **Absent** on every row
-   * filed without one (BP-030).
+   * filed without one.
    */
   sealed: z.record(z.unknown()).optional(),
 
@@ -648,8 +679,9 @@ export type Task<TInput = unknown, TOutput = unknown> = Omit<
   output?: TOutput;
 };
 
+// FIX-1005.
 /**
- * The execution coordinate stamped into a claim write (FIX-1005) — see
+ * The execution coordinate stamped into a claim write — see
  * {@link taskSchema}'s `claimedBy`.
  *
  * Named so the backings can accept it as a narrowed option rather than taking
@@ -659,7 +691,8 @@ export type TaskClaimIdentity = NonNullable<
   z.infer<typeof taskSchema>["claimedBy"]
 >;
 
-/** The run link a dispatched attempt writes onto its task (FIX-1668) — see {@link taskSchema}'s `run`. */
+// FIX-1668.
+/** The run link a dispatched attempt writes onto its task — see {@link taskSchema}'s `run`. */
 export type TaskRunLink = NonNullable<z.infer<typeof taskSchema>["run"]>;
 
 /** One entry in {@link taskSchema}'s `writeLog` — a caller's write id and the revision it committed at. */

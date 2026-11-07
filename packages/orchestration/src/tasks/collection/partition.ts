@@ -32,9 +32,10 @@ import type {
 } from "@flow-state-dev/core/types";
 import { encodeUserSegment, getPatternPrefix } from "@flow-state-dev/core/types";
 
+// BP-031.
 /**
  * What a partition function sees: the running session's server-set identity,
- * and nothing else (BP-031).
+ * and nothing else.
  *
  * Purpose-built rather than a trimmed block context, because a block context
  * carries request input through more than one handle (the parent's `input`,
@@ -132,10 +133,11 @@ function assertPartitionedTaskId(collectionId: string, taskId: string): void {
   }
 }
 
+// FIX-990.
 /**
  * One view per (resource collection handle, partition). Shared because the
  * resource backing's task set is keyed by the handle it reads through, and
- * every resolution within one request must read one task set (FIX-990).
+ * every resolution within one request must read one task set.
  */
 const views = new WeakMap<
   ResourceCollectionRef<JsonObject>,

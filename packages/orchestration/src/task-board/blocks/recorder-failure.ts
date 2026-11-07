@@ -1,6 +1,7 @@
+// FIX-963; FIX-989.
 /**
  * What a board says when it saved a task's result and then could not announce
- * it (FIX-963).
+ * it.
  *
  * ## The event this names
  *
@@ -16,7 +17,7 @@
  *
  * ## Three values, not two
  *
- * `didWriteLand` (FIX-989) answers `true`, `false`, or *cannot tell*, and the
+ * `didWriteLand` answers `true`, `false`, or *cannot tell*, and the
  * third is a first-class answer rather than a shrug. It is the permanent answer
  * for any caller-supplied task store — nothing there keeps the receipt the
  * question is answered from, and `stampWrite` stays package-internal by

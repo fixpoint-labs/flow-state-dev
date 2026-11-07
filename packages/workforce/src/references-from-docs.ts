@@ -126,6 +126,7 @@ const referenceWithoutFileMessage = (ref: string): string =>
   `hand-built record needs \`filePath\` set to the document's absolute path — ` +
   `\`readReferencesDirectory\` fills it in for a record read off disk.`;
 
+// FIX-1442.
 /**
  * Build the resource map from reference records, keyed by each one's ref.
  *
@@ -136,7 +137,7 @@ const referenceWithoutFileMessage = (ref: string): string =>
  *
  * Every entry here is org-scoped, the same as `resourcesFromDocs`'s. Nothing
  * needs declaring for that: organization identity is unconditional, so the org
- * resource registry is always built (FIX-1442).
+ * resource registry is always built.
  *
  * Throws rather than collecting, matching the mutable install half: a reference
  * that cannot become a resource is startup misconfiguration.

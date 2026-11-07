@@ -1,3 +1,4 @@
+// FIX-1668; FIX-1305.
 /**
  * The claim gate a board puts in front of each task entry its assignees dispatch
  * to — what a `task` dispatch actually enters in the child session.
@@ -38,7 +39,7 @@
  *    a while".
  *
  * And one write, between the re-mint and the ticket going on state: **the run
- * link** (FIX-1668). The gate writes this run's session, request and attempt
+ * link**. The gate writes this run's session, request and attempt
  * onto the row, fenced by the ticket, so a reader can open exactly the run
  * working the task. A declined link is a stale claim; a thrown one stops the
  * attempt before the worker, with nothing on state for the rescue to settle.
@@ -61,7 +62,7 @@
  * matching, no reclaim has happened — a lapsed lease only means one *could*
  * have. Under an external runner with a sustained backlog that reading
  * fails every dispatch before it starts, and each re-dispatch spends an
- * attempt, so backlog alone can fail a task (FIX-1305).
+ * attempt, so backlog alone can fail a task.
  *
  * So the lapse arm asks the substrate instead of the clock: renew the lease
  * with the claim's own ticket, and let the atomic write decide. Every other
@@ -165,7 +166,8 @@ export interface TaskGateOptions {
    * additionally fails that request.
    */
   onError: "skip" | "fail";
-  /** What else holds a task open at a request's end (FIX-2077, rule 6). */
+  // FIX-2077, rule 6.
+  /** What else holds a task open at a request's end. */
   endRules?: TaskEndRules;
 }
 
@@ -239,7 +241,8 @@ export interface TaskLedgersOptions {
    * state is the entry's own, the same shape for every task.
    */
   allowSessionState?: boolean;
-  /** What else holds a task open at a request's end (FIX-2077, rule 6). See {@link TaskEndRules}. */
+  // FIX-2077, rule 6.
+  /** What else holds a task open at a request's end. See {@link TaskEndRules}. */
   endRules?: TaskEndRules;
 }
 
@@ -598,8 +601,9 @@ export class UnknownTaskLedgerError extends Error {
   }
 }
 
+// FIX-1305.
 /**
- * Take a lapsed row back for the dispatch that was handed it (FIX-1305), and
+ * Take a lapsed row back for the dispatch that was handed it, and
  * return it as the renewal committed it.
  *
  * The gate's read has already shown that nothing has reclaimed this row. What
@@ -617,9 +621,10 @@ export class UnknownTaskLedgerError extends Error {
 /** Why a stop cancels a task waiting on a user, on its row. */
 const STOPPED_WHILE_WAITING = "Stopped while it waited for a user.";
 
+// FIX-2129.
 /**
  * How the running request, `row`'s own run, resumed from its wait for a
- * user without an answer (FIX-2129): `cancelled` (its task was cancelled, or
+ * user without an answer: `cancelled` (its task was cancelled, or
  * the board ended that one stop) or `stopped`. `undefined` for any other
  * request, and for an answered resume.
  */
@@ -629,9 +634,10 @@ function userResumeOf(ctx: BlockContext, row: Task): "cancelled" | "stopped" | u
   return resumed.resolution === "cancelled" || resumed.resolution === "stopped" ? resumed.resolution : undefined;
 }
 
+// FIX-2129, rule 12.
 /**
  * A stop of a task's run while it waits for a user cancels the task, where a
- * stopped request would otherwise fail its attempt (FIX-2129, rule 12): asked
+ * stopped request would otherwise fail its attempt: asked
  * again, the user would be asked the same thing. Written with the run's own
  * claim, so a row another attempt took is left alone.
  */
@@ -717,8 +723,9 @@ async function adoptLapsedLease(
   return adopted;
 }
 
+// FIX-1668.
 /**
- * Write the run link for the attempt this dispatch holds (FIX-1668): this
+ * Write the run link for the attempt this dispatch holds: this
  * run's session, its request, and the attempt the gate just verified.
  *
  * Fenced by the claim ticket, so a claim that moved between the gate's read and

@@ -90,6 +90,7 @@ export interface DebugResourceEntry {
   itemCountTruncated?: boolean;
   storagePrefix?: string;
   clientConfig: DebugResourceClientConfig;
+  // BP-030.
   /**
    * Whether the store will accept a write to this resource's state or content.
    * **Omitted when nothing makes it unwritable**, which is the common case.
@@ -101,7 +102,7 @@ export interface DebugResourceEntry {
    *
    * Absent means writable — the framework's default. Never coerce it to
    * `false` on the way out: a reader that mistakes an absent setting for a
-   * closed door reports a resource anybody can edit as read-only (BP-030).
+   * closed door reports a resource anybody can edit as read-only.
    *
    * **`false` is narrower than "immutable".** It refuses state and content
    * writes *through this definition*. A collection still permits `create`,
@@ -194,14 +195,14 @@ function describeClientConfig(
   };
 }
 
+// BR-12, BR-14.
 /**
  * The two permission settings, reporting what is *true* of the resource.
  *
  * The field answers "can this be written", not "did an author type a key".
  * For every config that HAS a `writable` field the two coincide, so the key is
  * present only when it was declared and an absent key still means writable —
- * the framework's default, and the rule a reader must not get backwards
- * (BR-12, BR-14).
+ * the framework's default, and the rule a reader must not get backwards.
  *
  * **A projected collection is the case where they come apart.** Its config has
  * no `writable` field at all — `ProjectedResourceCollectionConfig` calls
@@ -233,7 +234,8 @@ interface ResourceGroup {
   config: ResourceConfig | ResourceCollectionConfig;
   aliases: string[];
   scope: ResolvedResourceScope;
-  /** Canonical persisted storage key for this group (FIX-591). */
+  // FIX-591.
+  /** Canonical persisted storage key for this group. */
   storageKey: string;
 }
 
@@ -349,7 +351,8 @@ export async function buildDebugResourceTree(opts: {
   sessionId: string;
   ctx: ResourcePersistenceContext;
   countLimit: number;
-  /** Tenant id for namespacing the session lookup (FIX-682). */
+  // FIX-682.
+  /** Tenant id for namespacing the session lookup. */
   tenantId?: string;
   /** Session the route guard checked (`RouteAuthResult.session`). */
   checkedSession?: SessionRecord | null;
@@ -516,7 +519,8 @@ export async function buildDebugCollectionItems(opts: {
   cursor: string | null;
   topicFilter: string | null;
   ctx: ResourcePersistenceContext;
-  /** Tenant id for namespacing the session lookup (FIX-682). */
+  // FIX-682.
+  /** Tenant id for namespacing the session lookup. */
   tenantId?: string;
   /** Session the route guard checked (`RouteAuthResult.session`). */
   checkedSession?: SessionRecord | null;
@@ -667,7 +671,8 @@ export async function lookupDebugContent(opts: {
   ref: string;
   topic: string | null;
   ctx: ResourcePersistenceContext;
-  /** Tenant id for namespacing the session lookup (FIX-682). */
+  // FIX-682.
+  /** Tenant id for namespacing the session lookup. */
   tenantId?: string;
   /** Session the route guard checked (`RouteAuthResult.session`). */
   checkedSession?: SessionRecord | null;

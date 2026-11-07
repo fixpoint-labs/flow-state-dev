@@ -1,8 +1,9 @@
+// BP-015; BP-031.
 /**
  * A session record as the session routes send it to a client.
  *
  * Scope state is private by default: a client sees a state field only when
- * the owning flow names it in `session.client.expose` (BP-015), or declares
+ * the owning flow names it in `session.client.expose`, or declares
  * it readonly. A readonly field is the session's identity, set at create and
  * already published as a listing filter (`?state.<field>=`), so a client that
  * finds a session by it can also read it back.
@@ -12,7 +13,7 @@
  * than spreading the stored record onto the wire.
  *
  * Server-side code that needs the whole record reads the session store; there
- * is no request flag that widens this view (BP-031).
+ * is no request flag that widens this view.
  */
 import type { JsonObject } from "@flow-state-dev/core/types";
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
@@ -57,7 +58,8 @@ export function toClientSession(
   return { ...envelope, id: bareId, state: visibleState(read, visible) };
 }
 
-/** The visible fields of `state` that it holds. Absent or legacy state is empty (BP-030). */
+// BP-030.
+/** The visible fields of `state` that it holds. Absent or legacy state is empty. */
 function visibleState(state: JsonObject | undefined, visible: ReadonlyArray<string>): JsonObject {
   const out: JsonObject = {};
   if (state == null) return out;

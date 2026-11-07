@@ -1,5 +1,6 @@
+// FIX-1945 S6.
 /**
- * A worker's standing rules for the user (FIX-1945 S6): the notes the user
+ * A worker's standing rules for the user: the notes the user
  * asked that worker to keep, read and edited through the worker's own rules
  * action (`createWorkforceClient().standingRules`).
  *

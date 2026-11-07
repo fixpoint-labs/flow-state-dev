@@ -1,5 +1,6 @@
+// FIX-2086.
 /**
- * A task's steers (FIX-2086): words sent into an open task, kept on the task.
+ * A task's steers: words sent into an open task, kept on the task.
  *
  * The pure decisions both backings share; the schema and the cap are the
  * leaf `schema/steer.ts`. A steer changes no status, no claim, and no attempt
@@ -22,13 +23,15 @@ export interface SteerInput {
   readonly key?: string;
 }
 
-/** One steer as a worker is shown it: the words, who sent them, and the question they answer when they answer one (FIX-2133). */
+// FIX-2133.
+/** One steer as a worker is shown it: the words, who sent them, and the question they answer when they answer one. */
 export interface ShownSteer {
   readonly message: string;
   readonly from: TaskSteer["from"];
   /** The question or confirm this steer answers, as it was asked. Absent on an external wait's answer, which answers no question. */
   readonly question?: string;
-  /** A `"service"` steer's sender (FIX-2578): its words are quoted as theirs, never the person's. */
+  // FIX-2578.
+  /** A `"service"` steer's sender: its words are quoted as theirs, never the person's. */
   readonly by?: string;
 }
 
@@ -55,15 +58,16 @@ export function steersTakenIn(task: Pick<Task, "steers" | "attempts">, takenIn: 
   return (task.steers ?? []).filter((steer) => steer.takenBy === task.attempts && steer.takenIn === takenIn);
 }
 
+// FIX-2133; FIX-2578.
 /**
  * What a `steer` writes on `task`, decided inside the write: the patch, or
  * `"unchanged"` for a key already kept, or `"limit"` past {@link MAX_STEERS}.
- * Each open question keeps its answer's place under the cap (FIX-2133), so a
+ * Each open question keeps its answer's place under the cap, so a
  * row hold is always answerable: an ordinary steer is refused once the
  * steers and the open questions reach it.
  * A task running nothing while it waits on work it filed now waits on the
  * steer instead: a turn is owed for it (D2).
- * A running task's open external wait (FIX-2578) is answered by the steer, as
+ * A running task's open external wait is answered by the steer, as
  * a line answers it: the steer wakes the wait and the same attempt is owed its
  * turn, in this write. Its answer has its place kept, so the cap never refuses it.
  */
@@ -133,10 +137,11 @@ export const LINE_STEER_REFUSALS: Readonly<Record<LineSteerRefusal, string>> = {
   "not-supported": "This task's board takes no message.",
 };
 
+// FIX-2133.
 /**
  * The board a line steers: its `steer` verb, which a board that keeps no
- * steers lacks, and its row as stored with the answer a question takes
- * (FIX-2133), which a board that keeps no questions lacks.
+ * steers lacks, and its row as stored with the answer a question takes,
+ * which a board that keeps no questions lacks.
  */
 interface LineSteerLedger {
   readonly steer?: (id: string, input: SteerInput) => Promise<{ outcome: string; reason?: string } | undefined | void>;
@@ -145,9 +150,10 @@ interface LineSteerLedger {
   readonly getCommitted?: (id: string) => Promise<Pick<Task, "status" | "holds" | "steers"> | undefined>;
 }
 
+// FIX-2578.
 /**
  * The oldest open hold on `taskId` a line answers, as stored: a question, or
- * an external wait (FIX-2578), which any line ends. Never a confirm, which a
+ * an external wait, which any line ends. Never a confirm, which a
  * typed line can't answer. `null` when the line keyed `key` is on the task
  * already (a replayed request): it is kept, and answers nothing more.
  */
@@ -158,23 +164,25 @@ async function oldestOpenQuestion(ledger: LineSteerLedger, taskId: string, key: 
   return openRowHolds(row).find((hold) => hold.ask.kind === "question" || hold.ask.kind === "external")?.id;
 }
 
-/** The request a line arrived on: its verified user and its id, never its input (BP-031). */
+// BP-031.
+/** The request a line arrived on: its verified user and its id, never its input. */
 interface LineRequest {
   readonly user?: { readonly identity?: { readonly userId?: string } };
   readonly request: { readonly identity: { readonly id: string } };
 }
 
+// FIX-2133; FIX-2578; BP-031.
 /**
  * Write a person's line, typed in an open task's session, as a steer on
  * `taskId`: from the user the request was verified as, keyed by the request
  * so a replayed request adds nothing.
  *
- * The one home for what a line answers (FIX-2133): while the task holds open
+ * The one home for what a line answers: while the task holds open
  * questions, the line is the answer to the oldest, through the board's one
- * hold write, and the others stay open. An open external wait (FIX-2578) is
+ * hold write, and the others stay open. An open external wait is
  * answered the same way: the line wakes it. Never a confirm: a typed line is no
  * yes or no, so a confirm is answered in the Inbox or by `updateTask`. The
- * server picks the question, never a client (BP-031).
+ * server picks the question, never a client.
  *
  * @returns `undefined` once the steer is kept (or was already), else why not.
  */

@@ -1,5 +1,6 @@
+// FIX-2290.
 /**
- * Handing a harness run's activity to its host (FIX-2290): the one mapping
+ * Handing a harness run's activity to its host: the one mapping
  * from a harness's translated events to {@link HarnessActivity}, shared by
  * every harness so each reports the same two kinds the same way.
  */

@@ -106,13 +106,14 @@ export type BuildBlockOptions<
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
   execute?: ExecuteFn<TInputSchema, TOutputSchema, TInput, TOutput>;
   declaredResources?: DeclaredResources;
+  // FIX-688.
   /**
    * This block's OWN declared resources — its own `resources` config plus its
    * own capability-injected resources, EXCLUDING resources that bubble up from
    * descendant/child blocks. For leaf blocks (handler/generator) this equals
    * `declaredResources`. For composites (sequencer/router) it is the strict
    * subset the block itself contributes. Used by the block-dispatch prefetch
-   * hook (FIX-688) to load just this block's declarations.
+   * hook to load just this block's declarations.
    */
   ownDeclaredResources?: DeclaredResources;
   /** Resolved capabilities from `uses`, stored for ctx.cap construction at runtime. */

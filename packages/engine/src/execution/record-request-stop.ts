@@ -16,6 +16,7 @@ import { letOwedParkGo } from "../durability/park-owed";
 import { resumeRequestWaiters } from "../durability/wait-chain";
 import { settledRecordFields } from "./request-action-result";
 
+// FIX-1816; FIX-2108; FIX-2377; FIX-2269.
 /**
  * What recording a stop came to.
  *
@@ -28,16 +29,16 @@ import { settledRecordFields } from "./request-action-result";
  *   up on its next heartbeat.
  * - `stopped-parked`: the request was parked (`suspended`, or `interrupted` and
  *   parked by `parkedInterruptedIds`: a pending gate, or a logged gate owed a
- *   re-drive) and the stop resolved its gate (FIX-1816), overriding a
- *   person's resolution the turn never ran past (FIX-2108). It ends
+ *   re-drive) and the stop resolved its gate, overriding a
+ *   person's resolution the turn never ran past. It ends
  *   `aborted`; a turn parked on a wait first cancels the task it waits on.
  * - `ended`: the request was `interrupted` (its process died) behind no gate,
  *   so nothing would carry it on but a continue. The stop ends it `aborted`,
- *   and it leaves the interrupted list for good (FIX-2377).
+ *   and it leaves the interrupted list for good.
  * - `already-resolved`: the request was parked, but its gate was resolved
  *   first (an answer won the race, or a resume or re-drive holds its lease),
- *   or it is `interrupted` owing a park and its continuation holds its lease
- *   (FIX-2269), so it runs again. Nothing was written.
+ *   or it is `interrupted` owing a park and its continuation holds its lease,
+ *   so it runs again. Nothing was written.
  */
 export type RequestStopResult =
   | { kind: "gone" }

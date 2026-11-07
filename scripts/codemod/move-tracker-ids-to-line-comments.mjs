@@ -34,7 +34,7 @@ const POINTER_WORDS = new RegExp(
       "rule", "rules", "decision", "decisions", "row", "step", "phase", "part", "wave", "slice", "fix", "review",
       "round", "finding", "amendment", "goal", "cell", "scope", "by", "with", "on", "a", "an", "s", "e\\.g", "i\\.e",
       "cf", "tracked", "tracking", "contract", "narrowed", "widened", "extended", "folded", "superseded", "also",
-      "see also", "original", "follow", "plan", "model", "census", "audit", "pr\\d*",
+      "see also", "original", "follow", "plan", "model", "census", "audit", "pr\\d*", "\\d+[A-Za-z]{0,2}", "waves?",
     ].join("|") +
     ")\\b",
   "gi",
@@ -81,7 +81,7 @@ function closeParen(text, open) {
 }
 
 /** Separators between a pointer and the prose beside it. */
-const SEPARATOR = /\s*[,;:]\s+|\s+[—–]\s+|\s+--?\s+/g;
+const SEPARATOR = /\s*(?:[,;:]|\s[—–]|\s--?)(?:[ \t]*\n[ \t]*\*)?[ \t]+/g;
 
 /**
  * Within `[from, to)` of `text`, the range to cut so the segment holding the id
@@ -109,10 +109,19 @@ function segmentCut(text, from, to, at) {
 function cut(text, start, end, capitalise = false) {
   let head = text.slice(0, start);
   let tail = text.slice(end);
-  if (/^[.,;:)!?]/.test(tail)) head = head.replace(/ +$/, "");
+  // A cut that opens its comment line hands its punctuation to the line above;
+  // the rest of the line stays where it was.
+  const prefix = /\n[ \t]*\*[ \t]*$/.exec(head);
+  const punct = /^([.,;:!?])[ \t]*/.exec(tail);
+  if (prefix && punct) {
+    head = head.slice(0, prefix.index).replace(/[ \t]+$/, "") + punct[1];
+    tail = /^\s*(\n|\*\/|$)/.test(tail.slice(punct[0].length)) ? tail.slice(punct[0].length) : prefix[0] + tail.slice(punct[0].length);
+  }
+  if (/^[.,;:)!?]/.test(tail) || /^[ \t]*(\n|$)/.test(tail)) head = head.replace(/[ \t]+$/, "");
+  if (/[ \t]$/.test(head) && /^[ \t]/.test(tail)) tail = tail.replace(/^[ \t]+/, "");
   if (/[.,;:]$/.test(head) && /^[.,;:]/.test(tail)) tail = tail.slice(1);
   if (capitalise) tail = tail.replace(/^([ \t]*)([a-z])/, (_, ws, c) => ws + c.toUpperCase());
-  return head + tail;
+  return { text: head + tail, at: head.length };
 }
 
 /** True when the comment line starting at `i` (after its `\n`) is blank or starts a tag or list item. */
@@ -141,10 +150,10 @@ function sentenceAround(text, at) {
   return { start, end };
 }
 
-/** Remove a comment line the cuts left empty, when it was not blank before. */
+/** Remove the comment line holding `at` (the last character before a cut) when the cut left it empty. */
 function dropEmptiedLine(text, at) {
-  const lineStart = text.lastIndexOf("\n", at - 1) + 1;
-  let lineEnd = text.indexOf("\n", at);
+  const lineStart = text.lastIndexOf("\n", at) + 1;
+  const lineEnd = text.indexOf("\n", lineStart);
   if (lineEnd < 0) return text;
   if (!/^[ \t]*\*[ \t]*$/.test(text.slice(lineStart, lineEnd))) return text;
   return text.slice(0, lineStart) + text.slice(lineEnd + 1);
@@ -176,11 +185,13 @@ export function rewriteBlock(block) {
     const open = openParen(mask, at);
     const close = open >= 0 ? closeParen(mask, open) : -1;
     if (open >= 0 && close > at) {
-      const c = segmentCut(text, open + 1, close, at);
+      const c = pointerOnly(text.slice(open + 1, close))
+        ? { whole: true, segment: text.slice(open + 1, close) }
+        : segmentCut(text, open + 1, close, at);
       if (!c) return { left: oneLine(line).slice(0, 160) };
       pointers.push(oneLine(c.segment));
-      text = c.whole ? cut(text, open, close + 1) : cut(text, c.start, c.end);
-      text = dropEmptiedLine(text, Math.min(open, text.length - 1));
+      const done = c.whole ? cut(text, open, close + 1) : cut(text, c.start, c.end);
+      text = dropEmptiedLine(done.text, done.at - 1);
       continue;
     }
     const s = sentenceAround(text, at);
@@ -190,9 +201,14 @@ export function rewriteBlock(block) {
     if (c.whole) {
       let end = c.end;
       while (end < text.length && text[end] === " ") end++;
-      text = text.slice(0, c.start) + text.slice(end);
-    } else text = cut(text, c.start, c.end, c.first);
-    text = dropEmptiedLine(text, Math.min(c.start, text.length - 1));
+      const rest = text.slice(end);
+      const head = /^[ \t]*(\n|\*\/|$)/.test(rest) ? text.slice(0, c.start).replace(/[ \t]+$/, "") : text.slice(0, c.start);
+      // The sentence was the whole line: the line goes.
+      text = dropEmptiedLine(head + rest, head.length - 1);
+    } else {
+      const done = cut(text, c.start, c.end, c.first);
+      text = dropEmptiedLine(done.text, done.at - 1);
+    }
   }
   const body = text.replace(/^\/\*\*|\*\/$/g, "").replace(/^\s*\*/gm, "").trim();
   if (!/[A-Za-z]/.test(body)) return { left: `the block would be empty: ${oneLine(block).slice(0, 120)}` };
@@ -223,7 +239,8 @@ export function rewriteSource(source, filePath) {
       left.push(`${filePath}:${c.loc.start.line}  ${result.left}`);
       continue;
     }
-    const pointer = `${lead}// ${result.pointers.join("; ").replace(/[.;,\s]+$/, "")}.\n`;
+    const pointers = [...new Set(result.pointers.map((p) => p.replace(/[.;,\s]+$/, "")))];
+    const pointer = `${lead}// ${pointers.join("; ")}.\n`;
     edits.push({ from: lineStart, to: c.range[1], text: pointer + lead + result.text });
     moved++;
   }

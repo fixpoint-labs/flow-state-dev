@@ -1,3 +1,4 @@
+// BR-4; BR-5.
 /**
  * A composer that sends a user's line to a worker (S11): a task's, and
  * Inbox's reply box. Its send state is {@link useTurnSend} and
@@ -8,9 +9,9 @@
  * composer shows *sending* until the worker's session holds the line. Then the
  * line leaves the draft, since the conversation now holds it, and the composer
  * says the worker is on it until the send resolves. It shows *delivered* only
- * when it does (BR-4), noting Inbox when the worker stopped on a user's ask
- * (a Shift Coordinator's fire, say), or that it waits when it stopped on anything else. A refusal keeps the draft and shows the worker's reason
- * (BR-5). A line that never got there keeps the draft and offers Retry. A line
+ * when it does, noting Inbox when the worker stopped on a user's ask
+ * (a Shift Coordinator's fire, say), or that it waits when it stopped on anything else. A refusal keeps the draft and shows the worker's reason.
+ * A line that never got there keeps the draft and offers Retry. A line
  * that may have arrived keeps the draft and offers no Retry, so it isn't sent
  * twice. A line that failed after it left the draft is put back, unless the
  * user has started another. Given a `draftKey`, the draft and an
@@ -31,10 +32,11 @@ import { TurnNotDelivered, type TurnStop } from "../lib/send";
 const DRAFT = "shift-manager:draft";
 const UNCONFIRMED = "shift-manager:unconfirmed";
 
+// BP-030.
 /**
  * Move what `from` holds (the draft and its *unconfirmed* warning) to `to`,
  * unless `to` already holds a draft, then drop `from`: a stored draft from
- * before a key changed opens in one composer, once (BP-030).
+ * before a key changed opens in one composer, once.
  */
 function adoptLegacyDraft(from: string | undefined, to: string | undefined): void {
   if (from === undefined || to === undefined || from === to) return;

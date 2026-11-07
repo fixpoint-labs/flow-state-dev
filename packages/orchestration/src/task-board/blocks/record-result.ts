@@ -178,8 +178,9 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+// FIX-963.
 /**
- * How a settlement site reports a recorder failure (FIX-963).
+ * How a settlement site reports a recorder failure.
  *
  * Both recorders are composed in two places — the inline drain, and the gate
  * around a task dispatched to a child run — and the difference between them is
@@ -216,13 +217,14 @@ function raisesHere(wiring: RecorderFailureWiring): boolean {
   return (wiring.onRecorderFailure ?? "raise") === "raise";
 }
 
+// FIX-989.
 /**
  * The recorders' shared write step: baseline, write, classify, release.
  *
  * Mints the write token from the task as it reads NOW, before the write — the
  * baseline it records is what makes `didWriteLand`'s answer mean anything, and a
  * token assembled after the fact would describe a world the write may not have
- * used (FIX-989). Then runs `attempt` with it.
+ * used. Then runs `attempt` with it.
  *
  * - The write did not throw: returns `undefined`.
  * - It threw and **committed nothing**: **rethrows the attempt's own error
@@ -327,7 +329,8 @@ async function releaseRow(
 export interface RecordSuccessOptions {
   name: string;
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
-  /** Recorder-failure reporting for this settlement site (FIX-963). */
+  // FIX-963.
+  /** Recorder-failure reporting for this settlement site. */
   recorderFailure?: RecorderFailureWiring;
 }
 
@@ -418,7 +421,8 @@ export interface RecordErrorOptions {
    * through `.forEach`, surfacing on the board's parent.
    */
   onError: "skip" | "fail";
-  /** Recorder-failure reporting for this settlement site (FIX-963). */
+  // FIX-963.
+  /** Recorder-failure reporting for this settlement site. */
   recorderFailure?: RecorderFailureWiring;
 }
 
@@ -558,9 +562,10 @@ export function createRecordError(options: RecordErrorOptions) {
   });
 }
 
+// FIX-2077; FIX-963.
 /**
  * Settle a dispatched task's claim from the claim gate's check at its
- * request's end (FIX-2077), with the recorders' write semantics (FIX-963):
+ * request's end, with the recorders' write semantics:
  * `settle` is the fenced write (a completion or a failure), run under a write
  * token so a write that threw can be classified.
  *

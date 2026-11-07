@@ -1,5 +1,6 @@
+// FIX-401.
 /**
- * SQLite-backed sequencer checkpoint store (FIX-401).
+ * SQLite-backed sequencer checkpoint store.
  *
  * Latest-only persistence: identity is the composite key
  * `(request_id, block_instance_id)`. Writes use `INSERT ... ON CONFLICT DO

@@ -41,12 +41,13 @@ export const CLAUDE_CODE_GAPS = "observed-gaps" as const;
 /** How a file tool touched a path. */
 export type ClaudeCodeFileOpKind = "created" | "edited";
 
+// BP-023; BP-030.
 /**
  * One observed file operation, keyed by `<runId>/<canonical path>`.
  *
- * Every field is nullable with a null default (BP-023) so a row written by an
+ * Every field is nullable with a null default so a row written by an
  * older or newer shape still parses instead of throwing inside a recorder that
- * is required never to break the run (BP-030).
+ * is required never to break the run.
  */
 export const claudeCodeFileOpStateSchema = z.object({
   /** How the path was last touched. */
@@ -55,6 +56,7 @@ export const claudeCodeFileOpStateSchema = z.object({
   outcome: observedOutcomeSchema.nullable().default(null),
   /** Epoch millis of the last touch. */
   lastTouchedAt: z.number().nullable().default(null),
+  // BP-030.
   /**
    * How many operations on this path the harness confirmed APPLIED.
    *
@@ -67,7 +69,7 @@ export const claudeCodeFileOpStateSchema = z.object({
    * with confirmations would leave nothing at all saying how many of a path's
    * touches actually landed.
    *
-   * Null on a row written before this field existed (BP-030), which is NOT the
+   * Null on a row written before this field existed, which is NOT the
    * same as `0`: zero means this run touched the path and nothing applied.
    */
   appliedCount: z.number().nullable().default(null),

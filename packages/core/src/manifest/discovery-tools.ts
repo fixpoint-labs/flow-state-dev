@@ -1,5 +1,6 @@
+// FIX-817; BP-031.
 /**
- * The discovery door (FIX-817) — one scoped, on-demand tool over whatever
+ * The discovery door — one scoped, on-demand tool over whatever
  * manifest sources a scope carries.
  *
  * An agent deciding *who does this* calls `discover` and gets back a short
@@ -11,7 +12,7 @@
  *
  *   - **Scoped at the registry, not filtered here.** The `domain` argument is
  *     model-supplied. This tool can only reach sources its registry holds, so
- *     naming something out of scope returns nothing to filter (BP-031).
+ *     naming something out of scope returns nothing to filter.
  *   - **Nothing fatal, except cancellation.** An unknown domain, an empty
  *     domain and a reader that throws all degrade to an answer the model can
  *     act on. A planner that loses its turn because one collection was

@@ -60,10 +60,11 @@ export function createTaskHandleWrapper<TInput, TOutput>(
   });
 }
 
+// FIX-989.
 /**
  * Build a fresh task from a `TaskInit`, stamping defaults and timestamps.
  *
- * The convergence point for a task's *initial* write provenance (FIX-989):
+ * The convergence point for a task's *initial* write provenance:
  * every add path on both backings builds its task here, so revision 1, the
  * truncation marker, and the incarnation nonce are set once rather than at
  * four call sites.
@@ -146,8 +147,9 @@ export function buildInitialTask<TInput, TOutput>(
   };
 }
 
+// FIX-2133.
 /**
- * What a backing stamps on every row it files beside the filer (FIX-2133):
+ * What a backing stamps on every row it files beside the filer:
  * the tenant and org the filing request ran under, from its verified
  * identity, and how long a row hold waits before it goes ahead unanswered,
  * when the host sets that (`RequestHost.userDeadlineMs`). Server-set, never
@@ -174,9 +176,10 @@ export function readAbandonments(task: Task): number {
   return task.abandonments ?? 0;
 }
 
+// FIX-1817.
 /**
  * Why an assignee change to `assignee` is refused on `task`, beyond the
- * terminal and attempt-held rules each backing applies (FIX-1817), or
+ * terminal and attempt-held rules each backing applies, or
  * `undefined` when it isn't. Decided inside the atomic write, so a claim
  * landing between a caller's read and the write is honoured.
  *
@@ -189,9 +192,9 @@ export function assigneeChangeDecline(task: Task, assignee: string): TaskWriteDe
   return undefined;
 }
 
+// FIX-2082.
 /**
- * The one rule for taking a row's wait slot (`TaskCollectionRef.markWait`,
- * FIX-2082), decided on the freshest committed row, inside the write, so two
+ * The one rule for taking a row's wait slot (`TaskCollectionRef.markWait`), decided on the freshest committed row, inside the write, so two
  * requests that read the slot free can't both take it. Both backings run it.
  *
  * A request takes a free slot, a lapsed one (the request that waited before
@@ -239,9 +242,9 @@ export function lapseWaitWrite(
   return { patch: { wait: { ...task.wait, requestId, lapsed: true } } };
 }
 
+// FIX-2082.
 /**
- * The one rule for releasing a lapsed wait slot (`TaskCollectionRef.releaseWait`,
- * FIX-2082): the request it was lapsed for read the row (`read`), so an ending
+ * The one rule for releasing a lapsed wait slot (`TaskCollectionRef.releaseWait`): the request it was lapsed for read the row (`read`), so an ending
  * it held is delivered and owes nothing; or that request ended without reading
  * it, so the held ending goes to the filer's notice, due `dueAt`. Either way the
  * slot clears, and a later ending owes the filer's notice as any other does.
@@ -264,12 +267,13 @@ export function releaseWaitWrite(
   };
 }
 
+// FIX-2112; FIX-2123.
 /**
  * The one rule for a wait that found its row already ended
- * (`TaskCollectionRef.dropNoticeReadByWait`, FIX-2112): the wait's answer
+ * (`TaskCollectionRef.dropNoticeReadByWait`): the wait's answer
  * delivered the ending, so the notice the ending owes the filer is dropped.
  *
- * A notice already taken is left: its notice is the delivery (FIX-2123).
+ * A notice already taken is left: its notice is the delivery.
  *
  * @returns The patch to write, or `undefined` when the row owes no notice for its ending.
  */
@@ -279,9 +283,10 @@ export function noticeReadByWaitWrite(task: Task): { patch: Partial<Task> } | un
   return { patch: { metadata: { ...(task.metadata ?? {}), ...dropped } } };
 }
 
+// FIX-2123.
 /**
  * The one rule for taking a notice to deliver it
- * (`TaskCollectionRef.takeNotice`, FIX-2123): decided on the row as stored, so
+ * (`TaskCollectionRef.takeNotice`): decided on the row as stored, so
  * a wait's drop and a take can't both go through.
  *
  * @returns The patch to write, or `undefined` when the row doesn't owe the
@@ -429,14 +434,15 @@ export function settingsChangeKind(prev: TaskStatus, next: TaskStatus): TaskChan
   return "settings_changed";
 }
 
+// FIX-2383; FIX-948.
 /**
- * The one retry write (FIX-2383): a failed or cancelled row back to
+ * The one retry write: a failed or cancelled row back to
  * `pending`, keeping its id, history and spend, decided on the freshest
  * committed row inside the write. Both backings run it.
  *
  * It is not an ending: `endingOf` reads `errored → pending` as none, so no
  * cascade, notice or recorder runs. The grant goes into the row's
- * `retryLedger`, the board's one retry count (FIX-948). `attempts` is left
+ * `retryLedger`, the board's one retry count. `attempts` is left
  * alone, so the next claim takes a new attempt and a notice keyed by attempt
  * is a new one; `maxAttempts` is left alone too, so a row with tries left keeps
  * them and one with none gets exactly this one.
@@ -500,10 +506,10 @@ function sameIds(a: readonly string[], b: readonly string[] | undefined): boolea
   return a.length === other.length && a.every((id, i) => id === other[i]);
 }
 
+// FIX-1005.
 /**
  * How many times a task's work may be handed back out after its worker died
- * before the substrate stops recovering it and settles the row `errored`
- * (FIX-1005).
+ * before the substrate stops recovering it and settles the row `errored`.
  *
  * Three, because a bad deploy or a cycling node strands a job once or twice.
  * That covers the class while still bounding duplicate side effects at a small
@@ -512,6 +518,7 @@ function sameIds(a: readonly string[], b: readonly string[] | undefined): boolea
  */
 export const DEFAULT_MAX_ABANDONMENTS = 3;
 
+// FIX-1005; FIX-2133; FIX-2086.
 /**
  * Decide whether `fail(id, error)` should re-pend (retry path) or
  * transition the task to terminal `errored`. Centralized so both
@@ -528,13 +535,13 @@ export const DEFAULT_MAX_ABANDONMENTS = 3;
  * retries before the budget is exhausted on the third failure.
  *
  * **Abandonments are discounted, and that is what makes the two budgets
- * separate rather than separate-in-name-only (FIX-1005).** Recovering an
+ * separate rather than separate-in-name-only.** Recovering an
  * abandoned row goes through `claim`, which advances `attempts` — so without
  * the discount a crashed machine would silently spend the retries the caller
  * configured for real failures. `attempts - abandonments` is the count of
  * attempts this task actually got to run out of its own budget.
  *
- * An answer to a question (FIX-2133) and a steer (FIX-2086) take a turn on
+ * An answer to a question and a steer take a turn on
  * the same attempt, so neither uses one.
  */
 function shouldRetryOnFail(task: Task): boolean {
@@ -542,22 +549,24 @@ function shouldRetryOnFail(task: Task): boolean {
   return task.attempts - readAbandonments(task) < task.maxAttempts;
 }
 
+// FIX-948.
 /**
  * The status an in-flight attempt can be said to *hold*.
  *
  * Everything else means the attempt was displaced (reclaimed, re-queued) or
  * the task was settled by someone else.
  *
- * Exported because the retry budget (FIX-948) is scoped to exactly this set, and
+ * Exported because the retry budget is scoped to exactly this set, and
  * that reuse is exact rather than coincidental — see {@link routeFailure}.
  */
 export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>(["in_progress"]);
 
+// FIX-1234; FIX-2133.
 /**
- * The change kinds that mean "this attempt is reporting its result" (FIX-1234).
+ * The change kinds that mean "this attempt is reporting its result".
  *
  * Named because {@link transitionDeclineReason} refuses exactly these on a row
- * that is held (FIX-2133), and the set is not guessable from the target
+ * that is held, and the set is not guessable from the target
  * status: a failure with retries left targets `pending`, which is also where a
  * reclaim lands. The kind separates them; the status cannot.
  */
@@ -584,8 +593,9 @@ function readRetryLedger(task: Task): { granted: number; deniedByBudget: boolean
   };
 }
 
+// FIX-948.
 /**
- * The task's retry ledger with one more grant recorded (FIX-948).
+ * The task's retry ledger with one more grant recorded.
  *
  * Written in the SAME patch that re-pends the task, which is the property the
  * whole bound rests on: the counted fact changes when the retry is *authorized*,
@@ -596,8 +606,9 @@ export function grantRetry(task: Task): { granted: number; deniedByBudget: boole
   return { granted: ledger.granted + 1, deniedByBudget: ledger.deniedByBudget };
 }
 
+// FIX-948.
 /**
- * The task's retry ledger with the budget denial recorded (FIX-948).
+ * The task's retry ledger with the budget denial recorded.
  *
  * Written in the same patch that settles the task terminal. This is the marker
  * the board's `terminationReason` reads — it exists precisely so that reason is
@@ -643,9 +654,10 @@ export type FailRouting =
   | { action: "terminal"; deniedByBudget: false }
   | { action: "terminal"; deniedByBudget: true; limit: number };
 
+// FIX-948.
 /**
  * Decide how a `fail()` routes, given the task, the board's granted-retry total,
- * and the budget in force (FIX-948).
+ * and the budget in force.
  *
  * **Must be called from inside the atomic write**, against the committed ledger,
  * so `grantedTotal` and the grant this decision authorizes land together. A
@@ -699,9 +711,10 @@ export function routeFailure(
   return { action: "terminal", deniedByBudget: true, limit: maxTotalRetries };
 }
 
+// FIX-948.
 /**
  * The error recorded on a task settled by the collection's retry budget rather
- * than by its own `maxAttempts` (FIX-948).
+ * than by its own `maxAttempts`.
  *
  * Names the board's budget explicitly, because the whole point of the bound is
  * that an operator can tell "we stopped retrying because the budget ran out"
@@ -720,8 +733,9 @@ export function retryBudgetExhaustedError(
   );
 }
 
+// FIX-951.
 /**
- * True when the ticket's attempt still owns `task` (FIX-951).
+ * True when the ticket's attempt still owns `task`.
  *
  * Ownership is the counter **and** the status, not the counter alone.
  * `reclaim()` returns a task to `pending` without touching `attempts` — it
@@ -739,8 +753,9 @@ function attemptOwnsTask(task: Task, attempt: number): boolean {
   return task.attempts === attempt && ATTEMPT_OWNED_STATUSES.has(task.status);
 }
 
+// FIX-2133 D3.
 /**
- * Whether the turn `ticket` was minted for still runs `task` (FIX-2133 D3):
+ * Whether the turn `ticket` was minted for still runs `task`:
  * the same row, `in_progress`, on the ticket's attempt AND its turn
  * generation. The read-side twin of {@link transitionDeclineReason}'s fence,
  * for a holder that checks before it writes (the request-end check, a
@@ -930,8 +945,9 @@ function depsSatisfied(
   return true;
 }
 
+// FIX-1005; BP-030.
 /**
- * The one subtraction this whole mechanism rests on (FIX-1005): an
+ * The one subtraction this whole mechanism rests on: an
  * `in_progress` row whose lease deadline has already passed.
  *
  * **One fact, two readings.** The queue reads it as *"this row is available"*
@@ -944,13 +960,14 @@ function depsSatisfied(
  * nothing else.
  *
  * `!= null` rather than truthiness: a row persisted without a lease is not a
- * lapsed one (BP-030).
+ * lapsed one.
  */
 export function leaseLapsed(task: Task, now: number): boolean {
   if (task.status !== "in_progress") return false;
   return task.leaseUntil != null && task.leaseUntil <= now;
 }
 
+// BP-030.
 /**
  * The lease duration the claim **committed to** — how long the claimant may be
  * gone, as the claim wrote it, not how much of it is left.
@@ -964,7 +981,7 @@ export function leaseLapsed(task: Task, now: number): boolean {
  * write storm.
  *
  * **Read from `leaseDurationMs`, with `leaseUntil - updatedAt` as the fallback
- * for a row claimed before that field existed (BP-030).** The subtraction is
+ * for a row claimed before that field existed.** The subtraction is
  * exact only at the instant of the claim, which is what made storing the
  * number necessary: `setPriority`, `addLabel`, `removeLabel` and
  * `patchMetadata` are supported on an `in_progress` row and all move
@@ -1004,9 +1021,9 @@ export function isReady(
   return depsSatisfied(task, lookup);
 }
 
+// FIX-1005; FIX-2080; FIX-2133.
 /**
- * **The one admission predicate** — "should the claim path look at this row?"
- * (FIX-1005).
+ * **The one admission predicate** — "should the claim path look at this row?".
  *
  * Shared by all three producers that used to answer it independently: the
  * claim path, the board's wake probe (`task-board/shared.ts`), and the
@@ -1026,9 +1043,9 @@ export function isReady(
  * would make an ordinary task unrecoverable after its first attempt — the
  * feature off by default unless every caller opted into retries.
  *
- * A held row (FIX-2080) is never admitted, whichever board or claim order
+ * A held row is never admitted, whichever board or claim order
  * drains the collection: `held` is not `pending`, so it starts only once
- * something releases it. Nor is a row with an open hold (FIX-2133): a
+ * something releases it. Nor is a row with an open hold: a
  * question, a confirm, or a task run's stop for a person. A running row that
  * owes a turn on its same attempt (`owesTurn`: its last question answered,
  * or a steer no request took) is: the claim is that turn's start.
@@ -1048,9 +1065,10 @@ export function isClaimable(
   return depsSatisfied(task, lookup);
 }
 
+// FIX-1005.
 /**
  * What the claim write should do with a row {@link isClaimable} admitted
- * (FIX-1005) — evaluated **inside** the atomic write, against committed state.
+ * — evaluated **inside** the atomic write, against committed state.
  *
  * - `claim` — hand it out. The ordinary case, and every `pending` row.
  * - `settle-abandoned` — its worker died more times than the allowance
@@ -1069,7 +1087,8 @@ export function claimDisposition(
   return readAbandonments(task) < maxAbandonments ? "claim" : "settle-abandoned";
 }
 
-/** The error recorded on a row the substrate stopped recovering (FIX-1005). */
+// FIX-1005.
+/** The error recorded on a row the substrate stopped recovering. */
 function abandonmentExhaustedError(
   taskId: string,
   maxAbandonments: number
@@ -1086,10 +1105,11 @@ export function defaultOrder(a: Task, b: Task): number {
   return a.id.localeCompare(b.id);
 }
 
+// FIX-1005.
 /**
  * Default lease duration applied when the claim order does not pass one through.
  *
- * **Two minutes (FIX-1005).** Duplicate side effects are the expensive failure
+ * **Two minutes.** Duplicate side effects are the expensive failure
  * and slow recovery is the cheap one. At `RENEWAL_DIVISOR = 3` this puts
  * renewals 40 s apart and one missed renewal is survivable, so a worker has to
  * be unresponsive for roughly 80 s before it loses its row — which is the band
@@ -1102,8 +1122,9 @@ export function defaultOrder(a: Task, b: Task): number {
  */
 export const DEFAULT_LEASE_DURATION_MS = 120_000;
 
+// FIX-1005.
 /**
- * Floor on a caller-supplied lease (FIX-1005).
+ * Floor on a caller-supplied lease.
  *
  * The renewal cadence is derived from the lease (`span / RENEWAL_DIVISOR`), so
  * one minimum stated in the caller's own units subsumes a separate cadence
@@ -1111,8 +1132,9 @@ export const DEFAULT_LEASE_DURATION_MS = 120_000;
  */
 export const MIN_LEASE_DURATION_MS = 1_000;
 
+// FIX-1005.
 /**
- * Ceiling on a caller-supplied lease (FIX-1005), and it exists for the same
+ * Ceiling on a caller-supplied lease, and it exists for the same
  * reason the floor does.
  *
  * `setTimeout` coerces a delay past a 32-bit signed integer to **1 ms** (with a
@@ -1122,8 +1144,9 @@ export const MIN_LEASE_DURATION_MS = 1_000;
  */
 const MAX_LEASE_DURATION_MS = 2_147_483_647 * 3;
 
+// FIX-1005.
 /**
- * Refuse a lease duration outside its permissible domain (FIX-1005).
+ * Refuse a lease duration outside its permissible domain.
  *
  * **Throws rather than declining or normalizing**, reusing this repo's stated
  * posture for a numeric argument outside its domain (`RequestStore`'s
@@ -1156,8 +1179,9 @@ export function assertValidLeaseDuration(leaseDurationMs: number): void {
   }
 }
 
+// FIX-1005.
 /**
- * Refuse a renewal deadline outside its permissible domain (FIX-1005).
+ * Refuse a renewal deadline outside its permissible domain.
  *
  * Same posture as {@link assertValidLeaseDuration}, and deliberately the same
  * rule rather than a second convention: the claim seam validates a *duration*
@@ -1172,9 +1196,10 @@ export function assertValidLeaseDeadline(leaseUntil: number): void {
   }
 }
 
+// FIX-1668.
 /**
- * The guards a `linkRun` write runs under, and the refusal of an unfenced one
- * (FIX-1668). Shared so the two backings cannot drift.
+ * The guards a `linkRun` write runs under, and the refusal of an unfenced one.
+ * Shared so the two backings cannot drift.
  *
  * Renewal's guards exactly — `ifAllowed` forced on, so a settled row declines
  * `terminal` instead of throwing — minus `adoptLapsedLease`. That option is
@@ -1279,7 +1304,8 @@ export function reportsProgress(progress: { statusNote?: string; output?: unknow
   return progress.statusNote !== undefined || progress.output !== undefined;
 }
 
-/** The patch a progress report writes (FIX-2081): the note, and the output marked a checkpoint. */
+// FIX-2081.
+/** The patch a progress report writes: the note, and the output marked a checkpoint. */
 export function progressPatch(progress: { statusNote?: string; output?: unknown }): Partial<Task> {
   return {
     ...(progress.statusNote !== undefined ? { statusNote: progress.statusNote } : {}),
@@ -1287,8 +1313,9 @@ export function progressPatch(progress: { statusNote?: string; output?: unknown 
   };
 }
 
+// FIX-2081, D3.
 /**
- * The patch a completion writes (FIX-2081, D3): the latest checkpoint is the
+ * The patch a completion writes: the latest checkpoint is the
  * output, so the final result is written only when no checkpoint was ever
  * made. A failed attempt or a reclaim keeps the checkpoint.
  */
@@ -1302,9 +1329,10 @@ export function completionPatch(task: Task, output: unknown, completedAt: number
   };
 }
 
+// FIX-2081.
 /**
- * The patch a cancel writes. `via` is how it was made, when the caller says
- * (FIX-2081): server-set, never input.
+ * The patch a cancel writes. `via` is how it was made, when the caller says:
+ * server-set, never input.
  */
 export function cancelPatch(
   reason: string | undefined,
@@ -1332,9 +1360,10 @@ export function runLinkPatch(run: TaskRunLink): { run: TaskRunLink } {
   };
 }
 
+// FIX-1005; BP-030; FIX-989.
 /**
  * Apply a `claim` to a task — flip status, stamp lease, increment attempts,
- * and record where this attempt is running (FIX-1005).
+ * and record where this attempt is running.
  *
  * Note: `task.assignee` is the worker-registry key (set at task creation by
  * the user), not the runtime worker identity. `claim`'s `workerId` is for
@@ -1351,14 +1380,14 @@ export function runLinkPatch(run: TaskRunLink): { run: TaskRunLink } {
  * of the *incoming* task, so adding nothing leaves the previous attempt's
  * coordinate in place, now paired with a fresh attempt and a fresh lease. That
  * is worse than absent, because absent is a state readers are told to expect
- * and handle (BP-030) while a stale coordinate reads as current. Clearing with
+ * and handle while a stale coordinate reads as current. Clearing with
  * `undefined` is the same shape the claim-clear sites use.
  *
  * `startedAt` is the deliberate contrast a few lines down: it *does* inherit,
  * because it answers "when did work on this task first begin", which a
  * re-claim does not change.
  *
- * `incarnationId` (FIX-989) inherits too, and for the same kind of reason —
+ * `incarnationId` inherits too, and for the same kind of reason —
  * do not "fix" it to match this field. The two are scoped differently:
  * `claimedBy` belongs to one *attempt*, so every claim must re-establish or
  * clear it, while `incarnationId` identifies the *row* for its whole life and
@@ -1422,9 +1451,10 @@ export function applyClaimToTask<TInput, TOutput>(
   };
 }
 
+// FIX-1005.
 /**
- * The patch that settles a row whose abandonment allowance is spent
- * (FIX-1005), applied inside the same claim write that admitted it.
+ * The patch that settles a row whose abandonment allowance is spent,
+ * applied inside the same claim write that admitted it.
  *
  * `in_progress → errored` is already a legal transition, and clearing the
  * lease and the coordinate matches every other path that ends a claim.
@@ -1460,15 +1490,17 @@ export interface EndingRecording {
    * Runs after orchestration's own, and only its `metadata` is kept.
    */
   readonly recordEnding?: TaskEndingRecorder;
+  // FIX-2080 D2.
   /**
-   * Whether this ending owes a cascade (FIX-2080 D2), answered by the backing
+   * Whether this ending owes a cascade, answered by the backing
    * from the committed board inside the write: a failed or cancelled row with
    * an open dependent, or a task whose board pays the tasks it filed
    * (`cascadeFiled`). Omitted, no ending owes one.
    */
   readonly owesCascade?: (row: Task, ending: TaskEnding) => boolean;
+  // FIX-2078.
   /**
-   * The board hands rows out (FIX-2078): orchestration records the notice an
+   * The board hands rows out: orchestration records the notice an
    * ending owes its filer in the same write (`../notice/task-notice`).
    */
   readonly delivers?: boolean;
@@ -1478,24 +1510,27 @@ export interface EndingRecording {
   readonly causeSharesFiler?: (row: Task) => boolean;
 }
 
+// FIX-2080 D2.
 /**
- * How long after its ending a cascade falls due (FIX-2080 D2): the ending's
+ * How long after its ending a cascade falls due: the ending's
  * own pass pays it at once, and a touch of the board pays it once this has
  * passed, so a touch never races the pass that is still paying it.
  */
 export const CASCADE_DUE_MS = 2_000;
 
+// FIX-2080 D2; BP-030.
 /**
- * When the ending that owes `owed` was written (FIX-2080 D2): its own stamp,
+ * When the ending that owes `owed` was written: its own stamp,
  * or, on a debt that recorded only its due time, that time less
- * {@link CASCADE_DUE_MS} (BP-030).
+ * {@link CASCADE_DUE_MS}.
  */
 export function cascadeEndedAt(owed: NonNullable<Task["cascadeOwed"]>): number {
   return owed.endedAt ?? owed.due - CASCADE_DUE_MS;
 }
 
+// FIX-2080 D2.
 /**
- * Orchestration's cascade recorder (FIX-2080 D2): stamp the cascade owed,
+ * Orchestration's cascade recorder: stamp the cascade owed,
  * due {@link CASCADE_DUE_MS} after the write, on an ending that owes one.
  * Recorded in the ending's own write, so a crash between the ending and the
  * cascade leaves it owed, not lost.
@@ -1545,8 +1580,9 @@ function recordEnding<TInput, TOutput>(
   return applyEndingRecorder(recording?.recordEnding, noticed, ending);
 }
 
+// FIX-1816; FIX-1844.
 /**
- * Orchestration's resume recorder (FIX-1816): stamp the resume-owed marker
+ * Orchestration's resume recorder: stamp the resume-owed marker
  * when this write ends a waited-on row.
  *
  * Every way a waited-on row can end (its worker's result, a failure past its
@@ -1554,7 +1590,7 @@ function recordEnding<TInput, TOutput>(
  * abandonment settle) reaches it in the same write as the ending. A retried
  * failure re-pends the row, which is not an ending, and writes nothing.
  *
- * A row that owes its cancel (`Task.cancelOwed`, FIX-1844) has a wait that is
+ * A row that owes its cancel (`Task.cancelOwed`) has a wait that is
  * already over: its ending pays that debt and owes no resume, as no turn waits.
  */
 function recordResumeOwed<TInput, TOutput>(

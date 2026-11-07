@@ -1,5 +1,6 @@
+// FIX-999.
 /**
- * Deriving and adopting the session a dispatch runs in (FIX-999).
+ * Deriving and adopting the session a dispatch runs in.
  *
  * The seam's safety rule: a caller supplies the *target* of an operation and
  * never the *authority* for it. It hands over a routing seed and the seam builds
@@ -33,8 +34,9 @@ export type DerivationIdentity = {
   tenantId: string | undefined;
   /** The session dispatching the work — recorded on the run as its provenance. */
   parentSessionId: string;
+  // FIX-1068.
   /**
-   * The lineage the parent belongs to (FIX-1068).
+   * The lineage the parent belongs to.
    *
    * In the key material because a session id can be deleted and recreated: the
    * same id, same principal and same seed would otherwise derive the same run,
@@ -156,7 +158,8 @@ export type AdoptionVerdict =
   | { adoptable: true }
   | { adoptable: false; mismatch: AdoptionMismatch };
 
-/** `null` and `undefined` both mean "absent" on a persisted record (BP-030). */
+// BP-030.
+/** `null` and `undefined` both mean "absent" on a persisted record. */
 function sameOptional(a: string | undefined | null, b: string | undefined | null): boolean {
   const left = a == null ? undefined : a;
   const right = b == null ? undefined : b;

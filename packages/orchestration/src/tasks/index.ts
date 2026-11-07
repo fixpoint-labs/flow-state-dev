@@ -1,6 +1,7 @@
+// FIX-443 / FIX-444.
 /**
  * `@flow-state-dev/orchestration` — substrate package for task-shaped work
- * primitives (FIX-443 / FIX-444).
+ * primitives.
  *
  * Exports the Task schema, the uniform `TaskCollectionRef` API across
  * both backings (atomic state, resource collection), the standard

@@ -1,3 +1,4 @@
+// FIX-2082 D2.
 /**
  * The block that dispatches a claimed row instead of running a worker.
  *
@@ -50,7 +51,7 @@
  * dispatch that is no longer true of *this* request — the child starts its own
  * renewal from its own async chain.
  *
- * ## A plan board waits on the row it handed over (FIX-2082 D2)
+ * ## A plan board waits on the row it handed over
  *
  * With `wait`, the drain waits on the row after handing it over, through the
  * one wait every request waits with (`waitOnTask`), and goes on only once the
@@ -122,8 +123,9 @@ export interface RowDispatchOptions {
   address: TaskAssigneeAddress;
   /** The board's claim gate, bound onto this block for `defineFlow` to apply to the entry. */
   binding: TaskBinding;
+  // FIX-2082 D2.
   /**
-   * Wait on the row once it is handed over, until it ends (FIX-2082 D2): a
+   * Wait on the row once it is handed over, until it ends: a
    * plan board's dispatch. Needs `collection`, the board's ledger.
    */
   wait?: { collection: (ctx: BlockContext) => Promise<TaskCollectionRef> };

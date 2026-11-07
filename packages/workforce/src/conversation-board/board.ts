@@ -191,29 +191,33 @@ export interface ConversationBoardOptions {
    * hands over sends its notice back, as the task session's `filingFlow`.
    */
   flowKind: string;
+  // FIX-2082 D2.
   /**
    * Whether the worker flow takes tasks through its own `work` entry, the one
    * a conversation hands tasks to: then a step it files for itself may run in
-   * a new session of its own (`session: "new"`, FIX-2082 D2). Omitted, it
+   * a new session of its own (`session: "new"`). Omitted, it
    * can't, and such a step is refused.
    */
   takesOwnTasks?: () => boolean;
   /** The most tasks under one top task, read on every filing. Omitted, {@link DEFAULT_TASK_CHAIN_LIMIT}. */
   chainLimit?: () => number | undefined;
+  // FIX-2333.
   /**
-   * Whether a delegate's flow works in a project's files (FIX-2333): a task
+   * Whether a delegate's flow works in a project's files: a task
    * for it filed with no project to work in is refused `no_project` before
    * anything is reserved or written. Omitted, no flow needs one.
    */
   needsProject?: (flowKind: string) => boolean;
+  // FIX-2083.
   /**
    * How a session that routes messages files a routed task from its model's
-   * turn (FIX-2083): on a turn routing one, a filing whose result goes to the
+   * turn: on a turn routing one, a filing whose result goes to the
    * conversation is handed here, which attaches the message and files it.
    */
   routes?: RoutedFiling;
+  // FIX-2240.
   /**
-   * The messages the session sent that are still owed (FIX-2240): the pass's
+   * The messages the session sent that are still owed: the pass's
    * first half pays them, beside the plan ledger's debts, and its settle
    * keeps the next one's due time. `resources` are what the step reads.
    */
@@ -223,8 +227,9 @@ export interface ConversationBoardOptions {
   };
 }
 
+// FIX-2083.
 /**
- * The routing half of a coordinator's board (FIX-2083), supplied by the layer
+ * The routing half of a coordinator's board, supplied by the layer
  * that knows what a routed message is. The board files nothing for it: `file`
  * files the routed task itself, through {@link ConversationBoard.fileRouted}.
  */
@@ -266,8 +271,9 @@ function dependencyOrder<T extends { id: string; deps?: string[] }>(batch: reado
   return ordered;
 }
 
+// FIX-2083.
 /**
- * The workstream rule for a row's assignee (FIX-2083): a row naming a target
+ * The workstream rule for a row's assignee: a row naming a target
  * goes only to the worker whose record names it; a row naming none goes to
  * no worker that is only a workstream here.
  *
@@ -324,9 +330,10 @@ function rosterOf(delegates: TaskDelegates): AssigneeRoster {
   };
 }
 
+// FIX-2076 D1.
 /**
  * A turn's roster: the board's, plus the worker itself, whose filing is a step
- * it works next in the same request (FIX-2076 D1).
+ * it works next in the same request.
  */
 function withSelf(roster: AssigneeRoster, self: string): AssigneeRoster {
   return {
@@ -353,7 +360,8 @@ const stepNotHeld = (taskId: string) =>
     taskId
   );
 
-/** The refusal for a retry of a step (FIX-2383): only its worker's own turn runs a step, so a retry would start nothing. */
+// FIX-2383.
+/** The refusal for a retry of a step: only its worker's own turn runs a step, so a retry would start nothing. */
 const stepNotRetried = (taskId: string) =>
   new TaskWriteRefusedError(
     "step_cannot_be_retried",
@@ -362,7 +370,8 @@ const stepNotRetried = (taskId: string) =>
     taskId
   );
 
-/** The refusal for a wait on a step: it runs after the waiting turn, in its request (FIX-2082). */
+// FIX-2082.
+/** The refusal for a wait on a step: it runs after the waiting turn, in its request. */
 const stepCannotWait = (taskId: string) =>
   new TaskWriteRefusedError(
     "step_cannot_wait",
@@ -390,10 +399,11 @@ function taskSessionKey(taskId: string, worker: string): string {
   return `task:${JSON.stringify([taskId, worker])}`;
 }
 
+// FIX-2080, FIX-2083.
 /**
  * The `session` setting of the row the board is handing over, and the
- * workstream session its filing resolved, read off the row on its own board
- * (FIX-2080, FIX-2083): server-written at filing, never input.
+ * workstream session its filing resolved, read off the row on its own board:
+ * server-written at filing, never input.
  */
 async function sessionSettingOf(ctx: BlockContext, taskId: string): Promise<Pick<Task, "session" | "targetSessionId">> {
   const ref = await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
@@ -404,8 +414,9 @@ async function sessionSettingOf(ctx: BlockContext, taskId: string): Promise<Pick
   };
 }
 
+// FIX-2161.
 /**
- * The project a row filed here runs in (FIX-2161), as the stamp to write on
+ * The project a row filed here runs in, as the stamp to write on
  * the row and the address to write over a project its input names, so a
  * guess is not refused `other-project`: a follow-up's root row's project,
  * then the session's own, then the one the filing inherits (a held task's
@@ -422,9 +433,10 @@ async function filedProjectFor(ctx: BlockContext, root?: Task): Promise<{ stamp:
   return { stamp, own };
 }
 
+// FIX-2161.
 /**
- * The project a row filed before rows carried the stamp was filed in
- * (FIX-2161): its conversation's as it stood then, before a user could set
+ * The project a row filed before rows carried the stamp was filed in:
+ * its conversation's as it stood then, before a user could set
  * one (`workProjectId`), else the one its input names, which its session's
  * run read. `undefined` for none.
  */
@@ -435,12 +447,13 @@ function legacyProjectOf(state: unknown, row: Pick<Task, "input">): ProjectAddre
   return named.success ? named.data : undefined;
 }
 
+// FIX-2161; BP-030.
 /**
- * The project a task's session is handed (FIX-2161): the one its row was
+ * The project a task's session is handed: the one its row was
  * stamped with when it was filed, so a task waiting on the board keeps it
  * when its conversation's project changes; none for a row filed with none.
  * A row filed before rows carried the stamp is handed what it was handed
- * then, its conversation's project before a user could set one (BP-030).
+ * then, its conversation's project before a user could set one.
  * Not the project its input names, as `legacyProjectOf` falls back to: the
  * run reads that one itself, and the task's session may already exist,
  * created with this value in its readonly `filingProjectId`, so handing a
@@ -464,12 +477,13 @@ function claimOf(ctx: BlockContext): { assignee?: string; followUpOf?: string } 
   return onState ?? currentWorkerClaim(ctx);
 }
 
+// FIX-2080; FIX-2083; FIX-2111.
 /**
- * The session a row runs in, as the one-open-task rule keys it (FIX-2080):
+ * The session a row runs in, as the one-open-task rule keys it:
  * a task's own session (its root's, for a follow-up), or, filed `session:
  * "ongoing"`, the delegate's ongoing session for the conversation, or the
- * workstream session its filing resolved (FIX-2083). A follow-up's row
- * carries its root's setting, so it keys where its root ran (FIX-2111).
+ * workstream session its filing resolved. A follow-up's row
+ * carries its root's setting, so it keys where its root ran.
  */
 function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "session" | "targetSessionId">): string | undefined {
   if (task.assignee === undefined) return undefined;
@@ -479,17 +493,19 @@ function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "sessi
   return taskSessionKey(task.followUpOf ?? task.id, task.assignee);
 }
 
+// FIX-2383.
 /**
  * Whether the row holds its session: started and unfinished, a retry
  * waiting to run again included. A held row hasn't started, and a row a
- * user's retry reopened (FIX-2383) waits like a new one until it is claimed.
+ * user's retry reopened waits like a new one until it is claimed.
  */
 function holdsSession(task: Task): boolean {
   return !isTerminalStatus(task.status) && task.status !== "held" && task.retryPending !== true && hasStarted(task);
 }
 
+// FIX-1875 S6, FIX-2080.
 /**
- * The board's one test for "may start" (FIX-1875 S6, FIX-2080): the row names
+ * The board's one test for "may start": the row names
  * a delegate, and no other started, unfinished row holds the session it runs
  * in (one open task per session). Every start path reads it: the claim, the
  * drain's exit, and the wakes after a filing, an assign, an answer, a release
@@ -572,8 +588,9 @@ const startableOnly: ClaimOrder = {
   }
 };
 
+// FIX-2106.
 /**
- * At the claim, in the filer's own pass (FIX-2106): a row's filed hop count
+ * At the claim, in the filer's own pass: a row's filed hop count
  * (`FILED_HOP`) stands until a user's line in the filer's conversation. The
  * record keeps how many user's lines the filer's session had taken at the
  * filing; one more since, and the record is cleared, server-side, and the
@@ -588,8 +605,9 @@ async function keepFiledHopInChain(ctx: BlockContext, collection: TaskCollection
   return collection.get(task.id) ?? task;
 }
 
+// FIX-2238.
 /**
- * A row held before its first start (FIX-2238): its filed mark becomes a
+ * A row held before its first start: its filed mark becomes a
  * fresh chain, as {@link heldFromFiling}'s filing writes, keeping the filer's
  * user lines the mark counted. A started row's hold is midway, and keeps its
  * budget; a row with no mark runs at its session's count anyway.
@@ -601,7 +619,8 @@ async function freshenFiledHop(ctx: BlockContext, collection: TaskCollectionRef,
   await collection.patchMetadata(id, { [FILED_HOP]: { ...freshHopMark(ctx), lines: mark.lines } });
 }
 
-/** The filing session's worker, for a session the hand-over opens: where a message to it from there lands (FIX-2238). */
+// FIX-2238.
+/** The filing session's worker, for a session the hand-over opens: where a message to it from there lands. */
 function filingWorkerOf(state: unknown): Record<string, string> {
   const worker = (state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
   return typeof worker === "string" && worker.length > 0 ? { [FILING_WORKER_STATE_KEY]: worker } : {};
@@ -637,8 +656,9 @@ export async function wakeIfStartable(ctx: BlockContext, collection: TaskCollect
   if (hasStartable(collection)) await triggerPass(ctx, { touch: true });
 }
 
+// FIX-2078.
 /**
- * Owe the running session's pass a wake, due in seconds (FIX-2078): before a
+ * Owe the running session's pass a wake, due in seconds: before a
  * write that owes a start, so a crash after the write leaves the debt a due
  * time. A host that keeps no wakes has the fast path only. Never fails.
  */
@@ -791,9 +811,10 @@ function hasPastDue(rows: readonly Task[], now: number): boolean {
 /** The most rounds of drain and repair one pass runs. */
 const MAX_PASS_ROUNDS = 3;
 
+// FIX-2083.
 /**
  * How long a routed task waits before its board looks again at a session
- * another board's routed task holds (FIX-2083): that board, not this one,
+ * another board's routed task holds: that board, not this one,
  * hears the holder end.
  */
 const HELD_ELSEWHERE_RETRY_MS = 5_000;
@@ -823,10 +844,11 @@ const passStateOf = (ctx: BlockContext): PassState => (ctx.request.state ?? {}) 
  * the actions, and the ledger.
  */
 export function defineConversationBoard(options: ConversationBoardOptions) {
+  // FIX-2081.
   /**
    * Who a filing in the running session can name, read now: its delegates
    * that take a task (under `delegates: all`, the roster as it stands), in a
-   * task session as in a conversation (FIX-2081). Server-side only: the
+   * task session as in a conversation. Server-side only: the
    * delegate list is server-written state, never input. Not memoized across
    * calls, so a hire or a removal counts on the next one (D2).
    */
@@ -835,15 +857,17 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   /** The roster the task tools and actions check an assignee against: the delegates. */
   const roster: AssigneeRosterSource = async (ctx) => rosterOf(await reach(ctx));
 
+  // FIX-1802 D1.
   /**
-   * Whether the running session files for a delegate now (FIX-1802 D1): one
+   * Whether the running session files for a delegate now: one
    * of its delegates takes a task, read from its list as it stands. A worker
    * that works steps files them whatever its delegates (`turnFiles`).
    */
   const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).available.size > 0;
 
+  // FIX-2082 D2.
   /**
-   * The hand-over of a step filed `session: "new"` (FIX-2082 D2): to the
+   * The hand-over of a step filed `session: "new"`: to the
    * worker's own `work` entry, in a session keyed by the step and the worker,
    * born naming the worker, the conversation its steps are filed in, this
    * flow, the step, and its place in the chain, one board deeper. All
@@ -886,9 +910,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     stepAddress
   );
 
-  /** The flow's planning: its turns, wrapped so the steps they file run in their request (FIX-2076). */
+  // FIX-2076.
+  /** The flow's planning: its turns, wrapped so the steps they file run in their request. */
+  // FIX-2113.
   /**
-   * After a request worked its plan and answered (FIX-2113): the notices this
+   * After a request worked its plan and answered: the notices this
    * session turned away while that turn waited on its own step
    * (`anotherTurnWaitsOnItsPlan`) are sent now, past their backoff, by the
    * session's pass. After the task's check, so they run after this turn,
@@ -924,7 +950,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     return self === undefined ? base : withSelf(base, self);
   };
 
-  /** Whether a turn gets the task tools: it files for a delegate, or it works steps for itself (FIX-2076 D1). */
+  // FIX-2076 D1.
+  /** Whether a turn gets the task tools: it files for a delegate, or it works steps for itself. */
   const turnFiles = async (ctx: BlockContext): Promise<boolean> => stepper(ctx) !== undefined || (await files(ctx));
 
   // The hand-over: every row to `work` on its delegate's flow, in a task
@@ -1098,8 +1125,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // of itself (FIX-2076).
     const self = verifiedWorkerOf(ctx.session);
     const fromTaskSession = typeof ((ctx.session.state ?? {}) as Record<string, unknown>)[TASK_ID_STATE_KEY] === "string";
+    // FIX-2080.
     /**
-     * Every check a row passes before anything is written (FIX-2080): the
+     * Every check a row passes before anything is written: the
      * worker isn't its own delegate, a task's session asks for neither
      * conversation setting, and the board takes the settings asked for. A
      * batch runs these for every row before its first add, and passes its
@@ -1112,8 +1140,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       assertFilingSettings(init, CONVERSATION_BOARD_SETTINGS, ref.collectionId);
       assertFollowUpHasRun(init, (id) => filedWith?.get(id) ?? ref.get(id));
     };
+    // FIX-2083.
     /**
-     * A workstream's record (FIX-2083): a task naming a target names one of
+     * A workstream's record: a task naming a target names one of
      * the filer's records with it; a worker that is only a workstream here
      * takes no task without one. Then the target's session, resolved now and
      * written on the row, server-side. Read per filing, from the list as it
@@ -1150,10 +1179,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       }
       return { ...init, assignee, targetSessionId: resolved.sessionId };
     };
+    // FIX-2333.
     /**
      * A task for a delegate whose flow works in a project's files, filed with
      * no project to work in, is refused here, before anything is reserved or
-     * written (FIX-2333), so the app can ask for a project before a task
+     * written, so the app can ask for a project before a task
      * exists. A project is the filer's workstream; a `target`'s (a target
      * names a workstream a delegate leads, which `withTarget` has already
      * resolved, and a workstream is always in a project); the one the row
@@ -1183,8 +1213,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const soleDelegate = async (): Promise<string | undefined> => {
       return soleTaskDelegate(await options.delegates(ctx));
     };
+    // FIX-2083.
     /**
-     * A reassign (`setAssignee`) keeps the row's workstream rule (FIX-2083): a row naming a
+     * A reassign (`setAssignee`) keeps the row's workstream rule: a row naming a
      * target goes only to that target's lead, and a row naming none to no
      * worker that is only a workstream here.
      */
@@ -1194,9 +1225,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const { records } = await reach(ctx);
       assertTargetFits(records, assignee, row.target, "reassigned");
     };
+    // FIX-2129.
     /**
      * In a task session, refuse a filing once the task it would be a piece of
-     * is cancelled (FIX-2129), before anything is reserved or written.
+     * is cancelled, before anything is reserved or written.
      */
     const refuseUnderCancelledTask = async (): Promise<void> => {
       const owner = await pieceOwnerOf(ctx);
@@ -1428,9 +1460,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
   };
 
+  // FIX-2076.
   /**
-   * The board as the tools see it, with the session's plan ledger beside it
-   * (FIX-2076): a filing naming the worker itself goes on the plan ledger as a
+   * The board as the tools see it, with the session's plan ledger beside it:
+   * a filing naming the worker itself goes on the plan ledger as a
    * step, any other to the board; both are listed; a write by id goes to the
    * ledger holding the row. A step counts toward the chain's breadth as a
    * piece does, and adds no depth: it runs in this session.
@@ -1678,10 +1711,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
   };
 
+  // FIX-2076.
   /**
    * The board as `routesSelf`'s caller reaches it, after its touch: the
    * session's own board, guarded, with its steps beside it when the worker
-   * works steps (FIX-2076). `undefined` while the caller may file nothing.
+   * works steps. `undefined` while the caller may file nothing.
    */
   const reachBoard = async (ctx: BlockContext, routesSelf: boolean, touch = true): Promise<TaskCollectionRef | undefined> => {
     const partition = await filingSessionIdOf(ctx.session);
@@ -1711,7 +1745,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   /** The model's every tool call reaches the board here: the worker's own turn, which may file its steps. */
   const turnResolver: TaskCollectionResolver = (ctx) => reachBoard(ctx, true);
 
-  /** A read reaches the board here: an action's reach, with no touch (FIX-2286 D2). */
+  // FIX-2286 D2.
+  /** A read reaches the board here: an action's reach, with no touch. */
   const readResolver: TaskCollectionResolver = (ctx) => reachBoard(ctx, false, false);
 
   /** The repairs a pass runs before its drain, and again after (`payBoardDebts`). */
@@ -1875,9 +1910,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     }
   });
 
+  // FIX-2083.
   /**
-   * File a routed task on the running conversation's board, and start it
-   * (FIX-2083): the write under a coordinator's one filing step, for every
+   * File a routed task on the running conversation's board, and start it:
+   * the write under a coordinator's one filing step, for every
    * policy, every round and a judgment turn's filing. Not through the
    * caller-facing guard: its filer has checked it, its brief is server-written,
    * and it is in no chain. A wake lost after the add leaves the row startable
@@ -1925,16 +1961,18 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     board,
     roster,
     resolver,
+    // FIX-2076.
     /**
      * The board as the worker's own turn files through it: the model's task
-     * tools read it, and a step for itself goes on its plan ledger (FIX-2076).
+     * tools read it, and a step for itself goes on its plan ledger.
      * `resolver` is the actions', which file no step.
      */
     turnResolver,
     runBoard,
+    // FIX-2078.
     /**
-     * A block that runs the board's pass through its entry, one at a time
-     * (FIX-2078): for a door that wants the board run, never the pass inline.
+     * A block that runs the board's pass through its entry, one at a time:
+     * for a door that wants the board run, never the pass inline.
      */
     triggerPass: handler({
       name: "conversation-board-trigger-pass",
@@ -1948,18 +1986,19 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     fileRouted,
     files,
     tools,
+    // FIX-2076 D1, D2.
     /**
      * Wrap a turn (`{ message }` in, the answer out) so the steps it files for
-     * itself are worked in its request, then answered once more (FIX-2076 D1,
-     * D2). Wrap every turn the flow runs as the worker: its door, its task
+     * itself are worked in its request, then answered once more. Wrap every turn the flow runs as the worker: its door, its task
      * entry's turn and the turn `entries` wakes. A worker is offered its steps
      * only on a flow that wraps one.
      */
     planned: planning.planned,
     /** The task tools as public actions, `<tool>_tasks`. */
     actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster, { dispatches: true }),
+    // FIX-2286.
     /**
-     * The task list as a read, `listTasks_tasks` (FIX-2286): the action's rows,
+     * The task list as a read, `listTasks_tasks`: the action's rows,
      * stored nowhere. Spread into the flow's `reads` beside `actions`.
      */
     reads: taskToolReads(CONVERSATION_LEDGER_ID, readResolver),

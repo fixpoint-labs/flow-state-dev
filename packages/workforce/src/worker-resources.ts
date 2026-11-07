@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * The worker resource allowlist — a `WORKER.md`'s `resources:` key, from the
  * words an author writes to the narrowed resource map one worker is minted with.
@@ -19,8 +20,7 @@
  * input, so it *selects* from what the app declared and never *defines*
  * anything: every entry in the map built here is the app's own definition of
  * that document, or that definition with its two write flags turned off. A ref
- * that matches no declared document refuses rather than resolving to nothing
- * (BP-031).
+ * that matches no declared document refuses rather than resolving to nothing.
  */
 
 import type { DeclaredResources } from "@flow-state-dev/core";
@@ -106,6 +106,7 @@ const unmatchedWorkerResourceMessage = (ref: string): string =>
   `grants "${ref}", which is not a document this app declared. A grant selects from the ` +
   `documents passed to hireWorkforce as \`documents\`; it cannot declare one.`;
 
+// BP-031.
 /**
  * The wording for a ref that IS a declared document but is not one this worker's
  * worker flow was installed with.
@@ -114,7 +115,7 @@ const unmatchedWorkerResourceMessage = (ref: string): string =>
  * documented way to give a team's workers only its team's documents. A grant is
  * an allowlist over what the flow already holds, so a ref outside that slice
  * would WIDEN the worker past its own worker flow, on the say-so of a worker file. That is
- * the one direction a grant may never move (BP-031), so it refuses here rather
+ * the one direction a grant may never move, so it refuses here rather
  * than resolving to a document the app chose not to give this flow.
  */
 const workerResourceNotOnFlowMessage = (ref: string, flow: string): string =>

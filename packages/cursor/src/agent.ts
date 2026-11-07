@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * `cursorAgent` — handler block running Cursor's coding agent through the
  * Cursor SDK's local runtime.
@@ -10,7 +11,7 @@
  * Two things are configuration and never block input — the directory a run
  * writes in and the conversation it continues — because this block is exposed
  * to models as a tool through its capability, and a field on the input is a
- * field a model can set (BP-031). Both arrive through resolvers the host writes.
+ * field a model can set. Both arrive through resolvers the host writes.
  * The write side of the second one is `onSession`: the moment the SDK opens an
  * agent, the id goes to the host's durable state, BEFORE the prompt is sent. A
  * cancelled run returns no handle, so the hook is the only carrier that survives
@@ -124,6 +125,7 @@ const CURSOR_HARNESS = "cursor";
 
 /** Options for {@link cursorAgent}. */
 export interface CursorAgentOptions {
+  // BP-031.
   /**
    * Where the run works. Called once per invocation, before anything is
    * created, and its answer becomes the agent's `local.cwd`.
@@ -131,7 +133,7 @@ export interface CursorAgentOptions {
    * **A resolver, never a field on the block's input** — a correctness
    * constraint, not a style preference. The same block is a model-facing tool
    * through the capability, so a directory reachable from the input is one the
-   * model could choose (BP-031). Omit it and the SDK picks its own default,
+   * model could choose. Omit it and the SDK picks its own default,
    * which is almost never what a host wants.
    */
   cwd?: HarnessResolver<string>;
@@ -143,12 +145,13 @@ export interface CursorAgentOptions {
    * model resuming any conversation it has seen into the current checkout.
    */
   resume?: HarnessResolver<string | null | undefined>;
+  // LAB-152 §9.
   /**
    * The write side of {@link resume}: called once, with the agent id, the
    * moment the SDK opens one — and before the prompt is sent.
    *
    * This is the only carrier that survives a cancelled run. A throw returns no
-   * handle (LAB-152 §9) and a status item is transient by contract, so a host
+   * handle and a status item is transient by contract, so a host
    * whose deadline fired would otherwise have nothing to resume from. The hook
    * fires on a successful `create` / `resume` and on nothing else, which is why
    * a REFUSED resume never reaches it: the SDK throws instead of opening an
@@ -169,8 +172,9 @@ export interface CursorAgentOptions {
    * unanswered.
    */
   onSteerable?: HarnessSteerHook;
+  // FIX-2290.
   /**
-   * Called with each tool call the run starts (FIX-2290), so a host can say
+   * Called with each tool call the run starts, so a host can say
    * how the run is doing. Not awaited, and a throw is logged and swallowed.
    * Assistant text is not reported: Cursor streams it in pieces, and a piece
    * is not a line a person can read.
@@ -340,13 +344,14 @@ interface SettledRun {
   resultText: string | null;
 }
 
+// BP-031.
 /**
  * Refuse a forwarded option group carrying something the block owns.
  *
  * A runtime check rather than a type-level one because the types this package
  * declares for the two groups already omit these keys — so the only way one
  * arrives is a caller spreading an untyped bag, which is exactly the case a
- * type cannot catch and the case that matters (BP-031).
+ * type cannot catch and the case that matters.
  *
  * `agent.local.cwd` is nested. Checking the group as a flat bag would miss it,
  * and a host that put the directory there expecting it to be forwarded would
@@ -575,7 +580,8 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
   });
 }
 
-/** What a run has spent so far, and how to report it (FIX-2145, FIX-2288). */
+// FIX-2145, FIX-2288.
+/** What a run has spent so far, and how to report it. */
 interface RunSpent {
   usage: CursorRunUsage | null;
   /** The model the run uses: the configured one, then the one the stream names. */
@@ -655,6 +661,7 @@ function offerSteer(
   };
 }
 
+// BP-031.
 /**
  * Open (or resume) the agent, fire {@link CursorAgentOptions.onSession}, and
  * hand the live agent back. The prompt is not sent here — the hook must run
@@ -667,7 +674,7 @@ function offerSteer(
  * Neither is handed the run's input, and that is the contract's guarantee
  * rather than an omission here: the prompt is the one thing a model controls,
  * so a directory or a session id derived from it is a decision made from
- * caller-controllable input (BP-031). The resolver signature takes the
+ * caller-controllable input. The resolver signature takes the
  * context alone, which makes that unavailable rather than merely discouraged.
  */
 async function openAgent(args: {
@@ -888,6 +895,7 @@ async function mirrorRun(
   }
 }
 
+// LAB-152's contract.
 /**
  * Read the run's outcome from `run.wait()` — the sole authority.
  *
@@ -899,7 +907,7 @@ async function mirrorRun(
  * `supports("wait") === false` is the scripted-double escape and the one
  * honest answer when the SDK cannot settle: `outcome` stays `null` — "we do
  * not know how it ended" — rather than `failed`. A manager settles runs on
- * that difference (LAB-152's contract). Absent `supports` means every
+ * that difference. Absent `supports` means every
  * operation is assumed supported, which is what a scripted double that does
  * implement `wait` wants.
  *

@@ -1,5 +1,6 @@
+// FIX-2078 D1.
 /**
- * The request host's wake verb (FIX-2078 D1): how a running request owes, reads
+ * The request host's wake verb: how a running request owes, reads
  * and settles a debt's due time.
  *
  * A wake names a session, an internal entry, a due time and the owner the
@@ -217,9 +218,10 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
   };
 }
 
+// FIX-2166.
 /**
  * Bring a session's kept wakes forward to `now`, for a request in it the stale
- * sweep just marked interrupted (FIX-2166). What a pass held for that request
+ * sweep just marked interrupted. What a pass held for that request
  * while it ran is owed now that it never will end on its own, so the pass is
  * owed now rather than at its backoff. A wake's entry pays only what is due,
  * so a wake fired early costs one pass and moves itself on.

@@ -1,12 +1,13 @@
+// FIX-1816 BR-5; FIX-2082 D1.
 /**
  * Whether a durability sweeper that resumes waits at their deadline runs in
- * this process (FIX-1816 BR-5): a wait is offered only where one does, so no
+ * this process: a wait is offered only where one does, so no
  * request waits forever.
  *
  * Keyed on the durability provider: the runtime that parks a request and the
  * sweeper that resumes it share one provider object per host, even when the
  * router and a colocated worker hold different copies of the runtime config.
- * A wait's deadline itself is a wake (FIX-2082 D1), which the sweeper hears
+ * A wait's deadline itself is a wake, which the sweeper hears
  * through the wake store (`request-wakes.ts`).
  */
 import type { DurabilityProvider } from "./types";
@@ -27,9 +28,10 @@ export function registerWaitSweeper(provider: DurabilityProvider): () => void {
   };
 }
 
+// FIX-1816 BR-5.
 /**
  * Whether a durability sweeper that resumes waits is registered on `provider`
- * in this process: one runs, so a wait parked here is bounded (FIX-1816 BR-5).
+ * in this process: one runs, so a wait parked here is bounded.
  */
 export function hasWaitSweeper(provider: DurabilityProvider): boolean {
   return (sweepers.get(provider)?.size ?? 0) > 0;

@@ -177,9 +177,10 @@ export type SessionSummary = {
  * Session detail shape returned from session read/create endpoints.
  */
 export type SessionDetail = SessionSummary & {
+  // FIX-1442.
   /**
    * The organization this session is bound to. Always present on a session the
-   * server admitted (FIX-1442) — the server decides it from the verified
+   * server admitted — the server decides it from the verified
    * principal, and a client never sends one.
    */
   orgId: string;
@@ -228,13 +229,14 @@ export type SessionRequestSummary = {
   source?: string;
   status: RequestStatus;
   startedAtMs?: number;
+  // BP-030.
   /**
    * Where the turns this request read begin: the first past turn its history
    * window held, when earlier turns had fallen out of it. Draw a divider
    * before that request; the turns above it are out of the model's view (or,
    * on a flow with a history summary, in the summary). Absent when every
    * earlier turn was in the window, and on servers that predate the field.
-   * Guard with `== null` (BP-030).
+   * Guard with `== null`.
    */
   historyStart?: { requestId: string };
   completedAtMs?: number;
@@ -248,6 +250,7 @@ export type SessionRequestSummary = {
    * via the state endpoint. Present on responses that carry full records.
    */
   items?: OutputItem[];
+  // BP-030.
   /**
    * What the action came to, once the request has ended. See
    * {@link SessionRequestResult}.
@@ -255,7 +258,7 @@ export type SessionRequestSummary = {
    * Absent while the request runs or is suspended, and on `aborted` or
    * `interrupted` requests. Absent on a `completed`, `incomplete` or `failed`
    * request means no result was recorded (a server, or history, from before
-   * results were stored). Guard with `== null` (BP-030).
+   * results were stored). Guard with `== null`.
    */
   result?: SessionRequestResult;
   createdAt: number;
@@ -331,8 +334,9 @@ export type CollectionSnapshotEntry = {
    * included only when `client.state.read: true`.
    */
   prefetched?: CollectionSnapshotPrefetchedItem[];
+  // FIX-739.
   /**
-   * Per-topic live overlay (FIX-739). Populated client-side by
+   * Per-topic live overlay. Populated client-side by
    * `mergeResourceChangeIntoSnapshot` from `live: true` resource_change deltas
    * and read by `useResourceCollectionItem` as an overlay on the fetched
    * baseline. A created/updated entry carries `clientData`; a deleted entry is
@@ -343,12 +347,13 @@ export type CollectionSnapshotEntry = {
   live?: Record<string, { clientData?: unknown; deleted?: boolean }>;
 };
 
+// FIX-858.
 /**
  * One page of collection state returned by `GET /sessions/:id/resources/:ref`.
  * Cursor-paged: `nextCursor` is an opaque token present only when more rows
  * remain (its absence means the last page). Pass it back as `cursor` to fetch
  * the next page. Store-backed collections page by keyset; projected collections
- * (FIX-858) return the app store's own cursor.
+ * return the app store's own cursor.
  */
 export type CollectionListPage = {
   items: Array<{ topic: string; clientData?: unknown }>;
@@ -482,8 +487,9 @@ export type RequestSSECallbacks = {
   onContentAdded?: (event: ContentPartAddedEvent) => void;
   onContentDelta?: (event: ContentPartDeltaEvent) => void;
   onContentDone?: (event: ContentPartDoneEvent) => void;
+  // FIX-523.
   /**
-   * Fires for each chunk of streaming TTS audio (FIX-523). Live-only —
+   * Fires for each chunk of streaming TTS audio. Live-only —
    * these events are NOT delivered via `Last-Event-ID` resume; on
    * reconnect, the durable representation arrives as an
    * `OutputAudioContent` snapshot via `onContentAdded` / `onContentDone`.

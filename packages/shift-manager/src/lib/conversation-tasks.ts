@@ -1,8 +1,9 @@
+// FIX-2286.
 /**
  * The tasks a coordinator conversation filed, through the conversation's own
  * `listTasks` read: its board, and nobody else's. Each conversation keeps its
  * own board, so the read runs on the conversation's session. It is a read, not
- * an action (FIX-2286), so a panel polling it stores no request per look; a
+ * an action, so a panel polling it stores no request per look; a
  * refusal comes back as an `ActionRefused` carrying its reason.
  */
 import { ClientHttpError, topic, type Client, type WireTopic } from "@flow-state-dev/client";

@@ -339,7 +339,8 @@ function CoordinatorStream({
   );
 }
 
-/** The project's progress, worked out from its entries (BR-18, BR-19). */
+// BR-18, BR-19.
+/** The project's progress, worked out from its entries. */
 function Progress({ read }: { read: ProjectRead }) {
   const { progress } = read;
   const statuses = Object.entries(progress.byStatus);
@@ -396,10 +397,10 @@ function EntryList({ entries, route }: { entries: readonly WorkstreamEntry[]; ro
   );
 }
 
+// BR-12.
 /**
  * One entry's view. Its owner talks with its lead in its workstream session;
- * anyone else reads the entry and its latest report, and never its session
- * (BR-12).
+ * anyone else reads the entry and its latest report, and never its session.
  */
 function EntryView({
   snapshot,
@@ -478,7 +479,8 @@ function EntryView({
   return <EntryDetails address={address} entry={entry} leadName={leadName} readerSessionId={readerSessionId} back={back} />;
 }
 
-/** Another user's entry, as anyone who reads the project reads it (BR-12). */
+// BR-12.
+/** Another user's entry, as anyone who reads the project reads it. */
 function EntryDetails({
   address,
   entry,

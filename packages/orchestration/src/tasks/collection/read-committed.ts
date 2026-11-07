@@ -1,5 +1,6 @@
+// FIX-2086.
 /**
- * The one read of a task as stored now (FIX-2086).
+ * The one read of a task as stored now.
  *
  * A request's collection ref reads rows as the request first saw them, so a
  * steer another request wrote is invisible to `get`. The late-steer check and

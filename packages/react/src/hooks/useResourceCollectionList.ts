@@ -1,5 +1,6 @@
+// FIX-427.
 /**
- * Convenience hook around `useResourceCollection.list()` (FIX-427).
+ * Convenience hook around `useResourceCollection.list()`.
  *
  * Manages the React state lifecycle for a paginated list view: loading,
  * error, accumulated pages via `loadMore`, and refetching on mutations.
@@ -17,8 +18,9 @@ import { useReadFence } from "./useReadFence";
 /** One empty list for every render with nothing read, so derived memos hold steady. */
 const NO_ITEMS: never[] = [];
 
+// FIX-739.
 /**
- * Apply a `client.live` overlay (FIX-739) over a fetched/prefetched item list:
+ * Apply a `client.live` overlay over a fetched/prefetched item list:
  * override each item's `clientData` from its live entry, drop tombstoned
  * topics, and append live-created topics not in the fetched window (so a
  * mid-stream create surfaces without a refetch). Appended items land at the end
@@ -52,8 +54,9 @@ export function applyLiveOverlay<TClient = unknown>(
   return out;
 }
 
+// FIX-741.
 /**
- * `TClient` (FIX-741) is the collection's projected per-item client-data type;
+ * `TClient` is the collection's projected per-item client-data type;
  * pass it via the hook generic, e.g.
  * `useResourceCollectionList<ClientDataOf<typeof memos>>(...)`. Defaults to
  * `unknown` so existing untyped call sites are unchanged.

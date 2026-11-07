@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * `projectChecks()`: the commands that check a coding run's project, for a
  * host that opts in to running them.
@@ -11,7 +12,7 @@
  * Per run, it finds the run's project with the same reader `projectWorkspace()`
  * and `projectMcpTools()` use (`run-project.ts`), so the checks come from the
  * same read of stored, server-written data as the checkout, never a task's
- * payload or a prompt (BP-031). Read fresh on every call, so a list changed
+ * payload or a prompt. Read fresh on every call, so a list changed
  * between two attempts applies to the second.
  *
  * A run with no project, or one the lookup refuses, gets `[]`: the run source

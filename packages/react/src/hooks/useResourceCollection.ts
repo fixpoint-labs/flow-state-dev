@@ -1,5 +1,6 @@
+// FIX-427.
 /**
- * Hook for accessing a collection resource via paginated reads (FIX-427).
+ * Hook for accessing a collection resource via paginated reads.
  *
  * Snapshot exposes only `count` and an opt-in `prefetched` window. Use
  * `list()` / `get()` for on-demand reads, or one of the convenience hooks
@@ -43,10 +44,11 @@ export type CollectionListOptions = {
   topicPrefix?: string;
 };
 
+// FIX-741.
 /**
  * Return type for useResourceCollection.
  *
- * `TClient` (FIX-741) is the collection's projected per-item client-data type;
+ * `TClient` is the collection's projected per-item client-data type;
  * pass it via the hook generic, e.g.
  * `useResourceCollection<ClientDataOf<typeof memos>>(...)`. Defaults to `unknown`
  * so existing untyped call sites are unchanged.
@@ -70,8 +72,9 @@ export type UseResourceCollectionResult<TClient = unknown> = {
   prefetched: CollectionItemHandle<TClient>[] | undefined;
   /** Total item count from the snapshot, when the collection is client-visible. */
   count: number | undefined;
+  // FIX-739.
   /**
-   * Per-topic live overlay from the snapshot (FIX-739), populated for
+   * Per-topic live overlay from the snapshot, populated for
    * `client.live: true` collections. A created/updated entry carries
    * `clientData`; a deleted entry is a tombstone (`deleted: true`). The
    * convenience hooks apply this over their fetched items so list/item reads

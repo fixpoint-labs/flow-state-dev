@@ -1,3 +1,4 @@
+// FIX-1336.
 /**
  * Walking a block graph — every block reachable from a set of roots.
  *
@@ -7,12 +8,13 @@
  * function-valued `tools` slot returned, and `defineFlow` imports `generator`,
  * so neither can host it. Written once rather than per caller because a check that traverses
  * one level shallower than the walk it mirrors is invisible: it type-checks, it
- * runs, and it silently passes the case it was written to catch (FIX-1336).
+ * runs, and it silently passes the case it was written to catch.
  */
 import type { BlockDefinition } from "../types/block";
 
+// FIX-1074; FIX-1578.
 /**
- * A generator's **statically declared** tools, or nothing (FIX-1074).
+ * A generator's **statically declared** tools, or nothing.
  *
  * `tools` is a `ToolsSlot` — an array, or a function resolved per call with the
  * input and context in hand. Only the array is knowable at definition time, and
@@ -22,7 +24,7 @@ import type { BlockDefinition } from "../types/block";
  *
  * Read off `staticTools`, never `config.tools`: `generator()` rewrites
  * `config.tools` into one resolver whenever a `uses` capability contributes
- * tools, so the authored array is only reliably there (FIX-1578).
+ * tools, so the authored array is only reliably there.
  */
 function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
   return block.staticTools ?? [];

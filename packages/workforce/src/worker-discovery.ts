@@ -1,3 +1,4 @@
+// BR-11; BP-031.
 /**
  * What ONE worker's own file narrows the discovery door to.
  *
@@ -11,12 +12,12 @@
  * own reach.** A domain the scope does not carry is not added by a file naming
  * it, and there is nothing to filter past — the narrowing is an intersection
  * over the registry the app built, so a name the registry never held reaches no
- * source at all (BR-11).
+ * source at all.
  *
  * That is also why the narrowing happens HERE, on the registry, and not inside
  * the door. The door's `domain` argument is model-supplied; if the tool held
  * the wider list and filtered, a worker naming something out of scope would be
- * one bug away from reaching it (BP-031). A narrowed registry has nothing
+ * one bug away from reaching it. A narrowed registry has nothing
  * wider behind it.
  *
  * **This is not a second install door.** Which capability and resource modules
@@ -38,11 +39,12 @@ import { turnConfigOf } from "./workers/verified-worker";
  */
 export const WORKER_DISCOVER_KEY = "discover";
 
+// BR-10.
 /**
  * The domains this worker's file named, or `undefined` when it named none.
  *
  * `undefined` and `[]` are different answers and both are legal: a file with no
- * `discover:` key sees every domain its scope carries (BR-10), and a file
+ * `discover:` key sees every domain its scope carries, and a file
  * naming an empty list has asked to see none.
  *
  * Read defensively off an erased config bag — this runs on a block whose

@@ -41,13 +41,15 @@ export type ChildSessionSummary = {
   parentSessionId: string;
   createdAt: number;
   updatedAt: number;
+  // BP-030.
   /**
    * The flow instance that owns the child — the address to read it through
    * when it was dispatched into another instance. Absent on a child written
-   * before owners were recorded; guard with `== null` (BP-030).
+   * before owners were recorded; guard with `== null`.
    */
   flowId?: string;
-  /** Display-only label for what body of work this is; guard with `== null` (BP-030). */
+  // BP-030.
+  /** Display-only label for what body of work this is; guard with `== null`. */
   topic?: string;
   /** Display-only label for which worker within the work; same absence rule as `topic`. */
   coordinate?: string;

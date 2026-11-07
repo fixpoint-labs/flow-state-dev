@@ -1,7 +1,8 @@
+// FIX-569.
 /**
  * SSE streaming and transcription route handlers.
  *
- * Live tail is store-driven (FIX-569): `store.request.subscribeToEvents`
+ * Live tail is store-driven: `store.request.subscribeToEvents`
  * yields catch-up + live events for in-flight requests, regardless of which
  * instance is hosting the runner. The completed-request flat-string replay
  * branch is unchanged.
@@ -524,9 +525,10 @@ export function voiceErrorToHttpStatus(kind: VoiceErrorKind): number {
 /** A record status a request ends in for good: terminal, and not a suspension (which a resume continues). */
 const endsForGood = (status: RequestRecord["status"]): boolean => status !== "suspended" && isTerminalRequestStatus(status);
 
+// FIX-2077.
 /**
- * Whether a terminal record's run may still write its terminal event
- * (FIX-2077): a request that owed request-end hooks settles its record
+ * Whether a terminal record's run may still write its terminal event:
+ * a request that owed request-end hooks settles its record
  * (`completed`, `incomplete`, or `failed` on a hook's verdict) first, emits
  * its terminal status once they have run, and then stamps `finalizedAtMs`.
  * While that stamp is unset (`null`; absent on records from before it
@@ -550,9 +552,10 @@ async function terminalEventStillComing(stores: StoreRegistry, record: RequestRe
   return !(await stores.request.getEvents(record.id)).some(isTerminalRequestStreamEvent);
 }
 
+// FIX-2077.
 /**
  * The terminal event a replay ends with when its log holds none: the record's
- * own status (FIX-2077). Reached only when {@link terminalEventStillComing} is
+ * own status. Reached only when {@link terminalEventStillComing} is
  * false, so nothing more can be written that says otherwise. It takes the
  * log's last sequence number plus one, the rule for a synthetic terminal
  * (`streaming.md`): a client, which dedupes by sequence number, never drops it

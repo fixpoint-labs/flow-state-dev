@@ -129,7 +129,8 @@ export type ClaudeCodeSdkMessage =
       session_id?: string;
       /** On `init`: every MCP server the run connected to, or tried to. */
       mcp_servers?: Array<{ name: string; status?: string }>;
-      /** On `init`: the model the run uses, as Claude Code names it (FIX-2288). */
+      // FIX-2288.
+      /** On `init`: the model the run uses, as Claude Code names it. */
       model?: string;
       /** On `api_retry`: the failed call's retry attempt, its limit and the wait before it. */
       attempt?: number;
@@ -150,8 +151,9 @@ export type ClaudeCodeSdkMessage =
        */
       parent_tool_use_id?: string | null;
       message?: {
+        // FIX-2288.
         /**
-         * The model message's id (FIX-2288). A parallel tool call splits one
+         * The model message's id. A parallel tool call splits one
          * model message into several assistant messages that share it, each
          * repeating its `usage`.
          */
@@ -174,6 +176,7 @@ export type ClaudeCodeSdkMessage =
       type: "user";
       session_id?: string;
       parent_tool_use_id?: string | null;
+      // BP-030.
       /**
        * The tool's full structured Output object — a MESSAGE-level sibling of
        * the content blocks below, not a field on one. The two carry different
@@ -182,7 +185,7 @@ export type ClaudeCodeSdkMessage =
        * while this carries the declared Output (`filePath`, `structuredPatch`,
        * `task.id`, …). Optional and untyped on purpose — it is absent on older
        * messages and its shape is the vendor's, so every read of it is a
-       * tolerated probe rather than a contract (BP-030).
+       * tolerated probe rather than a contract.
        */
       tool_use_result?: unknown;
       message?: {

@@ -88,12 +88,13 @@ function getRequestResolverBag(ctx: BlockContext): Record<string, unknown> {
   return bag;
 }
 
+// FIX-1244.
 /**
  * One drain's flow state: the cache store, ledger and policy the drain
  * installed. It lives on the request's resolver bag, under the board's slot,
  * for exactly as long as that drain runs — setup writes it, the worker-step
  * resolver reads it, teardown removes it. It is NOT a closure-scoped bag on
- * the board definition (FIX-1244): two drains of one board can overlap in
+ * the board definition: two drains of one board can overlap in
  * one process — an answer's drain starting while the drain that parked the
  * task is still open on a hold board, or two answers arriving in two requests
  * on an exit board — and a shared bag would let the second's install take the
@@ -147,8 +148,9 @@ const workerClaimStore = new AsyncLocalStorage<ClaimSlot>();
 /** Opened before the ticket exists, same as the lease-renewal slot. */
 type ClaimSlot = { ticket?: TaskClaimTicket; task?: WorkerTask; request?: string };
 
+// FIX-2129.
 /**
- * Which task the running worker's request works (FIX-2129): its filing
+ * Which task the running worker's request works: its filing
  * identity, apart from the claim that is its authority to write the task's
  * result. A claim always carries one. A run admitted holding no claim (a task
  * cancelled while its run waited for a user, resumed to run to its end) still
@@ -464,9 +466,10 @@ export function currentWorkerClaim(ctx: WorkerClaimReader): TaskClaimTicket | un
   return slotInRequest(claimRequestKey(ctx))?.ticket;
 }
 
+// FIX-963.
 /**
- * Read the stamp identifying the drain currently installed for `name`
- * (FIX-963), or `undefined` when nothing has installed one.
+ * Read the stamp identifying the drain currently installed for `name`,
+ * or `undefined` when nothing has installed one.
  *
  * Both the recorders and the drain's tail read through this: the recorders
  * stamp a failure report with it, and the tail keeps only the reports carrying

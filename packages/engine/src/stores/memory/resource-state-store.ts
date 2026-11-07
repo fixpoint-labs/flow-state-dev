@@ -66,9 +66,10 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     return this.data.get(scopeType)?.get(scopeId);
   }
 
+  // FIX-1323 review.
   /**
    * Drop a bucket that has no rows left, so a process that keeps minting scope
-   * ids (a recreated session id purging its tombstones, FIX-1323 review) does
+   * ids (a recreated session id purging its tombstones) does
    * not retain one unreachable `Map` per id — retention the flat map it
    * replaced did not have. The `scopeType` parent is deliberately kept: it is a
    * closed three-value union, so it is bounded whatever happens.

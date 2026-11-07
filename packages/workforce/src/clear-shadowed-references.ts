@@ -1,3 +1,4 @@
+// BP-030.
 /**
  * The `references/` migration — find and clear the stored rows that shadow a
  * reference's file, for a document that was written while it still lived under
@@ -15,7 +16,7 @@
  * So for a tree that has ever been written to, moving the file does not make
  * the promise true. This does.
  *
- * **The old shape is tolerated, not assumed away** (BP-030). A row may be there
+ * **The old shape is tolerated, not assumed away**. A row may be there
  * or may not; both are ordinary. What this refuses to do is leave a present one
  * in place and say nothing.
  *

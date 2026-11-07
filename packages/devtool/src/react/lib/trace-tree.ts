@@ -4,10 +4,11 @@ import { parseBlockInstanceId } from "@flow-state-dev/core/internal";
 import type { DevtoolItem } from "./item-types";
 import type { RequestGroup } from "../components/workspace/stream-view";
 
+// FIX-643.
 /**
  * Extracts the `loopBack` generation from a deterministic blockInstanceId.
- * Steps re-executed after a `loopBack` jump carry a `loop[N]` path segment
- * (FIX-643); the generation is the last such segment (nearest enclosing loop).
+ * Steps re-executed after a `loopBack` jump carry a `loop[N]` path segment;
+ * the generation is the last such segment (nearest enclosing loop).
  * Returns undefined for first-pass / non-looped blocks (no `loop[N]` segment).
  */
 function loopGenerationFromInstanceId(instanceId: string): number | undefined {
@@ -50,9 +51,10 @@ export type TraceNode = {
    * from main-chain steps.
    */
   phase?: "main" | "sideChain";
+  // FIX-643.
   /**
-   * `loopBack` generation parsed from the block's `loop[N]` path segment
-   * (FIX-643). Undefined for first-pass / non-looped blocks. Internal — the
+   * `loopBack` generation parsed from the block's `loop[N]` path segment.
+   * Undefined for first-pass / non-looped blocks. Internal — the
    * display index is `iterationIndex`, set only when a labeled sibling exists.
    */
   loopGeneration?: number;
@@ -63,9 +65,10 @@ export type TraceNode = {
    * first pass of a loop reads `[iter 0]`.
    */
   iterationIndex?: number;
+  // FIX-865.
   /**
    * For `type: "item"` nodes, the underlying item. For `type: "divider"`
-   * nodes (FIX-865), the `continuation` or `suspension_resume` boundary item
+   * nodes, the `continuation` or `suspension_resume` boundary item
    * itself — the divider renders from its fields (e.g. `priorItemCount`,
    * `resolution`) rather than going through `getItemPreview`.
    */
@@ -368,9 +371,10 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
   });
 }
 
+// FIX-643.
 /**
  * Sets `iterationIndex` on same-name sibling block nodes when at least one of
- * them is a `loopBack` re-execution (FIX-643). The first pass has no `loop[N]`
+ * them is a `loopBack` re-execution. The first pass has no `loop[N]`
  * segment, so its generation reads as 0. Siblings that share a name but have no
  * looped member are left unlabeled.
  */

@@ -1,6 +1,6 @@
+// FIX-910; FIX-2131; FIX-2578; FIX-2210.
 /**
- * `goalSeekLoop` — a config-driven, judge-gated loop over a task board's drain
- * (FIX-910).
+ * `goalSeekLoop` — a config-driven, judge-gated loop over a task board's drain.
  *
  * Several built-in orchestration recipes are the same underlying loop: hand out
  * work, drain it, ask a judge "are we done?", and if not hand out more and
@@ -18,7 +18,7 @@
  *   loopBack(drainPass, when: decision !== "done") →
  *   emitTermination → projectBoard → [finalize?]
  *
- * A task waiting on a person (FIX-2131). A plan board's drain returns
+ * A task waiting on a person. A plan board's drain returns
  * `blocked` while a task waits on a person's answer: nobody is working it,
  * and only the answer moves it. The loop never judges that board: the judge
  * would rule on unfinished work, and on every later pass the same open
@@ -27,11 +27,11 @@
  * iteration spent, with the termination reason `"waiting-on-a-user"`. The
  * answer owes the task its next turn; run the loop again once it is answered,
  * and its drain takes that turn and the loop goes on. A task waiting on an
- * event outside the board (an external wait, FIX-2578) ends the pass the same
+ * event outside the board (an external wait) ends the pass the same
  * way, with `"waiting-on-an-event"` when no task waits on a person.
  *
  * An answer can land after the drain stops and before the loop reads the
- * board (FIX-2210). The question is closed then, but the task still owes the
+ * board. The question is closed then, but the task still owes the
  * turn the answer earned, and judging would rule on its partial work. So the
  * pass drains again while a task owes a turn and none waits on a person, at
  * most `maxIterations` times, and none of those drains counts as an iteration.
@@ -242,7 +242,8 @@ const goalSeekLoopStateSchema = z.object({
   goalSeekLoopDrainResult: z.unknown().nullable().default(null),
   /** Whether the last drain left a task waiting on a person: the pass ends without a judge. */
   goalSeekLoopWaiting: z.boolean().default(false),
-  /** Who the waiting task waits on (FIX-2578): a person, or only an event outside the board. `null` when none waits. */
+  // FIX-2578.
+  /** Who the waiting task waits on: a person, or only an event outside the board. `null` when none waits. */
   goalSeekLoopWaitingOn: z.enum(["user", "system"]).nullable().default(null),
   /** Whether the last drain left a task owing a turn, and none waiting on a person: the pass drains again. */
   goalSeekLoopOwed: z.boolean().default(false),

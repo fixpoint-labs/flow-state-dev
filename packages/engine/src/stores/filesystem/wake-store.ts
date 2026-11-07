@@ -1,5 +1,6 @@
+// FIX-2078 D1.
 /**
- * Filesystem-backed WakeStore (FIX-2078 D1): one JSON file per wake, at
+ * Filesystem-backed WakeStore: one JSON file per wake, at
  * rootDir/{encodeURIComponent(key)}.json.
  *
  * The filesystem store is development-only and single-process, so every

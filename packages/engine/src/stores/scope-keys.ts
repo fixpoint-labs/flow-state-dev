@@ -70,15 +70,17 @@ export interface IsolationFlow {
   id: string;
   isolateUserState: boolean;
   isolateOrgState: boolean;
+  // FIX-435.
   /**
-   * Flat resource declarations (FIX-435). Consulted by `resourceScopeIds`
+   * Flat resource declarations. Consulted by `resourceScopeIds`
    * to enumerate the per-resource isolation buckets in play for a scope.
    */
   resources?: Record<string, { scope?: string; flowIsolation?: boolean }>;
+  // FIX-1798.
   /**
    * The owner pin of an owner-pinned instance. Accepted and ignored: no key
    * reads it, since every user key takes the org as an argument. Removed with
-   * owner pins (FIX-1798).
+   * owner pins.
    */
   ownerPin?: InstanceOwnerPin;
 }
@@ -221,8 +223,9 @@ export function resolveOrgStorageKey(
     : encodeScopeKeyComponent(orgId);
 }
 
+// FIX-682.
 /**
- * Tenant-namespaced session storage key (FIX-682). Bare `sessionId` for
+ * Tenant-namespaced session storage key. Bare `sessionId` for
  * single-tenant requests (no tenant header, or an empty one); when a tenant is
  * present, `${tenantId}:${sessionId}`. Used for the session record key and the
  * session-scoped content / resource-state `scopeId`, so two tenants sharing a
@@ -243,8 +246,9 @@ export function resolveSessionStorageKey(
     : sessionId;
 }
 
+// FIX-682.
 /**
- * Inverse of {@link resolveSessionStorageKey} (FIX-682): recover the bare
+ * Inverse of {@link resolveSessionStorageKey}: recover the bare
  * session id from a tenant-namespaced storage key. Used to shape HTTP
  * responses so clients receive the id they passed in (the namespaced key is an
  * internal storage detail; surfacing it would make clients double-namespace on
@@ -259,8 +263,9 @@ export function toBareSessionId(
   return storageKey.startsWith(prefix) ? storageKey.slice(prefix.length) : storageKey;
 }
 
+// FIX-682.
 /**
- * Whether a stored record's tenant matches a request's tenant (FIX-682),
+ * Whether a stored record's tenant matches a request's tenant,
  * treating `undefined` and absent identically (single-tenant). The canonical
  * tenant-binding predicate: the `${tenantId}:${sessionId}` key is ambiguous
  * when the caller controls `sessionId`, so a key collision must never be acted
@@ -275,6 +280,7 @@ export function tenantMatches(
   return scopeValueMatches(recordTenantId, requestTenantId);
 }
 
+// BP-030.
 /**
  * The NULL-safe equality **every** scope-identity comparison uses: a record
  * that encodes "unbound" as `null` and one that omits the key are the same
@@ -283,7 +289,7 @@ export function tenantMatches(
  * The parameters admit `null` deliberately, even though `SessionRecord.orgId`
  * and `tenantId` are declared `string | undefined`. Persisted records reach
  * these predicates carrying either shape — a JSON round-trip through the
- * filesystem store, or any custom store that nulls absent keys (BP-030) — so
+ * filesystem store, or any custom store that nulls absent keys — so
  * the coalescing is load-bearing, not defensive noise. A signature that hid
  * the `null` would invite a later reader to delete the `??` as dead code.
  *
@@ -300,8 +306,9 @@ function scopeValueMatches(
   return (recordValue ?? undefined) === (filterValue ?? undefined);
 }
 
+// FIX-682.
 /**
- * Tenant list-filter predicate (FIX-682) with present-vs-absent semantics:
+ * Tenant list-filter predicate with present-vs-absent semantics:
  * - When the `tenantId` key is **absent** from `options`, every record passes
  *   (admin/debug "list everything" callers stay unfiltered).
  * - When the key is **present** (including an explicit `undefined`), the record
@@ -319,8 +326,9 @@ export function matchesTenantFilter(
   return scopeValueMatches(recordTenantId, options.tenantId);
 }
 
+// FIX-1010.
 /**
- * Org list-filter predicate (FIX-1010), with exactly the present-vs-absent
+ * Org list-filter predicate, with exactly the present-vs-absent
  * semantics of {@link matchesTenantFilter} — deliberately, because `orgId` is
  * optional on both session and request records and a plain equality test would
  * silently drop every unbound one.
@@ -339,8 +347,9 @@ export function matchesOrgFilter(
   return scopeValueMatches(recordOrgId, options.orgId);
 }
 
+// FIX-1009; BP-030.
 /**
- * Parentage list-filter predicate (FIX-1009). The canonical definition of the
+ * Parentage list-filter predicate. The canonical definition of the
  * three modes; the memory and filesystem session stores call it directly, and
  * the SQLite / Postgres adapters mirror it in their `WHERE` builders because
  * the filter has to be a SQL clause there.
@@ -353,7 +362,7 @@ export function matchesOrgFilter(
  *
  * The top-level test is `== null` rather than `=== undefined` so a record
  * persisted before `parentSessionId` existed, and one round-tripped through a
- * store that nulls absent keys, both read as top-level (BP-030).
+ * store that nulls absent keys, both read as top-level.
  */
 export function matchesParentageFilter(
   options: { parentage?: SessionParentage } | undefined,
@@ -382,10 +391,11 @@ export function matchesStateFilter(
   return true;
 }
 
+// FIX-435.
 /**
  * Effective isolation for a single resource: its own `flowIsolation` when
  * set, otherwise the scope's flow-level default. Resource-level declarations
- * always win (FIX-435), in both the opt-in and opt-out directions.
+ * always win, in both the opt-in and opt-out directions.
  */
 export function resolveResourceIsolation(
   resourceFlowIsolation: boolean | undefined,
@@ -485,9 +495,10 @@ export async function mergeScopeReads<T>(
   return Object.assign({}, ...results) as Record<string, T>;
 }
 
+// FIX-1068.
 /**
  * The lineage address of a session, applying the fallback for records written
- * before `SessionRecord.lineageId` existed (FIX-1068).
+ * before `SessionRecord.lineageId` existed.
  *
  * **The prefix is load-bearing, not decoration.** The fallback must never equal
  * the session storage key: the resource layer decides a storage scope by
@@ -535,10 +546,10 @@ export function isSameSession(earlier: SessionRecord, current: SessionRecord): b
   );
 }
 
+// BP-030.
 /**
  * The incarnation a request record answers to: its stored token, or, for a
- * record written before tokens were stamped, one derived from its `createdAt`
- * (BP-030).
+ * record written before tokens were stamped, one derived from its `createdAt`.
  *
  * The derived form is stable across reads of one record, and its `legacy_`
  * prefix is one no minted token (`inc_…`) takes, so a legacy record never

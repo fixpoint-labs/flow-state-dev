@@ -33,24 +33,27 @@ export type CreateLiveRequestStreamOptions = {
    * the heartbeat.
    */
   sseHeartbeatMs?: number;
+  // FIX-811.
   /**
    * Starting sequence number for this stream's emitter — the first event it
    * emits gets `startSequenceNumber + 1`. A same-request continuation
-   * (FIX-811) seeds this from the suspended request's last persisted sequence
+   * seeds this from the suspended request's last persisted sequence
    * so the re-entry's events continue the existing per-request log instead of
    * restarting at 1 (which would collide with the suspend-run events in stores
    * keyed by `(requestId, sequence_number)` and break SSE cursor continuity).
    */
   startSequenceNumber?: number;
+  // FIX-811.
   /**
    * Starting item index for this stream's emitter — re-entry items continue
    * after the prior persisted log instead of restarting at `0`. A same-request
-   * continuation (FIX-811) seeds this from the suspended request's last
+   * continuation seeds this from the suspended request's last
    * persisted item index so persistent stores that order by item index don't
    * interleave the resume items ahead of the pre-suspension history.
    */
   startItemIndex?: number;
-  /** Forwarded to the emitter: the record limit (FIX-1772). Absent → its 256 KiB default. */
+  // FIX-1772.
+  /** Forwarded to the emitter: the record limit. Absent → its 256 KiB default. */
   maxRecordedValueBytes?: number;
   /**
    * When `true`, forward every event (including trace-channel items like

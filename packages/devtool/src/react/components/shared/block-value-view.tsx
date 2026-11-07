@@ -1,5 +1,6 @@
+// FIX-413; FIX-556.
 /**
- * Visual renderer for `BlockValue` outputs (FIX-413). Every surface that
+ * Visual renderer for `BlockValue` outputs. Every surface that
  * shows a block's output — the inline trace tree, the right-pane block
  * detail, and the per-item detail view — routes through this component
  * so the kind discrimination (`inline` / `ref` / `structure` / `omitted`) is rendered
@@ -8,7 +9,7 @@
  * Refs resolve their `sourceItemId` against the trace context to display
  * the source block's *name*, not its raw item id, and dispatch the
  * existing `selectBlock` action when clicked so the user can jump-select
- * the producing block in the trace tree (FIX-556).
+ * the producing block in the trace tree.
  */
 import type { ItemLookup } from "@flow-state-dev/core/items";
 import type { BlockValueInternal } from "@flow-state-dev/core/internal";
@@ -33,8 +34,9 @@ export function isInternalBlockValue(v: unknown): v is BlockValueInternal<unknow
   return kind === "inline" || kind === "ref" || kind === "structure" || kind === "omitted";
 }
 
+// FIX-1772.
 /**
- * The one renderer for a value the record left out (FIX-1772): a block output
+ * The one renderer for a value the record left out: a block output
  * or a tool result over the server's record limit. Shows the size and the
  * preview the record kept, marked as omitted, so nobody reads the preview as
  * the whole value.

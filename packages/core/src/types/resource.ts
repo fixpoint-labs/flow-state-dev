@@ -47,11 +47,12 @@ export type CollectionClientContentConfig = ResourceClientContentConfig & {
   delete?: boolean;
 };
 
+// FIX-741.
 /**
  * A compute function that derives client-visible data from a resource's state.
  * Analogous to scope-level clientData, but scoped to the resource.
  *
- * Note (FIX-741): `ClientDataOf` recovers the `data` branch's precise output type
+ * Note: `ClientDataOf` recovers the `data` branch's precise output type
  * from the function's *return type*. Declared here as `JsonValue`, so an inline
  * `data: (state): MyShape => ({...})` (return annotated, or a literal body)
  * threads `MyShape`, but a function pre-assigned to `ResourceClientDataFn<...>`
@@ -198,9 +199,10 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    * See FIX-435 conflict-detection rules for collisions across flows.
    */
   flowIsolation?: boolean;
+  // FIX-1068.
   /**
    * Give this session-scoped resource ONE identity across the whole session
-   * lineage (FIX-1068), so a session and every background child session it
+   * lineage, so a session and every background child session it
    * dispatches — and every child those children dispatch — read and write
    * the same resource through the ordinary resource API.
    *
@@ -275,9 +277,10 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   writable?: boolean;
   allowedExtensions?: string[];
   metadata?: Record<string, unknown>;
+  // FIX-688.
   /**
-   * When this resource's state/content is loaded relative to a request
-   * (FIX-688). `'eager'` (default when omitted) loads it up front when the
+   * When this resource's state/content is loaded relative to a request.
+   * `'eager'` (default when omitted) loads it up front when the
    * scope's resource registry is constructed. `'lazy'` defers loading until
    * first access. Lazy single resources are only valid when declared on the
    * specific block that needs them — a per-block load trigger; declaring a
@@ -286,8 +289,9 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   prefetchMode?: "eager" | "lazy";
   /** Client visibility configuration. Omit to keep the resource invisible to clients. */
   client?: ResourceClientConfig<TState>;
+  // FIX-751, FIX-843.
   /**
-   * Bind blocks to this resource's mutations (FIX-751, FIX-843). Each present
+   * Bind blocks to this resource's mutations. Each present
    * entry names a block — bare, or `{ block, when }` with an optional gate —
    * that the server dispatcher runs when that mutation fires. The state kinds
    * (`created` / `stateUpdated` / `deleted`) get a `ResourceChange` payload;
@@ -350,11 +354,12 @@ export type ResourceContext<TState extends JsonObject = JsonObject> = {
   edges?: ResourceEdgeApi;
 };
 
+// FIX-741.
 /**
  * Branded definition returned by `defineResource()`. Carries the resolved
  * state type and intrinsic scope/flowIsolation stamps used by the framework
  * to derive storage keys and detect cross-flow collisions. `ClientType`
- * (FIX-741) is the projected client-data shape derived from the `client` config
+ * is the projected client-data shape derived from the `client` config
  * — a pure type-level brand (runtime `clientData` stays `JsonValue`). Extract it
  * with `ClientDataOf<typeof resource>`.
  */
@@ -367,9 +372,10 @@ export type DefinedResource<
   ClientType: TClient;
 };
 
+// FIX-741.
 /**
  * Extracts the projected client-data output type from a defined resource or
- * collection (FIX-741). Resolves to the `client` projection's shape —
+ * collection. Resolves to the `client` projection's shape —
  * `Pick`/`Omit`/computed-return/identity — so consumers derive the client type
  * from the definition instead of hand-mirroring it. `never` for anything that
  * isn't a defined resource/collection.
@@ -387,11 +393,12 @@ export type MessageLike = {
 };
 
 export interface ResourceRef<TState extends JsonObject = JsonObject> {
+  // FIX-591.
   /**
    * Canonical within-scope storage path for this resource — what state and
    * content are persisted under. Equal to the accessor key for normal single
    * resources, the path-derived key (e.g. `"memos/p1/foo"`) for collection
-   * instances, and the canonicalized key for dual-registered aliases (FIX-591).
+   * instances, and the canonicalized key for dual-registered aliases.
    * Not necessarily the accessor name used to look up the handle.
    */
   path: string;

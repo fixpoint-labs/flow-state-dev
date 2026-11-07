@@ -12,7 +12,8 @@
 export interface SequencerCheckpoint {
   /** Request whose execution produced this checkpoint. */
   requestId: string;
-  /** Deterministic block instance id (FIX-398). Stable across retries/resumes. */
+  // FIX-398.
+  /** Deterministic block instance id. Stable across retries/resumes. */
   blockInstanceId: string;
   /** Parent sequencer's instance id when this is a nested sequencer; `null` at the root. */
   parentBlockInstanceId: string | null;
@@ -20,11 +21,12 @@ export interface SequencerCheckpoint {
   stepIndex: number;
   /** Sequencer state at this boundary; validated against the sequencer's `stateSchema` at write time. */
   state: unknown;
+  // FIX-2444.
   /**
    * The wait this was written at, when written as a suspension passed through
    * the sequencer: `state` then holds the waiting step's writes before that
    * wait, and a resume settles the re-run's state to it when the re-run
-   * reaches that same wait (FIX-2444). Absent on a step-boundary checkpoint,
+   * reaches that same wait. Absent on a step-boundary checkpoint,
    * and on one written before this field existed: a resume then leaves the
    * waiting step's re-run writes as they are.
    */

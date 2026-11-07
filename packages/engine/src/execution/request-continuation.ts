@@ -1,5 +1,6 @@
+// FIX-811.
 /**
- * Same-request suspend/resume continuation (FIX-811).
+ * Same-request suspend/resume continuation.
  *
  * `continueRequest` re-enters a suspended/interrupted request under its OWN id
  * — no new request is created. It rebuilds a live SSE stream and the

@@ -1,5 +1,6 @@
+// FIX-2534, epic ER-5.
 /**
- * Subscribing and ending a subscription (FIX-2534, epic ER-5): the one
+ * Subscribing and ending a subscription: the one
  * `subscribe` and the one `unsubscribe` everything that writes a subscription
  * goes through. The two tools call them; so does a task's ending, and a
  * thread's closing.

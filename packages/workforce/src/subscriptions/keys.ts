@@ -1,5 +1,6 @@
+// FIX-2534.
 /**
- * Subscriptions' pinned names (FIX-2534): where the rows live, the tools, and
+ * Subscriptions' pinned names: where the rows live, the tools, and
  * the service flow's two entries. A leaf module.
  */
 

@@ -1,3 +1,4 @@
+// FIX-1481.
 /**
  * Renders the privileged debug resource tree.
  *
@@ -9,7 +10,7 @@
  *
  * A row whose resource cannot be written at all carries a read-only mark
  * beside its scope badge, and both permission settings are in the row's
- * detail (FIX-1481). See {@link ReadOnlyBadge} for what the mark means and
+ * detail. See {@link ReadOnlyBadge} for what the mark means and
  * {@link PermissionsLine} for the question it deliberately does not answer.
  */
 import { useEffect, useState } from "react";

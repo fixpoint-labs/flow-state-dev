@@ -39,6 +39,7 @@ export type {
 // Internal Blocks
 // ---------------------------------------------------------------------------
 
+// BP-012 / BP-014.
 /**
  * Extracts userInput and response from the `.sideChain()` input.
  *
@@ -47,7 +48,7 @@ export type {
  * `.sideChain()` should map the pipeline value to this shape.
  *
  * Stores the captured context in sequencer state for downstream blocks.
- * Wired as `.tap()` — state-only, no echoed output (BP-012 / BP-014).
+ * Wired as `.tap()` — state-only, no echoed output.
  *
  * @remarks Compose this with `.tap(captureContext)`, never `.step(captureContext)`.
  * It returns nothing, so as a `.step()` it hands `undefined` to the next step.

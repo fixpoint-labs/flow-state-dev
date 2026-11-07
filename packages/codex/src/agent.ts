@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * `codexAgent` — handler block running OpenAI's Codex agent through the Codex
  * SDK, which spawns `codex exec --experimental-json` and streams its JSONL back.
@@ -9,7 +10,7 @@
  * Two things are configuration and never block input — the directory a run
  * writes in and the conversation it continues — because this block is exposed
  * to models as a tool through its capability, and a field on the input is a
- * field a model can set (BP-031). Both arrive through resolvers the host writes.
+ * field a model can set. Both arrive through resolvers the host writes.
  * The write side of the second one is `onSession`: the moment the stream names
  * the thread, the id goes to the host's durable state, BEFORE anything that
  * could throw. A cancelled run returns no handle, so the hook is the only
@@ -85,6 +86,7 @@ const CODEX_HARNESS = "codex";
 
 /** Options for {@link codexAgent}. */
 export interface CodexAgentOptions {
+  // BP-031.
   /**
    * Where the run works. Called once per invocation, before anything is
    * spawned, and its answer becomes the thread's `workingDirectory`.
@@ -92,7 +94,7 @@ export interface CodexAgentOptions {
    * **A resolver, never a field on the block's input** — a correctness
    * constraint, not a style preference. The same block is a model-facing tool
    * through the capability, so a directory reachable from the input is one the
-   * model could choose (BP-031). Omit it and the run works in the host
+   * model could choose. Omit it and the run works in the host
    * process's own directory, which is almost never what a host wants.
    */
   cwd?: HarnessResolver<string>;
@@ -104,21 +106,23 @@ export interface CodexAgentOptions {
    * model resuming any conversation it has seen into the current checkout.
    */
   resume?: HarnessResolver<string | null | undefined>;
+  // LAB-152 §9.
   /**
    * The write side of {@link resume}: called once, with the thread id, the
    * moment the stream names it — and before any turn work is consumed.
    *
    * This is the only carrier that survives a cancelled run. A throw returns no
-   * handle (LAB-152 §9) and a status item is transient by contract, so a host
+   * handle and a status item is transient by contract, so a host
    * whose deadline fired would otherwise have nothing to resume from. The hook
    * fires on an actual `thread.started` event and on nothing else, which is why
    * a REFUSED resume never reaches it: the CLI names no thread in that case, so
    * no dead id is ever written back over a good one.
    */
   onSession?: HarnessSessionHook;
+  // FIX-2290.
   /**
-   * Called with each assistant message and each tool call the run starts
-   * (FIX-2290), so a host can say how the run is doing. Not awaited, and a
+   * Called with each assistant message and each tool call the run starts,
+   * so a host can say how the run is doing. Not awaited, and a
    * throw is logged and swallowed.
    */
   onActivity?: HarnessActivityHook;
@@ -190,13 +194,14 @@ interface InternalTestSeams {
 const REFUSED_THREAD_KEYS = ["workingDirectory", "signal"] as const;
 const REFUSED_CLIENT_KEYS = ["signal"] as const;
 
+// BP-031.
 /**
  * Refuse a forwarded option group carrying something the block owns.
  *
  * A runtime check rather than a type-level one because the types this package
  * declares for the two groups already omit these keys — so the only way one
  * arrives is a caller spreading an untyped bag, which is exactly the case a
- * type cannot catch and the case that matters (BP-031).
+ * type cannot catch and the case that matters.
  */
 function assertNoOwnedKeys(
   group: Record<string, unknown> | undefined,

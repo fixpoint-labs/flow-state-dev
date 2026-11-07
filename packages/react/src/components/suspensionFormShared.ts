@@ -1,5 +1,6 @@
+// FIX-849.
 /**
- * Shared markup helpers for the bounded default HITL renderers (FIX-849).
+ * Shared markup helpers for the bounded default HITL renderers.
  *
  * `QuestionRenderer`, `SelectionRenderer`, and `SchemaFormRenderer` differ only
  * in their input control; the receipt, error line, and submit/skip footer are

@@ -46,9 +46,10 @@ export const LLM_AUDIENCE_TYPES = new Set([
   "tool_output"
 ]);
 
+// FIX-1772.
 /**
- * The one line a later turn sees for a tool result the record left out
- * (FIX-1772): the tool and the size, never the placeholder object, so the model
+ * The one line a later turn sees for a tool result the record left out:
+ * the tool and the size, never the placeholder object, so the model
  * doesn't mistake a preview for the result.
  */
 function omittedToolResultText(toolName: string, bytes: number | null): string {
@@ -56,6 +57,7 @@ function omittedToolResultText(toolName: string, bytes: number | null): string {
   return `[The result of ${toolName} (${size}) was too large to keep in the conversation history.]`;
 }
 
+// FIX-413.
 /**
  * Converts a persisted OutputItem into an LLM-ready message.
  *
@@ -64,7 +66,7 @@ function omittedToolResultText(toolName: string, bytes: number | null): string {
  * conversation messages (status, state_change, resource_change, etc.).
  *
  * `allItems` is used to resolve `block_output` BlockValue refs back to their
- * source items (FIX-413); pass the same list you're iterating over.
+ * source items; pass the same list you're iterating over.
  */
 export function itemToLLMMessages(item: RuntimeItem, allItems: readonly RuntimeItem[]): LLMMessage[] {
   if (!resolveItemVisibility(item).history) {

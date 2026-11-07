@@ -50,12 +50,13 @@ export function flowTakes(installation: WorkerInstallation, flowKind: string): D
  * @param installation The worker installation the session's worker runs on.
  */
 export function createDelegateCheck(installation: WorkerInstallation) {
+  // FIX-1794, FIX-2083.
   /**
    * Check `workerId` for `use`.
    *
    * @param ctx A block context that declares the installation's resources.
    * @param use `add` for a change to the list; `task` for a filing, a routed
-   *   message or a task's hand-over (FIX-1794, FIX-2083).
+   *   message or a task's hand-over.
    */
   return async (ctx: WorkerTurnContext, workerId: string, use: "add" | "task"): Promise<DelegateCheck> => {
     const worker = await installation.rosterWorker(ctx, workerId);

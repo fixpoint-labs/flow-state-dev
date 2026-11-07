@@ -1,5 +1,6 @@
+// FIX-2345.
 /**
- * A task's ending as the filer's model reads it (FIX-2345): a `getTask` call
+ * A task's ending as the filer's model reads it: a `getTask` call
  * and its result for that task, never a user turn.
  *
  * A turn a notice wakes (`./task-settled`), and a user's turn answering again

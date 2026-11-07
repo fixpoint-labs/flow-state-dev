@@ -385,8 +385,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       `defineCoordinatorFlow: roundDeadlineMs must be a positive whole number of milliseconds, not ${deadlineMs}.`
     );
   }
+  // FIX-1802.
   /**
-   * The conversation's board and delegates (FIX-1802): the one delegate
+   * The conversation's board and delegates: the one delegate
    * check, the four delegate actions and tools, the eight task tools and
    * actions over its board.
    */
@@ -435,7 +436,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // turn's filing on a turn routing a message.
   // -------------------------------------------------------------------------
 
-  /** The open rounds, as saved. A round saved with the retired `ended` field reads without it (BP-030). */
+  // BP-030.
+  /** The open rounds, as saved. A round saved with the retired `ended` field reads without it. */
   const roundsIn = (state: Readonly<Record<string, unknown>>) =>
     (state[ROUNDS_STATE] as Array<OpenRound & { ended?: unknown }>).map(({ ended: _ended, ...open }): OpenRound => open);
 
@@ -511,8 +513,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     roundTimers.set(key, timer);
   };
 
+  // FIX-2083.
   /**
-   * The one filing step (FIX-2083): hand the message to one delegate record by
+   * The one filing step: hand the message to one delegate record by
    * filing a routed task on this conversation's board, and start it. The id is
    * derived from the message, the round and the record, so a delegate already
    * handed this message in this round files nothing. In a round below the
@@ -783,8 +786,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     return deliveryOf(post, record, checked.worker.flow);
   };
 
+  // FIX-2083.
   /**
-   * The judgment turn's filing on a turn routing a message (FIX-2083): a
+   * The judgment turn's filing on a turn routing a message: a
    * `createTask` whose result goes to this conversation, handed here by the
    * board. The message comes from this request's state, never from the
    * model, which names the delegate and says what it wants of it. Filed by the
@@ -1662,6 +1666,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     .step(routedEnded)
     .tapIf(hasRouteOns, sendOn);
 
+  // FIX-2115; FIX-2122.
   /**
    * How this conversation hears a task it filed end: its coordinator's turn
    * under any routing that runs that turn, so the turn can file a failed task
@@ -1671,8 +1676,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * goes to this conversation (a routed task) is {@link onRoutedEnded}'s,
    * under every routing: its answer, and a routed round's failure or cancel;
    * a failure of one this turn filed (`filedByTurn`) also lands as a line and
-   * wakes the turn, after that (FIX-2115). The failure or cancel of one with no routed brief (a routed task's
-   * follow-up, FIX-2122) is in no round, and is heard as a filed task's is.
+   * wakes the turn, after that. The failure or cancel of one with no routed brief (a routed task's
+   * follow-up) is in no round, and is heard as a filed task's is.
    */
   const boardEntries = sessionBoard.entries(
     turn.run,

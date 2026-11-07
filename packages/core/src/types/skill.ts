@@ -1,5 +1,6 @@
+// FIX-378.
 /**
- * Skill type contracts for the Skills System (FIX-378).
+ * Skill type contracts for the Skills System.
  *
  * Skills are user-modifiable folders (SKILL.md + supporting files) stored as
  * resources, invoked by the agent via a `runSkill(name, input?)` tool. The
@@ -60,9 +61,10 @@ export interface SkillState {
   /** Optional spec `metadata`: a string → string map for client-defined properties. */
   metadata?: Record<string, string>;
 
+  // FIX-1451.
   /**
    * From `allowed-tools`. The tools the skill is written around. **It never
-   * widens access, and it decides nothing** (FIX-1451). It registers nothing:
+   * widens access, and it decides nothing**. It registers nothing:
    * `createSkillsLibrary` validates these names against the catalog and then
    * contributes the *whole* catalog, or, under `registerCatalogTools: false`,
    * contributes none of it. Either way this subset is not the unit. What the
@@ -84,8 +86,9 @@ export interface SkillState {
   /** Optional Claude `argument-hint`. Surfaced in tool description; not validated at runtime. */
   argumentHint?: string;
 
+  // FIX-421.
   /**
-   * Optional `keywords` array (FIX-421). Lowercase tokens that the up-front
+   * Optional `keywords` array. Lowercase tokens that the up-front
    * intent classifier's tier-2 keyword scan matches against the user message.
    * Skills without any keywords skip tier-2 and become eligible only via
    * tier-3 LLM classification.

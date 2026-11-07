@@ -1,8 +1,9 @@
+// FIX-2145.
 /**
  * How much of each coding harness's subscription the user has used: the Lab's
  * one `harnessUsage` query, read on the flow that answers it. And how many
  * tokens each of the user's workers used over a period: the `workerUsage`
- * query, on the same flow (FIX-2145).
+ * query, on the same flow.
  *
  * Opening Usage asks for a fresh reading (`refresh: true`). The Lab asks a
  * harness at most once a minute, so a view that re-renders or re-reads costs

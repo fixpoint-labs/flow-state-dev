@@ -386,10 +386,11 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     }
   }
   const leadFlowNames = new Set(options.leadFlows.map((flow) => flow.kind));
+  // BR-42.
   /**
    * Why a worker on the caller's roster can't lead, or `undefined` when it
    * can: it runs on a lead flow, and it lists delegates, since a lead runs its
-   * workstream through them (BR-42).
+   * workstream through them.
    */
   const leadProblem = (worker: RosterWorker): string | undefined => {
     if (worker.problem !== undefined) return `can't lead a workstream: ${worker.problem}`;

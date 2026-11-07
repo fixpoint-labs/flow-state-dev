@@ -132,15 +132,16 @@ export interface TaskSettledOptions {
   readonly turn: BlockDefinition<any, any>;
   /** Whether the running conversation's coordinator has a turn that reads a notice, or hears it as a line only. */
   readonly policy: (ctx: BlockContext) => NoticePolicy;
+  // FIX-2083; FIX-2122; FIX-2115.
   /**
    * A conversation-result task's completion, and a routed round's failure or
    * cancel, acted on once like any notice, and handed here instead of a line
    * ({@link RoutedEnding}): a coordinator's routing lands the answer and feeds
-   * its rounds (FIX-2083). A failure or cancel of a row with no routed brief
-   * (a routed task's follow-up, FIX-2122) is in no round, and is never handed
+   * its rounds. A failure or cancel of a row with no routed brief
+   * (a routed task's follow-up) is in no round, and is never handed
    * here: it is heard as any task's the conversation filed. A failure of a
    * task the coordinator's own turn filed ({@link filedByTurn}) is handed here
-   * too, and then also lands as a line and wakes that turn (FIX-2115).
+   * too, and then also lands as a line and wakes that turn.
    */
   readonly onRouted?: BlockDefinition<any, any>;
 }
@@ -176,8 +177,9 @@ export const AFTER_REPLY_CONCURRENCY = { policy: "defer", key: replyLine } as co
 const passLine: ConcurrencyKey = (ctx) =>
   ctx.sessionId === undefined ? undefined : `${ctx.tenantId ?? ""}\u0000pass\u0000${ctx.sessionId}`;
 
+// FIX-2078.
 /**
- * Set on the board's run entry (FIX-2078): one pass at a time per session. A
+ * Set on the board's run entry: one pass at a time per session. A
  * second waits until the running one ends, then runs as a request of its own,
  * which reads what was written meanwhile: a pass reads its board once per
  * request, so a running pass can't see a retry or an ending another request
@@ -198,9 +200,10 @@ function noteSeen(ctx: BlockContext, key: string) {
   );
 }
 
+// FIX-1802 S5.
 /**
  * What every notice does first: free the session it ran in, and end the
- * chain count of a top task that ended (FIX-1802 S5).
+ * chain count of a top task that ended.
  */
 async function onEnding(ctx: BlockContext, notice: TaskNotice): Promise<void> {
   const ref = await ownConversationLedger(ctx);
@@ -262,8 +265,9 @@ async function acknowledgeOnce(ctx: BlockContext, ref: TaskCollectionRef, row: T
   return first === true;
 }
 
+// FIX-2159.
 /**
- * A notice a user's running turn took itself (FIX-2159), handled as
+ * A notice a user's running turn took itself, handled as
  * `onTaskSettled` handles one: the same steps, in the same order, so the
  * ending is heard once whichever request took it. Only what is said
  * differs: the caller says the line in its own request rather than waking a
@@ -277,10 +281,11 @@ export async function settleTakenNotice(ctx: BlockContext, ref: TaskCollectionRe
   return acknowledgeOnce(ctx, ref, row, notice);
 }
 
+// FIX-2077.
 /**
  * The turn a notice wakes. In a task session whose task waits on its pieces,
- * its answer is noted as the task's result for the check at the request's end
- * (FIX-2077); anywhere else the note is nothing.
+ * its answer is noted as the task's result for the check at the request's end;
+ * anywhere else the note is nothing.
  */
 function wokenTurnOf(options: TaskSettledOptions) {
   return sequencer({ name: "conversation-woken-turn", inputSchema: z.object({ message: z.string() }) })

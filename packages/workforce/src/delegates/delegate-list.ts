@@ -61,11 +61,12 @@ export const DELEGATE_SERVER_OWNED: readonly string[] = [DELEGATES_STATE, FALLBA
 
 export const delegateSessionStateSchema = z.object(delegateStateShape);
 
+// FIX-2081 D2.
 /**
  * A worker's defaults: the worker ids its configuration lists, and its
  * fallback; and the records the flow seeds this session with, beside them.
  *
- * `all` (FIX-2081 D2): the configuration says `delegates: all`, and
+ * `all`: the configuration says `delegates: all`, and
  * `delegates` holds the roster as it stands, read for this call. Such a list
  * is never copied into the session on a read, so it follows the roster; a
  * change writes it, and from then on it is a written list.

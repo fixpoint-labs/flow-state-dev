@@ -238,8 +238,9 @@ export interface DigestSystemConfig {
   }
 }
 
+// FIX-745.
 /**
- * Configuration for the relations (typed-edge knowledge graph) tier (FIX-745).
+ * Configuration for the relations (typed-edge knowledge graph) tier.
  *
  * Relations are opt-in and default OFF: omitting `semantic.relations` adds zero
  * behaviour and leaves the semantic store byte-for-byte unchanged. When
@@ -284,8 +285,9 @@ export interface SemanticMemoryConfig {
   }
   /** Prune when fact count reaches this threshold. Default: 20. 0 to disable. */
   pruneThreshold?: number
+  // FIX-745.
   /**
-   * Relations (typed-edge knowledge graph) tier (FIX-745). Opt-in, default OFF.
+   * Relations (typed-edge knowledge graph) tier. Opt-in, default OFF.
    * `true` for defaults; an object for curated vocabulary / size cap / implicit
    * entities. Omit to disable — no edge field, no edge extraction, no behaviour
    * change to the personalization path.
@@ -345,7 +347,8 @@ export interface HygieneConfig {
 /** Default hygiene configuration. Mirrors `DEFAULT_HYGIENE_CONFIG` in `./janitor.ts`. */
 export { DEFAULT_HYGIENE_CONFIG } from './janitor'
 
-/** Configuration for the agent-invocable recall tool (FIX-409). */
+// FIX-409.
+/** Configuration for the agent-invocable recall tool. */
 export interface MemoryToolConfig {
   /**
    * Retrieval strategy. Either a built-in name or a custom `RetrievalStrategy`
@@ -513,10 +516,11 @@ export interface MemorySystem extends MemoryProvider {
       query: typeof query
     }
   }
+  // [FIX-407].
   /**
    * Digest tier — resource and helpers. Undefined if not configured.
    * The digest is the always-on, narrative-shaped memory summary used by
-   * the simplified formatter ([FIX-407]).
+   * the simplified formatter.
    */
   digest?: {
     resource: ReturnType<typeof createDigestMemoryResource>
@@ -531,9 +535,10 @@ export interface MemorySystem extends MemoryProvider {
    * bulk-loading memory in setup. Undefined when digest is not configured.
    */
   regenerateDigest?: ReturnType<ReturnType<typeof digestRegenerate>['connectInput']>
+  // FIX-435.
   /**
    * Session-scoped resources for this memory system. Spread into `defineFlow`'s
-   * single flat `resources` map (FIX-435):
+   * single flat `resources` map:
    * ```ts
    * resources: { ...mem.sessionResources, ...mem.userResources }
    * ```
@@ -630,8 +635,9 @@ export interface MemorySystem extends MemoryProvider {
   /** Digest memory capability (when digest configured). */
   digestMemoryCapability?: CapabilityRef
 
+  // FIX-409.
   /**
-   * Agent-invocable memory tools (FIX-409).
+   * Agent-invocable memory tools.
    *
    * Install on a generator via `tools: [mem.tool.recall()]`. The tool
    * searches stored memory (semantic facts + past episodes) on demand;
@@ -642,8 +648,9 @@ export interface MemorySystem extends MemoryProvider {
   tool: {
     /** Recall-tool factory — returns the handler block, ready to install. */
     recall: () => ReturnType<typeof createRecallTool>
+    // FIX-745.
     /**
-     * Connect-tool factory (relations tier, FIX-745) — returns the
+     * Connect-tool factory (relations tier) — returns the
      * `memory/connect` block. Present only when relations is enabled; otherwise
      * omitted (calling it would have no graph to traverse).
      */

@@ -118,7 +118,8 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   );
 }
 
-/** Elapsed time from the row's start, by a clock rather than a read (BR-4), stopped while the server is gone. */
+// BR-4.
+/** Elapsed time from the row's start, by a clock rather than a read, stopped while the server is gone. */
 function Elapsed({ since, running }: { since: number; running: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -258,7 +259,8 @@ function Actions({ gaps }: { gaps: Gaps }) {
   );
 }
 
-/** Brief (BR-24): the row's fields as stored. */
+// BR-24.
+/** Brief: the row's fields as stored. */
 function Brief({ gaps }: { gaps: Gaps }) {
   const { row } = useTask();
   const title = distinctTitle(row);
@@ -292,11 +294,12 @@ function Brief({ gaps }: { gaps: Gaps }) {
   );
 }
 
+// BR-18; FIX-1764.
 /**
- * The composer (BR-18): sends into the session the task's run link names,
+ * The composer: sends into the session the task's run link names,
  * through the door of the flow that session records as its owner, never the
  * board's. Says why when it can't. A finished task takes a message too; what
- * it does is the door's call (FIX-1764).
+ * it does is the door's call.
  */
 function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
   const task = useTask();

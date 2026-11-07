@@ -1,5 +1,6 @@
+// FIX-2427.
 /**
- * The Postgres change bus (FIX-2427): notices cross processes on `LISTEN` /
+ * The Postgres change bus: notices cross processes on `LISTEN` /
  * `NOTIFY`, through the Postgres the stores already use.
  *
  * - **Publish.** A notice reaches this process's own subscribers at once, in

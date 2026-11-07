@@ -215,9 +215,10 @@ function migrateAddActiveRequestsQueuedAt(db: Database.Database): void {
  * existing rows read back as no-tenant (single-tenant), which is the correct
  * pre-isolation semantics. Idempotent on subsequent boots.
  */
+// FIX-1442.
 /**
  * Add the nullable `org_id` column to a `schedule_index` created before
- * schedules carried an organization (FIX-1442).
+ * schedules carried an organization.
  *
  * Nullable with **no backfill**: the organization a standing instruction fires
  * into is not recoverable from the row, and defaulting it would point somebody's
@@ -239,13 +240,14 @@ function migrateAddScheduleIndexOrgId(db: Database.Database): void {
   }
 }
 
+// FIX-1546; BP-030.
 /**
  * Re-key a `schedule_index` created before rows carried their storage cell
- * (FIX-1546) from `(user_id, key)` to `(cell, key)`.
+ * from `(user_id, key)` to `(cell, key)`.
  *
  * Every existing row is adopted as the person's own app-wide cell: every
  * released version wrote index rows only from that cell, so the value is known,
- * not guessed (BP-030). The cell is the engine's storage key for it — the user
+ * not guessed. The cell is the engine's storage key for it — the user
  * id with `\` and `:` escaped — so the next write from that cell updates the
  * same row rather than adding a second one.
  *
@@ -305,6 +307,7 @@ function migrateAddTenantId(db: Database.Database): void {
   }
 }
 
+// BP-030.
 /**
  * Add the nullable `flow_id` column — the owning flow instance — to
  * `sessions`, `requests` and `active_requests` tables created before instance
@@ -316,7 +319,7 @@ function migrateAddTenantId(db: Database.Database): void {
  * registered instance. A blanket `flow_id = flow_kind` would silently assign a
  * collection's history to whichever member happens to share the kind's name.
  * Known singleton rows need no backfill to keep working — the runtime reads a
- * NULL owner on a singleton kind compatibly (BP-030).
+ * NULL owner on a singleton kind compatibly.
  */
 function migrateAddFlowId(db: Database.Database): void {
   for (const tableName of ["sessions", "requests", "active_requests"]) {

@@ -1,3 +1,4 @@
+// FIX-1393; FIX-1459.
 /**
  * The `agent` worker flow — the built-in one, and the worker a team
  * gets without writing one. `agent` names the worker; this file is the
@@ -27,9 +28,9 @@
  * worker that WRITES a `tools:` line gets exactly that list: a hard runtime
  * fence, not a hint. An empty list means none, regardless of what else the
  * app's catalog carries or what a capability attached through `uses` would
- * otherwise contribute (FIX-1393). A worker that writes NO `tools:` line gets
+ * otherwise contribute. A worker that writes NO `tools:` line gets
  * the tools of every capability preset its own file picked under
- * `capabilities:` — picking is the choice (FIX-1459). Presets the flow switches
+ * `capabilities:` — picking is the choice. Presets the flow switches
  * on by default grant nothing a worker did not pick. The hire keeps an omitted
  * line omitted, never `[]`, so the two cases survive to the tools slot below;
  * either way the generator declares `tools:` and core's fence stays up. See
@@ -48,8 +49,8 @@
  * worker's own file is the one thing that decides what it can call, no matter
  * what `allowed-tools` a bound skill declares.
  *
- * {@link AgentWorkerFlowOptions.uses} is fenced by the framework too
- * (FIX-1393): core drops a capability's catalog-granted tools when the block
+ * {@link AgentWorkerFlowOptions.uses} is fenced by the framework too:
+ * core drops a capability's catalog-granted tools when the block
  * declares `tools:`, and this flow declares it on every worker. Catalog tools a
  * capability contributes are therefore copied onto this flow's catalog at
  * construction, so a worker can name them in `tools:` the same way it names an
@@ -301,6 +302,7 @@ export interface AgentWorkerFlowOptions {
   classifierModel?: string;
   /** Confidence the matcher's third tier must reach. Mirrors `createSkillActivator`. */
   confidenceThreshold?: number;
+  // FIX-1393.
   /**
    * Capabilities every worker on this flow carries, composed onto the answer
    * generator beside the skills library — which stays first and is never
@@ -326,7 +328,7 @@ export interface AgentWorkerFlowOptions {
    * refused at the mint. Selecting only ever ADDS to what the entry already
    * carries — see `./worker-capabilities`.
    *
-   * **Tool-carrying presets ARE fenced** (FIX-1393). Core drops a capability's
+   * **Tool-carrying presets ARE fenced**. Core drops a capability's
    * catalog-granted tools when the consuming block declares `tools:`, and this
    * flow declares it on every worker — so a preset that ships a tool reaches a
    * worker only when that worker's own file picks the preset and writes no
@@ -335,10 +337,11 @@ export interface AgentWorkerFlowOptions {
    * `controlTools` are exempt by design.
    */
   uses?: UsesSlot;
+  // BP-027.
   /**
    * Key this flow's user-scoped storage by the flow copy's id, instead of one
    * cell the user's other flows share. Default: false, matching the
-   * framework (BP-027).
+   * framework.
    *
    * Forwarded to the flow untouched. On an installation every worker runs on
    * the one `agent` copy, so its workers still share one cell per user;
@@ -352,12 +355,13 @@ export interface AgentWorkerFlowOptions {
    * both directions, so one worker flow can isolate some tiers and share others.
    */
   isolateUserState?: boolean;
+  // FIX-2088.
   /**
    * A block run after the worker answers, as a side-chain — it cannot change
    * the answer, and a failure in it never fails a conversation turn. In a
    * task it fails the attempt, as any background step's failure does, except
    * in a task whose result goes to the conversation, where it is logged and
-   * the task keeps its answer (FIX-2088).
+   * the task keeps its answer.
    *
    * **It receives the answer generator's output: the assistant's reply text,
    * as a string.** `.sideChain` with no connector passes the preceding step's
@@ -398,9 +402,10 @@ export interface AgentWorkerFlowOptions {
    * Omitted, the flow's sequence is exactly what it is today.
    */
   beforeAnswer?: BlockDefinition<any, any>;
+  // FIX-2159.
   /**
    * Answer again, in the same request, with the tasks that finished while the
-   * worker answered (FIX-2159). After the worker answers, this block runs; when
+   * worker answered. After the worker answers, this block runs; when
    * it returns `{ message }`, the worker answers again about that message, and
    * the block runs again after that answer. Its input is the worker's answer.
    *
@@ -602,8 +607,9 @@ function settingsSchema(
         }
       }),
 
+    // FIX-817.
     /**
-     * Which discovery domains this worker sees (FIX-817).
+     * Which discovery domains this worker sees.
      *
      * ```yaml
      * discover: [workers, skills]
@@ -684,6 +690,7 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
  * Every mismatch is named in one message, for the reason `hireWorkforce`
  * collects: an author fixing a catalog should see the whole list in one run.
  */
+// FIX-1393.
 /**
  * Catalog tools a worker flow's `uses` already grants — capability tools fill the
  * flow's catalog so a worker can name them in `tools:`.
@@ -694,7 +701,7 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
  * on by default.
  *
  * Core drops a capability's catalog tools when the consuming block declares
- * `tools:` (FIX-1393). This flow always declares that slot, so a grant that
+ * `tools:`. This flow always declares that slot, so a grant that
  * stayed only on the capability would be a name no worker could call. Filling
  * the catalog is what makes "the flow installs via `uses`, worker names the tool"
  * one path rather than two.
@@ -873,8 +880,9 @@ export interface AgentTurnShare {
    * every worker on it.
    */
   readonly extraTools?: readonly GeneratorTool[];
+  // FIX-1802 S1.
   /**
-   * The session board the turn files through (FIX-1802 S1), when the sharing
+   * The session board the turn files through, when the sharing
    * flow builds its own: the coordinator does, to name the flows its routed
    * tasks reach. Omitted, a turn on an installation builds one for its flow. Its
    * task tools are composed once, here, so a turn carries one instance of

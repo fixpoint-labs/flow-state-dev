@@ -1,7 +1,8 @@
+// FIX-2160 D2; FIX-2173.
 /**
  * The request host's session reads: a running request checks a target session
- * before it writes anything to it (FIX-2160 D2), and reads what another of its
- * principal's sessions has said (FIX-2173).
+ * before it writes anything to it, and reads what another of its
+ * principal's sessions has said.
  *
  * The owner rule is the dispatch seam's own (`resolveExistingSession` in
  * `./create-request-host`): another user's or tenant's session, and one bound

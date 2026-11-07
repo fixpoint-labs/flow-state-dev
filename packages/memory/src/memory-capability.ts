@@ -1,3 +1,4 @@
+// FIX-435.
 /**
  * Composed memory capability factory.
  *
@@ -13,7 +14,7 @@
  * `tiers`, and `recallToolBlock` attached on the same object (the
  * `createBashCapability` precedent of `DefinedCapability & { extension }`), so
  * the same `defineResource()` references travel with the capability and can be
- * registered at the flow level without divergence (FIX-435).
+ * registered at the flow level without divergence.
  */
 
 import { defineCapability } from '@flow-state-dev/core'
@@ -74,8 +75,9 @@ export interface CreateMemoryCapabilityOptions {
   digest?: DigestSystemConfig | true
   /** Recall-tool config. Omit to use defaults (`llm-filter` strategy). */
   tool?: MemoryToolConfig
+  // FIX-411.
   /**
-   * Memory hygiene configuration (FIX-411). Only the `confidenceDecay` slice
+   * Memory hygiene configuration. Only the `confidenceDecay` slice
    * affects this capability — it drives recall ranking. Janitor scheduling is
    * a lifecycle concern owned by `system()`.
    */
@@ -117,9 +119,10 @@ export interface MemoryCapability extends DefinedCapability {
     digest?: CapabilityRef
   }
   readonly recallToolBlock: ReturnType<typeof createRecallTool>
+  // FIX-745.
   /**
    * The `memory/connect` relation-graph tool — present only when the relations
-   * tier is enabled (FIX-745). `undefined` when relations are off.
+   * tier is enabled. `undefined` when relations are off.
    */
   readonly connectToolBlock?: ReturnType<typeof createConnectTool>
 }
@@ -284,9 +287,10 @@ export function buildMemoryCapability(
       return {
         /** Cross-store recall — queries all configured stores, deduplicates, ranks by relevance. */
         recall: (cue?: string) => recallFn(ctx, cue),
+        // FIX-745.
         /**
          * Direct neighbour edges around `entity` — exactly 1 hop (relations
-         * tier, FIX-745). Returns `[]` when relations are disabled. Entity is
+         * tier). Returns `[]` when relations are disabled. Entity is
          * canonicalized (trim + lowercase) to match stored edge endpoints. For a
          * multi-hop neighbourhood use `egoGraph(entity, { depth })`; `depth` is
          * intentionally not accepted here.
@@ -356,9 +360,10 @@ export function buildMemoryCapability(
         }},
         tools: () => [recallToolBlock],
       },
+      // FIX-745.
       /**
        * Install the `memory/connect` tool so the model can traverse relation
-       * edges between entities (FIX-745). Default-on when the relations tier is
+       * edges between entities. Default-on when the relations tier is
        * enabled; an empty no-op preset otherwise so toggling it on a
        * relations-disabled memory is harmless.
        */

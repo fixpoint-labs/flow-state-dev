@@ -1,13 +1,14 @@
+// BR-25; BR-26.
 /**
  * One pending ask, drawn with the registry's own approval and question cards,
  * answered through the one resume path (S3). Inbox's detail and Shift
  * Coordinator's summary both draw an ask with this, so they can't answer it two
- * ways (BR-25).
+ * ways.
  *
  * The card resolves through a `SuspensionResolverProvider` bound to the ask:
  * the answer goes to the flow the ask's session records as its owner, and a
  * successful answer refreshes the snapshot so the ask leaves every surface
- * together (BR-26). An ask the Lab won't reopen from outside gets no resolver,
+ * together. An ask the Lab won't reopen from outside gets no resolver,
  * so the card offers no answer, and says why.
  *
  * A coding run's review is drawn with the registry's review card directly, so

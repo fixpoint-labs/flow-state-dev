@@ -1,5 +1,6 @@
+// FIX-865.
 /**
- * Inline renderer for `continuation` items (FIX-865).
+ * Inline renderer for `continuation` items.
  *
  * A continuation item is emitted into a request's log when a durable action
  * re-enters after a crash mid-execution (the `/continue` route). It marks the

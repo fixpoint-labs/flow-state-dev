@@ -37,6 +37,7 @@ const DOCUMENT_STATE_SCHEMA = z.object({}).passthrough();
  */
 const DERIVED_KEYS = new Set<string>(DERIVED_RESOURCE_KEYS);
 
+// FIX-1442.
 /**
  * Build the resource map from document records, keyed by each document's ref.
  *
@@ -45,7 +46,7 @@ const DERIVED_KEYS = new Set<string>(DERIVED_RESOURCE_KEYS);
  *
  * Every document here is org-scoped. Nothing needs declaring for that to work:
  * organization identity is unconditional, so every admitted request carries one
- * and the org resource registry is always built (FIX-1442). The `requireOrg`
+ * and the org resource registry is always built. The `requireOrg`
  * declaration this used to depend on no longer exists.
  *
  * Throws, rather than collecting, when a record cannot become a resource — a

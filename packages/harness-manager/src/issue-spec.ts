@@ -1,7 +1,8 @@
+// `FIX-2165`.
 /**
  * The issue a coding run is for, and its spec brief.
  *
- * A run can be told which tracker issue it works on (`FIX-2165`): a harness
+ * A run can be told which tracker issue it works on: a harness
  * session is born with one, and a board task names one under
  * `harnessFeature: { issue }`. This module holds the two things both entries
  * share about it:

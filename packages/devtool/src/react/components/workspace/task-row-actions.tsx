@@ -1,5 +1,6 @@
+// FIX-1629.
 /**
- * The Actions strip of an open Tasks-tab row (FIX-1629).
+ * The Actions strip of an open Tasks-tab row.
  *
  * The DevTool changes a task only through the flow's own actions. This strip
  * lists the ones that act on one task (see `lib/task-actions`), opens the

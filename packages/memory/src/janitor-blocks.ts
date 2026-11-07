@@ -1,3 +1,4 @@
+// see BP-012 / BP-014.
 /**
  * Janitor block — the deterministic hygiene pass that decays semantic
  * confidence, culls persistent episodes past their TTL, and flags long-
@@ -5,7 +6,7 @@
  *
  * Composed by `memorySystemCapture` / `memorySystemConsolidate` (or invoked
  * manually via `mem.janitor`). State-mutation-only: no `outputSchema`, no
- * `return input` — see BP-012 / BP-014.
+ * `return input`
  */
 
 import { handler } from '@flow-state-dev/core'

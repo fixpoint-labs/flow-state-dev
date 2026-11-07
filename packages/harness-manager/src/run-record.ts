@@ -118,10 +118,11 @@ export const heldSchema = z.object({
 });
 export type HeldRecord = z.infer<typeof heldSchema>;
 
+// BR-27.
 /**
  * Refuse a record whose two place roots cannot occur together: `held` set
  * with `place` `null`. `place` is written before any hold, so this pair is a
- * corrupt record, not a state (BR-27).
+ * corrupt record, not a state.
  */
 export function assertPlaceAndHeld(record: { place?: unknown; held?: unknown } | undefined): void {
   if (record != null && record.place == null && record.held != null) {
@@ -132,10 +133,11 @@ export function assertPlaceAndHeld(record: { place?: unknown; held?: unknown } |
   }
 }
 
+// BP-023.
 /**
  * One issue-phase's run record.
  *
- * Every field is `.nullable().default(null)` (BP-023) so a row written by an
+ * Every field is `.nullable().default(null)` so a row written by an
  * older shape still parses, and so the **attempt-scoped** half can be cleared
  * to `null` rather than merely omitted — `upsert` patch-merges, so an omitted
  * field survives from the previous attempt's write.
@@ -148,8 +150,9 @@ export const runRecordStateSchema = z.object({
    * itself. See {@link writeRunRow}.
    */
   attempt: z.number().nullable().default(null),
+  // FIX-2133 D3.
   /**
-   * The row's turn generation when this run opened the record (FIX-2133 D3).
+   * The row's turn generation when this run opened the record.
    * Two turns can share an attempt (an answered question owes one more), so a
    * write from an earlier turn of the same attempt is refused once a later
    * one has opened. See {@link writeRunRow}.
@@ -168,27 +171,30 @@ export const runRecordStateSchema = z.object({
   runKey: z.string().nullable().default(null),
   /** The board task this row describes. */
   taskId: z.string().nullable().default(null),
+  // FIX-2578; BP-030.
   /**
    * The requests that ran this task's turns, oldest first, kept across its
-   * attempts and turns (FIX-2578): a pull request on the session's record
+   * attempts and turns: a pull request on the session's record
    * stamped with one of them is this task's. Written only by a manager that
    * waits on pull requests (`awaitPullRequests`). `null` on a record written
-   * before it was kept, or by a manager that doesn't (BP-030).
+   * before it was kept, or by a manager that doesn't.
    */
   requestIds: z.array(z.string()).nullable().default(null),
+  // FIX-2578; BP-030.
   /**
    * The output the turn that held the task on its pull requests would have
-   * settled with (FIX-2578), on that attempt: what a wake that finds them
+   * settled with, on that attempt: what a wake that finds them
    * merged completes the task with, no harness run between. Never cleared by
    * an attempt's opening write; a wake reads it only on the same attempt.
-   * `null` until a turn holds (BP-030).
+   * `null` until a turn holds.
    */
   waitOutput: z.object({ attempt: z.number(), output: z.unknown() }).nullable().default(null),
+  // FIX-2578; BP-030.
   /**
-   * The external wait whose wake a turn last read the pull requests for
-   * (FIX-2578): a wait is woken once, so a later turn of the task (a retry,
+   * The external wait whose wake a turn last read the pull requests for:
+   * a wait is woken once, so a later turn of the task (a retry,
    * a question's answer) never reads it as its wake again. `null` until a
-   * wake (BP-030).
+   * wake.
    */
   wokeFor: z.string().nullable().default(null),
 
@@ -197,6 +203,7 @@ export const runRecordStateSchema = z.object({
   workspacePath: z.string().nullable().default(null),
   /** The branch that checkout is on. */
   branch: z.string().nullable().default(null),
+  // BP-030.
   /**
    * The repository the run's branch was cut from, as the workspace host's
    * source named it when the run was first provisioned.
@@ -206,24 +213,26 @@ export const runRecordStateSchema = z.object({
    * asking the source again, so changing a project's repository applies to new
    * rows and never moves a run already under way. `null` on a row written
    * before this field existed, or before the run was first provisioned; such a
-   * row asks the source (BP-030).
+   * row asks the source.
    */
   remote: z.string().nullable().default(null),
   /** The branch {@link remote}'s run branch was cut from, recorded with it. */
   baseRef: z.string().nullable().default(null),
+  // BP-030.
   /**
    * The commit {@link baseRef} named when the run's branch was cut, recorded
    * with it. Unlike a ref, nothing a run does can move it, so it is what a
    * run's own commits are counted from. `null` on a row written before this
-   * field existed (BP-030).
+   * field existed.
    */
   baseCommit: z.string().nullable().default(null),
+  // BP-030.
   /**
    * The run was first provisioned with no repository: its kept files alone.
    * Kept across attempts for the reason {@link remote} is, so a project that
    * gains a repository later never moves a files run onto a checkout and away
    * from the files it saved. `null` on a row written before this field
-   * existed, or before the run was first provisioned (BP-030).
+   * existed, or before the run was first provisioned.
    */
   filesOnly: z.boolean().nullable().default(null),
   /**
@@ -242,11 +251,12 @@ export const runRecordStateSchema = z.object({
     })
     .nullable()
     .default(null),
+  // BP-030.
   /**
    * Which host the run's place is on, and where that place stands. Written
    * only where the workspace host holds a run's work; `null` with holding off,
-   * before the first provision, and on a record from before held work
-   * (BP-030). Kept across attempts.
+   * before the first provision, and on a record from before held work.
+   * Kept across attempts.
    */
   place: z
     .object({
@@ -255,12 +265,13 @@ export const runRecordStateSchema = z.object({
     })
     .nullable()
     .default(null),
+  // BR-27.
   /**
    * The run's last hold, written after its pack was stored and before the pack
    * it replaced is dropped. A failed hold keeps the last good one's fields and
    * sets `error`. `parked` is set when this pack parked the run: it is never
    * dropped. `null` with holding off, and until the first hold. Kept across
-   * attempts. Never set while {@link place} is `null` (BR-27).
+   * attempts. Never set while {@link place} is `null`.
    */
   held: heldSchema.nullable().default(null),
   /** How the last attempt ended. */
@@ -276,6 +287,7 @@ export const runRecordStateSchema = z.object({
    * incidental — see the module header.
    */
   sessionId: z.string().nullable().default(null),
+  // BP-030.
   /**
    * WHICH harness produced the session beside it — `claude-code/sdk`,
    * `codex/sdk`, the `<package>/<door>` value the handle reported.
@@ -290,7 +302,7 @@ export const runRecordStateSchema = z.object({
    * versus a run-record migration later.
    *
    * A widened string, not an enum, so a handle persisted before the
-   * `<package>/<door>` convention still parses (BP-030), and a harness we do not
+   * `<package>/<door>` convention still parses, and a harness we do not
    * ship can name itself.
    */
   source: z.string().nullable().default(null),
@@ -307,11 +319,12 @@ export const runRecordStateSchema = z.object({
     .default(null),
   /** What the run cost, when the harness reported it. No decision reads this. */
   costUsd: z.number().nullable().default(null),
+  // BP-030.
   /**
    * The checks the phase's completion check ran on this attempt
    * (`commandCheck`): each command, how it ended, and the end of its output.
    * Written whatever the verdict, so a failed attempt says which was red.
-   * `null` when none ran (BP-030).
+   * `null` when none ran.
    */
   checks: z.array(commandCheckResultSchema).nullable().default(null),
 
@@ -409,8 +422,9 @@ export interface AttemptIdentity {
   taskId: string;
   /** `attempts` as the board packed it into this worker's input at claim time. */
   attempt: number;
+  // FIX-2133 D3.
   /**
-   * The turn generation of the claim this run holds (FIX-2133 D3). Two turns
+   * The turn generation of the claim this run holds. Two turns
    * can share an attempt, so a write is refused once a later turn is claimed.
    * Absent only for a run that holds no claim ticket.
    */
@@ -610,6 +624,7 @@ export async function writeRunRow(
   return "applied";
 }
 
+// FIX-1690.
 /**
  * Open the row for a new attempt: record what this attempt already knows, and
  * clear everything it cannot yet report.
@@ -637,7 +652,7 @@ export async function writeRunRow(
  * **The attempt's own session is known at the open**, so it is written here and
  * not left for the verdict: an attempt a person's turn stopped never reaches
  * the verdict, and the door finds the row of a run whose next attempt has not
- * linked yet by this field (FIX-1690).
+ * linked yet by this field.
  */
 export async function openRunRow(
   ctx: CollectionHoldingContext,
@@ -679,9 +694,10 @@ function sessionConfirmedBy(
   return record.sessionId;
 }
 
+// FIX-1735.
 /**
  * The session attempt `attempt` (or a later one) has confirmed, as STORED now,
- * or `null` while it has confirmed none (FIX-1735).
+ * or `null` while it has confirmed none.
  *
  * {@link readRunRow} answers from what this request read first, which is right
  * for a decision made once and wrong for a wait: the harness confirms its

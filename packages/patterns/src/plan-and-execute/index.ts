@@ -1,3 +1,4 @@
+// FIX-910.
 /**
  * Plan-and-Execute pattern.
  *
@@ -6,7 +7,7 @@
  * worker by default), and an evaluator decides whether to replan and
  * re-enter the board for another drain.
  *
- * Expressed on the `goalSeekLoop` primitive (FIX-910). The pattern supplies the
+ * Expressed on the `goalSeekLoop` primitive. The pattern supplies the
  * loop's slots and `goalSeekLoop` assembles the judge-gated drain loop:
  *
  *   seed:      synthesizeGoal? → stampOuterGoal → captureAndPlan
@@ -161,8 +162,9 @@ export interface PlanAndExecuteConfig<
    * fan out independent dep-free steps within a single drain.
    */
   maxConcurrency?: number;
+  // FIX-931.
   /**
-   * Creation bounds for the internal board (FIX-931). Defaults 500/100 —
+   * Creation bounds for the internal board. Defaults 500/100 —
    * unchanged behavior when unset. A planner that legitimately produces more
    * than the enqueue bound would otherwise fail its whole seed with no way to
    * raise the ceiling, so both are reachable here: a number, or `null` for
@@ -170,9 +172,10 @@ export interface PlanAndExecuteConfig<
    */
   maxTotalTasks?: number | null;
   maxEnqueuedTasks?: number | null;
+  // FIX-948.
   /**
    * Cumulative failure retries the internal board may authorize, across every
-   * task (FIX-948). Default 50 — a number, or `null` for explicitly unbounded.
+   * task. Default 50 — a number, or `null` for explicitly unbounded.
    *
    * The two bounds above count only *new* tasks, so a task that keeps failing
    * keeps spending while both sit still. This is the one number that bounds
@@ -413,6 +416,7 @@ function formatDependencyContext(depId: string, value: unknown): string {
   return `From ${depId}:\n${summary}${sourcesPart}`;
 }
 
+// BP-011.
 /**
  * Adapt a legacy P&E worker (input shape `{ stepId, goal,
  * dependencyResults? }`) to the substrate's `TaskWorkerInput` (shape
@@ -425,7 +429,7 @@ function formatDependencyContext(depId: string, value: unknown): string {
  *     `completed` and downstream cascade-skip never fires.
  *
  * The wrapper is composed as a sequencer (no `block.run` inside
- * handler — BP-011) so the user's worker remains a first-class step.
+ * handler) so the user's worker remains a first-class step.
  */
 function wrapWorkerForLegacyContract(
   name: string,

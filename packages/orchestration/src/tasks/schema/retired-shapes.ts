@@ -1,6 +1,7 @@
+// BP-030.
 /**
  * The one read of a task row stored in a shape a published version wrote and
- * the current one does not (BP-030).
+ * the current one does not.
  *
  * A row in a persistent store is a user's open work. It is read here, at the
  * collection's read boundary; no other module reads a retired shape.

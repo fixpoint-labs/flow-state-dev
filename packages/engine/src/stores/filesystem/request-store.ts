@@ -42,9 +42,10 @@ export type FilesystemRequestStoreOptions = {
    * Poll interval for `subscribeToEvents` in milliseconds. Default 100ms.
    */
   subscribePollIntervalMs?: number;
+  // FIX-406 6B.
   /**
    * Fired on a background write failure before the safety-net log, so
-   * operators can alert on persistence loss (FIX-406 6B).
+   * operators can alert on persistence loss.
    */
   onPersistError?: PersistErrorHandler;
 };
@@ -53,8 +54,9 @@ function toEventsPath(rootDir: string, requestId: string): string {
   return toRecordPath(rootDir, requestId).replace(/\.json$/, ".events.json");
 }
 
+// FIX-1026.
 /**
- * Path of the abort-intent marker beside a request's record file (FIX-1026).
+ * Path of the abort-intent marker beside a request's record file.
  *
  * Existence *is* the flag, so the narrow read is a `stat` rather than a parse.
  * This adapter keeps items inline on the record, so any read that goes through
@@ -163,10 +165,11 @@ export class FilesystemRequestStore implements RequestStore {
   private readonly eventWriteQueued = new Set<string>();
   /** Accumulates new events between coalesced writes for incremental persistence. */
   private readonly pendingNewEvents = new Map<string, RequestStreamEvent[]>();
+  // FIX-399.
   /**
    * Tracks the most recent persistence error per request. flushEvents drains
    * the queue then throws (and clears) any captured error so callers can
-   * propagate persist failures instead of silently swallowing them (FIX-399).
+   * propagate persist failures instead of silently swallowing them.
    */
   private readonly lastEventError = new Map<string, Error>();
   /** The same for item writes: `flushItems` throws (and clears) it. */
@@ -232,8 +235,9 @@ export class FilesystemRequestStore implements RequestStore {
     });
   }
 
+  // FIX-1026.
   /**
-   * Whether the abort marker exists for a request (FIX-1026).
+   * Whether the abort marker exists for a request.
    * `stat` rather than a read — the file's contents are never consulted.
    */
   private async hasAbortMarker(id: string): Promise<boolean> {

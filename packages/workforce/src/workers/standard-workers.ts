@@ -1,3 +1,4 @@
+// BR-3.
 /**
  * The standard workers: the ones the installation's `WORKER.md` files declare,
  * the same for every user, projected read-only.
@@ -5,8 +6,8 @@
  * Nothing stores them. They are read from the loaded files each time, so a
  * deploy that changes a file changes the worker for everyone, and nothing a
  * user does at run time can write one: the projection has no write path, and
- * every write the worker model offers refuses a standard worker's id
- * (BR-3). To change one for yourself, fork it.
+ * every write the worker model offers refuses a standard worker's id.
+ * To change one for yourself, fork it.
  */
 import { defineProjectedResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";

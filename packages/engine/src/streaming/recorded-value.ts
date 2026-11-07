@@ -1,5 +1,6 @@
+// FIX-1772.
 /**
- * The record limit (FIX-1772): what the response emitter records in place of a
+ * The record limit: what the response emitter records in place of a
  * block output or tool result that is too large to keep.
  *
  * A step's return value and a tool's result are recorded on their items, which

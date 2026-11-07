@@ -1,5 +1,6 @@
+// FIX-2173; FIX-2279.
 /**
- * The one read of a session's settled past turns (FIX-2173).
+ * The one read of a session's settled past turns.
  *
  * A turn's history window (`createExecutionContext`) loads through it, so the
  * rule for which of a session's turns a model may read is written once: list
@@ -11,7 +12,7 @@
  * the open turns supersedes its original, a request both reads caught is read
  * once, and the window is held to `turns` after they are merged.
  *
- * A turn waiting on a call is read as far as it got (FIX-2279). A call is a
+ * A turn waiting on a call is read as far as it got. A call is a
  * wait gate bound to a request it started (`dispatcher({ wait: true })`, a
  * worker's `sendMessage` with `wait`), and a turn parked on one gives its
  * session back, so another turn can run there before it resumes. That turn
@@ -45,7 +46,8 @@ export type SettledTurnsInputs = {
   runningMetadata?: Record<string, unknown>;
   /** Where parked gates are read. Without one, nothing is treated as parked. */
   durability?: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">;
-  /** Where a park a turn owes is read (FIX-2269): a turn that owes one is parked. */
+  // FIX-2269.
+  /** Where a park a turn owes is read: a turn that owes one is parked. */
   wakes?: WakeStore;
   /**
    * Called when the parked gates could not be read. The read goes on with

@@ -1,5 +1,6 @@
+// FIX-2078.
 /**
- * The one delivery of a delegated row's ending (FIX-2078, the convergence
+ * The one delivery of a delegated row's ending (the convergence
  * point): run by every writer of such an ending, whoever it is (the claim
  * gate in a task session, a refused hand-over, the settle of a row whose
  * worker died too often, a cancel), because every ending passes through a
@@ -38,8 +39,9 @@ export interface NoticeAddress {
   readonly flowKind?: string;
 }
 
+// FIX-2078.
 /**
- * How a board that hands rows out delivers its endings (FIX-2078), declared on
+ * How a board that hands rows out delivers its endings, declared on
  * its ledger (`defineTaskCollection({ delivery })`). A board built with a task
  * dispatcher marks its ledger with the defaults ({@link markDelegating}).
  */
@@ -58,12 +60,14 @@ export interface DeclaredDelivery {
    * on the running flow.
    */
   readonly address?: (ctx: BlockContext, filerSessionId: string) => NoticeAddress | undefined;
-  /** The filer of a row filed before `Task.filer` (BP-030), from its partition. */
+  // BP-030.
+  /** The filer of a row filed before `Task.filer`, from its partition. */
   readonly legacyFiler?: (row: Task, partition: string | undefined) => string | undefined;
   /** A notice settled undeliverable: its filer's session is gone. */
   readonly onUndeliverable?: (ctx: BlockContext, row: Task, notice: TaskNotice, detail: string) => Promise<void>;
+  // FIX-2241.
   /**
-   * A task on this ledger asked its filer's questions midway (FIX-2241): told
+   * A task on this ledger asked its filer's questions midway: told
    * with the row's open midway questions, read from the committed row, from
    * the asking request. Not the notice pipeline: no marker, no wake, no
    * `noticeEntry`. The same declaration, a different moment. Called again
@@ -74,9 +78,10 @@ export interface DeclaredDelivery {
    * that turn's end. A throw is logged, never fails the question.
    */
   readonly onMidwayQuestion?: (ctx: BlockContext, row: Task, questions: readonly RowHold[]) => Promise<void>;
+  // FIX-2082.
   /**
    * `false`: an ending owes its filer no notice, only the resume of a request
-   * parked on it (FIX-2082). A plan board's ledger: its drain waits on every
+   * parked on it. A plan board's ledger: its drain waits on every
    * row, so nobody else is told how one ended. Default: every ending owes one.
    */
   readonly notices?: false;
@@ -87,9 +92,10 @@ export function undeliverableRecord(notice: Pick<TaskNotice, "attempt" | "ending
   return { [`${UNDELIVERABLE_PREFIX}${notice.attempt}:${notice.ending}`]: { at, detail } };
 }
 
+// BP-030.
 /**
  * Who filed a row on a ledger with `declared` delivery: `Task.filer`, or for a
- * row filed before it, the ledger's legacy filer at `partition` (BP-030). The
+ * row filed before it, the ledger's legacy filer at `partition`. The
  * one rule a cascade's notice suppression and a notice's naming both use.
  */
 export function filerResolver(declared: DeclaredDelivery, partition: string | undefined): (row: Task) => string | undefined {
@@ -123,12 +129,13 @@ export interface DeliveryHooks {
     rows: readonly Task[],
     patchMetadata: (id: string, patch: Record<string, unknown>) => Promise<void>
   ): Promise<void>;
+  // FIX-2123; FIX-2149; FIX-2170.
   /**
-   * Run `send` once the running request has ended (FIX-2123), on the
+   * Run `send` once the running request has ended, on the
    * engine's request-end seam. `send` doesn't run when it parks: a parked
    * request holds no notice and no ending, so the filer's pass is owed one
-   * wake shortly after (FIX-2149) and sends what the request held, past its
-   * backoff, and releases the wait slots it lapsed (FIX-2170). No
+   * wake shortly after and sends what the request held, past its
+   * backoff, and releases the wait slots it lapsed. No
    * row is read or written there: a hook at a park delays the request's park
    * record. A failure is logged, never
    * thrown; what `send` didn't send stays owed for the filer's pass. Nothing
@@ -139,8 +146,9 @@ export interface DeliveryHooks {
   whenRequestEnds?(send: () => Promise<void>): void;
 }
 
+// FIX-2123.
 /**
- * The boards a request has asked to send at its stop (FIX-2123), keyed by
+ * The boards a request has asked to send at its stop, keyed by
  * its request-end seam, which every resolution in the request shares and a
  * resume replaces. Weak, so a request's entry goes with it.
  */
@@ -264,7 +272,8 @@ export function createDelivery(
     });
   }
 
-  /** The filing or waiting request parked: owe this (its filer's) session's pass one wake (FIX-2149, FIX-2170). */
+  // FIX-2149, FIX-2170.
+  /** The filing or waiting request parked: owe this (its filer's) session's pass one wake. */
   async function owePassAtPark(): Promise<void> {
     try {
       await requestHostOf(ctx)?.wakes?.owe({ entry: passEntry, dueAt: Date.now() + NOTICE_DUE_MS });
@@ -339,13 +348,14 @@ export function createDelivery(
 /** A declared ledger, as {@link markDelegating} reads it. */
 type DelegatingLedger = { readonly __taskCollection: { delivery?: DeclaredDelivery } };
 
+// FIX-2078; FIX-2082.
 /**
- * Mark a ledger as one a board hands rows out from (FIX-2078): its delegated
+ * Mark a ledger as one a board hands rows out from: its delegated
  * rows owe their filer a notice of every ending, delivered by
  * {@link createDelivery}. A ledger that declares its own `delivery` keeps it.
  * Called by `taskBoard()` for a board with a task dispatcher; a plan board
  * passes `{ notices: false }`, since its drain waits on every row it hands
- * out and is resumed by its ending (FIX-2082).
+ * out and is resumed by its ending.
  */
 export function markDelegating(ledger: unknown, delivery: DeclaredDelivery = {}): void {
   const declared = (ledger as Partial<DelegatingLedger> | undefined)?.__taskCollection;

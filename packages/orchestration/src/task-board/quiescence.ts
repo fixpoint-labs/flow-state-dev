@@ -81,9 +81,10 @@ export interface BoardQuiescenceOptions {
   onIdle: "wait" | "complete" | "complete-or-blocked";
   /** `onIdle: "wait"` only — the caller's own termination test. */
   shouldExit?: (collection: TaskCollectionRef) => boolean;
+  // FIX-982.
   /**
-   * Rows whose work is *routed* to a child session rather than this drain
-   * (FIX-982). Omitted by every board with no dispatcher assignee, which is
+   * Rows whose work is *routed* to a child session rather than this drain.
+   * Omitted by every board with no dispatcher assignee, which is
    * what keeps this classifier's answer for those boards bit-for-bit what it
    * was.
    *

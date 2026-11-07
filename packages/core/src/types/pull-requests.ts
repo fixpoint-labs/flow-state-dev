@@ -45,6 +45,7 @@ export const OBSERVED_PULL_REQUESTS = "observed-pull-requests" as const;
  */
 export type PullRequestSource = "tool" | "branch";
 
+// BP-023.
 /**
  * One pull request, keyed by {@link pullRequestKey}.
  *
@@ -53,7 +54,7 @@ export type PullRequestSource = "tool" | "branch";
  * never moved. `state` is the last state a writer saw (at opening, at the
  * branch check, or at a read of the pull request): each sighting that names
  * one replaces it, so a row reads `merged` once a read saw the merge. Every field is
- * nullable with a null default (BP-023), so a row written by an older or newer
+ * nullable with a null default, so a row written by an older or newer
  * shape still parses.
  */
 export const observedPullRequestStateSchema = z.object({

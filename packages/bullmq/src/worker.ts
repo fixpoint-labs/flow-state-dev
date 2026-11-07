@@ -1,3 +1,4 @@
+// FIX-1836.
 /**
  * Flow-run job processor. Dequeues BullMQ jobs and calls runAction for each,
  * mapping execution results back to BullMQ job completion/failure semantics.
@@ -14,7 +15,7 @@
  * its own timer and stops the run if the place is lost. The place goes back
  * when the job is done for good, and stays across retries.
  *
- * `hold` and `defer` (FIX-1836): a `hold` job's place has its turn at once, so
+ * `hold` and `defer`: a `hold` job's place has its turn at once, so
  * it runs without waiting. A `defer` job carries no place, only its key: it
  * claims the key once nothing holds or waits on it, requeueing until then on
  * the schedule the engine's `planDeferWait` sets, and past its patience lines

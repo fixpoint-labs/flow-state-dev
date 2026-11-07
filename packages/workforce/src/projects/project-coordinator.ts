@@ -1,5 +1,6 @@
+// FIX-1793 S5.
 /**
- * A user's project coordinator (FIX-1793 S5): a session of the standard
+ * A user's project coordinator: a session of the standard
  * coordinator worker the installation names, linked to one project when it is
  * created (its readonly `projectId`), one per user per project.
  *
@@ -227,9 +228,10 @@ async function applyWorkstreamRecord(
   throw new Error(outcome.message);
 }
 
+// BR-38.
 /**
  * Change one workstream's record on this session, the owner's project
- * coordinator, in this turn (BR-38): an open made from the coordinator's own
+ * coordinator, in this turn: an open made from the coordinator's own
  * turn hands the request to the workstream next, in the same turn, and a dispatch
  * into this session would land only after the turn ends. The same mutation
  * the internal entry runs, with the defaults of the worker this turn loaded;

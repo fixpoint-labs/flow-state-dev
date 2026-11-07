@@ -137,8 +137,9 @@ export type CreateDurabilitySweeperOptions = {
    * nothing is pruned.
    */
   prune?: boolean;
+  // FIX-2078 D1.
   /**
-   * Fire a due wake (FIX-2078 D1): dispatch the internal entry it names, in
+   * Fire a due wake: dispatch the internal entry it names, in
    * its session, as its owner. Resolves once the host accepted the dispatch.
    * Absent, or with stores that keep no wakes, the wake step is off.
    */
@@ -358,8 +359,9 @@ const MIN_TICK_DELAY_MS = 1_000;
 /** How soon a wait still pending past its deadline is tried again. */
 const OVERDUE_WAIT_RETRY_MS = 5_000;
 
+// FIX-2078 D1.
 /**
- * How far a wake is moved out as it is fired (FIX-2078 D1): the pass it runs
+ * How far a wake is moved out as it is fired: the pass it runs
  * settles it within that time, so it fires again only when the fire or the
  * pass died.
  */
@@ -500,11 +502,12 @@ async function enforceSuspensionExpiry(
   }
 }
 
+// FIX-1816; FIX-1850.
 /**
  * Step 2b: re-drive a request left parked behind a gate that is already
- * resolved (FIX-1816, BR-11a, BR-16c). A wait gate answered, failed, timed out
+ * resolved (BR-11a, BR-16c). A wait gate answered, failed, timed out
  * or stopped, any gate stopped, an approval that expired, or any other gate a
- * person resolved (FIX-1850), whose request is still `suspended` or
+ * person resolved, whose request is still `suspended` or
  * `interrupted`: the process died after the gate's write and before the turn
  * moved on. It is driven on under its lease with the recorded outcome, never a
  * new one. A live resume holds that lease, so it is never raced.
@@ -591,8 +594,9 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
   }
 }
 
+// FIX-2078 D1.
 /**
- * Step 2c (FIX-2078 D1): fire every due wake. Each is moved one
+ * Step 2c: fire every due wake. Each is moved one
  * {@link WAKE_RETRY_MS} out, conditional on the version listed, and only then
  * dispatched: a wake written since (an earlier debt) is left as written, and
  * a fire or a pass that dies leaves the wake to fire again. A fire that throws
@@ -637,8 +641,9 @@ async function fireDueWakes(args: ResolvedTickArgs, now: number): Promise<void> 
   }
 }
 
+// FIX-2269.
 /**
- * Step 2c's owed-park branch (FIX-2269): a request owed a park, and the time
+ * Step 2c's owed-park branch: a request owed a park, and the time
  * until it would count as dead has passed. Still `interrupted` (its process
  * died after its wait started the work and before the gate was written), it
  * is continued under its lease as the continue route continues one, and its
@@ -697,8 +702,9 @@ async function continueOwedPark(args: ResolvedTickArgs, wake: WakeRecord, reques
 /** Statuses of a request that may still owe its park: running, or dead. */
 const OWING_STATUSES: RequestStatus[] = ["in_progress", "interrupted"];
 
+// FIX-2082 D1.
 /**
- * Step 2c's wait branch (FIX-2082 D1): a session's `waitDeadline` wake is due.
+ * Step 2c's wait branch: a session's `waitDeadline` wake is due.
  * Every wait gate pending in that session past its deadline is resumed with
  * the deadline outcome, nothing cancelled (a gate bound to a request that has
  * already ended is resumed with that request's result instead). Then the wake

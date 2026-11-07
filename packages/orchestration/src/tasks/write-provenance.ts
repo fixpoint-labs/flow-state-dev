@@ -66,6 +66,7 @@ import type { Task, TaskWriteReceipt } from "./schema/task";
  */
 const WRITE_LOG_CAP = 4;
 
+// BP-031.
 /**
  * A caller's claim on one write it is about to make.
  *
@@ -75,7 +76,7 @@ const WRITE_LOG_CAP = 4;
  * write for {@link didWriteLand}'s coverage proofs to mean anything.
  *
  * Tokens are minted by first-party callers from a task they already hold, and
- * are never accepted from model or tool input (BP-031): a model naming a write
+ * are never accepted from model or tool input: a model naming a write
  * id would be asserting authorship of a write nobody checked.
  */
 export interface TaskWriteToken {

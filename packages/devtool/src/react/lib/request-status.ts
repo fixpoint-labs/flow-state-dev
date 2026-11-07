@@ -1,6 +1,7 @@
+// FIX-811.
 /**
  * Reconciliation between the live SSE stream's view of a request's status and
- * the session-requests snapshot from the store (FIX-811).
+ * the session-requests snapshot from the store.
  *
  * The snapshot only refetches on terminal / refresh, so a mid-flight transition
  * the watched request makes (in_progress → suspended) is visible on the stream

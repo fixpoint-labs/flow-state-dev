@@ -67,6 +67,7 @@ export interface ClaudeCodeWorkspaceCapabilityOptions
   collections?: ClaudeCodeWorkspaceCollectionSpec[];
   /** Accessor keys to skip during auto-discovery. */
   exclude?: string[];
+  // BP-031.
   /**
    * Confine the run to the workspace it was given. Default `true`.
    *
@@ -77,7 +78,7 @@ export interface ClaudeCodeWorkspaceCapabilityOptions
    * workspace. A projected directory holds whatever the mounted collections
    * hold, and in an application those are written by its users — so a
    * `CLAUDE.md` or a `.claude/settings.json` among them is user input the run
-   * would otherwise obey (BP-031).
+   * would otherwise obey.
    *
    * The sandbox settings are what constrain the run's WRITES. `cwd` is a
    * working directory, not a fence: absolute paths still resolve, so the

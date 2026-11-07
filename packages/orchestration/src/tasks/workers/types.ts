@@ -1,5 +1,6 @@
+// FIX-443 §5.
 /**
- * Worker contract types (FIX-443 §5).
+ * Worker contract types.
  *
  * Workers are plain `BlockDefinition<TaskWorkerInput<TIn>, TOut>` — there
  * is no parallel "worker" abstraction. This preserves capability
@@ -63,8 +64,9 @@ export const taskWorkerInputSchema = z.object({
   deps: z.record(z.unknown()).optional(),
   attempts: z.number().int().nonnegative(),
   feedback: z.string().optional(),
+  // FIX-2086.
   /**
-   * Every steer on the task (`Task.steers`, FIX-2086), oldest first: words sent
+   * Every steer on the task (`Task.steers`), oldest first: words sent
    * into it while it was open, with who sent each. Part of the brief, taken or
    * not, so a retry is never run as first filed. Absent on a task never
    * steered.
@@ -74,9 +76,11 @@ export const taskWorkerInputSchema = z.object({
       z.object({
         message: z.string(),
         from: z.enum(["filer", "user", "board", "service"]),
-        /** The question this steer answers (FIX-2133), as it was asked; absent on a steer that answers none. */
+        // FIX-2133.
+        /** The question this steer answers, as it was asked; absent on a steer that answers none. */
         question: z.string().optional(),
-        /** A `"service"` steer's sender (FIX-2578), whose words these are. */
+        // FIX-2578.
+        /** A `"service"` steer's sender, whose words these are. */
         by: z.string().optional(),
       })
     )
@@ -126,11 +130,11 @@ export type TaskWorkerInput<TIn = unknown> = Omit<
   "input"
 > & { input?: TIn };
 
+// FIX-454.
 /**
  * Worker block alias. Any `BlockDefinition` whose input matches
  * `TaskWorkerInput<TIn>` is a valid worker. Forward-compat: agents and
- * skills register under the same alias once those systems land
- * (FIX-454).
+ * skills register under the same alias once those systems land.
  */
 export type TaskWorker<TIn = unknown, TOut = unknown> = BlockDefinition<any, any, TaskWorkerInput<TIn>, TOut>;
 

@@ -30,8 +30,9 @@ import type {
   ContinueRequestResult
 } from "../execution/request-continuation";
 
+// FIX-811.
 /**
- * Host-level continuation options (FIX-811). The host supplies
+ * Host-level continuation options. The host supplies
  * `stores`/`flowRegistry`/`runtimeConfig` from its own wiring, so callers pass
  * only the request id, the resolution, and optional streaming context.
  */
@@ -85,17 +86,19 @@ export interface InboundRequestEnvelope {
   sessionId?: string;
   /** Adapter-generated or framework-generated when absent. */
   requestId?: string;
+  // FIX-1442.
   /**
    * Organization override for this dispatch, when the adapter resolved one
    * that differs from `principal.orgId` — a trusted continuation or child
    * carrying its parent's binding, say. Absent means "use the principal's",
    * which is the normal case; it is never a way to arrive with no
-   * organization at all (FIX-1442).
+   * organization at all.
    */
   orgId?: string;
 
+  // FIX-406 6D.
   /**
-   * Optional tenant the request runs under (FIX-406 6D). Extracted by HTTP
+   * Optional tenant the request runs under. Extracted by HTTP
    * adapters from a configurable header (default `x-tenant-id`) and threaded
    * onto the request/session context identities.
    */
@@ -110,9 +113,9 @@ export interface InboundRequestEnvelope {
   /** Adapter-specific provenance (webhook headers, MCP session ids, etc.). */
   metadata?: Record<string, unknown>;
 
+  // FIX-1077.
   /**
-   * Runtime config to run this dispatch under, instead of the host's own
-   * (FIX-1077).
+   * Runtime config to run this dispatch under, instead of the host's own.
    *
    * Server-set and internal, like `source` and `resolvedActionCore` — never read
    * from a request body, so it adds no caller-facing surface. Today's one writer
@@ -197,6 +200,7 @@ export interface InboundDispatchHandle {
   readonly liveStream: LiveRequestStream | null;
   /** Resolves when the action completes (success, failure, or abort). */
   readonly finished: Promise<ExecutionResult>;
+  // FIX-828; FIX-999; FIX-982.
   /**
    * Resolves once the request has been *accepted* — discoverable, with nothing
    * left that could make it silently not exist. It does not wait for execution
@@ -206,14 +210,14 @@ export interface InboundDispatchHandle {
    * What "discoverable" costs differs by path, and each promises what its own
    * path can honour:
    *
-   * - **External dispatch** (FIX-828): the enqueue-time store writes
+   * - **External dispatch**: the enqueue-time store writes
    *   (`activeRequests` entry + the `in_progress` record) have committed AND the
    *   runner has taken the job. Adapters that ack before the client opens
    *   `GET …/stream` (the `202` path) await this; a store-write or enqueue
    *   failure rejects it and surfaces as a failed POST / reverted resume.
-   * - **In-process, `queue` policy** (FIX-999): the same enqueue-time writes.
+   * - **In-process, `queue` policy**: the same enqueue-time writes.
    *   The run itself is still waiting behind its concurrency key.
-   * - **In-process, ordinary** (FIX-982): the run's own `activeRequests`
+   * - **In-process, ordinary**: the run's own `activeRequests`
    *   registration has committed. `dispatchLocal` returns while `runAction` is
    *   still at its first await, so without this a caller would ack a request
    *   while the write that makes it exist could still fail. The `in_progress`
@@ -330,8 +334,9 @@ export interface InboundTransportHost {
    */
   dispatch(envelope: InboundRequestEnvelope): InboundDispatchHandle;
 
+  // FIX-811.
   /**
-   * Continue a suspended request under its OWN id (FIX-811). Unlike `dispatch`,
+   * Continue a suspended request under its OWN id. Unlike `dispatch`,
    * which starts a fresh run, this re-enters the existing request: completed
    * blocks replay from the durable log, the resolving `ctx.suspend()` returns
    * the resume payload, and the record transitions `suspended → in_progress →
@@ -343,6 +348,7 @@ export interface InboundTransportHost {
     options: HostContinueRequestOptions
   ): Promise<ContinueRequestResult>;
 
+  // FIX-1442.
   /**
    * Validate async flow-level pre-conditions before dispatch. Must be
    * awaited between `resolvePrincipal` and `dispatch`.
@@ -350,7 +356,7 @@ export interface InboundTransportHost {
    * Throws `OrgRequiredError` when the envelope reaches dispatch with no
    * usable organization on either the envelope or its principal — which means
    * a call site assembled an envelope without going through principal
-   * resolution, since resolution cannot produce one (FIX-1442). Also throws a
+   * resolution, since resolution cannot produce one. Also throws a
    * plain `Error` for an unregistered `flowKind` (same shape as `dispatch`).
    */
   validateDispatch(envelope: InboundRequestEnvelope): Promise<void>;

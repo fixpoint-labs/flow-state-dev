@@ -1,5 +1,6 @@
+// FIX-2086.
 /**
- * How a running request takes a steer (FIX-2086): a context entry re-read
+ * How a running request takes a steer: a context entry re-read
  * before every model call. Nothing is stopped, no attempt is used, and
  * nothing settles.
  */
@@ -24,7 +25,8 @@ function senderOf(from: ShownSteer["from"]): string {
   return from === "user" ? "the user" : "whoever assigned you the task";
 }
 
-/** One steer's line: who sent it, and the question it answers when it answers one (FIX-2133). */
+// FIX-2133.
+/** One steer's line: who sent it, and the question it answers when it answers one. */
 function steerLine(steer: ShownSteer): string {
   const words = steer.message.split("\n").join("\n  ");
   // Outside words (FIX-2578): quoted, with their sender's handle, never as the user's own.
@@ -47,11 +49,12 @@ export function renderSteers(steers: readonly ShownSteer[], lead: string): strin
   return [lead, ...steers.map(steerLine)].join("\n");
 }
 
+// FIX-2086; FIX-2574.
 /**
  * Show steers a request just took as lines in its session, each from its
- * sender (FIX-2086). A person's (sent from a screen, or a review's request for
- * changes) is a `user` line with their words alone, as if typed there
- * (FIX-2574); the filer's or the board's says who sent it. A line typed in the
+ * sender. A person's (sent from a screen, or a review's request for
+ * changes) is a `user` line with their words alone, as if typed there;
+ * the filer's or the board's says who sent it. A line typed in the
  * session (`line:` keyed) is there already, as the person's own, and so is a
  * delivered message's (`"service"`), as its sender's. Call it once
  * per take, with only the steers that take newly took.
@@ -154,9 +157,10 @@ export async function takeRunningSteers(
 
 /** {@link createSteerContext}'s options: where it reads the row the request holds. */
 export interface SteerContextOptions {
+  // BP-031.
   /**
    * The ledger the running request's task is on, read from server-set state
-   * (the session's birth fields, say), never from input (BP-031).
+   * (the session's birth fields, say), never from input.
    */
   readonly resolve: (ctx: BlockContext) => Promise<TaskCollectionRef | undefined>;
 }

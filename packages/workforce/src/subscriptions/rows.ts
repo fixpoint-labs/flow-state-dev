@@ -1,5 +1,6 @@
+// FIX-2534.
 /**
- * Subscriptions' rows (FIX-2534): the subscription, its cursor, and the thread
+ * Subscriptions' rows: the subscription, its cursor, and the thread
  * index entry, with the collections they live in and how a block reaches them.
  *
  * - **A subscription** is its user's (epic D5), written only by `subscribe`

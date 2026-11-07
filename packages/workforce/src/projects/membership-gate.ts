@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * The membership gate: is this session's owner one of a shared project's
  * members, who may change its workstream list and open workstreams in it?
@@ -9,7 +10,7 @@
  * It reads exactly two things: the row's `members`, and the session's owner as
  * the engine recorded it when the session was created (from the verified
  * principal, never from the request body). It never reads session state or a
- * caller's input (BP-031).
+ * caller's input.
  */
 
 import type { ProjectRow } from "./collections";

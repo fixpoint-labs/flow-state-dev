@@ -105,9 +105,10 @@ export type RowWritten<R> =
   | { readonly committed: R }
   | undefined;
 
+// FIX-2078.
 /**
  * The steps the resource backing runs around a write for its ledger's
- * delivery (FIX-2078): the filer's wake before a write that may end a row,
+ * delivery: the filer's wake before a write that may end a row,
  * and the notice after it. Absent on a ledger no board hands rows out from.
  */
 export interface TaskStorageDelivery {
@@ -248,8 +249,9 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
   /** The board's row by id, as read now. */
   const lookup = (id: string): Task | undefined => board.row(id);
 
+  // FIX-2080 D2.
   /**
-   * What an ending records besides the ending (FIX-2080 D2): a cascade is owed
+   * What an ending records besides the ending: a cascade is owed
    * when a failed or cancelled row has an open dependent on the board the
    * write reads, or the board's filed-task payer says this ending owes one.
    */
@@ -268,12 +270,13 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
     return row;
   }
 
+  // FIX-976; FIX-948; FIX-951.
   /**
-   * Move a row's status, returning what it did (FIX-976). `derive` chooses
+   * Move a row's status, returning what it did. `derive` chooses
    * the target on the committed row inside the write and must be pure:
    * nothing may be recorded before the decline check, or a displaced worker's
-   * late failure could spend another task's retry allowance (FIX-948).
-   * `guards` make the write advisory (FIX-951), decided race-free on the same
+   * late failure could spend another task's retry allowance.
+   * `guards` make the write advisory, decided race-free on the same
    * row. `targets` are the statuses `derive` can choose, read by the
    * delivery's wake before the write.
    */
@@ -320,8 +323,9 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
     return transition(id, [targetStatus], () => ({ targetStatus, kind, patch }), guards);
   }
 
+  // FIX-976.
   /**
-   * Write a row's fields, returning what it did (FIX-976). `declineOnTerminal`
+   * Write a row's fields, returning what it did. `declineOnTerminal`
    * is the terminal guard for the writes that change a task's future (epic
    * constraint A1); the plain field writes keep writing to terminal rows,
    * which the supervisor's failure-category audit depends on.
@@ -365,7 +369,8 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
     return write();
   }
 
-  /** Bring each outside row a batch depends on, and the task filing it, up to its committed state (FIX-2114, FIX-2129). */
+  // FIX-2114, FIX-2129.
+  /** Bring each outside row a batch depends on, and the task filing it, up to its committed state. */
   async function refreshDeps(batch: readonly Pick<Task, "id" | "deps" | "filedByTask">[]): Promise<void> {
     if (storage.readCommitted === undefined) return;
     const filed = new Set(batch.map((row) => row.id));
@@ -375,8 +380,9 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
     }
   }
 
+  // FIX-2080 D2.
   /**
-   * A dependency that ended while `id` was written (FIX-2080 D2). Where the
+   * A dependency that ended while `id` was written. Where the
    * check before a filing or a deps edit reads the board outside the row's
    * write, an ending committed between the check and the write sees no
    * dependent, and the check saw no ending, so neither cancels it. Re-read
@@ -398,7 +404,8 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
     return false;
   }
 
-  /** The guarded settings write (FIX-2080, ER-4): `patchSettings`, and `hold` and `release` under their own names. */
+  // FIX-2080, ER-4.
+  /** The guarded settings write: `patchSettings`, and `hold` and `release` under their own names. */
   function writeSettings(id: string, settings: TaskSettingsPatch): Promise<TaskWriteOutcome> {
     return patch(
       id,
@@ -408,7 +415,8 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
     );
   }
 
-  /** The one hold write (FIX-2133): `fence` first (a claim fence), then the hold rule. */
+  // FIX-2133.
+  /** The one hold write: `fence` first (a claim fence), then the hold rule. */
   function writeHolds(
     id: string,
     kind: TaskChangeKind,
@@ -421,9 +429,10 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
     });
   }
 
+  // FIX-2080.
   /**
    * File `inits`: every row is checked before any is written, ids in the
-   * batch count (FIX-2080), and a dependency that ended meanwhile cancels its
+   * batch count, and a dependency that ended meanwhile cancels its
    * dependents, repeated until it cancels nothing (a cancel can end another
    * row of the batch).
    */
@@ -458,7 +467,8 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
     return built.map((row) => (lookup(row.id) ?? row) as Task<TInput, TOutput>);
   }
 
-  /** The reads and writes a cascade is paid with on this board (FIX-2080 D2). */
+  // FIX-2080 D2.
+  /** The reads and writes a cascade is paid with on this board. */
   const cascadeWrites: CascadeWrites = {
     get: lookup,
     list: () => board.rows(),

@@ -1,5 +1,6 @@
+// FIX-401.
 /**
- * In-memory sequencer checkpoint store (FIX-401).
+ * In-memory sequencer checkpoint store.
  *
  * Latest-only semantics: identity is `(requestId, blockInstanceId)`. Each
  * `write` overwrites the prior record. Suitable for tests and single-process
@@ -9,7 +10,8 @@ import type { SequencerCheckpoint } from "@flow-state-dev/core/types";
 import type { CheckpointStore } from "../types";
 
 export class InMemoryCheckpointStore implements CheckpointStore {
-  /** Kept in this process only (FIX-2063 D2). */
+  // FIX-2063 D2.
+  /** Kept in this process only. */
   readonly persists = false;
 
   private readonly data = new Map<string, SequencerCheckpoint>();

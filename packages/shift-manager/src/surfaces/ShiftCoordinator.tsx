@@ -48,7 +48,8 @@ import type { Gaps } from "../gaps";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** What Shift Manager calls the `shift-coordinator` worker (FIX-1747). */
+// FIX-1747.
+/** What Shift Manager calls the `shift-coordinator` worker. */
 const NAME = "Shift Coordinator";
 
 export function ShiftCoordinatorView({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {

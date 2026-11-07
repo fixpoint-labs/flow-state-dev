@@ -1,5 +1,6 @@
+// FIX-446.
 /**
- * Schemas for the Task Board pattern (FIX-446).
+ * Schemas for the Task Board pattern.
  *
  * Every schema here is a concrete Zod object — no `z.any()` escape
  * hatches. The pattern's blocks consume each other through these
@@ -39,6 +40,7 @@ export const taskBoardStateSchema: ZodTypeAny = z.object({
   tasks: tasksRecordSchema,
 });
 
+// FIX-477.
 /**
  * Per-worker (outer) sequencer state.
  *
@@ -46,8 +48,7 @@ export const taskBoardStateSchema: ZodTypeAny = z.object({
  * `claimTask`, consumed by `checkBoard` to gate the idle-sleep path.
  * Marked `transientSlot` because the value is purely a worker-local
  * scratch flag — clients have no use for it, and emitting a patch on
- * every idle poll dominates the SSE stream when many workers are idle
- * (FIX-477).
+ * every idle poll dominates the SSE stream when many workers are idle.
  *
  * The currently-held claim lives one level deeper, on the
  * worker-body sequencer's state (`taskBoardWorkerBodyStateSchema`),

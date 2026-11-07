@@ -41,10 +41,11 @@ export interface TrackedProcess {
    * SDK that never reached its spawn.
    */
   exited: () => Promise<void> | null;
+  // FIX-2312.
   /**
    * Send the spawned process `SIGKILL` if it has not exited, and resolve once
    * it has. Resolves at once when nothing was spawned, the process never
-   * started, or it has already exited (FIX-2312).
+   * started, or it has already exited.
    */
   kill: () => Promise<void>;
   /** The end of what the process wrote to stderr, trimmed; `""` when nothing. */

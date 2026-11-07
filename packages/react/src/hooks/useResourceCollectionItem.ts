@@ -1,20 +1,21 @@
+// FIX-427; FIX-739.
 /**
- * Convenience hook for fetching a single collection item by topic (FIX-427).
+ * Convenience hook for fetching a single collection item by topic.
  *
  * The fetched item is the baseline; when the collection declares
  * `client.live: true`, mid-stream mutations land in the snapshot's per-topic
  * `live` overlay (`mergeResourceChangeIntoSnapshot`). This hook reads that
  * overlay and layers it over the baseline's `clientData`, so a subscribed item
- * reflects a `pending → writing → published` transition without a refetch
- * (FIX-739).
+ * reflects a `pending → writing → published` transition without a refetch.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CollectionItemHandle } from "@flow-state-dev/client";
 import { useResourceCollection } from "./useResourceCollection";
 import type { SessionView } from "./useSession";
 
+// FIX-741.
 /**
- * `TClient` (FIX-741) is the collection's projected per-item client-data type;
+ * `TClient` is the collection's projected per-item client-data type;
  * pass it via the hook generic, e.g.
  * `useResourceCollectionItem<ClientDataOf<typeof memos>>(...)`. Defaults to
  * `unknown` so existing untyped call sites are unchanged.

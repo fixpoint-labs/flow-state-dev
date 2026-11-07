@@ -87,9 +87,10 @@ export type SuspensionAddress = {
   readonly suspensionId: string;
 };
 
+// FIX-2129.
 /**
  * Arguments to {@link RequestHost.resumeWait}: a wait gate in this session
- * and its outcome, or a wait for a user to cancel (FIX-2129).
+ * and its outcome, or a wait for a user to cancel.
  */
 export type ResumeWaitInput =
   | {
@@ -161,8 +162,9 @@ export type WakeView = {
 /** What {@link RequestWakes.settle} did. */
 export type WakeSettleResult = "moved" | "cleared" | "stale";
 
+// FIX-2078 D1.
 /**
- * A debt's due time, kept by the engine (FIX-2078 D1): one wake per session
+ * A debt's due time, kept by the engine: one wake per session
  * and internal entry, fired by the durability sweeper as its owner until a pass
  * in that session clears it. A writer owes the wake BEFORE the write that owes
  * the debt, so a crash between them leaves a wake that pays nothing, never a
@@ -200,7 +202,8 @@ export interface RequestWakes {
   readonly maxDebtAgeMs: number;
 }
 
-/** A wait's deadline, as the host bounds it (FIX-2082): milliseconds from the call. */
+// FIX-2082.
+/** A wait's deadline, as the host bounds it: milliseconds from the call. */
 export type WaitDeadlines = {
   /** A wait that names none waits this long: five minutes unless the host sets it. */
   readonly defaultMs: number;
@@ -210,8 +213,9 @@ export type WaitDeadlines = {
   readonly maxMs: number;
 };
 
+// FIX-2082.
 /**
- * Waits on this host (FIX-2082): every wait parks on the one wait gate, and
+ * Waits on this host: every wait parks on the one wait gate, and
  * each passes the same two checks before it does.
  */
 export interface RequestWaits {
@@ -240,6 +244,7 @@ export interface RequestWaits {
    * for a request that ended without reading the task.
    */
   ended?(requestIds: readonly string[]): Promise<Readonly<Record<string, boolean>>>;
+  // FIX-2166; FIX-2123.
   /**
    * Whether each request is running its own work now (`in_progress`): neither
    * parked (`suspended`) nor ended. `false` for one parked
@@ -247,23 +252,25 @@ export interface RequestWaits {
    * request of another session, and for one with no record. Also `false` for
    * one still recorded `in_progress` whose registry heartbeat has been silent
    * past the host's stale-request threshold: its process died before the sweep
-   * marked it interrupted (FIX-2166). Where heartbeats can't tell (off, or
+   * marked it interrupted. Where heartbeats can't tell (off, or
    * slower than half the threshold), the record alone answers. A board reads it
-   * to hold a task's notice while the request that filed the task still runs
-   * (FIX-2123), and not while that request is parked.
+   * to hold a task's notice while the request that filed the task still runs,
+   * and not while that request is parked.
    */
   running?(requestIds: readonly string[]): Promise<Readonly<Record<string, boolean>>>;
+  // FIX-2239.
   /**
-   * The running session's open stop for the user (FIX-2239): a request of
+   * The running session's open stop for the user: a request of
    * this session, other than the running one, parked on a user's suspension
    * (`isUserSuspension`). `undefined` when none is. Read from the suspensions
    * pending now. A message to a session stopped for the user queues behind
    * that request until it ends.
    */
   userStop?(): Promise<{ readonly requestId: string } | undefined>;
+  // FIX-2269.
   /**
    * Run `work`, which starts what the running request will then park on, and
-   * parks on it (FIX-2269): a call's send and its wait. If the process dies
+   * parks on it: a call's send and its wait. If the process dies
    * after `work` starts and before the park is written, the engine continues
    * the request, as the continue route does, with no one asking, and its
    * replay parks on what it already started.
@@ -333,9 +340,10 @@ export type SessionHistory = {
   readonly running: boolean;
 };
 
+// FIX-2160 D2; FIX-2173.
 /**
- * Sessions of the running principal (FIX-2160 D2): a check on a target session
- * before anything is written to it, and a read of what it has said (FIX-2173).
+ * Sessions of the running principal: a check on a target session
+ * before anything is written to it, and a read of what it has said.
  */
 export interface RequestSessions {
   /**
@@ -411,6 +419,7 @@ export interface RequestHost {
    */
   livenessOf?(requestIds: readonly string[]): Promise<LivenessAnswers>;
 
+  // FIX-2129.
   /**
    * Resume a turn parked on a wait gate **in this session**, with the answer or
    * an error. The parked request continues under its own id, as a same-request
@@ -421,7 +430,7 @@ export interface RequestHost {
    * running session is closed over, so one conversation cannot resume another's
    * turn. A gate resolves once; every later call is refused `already-resolved`.
    *
-   * **Or cancel a wait for a user** (FIX-2129): `{ suspension, outcome: {
+   * **Or cancel a wait for a user**: `{ suspension, outcome: {
    * cancelled: true } }` resolves a pending user's suspension `cancelled`
    * through the same fence every answer takes, and continues its request, so
    * the block reads `{ cancelled: true }` and runs to its end. A suspension
@@ -438,9 +447,10 @@ export interface RequestHost {
    */
   resumeWait?(input: ResumeWaitInput): Promise<ResumeWaitResult>;
 
+  // FIX-2129, epic D3.
   /**
    * The deadline a wait for a user gets when its call names none, in
-   * milliseconds: the host's setting for a user's stop (FIX-2129, epic D3),
+   * milliseconds: the host's setting for a user's stop,
    * which a held question reads too. Absent when the host sets none: such a
    * stop waits until it is answered, stopped or cancelled. A fact read when
    * the request starts, not a verb.
@@ -468,23 +478,26 @@ export interface RequestHost {
    */
   readonly dispatchRunsHere?: boolean;
 
+  // FIX-2078 D1.
   /**
-   * Debts' due times (FIX-2078 D1). **Absent when the host keeps no wakes**:
+   * Debts' due times. **Absent when the host keeps no wakes**:
    * its stores have none, or it has no durable execution. A debt is then paid
    * on its fast paths only, and a consumer that needs a due time either keeps a
    * fast path or is refused when its flow is built.
    */
   readonly wakes?: RequestWakes;
 
+  // FIX-2082.
   /**
-   * Waits (FIX-2082): their deadline bounds and the depth count. **Absent when
+   * Waits: their deadline bounds and the depth count. **Absent when
    * the host can't hold a wait**: no durable execution, or stores that keep no
    * wakes, since a wait's deadline is a wake.
    */
   readonly waits?: RequestWaits;
 
+  // FIX-2160 D2.
   /**
-   * Sessions of the running principal (FIX-2160 D2). Absent on a host that
+   * Sessions of the running principal. Absent on a host that
    * can't read its session records, such as a hand-built test context.
    */
   readonly sessions?: RequestSessions;

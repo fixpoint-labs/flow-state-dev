@@ -141,6 +141,7 @@ export interface ClaudeCodeAgentOptions {
   sessionProvider?: BindingProvider<ClaudeCodeSession>;
   /** Derive the prompt from input/ctx. Default: `input.prompt`. */
   prompt?: (input: { prompt: string }, ctx: HarnessCallbackContext) => string;
+  // BP-031.
   /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
@@ -149,7 +150,7 @@ export interface ClaudeCodeAgentOptions {
    *
    * `null`, `""` and `undefined` from the resolver all mean "no model named":
    * the SDK runs Claude Code's own default. The resolver is handed the context
-   * alone, never the prompt, for the reason `cwd` is (BP-031).
+   * alone, never the prompt, for the reason `cwd` is.
    */
   model?: string | HarnessResolver<string | null | undefined>;
   /**
@@ -274,6 +275,7 @@ export interface ClaudeCodeAgentOptions {
    * `gh pr view` is not. `false` declares nothing and records nothing.
    */
   recordPullRequests?: boolean;
+  // BP-031.
   /**
    * Which filesystem settings this run loads — `"user"`, `"project"`,
    * `"local"`. Default: unset, which loads all three, exactly as today.
@@ -284,7 +286,7 @@ export interface ClaudeCodeAgentOptions {
    * `CLAUDE.md` and `.claude/settings.json` **out of its working directory**.
    * When that directory is one the server assembled from an application's own
    * resources, its contents are caller-controllable input, and a run reading
-   * configuration out of them means callers configure the agent (BP-031). Pass
+   * configuration out of them means callers configure the agent. Pass
    * `[]` to load none.
    *
    * Left unset by default deliberately: this option is the plumbing, not the
@@ -393,10 +395,11 @@ export interface ClaudeCodeAgentOptions {
    * It does not swallow the error; the run still fails.
    */
   onErrored?: (error: Error, ctx: HarnessCallbackContext) => Promise<void> | void;
+  // BP-030; BP-031.
   /**
    * The directory this run works in. Default: unset, which is the directory the
    * server process itself is running in — byte for byte what every existing
-   * caller has today (BP-030).
+   * caller has today.
    *
    * **This is the canonical explanation; everywhere else links here.**
    *
@@ -514,8 +517,7 @@ export interface ClaudeCodeAgentOptions {
    * `ctx.session.identity.id` is deliberately bare, because two tenants can
    * hold one session id. Prefer a key the server assigned over one that
    * arrived with the request — both reach the server from the caller, so the
-   * encoding is what makes an untrusted one safe to build a path from
-   * (BP-031).
+   * encoding is what makes an untrusted one safe to build a path from.
    *
    * The resolver may be async, for a directory that has to be looked up or
    * provisioned first.
@@ -523,7 +525,7 @@ export interface ClaudeCodeAgentOptions {
    * **An option, never a field on the block's input** — a correctness
    * constraint rather than a style preference. The same block is exposed as a
    * model-facing tool through the agent capability, so a working directory
-   * reachable from the input is one the model can choose (BP-031). The block's
+   * reachable from the input is one the model can choose. The block's
    * input stays the prompt.
    *
    * It is a working directory, not a boundary: the run can still address paths
@@ -531,9 +533,10 @@ export interface ClaudeCodeAgentOptions {
    * a fence around where they may go.
    */
   cwd?: HarnessResolver<string>;
+  // BP-030; BP-031.
   /**
    * Which conversation this background run continues. Default: unset — a fresh
-   * session, byte for byte today's `detached: true` behaviour (BP-030).
+   * session, byte for byte today's `detached: true` behaviour.
    *
    * **Background path only** (`detached: true`), and set it in-session and this
    * factory throws. In-session the block's own conversation state already owns
@@ -559,7 +562,7 @@ export interface ClaudeCodeAgentOptions {
    * An option and never a field on the block's input, for the same reason
    * `cwd` is one: the input schema is model-facing through the agent
    * capability's tool preset, so a session id reachable from it is a session a
-   * model could choose to continue (BP-031).
+   * model could choose to continue.
    */
   resume?: HarnessResolver<string | null | undefined>;
   /**
@@ -600,9 +603,10 @@ export interface ClaudeCodeAgentOptions {
    * conversation, so it races nothing.
    */
   onUsage?: HarnessUsageHook;
+  // FIX-2290.
   /**
    * Called with each completed assistant message and each tool call the run
-   * starts (FIX-2290), so a host can say how the run is doing. Default: unset.
+   * starts, so a host can say how the run is doing. Default: unset.
    * Not awaited, and a throw is logged and swallowed.
    */
   onActivity?: HarnessActivityHook;
@@ -705,12 +709,13 @@ function openWorkRecorder(ctx: BlockContext, cwd?: string): ClaudeCodeWorkRecord
   });
 }
 
+// FIX-1301.
 /**
  * Rejects the instant `signal` fires, with a {@link ClaudeCodeAgentAbortedError}
  * holding its reason — abort-like to `@flow-state-dev/core`'s `isAbortLike`
  * whatever the reason — so racing it (via `Promise.race`) against other work settles on THIS
  * signal firing rather than on whatever that other work eventually does
- * (FIX-1301: a fired deadline bounds the harness step, not the commands the
+ * (a fired deadline bounds the harness step, not the commands the
  * vendor ran). Already-aborted fires synchronously.
  *
  * Always carries a permanent no-op `.catch`, and `stop()` removes the
@@ -738,13 +743,14 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
   return { promise, stop: () => signal.removeEventListener("abort", onAbort) };
 }
 
+// FIX-2312.
 /**
  * How long an aborted run waits for the agent's process to exit before the
  * block settles. The process keeps writing the session's transcript until it
  * exits, so a run stopped early and resumed straight away would otherwise be
  * told its conversation does not exist. Bounded so a process that never exits
  * cannot hold the block: past it, the block sends the process `SIGKILL` and
- * waits for it to exit (FIX-2312), so the block never returns while its
+ * waits for it to exit, so the block never returns while its
  * process still runs.
  *
  * Sized against the SDK's own shutdown: on abort it closes the process's input
@@ -784,6 +790,7 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
   }
 }
 
+// FIX-1301.
 /**
  * Create the in-process Agent SDK handler block.
  *
@@ -796,7 +803,7 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
  * rethrown.
  *
  * **A fired `ctx.signal` stops the race against the vendor stream right away**
- * (FIX-1301) — `query()`'s loop is raced against the signal rather than awaited
+ * — `query()`'s loop is raced against the signal rather than awaited
  * outright, so the block's deadline is not bounded by whenever the SDK's stream
  * happens to settle. The rejection itself can arrive up to
  * {@link abortExitGrace} later, plus the moment a kill takes: the already-wired
@@ -1642,8 +1649,9 @@ async function accountInfoOf(running: unknown): Promise<AccountInfo | undefined>
 /** How long a run waits for its own query to name its account. */
 const ACCOUNT_TIMEOUT_MS = 5_000;
 
+// FIX-2145.
 /**
- * How a run is paid for, from its account (FIX-2145): `api-key` when it names
+ * How a run is paid for, from its account: `api-key` when it names
  * an API key source, `subscription` when it names a token source or a
  * signed-in plan, `null` when it names neither.
  */

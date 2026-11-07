@@ -1,5 +1,6 @@
+// FIX-2428.
 /**
- * One push socket's session (FIX-2428): which topics it hears, and the
+ * One push socket's session: which topics it hears, and the
  * frames it sends. Transport-neutral: a host takes the upgrade and moves
  * frames (`@flow-state-dev/node`'s `serve()`), and this decides everything
  * else, so a later host reuses the check.

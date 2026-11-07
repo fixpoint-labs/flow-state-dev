@@ -63,8 +63,9 @@ export type FlowEvent =
   | ({ type: "suspended" } & RunSuspension)
   | { type: "error"; message: string; code?: string };
 
+// FIX-2063 D3.
 /**
- * A stop the run ended on (FIX-2063 D3): the request is held, waiting for a
+ * A stop the run ended on: the request is held, waiting for a
  * person, and is answered through a server on the same store (`fsdev dev`).
  */
 export interface RunSuspension {

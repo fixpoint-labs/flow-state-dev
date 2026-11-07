@@ -1,5 +1,6 @@
+// FIX-1989.
 /**
- * The user's message log (FIX-1989): Workforce's `workforce/messages/*`,
+ * The user's message log: Workforce's `workforce/messages/*`,
  * read through the user's roster session. Another user's messages are not in it.
  */
 import { useCallback, useEffect, useState } from "react";

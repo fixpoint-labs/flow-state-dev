@@ -1,3 +1,4 @@
+// FIX-2085 D2.
 /**
  * Dispatch + listing handlers for the scheduled transport. Order of
  * operations in `handleDispatch` is load-bearing: id check → flow →
@@ -5,8 +6,8 @@
  * validation → overlap → effective principal → the scheduled time and
  * its claim → input → dispatch, acked once the host has accepted it.
  *
- * The claim is the one guarantee that a scheduled time fires at most once
- * (FIX-2085 D2): one stored record per schedule, its last fired time,
+ * The claim is the one guarantee that a scheduled time fires at most once:
+ * one stored record per schedule, its last fired time,
  * compare-and-set in the host's store, made after the schedule resolves
  * and before its handler runs. Every cron path POSTs here, so no index or
  * worker keeps a check of its own; an index's claim only finds due rows.

@@ -1,5 +1,6 @@
+// FIX-2379.
 /**
- * The task-row view (FIX-2379): what a person sees of one task row, the one
+ * The task-row view: what a person sees of one task row, the one
  * status and *waiting on you* vocabulary every workforce app draws from.
  *
  * It reads holds the way the Inbox does (`openUserHolds`), and spend the way

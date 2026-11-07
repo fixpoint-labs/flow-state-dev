@@ -13,7 +13,8 @@
  * without importing the package root.
  */
 
-/** The harness contract (LAB-152): the run's input, envelope and handle, and the hooks a host wires. */
+// LAB-152.
+/** The harness contract: the run's input, envelope and handle, and the hooks a host wires. */
 export {
   harnessFailureKind,
   harnessRunEnvelopeSchema,

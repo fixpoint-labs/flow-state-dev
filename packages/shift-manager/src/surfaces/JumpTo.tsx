@@ -1,7 +1,8 @@
+// BR-10.
 /**
  * Jump to (⌘K; Shift+⌘K opens it in message mode): find any screen the sidebar
  * reaches, a project, a workstream, a worker, a task or a declared document,
- * from the one snapshot, and go there (BR-10). A query matches a result's
+ * from the one snapshot, and go there. A query matches a result's
  * shown name, its hint, or its id. A worker opens Roster on its team with its
  * row in view and focus. A document opens read-only. A Lab that serves no
  * document to the browser gets a line saying so, and a failed read of them, or

@@ -484,8 +484,9 @@ export type SessionView = {
     action: ResumeAction;
     data?: unknown;
   }) => Promise<void>;
+  // FIX-865.
   /**
-   * Continue a crash-interrupted request under its OWN id (FIX-865) and stream
+   * Continue a crash-interrupted request under its OWN id and stream
    * the re-entry's items back into this session's `items`. Unlike
    * `resumeLatestRequest` (which re-dispatches the session's most recent
    * request via `/retry` under a NEW id), this targets a specific `requestId`
@@ -529,8 +530,9 @@ export type SessionView = {
    * which settles its items.
    */
   refresh: (options?: SessionRefreshOptions) => Promise<void>;
+  // FIX-523.
   /**
-   * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
+   * Subscribe to streaming TTS audio chunks. Chunks are live-only
    * and not retained in session item state — the durable representation is
    * the eventual `OutputAudioContent` snapshot delivered via `items`. The
    * returned function unsubscribes. Used by `useVoice` for gapless playback;
@@ -818,10 +820,11 @@ export function useSession(
    * with no intermediate transitions. Drained in `applySnapshot`.
    */
   const pendingStateChangesRef = useRef<StateChangeItem[]>([]);
+  // FIX-739.
   /**
    * Buffer for `live: true` `resource_change` items received before the initial
-   * snapshot lands — the resource-side twin of `pendingStateChangesRef`
-   * (FIX-739). `mergeResourceChangeIntoSnapshot` bails when `prev === null`, so
+   * snapshot lands — the resource-side twin of `pendingStateChangesRef`.
+   * `mergeResourceChangeIntoSnapshot` bails when `prev === null`, so
    * mid-stream resource deltas emitted before the snapshot resolves would be
    * lost without this buffer. Drained in `applySnapshot`.
    */
@@ -829,8 +832,9 @@ export function useSession(
   const flushHandleRef = useRef<number | null>(null);
   /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
   const resourceChangedDuringStreamRef = useRef(false);
+  // FIX-523.
   /**
-   * Subscribers attached via `subscribeAudioDelta` (FIX-523). The set lives
+   * Subscribers attached via `subscribeAudioDelta`. The set lives
    * on a ref so handler identities can mutate over the lifetime of a
    * subscriber without forcing re-renders. We dispatch synchronously inside
    * the SSE callback so downstream consumers (the audio player) get the

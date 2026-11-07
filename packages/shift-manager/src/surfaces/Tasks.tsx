@@ -1,13 +1,14 @@
+// BR-15; BR-14; FIX-2398; BR-16.
 /**
  * Tasks (S9): every row on every attached board, done ones left out, full
- * width (BR-15). Grouped by State, Worker or Stream over the same rows.
+ * width. Grouped by State, Worker or Stream over the same rows.
  *
  * Drawn as design v2's Tasks (v2:650-689): the ALL STREAMS tag and a mono
  * summary line, GROUP BY as a segmented control, and the Queued toggle, off
- * by default and saying how many rows it hides (BR-14). The columns are
+ * by default and saying how many rows it hides. The columns are
  * v2's: the state square, ID, TASK, NOW, STREAM, WORKER, TIME (elapsed from
  * the row's start, by a clock) and COST (the vendor's charge its runs
- * reported, FIX-2398). Columns with no shipped read say who ships them (BR-16).
+ * reported). Columns with no shipped read say who ships them.
  * A failed row carries its error as a line under its title.
  */
 import { useEffect, useState } from "react";

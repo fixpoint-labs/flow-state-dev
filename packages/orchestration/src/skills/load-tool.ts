@@ -70,9 +70,10 @@ export interface LoadSkillToolOptions {
    * generator, so it sees the same flow config the binding reader does.
    */
   initialSkills?: InitialSkillsSource;
+  // FIX-817.
   /**
    * Whether the ambient catalog listing reaches this generator's prompt —
-   * the binding's `catalogContext` preset (FIX-817), which ships on.
+   * the binding's `catalogContext` preset, which ships on.
    *
    * It changes one sentence of the tool's description, and that sentence is
    * the only thing telling the model where the names come from. With the

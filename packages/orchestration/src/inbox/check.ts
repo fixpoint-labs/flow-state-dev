@@ -1,6 +1,7 @@
+// FIX-2133.
 /**
  * `@flow-state-dev/orchestration/inbox/check` — the check that an Inbox list
- * is the list it should be (FIX-2133). For tests and goals in this repository:
+ * is the list it should be. For tests and goals in this repository:
  * the subpath is in the workspace's exports only, never published.
  *
  * The truth is read apart from the list, or the check proves nothing: a

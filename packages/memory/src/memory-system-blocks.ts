@@ -77,8 +77,9 @@ export interface MemorySystemBlocksConfig {
     }
     /** Prune when fact count reaches this threshold. Default: 20. 0 to disable. */
     pruneThreshold?: number
+    // FIX-745.
     /**
-     * Resolved relations (typed-edge graph) config (FIX-745). Present only when
+     * Resolved relations (typed-edge graph) config. Present only when
      * the relations tier is enabled; absent disables all edge behaviour.
      */
     relations?: ResolvedRelationsConfig
@@ -90,8 +91,9 @@ export interface MemorySystemBlocksConfig {
   /** Shared digest resource reference — must be the same instance across blocks. */
   _digestResource?: ReturnType<typeof createDigestMemoryResource>
   source?: (input: unknown, ctx: any) => string
+  // FIX-411.
   /**
-   * Resolved hygiene configuration (FIX-411). When set, the consolidation
+   * Resolved hygiene configuration. When set, the consolidation
    * and capture pipelines auto-wire the janitor block per `hygiene.schedule`.
    * `undefined` means hygiene is disabled — janitor is neither built nor wired.
    */
@@ -134,9 +136,10 @@ const consolidationFactObjectSchema = z.object({
   targetFactId: z.string().default(''),
 })
 
+// FIX-745.
 /**
- * A single typed directed relation-edge proposal between named entities
- * (FIX-745). Endpoints are subject strings (e.g. 'user', 'moni') reusing the
+ * A single typed directed relation-edge proposal between named entities.
+ * Endpoints are subject strings (e.g. 'user', 'moni') reusing the
  * same subject namespace as facts. `type` is an active-voice relation
  * ('married to', 'works at'). `action` mirrors the fact actions:
  *  - 'new'       — record a new edge (deduped to a reinforce if one matches).
@@ -166,9 +169,10 @@ export const consolidationFactsOnlySchema = z.object({
   facts: z.array(consolidationFactObjectSchema),
 })
 
+// BP-016.
 /**
  * Output schema for the consolidation generator with the relations tier on:
- * facts plus typed relation edges. Strict-mode safe (BP-016 — all fields fixed
+ * facts plus typed relation edges. Strict-mode safe (all fields fixed
  * shape). Used as the generator's `outputSchema` only when relations is enabled.
  */
 export const consolidationOutputSchema = z.object({
@@ -1038,9 +1042,10 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
   })
 }
 
+// FIX-745.
 /**
  * Build the relation-extraction lines appended to the consolidation prompt when
- * the relations tier is enabled (FIX-745). Kept short so the prompt does not
+ * the relations tier is enabled. Kept short so the prompt does not
  * bloat; when a `vocabulary` is configured, the model is constrained to it.
  */
 function buildRelationsPromptSection(relations: ResolvedRelationsConfig): string[] {

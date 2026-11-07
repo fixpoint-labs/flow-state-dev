@@ -54,25 +54,28 @@ export type EmitToolOutputAttribution = {
    * tool-loop path; the `.asTool()` path leaves it absent.
    */
   model?: ModelIdentity;
+  // FIX-814.
   /**
-   * The disambiguated, model-facing alias the tool was compiled under
-   * (FIX-814). Recorded on `tool_output.toolCall.alias` so resume
+   * The disambiguated, model-facing alias the tool was compiled under.
+   * Recorded on `tool_output.toolCall.alias` so resume
    * reconstruction rebuilds the tool dictionary exactly as the model saw it —
    * including `ensureUniqueAlias` suffixes for colliding tool names. Absent on
    * the legacy `.asTool()` path, where alias falls back to
    * `sanitizeToolName(blockName)` (today's behavior, no regression).
    */
   alias?: string;
+  // FIX-814.
   /**
-   * The model step index this call belongs to (FIX-814, owned loop only).
+   * The model step index this call belongs to (owned loop only).
    * Recorded on `tool_output.toolCall.stepNumber` so resume replay and
    * canonical collapse key by generator path + step + call id, disambiguating
    * a provider call id reused across steps. Absent on the legacy `.asTool()`
    * path (single call, no steps).
    */
   stepNumber?: number;
+  // FIX-814.
   /**
-   * Settle-time model-output mapper (FIX-814). When set, the success path
+   * Settle-time model-output mapper. When set, the success path
    * computes the persisted `tool_output.modelOutput` by applying it to the
    * tool's real output — once, here at settle time — so resume never recomputes
    * a mapper that could observe drifted state. When absent, `modelOutput` is
@@ -83,8 +86,9 @@ export type EmitToolOutputAttribution = {
    * so nothing persists a completed call the model never received.
    */
   mapModelOutput?: (output: unknown) => unknown | Promise<unknown>;
+  // FIX-610.
   /**
-   * Cache-hit attribution (FIX-610). When set, the emitted `tool_output`
+   * Cache-hit attribution. When set, the emitted `tool_output`
    * item carries `cached: true` plus the supplied `cacheAgeMs` and (when
    * the hit crossed a task boundary inside a Task Board run) a
    * `sourceTask` pointer back to the originating task. Absent for normal

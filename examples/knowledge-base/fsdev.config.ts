@@ -1,6 +1,7 @@
+// FIX-855.
 /**
  * fsdev config for the knowledge-base example — a secured personal
- * MCP server (FIX-855).
+ * MCP server.
  *
  * `dev` (no Postgres URL set) keeps in-memory stores for local iteration.
  * `prod` (a Postgres URL is set) persists the corpus and requires

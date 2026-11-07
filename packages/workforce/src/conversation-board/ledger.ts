@@ -70,11 +70,12 @@ export function conversationPartition(view: TaskPartitionContext): Promise<strin
   });
 }
 
+// BP-015; FIX-2133.
 /**
  * The fields of a row a browser reads: what a task screen or a board column
  * draws, and nothing a run keeps for itself (its input, output, metadata and
- * write log stay on the server, BP-015). What holds a row for the user is
- * `holds`, with the `steers` that answer its questions (FIX-2133): the one
+ * write log stay on the server). What holds a row for the user is
+ * `holds`, with the `steers` that answer its questions: the one
  * thing that says what waits on the user. `spend` is what its runs spent, so
  * a task's tokens and cost read from the row.
  */
@@ -116,8 +117,9 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
  * conversation's partition. That is how an app lists the tasks its user's
  * conversations filed, and what a task screen reads.
  */
+// FIX-2080.
 /**
- * The settings a conversation's board honours (FIX-2080): a task can run in the
+ * The settings a conversation's board honours: a task can run in the
  * delegate's ongoing session for the conversation, and send its result to the
  * conversation. The board's guarded add takes both only from a conversation.
  */
@@ -179,13 +181,14 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
   return conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
 }
 
+// FIX-1802 S4; FIX-2080; FIX-2106; FIX-2161.
 /**
  * Metadata a caller hands in, without any marker this board keeps: a filing
  * or a patch can't forge an owed notice or an owed report, or clear one, or
  * make a row a piece of a task, or point a row at a
- * session as its split (FIX-1802 S4) or as the session that filed its work
- * (FIX-2080), or set the hop count its turn starts at (FIX-2106), or the
- * project it was filed in (FIX-2161).
+ * session as its split or as the session that filed its work,
+ * or set the hop count its turn starts at, or the
+ * project it was filed in.
  */
 export function callerMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined

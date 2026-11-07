@@ -77,7 +77,8 @@ export type BlockTraceCapturePayload = {
     generator?: BlockTraceItem["generator"];
     evaluator?: BlockTraceItem["evaluator"];
     modelUsage?: BlockTraceItem["modelUsage"];
-    /** `output` phase: the harness runs the block settled (FIX-2145). */
+    // FIX-2145.
+    /** `output` phase: the harness runs the block settled. */
     harnessSpend?: BlockTraceItem["harnessSpend"];
     model?: BlockTraceItem["model"];
     /**
@@ -226,6 +227,7 @@ export type BlockResult<TOutput> =
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface FlowStateSettings {}
 
+// FIX-1331 decision 4.
 /**
  * The one member of the running flow instance a block may read: the copy's
  * create-time config bag.
@@ -244,7 +246,7 @@ export interface FlowStateSettings {}
  * builds one context object carrying the whole `FlowInstance` under `flow`;
  * only the public type is narrowed. So a block that casts — `(ctx as any).flow.actions`
  * — reaches every member this view leaves out, and nothing stops it at run
- * time. That is the accepted shape (FIX-1331 decision 4): a block author
+ * time. That is the accepted shape: a block author
  * already owns the process their flow runs in, so the boundary exists to
  * prevent the accident and the drift, not the determined author.
  *
@@ -288,8 +290,9 @@ export interface GeneratorModelResultPayload {
   providerMetadata?: GeneratorModelResult["providerMetadata"];
   /** Resolved identity of the model that produced this result. */
   identity?: ModelIdentity;
+  // FIX-2145.
   /**
-   * Where this report counts (FIX-2145). Absent: both on the reporting
+   * Where this report counts. Absent: both on the reporting
    * block's trace row and in the request's spend ledger, as one model
    * call. `"ledger"`: the ledger only. A finished step of a multi-step
    * run, counted when the step ends so a run that later suspends or fails
@@ -353,9 +356,10 @@ export interface BlockContext<
    */
   settings: FlowStateSettings;
 
+  // FIX-1331.
   /**
    * The flow copy this block is running in, narrowed to its create-time
-   * config bag — `ctx.flow.config` and nothing else (FIX-1331).
+   * config bag — `ctx.flow.config` and nothing else.
    *
    * `ctx.settings` is the whole process, one shape for every flow in it;
    * this is the per-copy sibling: two registered copies of one definition
@@ -380,6 +384,7 @@ export interface BlockContext<
    */
   resources: import("./resource").ResourceRegistry<TResources>;
 
+  // FIX-914.
   /**
    * The immediate parent block in the execution chain, if any.
    * Provides the parent's name, kind, and the input it was called with.
@@ -389,7 +394,7 @@ export interface BlockContext<
    *
    * When this block declares `parentStateSchema` and the parent has its own
    * `stateSchema`, `ctx.parent` also carries the parent's state operations
-   * (FIX-914) — a child writes its owner's state without naming it (e.g. a
+   * — a child writes its owner's state without naming it (e.g. a
    * generator's activation tool writing `ctx.parent.pushState(...)`). Absent
    * (guard with `?.`) when the parent declares no own state.
    */
@@ -577,9 +582,10 @@ export interface BlockContext<
    */
   suspend?(options: import("../errors/suspension-error").SuspendOptions): Promise<unknown>;
 
+  // FIX-2129.
   /**
    * Stop the request until the user answers: an approval, a review or an
-   * input (FIX-2129). Returns the answer, or `{ cancelled: true }` when the
+   * input. Returns the answer, or `{ cancelled: true }` when the
    * task was cancelled while it waited; at a review's or an input's deadline
    * it throws `SuspensionTimeoutError`, and an approval reads as a no. A stop
    * with no `deadline` takes the host's setting for a user's stop, else waits
@@ -603,11 +609,12 @@ export interface BlockContext<
     onBlockStart?: (blockName: string, blockKind: string, input: unknown, transient?: boolean) => void;
     onBlockComplete?: (blockName: string, blockKind: string, output: unknown, durationMs: number, transient?: boolean) => void;
     onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number, transient?: boolean, ctx?: BlockContext) => void;
+    // FIX-814.
     /**
      * Fired when a router selects a route, before the branch dispatches. May
      * return a promise that resolves once the `router_decision` trace item has
      * landed in the response log — the router awaits it so a suspension inside
-     * the chosen branch can never persist before its decision anchor (FIX-814).
+     * the chosen branch can never persist before its decision anchor.
      */
     onRouteSelected?: (routerName: string, selectedBlockName: string, blockInstanceId?: string) => void | Promise<void>;
     onGeneratorModelResult?: (payload: GeneratorModelResultPayload) => void;
@@ -655,6 +662,7 @@ export interface BlockContext<
     transient?: boolean;
   };
 
+  // FIX-1005.
   /**
    * @internal Runtime hook that executes nested blocks with parent-chain
    * metadata. The optional `signalOverride` sets the `ctx.signal` of the
@@ -664,7 +672,7 @@ export interface BlockContext<
    * task trees see the background signal instead of the request signal.
    * When omitted, the child inherits the current parent ctx's `signal`.
    *
-   * `sideChainSignalOverride` (FIX-1005) does the same for the signal a
+   * `sideChainSignalOverride` does the same for the signal a
    * subtree's BACKGROUND dispatches read. It needs its own channel rather than
    * being derived from `signalOverride`, because the two carry deliberately
    * different things: `signalOverride` includes the transport signal, and
@@ -680,8 +688,9 @@ export interface BlockContext<
     sideChainSignalOverride?: AbortSignal
   ): Promise<TValue>;
 
+  // FIX-811.
   /**
-   * @internal Resume replay (FIX-811). Register a completed sibling entry for a
+   * @internal Resume replay. Register a completed sibling entry for a
    * block whose output was injected from the ReplayLog instead of re-run. The
    * core `executeBlock` replay short-circuit calls this before returning the
    * cached output so a later sibling's `ctx.getBlockOutput(replayedBlock)`
@@ -692,9 +701,10 @@ export interface BlockContext<
    */
   _registerReplayedChild?(parent: ExecutionParent, output: unknown, rescued?: boolean): void;
 
+  // FIX-811.
   /**
    * @internal Reserve the next synchronous `itemIndex` for a runtime-emitted
-   * item (FIX-811). Shares the per-run item-index counter that block traces and
+   * item. Shares the per-run item-index counter that block traces and
    * other server-emitted items use, so runtime items (e.g. `suspension_resume`)
    * interleave correctly with block items instead of running a parallel counter.
    * On a same-request continuation the counter is seeded from the prior log's
@@ -703,8 +713,9 @@ export interface BlockContext<
    */
   _reserveItemIndex?(): number;
 
+  // FIX-963.
   /**
-   * @internal Emit a component item and AWAIT its delivery (FIX-963).
+   * @internal Emit a component item and AWAIT its delivery.
    *
    * `ctx.emit.component` returns `void` and discards both emitter promises, so
    * a rejection there is unobservable — fine for the items it was built for
@@ -756,9 +767,10 @@ export interface BlockContext<
    */
   _flushItems?(): Promise<void>;
 
+  // FIX-688 Waves 2 & 3.
   /**
    * @internal Top up the per-scope resource caches with an action's or block's
-   * declared resources at dispatch time (FIX-688 Waves 2 & 3). Loads only the
+   * declared resources at dispatch time. Loads only the
    * eager entries not already cached; with `loadLazySingles: true` (per-block
    * dispatch) it additionally loads `prefetchMode: 'lazy'` single resources so
    * their `.state` stays synchronous inside `execute()`. Lazy collections are
@@ -791,10 +803,11 @@ export interface BlockContext<
    */
   _peekStatus?(): string;
 
+  // FIX-413.
   /**
    * @internal Hint written by a sequencer/router's execute right before
    * returning to describe the BlockValue kind its `block_trace.output` should
-   * carry (FIX-413). Emitters wrap the returned output as `inline` when no
+   * carry. Emitters wrap the returned output as `inline` when no
    * hint is set (the default for generators, handlers, and transforms).
    */
   _blockOutputHint?: BlockOutputHint;
@@ -840,17 +853,19 @@ export interface BlockContext<
    */
   _requestSideChainSignal?: AbortSignal;
 
+  // FIX-406 6H.
   /**
-   * @internal Effective tracing verbosity for this request (FIX-406 6H).
+   * @internal Effective tracing verbosity for this request.
    * Set by the runtime from `createFlowApiRouter({ tracingLevel })`; read by
    * sequencers to gate non-durable observability snapshots. Absent → the
    * sequencer falls back to `resolveTracingLevel()` (env / observability).
    */
   _tracingLevel?: TracingLevel;
 
+  // FIX-610.
   /**
-   * @internal Per-request single-flight map for cacheable tool calls
-   * (FIX-610). Keys are the cache keys produced by `buildCacheKey`; values
+   * @internal Per-request single-flight map for cacheable tool calls.
+   * Keys are the cache keys produced by `buildCacheKey`; values
    * are the in-flight promises so concurrent calls within the same request
    * share one upstream execution. Lazily created by
    * `wrapToolExecuteWithCache` on the first cacheable tool call. Scope is
@@ -894,11 +909,12 @@ export interface BlockContext<
  * hand-built one that carries none.
  */
 export interface InternalBlockContext extends BlockContext {
+  // FIX-999.
   /**
    * The one declared seam through which a capability reaches facilities only the
    * runtime can provide — starting a detached child request, settling the row
    * this request was dispatched for, asking whether dispatched work is still
-   * running (FIX-999).
+   * running.
    *
    * Framework-facing, not an app-author surface: there is nothing to declare to
    * get one. A host built through the shipped entry points supplies it.
@@ -924,15 +940,17 @@ export interface InternalBlockContext extends BlockContext {
    */
   [DISPATCH_SEAM]?: DispatchSeam;
 
+  // FIX-2077.
   /**
-   * The running request's request-end registry (FIX-2077), under a
+   * The running request's request-end registry, under a
    * symbol key. Read only by `onRequestEnded`, which a framework package calls
    * to run after the request's last drain. See `types/request-end.ts`.
    */
   [REQUEST_END_SEAM]?: RequestEndSeam;
 
+  // FIX-2145.
   /**
-   * The running request's spend ledger (FIX-2145), under a symbol
+   * The running request's spend ledger, under a symbol
    * key. Read only by `reportHarnessSpend`, which a harness calls when a run
    * ends. See `types/request-end.ts`.
    */
@@ -945,8 +963,9 @@ export interface InternalBlockContext extends BlockContext {
    */
   [BOARD_NOTICE_SEAM]?: BoardNoticeSeam;
 
+  // FIX-2129.
   /**
-   * How the running request resumed (FIX-2129), under a symbol key.
+   * How the running request resumed, under a symbol key.
    * Read only by `requestResumeOf`. See `types/request-resume.ts`.
    */
   [REQUEST_RESUME_SEAM]?: () => RequestResume | undefined;
@@ -970,9 +989,10 @@ export type LooseBlockContext<
   resources: any;
 };
 
+// FIX-413.
 /**
- * Hint communicated from a block's `execute` out to the block_trace emitter
- * (FIX-413). One of:
+ * Hint communicated from a block's `execute` out to the block_trace emitter.
+ * One of:
  * - unset / `kind: "inline"` — wrap the returned output as `{ kind: "inline", value: output }`.
  * - `kind: "ref"` — emit `{ kind: "ref", sourceItemId }`; executor flattens
  *   one hop if the target is itself a ref.
@@ -1035,8 +1055,9 @@ export interface BlockConfig<
 
   retry?: RetryPolicy;
 
+  // FIX-742.
   /**
-   * Per-block rescue handlers (FIX-742). When this block's execution throws a
+   * Per-block rescue handlers. When this block's execution throws a
    * non-`SuspensionError`, the first handler whose `when` matches runs with the
    * block's own scoped context — so it can read sequencer state — and its
    * output replaces the throw, letting the enclosing chain / fan-out continue.
@@ -1045,8 +1066,9 @@ export interface BlockConfig<
    */
   rescue?: RescueHandlerSpec[];
 
+  // FIX-1331.
   /**
-   * What this block requires of whatever flow installs it (FIX-1331): a Zod
+   * What this block requires of whatever flow installs it: a Zod
    * schema the flow's create-time config bag must satisfy.
    *
    * The block names no flow, so it stays portable — the requirement bubbles
@@ -1066,8 +1088,9 @@ export interface BlockConfig<
    */
   flowConfigSchema?: ZodTypeAny;
 
+  // FIX-610.
   /**
-   * Opt-in tool-result memoization (FIX-610). When set, and when this
+   * Opt-in tool-result memoization. When set, and when this
    * block is installed as a tool on a generator, the framework caches the
    * tool's output keyed on `(toolName, canonicalize(args), scope)` and
    * serves repeat calls from the cache. Errors are never cached. Identical
@@ -1081,8 +1104,9 @@ export interface BlockConfig<
   cacheable?: BlockCacheableConfig | true;
 }
 
+// FIX-610.
 /**
- * Per-tool memoization config (FIX-610). See {@link BlockConfig.cacheable}.
+ * Per-tool memoization config. See {@link BlockConfig.cacheable}.
  *
  * Cache writes happen after the tool returns successfully. Errors are
  * never cached. Within a request, identical concurrent calls share one
@@ -1166,8 +1190,9 @@ export interface BlockDefinition<
   outputSchema: TOutputSchema;
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
   declaredResources?: DeclaredResources;
+  // FIX-688.
   /**
-   * This block's OWN declared resources (FIX-688): its own `resources` config
+   * This block's OWN declared resources: its own `resources` config
    * plus its own capability-injected resources, EXCLUDING resources that bubble
    * up from descendant/child blocks. Where `declaredResources` is the bubble-up
    * (this block + all descendants), `ownDeclaredResources` is the strict subset

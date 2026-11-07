@@ -1,6 +1,7 @@
+// FIX-1622 S1.
 /**
  * `BoardList` — one board's rows as a single list, newest first, each with
- * its status word (FIX-1622 S1).
+ * its status word.
  *
  * The same read as `BoardColumns` (`reads.ts`), the same card guard and
  * legacy-status mapping, the same chrome; only the drawing differs. It mints

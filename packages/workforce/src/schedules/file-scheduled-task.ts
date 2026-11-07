@@ -1,5 +1,6 @@
+// FIX-2085 D1.
 /**
- * The internal entry a scheduled fire files its task through (FIX-2085 D1):
+ * The internal entry a scheduled fire files its task through:
  * on a worker flow, in the user's conversation with that flow's worker, as the
  * user.
  *

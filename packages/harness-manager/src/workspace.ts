@@ -544,6 +544,7 @@ export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation):
 /** An encoded {@link taskIssueSegment}: `h-` and a {@link hashKeySegment}. */
 const ENCODED_TASK_ISSUE = /^h-[0-9a-f]{16}$/i;
 
+// BP-030.
 /**
  * The issue a task's own id stands in for, on a board that mints its ids:
  * the id itself when it is a usable segment, else `h-` and its hash.
@@ -551,7 +552,7 @@ const ENCODED_TASK_ISSUE = /^h-[0-9a-f]{16}$/i;
  * The id is the board's, not the manager's, so the grammar cannot be asked
  * of it: the coordinator mints routed ids as `routed:<request>:<round>:<delegate>`,
  * which no checkout path, branch or run topic can carry. An id that already
- * fits keeps itself, so a run recorded under it is found again (BP-030). One
+ * fits keeps itself, so a run recorded under it is found again. One
  * shaped like an encoding is encoded too, so no id lands on another's.
  *
  * Every reader of a run keyed this way (a session door's `runOf`) derives the

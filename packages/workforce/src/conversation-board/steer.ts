@@ -1,6 +1,7 @@
+// FIX-2086; BP-031.
 /**
- * A line in a worker's task session, and the turn a late steer is owed
- * (FIX-2086). Every choice reads server-set state (BP-031).
+ * A line in a worker's task session, and the turn a late steer is owed.
+ * Every choice reads server-set state.
  */
 import { handler, router, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig } from "@flow-state-dev/core/types";
@@ -54,8 +55,9 @@ async function sessionOpenTask(ctx: BlockContext): Promise<{ ledger: TaskCollect
   return { ledger, row: latest(here.length > 0 ? here : open) };
 }
 
+// FIX-2238.
 /**
- * Whether every task in this task session's chain has finished (FIX-2238):
+ * Whether every task in this task session's chain has finished:
  * a line here no longer steers. `false` outside a task session and with no
  * board to read, where nothing says the task ended.
  */
@@ -135,6 +137,7 @@ export type SteerTurnEntryOptions = {
   | { readonly block: BlockDefinition<any, any>; readonly turn?: never }
 );
 
+// FIX-2113.
 /**
  * The internal entry for the turn a late steer is owed (D2). Spread it as
  * `internal: { actions: { onTaskSteered: steerTurnEntry({ ... }) } }`
@@ -144,7 +147,7 @@ export type SteerTurnEntryOptions = {
  * A `turn` is handed the steers as its message; a `block` is handed the task
  * as the board packs it, with the claim. The steers it takes are shown in
  * the session as lines from their senders, so a later turn there reads them
- * too (FIX-2113). A start that finds nothing to do
+ * too. A start that finds nothing to do
  * runs nothing. The wake is cleared once the task no longer waits on a steer.
  * `concurrency` defaults to the session's notices, so this runs once the
  * request working the task has ended.

@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * The project a coding run works on, and the user it works for: the one
  * reader both of a run's project answers come from, `projectWorkspace()`
@@ -15,7 +16,7 @@
  *    (a delegate's ongoing session has none of its own), else the one it
  *    names in `input.project`, by visibility and id.
  *
- * Every step reads stored, server-written data (BP-031): the session's
+ * Every step reads stored, server-written data: the session's
  * server-written fields, the held row's filing stamp, the workstream entry, the project row and the row the
  * claim gate verified for this run. The owner is the request's resolved user,
  * checked against the project's members on every path (and, for a workstream,
@@ -46,10 +47,11 @@ export type ProjectWorkspaceRefusalReason =
   | "not-a-member"
   | "other-project";
 
+// FIX-2333.
 /**
  * What a filer does about a task with no project to work in. One wording for
  * both checks: the board's `no_project` at filing, for a flow that needs a
- * project (FIX-2333), and this module's `no-project` at the run's start, its
+ * project, and this module's `no-project` at the run's start, its
  * backstop. Never "name one in `input.project`": a filer may be told never to.
  */
 export const SET_THE_FILERS_PROJECT =

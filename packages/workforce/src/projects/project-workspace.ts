@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * `projectWorkspace()`: where a coding run on a project gets its files.
  *
@@ -35,7 +36,7 @@
  * conversation's (1 or 2) is refused, never followed. The board writes that
  * project over the filer's (`../conversation-board/board`).
  *
- * Every step reads stored, server-written data (BP-031): the session's
+ * Every step reads stored, server-written data: the session's
  * readonly fields, the entry and the rows; and the run's owner is the
  * request's resolved user, the same identity harness-manager records as the
  * run's owner. The one thing read
@@ -207,10 +208,11 @@ function answerFor(
   return { kind: "repo", repo: project.repository, projectId: project.id, files: kept };
 }
 
+// BP-031.
 /**
  * The checkout entry that maps `project`, or `undefined`. Only a shared row,
  * only in a run whose session names an organization, matched on the stored
- * row's id and repository and the session's organization and tenant (BP-031).
+ * row's id and repository and the session's organization and tenant.
  * Exported for its tests.
  */
 export function checkoutFor(
@@ -228,7 +230,8 @@ export function checkoutFor(
   );
 }
 
-/** `checkouts`, checked once when the source is built (BR-6). Each refusal names the entry. */
+// BR-6.
+/** `checkouts`, checked once when the source is built. Each refusal names the entry. */
 function checkedCheckouts(checkouts: readonly ProjectCheckout[]): readonly ProjectCheckout[] {
   const seen = new Set<string>();
   checkouts.forEach((entry, index) => {

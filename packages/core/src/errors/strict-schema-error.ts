@@ -1,3 +1,4 @@
+// See BP-016.
 /**
  * Thrown when a generator `outputSchema` — after `makeSchemaStrict` strips its
  * optional/default/nullable wrappers — still contains a construct OpenAI's
@@ -5,7 +6,7 @@
  * `z.union` of non-literal variants). Raised eagerly at `generator()`
  * construction so a bad schema fails at definition with a located error,
  * rather than lazily on the first live model call as an opaque
- * `"Invalid schema for response_format"`. See BP-016.
+ * `"Invalid schema for response_format"`.
  */
 import { FlowError } from "./flow-error";
 

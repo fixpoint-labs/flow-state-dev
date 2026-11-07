@@ -1,3 +1,4 @@
+// BP-030.
 /**
  * The run's plan record: one shape every coding harness writes its own to-do
  * list into, and one writer for harnesses whose plan arrives as a whole list.
@@ -13,7 +14,7 @@
  * - {@link OBSERVED_PLAN} / {@link observedPlanCollection} /
  *   {@link observedPlanItemStateSchema} — the plan rows. The key and fields
  *   are the ones `@flow-state-dev/claude-code` shipped before the shape moved
- *   here, so rows already stored still read (BP-030). Fields stay nullable; a
+ *   here, so rows already stored still read. Fields stay nullable; a
  *   new one is added, never changed.
  * - {@link OBSERVED_PLAN_LIST} / {@link observedPlanListCollection} — one
  *   marker per run namespace saying whether the run's plan is `writing`,
@@ -58,6 +59,7 @@ export type ObservedOutcome = "pending" | "applied" | "failed";
 /** Runtime validator for {@link ObservedOutcome}. */
 export const observedOutcomeSchema = z.enum(["pending", "applied", "failed"]);
 
+// BP-023.
 /**
  * One plan row, keyed `<run namespace>/<item>`: the harness's own item id, or
  * the item's place in the list when the harness reports none (see
@@ -66,7 +68,7 @@ export const observedOutcomeSchema = z.enum(["pending", "applied", "failed"]);
  * `status` and `previousStatus` are free strings, not an enum: the vocabulary
  * belongs to the harness, and a value we have never seen records as itself
  * rather than throwing. `status` stays null until the harness reports one.
- * Every field is nullable with a null default (BP-023) so a row written by an
+ * Every field is nullable with a null default so a row written by an
  * older or newer shape still parses.
  */
 export const observedPlanItemStateSchema = z.object({
@@ -427,6 +429,7 @@ export interface PlanMarkerRead {
   readonly conversation?: string | null;
 }
 
+// BP-030.
 /**
  * Where to read one request's plan, from that request's run markers (the
  * markers listed under {@link planRowsPrefix}`(requestId, OBSERVED_PLAN_LIST)`).
@@ -435,7 +438,7 @@ export interface PlanMarkerRead {
  *   conversation's, its rows under `rowsPrefix` and its marker keyed
  *   `namespace`.
  * - `run` — no run left one: the request was recorded before plans were kept
- *   per conversation (BP-030), or it never confirmed a conversation. Its own
+ *   per conversation, or it never confirmed a conversation. Its own
  *   rows are under `rowsPrefix` and its markers are the ones passed in, as
  *   before.
  *

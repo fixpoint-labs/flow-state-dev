@@ -207,8 +207,9 @@ export interface PhaseRunContext {
   epic: string;
   issue: string;
   phase: string;
+  // `FIX-2165`.
   /**
-   * The tracker issue the task names (`FIX-2165`), or `null` when it names
+   * The tracker issue the task names, or `null` when it names
    * none. On a fixed board it is {@link issue}. On a board read from the
    * claim, `issue` is the row's own id and this is the issue its
    * `harnessFeature` key names, so a prompt can say what the work is for.
@@ -557,9 +558,10 @@ export interface ManagerOptions {
    * shutdown with `harnessDrainBudgetMs({ ..., judge: true })` when given.
    */
   judge?: HarnessJudge;
+  // FIX-2163; FIX-2384.
   /**
    * Hold a run that ends with commits on its branch for a person's review
-   * before its task completes (FIX-2163). Off by default: every run settles
+   * before its task completes. Off by default: every run settles
    * on its verdict, as without it.
    *
    * On, a run the phase's check passed (and the {@link judge}, when one read
@@ -567,7 +569,7 @@ export interface ManagerOptions {
    * waits through `ctx.suspendForUser({ kind: "review" })`, its prompt naming the
    * commits, the files they changed and the judge's verdict as information.
    * The stop's `data` carries each changed file's added and removed lines
-   * (`files`, FIX-2384); a screen reads one file's patch through
+   * (`files`); a screen reads one file's patch through
    * `harnessRunChangesRead`. The answer is
    * `{ verdict: "accepted" }`, which completes the task with no further
    * harness run, or `{ verdict: "revise", words }`, whose words become the
@@ -579,9 +581,10 @@ export interface ManagerOptions {
    * request starts, before any harness run.
    */
   reviewChanges?: boolean;
+  // FIX-2578.
   /**
    * Keep a task whose run opened a pull request open until that pull
-   * request merges or closes (FIX-2578). Off by default: such a task
+   * request merges or closes. Off by default: such a task
    * completes when its run passes, as without it.
    *
    * On, the settle (after the {@link judge} and the review) takes every pull
@@ -610,9 +613,10 @@ export interface ManagerOptions {
    * default: the brief is the phase's prompt alone.
    */
   issueSpec?: IssueSpecOption;
+  // FIX-2389.
   /**
-   * Ask a person before each tool call the harness hasn't pre-allowed
-   * (FIX-2389). Off by default: the feed is absent, and the harness's own
+   * Ask a person before each tool call the harness hasn't pre-allowed.
+   * Off by default: the feed is absent, and the harness's own
    * permission settings decide, as without it.
    *
    * On, the manager hands the harness an `onToolApproval` feed among its
@@ -686,14 +690,14 @@ export interface ManagerOptions {
    * block does not.
    */
   harness: HarnessSlot;
+  // FIX-2086; FIX-2312.
   /**
    * Stop a running step for a steer only when the harness's abort waits for
-   * its process to exit (FIX-2086). Otherwise two processes could share one
+   * its process to exit. Otherwise two processes could share one
    * checkout. Off: the steer waits for the step's own end. The row is polled
    * ({@link STEER_POLL_MS}) while a step runs.
    *
-   * Absent: what the harness block declares (`HarnessBlock.stopsOnAbort`,
-   * FIX-2312), so Claude Code's runs are stopped and other harnesses' aren't.
+   * Absent: what the harness block declares (`HarnessBlock.stopsOnAbort`), so Claude Code's runs are stopped and other harnesses' aren't.
    * Set it to override the harness either way.
    *
    * A run that offers a live steer (`onSteerable`) takes the line into its
@@ -757,9 +761,10 @@ export interface HarnessFeeds {
    * no usage ignores it.
    */
   onUsage: HarnessUsageHook;
+  // FIX-2254.
   /**
-   * Called by a harness whose run can take a line into its turn in flight
-   * (FIX-2254), with the steer that does it, and with `null` once it can't.
+   * Called by a harness whose run can take a line into its turn in flight,
+   * with the steer that does it, and with `null` once it can't.
    * While a run offers one, the manager hands it each steer as it lands
    * instead of stopping the step; a line the run refuses takes the step's
    * end (or the stop, with `stopsOnAbort`). A harness that can't steer
@@ -769,9 +774,10 @@ export interface HarnessFeeds {
    * own keeps compiling; the manager always hands one.
    */
   onSteerable?: HarnessSteerHook;
+  // FIX-2290.
   /**
    * Called by the harness with each assistant message and tool call of its
-   * run (FIX-2290). The manager keeps the task's `statusNote` from it: the
+   * run. The manager keeps the task's `statusNote` from it: the
    * first at once, then the latest at most once per `PROGRESS_NOTE_MS`,
    * fenced by the run's claim. A harness that reports none ignores it.
    *
@@ -779,9 +785,10 @@ export interface HarnessFeeds {
    * own keeps compiling; the manager always hands one.
    */
   onActivity?: HarnessActivityHook;
+  // FIX-2389.
   /**
-   * Called by a harness that asks about each tool call before it runs
-   * (FIX-2389), with the call; it answers allow, deny or held. Handed only
+   * Called by a harness that asks about each tool call before it runs,
+   * with the call; it answers allow, deny or held. Handed only
    * when the manager is built with `approveTools`; absent otherwise. A held
    * call stops the run, waits for a person, and the session resumes with the
    * answer. Shaped as `@flow-state-dev/claude-code`'s `onToolApproval`, so a
@@ -814,12 +821,14 @@ export const harnessTaskInputSchema = z.object({
  * issue and nothing it would have to know about the manager.
  */
 export const harnessFeatureSchema = z.object({
-  /** The tracker issue the task is for (`FIX-2165`). */
+  // `FIX-2165`.
+  /** The tracker issue the task is for. */
   issue: z.string(),
   /** Which phase of it. Absent: the manager's own. */
   phase: z.string().optional(),
 });
 
+// FIX-2282.
 /**
  * The key a task's `input` names feature work under on a board read from the
  * claim: `{ [HARNESS_FEATURE_KEY]: { issue, phase? } }`.
@@ -827,7 +836,7 @@ export const harnessFeatureSchema = z.object({
  * **Namespaced, because the rest of `input` is the filer's.** A model filing
  * from a conversation picks its own field names, and `issue` ("the problem")
  * is one it picks. Read from the plain fields, such a task was refused as half
- * a feature payload (FIX-2282). Nothing but this key makes a task feature
+ * a feature payload. Nothing but this key makes a task feature
  * work there; a fixed board's rows are feature rows by the board, and carry
  * the payload as {@link harnessTaskInputSchema} at the top of `input`.
  */
@@ -855,12 +864,13 @@ export function harnessFeatureOf(input: unknown): { issue: string; phase?: strin
   return parsed?.success === true ? parsed.data : undefined;
 }
 
+// BP-031.
 /**
  * The board a task was claimed on, as the trusted entry adapter hands it to
  * the manager: the gate's verified ticket's ledger id and partition, and its
  * incarnation when the adapter passes it.
  *
- * **Server-supplied, and still never trusted by itself** (BP-031). The adapter
+ * **Server-supplied, and still never trusted by itself**. The adapter
  * copies it from the gate's ticket, never from the task. The manager resolves
  * the board through its `ledgers` resolver at the running user's scope, and
  * then requires the row there to be this task, on this attempt, still running
@@ -916,41 +926,47 @@ const managerOutputSchema = z.object({
   branch: z.string().nullable(),
   /** How many commits the run's branch has that its base does not. */
   commits: z.number().int().nonnegative(),
+  // BP-030.
   /**
    * Whether git read `commits` against the run's base. `false` when it
    * couldn't, and `commits` is a fallback zero: show the count as unknown.
-   * `null` on an output kept before it existed (BP-030).
+   * `null` on an output kept before it existed.
    */
   commitsVerified: z.boolean().nullable().default(null),
+  // BP-030.
   /**
    * The commit the run's branch was cut at, so `git log <baseCommit>..<branch>`
    * lists the run's commits. `null` for a run with no repository, or one whose
-   * record names no base. Defaulted so an output kept before it parses (BP-030).
+   * record names no base. Defaulted so an output kept before it parses.
    */
   baseCommit: z.string().nullable().default(null),
-  /** The run's checkout, where its branch is checked out. `null` for a run with no repository. Defaulted (BP-030). */
+  // BP-030.
+  /** The run's checkout, where its branch is checked out. `null` for a run with no repository. Defaulted. */
   path: z.string().nullable().default(null),
   /** Whether the host's judge read the run before it settled. */
   judged: z.boolean(),
+  // BP-030.
   /**
    * How a person's review of the run's changes ended (`reviewChanges`):
    * `"accepted"` is the only value meaning a person accepted them;
    * `"deadline"` means nobody reviewed them before the host's deadline. `null`
-   * when no review was asked. Defaulted so a decision kept before it parses (BP-030).
+   * when no review was asked. Defaulted so a decision kept before it parses.
    */
   review: z.enum(["accepted", "deadline"]).nullable().default(null),
+  // FIX-2543; BP-030.
   /**
-   * Where an accepted run's work went (FIX-2543), when the person chose a
+   * Where an accepted run's work went, when the person chose a
    * way to land it: the pull request opened from its branch, or the base
    * branch it was merged into and the commit that branch is at. `null` when
-   * none was chosen. Defaulted so an output kept before it parses (BP-030).
+   * none was chosen. Defaulted so an output kept before it parses.
    */
   landed: landedSchema.nullable().default(null),
+  // FIX-2578; BP-030.
   /**
-   * The pull requests the task waited on (`awaitPullRequests`, FIX-2578), as
+   * The pull requests the task waited on (`awaitPullRequests`), as
    * last read when it settled: merged ones, and closed ones noted beside
    * them. `null` when it waited on none. Defaulted so an output kept before
-   * it parses (BP-030).
+   * it parses.
    */
   pullRequests: z
     .array(
@@ -966,9 +982,10 @@ const managerOutputSchema = z.object({
 });
 type ManagerOutput = z.infer<typeof managerOutputSchema>;
 
+// FIX-2543.
 /**
  * A person's answer to the review of a run's changes: accept them, or ask for
- * changes in words. An accept may name how the work lands (`land`, FIX-2543):
+ * changes in words. An accept may name how the work lands (`land`):
  * `pull-request` pushes the run's branch and opens a pull request; `merge`
  * merges it into the base branch of the person's checkout. Offered only on a
  * host that can land (`WorkspaceHost.land`), as the review's `data.lands`.
@@ -1010,10 +1027,11 @@ const managerStateSchema = z.object({
   topic: z.string().nullable().default(null),
   taskId: z.string().nullable().default(null),
   attempt: z.number().nullable().default(null),
+  // FIX-2133 D3.
   /**
    * The claim this run holds, as the claim gate (or the board's drain) stamped
    * it when it claimed the turn: the task, its attempt, and its turn
-   * generation (FIX-2133 D3). Every write this run makes to the task presents
+   * generation. Every write this run makes to the task presents
    * it, never a ticket minted from the row as it stands later. Two turns can
    * share an attempt (an answered question owes one more), so a write is this
    * run's only while the row is still on the ticket's turn.
@@ -1040,16 +1058,18 @@ const managerStateSchema = z.object({
   previousSessionId: z.string().nullable().default(null),
   /** The task's goal, as handed to this attempt: what a judge reads the answer against. */
   goal: z.string().nullable().default(null),
+  // FIX-2578.
   /**
-   * The external wait this turn is the wake of (`awaitPullRequests`,
-   * FIX-2578): its answer reaches the run as news on its pull request.
+   * The external wait this turn is the wake of (`awaitPullRequests`): its answer reaches the run as news on its pull request.
    * `null` on any other turn.
    */
   wake: z.string().nullable().default(null),
-  /** How many more harness steps this request ran for a steer (FIX-2086). Each names that read. */
+  // FIX-2086.
+  /** How many more harness steps this request ran for a steer. Each names that read. */
   steerSteps: z.number().nullable().default(null),
+  // FIX-2389.
   /**
-   * This try's tool approvals (`approveTools`, FIX-2389): the call the run
+   * This try's tool approvals (`approveTools`): the call the run
    * is stopped on, waiting for a person (`null` while none is), the grants
    * the answers left (per try, never on the task row), and how many steps
    * an answer resumed. `null` until the first call is held.
@@ -1080,25 +1100,29 @@ const managerStateSchema = z.object({
         .object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()), verified: z.boolean() })
         .nullable()
         .default(null),
+      // FIX-2384; BP-030.
       /**
        * What those commits changed, file by file, read once by `decide` when
-       * the run will be reviewed (FIX-2384), for the review's prompt and its
+       * the run will be reviewed, for the review's prompt and its
        * data. `null` when no review reads it, and on a decision kept before
-       * it was read (BP-030).
+       * it was read.
        */
       diff: runDiffSchema.nullable().default(null),
+      // FIX-2163.
       /**
-       * How this decision's review ended (FIX-2163): `accepted` or `deadline`
+       * How this decision's review ended: `accepted` or `deadline`
        * settle on it; `revise` and `cancelled` must not complete the run.
        */
       reviewed: z.enum(["accepted", "deadline", "revise", "cancelled"]).nullable().default(null),
-      /** Where an accept that named a way to land sent the work (FIX-2543). `null` otherwise. */
+      // FIX-2543.
+      /** Where an accept that named a way to land sent the work. `null` otherwise. */
       landed: landedSchema.nullable().default(null),
       /** The checks the phase's `isDone` ran (`commandCheck`), for the review's `data`. `null` when it ran none. */
       checks: z.array(commandCheckResultSchema).nullable().default(null),
     })
     .nullable()
     .default(null),
+  // BP-030.
   /**
    * The checkout lease this attempt holds, as a VALUE — see
    * `CheckoutLease.token`.
@@ -1110,14 +1134,15 @@ const managerStateSchema = z.object({
    * keyed by request; a value has the run's own state.
    *
    * `.nullable().default(null)` on both, so a run row persisted before this
-   * change still parses (BP-030).
+   * change still parses.
    */
   lockPath: z.string().nullable().default(null),
   leaseToken: z.string().nullable().default(null),
+  // BR-19.
   /**
    * The repository and base this run was first provisioned from, read off its
    * run record when the attempt opened. A retry provisions from these rather
-   * than from whatever its source answers now (BR-19). `null` before the
+   * than from whatever its source answers now. `null` before the
    * first provision, and on a record written before they were kept.
    */
   remote: z.string().nullable().default(null),
@@ -1330,8 +1355,9 @@ function runRefused(ctx: { sequencer?: { state?: unknown } | undefined }, messag
   });
 }
 
+// FIX-2163.
 /**
- * What a person reviewing a run's changes reads (FIX-2163): the commits, or
+ * What a person reviewing a run's changes reads: the commits, or
  * that they couldn't be read, and the judge's verdict as information.
  */
 function reviewPrompt(
@@ -1764,11 +1790,12 @@ function branchIssue(claimBoard: boolean, trackerIssue: string | null | undefine
   return claimBoard && trackerIssue != null ? { trackerIssue } : {};
 }
 
+// FIX-2086.
 /**
  * Build the manager: one dispatched worker for one phase.
  *
  * A steer on the task is in the attempt's first prompt, and one that arrives
- * while a step runs is the next step of the same request (FIX-2086).
+ * while a step runs is the next step of the same request.
  */
 export function harnessManager(options: ManagerOptions): TaskWorker {
   const {
@@ -2003,7 +2030,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return resolved;
   };
 
-  /** The run's row as stored now: a steer is another request's write (FIX-2086). */
+  // FIX-2086.
+  /** The run's row as stored now: a steer is another request's write. */
   const committedRow = async (ctx: BlockContext): Promise<Task | undefined> => {
     const taskId = managerState(harnessCtxState(ctx)).taskId;
     if (taskId === null) return undefined;
@@ -2143,16 +2171,17 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return true;
   };
 
+  // BR-6; BR-7; BR-8; BR-9.
   /**
    * Hold the run's repository work, where the host holds it: write the pack,
-   * then switch the record to it, then drop the pack the record named before
-   * (BR-6). Beside every save point: turn end, a question, failure.
+   * then switch the record to it, then drop the pack the record named before.
+   * Beside every save point: turn end, a question, failure.
    *
    * Answers `false` when the hold failed, after recording why and keeping the
-   * last good hold on the record (BR-7); the caller decides whether that fails
-   * the attempt (BR-8). The pack and the record write are each tried a few
+   * last good hold on the record; the caller decides whether that fails
+   * the attempt. The pack and the record write are each tried a few
    * times first. A displaced attempt's record write is refused like every
-   * other one (BR-9), and nothing is dropped. With holding off, nothing runs.
+   * other one, and nothing is dropped. With holding off, nothing runs.
    */
   const holdWork = async (ctx: BlockContext): Promise<boolean> => {
     const state = harnessCtxState(ctx);
@@ -2209,11 +2238,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     );
   };
 
+  // BR-25.
   /**
    * Provision the run's place through the host, handing it what the record
    * says, and write `place.state` around it in the order the rules give:
    * `provisioning`, then `lost` and `restoring` when the host reports them,
-   * then `ready` naming this host (BR-25). Until it is ready the record keeps
+   * then `ready` naming this host. Until it is ready the record keeps
    * naming the host the place was last ready on, so a machine that dies mid-
    * rebuild never reads as the run's live place.
    *
@@ -2284,11 +2314,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     }
   };
 
+  // BR-19, BR-29, D2.
   /**
    * Ask the run's owner: its held work cannot be used here. The place goes
    * `lost`, the pack is marked so nothing ever drops it, the task is held on
    * the owner's question through the ask step, and the operator's log names
-   * the run and the field, never the work's contents (BR-19, BR-29, D2).
+   * the run and the field, never the work's contents.
    */
   const holdOnMismatch = async (
     ctx: BlockContext,
@@ -3262,9 +3293,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     },
   });
 
+  // FIX-2389.
   /**
-   * The calls each running step was stopped on for a person's approval
-   * (FIX-2389), by request, until the approval step moves it onto the
+   * The calls each running step was stopped on for a person's approval,
+   * by request, until the approval step moves it onto the
    * sequencer's state; and the `once` grants a step spent, by their index in
    * that state's grants, dropped there by the next approval step.
    */
@@ -3310,11 +3342,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return heldToolDecision(call);
   };
 
+  // BP-031.
   /**
    * **The slot, called once.**
    *
-   * Every feed reads or writes MANAGER state — never the block's input
-   * (BP-031). A model holding the harness as a tool can choose neither where
+   * Every feed reads or writes MANAGER state — never the block's input.
+   * A model holding the harness as a tool can choose neither where
    * the run writes nor what conversation it continues, and that is structural
    * rather than a convention this manager keeps: a resolver is handed the
    * context alone, so the caller's prompt is not reachable from here at all.
@@ -3365,11 +3398,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // covers runs; any other is held, and the step is stopped for it.
     ...(approveTools ? { onToolApproval: askAboutToolCall } : {}),
   });
-  /** The host's word, else what the harness declares (FIX-2312). */
+  // FIX-2312.
+  /** The host's word, else what the harness declares. */
   const stopsOnAbort = options.stopsOnAbort ?? harnessBlock.stopsOnAbort === true;
 
+  // FIX-2290.
   /**
-   * Each running step's progress notes (FIX-2290), by request. Written through
+   * Each running step's progress notes, by request. Written through
    * the board's `reportProgress` with the claim this run holds, so a replaced
    * attempt's note declines rather than land on its replacement's row; a
    * decline stops that step's notes. Dropped when the step ends, so a step a
@@ -3450,8 +3485,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     });
   };
 
+  // FIX-2578.
   /**
-   * **The one place a task's pull requests settle it** (FIX-2578), at the
+   * **The one place a task's pull requests settle it**, at the
    * settle and on the wake its wait owes: each is read from GitHub, and
    *
    * - **all merged**, or **none open and some merged**: completes, with the
@@ -3533,8 +3569,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return settled;
   };
 
+  // FIX-2578.
   /**
-   * **The wake a task's pull-request wait owes** (FIX-2578), before anything
+   * **The wake a task's pull-request wait owes**, before anything
    * else runs: the turn the wait's release owes reads its pull requests
    * first. Merged or closed settles the task here, with no harness run, by
    * ending the chain on {@link SettledOnPullRequests}; open or unreadable
@@ -3637,8 +3674,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     },
   });
 
+  // FIX-2163; FIX-2543.
   /**
-   * **The review of a run's changes** (FIX-2163), between the judge and the
+   * **The review of a run's changes**, between the judge and the
    * steer check before the settle; a pass-through unless `reviewChanges` is
    * on. A run that passed its check (and that a judge found done, or read
    * under its floor, or that no judge read) waits for a person's review when
@@ -3646,7 +3684,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * a verified zero skips it. The manager's one suspension; questions hold.
    *
    * - **accepted**: the settle completes the task, with no harness run.
-   *   An accept that names how the work lands (`land`, FIX-2543) first
+   *   An accept that names how the work lands (`land`) first
    *   lands it through the host: `pull-request` pushes the run's branch and
    *   opens a pull request (recorded in the session's `observed-pull-requests`),
    *   `merge` merges it into the base branch of the person's checkout. Where
@@ -3906,9 +3944,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return controller.signal;
   };
 
+  // FIX-2254 D2.
   /**
-   * Lines a request took for its run that the run didn't take into its turn
-   * (FIX-2254 D2), owed to its next step. The row has no untake, so these are
+   * Lines a request took for its run that the run didn't take into its turn,
+   * owed to its next step. The row has no untake, so these are
    * kept here, beside the row's taken mark: refused lines, and lines still
    * waiting on the run's answer when its step ended.
    */
@@ -4013,8 +4052,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       },
     ]);
 
+  // FIX-2086.
   /**
-   * One more step for a steer (FIX-2086), when this attempt still has an
+   * One more step for a steer, when this attempt still has an
    * untaken steer or the step was stopped for one: it resumes the session
    * this attempt confirmed, with the checkout taken again. None when a step
    * that ended on its own took nothing (the gate's check owes the turn), or
@@ -4076,8 +4116,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return { prompt: steers.length === 0 ? CONTINUE_AFTER_STOP : renderSteers(steers, lead), again: true };
   };
 
+  // FIX-2389.
   /**
-   * **A run's tool call, waiting for a person** (FIX-2389), after a harness
+   * **A run's tool call, waiting for a person**, after a harness
    * step; a pass-through unless `approveTools` is on and the step was stopped
    * on a held call. The call moves onto the sequencer's state, so a resume
    * after a restart (which runs this step's code again up to the wait) reads
@@ -4351,10 +4392,11 @@ function heldTicket(
   return ticketForClaim(board.collectionId, row, board.partition);
 }
 
+// FIX-2578.
 /**
  * Whether `steer` answers one of `row`'s questions for a person: a steer a
  * deadline wrote is a message, not an answer, and so is the one that woke an
- * external wait (FIX-2578), which answers no question.
+ * external wait, which answers no question.
  */
 function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
   if (steer.answers === undefined || steer.from === "board") return false;
@@ -4362,8 +4404,9 @@ function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "
   return hold !== undefined && isRowHold(hold) && !isExternalHold(hold);
 }
 
+// FIX-2578.
 /**
- * The external wait `row`'s release owes this turn for (FIX-2578): the
+ * The external wait `row`'s release owes this turn for: the
  * newest of its row holds, when that is an external wait a steer answered. A
  * question asked after it is newer, and its answer's turn is the question's.
  */
@@ -4375,9 +4418,10 @@ function wokenWait(row: Task): RowHold | undefined {
 /** The most requests a run record keeps for its task (`requestIds`): the oldest go first. */
 const MAX_TASK_REQUESTS = 64;
 
+// FIX-2578.
 /**
- * Ends the manager's chain once a wake settled its task on its pull requests
- * (FIX-2578), with no harness run: the chain's rescue returns `output`.
+ * Ends the manager's chain once a wake settled its task on its pull requests,
+ * with no harness run: the chain's rescue returns `output`.
  */
 class SettledOnPullRequests extends Error {
   constructor(readonly output: ManagerOutput) {
@@ -4432,9 +4476,10 @@ function isWorkspaceHost(workspace: WorkspaceConfig | WorkspaceHost): workspace 
   return typeof (workspace as WorkspaceHost).provision === "function";
 }
 
+// BR-19.
 /**
  * What a run provisions from: its source's answer, except that a run already
- * provisioned keeps the repository and base its record names (BR-19), and a
+ * provisioned keeps the repository and base its record names, and a
  * run first provisioned with no repository stays on its kept files alone. The
  * answer's kept files still come from the source, which is the only thing
  * that can hand back a collection bound to this context.
@@ -4479,7 +4524,8 @@ function refusedMessage(by: "source" | "host", refusal: { reason: string; messag
   return `[harness-manager] the workspace ${by} refused this run (${refusal.reason}): ${refusal.message}`;
 }
 
-/** How often a running step's row is read for a steer (FIX-2086). */
+// FIX-2086.
+/** How often a running step's row is read for a steer. */
 export const STEER_POLL_MS = 1_000;
 
 /** What a harness step stopped for a steer hands on, in place of a handle. */
@@ -4490,7 +4536,8 @@ interface SteerWatch {
   /** Set when the watch stopped the step for a steer. */
   stopped: boolean;
   timer: ReturnType<typeof setTimeout> | undefined;
-  /** The run's live steer while it offers one (FIX-2254), else `null`. */
+  // FIX-2254.
+  /** The run's live steer while it offers one, else `null`. */
   steer: HarnessSteer | null;
   /** How many takes this step handed live: each names its read. */
   handed: number;
@@ -4507,7 +4554,8 @@ interface PendingLine {
   readonly steers: ShownSteer[];
 }
 
-/** What a request owes its run's next step (FIX-2254 D2). */
+// FIX-2254 D2.
+/** What a request owes its run's next step. */
 interface OwedLines {
   /**
    * Lines owed, in the order they were taken: refused, or handed over with
@@ -4522,7 +4570,8 @@ interface OwedLines {
 const STEERS_IN_BRIEF =
   "Since this task was filed, you were also sent the messages below about it, oldest first. They are part of the task: follow them.";
 
-/** The lead a wake's words open with while the task's pull request is still open (FIX-2578). */
+// FIX-2578.
+/** The lead a wake's words open with while the task's pull request is still open. */
 const PULL_REQUEST_NEWS =
   "News on your pull request, which is still open. Your checkout and your earlier work are as you left them. " +
   "Act on what it says, then push your changes to the pull request's branch:";

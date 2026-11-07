@@ -175,9 +175,10 @@ export interface TaskCapOptions {
   maxTotalTasks?: number | null;
   /** Enqueued-at-creation `pending` count. `null` = unbounded. */
   maxEnqueuedTasks?: number | null;
+  // FIX-948.
   /**
-   * Cumulative failure retries this collection may authorize, across every task
-   * (FIX-948). `null` = unbounded.
+   * Cumulative failure retries this collection may authorize, across every task.
+   * `null` = unbounded.
    *
    * **What omission does depends on where you are constructing.** Only the
    * DEFAULTING SURFACES turn an omitted axis into
@@ -221,9 +222,10 @@ const DEFAULT_MAX_TOTAL_TASKS = 500;
 /** Default enqueue-burst ceiling applied where a board/library constructs a collection. */
 const DEFAULT_MAX_ENQUEUED_TASKS = 100;
 
+// FIX-948.
 /**
  * Default cumulative retry budget applied where a board/pattern constructs a
- * collection (FIX-948).
+ * collection.
  *
  * Sized to be invisible in normal operation and decisive on a storm: a 25-task
  * board whose tasks each retry twice produces exactly 50 retries, so ordinary
@@ -353,9 +355,10 @@ export function resolveTaskCapDefaults(label: string, caps: TaskCapOptions): Tas
   return resolved;
 }
 
+// FIX-948.
 /**
  * The retry-budget opt-out a surface passes when its tasks can never retry
- * (FIX-948) — `eventActors`.
+ * — `eventActors`.
  *
  * It is `null`, not omission, and the difference is the whole point. Omitting
  * the axis means "take the default", so every defaulting site downstream —

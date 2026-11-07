@@ -10,9 +10,10 @@ import {
   SuspensionReceipt,
 } from "./suspension-card-shell";
 
+// FIX-849.
 /**
  * Polished selection card — the themeable counterpart to `SelectionRenderer` in
- * `@flow-state-dev/react` (FIX-849). Single choice (enum) renders radios; multi
+ * `@flow-state-dev/react`. Single choice (enum) renders radios; multi
  * choice (array of enum) renders checkboxes. Logic comes from `useSuspensionForm`.
  */
 export function Selection({

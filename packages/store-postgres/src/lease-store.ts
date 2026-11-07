@@ -1,5 +1,6 @@
+// FIX-140.
 /**
- * PostgreSQL-backed lease store for durable execution (FIX-140).
+ * PostgreSQL-backed lease store for durable execution.
  *
  * One active lease per request. Acquire is a single conditional upsert,
  * so two concurrent acquirers cannot both win. Lease ids are UUIDs, so a

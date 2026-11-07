@@ -217,9 +217,10 @@ export async function resolveSuspension(
   }
 }
 
+// BP-010.
 /**
  * Derives suspension state from `session.items` and returns approve/reject
- * actions. Derivation is a `useMemo` over the live stream (BP-010); resolution
+ * actions. Derivation is a `useMemo` over the live stream; resolution
  * goes through `session.answerSuspension`.
  */
 export function useSuspensions(

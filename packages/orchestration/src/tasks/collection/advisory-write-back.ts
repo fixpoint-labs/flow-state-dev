@@ -280,6 +280,7 @@ function readQuietly(ref: TaskCollectionRef, taskId: string): Task | undefined {
   }
 }
 
+// BP-030.
 /**
  * The clock the lease arm of the predicate compares against, sampled with the
  * snapshot rather than after the write. See {@link CallBasis}.
@@ -289,7 +290,7 @@ function readQuietly(ref: TaskCollectionRef, taskId: string): Task | undefined {
  * exactly the population this seam exists for, so its absence must not cost the
  * board its containment. `Date.now()` is what the interface documents as the
  * right answer for an implementer with no reason to pick another, so it is the
- * right answer here too (BP-030).
+ * right answer here too.
  */
 function readClock(ref: TaskCollectionRef): number {
   try {

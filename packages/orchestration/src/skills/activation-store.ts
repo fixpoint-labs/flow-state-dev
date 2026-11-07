@@ -1,13 +1,14 @@
+// FIX-911; FIX-914.
 /**
  * Where a per-generator skill binding keeps its **dynamic** activations.
  *
- * The settled Skills v2 model (FIX-911) replaces the session-global
+ * The settled Skills v2 model replaces the session-global
  * `activeSkills` bag with a per-generator location, so an activation on one
  * generator never bleeds into another's context. A binding stores dynamic
  * activations in one of two places:
  *
  *   - **Block state (default).** The generator's own request-scoped block
- *     state (FIX-914). The reader runs in the generator's scope and reads
+ *     state. The reader runs in the generator's scope and reads
  *     `ctx.self`; the model-facing load tool runs as a child block and writes
  *     the generator's state via `ctx.parent`. Request-scoped, so nothing
  *     carries into the next turn, and it never leaves that generator.

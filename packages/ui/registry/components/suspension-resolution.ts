@@ -4,9 +4,10 @@ import type { SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useSessionItems } from "./session-items-context";
 
+// FIX-849.
 /**
  * Derive whether (and how) a suspension resolved from the live session item
- * stream (FIX-849). Shared by the polished suspension cards so each collapses to
+ * stream. Shared by the polished suspension cards so each collapses to
  * a receipt on reload — the same `SessionItemsProvider` requirement as the
  * approval card. Returns the matching `suspension_resume`'s resolution, or
  * `{ isResolved: false }` while still pending.

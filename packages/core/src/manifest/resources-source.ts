@@ -1,5 +1,6 @@
+// FIX-817.
 /**
- * The resources manifest source (FIX-817) — the resources domain's projection
+ * The resources manifest source — the resources domain's projection
  * into the discovery door.
  *
  * Built over the readers that already ship. `collectReadableResources` is

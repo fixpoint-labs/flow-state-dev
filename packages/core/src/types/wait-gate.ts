@@ -43,8 +43,9 @@ import { requestHostOf } from "./request-host";
 /** The suspension reason a wait gate carries. */
 export const WAIT_GATE_REASON = "wait" as const;
 
+// FIX-2082 D1.
 /**
- * The internal entry a wait's deadline wake names (FIX-2082 D1). The engine
+ * The internal entry a wait's deadline wake names. The engine
  * fires it itself: no flow declares it. One wake per session carries the
  * earliest deadline of the waits parked there.
  */
@@ -62,11 +63,12 @@ export function isWaitGate(suspension: { readonly reason: string }): boolean {
   return suspension.reason === WAIT_GATE_REASON;
 }
 
+// FIX-2129.
 /**
  * Whether a suspension that passed its deadline carries its turn on: not a
  * wait, past its deadline (`expired`), and either one a person could have
  * rejected (an approval, read as a no marked expired) or one that waits for a
- * user (FIX-2129: a review or an input, which resumes its block with
+ * user (a review or an input, which resumes its block with
  * `SuspensionTimeoutError`). Any other suspension that allows no `reject`
  * only expires. `allow` is absent on records written before it existed,
  * which read as approve/reject.
@@ -88,9 +90,10 @@ export type WaitRow = {
   readonly taskId: string;
 };
 
+// FIX-2082.
 /**
  * What the parked request waits on: one row on one board, or one request it
- * dispatched (a `dispatcher({ wait: true })`, FIX-2082).
+ * dispatched (a `dispatcher({ wait: true })`).
  */
 export type WaitGateBinding = WaitRow | { readonly requestId: string };
 
@@ -222,9 +225,9 @@ export function waitGateDataOf(record: { readonly data?: Record<string, unknown>
   return undefined;
 }
 
+// FIX-1816 BR-5, FIX-2082 D1.
 /**
- * Whether the running request's host can hold a wait (FIX-1816 BR-5, FIX-2082
- * D1): durable execution (the resume is wired), a durability sweeper that
+ * Whether the running request's host can hold a wait: durable execution (the resume is wired), a durability sweeper that
  * resumes a wait at its deadline (`RequestHost.hasWaitSweeper`), and wakes
  * (`RequestHost.waits`, present only where they are kept). Read off the
  * server's request host, never from input. Every wait checks it before

@@ -1,5 +1,6 @@
+// FIX-2085; BP-031.
 /**
- * Recurring work (FIX-2085): a schedule that files an ordinary task.
+ * Recurring work: a schedule that files an ordinary task.
  *
  * - **The row.** One per schedule in the user's schedule collection
  *   ({@link SCHEDULES_PATTERN}, at user scope in their organization):
@@ -12,7 +13,7 @@
  *   row's user: it finds the filer on their roster, then dispatches the
  *   filer's flow's {@link FILE_SCHEDULED_TASK_ENTRY} into the user's own
  *   conversation with the filer, the address their own message reaches
- *   (derived on the server, BP-031), opening it when absent. That entry files
+ *   (derived on the server), opening it when absent. That entry files
  *   through the board's own filing. No model turn decides what lands (D1).
  * - **The list.** `listSchedules` reads the collection and works each
  *   schedule's next run out from its cron and time zone at read (D3), so it

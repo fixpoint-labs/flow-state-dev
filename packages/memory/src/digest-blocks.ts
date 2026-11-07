@@ -1,5 +1,6 @@
+// [FIX-408].
 /**
- * Digest regeneration blocks ([FIX-408]).
+ * Digest regeneration blocks.
  *
  * Three internal blocks composed into one exported sequencer:
  *   guard     — staleness short-circuit; reads sources, decides if regen is needed

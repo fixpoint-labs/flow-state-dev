@@ -1,5 +1,6 @@
+// FIX-1506.
 /**
- * Resource and scope-state notices (FIX-1506): the one helper every writer of
+ * Resource and scope-state notices: the one helper every writer of
  * a scope's state or of a client-readable resource publishes through.
  *
  * | Writer | Where | Origin |

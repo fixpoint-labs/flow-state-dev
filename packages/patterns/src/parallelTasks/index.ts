@@ -1,3 +1,4 @@
+// FIX-910.
 /**
  * parallelTasks pattern — fan-out / fan-in orchestration backed by taskBoard.
  *
@@ -5,7 +6,7 @@
  * the taskBoard primitive, then synthesizes the completed results. One pass,
  * no feedback loop. Use Supervisor when tasks need judgment and iteration.
  *
- * Expressed on the `goalSeekLoop` primitive (FIX-910) as a single-pass loop —
+ * Expressed on the `goalSeekLoop` primitive as a single-pass loop —
  * `maxIterations: 1` with an always-`done` judge, so there is exactly one drain
  * and no feedback iteration. The seed (planner + seedTasksFromPlan) and the
  * finalize (collectResults + synthesizer) become the loop's `seed`/`finalize`
@@ -34,8 +35,9 @@ export interface ParallelTasksConfig<
 
   /** Maximum number of sub-tasks to run concurrently. Defaults to 3. */
   maxConcurrency?: number;
+  // FIX-931.
   /**
-   * Creation bounds for the internal board (FIX-931). Defaults 500/100 —
+   * Creation bounds for the internal board. Defaults 500/100 —
    * unchanged behavior when unset. A planner that legitimately produces more
    * than the enqueue bound would otherwise fail its whole seed with no way to
    * raise the ceiling, so both are reachable here: a number, or `null` for
@@ -43,9 +45,10 @@ export interface ParallelTasksConfig<
    */
   maxTotalTasks?: number | null;
   maxEnqueuedTasks?: number | null;
+  // FIX-948.
   /**
    * Cumulative failure retries the internal board may authorize, across every
-   * task (FIX-948). Default 50 — a number, or `null` for explicitly unbounded.
+   * task. Default 50 — a number, or `null` for explicitly unbounded.
    *
    * The two bounds above count only *new* tasks, so a task that keeps failing
    * keeps spending while both sit still. This is the one number that bounds

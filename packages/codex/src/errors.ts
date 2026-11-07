@@ -88,9 +88,10 @@ export function isUnknownThreadFailure(reason: string, resumeId: string): boolea
   return reason.includes(`no rollout found for thread id ${resumeId}`);
 }
 
+// LAB-152 §9.
 /**
- * The caller's signal fired. A cancelled run is a throw and never a handle
- * (LAB-152 §9), and this is what tells "you stopped it" from "it broke" for a
+ * The caller's signal fired. A cancelled run is a throw and never a handle,
+ * and this is what tells "you stopped it" from "it broke" for a
  * manager deciding whether to retry.
  *
  * A host tells it with core's `isAbortLike`, whatever stopped the run: the

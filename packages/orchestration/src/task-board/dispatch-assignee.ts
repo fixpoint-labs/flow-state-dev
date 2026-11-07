@@ -84,9 +84,10 @@ export interface DispatchingAssignee {
    * addressed by. Empty when the dispatcher sat at a uniform or floor assignee.
    */
   name: string;
+  // FIX-2082.
   /**
    * Where the dispatcher sat: a named assignee, the uniform `workers` block,
-   * the `defaultWorker` fallback, or a plan board's `newSession` (FIX-2082),
+   * the `defaultWorker` fallback, or a plan board's `newSession`,
    * which takes the rows filed `session: "new"`. What every reader branches on.
    */
   kind: "named" | "uniform" | "floor" | "newSession";

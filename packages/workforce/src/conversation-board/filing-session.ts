@@ -1,13 +1,13 @@
+// FIX-1791; FIX-1794; FIX-1793 S6, FIX-1866 S5.
 /**
  * A conversation's `filingSessionId`: its id plus its incarnation, from data
  * only the server writes. One function, because three things must agree on it:
- * the delegate sessions a conversation's deliveries open (FIX-1791), the
+ * the delegate sessions a conversation's deliveries open, the
  * partition its task board keeps its rows in, and the task sessions its board
- * hands work to (FIX-1794). Any two spellings would drift.
+ * hands work to. Any two spellings would drift.
  *
  * And the workstream a session works for, and the project, which a task
- * session's hand-over carries down from the session that filed it (FIX-1793
- * S6, FIX-1866 S5).
+ * session's hand-over carries down from the session that filed it.
  */
 import {
   FILING_PROJECT_STATE_KEY,
@@ -31,10 +31,11 @@ export function filingWorkstreamOf(state: unknown): string | undefined {
   return typeof filed === "string" ? filed : undefined;
 }
 
+// FIX-2161.
 /**
  * The project a session works in, from its server-written fields: the one it
  * is the coordinator conversation of (`projectId`), else the one its user
- * set it to work in (`workProjectId`, FIX-2161), else the one it was filed
+ * set it to work in (`workProjectId`), else the one it was filed
  * from (`filingProjectId`), in `projectRef` form. `undefined` for none. The
  * work-project action refuses a session carrying either of the others, so no
  * two meet on one session.
@@ -49,9 +50,10 @@ export function filingProjectOf(state: unknown): string | undefined {
   return typeof filed === "string" ? filed : undefined;
 }
 
+// FIX-2161.
 /**
  * A session's state as it stood before a user could set the project it works
- * in (`workProjectId`, FIX-2161): the state a row filed before rows carried
+ * in (`workProjectId`): the state a row filed before rows carried
  * the project stamp was filed from.
  */
 export function stateBeforeWorkProject(state: unknown): Record<string, unknown> {

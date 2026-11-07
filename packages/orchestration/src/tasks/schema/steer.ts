@@ -1,5 +1,6 @@
+// FIX-2086.
 /**
- * The steer record on a task (FIX-2086): its schema and the most a task
+ * The steer record on a task: its schema and the most a task
  * takes. A leaf, so the task schema and the hold predicates read it without
  * importing the steer writes (`../steers`), which read the holds.
  */
@@ -17,21 +18,23 @@ export const taskSteerSchema = z.object({
   id: z.string(),
   /** The words, as sent. */
   message: z.string(),
+  // FIX-2133; FIX-2578.
   /**
    * Who sent it: `"filer"`, the filer's model through its `updateTask` tool;
    * `"user"`, a person, from a screen or a line typed in the task's session;
    * `"board"`, the board itself, closing a question at a deadline a host set
-   * with "no answer came" (FIX-2133); `"service"`, words from outside the
+   * with "no answer came"; `"service"`, words from outside the
    * app, a message delivered to the task's session answering its external
-   * wait (FIX-2578), its sender in `by`. Server-written, never input.
+   * wait, its sender in `by`. Server-written, never input.
    */
   from: z.enum(["filer", "user", "board", "service"]),
   /** The user who sent it, when a person did and their id is known; a `"service"` steer's sender. */
   by: z.string().optional(),
   /** When it was kept, in epoch ms. */
   at: z.number(),
+  // FIX-2133.
   /**
-   * The row hold this steer answers (FIX-2133): its id. A row hold is open
+   * The row hold this steer answers: its id. A row hold is open
    * while no steer carries its id. **Absent** on a steer that answers nothing.
    */
   answers: z.string().optional(),

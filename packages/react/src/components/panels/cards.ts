@@ -6,6 +6,7 @@
  */
 import type { PanelRow } from "./reads";
 
+// BP-030.
 /**
  * One row as a board publishes it.
  *
@@ -13,7 +14,7 @@ import type { PanelRow } from "./reads";
  * ledger, the write log — and the collection's `expose` withholds all of it,
  * so this is the whole of what arrives. Every field but `id` and `status` is
  * optional, because a task that has not been titled, assigned or failed simply
- * has not got one (BP-030): read each through a `== null` guard.
+ * has not got one: read each through a `== null` guard.
  */
 export type BoardCard = {
   readonly id: string;

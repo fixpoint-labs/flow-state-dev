@@ -190,8 +190,9 @@ import { PAST_TURN_STATUSES } from "../execution/past-turns";
 import { readSettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
 
+// FIX-2063.
 /**
- * Why `ctx.suspend()` refused, and what to change (FIX-2063): the rule
+ * Why `ctx.suspend()` refused, and what to change: the rule
  * (durable execution is on wherever stores persist) and the host setting.
  */
 const SUSPEND_NEEDS_DURABILITY =
@@ -207,8 +208,9 @@ function leanModelUsageOf(usage: BlockTraceItem["modelUsage"]): BlockTraceItem["
   return counts;
 }
 
+// FIX-2129.
 /**
- * Whether the run's task was cancelled with one of its stops (FIX-2129):
+ * Whether the run's task was cancelled with one of its stops:
  * this continuation's own resolution, or, for a crash's continuation that
  * names none, a user's stop the log records cancelled with its task.
  */
@@ -219,13 +221,14 @@ function taskCancelledInRun(resumeCtx: ResumeContext | undefined, replayLog: Rep
   );
 }
 
+// FIX-2129 D1; FIX-1846.
 /**
  * What `ctx.suspend()` throws for a gate resolved without an answer (a
  * rejection, an expiry or a cancel), on the live continuation and on replay
  * alike. An expiry of a suspension that is not an approval (one that allows
  * no `reject`, or a review's or an input's `suspendForUser`) throws
- * `SuspensionTimeoutError` (FIX-2129 D1); an approval's reads as a rejection
- * marked expired (FIX-1846).
+ * `SuspensionTimeoutError`; an approval's reads as a rejection
+ * marked expired.
  */
 function rejectionOf(
   suspendOpts: SuspendOptions,
@@ -281,8 +284,9 @@ type EmissionContext = {
   nextItemIndex: () => number;
   /** Container ownership tag — set when emitting inside a container scope. */
   ownedBy?: string;
+  // FIX-658.
   /**
-   * Task attribution (FIX-658) — id of the task this scope is running, inherited
+   * Task attribution — id of the task this scope is running, inherited
    * from the nearest enclosing scope marked via `ctx._markTaskScope`. Stamped
    * onto every item this scope emits.
    */
@@ -342,9 +346,10 @@ type EmitComponentOptions = {
   transient?: boolean;
 };
 
+// FIX-963.
 /**
  * Build the `ComponentItem` both component emitters send. Shared so the
- * fire-and-forget emitter and the awaited one (FIX-963) cannot drift on item
+ * fire-and-forget emitter and the awaited one cannot drift on item
  * shape, index reservation, or keying — only on how they treat the emitter
  * promises.
  */
@@ -405,8 +410,9 @@ function createEmitComponent(
   };
 }
 
+// FIX-963.
 /**
- * The awaited component emitter behind `ctx._emitComponentAwaited` (FIX-963).
+ * The awaited component emitter behind `ctx._emitComponentAwaited`.
  *
  * Identical to {@link createEmitComponent} except that it settles on the
  * emission instead of discarding it: the returned promise resolves once the
@@ -518,6 +524,7 @@ function createEmitStatus(
   };
 }
 
+// FIX-814.
 /**
  * Build the three `ctx.emit.trace.*` impls. Each:
  *   - emits item.added then item.done via the response emitter,
@@ -525,7 +532,7 @@ function createEmitStatus(
  *
  * `blockTrace`/`stateSnapshot` are fire-and-forget end to end; `routerDecision`
  * returns its emit chain so the router can await the decision anchor before
- * dispatching the selected branch (FIX-814).
+ * dispatching the selected branch.
  *
  * Trace types (`block_trace`, `router_decision`, `state_snapshot`) resolve
  * to `{ client: false, history: false }` by `item.type` in
@@ -1297,11 +1304,12 @@ export async function createExecutionContext<
     list.push({ ...rec, count: 1 });
   };
 
+  // FIX-701 §11 Q3.
   /**
    * Resolve the `source` for an eager collection cache-hit read. Callers pass
    * the collection's pattern prefix (all instances of a collection share the
    * wave that loaded the prefix), so an exact token lookup suffices. Defaults
-   * to `action-eager` when the origin is unknown (FIX-701 §11 Q3).
+   * to `action-eager` when the origin is unknown.
    */
   const resolveEagerSource = (
     scope: ContentScopeType,
@@ -1500,8 +1508,9 @@ export async function createExecutionContext<
   const resolveBucketFlag = (scope: ContentScopeType, storageKey: string): boolean | undefined =>
     resolveOwnershipFlag(scopeBuckets[scope], storageKey);
 
+  // FIX-1068.
   /**
-   * The scope kind a resolved address STORES under (FIX-1068).
+   * The scope kind a resolved address STORES under.
    *
    * The lineage bucket is not a session bucket: session scope ids are
    * caller-chosen, so a lineage address sharing that space is one a caller can
@@ -1581,9 +1590,10 @@ export async function createExecutionContext<
     return owned;
   };
 
+  // FIX-1068.
   /**
    * Rows a session-scoped resource held BEFORE it was marked
-   * `sharedToLineage` (FIX-1068).
+   * `sharedToLineage`.
    *
    * Turning the flag on moves a resource from this session's own key to the
    * lineage address. A resource already carrying data in a deployed app would
@@ -2684,8 +2694,9 @@ export async function createExecutionContext<
   const cascadeController = createCascadeController();
   const reactiveCtxRef: { current: ExecutionContext | undefined } = { current: undefined };
 
+  // FIX-1506.
   /**
-   * Publish that `scope` changed, naming this request (FIX-1506). The topic's
+   * Publish that `scope` changed, naming this request. The topic's
    * id is the bare session id, the user id or the org id, under the tenant.
    */
   function publishScopeNotice(scope: "session" | "user" | "org", kind: "state" | "resource", resource?: string): void {

@@ -199,12 +199,13 @@ export type LinkedTask = {
   task: Task;
 };
 
+// BP-030.
 /**
  * Does this task fit the decoded key?
  *
  * A `per-task` key names one row by id. A `per-worker` key names an assignee, and a
  * task sits on it when its `assignee` is that assignee — `== null`-guarded, since a
- * store that writes absent keys as `null` hands one back (BP-030). An
+ * store that writes absent keys as `null` hands one back. An
  * unassigned row fits no assignee: the board routes a row to an assignee's dispatcher
  * only once it is assigned there, so the absence is a statement about where
  * the row has not gone, not a gap in what is known.

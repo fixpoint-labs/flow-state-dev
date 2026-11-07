@@ -18,8 +18,9 @@
 /** The internal context type: the public `BlockContext` plus the runtime's wiring. */
 export type { InternalBlockContext } from "../types/block";
 
+// FIX-999.
 /**
- * The request host (FIX-999): how a framework package reaches facilities only
+ * The request host: how a framework package reaches facilities only
  * the runtime can provide. `requestHostOf` reads it, `undefined` when none is
  * wired; `requireRequestHost` throws by name.
  */
@@ -76,7 +77,8 @@ export type { RequestWaitOutcome, WaitOnRequestInput } from "../blocks/wait-on-r
 export { DISPATCH_SEAM, NoDispatchSeamError, dispatchThroughSeam } from "../types/dispatch";
 export type { DispatchSeam } from "../types/dispatch";
 
-/** The request-end seam (FIX-2077) and the request's spend ledger (FIX-2145). */
+// FIX-2077; FIX-2145.
+/** The request-end seam and the request's spend ledger. */
 export {
   REQUEST_END_SEAM,
   REQUEST_SPEND_SEAM,
@@ -100,7 +102,8 @@ export type {
   SessionRequestEndHook,
 } from "../types/request-end";
 
-/** How the running request resumed (FIX-2129): read where a resumed request is admitted. */
+// FIX-2129.
+/** How the running request resumed: read where a resumed request is admitted. */
 export { REQUEST_RESUME_SEAM, requestResumeOf } from "../types/request-resume";
 export type { RequestResume } from "../types/request-resume";
 
@@ -119,8 +122,9 @@ export type {
   RequestSideChainTaskMeta,
 } from "../execution/request-side-chain-pool";
 
+// FIX-811.
 /**
- * The resume read model (FIX-811): the server builds a `ReplayLog` from a
+ * The resume read model: the server builds a `ReplayLog` from a
  * request's persisted items at re-entry and assigns it to `ctx._replayLog`.
  */
 export { buildReplayLog } from "../blocks/internal/replay-log";
@@ -165,7 +169,8 @@ export {
   buildBlockInstanceId,
   logicalBlockIdOf,
 } from "../blocks/internal/block-instance-id";
-/** Block-level rescue (FIX-742), for the engine's top-level `executeBlock` on a bare action-root block. */
+// FIX-742.
+/** Block-level rescue, for the engine's top-level `executeBlock` on a bare action-root block. */
 export { runRescue } from "../blocks/sequencer";
 export { normalizeReactiveBinding } from "../types/resource-change";
 export type { ReactiveBindingKind } from "../types/resource-change";

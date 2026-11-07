@@ -1,8 +1,9 @@
+// FIX-2240; FIX-2078; FIX-2123.
 /**
- * A worker message lands once (FIX-2240): the debt a send owes, the take on
+ * A worker message lands once: the debt a send owes, the take on
  * the message's row, and the step of the sending session's board pass that
- * sends an owed message again. The shape of a task's ending (FIX-2078) and
- * the take of its notice (FIX-2123), on a message.
+ * sends an owed message again. The shape of a task's ending and
+ * the take of its notice, on a message.
  *
  * - **The send** owes its session's pass a wake (`DISPATCH_ENTRY`, due in
  *   `NOTICE_DUE_MS`), puts the id on the session's owed list beside the
@@ -51,7 +52,8 @@ type OwedEntry = z.infer<typeof owedEntrySchema>;
 /** One reply the session owes: the message id, and the request that landed it. */
 export type OwedReply = OwedEntry;
 
-/** The session state the owed lists are kept in: messages sent and not landed, and reply-requested messages landed and not answered (FIX-2310). Server-owned. */
+// FIX-2310.
+/** The session state the owed lists are kept in: messages sent and not landed, and reply-requested messages landed and not answered. Server-owned. */
 export const messageDeliveryStateShape = {
   [WORKER_MESSAGES_OWED_STATE]: z.array(owedEntrySchema).default([]),
   [WORKER_REPLIES_OWED_STATE]: z.array(owedEntrySchema).default([])
@@ -75,7 +77,8 @@ function owedOf(state: unknown): OwedEntry[] {
   return readOwed(state, WORKER_MESSAGES_OWED_STATE);
 }
 
-/** The reply-requested messages a session landed and hasn't answered (FIX-2310). */
+// FIX-2310.
+/** The reply-requested messages a session landed and hasn't answered. */
 export function owedRepliesOf(state: unknown): OwedReply[] {
   return readOwed(state, WORKER_REPLIES_OWED_STATE);
 }
@@ -116,10 +119,11 @@ function offersSendMessage(flow: unknown): boolean {
   return false;
 }
 
+// FIX-2271.
 /**
  * Why `name`'s flow can't keep the messages its model sends, or `undefined`
  * when it can: it offers `sendMessage` and carries no pass, so a message
- * whose own dispatch fails is never sent again (FIX-2271). A flow that sends
+ * whose own dispatch fails is never sent again. A flow that sends
  * from server code without the tool (a coder's midway question) needs none.
  * The hire's check, beside `messageReceivedProblem`.
  *
@@ -173,11 +177,12 @@ export function isFinalRefusal(refused: DispatchRefusal): boolean {
   return refused !== "dispatch-rejected" && refused !== "no-dispatch-operation" && refused !== "flow-not-found";
 }
 
+// FIX-2318.
 /**
  * Dispatch `row` to its recipient's `onMessageReceived`, at the address the row keeps whole.
  *
  * @param waits The sender parks on the request this starts (the first
- *   dispatch of a message whose sender waits for the reply, FIX-2318), so the
+ *   dispatch of a message whose sender waits for the reply), so the
  *   engine counts it in the chain of waits.
  */
 export function dispatchMessage(ctx: BlockContext, row: WorkerMessageRow, from: string, waits = false): Promise<DispatchOutcome> {

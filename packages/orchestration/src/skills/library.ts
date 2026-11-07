@@ -1,5 +1,6 @@
+// FIX-911; FIX-914 PR2.
 /**
- * `createSkillsLibrary()` — the Skills v2 surface (FIX-911).
+ * `createSkillsLibrary()` — the Skills v2 surface.
  *
  * A **library** is a shared catalog of skills (the resource collection plus its
  * bundled defaults, installed once). A generator then **binds** to it per
@@ -17,7 +18,7 @@
  *   - `with({ allowed, dynamicActivation: true })` — install the model-facing
  *     load tool, letting the agent pull any `allowed` skill into context
  *     mid-turn. Storage defaults to the generator's own block state, which the
- *     binding installs for you (FIX-914 PR2 — no hand-declared `stateSchema`
+ *     binding installs for you (no hand-declared `stateSchema`
  *     needed); set `with({ activeState: { scope, field } })` to store it at a
  *     named, shareable, or durable scope instead.
  *
@@ -472,8 +473,9 @@ export function createSkillsLibrary(
     presets: {
       // Flag-only preset; the resolver reads `ctx.presets` to install the tool.
       dynamicActivation: {},
+      // FIX-817.
       /**
-       * The ambient catalog listing in the prompt (FIX-817). Flag-only, and
+       * The ambient catalog listing in the prompt. Flag-only, and
        * **on by default** — an app that upgrades sees turn 1 unchanged.
        *
        * Turn it off (`library.presets({ catalogContext: false })`) once the

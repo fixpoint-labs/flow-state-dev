@@ -1,5 +1,6 @@
+// FIX-660.
 /**
- * Wake filters for callers waiting on a task collection (FIX-660).
+ * Wake filters for callers waiting on a task collection.
  *
  * Pair these with `.waitForCondition`'s `wakeOn` option so the predicate
  * is only re-evaluated when an item that could plausibly change its

@@ -50,7 +50,8 @@ export type RouteAuthContext = {
    * active for a flow that configures no resolver of its own.
    */
   hostResolver: PrincipalResolver;
-  /** Tenant id for this request (FIX-682); namespaces the session lookup. */
+  // FIX-682.
+  /** Tenant id for this request; namespaces the session lookup. */
   tenantId?: string;
 };
 

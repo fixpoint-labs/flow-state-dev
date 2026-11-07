@@ -5,8 +5,9 @@ import type {
   RequestRecord
 } from "./types";
 
+// FIX-1010.
 /**
- * Request list-filter predicate for `status` and `sessionId` (FIX-1010). A
+ * Request list-filter predicate for `status` and `sessionId`. A
  * single value matches by equality; an array matches set membership, which is
  * what lets "does any non-terminal run exist" (or "which of these runs are
  * unfinished") be one read instead of one per member. An absent filter passes
@@ -53,9 +54,10 @@ export function withRequestSourceDefault<T extends RequestRecord | undefined>(
   return { ...(record as RequestRecord), source: "http" } as T;
 }
 
+// FIX-1026.
 /**
  * Force a request record's `abortRequested` to the value already stored,
- * whatever the incoming record says (FIX-1026).
+ * whatever the incoming record says.
  *
  * The single helper behind `RequestStore.set`'s rule that the flag is off its
  * write surface in both directions. Adapters call it on the value they are
@@ -119,9 +121,10 @@ export function assertMaxDepthTwo(path: string[], verb: string): void {
   }
 }
 
+// FIX-1735.
 /**
  * A full-record `set` whose record carries no `items` keeps the items the
- * store holds (FIX-1735), on the stores that keep items on the record
+ * store holds, on the stores that keep items on the record
  * (in-memory, filesystem). A state write in the middle of a run is built from
  * a snapshot that predates the items persisted since, so it leaves `items`
  * off rather than replace them; the SQL adapters keep items out of `set`
@@ -136,10 +139,11 @@ export function withHeldItems<T extends RequestRecord>(
   return { ...value, items: held };
 }
 
+// FIX-811.
 /**
  * Union two item logs by `id`, last write wins per id, in order: `prior` keeps
  * its positions and ids new in `next` append in `next`'s order. The
- * `RequestStore.persistItems` merge contract (FIX-811), shared by the runtime's
+ * `RequestStore.persistItems` merge contract, shared by the runtime's
  * terminal write of a same-request continuation and the stores that hold
  * items on the record (in-memory, filesystem); the SQL adapters do the same
  * with an UPSERT.

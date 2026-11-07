@@ -114,11 +114,12 @@ export function isPublicReentryAllowed(
   return additionalSources.includes(source);
 }
 
+// BP-030.
 /**
  * Validate a host's `publicReentrySources` at construction, throwing on a
  * source the framework never re-enters.
  *
- * Loud rather than silently ignored (BP-030): a deployment that reads "add your
+ * Loud rather than silently ignored: a deployment that reads "add your
  * transport to the allow-list" and tries `webhook` has made an assumption about
  * its own security posture, and discovering the option did nothing from a
  * production 404 is the wrong moment to learn otherwise.

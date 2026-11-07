@@ -56,7 +56,8 @@ type ActionRouteContext = {
   seams: InternalRouteSeams;
   bootstrapMetadata: Record<string, unknown>;
   requestContext: RequestContext;
-  /** Header carrying the tenant id; defaults to `x-tenant-id` (FIX-406 6D). */
+  // FIX-406 6D.
+  /** Header carrying the tenant id; defaults to `x-tenant-id`. */
   tenantIdHeader?: string;
 };
 

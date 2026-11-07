@@ -36,7 +36,8 @@ export function isHeld(stored: string): boolean {
   return stored === "held";
 }
 
-/** Whether a row is done: Tasks leaves these out (BR-15). */
+// BR-15.
+/** Whether a row is done: Tasks leaves these out. */
 export function isDone(stored: string): boolean {
   return columnFor(stored) === "DONE";
 }

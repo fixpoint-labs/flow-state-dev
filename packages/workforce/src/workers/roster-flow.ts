@@ -1,3 +1,4 @@
+// FIX-2085.
 /**
  * The roster flow: a flow that runs no worker, through which a client reads a
  * user's roster. It declares the two worker collections, so a session of it
@@ -9,7 +10,7 @@
  * same session reads who the organization's workers are without a coordinator
  * session to read it through. It declares the user's worker message log
  * (`workforce/messages/*`), so an app shows who messaged whom. And it keeps the
- * user's schedules (`workforce/schedules/*`, FIX-2085): its `schedules` fires
+ * user's schedules (`workforce/schedules/*`): its `schedules` fires
  * each one, and its schedule actions list and write them.
  *
  * Its own kind (`workforce-roster`), so a listing of a worker flow's sessions

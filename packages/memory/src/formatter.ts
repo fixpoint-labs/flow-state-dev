@@ -1,3 +1,4 @@
+// FIX-408; FIX-199.
 /**
  * Configurable memory context formatter.
  *
@@ -12,8 +13,8 @@
  *
  * Four sections are supported:
  *
- * - `digest` — the rolling-summary narrative (FIX-408)
- * - `working` — current working-memory entries (FIX-199)
+ * - `digest` — the rolling-summary narrative
+ * - `working` — current working-memory entries
  * - `semantic` — top-N semantic facts by reinforcement count
  * - `episodic` — most recent episodes
  *

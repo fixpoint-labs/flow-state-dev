@@ -1,5 +1,6 @@
+// FIX-2077.
 /**
- * The request-end seam (FIX-2077): a framework package asks the runtime to
+ * The request-end seam: a framework package asks the runtime to
  * call it back once a request's work is over.
  *
  * "Over" is later than the action's return and later than `onFinished`. The
@@ -22,7 +23,8 @@ import type { InternalBlockContext } from "./block";
 /** How a request ended, as a request-end hook is told. */
 export type RequestEndStatus = "completed" | "incomplete" | "failed" | "aborted" | "interrupted" | "suspended";
 
-/** One step of a request's background work that failed (FIX-2088). */
+// FIX-2088.
+/** One step of a request's background work that failed. */
 export interface BackgroundFailure {
   /** The step's name, as `.sideChain()` recorded it. */
   readonly step: string;
@@ -34,10 +36,11 @@ export interface BackgroundFailure {
 export interface RequestEnding {
   /** How the request ended. */
   readonly status: RequestEndStatus;
+  // FIX-2129.
   /**
    * On `suspended`: the suspension it parked on. `reason` is why
    * (`user_approval`, `user_input`, `external_event`, or a flow's own); the
-   * rest is what a reader of a task waiting on it shows (FIX-2129): its id,
+   * rest is what a reader of a task waiting on it shows: its id,
    * its kind when `suspendForUser` set one, what it asks (`title`, `message`),
    * and its deadline (`expiresAt`), absent when it has none.
    */
@@ -67,8 +70,9 @@ export interface RequestEnding {
    * task's attempt) does so itself.
    */
   readonly backgroundFailures?: readonly BackgroundFailure[];
+  // FIX-2145.
   /**
-   * What the request spent since its last ending (FIX-2145): its model calls
+   * What the request spent since its last ending: its model calls
    * by model and its harness runs, as the request's spend ledger counted them.
    * Counted per ending, so a request that suspends and resumes hands each
    * part on once: a harness run reported again after an ending is handed on
@@ -78,8 +82,9 @@ export interface RequestEnding {
   readonly spend: RequestSpend;
 }
 
+// FIX-2145.
 /**
- * What a request spent, counted where it was spent (FIX-2145). One ledger per
+ * What a request spent, counted where it was spent. One ledger per
  * request: every model result a generator or evaluator reports is added to
  * `byModel`, and every run a harness settles through `reportHarnessSpend` is
  * appended to `harnessRuns`. `ctx.request.tokenUsage` reads `byModel` (an
@@ -87,14 +92,16 @@ export interface RequestEnding {
  * handed both.
  */
 export interface RequestSpend {
+  // FIX-2288.
   /**
    * Model calls, by model id: the same entries `ctx.request.tokenUsage.byModel`
-   * reads. Keyed in the order each model was last called (FIX-2288).
+   * reads. Keyed in the order each model was last called.
    */
   readonly byModel: Readonly<Record<string, ModelUsageEntry>>;
+  // FIX-2288.
   /**
    * Harness runs, one entry per run, as each was last reported, in the order
-   * they were last reported (FIX-2288: a run reported again moves to the end).
+   * they were last reported (a run reported again moves to the end).
    */
   readonly harnessRuns: readonly HarnessRunSpend[];
 }
@@ -147,9 +154,10 @@ export function onRequestEnded(ctx: object, hook: RequestEndHook): boolean {
   return true;
 }
 
+// FIX-2145.
 /**
- * The session-config slot a framework package puts a request-end hook in
- * (FIX-2145), so every request of a flow gets the hook without a block having
+ * The session-config slot a framework package puts a request-end hook in,
+ * so every request of a flow gets the hook without a block having
  * to call {@link onRequestEnded}.
  *
  * Framework-facing, like {@link REQUEST_END_SEAM}: a symbol key, set by the
@@ -164,9 +172,10 @@ export const SESSION_REQUEST_END_HOOK: unique symbol = Symbol.for("@flow-state-d
 /** What sits under {@link SESSION_REQUEST_END_HOOK}: called once per request start. */
 export type SessionRequestEndHook = (ctx: import("./block").BlockContext) => RequestEndHook | undefined;
 
+// FIX-2145.
 /**
- * The context slot the runtime attaches the request's spend ledger under
- * (FIX-2145). Reached through {@link reportHarnessSpend} in `./harness` and
+ * The context slot the runtime attaches the request's spend ledger under.
+ * Reached through {@link reportHarnessSpend} in `./harness` and
  * {@link readRequestSpend}, never by name from a handler body.
  */
 export const REQUEST_SPEND_SEAM: unique symbol = Symbol.for("@flow-state-dev/request-spend-seam");
@@ -179,23 +188,26 @@ export interface RequestSpendSeam {
    * engine's seam names that run before it counts it.
    */
   reportHarnessRun(run: HarnessRunSpend): void;
+  // FIX-2288; BP-030.
   /**
    * What the request has spent since its last ending: the part its next
-   * ending hands on (FIX-2288). Reads, never takes: the ending still hands it
-   * on. Optional, so a seam built before it keeps compiling (BP-030).
+   * ending hands on. Reads, never takes: the ending still hands it
+   * on. Optional, so a seam built before it keeps compiling.
    */
   pending?(): RequestSpend;
+  // BP-030.
   /**
    * Everything the request has spent across all its runs: every model call,
    * and every harness run, including those an earlier run's suspension or
    * interruption already handed on. Reads, never takes. Optional, so a seam
-   * built before it keeps compiling (BP-030).
+   * built before it keeps compiling.
    */
   total?(): RequestSpend;
 }
 
+// FIX-2288.
 /**
- * What the running request has spent since its last ending (FIX-2288): its
+ * What the running request has spent since its last ending: its
  * model calls by model and its harness runs as last reported, the part its
  * next ending hands on in `RequestEnding.spend`. A request that suspended and
  * resumed reads only what it spent since it resumed, as its ending hands on.
@@ -272,9 +284,10 @@ export function addRequestSpendSource(sources: readonly RequestSpendSource[], ad
   return sources.map((s, i) => (i === at ? merged : s));
 }
 
+// FIX-2145; FIX-2288.
 /**
- * What a request spent, as tokens per source (FIX-2145; one conversion, so a
- * task's count and a worker's agree, FIX-2288). Input is the model's prompt
+ * What a request spent, as tokens per source (one conversion, so a
+ * task's count and a worker's agree). Input is the model's prompt
  * tokens or what the harness reported as input; output likewise. A harness
  * run that reported no tokens counts as a run, with `unreported: 1` and no
  * tokens. A dollar figure only where a harness reported one on an `api-key`

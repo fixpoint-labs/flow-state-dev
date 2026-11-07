@@ -25,9 +25,10 @@ import type { TestedSdk } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessRunHandle, PlanListItem } from "@flow-state-dev/core/harness";
 
+// LAB-152.
 /**
  * This harness's `<package>/<door>` name — the convention every writer of a
- * harness handle's `source` owes (LAB-152). The suffix names the door we drive
+ * harness handle's `source` owes. The suffix names the door we drive
  * Cursor through, and this package has exactly one: Cursor's own SDK, on its
  * local runtime.
  */
@@ -87,12 +88,12 @@ export interface CursorAgentHandle extends HarnessRunHandle {
   failureMessage: string | null;
 }
 
+// BP-030.
 /**
  * Runtime validator for {@link CursorAgentHandle}.
  *
  * The extension's own two fields default to `null` for the same reason the
- * neutral schema's four do: a handle persisted before they existed still parses
- * (BP-030).
+ * neutral schema's four do: a handle persisted before they existed still parses.
  */
 export const cursorAgentHandleSchema = harnessRunHandleSchema.extend({
   source: z.literal(CURSOR_SOURCE),
@@ -198,12 +199,13 @@ export interface CursorRunResult {
 // Forwarded option groups
 // ---------------------------------------------------------------------------
 
+// BP-031.
 /**
  * The SDK's `AgentOptions`, forwarded verbatim to `Agent.create` /
  * `Agent.resume` and typed locally.
  *
  * Three things are deliberately ABSENT, and each is refused at build time
- * rather than merged, because each has exactly one owner (BP-031):
+ * rather than merged, because each has exactly one owner:
  *
  * - `agentId` — the `resume` resolver decides which conversation continues.
  * - `local.cwd` — the `cwd` resolver decides where a run works. The rest of

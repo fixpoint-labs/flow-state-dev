@@ -78,17 +78,19 @@ export type CreateFlowApiRouterOptions = {
    * Default 256 KiB.
    */
   maxRecordedValueBytes?: number;
+  // FIX-406 6H.
   /**
-   * Tracing verbosity for observability (non-durable) state snapshots
-   * (FIX-406 6H): `"verbose"` (per-step, for DevTool), `"normal"` (block
+   * Tracing verbosity for observability (non-durable) state snapshots:
+   * `"verbose"` (per-step, for DevTool), `"normal"` (block
    * boundaries only), or `"minimal"` (none). Durable resume checkpoints are
    * unaffected. Unset → the runtime falls back to `resolveTracingLevel()`
    * (`FSDEV_TRACING_LEVEL`, else `"verbose"` in dev / `"minimal"` in prod).
    * Recommended: `"normal"` for production servers, `"verbose"` for `fsdev dev`.
    */
   tracingLevel?: TracingLevel;
+  // FIX-406 6D.
   /**
-   * HTTP header carrying the tenant id (FIX-406 6D). Default `x-tenant-id`.
+   * HTTP header carrying the tenant id. Default `x-tenant-id`.
    * The extracted value is exposed on request/session/block context identities
    * (`ctx.request.identity.tenantId`). Optional — single-tenant apps ignore it.
    * Note: tenant-scoped store-key isolation is a separate, deferred change;
@@ -96,8 +98,9 @@ export type CreateFlowApiRouterOptions = {
    */
   tenantIdHeader?: string;
   onError?: (error: Error, context: { method: string; path: string }) => void;
+  // FIX-724.
   /**
-   * Opt-in error-capture sink (FIX-724). Block-aware: routes runtime block
+   * Opt-in error-capture sink. Block-aware: routes runtime block
    * failures to an external observability service with the failing block's
    * identity. Forwarded verbatim into the runtime config. Off by default.
    */
@@ -118,30 +121,33 @@ export type CreateFlowApiRouterOptions = {
    * results, causing stream 404s and lost data.
    */
   onBackgroundWork?: (promise: Promise<unknown>) => void;
+  // FIX-2078; FIX-2077.
   /**
    * How long disposing the router waits for the requests its due wakes
-   * started (FIX-2078), and for any request in the process that still owes
-   * its request-end hooks (FIX-2077), before it goes on (aborting the wakes'
+   * started, and for any request in the process that still owes
+   * its request-end hooks, before it goes on (aborting the wakes'
    * requests). One budget for both. Default 10 s. An
    * aborted pass leaves its wake, which the sweeper had already moved on, so
    * the next host fires it again. `disposeFlowApiRouter(router, { drainMs })`
    * overrides it per call, for a host whose shutdown grace is partly spent.
    */
   shutdownDrainMs?: number;
+  // FIX-438.
   /**
    * Additional inbound transport adapters mounted alongside the built-in
    * HTTP adapter. Routes from every adapter merge into the returned
    * `{ GET, POST, PATCH, DELETE }` dispatcher; path collisions throw a
-   * `TransportRouteCollisionError` at construction time. (FIX-438)
+   * `TransportRouteCollisionError` at construction time.
    */
   adapters?: InboundTransportAdapter[];
 
+  // FIX-23.
   /**
    * Host-level fallback principal resolver, called when an inbound flow has
    * no `authentication.resolvePrincipal` of its own. Defaults to
    * `defaultBodyUserIdPrincipalResolver`, which reads `body.userId` from
    * the parsed HTTP body. Per-flow `defineFlow({ authentication })` always
-   * wins over this fallback. (FIX-23)
+   * wins over this fallback.
    */
   resolvePrincipal?: PrincipalResolver;
 
@@ -188,9 +194,9 @@ export type CreateFlowApiRouterOptions = {
    */
   queuedGraceMs?: number;
 
+  // FIX-999.
   /**
-   * Transport sources this deployment adds to the public re-entry allow-list
-   * (FIX-999).
+   * Transport sources this deployment adds to the public re-entry allow-list.
    *
    * `retry`, `continue` and `resume` admit `http`, `mcp` and `scheduled`
    * and refuse everything else with a not-found. That default is
@@ -265,12 +271,13 @@ export type CreateFlowApiRouterOptions = {
    * external worker (e.g., BullMQ WorkerRunner).
    */
   runner?: FlowRunner;
+  // FIX-1077.
   /**
    * Concurrency arbiter for this router's host. Defaults to a fresh one.
    *
    * Passed by `createFlowState` when it also built a host for detached
    * dispatch, so a declared `queue`/`reject` policy is enforced once across the
-   * process rather than once per host (FIX-1077).
+   * process rather than once per host.
    */
   arbiter?: ConcurrencyArbiter;
 

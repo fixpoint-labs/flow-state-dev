@@ -1,5 +1,6 @@
+// FIX-2131, on FIX-2133's rule.
 /**
- * One wait on a person per task turn (FIX-2131, on FIX-2133's rule): a turn
+ * One wait on a person per task turn: a turn
  * that holds a task's claim either asks a question (`holdTaskForUser`, which holds
  * the task) or stops for the user (`suspendForUser`, which suspends its run),
  * never both. Within one model step the two tools run side by side, so the

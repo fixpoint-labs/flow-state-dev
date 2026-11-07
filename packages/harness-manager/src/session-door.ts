@@ -1,9 +1,10 @@
+// FIX-2086; BP-031; FIX-2160.
 /**
- * A coding run's door: a person's line typed in the run's session (FIX-2086).
+ * A coding run's door: a person's line typed in the run's session.
  *
  * The session's task is the board row whose run link names the session (the
  * task, or the latest of its follow-ups, which run there one at a time),
- * found from server state, never from the line (BP-031).
+ * found from server state, never from the line.
  *
  * | The task is | The line |
  * |---|---|
@@ -16,7 +17,7 @@
  * the line stays in the session with the refusal after it.
  *
  * The talk half is {@link harnessTalkTurn}, one block the door runs for a
- * finished task and a coder runs for a message about one (FIX-2160): there is
+ * finished task and a coder runs for a message about one: there is
  * one talk path. A message never steers, so the turn refuses an open task.
  */
 import { defineCapability, handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
@@ -155,8 +156,9 @@ const talkStateSchema = z.object({
   leaseToken: z.string().nullable().default(null),
 });
 
+// FIX-2160.
 /**
- * The talk half of a coding run's door, as a block of its own (FIX-2160): one
+ * The talk half of a coding run's door, as a block of its own: one
  * harness run resumes the coding session of this session's finished task with
  * the message, outside any attempt, and its final text is the reply. The task,
  * its output and its attempts don't change. The door runs it for a person's

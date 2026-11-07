@@ -1,5 +1,6 @@
+// FIX-1945 S1; BP-031.
 /**
- * Where a worker keeps its standing rules for one user (FIX-1945 S1): the
+ * Where a worker keeps its standing rules for one user: the
  * `standing-rules` record, one per worker in each user's own scope.
  *
  * Keyed like the worker's skills drawer, and beside it rather than in it: user
@@ -10,7 +11,7 @@
  *
  * Reads and writes go through {@link readStandingRules} and
  * {@link writeStandingRules}, which name the record from the session's verified
- * worker, never from input (BP-031).
+ * worker, never from input.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";

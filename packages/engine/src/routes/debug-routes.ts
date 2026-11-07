@@ -40,7 +40,8 @@ export interface DebugRouteContext {
   registry: FlowRegistry;
   stores: StoreRegistry;
   debug: ResolvedDebugConfig;
-  /** Tenant id from the request header (FIX-682); namespaces session lookups. */
+  // FIX-682.
+  /** Tenant id from the request header; namespaces session lookups. */
   tenantId?: string;
   /** Session the route guard checked (`RouteAuthResult.session`). */
   checkedSession?: SessionRecord | null;

@@ -47,13 +47,14 @@ export type WorkerDetailProps = {
    * Rendered as given; this component never reads it.
    */
   readonly kind: string;
+  // BR-31.
   /**
    * The roster topic to read instructions from — pass this ONLY for a worker
    * with a public, org-visible roster row.
    *
    * Leave it out for a worker declared in a `WORKER.md`, or one hired as a
-   * user's own: this component then shows "not published" and makes no read
-   * (BR-31). Never pass a full address (`<org>.~<user>.<id>` or
+   * user's own: this component then shows "not published" and makes no read.
+   * Never pass a full address (`<org>.~<user>.<id>` or
    * `<org>.<workerId>`) here — this is a roster TOPIC, the same string
    * `Roster`'s rows carry as `workerId`.
    */
@@ -63,9 +64,10 @@ export type WorkerDetailProps = {
    * path segment, so it carries no slash — see `RosterProps.collectionRef`.
    */
   readonly collectionRef?: string;
+  // BR-27.
   /**
    * The host's own client, so the read carries the host's transport
-   * and its credential (BR-27). Pass a STABLE reference — see `Roster`.
+   * and its credential. Pass a STABLE reference — see `Roster`.
    */
   readonly client?: PanelItemSource;
 };

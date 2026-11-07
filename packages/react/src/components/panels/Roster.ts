@@ -1,14 +1,15 @@
+// FIX-1477 S5; BR-24; BR-20.
 /**
- * `Roster` — the organization's workers, as the panel draws them (FIX-1477 S5).
+ * `Roster` — the organization's workers, as the panel draws them.
  *
  * It reads the standing roster collection and lists what is in it. **Nothing
- * here filters by organization, and there is no prop to do it with** (BR-24):
+ * here filters by organization, and there is no prop to do it with**:
  * the collection is organization-scoped at the store, so the read already
  * resolves against the session's own organization. A filter prop would be a
  * second opinion about a boundary the server already holds, and a filter that
  * silently does nothing is worse than none.
  *
- * **Skipped workers are shown, not only logged** (BR-20). A boot reload hands
+ * **Skipped workers are shown, not only logged**. A boot reload hands
  * back `{ workers, problems }` — the rows it could not turn into workers, named —
  * and that is a server-side return value with no path to a browser, so the
  * host passes it in. "The roster" and "what answers" are two numbers, and a
@@ -74,27 +75,30 @@ type RosterCommonProps = {
    * different thing.
    */
   readonly collectionRef?: string;
+  // BR-20.
   /**
    * Workers a boot reload could not restore, in the dialect the reload returns
-   * them (BR-20). Held by the host, because the reload is a server-side call
+   * them. Held by the host, because the reload is a server-side call
    * whose result never crosses to a browser on its own.
    */
   readonly problems?: readonly string[];
+  // BR-19.
   /**
    * Workers to request per page: the size of each fetch, not a cap on what
    * renders. The panel follows the cursor for up to 1,000 pages; a collection
    * with pages left after that shows the error line and Retry, never the
-   * rows read so far (BR-19). See `usePanelRows`.
+   * rows read so far. See `usePanelRows`.
    */
   readonly limit?: number;
   readonly slots?: RosterSlots;
 };
 
+// BR-29.
 /**
  * What reads the roster, and what hears its changes: one client.
  *
  * - `client`: the host's own client, so the read carries the host's transport
- *   and its credential (BR-29). Pass a STABLE reference — one held in a
+ *   and its credential. Pass a STABLE reference — one held in a
  *   context or a `useMemo`, not an object literal built during render. The
  *   read is fenced on the client it was made through, which is what makes a
  *   rebuilt client discard the previous backend's rows; a fresh object every
@@ -109,13 +113,14 @@ type RosterTransportProps =
 
 export type RosterProps = RosterCommonProps & RosterTransportProps;
 
+// BR-24, V5.
 /**
  * The published prop names, as a value.
  *
  * Kept so the allow-list can be asserted rather than described. The type test
  * beside it proves this list and `keyof RosterProps` are the same set, so
  * adding an `orgId` — or any other spelling of "filter this for me" — fails
- * whether or not whoever added it remembered this array (BR-24, V5).
+ * whether or not whoever added it remembered this array.
  */
 export const rosterPropNames = [
   "client",
@@ -127,7 +132,8 @@ export const rosterPropNames = [
   "slots"
 ] as const;
 
-/** The conventional key a flow declares the roster under. Shared with `WorkerDetail` (FIX-1500 S5). */
+// FIX-1500 S5.
+/** The conventional key a flow declares the roster under. Shared with `WorkerDetail`. */
 export const DEFAULT_ROSTER_REF = "roster";
 
 /**

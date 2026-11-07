@@ -60,9 +60,10 @@ export type ResourceFlowLike = {
   isolateOrgState?: boolean;
 };
 
+// FIX-1323.
 /**
  * The flow shape a **persisted** read consumes: the resolved owning instance,
- * `id` included (FIX-1323). Storage buckets key off the instance, so a caller
+ * `id` included. Storage buckets key off the instance, so a caller
  * that reached a persisted read holding only a kind has lost the one fact that
  * decides which copy's data it is about — the type is what stops that, rather
  * than a comment asking callers to remember. Every caller already resolves the
@@ -82,10 +83,11 @@ export { isCollectionConfig } from "./is-collection-config";
 export { resourceStorageKeys } from "./storage-keys";
 export { isProjectedResourceCollection } from "@flow-state-dev/core/types";
 
+// FIX-858; BP-031.
 /**
- * Build the trusted {@link ProjectedResourceContext} (FIX-858) for a client-route
+ * Build the trusted {@link ProjectedResourceContext} for a client-route
  * read of a projected collection. Every field is derived from the loaded session
- * record — never from caller input (BP-031): `userId`/`orgId`/`tenantId`/
+ * record — never from caller input: `userId`/`orgId`/`tenantId`/
  * `flowKind` come off the session, and `scopeId` is the resolved
  * sessionId / userId / orgId for the collection's scope (the raw sessionId, not
  * the tenant-namespaced storage key).
@@ -174,15 +176,16 @@ export function findResourceConfig(
   return { config, scope, storageKey };
 }
 
+// FIX-689; FIX-347; FIX-735.
 /**
  * Read the persisted resource state and content for a given scope of a
- * session. Resource state lives in the ResourceStateStore (FIX-689) and
- * content in the ContentStore (FIX-347) — both keyed per-resource, separate
+ * session. Resource state lives in the ResourceStateStore and
+ * content in the ContentStore — both keyed per-resource, separate
  * from the scope record.
  *
  * Returns `undefined` only when the session is missing (or, for org scope,
  * the session has no org binding). The read is NOT gated on the scope record
- * existing: under per-resource isolation (FIX-735) a shared resource lives at
+ * existing: under per-resource isolation a shared resource lives at
  * the bare identity id, which may differ from the (flow-flag) scope-record
  * key — gating on the record would hide cross-flow shared data. A scope with
  * nothing written simply reads as empty.

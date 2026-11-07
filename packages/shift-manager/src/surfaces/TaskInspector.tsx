@@ -144,7 +144,8 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
   );
 }
 
-/** The plan, files and pull requests the run recorded, read once per open (BR-19, BR-20). */
+// BR-19, BR-20.
+/** The plan, files and pull requests the run recorded, read once per open. */
 function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
   const { client } = useLab();
   const [work, setWork] = useState<RecordedWork | undefined>(undefined);
@@ -243,7 +244,8 @@ function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
   );
 }
 
-/** The devtool link, opening the run's session, with its id beside it (BR-23). */
+// BR-23.
+/** The devtool link, opening the run's session, with its id beside it. */
 function Trace() {
   const task = useTask();
   const sessionId = task.run.kind === "open" ? task.run.run.sessionId : task.row?.run?.sessionId;
