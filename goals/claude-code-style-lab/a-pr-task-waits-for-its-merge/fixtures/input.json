@@ -1,0 +1,12 @@
+{
+  "project": "Ledger notes",
+  "title": "Note the ledger cutover",
+  "goal": "Add a line to NOTES.md saying the ledger moves to the new region on Friday, commit it, and open a pull request.",
+  "closedTitle": "Note the archive window",
+  "closedGoal": "Add a line to NOTES.md saying the archive window is Sunday night, commit it, and open a pull request.",
+  "line": "Reviewer asked: say Friday 09:00 UTC, not just Friday.",
+  "message": { "from": "github.reviewer", "text": "Requested changes: name the region in the note." },
+  "unreadableLine": "Did CI pass on it?",
+  "mergedLine": "Merged it, thanks.",
+  "closedLine": "I closed that one, we are not doing it."
+}

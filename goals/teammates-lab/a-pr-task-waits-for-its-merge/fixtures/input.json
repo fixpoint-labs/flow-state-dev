@@ -1,0 +1,10 @@
+{
+  "filer": "teammates.chief-of-staff",
+  "coder": "teammates.cursor",
+  "task": {
+    "title": "Note the ledger cutover",
+    "goal": "Add a line to NOTES.md saying the ledger moves to the new region on Friday, and commit it."
+  },
+  "steer": "Reviewer asked: say Friday 09:00 UTC, not just Friday.",
+  "merged": "Merged it, thanks."
+}

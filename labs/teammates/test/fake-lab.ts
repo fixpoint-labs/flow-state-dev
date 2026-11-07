@@ -739,6 +739,9 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       });
     },
 
+    // The double's runs open no pull request.
+    readPullRequests: async () => [],
+
     watchWorking(_run, onChange) {
       // The double's runs report each step as it finishes and record no plan: the line keeps its plain label.
       onChange({});

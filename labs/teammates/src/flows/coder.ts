@@ -21,6 +21,14 @@
  * `WorkspaceHost.land`). Your words go to the same coding session for one
  * more run, which you review again.
  *
+ * **A task whose work is a pull request is done when it merges**
+ * (harness-manager's `awaitPullRequests`): a run that opened one, or an
+ * accept that opened one (**Open a PR**), leaves its task open, waiting on
+ * it. A steer sent to the task while it waits (the popup's Steer box) wakes
+ * it: the task reads its pull request first, and completes once it merged, is
+ * cancelled once it closed unmerged, or runs the steer on the same coding
+ * session while it is still open. A delivered message wakes it the same way.
+ *
  * Where a run works comes from the host's workspace, whose source is the
  * lab's one working folder: every run gets a worktree of it. With `checks`,
  * a run is done only when those commands pass in its worktree too; a red one
@@ -41,6 +49,8 @@ import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board"
 import type { TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
+  STEER_TURN_ENTRY,
+  steerTurnEntry,
   MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   WORKER_TASK_ENTRY,
@@ -147,6 +157,8 @@ export function coderFlow(options: CoderFlowOptions) {
           // A run that committed waits for your review; the judge's verdict is shown on it as information.
           reviewChanges: true,
           judge: goalJudge({ name: `${CODER_FLOW}-${name}-judge` }),
+          // A run whose work is a pull request (its own, or the one Open a PR opened) waits for it to merge or close.
+          awaitPullRequests: true,
         } as never) as TaskWorker;
       }
 
@@ -187,6 +199,8 @@ export function coderFlow(options: CoderFlowOptions) {
         internal: {
           actions: {
             [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: CODER_FLOW, hears: "task-sessions" }),
+            // The turn a steer or a delivered message owes a task it woke from its pull-request wait.
+            [STEER_TURN_ENTRY]: steerTurnEntry({ name: `${CODER_FLOW}-steer-turn`, block: byHarness }),
           },
         },
         task: {
