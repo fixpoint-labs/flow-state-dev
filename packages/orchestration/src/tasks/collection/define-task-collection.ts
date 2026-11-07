@@ -295,9 +295,10 @@ function assertPartitionable(options: DefineTaskCollectionOptions): void {
   }
 }
 
+// FIX-982; narrowed by FIX-1780.
 /**
  * Ledgers whose assignee is frozen while an attempt holds a task, keyed by the
- * declaration itself (FIX-982; narrowed to `in_progress` by FIX-1780).
+ * declaration itself (frozen while `in_progress`).
  *
  * The policy belongs to the **ledger**, not to a ref. `getOrCreateTaskCollection`
  * builds a fresh wrapper per resolution, so an `immutableAssignee` passed as one

@@ -536,10 +536,11 @@ export interface BlockContext<
     metadata?: Record<string, unknown>;
   };
 
+  // FIX-402.
   /**
    * 0-indexed retry attempt for the currently-executing block. Starts at 0
    * for the initial invocation and increments per retry. Handlers can use
-   * this to drive idempotent behavior (see FIX-402 runOnce).
+   * this to drive idempotent behavior (see `runOnce`).
    */
   attempt?: number;
 
@@ -653,11 +654,12 @@ export interface BlockContext<
     blockPath?: string;
     /** 0-indexed retry attempt for this block's execution. */
     attempt?: number;
+    // FIX-478; FIX-586.
     /**
      * Mirror of the originating block's `transient` flag. Used by the
      * runtime's auto-emission hooks (e.g. `onBlockTraceCapture`) to inherit
      * the flag onto bookkeeping items so they stream live but skip
-     * persistence. Required for the FIX-478 contract; see FIX-586.
+     * persistence. Required for the single-slot status contract.
      */
     transient?: boolean;
   };
@@ -839,6 +841,7 @@ export interface BlockContext<
    */
   _requestSideChainPool?: import("../execution/request-side-chain-pool").RequestSideChainPool;
 
+  // FIX-663.
   /**
    * @internal Background-work abort signal. Set by the server's request
    * executor; absent in unit-test contexts. Fires ONLY when the request is
@@ -849,7 +852,7 @@ export interface BlockContext<
    * background generators survive transport teardown.
    *
    * In unit-test contexts where this is absent, `.sideChain()` falls back to the
-   * parent's `ctx.signal` — matching the pre-FIX-663 behavior.
+   * parent's `ctx.signal`.
    */
   _requestSideChainSignal?: AbortSignal;
 
@@ -873,9 +876,10 @@ export interface BlockContext<
    */
   _toolInFlight?: Map<string, Promise<unknown>>;
 
+  // FIX-610 Wave 2.
   /**
    * @internal Optional hook invoked by `wrapToolExecuteWithCache` after a
-   * tool call resolves (hit or miss). Wave 2 of FIX-610 wires this up to
+   * tool call resolves (hit or miss). The tool-call cache wires this up to
    * write into the Task Board observation ledger so a later worker's
    * flow policy can see prior tool traffic. Absent in Wave 1 and in any
    * runtime that has no observation ledger installed.
@@ -1166,14 +1170,15 @@ export type DeclaredResourceEntry =
  */
 export type DeclaredResources = Record<string, DeclaredResourceEntry>;
 
+// BP-011; FIX-503.
 /**
- * Public block surface — what user code holds and passes around (FIX-503).
+ * Public block surface — what user code holds and passes around.
  *
  * Deliberately omits the dispatch entry point. Substrate code (executor,
  * sequencer, router, generator tool loop, CLI) sees the runtime view via
  * `BlockRuntime` and uses `asRuntime()` to recover it at the boundary.
  * Removing `run` from the public type makes `block.run(input, ctx)` from
- * inside a handler's `execute` a TypeScript error — closing BP-011 at the
+ * inside a handler's `execute` a TypeScript error — handlers never call blocks, enforced at the
  * type system instead of at convention.
  */
 export interface BlockDefinition<
@@ -1340,14 +1345,15 @@ export type AsToolOpts = {
   agentName?: string;
 };
 
+// BP-011; FIX-503.
 /**
- * Internal substrate view of a block (FIX-503). Adds the `run` dispatch
+ * Internal substrate view of a block. Adds the `run` dispatch
  * entry point that the runtime uses to actually execute a block. Recovered
  * from a public `BlockDefinition` via `asRuntime()` at substrate boundaries.
  *
  * Not part of the public API surface — `run` is invisible on `BlockDefinition`,
  * so user code can't call `block.run(...)` without first laundering through
- * `asRuntime()`. That deliberate friction is the BP-011 firewall: anyone who
+ * `asRuntime()`. That deliberate friction is the firewall against handlers calling blocks: anyone who
  * reaches for `asRuntime` inside a handler is signing their name on the
  * deviation. There is no runtime guard.
  *

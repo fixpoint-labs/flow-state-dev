@@ -167,11 +167,12 @@ export async function handleRetryRequest(
   }
 }
 
+// FIX-637; FIX-811.
 /**
- * Continue an interrupted request under its OWN id (FIX-811 crash recovery).
+ * Continue an interrupted request under its OWN id (crash recovery).
  *
  * Where `retry` re-dispatches a fresh request from scratch (a new id; see
- * FIX-637's resume-vs-retry contract), `continue` re-enters the SAME request:
+ * the resume-vs-retry contract), `continue` re-enters the SAME request:
  * completed blocks are injected from the durable item log and the in-flight
  * block re-runs, transitioning `interrupted → in_progress → terminal` in place.
  * The stale sweeper still only *marks* records `interrupted`; continuing is this

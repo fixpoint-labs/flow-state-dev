@@ -1,4 +1,3 @@
-// FIX-855.
 /**
  * fsdev config for the knowledge-base example — a secured personal
  * MCP server.

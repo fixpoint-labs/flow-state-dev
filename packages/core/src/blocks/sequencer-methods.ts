@@ -467,20 +467,22 @@ export type SequencerConfig<
   flowConfigSchema?: TFlowConfigSchema;
   description?: string;
   transient?: boolean;
+  // FIX-401; FIX-141.
   /**
    * When true (default), the sequencer's state is checkpointed to
    * `stores.checkpoints` at every step boundary. The Phase 2 resume runtime
-   * (FIX-141) reads the latest checkpoint to pick up after an interrupted
+   * reads the latest checkpoint to pick up after an interrupted
    * request. Set `false` to opt out — typically for tests or single-shot
    * ephemeral sequencers where persistence is unwanted overhead.
    *
    * Latest-only semantics: storage is constant per sequencer regardless of
-   * step count. See `SequencerCheckpoint` and FIX-401 spec.
+   * step count. See `SequencerCheckpoint`.
    */
   durable?: boolean;
   inputSchema?: TInputSchema;
   outputSchema?: ZodTypeAny;
-  /** This sequencer's own request-scoped state (FIX-914 alias: also exposed
+  // FIX-914.
+  /** This sequencer's own request-scoped state (an alias: also exposed
    *  as `ctx.self` within its own DSL callbacks, in addition to `ctx.sequencer`). */
   stateSchema?: TStateSchema;
   /** Capabilities to install. Merges resources, state schemas, targets,

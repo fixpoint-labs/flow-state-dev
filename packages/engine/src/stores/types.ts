@@ -658,6 +658,7 @@ export type SetResult<TRecord> =
       conflict: { currentValue: TRecord | undefined; currentVersion: number };
     };
 
+// FIX-85; FIX-83.
 /**
  * Optional CAS-aware delta verbs adapters may implement to avoid full-record
  * UPDATEs on single-field scope-state writes. All verbs target the record's
@@ -666,8 +667,8 @@ export type SetResult<TRecord> =
  *
  * Adapters MAY implement none, some, or all of these. The CAS persist
  * callback feature-detects per call and falls back to `set` with the full
- * record when a verb is absent (capability advertisement). Once FIX-85
- * (Upstash) and FIX-83 (Mongo) ship, those adapters implement the verbs as
+ * record when a verb is absent (capability advertisement). Once Upstash and
+ * Mongo adapters ship, they implement the verbs as
  * required — the optional-in-v1 stance is a migration concession to existing
  * SQLite and filesystem adapters.
  *
@@ -1593,6 +1594,7 @@ export interface ResourceStateStore {
    */
   deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 
+  // FIX-1000.
   /**
    * Remove a scope instance's **tombstoned** rows outright, so each of those
    * keys reads as one that was never written. Live rows are not touched, and
@@ -1642,7 +1644,7 @@ export interface ResourceStateStore {
    * is what every fresh context sends for a key it holds no version for — then
    * finds no row and recreates the key. Checking for an existing record first
    * narrows this to a true create race but cannot close it; only a **scope
-   * generation** can, which is tracked and specced as FIX-1000 ("A create
+   * generation** can, which is tracked separately ("A create
    * racing session deletion lands in a purged, caller-reusable scope — fence
    * the scope generation"). Callers must know they are choosing between that
    * and the permanent brick the other order causes.

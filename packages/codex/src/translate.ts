@@ -1,3 +1,4 @@
+// LAB-154; BP-030.
 /**
  * The pure interpretation layer: one Codex wire event in, the framework's
  * vocabulary out. No side effects, no context, no vendor word past this
@@ -10,14 +11,14 @@
  * result — is keyed by the item's own id and kept where the correlation
  * actually matters, in the emitter's open-item map.
  *
- * Two drift rules, and the difference between them is the point (BP-030):
+ * Two drift rules, and the difference between them is the point:
  *
  * - An unrecognised item kind, or an unrecognised top-level event, becomes a
  *   **status note**. The wire is experimental; a run should degrade before it
  *   breaks.
  * - An unrecognised member of the `turn.*` lifecycle becomes a **terminal
  *   failure**. `outcome: null` is what a manager reads as "no terminal result
- *   arrived" (LAB-154 settles runs on that field), so a future `turn.cancelled`
+ *   arrived" (a manager settles runs on that field), so a future `turn.cancelled`
  *   degrading to a note would report `null` for a run that demonstrably ended.
  *   The same hazard the Claude Code adapter guards for an unrecognised result
  *   subtype, in Codex's shape. If a later event in the same stream turns out to

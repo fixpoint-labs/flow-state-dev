@@ -29,6 +29,7 @@ export type ClaudeCodeResultSubtype =
  */
 export const CLAUDE_CODE_SOURCE = "claude-code/sdk" as const;
 
+// LAB-154.
 /**
  * How the SDK's terminal subtype reads in the framework's neutral vocabulary.
  *
@@ -42,8 +43,8 @@ export const CLAUDE_CODE_SOURCE = "claude-code/sdk" as const;
  * unrecognized subtype — a future SDK failure mode — to `null`, the same value
  * a run that never produced a result carries. Collapsing the two would report
  * `outcome: null` for a run that demonstrably failed, and `null` is the one
- * thing a manager reads as "no terminal result arrived" (LAB-154 settles runs
- * on this field). `translate.ts` guards the same hazard by keying its error
+ * thing a manager reads as "no terminal result arrived" (a manager settles
+ * runs on this field). `translate.ts` guards the same hazard by keying its error
  * event off the raw subtype.
  *
  * `isError` is the result's `is_error` flag. It only changes a `success`: the
@@ -90,17 +91,18 @@ export interface ClaudeCodeAgentHandle extends HarnessRunHandle {
   toolsObserved: string[];
 }
 
+// BP-030.
 /**
  * Runtime validator for {@link ClaudeCodeAgentHandle}.
  *
  * A handle persisted before `outcome`/`cost` existed picks them up as `null`
- * from the neutral schema's defaults (BP-030).
+ * from the neutral schema's defaults.
  *
  * **`costUsd` is gone and is not rejected.** It was a dual carried beside the
  * neutral `cost` for one release, while the run manager still read it; the
  * manager reads `cost` now, so nothing reads the dual. Handles persisted with
  * it still parse — zod strips the unknown key rather than failing — which is
- * what BP-030 asks for on a field that was only ever a copy of one still here.
+ * enough for a field that was only ever a copy of one still here.
  */
 export const claudeCodeAgentHandleSchema = harnessRunHandleSchema.extend({
   source: z.literal(CLAUDE_CODE_SOURCE),

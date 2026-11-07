@@ -270,9 +270,8 @@ export const harnessSessionStateSchema = z.object({
    * `defaultModel`.
    */
   model: z.string().min(1).optional().readonly(),
-  // `FIX-2165`.
   /**
-   * The tracker issue this session works on, named at create and
+   * The tracker issue this session works on (`ENG-142`), named at create and
    * fixed for the session's life, like `model`. Absent for a session that
    * names none, and on every session stored before issues could be named.
    */

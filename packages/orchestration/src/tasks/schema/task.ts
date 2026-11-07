@@ -43,9 +43,10 @@ export const taskSchema = z.object({
    * single-attempt — `fail()` transitions straight to `errored`.
    */
   maxAttempts: z.number().int().positive().optional(),
+  // FIX-948; BP-030.
   /**
    * This task's record against the collection's cumulative retry budget
-   * (`maxTotalRetries`, FIX-948). Written only by `fail()`, inside the same
+   * (`maxTotalRetries`). Written only by `fail()`, inside the same
    * atomic write that routes the failure.
    *
    * Two facts, one field, because they are written at the same seam and are read
@@ -63,24 +64,26 @@ export const taskSchema = z.object({
    * last grant and then succeed while an unrelated task fails normally, leaving
    * the count at the limit with nothing ever refused.
    *
-   * **Absent on any task persisted before FIX-948**, and on any task that has
-   * never failed. Read it through one `== null` guard on the object (BP-030) —
+   * **Absent on any task persisted by an older version**, and on any task that has
+   * never failed. Read it through one `== null` guard on the object —
    * absent means "no counted history": zero granted, not denied. It is
    * deliberately not backfilled from `attempts`; see the "counting begins at
    * upgrade" section in `tasks/collection/task-caps.ts`.
    */
   retryLedger: z
     .object({
-      /** Failure retries this task was authorized, since the FIX-948 upgrade. */
+      // FIX-948.
+      /** Failure retries this task was authorized, since the upgrade. */
       granted: z.number().int().nonnegative(),
       /** True once a retry was refused because the collection's budget was spent. */
       deniedByBudget: z.boolean(),
     })
     .optional(),
 
+  // FIX-1005; BP-031; BP-030.
   /**
    * How many times this task's work was abandoned — claimed by a worker that
-   * then stopped renewing its lease — and handed back out (FIX-1005).
+   * then stopped renewing its lease — and handed back out.
    *
    * **Its own budget, deliberately separate from `maxAttempts`.** Recovery
    * runs through `claim`, which advances `attempts`, so without this counter a
@@ -94,7 +97,7 @@ export const taskSchema = z.object({
    * in that same write to decide whether to recover it at all or settle it
    * `errored`.
    *
-   * **Top level, never inside `metadata` (BP-031).** `patchMetadata` merges
+   * **Top level, never inside `metadata`.** `patchMetadata` merges
    * arbitrary caller keys with a plain spread and is exposed to a model
    * through `updateTask`, so a counter living there could be reset (unbounded
    * recovery) or inflated (a live task terminalized early) from
@@ -102,7 +105,7 @@ export const taskSchema = z.object({
    * The typed write surface reaches no top-level field, so this placement
    * needs no per-seam guard.
    *
-   * **Absent reads as zero** (BP-030) — a task persisted before FIX-1005, one
+   * **Absent reads as zero** — a task persisted by an older version, one
    * that has never been abandoned, or one whose counter an older writer
    * normalized away. That direction is deliberate: a stripped counter costs
    * *recovery bounding*, which is in policy, while the opposite reading would
@@ -183,9 +186,10 @@ export const taskSchema = z.object({
   deps: z.array(z.string()).optional(),
   priority: z.number().optional(),
   leaseUntil: z.number().optional(),
+  // FIX-1305; BP-030.
   /**
-   * The lease duration the current claim committed to, in milliseconds
-   * (FIX-1305). Written by `applyClaimToTask` from the duration the claim was
+   * The lease duration the current claim committed to, in milliseconds.
+   * Written by `applyClaimToTask` from the duration the claim was
    * made with, and read back by `committedLeaseSpan`.
    *
    * **Stored rather than re-derived, because `leaseUntil - updatedAt` is not
@@ -199,18 +203,19 @@ export const taskSchema = z.object({
    * coordinator relabelling a running task would silently shorten one and
    * refuse the other.
    *
-   * **Absent on any task persisted before FIX-1305**, and on any task never
+   * **Absent on any task persisted by an older version**, and on any task never
    * claimed. Read it through {@link committedLeaseSpan}, which falls back to
-   * the old subtraction (BP-030) rather than treating absence as "no lease".
+   * the old subtraction rather than treating absence as "no lease".
    *
    * Server-set, like `leaseUntil` and `claimedBy`: it is absent from
    * `TaskInit`, so no caller and no model writes it.
    */
   leaseDurationMs: z.number().optional(),
 
+  // FIX-1005; BP-030.
   /**
    * Where the current attempt is running — the execution coordinate the
-   * substrate stamps inside the claim write (FIX-1005). A fact ("attempt N ran
+   * substrate stamps inside the claim write. A fact ("attempt N ran
    * here"), never policy ("work should run here"). Written only by
    * `applyClaimToTask` and cleared wherever the claim ends; absent from
    * `TaskInit`, so no caller and no model ever writes it.
@@ -226,9 +231,9 @@ export const taskSchema = z.object({
    * **Server-only, never sent to a client.** See `SERVER_ONLY_TASK_FIELDS` in
    * `collection/change-event.ts`, canonical for the redaction and its shape.
    *
-   * **Absent on any task persisted before FIX-1005**, on any task never
+   * **Absent on any task persisted by an older version**, on any task never
    * claimed, and on any row an older writer normalized. Read it through one
-   * `== null` guard (BP-030); the next claim re-stamps it.
+   * `== null` guard; the next claim re-stamps it.
    */
   claimedBy: z
     .object({
@@ -349,9 +354,10 @@ export const taskSchema = z.object({
   labels: z.array(z.string()).optional(),
   metadata: z.record(z.unknown()).optional(),
 
+  // FIX-989; BP-030.
   /**
    * Committed-write counter, bumped by **every** write that changed this task,
-   * whoever made it (FIX-989).
+   * whoever made it.
    *
    * Declared here rather than added by the backings because a durable task is
    * validated by `taskEnvelopeSchema` on its way to the store, and a Zod object
@@ -359,10 +365,10 @@ export const taskSchema = z.object({
    * perfectly on the two in-memory backings and vanish on the one that
    * persists.
    *
-   * **Absent on any task persisted before FIX-989**, and on any task written by
+   * **Absent on any task persisted by an older version**, and on any task written by
    * a hand-written `TaskCollectionRef` that maintains no provenance. Read it
    * through `didWriteLand`, which `== null`-guards it and answers "cannot tell"
-   * (BP-030) — never treat an absent revision as "nothing has happened".
+   * — never treat an absent revision as "nothing has happened".
    */
   revision: z.number().int().optional(),
   // FIX-989.
@@ -442,9 +448,10 @@ export const taskSchema = z.object({
    */
   createdBy: z.string().optional(),
 
+  // FIX-2082; FIX-1816; BP-030.
   /**
    * The row's **wait slot**: a request is waiting on this row's ending
-   * (FIX-1816; one wait per row since FIX-2082). `gateId` names the gate the
+   * (one wait per row). `gateId` names the gate the
    * waiting request parks on, unique within its session; `deadline` is when
    * the wait resumes with the row still running (epoch ms); `requestId` is the
    * waiting request, server-written.
@@ -456,8 +463,8 @@ export const taskSchema = z.object({
    * read of the row is its delivery (`releaseWait` hands one it never read to
    * the filer's notice). Never a model-facing field.
    *
-   * **Absent** on every row nobody waits on (BP-030). A slot written by a
-   * filing before FIX-2082 has no `requestId` and reads as live, as it did.
+   * **Absent** on every row nobody waits on. A slot an older
+   * version's filing wrote has no `requestId` and reads as live, as it did.
    */
   wait: z
     .object({
@@ -496,27 +503,29 @@ export const taskSchema = z.object({
    */
   resumeOwed: z.boolean().optional(),
 
+  // FIX-2080; FIX-2077 D1; FIX-2086 D2; BP-030.
   /**
-   * What keeps this running task open while no worker holds it (FIX-2077 D1):
+   * What keeps this running task open while no worker holds it:
    * `"suspended"`, its own request is suspended (a `suspendForUser` stop,
    * which the row's suspension hold in `holds` mirrors, or any other: a
    * webhook, a call); `"filed"`, work it filed that still keeps it open. Only on an
    * `in_progress` row. A row kept open has no lease, so the reclaim leaves it
    * alone: that task is never run again by a lapse. `"steer"`, a steer no
-   * request has taken (FIX-2086 D2): the turn owed for it is on its way, with
+   * request has taken: the turn owed for it is on its way, with
    * no lease. The request admitted for it next clears it and starts a lease;
    * every ending, and every claim, clears it.
    *
-   * Not FIX-2080's `held`, which is the filer's hold, a status before a start,
+   * Not the `held`, which is the filer's hold, a status before a start,
    * nor `holds`, which says what the row is held on for a person, nor `wait`,
    * a request waiting on this row's ending. Server-written by the claim gate
    * (`setKeptOpenBy`), never by a caller. **Absent, or `null`, reads as kept
-   * open by nothing** (BP-030).
+   * open by nothing**.
    */
   keptOpenBy: z.enum(["suspended", "filed", "steer"]).nullable().optional(),
 
+  // FIX-2183; FIX-2133 D2, FIX-2317.
   /**
-   * What holds the task on its row for a person (FIX-2133 D2, FIX-2317): its
+   * What holds the task on its row for a person: its
    * question holds, a question or a confirm kept on the row (`source.kind:
    * "row"`), and the mirror of a task run's `suspendForUser` stop
    * (`"suspension"`), oldest first. A question is one kind of hold, beside the
@@ -528,7 +537,7 @@ export const taskSchema = z.object({
    *
    * Server-written by the collection's one hold write (`collection/holds`),
    * never by a caller. **Absent** on a row nothing has held. A row stored with
-   * them under `questions` (FIX-2183's name) reads them here (the
+   * them under `questions` (its former name) reads them here (the
    * retired-shape map's `questions` entry).
    */
   holds: z.array(taskHoldSchema).optional(),
@@ -542,11 +551,12 @@ export const taskSchema = z.object({
    */
   turn: z.number().int().nonnegative().optional(),
 
+  // FIX-2086; FIX-2133 D3.
   /**
-   * The last open row hold of a running task closed (FIX-2133 D3): it owes one
+   * The last open row hold of a running task closed: it owes one
    * more turn on its same attempt, with no lease. The claim takes it, using
    * no attempt, and clears it in the claim's write; a wake only starts that
-   * sooner. Not FIX-2086's `keptOpenBy: "steer"`, which keeps its own meaning.
+   * sooner. Not the `keptOpenBy: "steer"`, which keeps its own meaning.
    * Server-written. **Absent** on every other row.
    */
   turnOwed: z.literal(true).optional(),

@@ -50,6 +50,7 @@ export function openRows(snapshot: LoadedSnapshot): BoardRow[] {
 /** The workers a row's assignee is resolved against. */
 export type Roster = { workers: readonly Worker[] };
 
+// FIX-1672.
 /**
  * The worker a row is held by, or `undefined` when no single worker is.
  *
@@ -62,8 +63,8 @@ export type Roster = { workers: readonly Worker[] };
  *
  * A name more than one worker carries, or none, is no worker: a row is never shown against
  * several workers, or against a guess. Which worker actually claimed the row is
- * not published to a browser, and a declared assignee-to-worker map is
- * FIX-1672's.
+ * not published to a browser, and a declared assignee-to-worker map
+ * arrives in a later release.
  */
 export function workerFor(roster: Roster, row: BoardRow): Worker | undefined {
   if (row.assignee === null) return undefined;

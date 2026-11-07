@@ -107,10 +107,11 @@ export type JudgeSlot =
 export interface GoalSeekLoopConfig {
   /** Name for the loop's outer sequencer and its internal block-name prefix. */
   name: string;
+  // FIX-918.
   /**
    * Input schema forwarded to the OUTER sequencer verbatim, so a re-expressed
    * pattern keeps its public block metadata (and survives `GeneratorTool`
-   * wrapping — FIX-918 forward-compat). Omit for `z.unknown()`.
+   * wrapping). Omit for `z.unknown()`.
    */
   inputSchema?: ZodTypeAny;
   /**

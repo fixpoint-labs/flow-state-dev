@@ -22,6 +22,7 @@ import type { GeneratorTool } from "../blocks/generator";
  */
 export type ToolCatalog = Record<string, GeneratorTool>;
 
+// FIX-918.
 /**
  * Activation mode for a skill, controlled by `context:` frontmatter.
  *
@@ -29,7 +30,7 @@ export type ToolCatalog = Record<string, GeneratorTool>;
  *   into the in-flight generator on the next tool-loop step via the existing
  *   `prepareStep` machinery.
  *
- * Both non-inline modes were removed in FIX-918: `fork` (an isolated subagent)
+ * Both non-inline modes were removed: `fork` (an isolated subagent)
  * and `pattern` (a session-global multi-agent dispatcher). The type is kept as
  * a one-value union so its readers keep compiling and a future mode has a seam.
  */
@@ -148,7 +149,8 @@ export interface RunSkillInput {
 export interface RunSkillOutput {
   /** The skill name that was invoked. */
   skill: string;
-  /** Mode the skill ran in. Always `"inline"` after FIX-918. */
+  // FIX-918.
+  /** Mode the skill ran in. Always `"inline"`. */
   mode: SkillContextMode;
   /** Ack message; the agent should re-read context on the next step. */
   message?: string;

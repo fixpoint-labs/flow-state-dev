@@ -250,9 +250,10 @@ export function storedEmitters(ctx: BlockContext) {
   return { message: message.bind(ctx), component: component.bind(ctx), stored: flush.bind(ctx) };
 }
 
+// FIX-2123.
 /**
  * Take message `id` for the running request, in the recipient's session
- * (FIX-2123's take, on a message): one guarded write of `takenBy` while the
+ * (the take, on a message): one guarded write of `takenBy` while the
  * row is `unconfirmed`, for the session the row is addressed to. A taker that
  * hasn't ended keeps it; one that ended without delivering is taken over.
  */

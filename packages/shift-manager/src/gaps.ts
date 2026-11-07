@@ -10,8 +10,9 @@ export const GAPS = {
   now: "What a task is doing now arrives in a later release.",
   // FIX-1652.
   harness: "Which harness a worker runs arrives in a later release.",
+  // FIX-1664.
   /**
-   * The task screen's gaps (FIX-1664's gap registry, BUSINESS-RULES.md): each
+   * The task screen's gaps (the gap registry, BUSINESS-RULES.md): each
    * names what arrives and who ships it, or says it is not planned in the
    * first cut. When an owner ships, its entry here changes and nothing else.
    */

@@ -1,3 +1,4 @@
+// FIX-140; FIX-2082; FIX-1816; FIX-1846; FIX-2078 D1; FIX-2082 D1; FIX-2269.
 /**
  * Server-internal retention sweeper for durable-execution artifacts.
  *
@@ -8,13 +9,13 @@
  *      time (reuses the existing LeaseStore to avoid a multi-host thundering
  *      herd against the same rows).
  *   2. Enforce suspension expiry: any `pending` suspension past its
- *      `expiresAt` is re-set to `expired` (closes the FIX-140 gap where
- *      expiry was recorded but never enforced, so the resume endpoint can
- *      reject stale gates). A **wait gate** parked before FIX-2082, whose
+ *      `expiresAt` is re-set to `expired` (expiry is enforced, not only
+ *      recorded, so the resume endpoint can
+ *      reject stale gates). A **wait gate** parked before gates carried a deadline, whose
  *      deadline was its expiry, is the exception: it is resumed with
- *      `wait_timed_out` instead (FIX-1816), because an `expired` wait gate
+ *      `wait_timed_out` instead, because an `expired` wait gate
  *      would strand its turn: nothing else may resume it. This branch goes
- *      once no gate parked before FIX-2082 is left: a wait's deadline is now a
+ *      once no such gate is left: a wait's deadline is now a
  *      wake (2c).
  *   2b. Re-drive a request left `suspended` or `interrupted` behind a gate that
  *      is already resolved (a wait's answer, failure, timeout or stop, any
@@ -23,20 +24,20 @@
  *      with the recorded outcome; and stop a parked request whose stop was
  *      recorded while it was still running (`abortRequested`), as a stop of a
  *      parked turn does. An approval step 2 just expired is continued here in
- *      the same tick (FIX-1846): the gated call does not run, it returns a
+ *      the same tick: the gated call does not run, it returns a
  *      result saying the approval is no longer valid, and the turn carries on.
  *      The `expired` record is the obligation, so a crash before the
  *      continuation runs is finished by the next sweep.
- *   2c. Fire every due wake (FIX-2078 D1): a debt's due time, kept by the
+ *   2c. Fire every due wake: a debt's due time, kept by the
  *      engine until a pass in its session clears it. Each is moved one
  *      {@link WAKE_RETRY_MS} out FIRST, then dispatched as the owner it names
  *      (`fireWake`, the host's dispatch of the internal entry it names), so a
  *      fire that dies, or a pass that dies, leaves the wake to fire again.
  *      The pass it runs clears it, or moves it to its next due time. A
- *      `waitDeadline` wake (FIX-2082 D1) is the sweep's own: it resumes every
+ *      `waitDeadline` wake is the sweep's own: it resumes every
  *      wait in that session past its deadline, cancelling nothing, and moves
  *      the wake to the next one (`resumeDueWaits`). A `parkOwed:` wake
- *      (FIX-2269) is the sweep's own as well: a request that died after its
+ *      is the sweep's own as well: a request that died after its
  *      wait started the work and before its gate was written is continued
  *      (`continueOwedPark`).
  *   3. Prune resolved (terminal) suspensions older than the retention window.
@@ -745,11 +746,12 @@ async function resumeDueWaits(args: ResolvedTickArgs, wake: WakeRecord, now: num
   else await wakes.move(wake, wake.version, dueAt);
 }
 
+// FIX-2082.
 /**
  * Resume one overdue wait gate, through the same resume every wait takes
  * (fenced on the gate still being pending, under the request's lease): with
  * the deadline outcome at a wait's deadline (step 2c), or with
- * `wait_timed_out` for a gate parked before FIX-2082 past its expiry (step 2,
+ * `wait_timed_out` for a gate parked before gates carried a deadline, past its expiry (step 2,
  * which goes once no such gate is left). Per-gate failures are logged and the
  * sweep moves on, and the caller re-reads the gate: one left pending (the
  * request busy, or not yet written parked) is tried again shortly.

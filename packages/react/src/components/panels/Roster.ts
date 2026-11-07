@@ -136,10 +136,11 @@ export const rosterPropNames = [
 /** The conventional key a flow declares the roster under. Shared with `WorkerDetail`. */
 export const DEFAULT_ROSTER_REF = "roster";
 
+// FIX-1500 S5; FIX-1500 bug 2.
 /**
- * Shared with `WorkerDetail` (FIX-1500 S5), so a list read and a single-item read agree on what a worker row is.
+ * Shared with `WorkerDetail`, so a list read and a single-item read agree on what a worker row is.
  *
- * `instructions` is checked too, not just `workerId`/`flow` (FIX-1500 bug 2): a
+ * `instructions` is checked too, not just `workerId`/`flow`: a
  * row with e.g. `instructions: {}` would otherwise pass, get cast to
  * `RosterWorker`, and be handed to React as a child, which throws trying to
  * render an object. The declared shape is `string | null`, and a row from
@@ -155,18 +156,19 @@ export function isWorker(value: unknown): value is RosterWorker {
   return instructions === undefined || instructions === null || typeof instructions === "string";
 }
 
+// BP-035; BP-030; FIX-1500 S5.
 /**
  * Make a stored row match the declared shape, which for now means one field.
  *
  * `instructions` is declared `string | null`, and a row written before workers
  * had instructions does not carry the key at all — the projection copies only
- * the keys a row has, so it arrives ABSENT rather than null (BP-030, and
- * BP-035's null boundary). A slot consumer trusting the declared type would
+ * the keys a row has, so it arrives ABSENT rather than null (and
+ * the null boundary). A slot consumer trusting the declared type would
  * write `if (worker.instructions !== null) worker.instructions.trim()` and throw
  * on the oldest rows in the store. Normalising here means the type is true of
  * every row a consumer can be handed, rather than true of recent ones.
  *
- * Shared with `WorkerDetail` (FIX-1500 S5) so the list and the detail agree on
+ * Shared with `WorkerDetail` so the list and the detail agree on
  * how a missing `instructions` value is treated, rather than each deciding it
  * independently.
  */

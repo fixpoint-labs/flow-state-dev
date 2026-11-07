@@ -1,7 +1,8 @@
+// FIX-443 §2.
 /**
  * Task status enum + state-machine validators.
  *
- * The status set comes from FIX-443 §2. Transitions are enforced by
+ * Transitions are enforced by
  * `assertTransitionAllowed` so callers cannot drop a `completed` task
  * back into `in_progress`, etc. The substrate uses these helpers from
  * the lifecycle methods on TaskCollectionRef so both backings share

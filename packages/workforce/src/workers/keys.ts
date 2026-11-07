@@ -7,9 +7,10 @@
  * server half share one spelling of each.
  */
 
+// FIX-1791 and FIX-1795.
 /**
  * Where a user's own workers are stored, one row per worker, at user scope
- * (per organization). **Pinned**: persisted, and read by FIX-1791 and FIX-1795.
+ * (per organization). **Pinned**: persisted, and read elsewhere.
  */
 export const WORKERS_PATTERN = "workforce/workers/*";
 
@@ -29,10 +30,11 @@ export const STANDARD_WORKERS_PATTERN = "workforce/standard-workers/*";
 /** The accessor a flow declares the standard-worker projection under. */
 export const STANDARD_WORKERS_RESOURCE = "workforceStandardWorkers";
 
+// FIX-1789.
 /**
  * The session-state field that names a session's worker. A worker flow
  * declares it `.readonly()`, so it is set when the session is created, checked
- * there, and never changes. **Pinned**: persisted, and FIX-1789's
+ * there, and never changes. **Pinned**: persisted, and
  * `writtenBy.workerId` names the same worker.
  */
 export const WORKER_ID_STATE_KEY = "workerId";

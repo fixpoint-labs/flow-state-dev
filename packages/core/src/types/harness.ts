@@ -114,12 +114,13 @@ export interface HarnessRunInput {
   prompt: string;
 }
 
+// BP-031.
 /**
  * Runtime validator for {@link HarnessRunInput}.
  *
  * Strips unknown keys rather than rejecting them, deliberately: a smuggled
  * field (`resumeSessionId`, a `cwd`) is dropped instead of honoured, which is
- * all BP-031 asks for here — resume and working directory reach a harness
+ * all a trusted source needs here — resume and working directory reach a harness
  * through the caller-fed {@link HarnessResolver}, never through block input.
  * `.strict()` would fail louder, at the cost of breaking callers that pass
  * framework metadata through the same object.
@@ -266,13 +267,14 @@ export type HarnessCallbackContext = BlockContext<
   any
 >;
 
+// BP-031.
 /**
  * How a host feeds a harness one piece of per-run configuration.
  *
  * The working directory a run writes in, and the session it resumes, arrive
  * this way rather than on {@link HarnessRunInput} — the input schema is
  * model-facing through a block's capability tool preset, so a field there is a
- * field a model could set (BP-031). A resolver's answer is trusted.
+ * field a model could set. A resolver's answer is trusted.
  *
  * **It is handed the context and NOTHING ELSE, and that is the guarantee rather
  * than a convenience.** An earlier shape passed the run's input alongside the
@@ -280,7 +282,7 @@ export type HarnessCallbackContext = BlockContext<
  * value a caller — or a tool-using model holding the block — controls, and a
  * resolver that can see it can be written, in ordinary-looking code, to pick the
  * directory a run writes in or the conversation it continues *from what the
- * caller sent*. That is the BP-031 defect the resolver exists to prevent,
+ * caller sent*. That is the trust defect the resolver exists to prevent,
  * reintroduced through the resolver.
  *
  * Documentation could not close it. A guarantee a caller violates by writing

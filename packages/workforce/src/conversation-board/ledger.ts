@@ -1,11 +1,12 @@
+// FIX-1791; FIX-1794 S3; FIX-2078; FIX-2080 D2.
 /**
- * The ledger a conversation's task board keeps its rows in (FIX-1794 S3).
+ * The ledger a conversation's task board keeps its rows in.
  *
  * One durable collection for every conversation, at the owner's user scope,
  * which crosses flows, so a task session on another flow reads and settles the
  * row it was handed. Each conversation reaches only its own partition: the
  * conversation's `filingSessionId`, its id plus the incarnation the server
- * minted when it was created (FIX-1791's value, epic D6). A conversation
+ * minted when it was created (its value). A conversation
  * deleted and created again under the same id starts with an empty board; the
  * old rows stay in the store, unread.
  *
@@ -14,7 +15,7 @@
  * - **A notice** is a marker the ending's own write puts on the row:
  *   orchestration records it for every row a board hands out, so the ending
  *   and the debt to tell its filer land together or not at all, and delivers
- *   it (`./delivery`). Only the filer's delivery clears it (FIX-2078).
+ *   it (`./delivery`). Only the filer's delivery clears it.
  * - **A report** the Error Reporter is owed for a task that failed for good
  *   rides that notice (`./report-owed`): no marker of its own.
  * - **A start** is no marker at all: it is the row's own state. A row that is
@@ -23,7 +24,7 @@
  *   that same write. The run that claims it pays it. Nothing can strand a
  *   start between two writes, because there is no second write.
  *
- * - **A cascade** a task's ending owes (FIX-2080 D2): its open dependents on
+ * - **A cascade** a task's ending owes: its open dependents on
  *   this board, and the open tasks its session filed (`./cascade`), recorded
  *   by orchestration in the ending's own write and paid by the ending's own
  *   pass, or by the board's next touch once past due.

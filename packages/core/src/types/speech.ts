@@ -17,9 +17,10 @@ export type TTSConfig = {
 /** Voice configuration on a flow. */
 export type VoiceConfig = {
   tts?: TTSConfig;
+  // FIX-528.
   /**
    * Provider that owns the flow's voice surfaces. Consumed server-side by the
-   * router and TTS pipeline (wired in FIX-528).
+   * router and TTS pipeline.
    */
   provider?: VoiceProvider;
 };

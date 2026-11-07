@@ -1,5 +1,6 @@
+// FIX-2082, FIX-2077; FIX-1816; BP-031; FIX-2112; FIX-2123; FIX-2170; FIX-2181.
 /**
- * Waiting on a task (FIX-1816; one wait since FIX-2082): a request waits on a
+ * Waiting on a task (one wait): a request waits on a
  * task already filed, until it ends or its deadline passes, whichever is first.
  *
  * Two ways in share this one function: `getTask({ id, wait: true })`, and a
@@ -8,7 +9,7 @@
  * 1. **Pass the same checks**, each before anything is written, each naming
  *    the rule: the host can hold a wait (durable execution, wakes, a sweeper);
  *    the deadline is within the host's bounds; this session filed the task
- *    (its server-written filer, never input, BP-031); its result doesn't go
+ *    (its server-written filer, never input); its result doesn't go
  *    to the conversation; it isn't a step a plan's drain handed over and
  *    waits on (the mark the drain's own wait writes on the slot, which
  *    stays while the slot is lapsed); one wait per model step; and the chain of waits it
@@ -17,14 +18,14 @@
  *    that waits again at its deadline counts again before each new park,
  *    except a drain on a row it handed over, whose wait already exists.
  *    A task already ended is returned at once, and the notice its ending
- *    owes the filer is dropped: this answer delivered it (FIX-2112). Unless
- *    `onTaskSettled` has already taken that notice (FIX-2123): then the notice
+ *    owes the filer is dropped: this answer delivered it. Unless
+ *    `onTaskSettled` has already taken that notice: then the notice
  *    is the delivery, and the answer says the ending arrives as one.
  * 2. **Take the row's wait slot** in one conditional write (`markWait`): a
  *    second request waiting on the same task is refused.
  * 3. **Park** on the one wait gate (`parkOnWait`), whose deadline the engine
  *    keeps as a wake. Nothing holds a request open while it waits, and a
- *    request working a task keeps its claim (FIX-2077's `keptOpenBy`).
+ *    request working a task keeps its claim (the `keptOpenBy`).
  * 4. **Resume once**, with the ending the claim gate wrote (the filing
  *    session's pass resumes it, `payOwedResumes`), or at the deadline with the
  *    task still running. The deadline cancels nothing: the slot lapses, in one
@@ -33,11 +34,11 @@
  *    read of the task delivers it. Once it parks (on a person or another
  *    wait) or ends without that read, the ending goes to the filer's
  *    `onTaskSettled`, once (`releaseWait`): at a park, by the filer's pass,
- *    which the park owes a wake (FIX-2170); at its end, in this process; and,
+ *    which the park owes a wake; at its end, in this process; and,
  *    whatever became of the process, by the filer's next pass, which the
  *    lapse owes a wake (`releaseEndedWaits`). A wait on the task after the
  *    resume then answers that its ending arrives as a notice while that
- *    notice is being delivered, and with the task once it has been (FIX-2181).
+ *    notice is being delivered, and with the task once it has been.
  *
  * A person stopping a waiting request ends it and cancels the task it waited
  * on, as before. A request whose own task is cancelled while it waits ends at
@@ -124,7 +125,8 @@ export type TaskWaitRefusal =
   | "wait_unavailable"
   /** The deadline is outside the host's bounds. It is never clamped. */
   | "wait_deadline_out_of_range"
-  /** This session didn't file the task, or the row names no filer (filed before FIX-2078). */
+  // FIX-2078.
+  /** This session didn't file the task, or the row names no filer (filed by an older version). */
   | "wait_not_filer"
   /** The task's result goes to the conversation, which hears it when it ends. */
   | "wait_on_conversation_result"

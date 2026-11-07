@@ -468,16 +468,17 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   claimOrder?: TaskBoardClaimOrderInput;
 
+  // FIX-626.
   /**
    * Termination behavior when the worker pool is idle.
    *
-   * - `"complete-or-blocked"` (default, FIX-626): exit when the
+   * - `"complete-or-blocked"` (default): exit when the
    *   collection drains, OR when no in-flight worker is active and no
    *   `pending` task is claimable. The final `task-board-meta` item's
    *   `terminationReason` field distinguishes `"all-completed"` from
    *   `"blocked-by-failures"`.
    * - `"complete"`: exit only when no `pending` or `in_progress`
-   *   tasks remain. Pre-FIX-626 default; preserved
+   *   tasks remain. The former default; preserved
    *   for boards that wait on an external pump to mark deps complete.
    * - `"wait"`: never auto-exit; defer to `shouldExit`. Long-running
    *   session-scoped boards.
@@ -521,8 +522,9 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   idlePollMs?: number;
 
+  // FIX-610 Layer B.
   /**
-   * Per-board tool-result memoization (FIX-610 Layer B). Enabled
+   * Per-board tool-result memoization. Enabled
    * automatically when any worker tool declares `cacheable`; pass
    * `false` to disable, or an object to tune. The cache is bound to a
    * single board run — it's torn down whether the board completes or

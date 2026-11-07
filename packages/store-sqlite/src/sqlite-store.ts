@@ -1,9 +1,10 @@
+// FIX-405.
 /**
  * Generic SQLite record store abstraction.
  *
  * All four record stores (session, request, user, org) build on this base
  * with store-specific column mappings and filter builders. It also implements
- * the FIX-405 delta verbs (`patchField` / `incField` / `pushToArray`): each
+ * the delta verbs (`patchField` / `incField` / `pushToArray`): each
  * verb mutates only the targeted `state.<field>` inside a `db.transaction`,
  * keeping `version` / `updatedAt` in lockstep with their mirrored top-level
  * entries in `data`. Unlike the Postgres adapter (JSONB operators), SQLite

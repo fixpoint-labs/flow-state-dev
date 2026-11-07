@@ -1,5 +1,6 @@
+// FIX-1794 S3 to S5, FIX-1802 S1 and S2; FIX-1802 D1, FIX-2081; FIX-2076 D1; FIX-1802 S5; FIX-2080; FIX-2083; FIX-2078.
 /**
- * A session's task board (FIX-1794 S3 to S5, FIX-1802 S1 and S2): where a
+ * A session's task board: where a
  * session files tasks for its delegates, who takes each one, and how a filing
  * starts it.
  *
@@ -12,13 +13,13 @@
  *   second attempt re-enters it; a reassign opens another. The hand-over
  *   re-runs the delegate check, so a delegate fired since the filing doesn't
  *   run.
- * - **The grant** (FIX-1802 D1, FIX-2081). A session's delegates are its
+ * - **The grant**. A session's delegates are its
  *   authority: it files for the ones that take a task now, read on every
  *   call, server-side, and for no one else. Under `delegates: all` that is
  *   the user's whole roster as it stands (`../delegates`). A task session
  *   files its task's pieces, which its task then waits on (`./split`), for
  *   the same delegates. An unassigned row goes to the only one.
- * - **Steps for itself** (FIX-2076 D1). On a flow that plans its turns
+ * - **Steps for itself**. On a flow that plans its turns
  *   ({@link ConversationBoard.planned}), a worker's own turn is offered the
  *   task tools whether or not it has delegates, and a filing that names the
  *   worker itself is a *step*: a row on the session's plan ledger (`./plan`),
@@ -29,7 +30,7 @@
  *   assignee doesn't cross to a delegate, nor a delegate's to the worker. A
  *   filing naming the worker from anywhere but its own turn, such as a public
  *   action, is refused.
- * - **The limits** (FIX-1802 S5). A filing past the chain's depth or its
+ * - **The limits**. A filing past the chain's depth or its
  *   breadth is refused in the ref the resolver returns (`./chain`), as the
  *   task substrate refuses a full board: `total_task_cap_exceeded`.
  * - **The tools and the actions.** Orchestration's task tools, on the
@@ -46,27 +47,27 @@
  *   it. The start it owes is the row's own state, pending and assigned
  *   (`./ledger`), so a refused or lost wake strands nothing: any later action
  *   on the board starts every row in that state. A session works one task at
- *   a time (FIX-2080): a row whose session another started, unfinished row
+ *   a time: a row whose session another started, unfinished row
  *   holds waits, and starts once that row ends.
- * - **The settings** (FIX-2080). A task runs in a session of its own, or, filed
+ * - **The settings**. A task runs in a session of its own, or, filed
  *   `session: "ongoing"`, in the delegate's session for this conversation; its
  *   result goes to its filer, or, filed `resultTo: "conversation"`, to the
  *   conversation, with one attempt. A task's session takes neither:
  *   `createTask` refuses them there, naming the setting.
- * - **A workstream's record** (FIX-2083). A delegate record with a target is a
+ * - **A workstream's record**. A delegate record with a target is a
  *   workstream its worker leads. A task for it names that target (`target`, a
  *   filing setting), and the filing resolves the workstream's session then,
  *   server-written on the row (`targetSessionId`): filed `session:
  *   "ongoing"`, the task runs there. A worker that is only a workstream here
  *   takes no task without its target, and a filer with no such record takes
  *   no target.
- * - **Routed tasks** (FIX-2083). A coordinator hands a user's message to a
+ * - **Routed tasks**. A coordinator hands a user's message to a
  *   delegate as an ordinary task with the routing settings, carrying the
  *   message in its server-written brief: through
  *   {@link ConversationBoard.fileRouted} for a routing policy, and, on a turn
  *   routing a message, through any filing whose result goes to the
  *   conversation ({@link RoutedFiling}). Nothing else about it is special.
- * - **The pass** (FIX-2078). One run of the board, `dispatch`, one at a
+ * - **The pass**. One run of the board, `dispatch`, one at a
  *   time per session (`defer`: a second waits its turn): repairs first
  *   (orchestration's `payBoardDebts`: cancels, cascades, resumes, notices past
  *   due; reports stored before the upgrade; the settles owed down the chain),
@@ -180,8 +181,9 @@ const TASK_ATTEMPTS = 2;
 
 /** What a session's board is built from. */
 export interface ConversationBoardOptions {
+  // FIX-1791.
   /**
-   * The running session's delegates, read now: the one check FIX-1791's
+   * The running session's delegates, read now: the one check a session's
    * delegates pass, for a task. Read at filing and again at hand-over, and
    * for the grant on every call.
    */
@@ -545,9 +547,10 @@ function heldByAnotherBoard(task: Task, held: ReadonlySet<string> | undefined): 
   return task.targetSessionId !== undefined && held?.has(task.targetSessionId) === true;
 }
 
+// FIX-2083 rule 5.
 /**
- * Take each session by id a startable row here would start in (FIX-2083
- * rule 5 across boards): for each, the one row of this board that may start
+ * Take each session by id a startable row here would start in (the
+ * one-routed-task rule, across boards): for each, the one row of this board that may start
  * there now, or none while another board's routed task holds it. The rows
  * for one session are taken earliest filed first; this board's own rule 5
  * starts one of them at a time anyway.
@@ -1323,11 +1326,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         }
         return outcome;
       };
+    // FIX-2086; FIX-2133 D3.
     /**
      * After an answer or a deadline closed a question on `id`: a running row
      * that now owes its turn has that turn started in its session (a wake,
-     * FIX-2086's steer turn), and a row now startable starts the board, whose
-     * claim takes either. Whichever claims first wins (FIX-2133 D3).
+     * the steer turn), and a row now startable starts the board, whose
+     * claim takes either. Whichever claims first wins.
      */
     const goOnAfterAnswer = async (id: string): Promise<void> => {
       const after = ref.get(id);

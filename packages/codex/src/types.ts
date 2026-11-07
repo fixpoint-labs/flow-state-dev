@@ -59,6 +59,7 @@ export interface CodexRunUsage {
   reasoningOutputTokens: number;
 }
 
+// LAB-152.
 /**
  * Handle for a single Codex run.
  *
@@ -69,7 +70,7 @@ export interface CodexRunUsage {
  * `outcome` is `"finished"` on a completed turn and `"failed"` on a failed one.
  * Codex reports no turn or budget cap, so `"stopped-at-limit"` is never
  * produced here — a run stopped by the CALLER's deadline is a throw, not a
- * handle (LAB-152's abort contract).
+ * handle (the harness abort contract).
  */
 export interface CodexAgentHandle extends HarnessRunHandle {
   source: typeof CODEX_SOURCE;

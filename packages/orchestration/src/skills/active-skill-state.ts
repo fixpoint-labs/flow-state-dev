@@ -20,7 +20,8 @@ import { skillActivationSourceSchema } from "./skill-activation-types";
 export interface ActiveSkillEntry {
   /** Skill name. Matches the parent directory in the resource collection. */
   name: string;
-  /** Mode the skill activated in. Always `"inline"` after FIX-918. */
+  // FIX-918.
+  /** Mode the skill activated in. Always `"inline"`. */
   mode: SkillContextMode;
   /** Argument string the agent passed to runSkill (substituted for $ARGUMENTS). */
   input?: string;
@@ -35,6 +36,7 @@ export interface ActiveSkillEntry {
   source?: SkillActivationSource;
 }
 
+// FIX-918; BP-030.
 /**
  * Zod schema for a single active-skill array field. Reused by the v2
  * per-generator binding (`skills.config({ activeState })` contributes this
@@ -42,10 +44,10 @@ export interface ActiveSkillEntry {
  * onto the generator's own `stateSchema`) and by the legacy session-state
  * fragment below.
  *
- * `mode` is `"inline"` — the only surviving value after FIX-918. A persisted
+ * `mode` is `"inline"` — the only surviving value. A persisted
  * session from before the fork/pattern removal may carry a stale
  * `"fork"`/`"pattern"` entry; those are tolerated on read (`.catch`) and
- * normalized to `"inline"` so a resume never crashes (BP-030). The entries are
+ * normalized to `"inline"` so a resume never crashes. The entries are
  * inert either way — nothing reads `mode` other than the inline path.
  */
 export const activeSkillsArraySchema = z

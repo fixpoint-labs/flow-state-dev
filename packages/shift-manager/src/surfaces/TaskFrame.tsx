@@ -1,6 +1,7 @@
+// FIX-1662; S1, BR-1 to BR-4.
 /**
- * The task level (S1, BR-1 to BR-4): the route `/tasks/:boardRef/:taskId/:tab`
- * inside FIX-1662's frame. A header from the row: Interrupt, the task's
+ * The task level: the route `/tasks/:boardRef/:taskId/:tab`
+ * inside the frame. A header from the row: Interrupt, the task's
  * actions by its board status (the registry's `task-actions` row: Cancel,
  * Release, Retry), a failed task's error, the controls with no shipped
  * operation disabled with their gap line, and four tabs: Session (the run the

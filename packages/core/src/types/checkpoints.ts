@@ -1,13 +1,14 @@
+// FIX-401; FIX-141.
 /**
- * Durable sequencer checkpoint record (FIX-401).
+ * Durable sequencer checkpoint record.
  *
  * Latest-only persistence: identity is `(requestId, blockInstanceId)`. Each
  * step boundary overwrites the prior record with the new state and an
- * incremented `version`. The Phase 2 resume runtime (FIX-141) reads the
+ * incremented `version`. The Phase 2 resume runtime reads the
  * latest checkpoint to pick up where an interrupted request left off.
  *
  * No `stepHistory` field. The optional `persistFullHistory` mode is a
- * Wave 2+ extension (out of scope for FIX-401).
+ * Wave 2+ extension (out of scope here).
  */
 export interface SequencerCheckpoint {
   /** Request whose execution produced this checkpoint. */

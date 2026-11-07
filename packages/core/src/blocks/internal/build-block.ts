@@ -23,11 +23,12 @@ import { matchesRescueHandler, toError } from "./utils";
 import { emitToolOutputAround } from "./emit-tool-output";
 import { SuspensionError } from "../../errors/suspension-error";
 
+// FIX-435.
 /**
  * Extract resource declarations from a block config into a `DeclaredResources`
  * metadata object. Returns `undefined` when no resources are declared.
  *
- * The flat `resources` field is the canonical source under FIX-435; each
+ * The flat `resources` field is the canonical source; each
  * resource's intrinsic `scope` is what routes it to a storage layer at
  * registry-construction time.
  */
@@ -40,6 +41,7 @@ export function extractDeclaredResources(config: {
   return { ...config.resources };
 }
 
+// FIX-688; FIX-1052, FIX-1051.
 /**
  * Merge two flat `DeclaredResources` objects. Same accessor key + same
  * `defineResource()` reference deduplicates; same accessor key with a
@@ -54,8 +56,7 @@ export function extractDeclaredResources(config: {
  * published, and some pass ONE reference as both a block's own set and its
  * bubble-up accumulator (a sequencer's capability resources, a leaf's
  * `resources`). Merging in place therefore rewrote the published
- * `ownDeclaredResources` that FIX-688's prefetch hook reads (FIX-1052,
- * FIX-1051). Copying is what lets callers keep sharing that reference.
+ * `ownDeclaredResources` that the block-dispatch prefetch hook reads. Copying is what lets callers keep sharing that reference.
  */
 export function mergeDeclaredResources(
   target: DeclaredResources | undefined,

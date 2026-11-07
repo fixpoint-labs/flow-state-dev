@@ -34,7 +34,7 @@ const POINTER_WORDS = new RegExp(
       "rule", "rules", "decision", "decisions", "row", "step", "phase", "part", "wave", "slice", "fix", "review",
       "round", "finding", "amendment", "goal", "cell", "scope", "by", "with", "on", "a", "an", "s", "e\\.g", "i\\.e",
       "cf", "tracked", "tracking", "contract", "narrowed", "widened", "extended", "folded", "superseded", "also",
-      "see also", "original", "follow", "plan", "model", "census", "audit", "pr\\d*", "\\d+[A-Za-z]{0,2}", "waves?",
+      "see also", "original", "follow", "plan", "model", "census", "audit", "pr\\d*", "\\d+[A-Za-z]{0,2}", "waves?", "to", "amending", "amended", "bug", "P\\d+[a-z]?", "T\\d+", "layer", "BR", "BP",
     ].join("|") +
     ")\\b",
   "gi",

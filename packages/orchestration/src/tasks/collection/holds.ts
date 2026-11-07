@@ -1,7 +1,8 @@
+// FIX-2317; FIX-2133 D2; the epic FIX-2058's ER-8.
 /**
  * The one hold write, and the one predicate every reader asks of it, *open
- * holds* (FIX-2133 D2, the epic FIX-2058's ER-8; a question is one kind of
- * hold since FIX-2317).
+ * holds* (a question is one kind of
+ * hold).
  *
  * Both backings call {@link holdWrite} for every change to `Task.holds`, decided
  * on the committed row inside their write: a filing or a midway ask opens row

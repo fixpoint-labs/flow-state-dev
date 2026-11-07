@@ -38,11 +38,12 @@ import { validateReactTo, type ReactiveBinding } from "./resource-change";
 // Query / hit / result shapes
 // ---------------------------------------------------------------------------
 
+// FIX-833 / FIX-142.
 /**
  * Minimal portable query pushed down to a projected collection's `search`. The
  * app engine runs it (never enumerate-in-memory). Deliberately closed this
- * slice; a richer filter AST and semantic search extend this type via
- * FIX-833 / FIX-142.
+ * slice; a richer filter AST and semantic search extend this type
+ * later.
  */
 export type ResourceQuery = {
   /** Free-text relevance (lexical now; semantic later). Maps to `searchResources`' query. */

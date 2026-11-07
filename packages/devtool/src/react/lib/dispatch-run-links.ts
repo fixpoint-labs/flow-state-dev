@@ -1,6 +1,7 @@
+// FIX-1088; FIX-1071.
 /**
  * Reading a dispatch run's two server-stamped labels, and matching a dispatch run
- * to the board tasks it is doing (FIX-1071).
+ * to the board tasks it is doing.
  *
  * A dispatch run is a session first. It carries a `topic` and a `coordinate`, both
  * display-only, both optional, and neither of them a task reference — a
@@ -87,7 +88,7 @@
  * Refusing to link without verified attribution is not an option that leaves the
  * feature standing — attribution is not merely absent from the payload, it is
  * inexpressible from it, so that rule would draw no link ever. The fix belongs
- * in the substrate: **FIX-1088** tracks emitting the owning board's id on task
+ * in the substrate: a later change tracks emitting the owning board's id on task
  * events. Once attribution is verifiable the rules here get SIMPLER, and the
  * contention pass is retired rather than extended.
  */

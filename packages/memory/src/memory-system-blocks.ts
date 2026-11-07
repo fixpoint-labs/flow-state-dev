@@ -185,13 +185,14 @@ export type ConsolidationOutput = z.infer<typeof consolidationOutputSchema>
 /** A single edge proposal from the consolidation generator. */
 export type ConsolidationEdge = ConsolidationOutput['edges'][number]
 
+// FIX-745; BP-016.
 /**
  * Input schema for the consolidation persist handler. Looser than the generator
  * output schema: `edges` is optional, and per-edge `sourceEpisodeIds` is optional
- * (the persist body defaults a missing one to `[]`), so callers and pre-FIX-745
+ * (the persist body defaults a missing one to `[]`), so callers and older
  * inputs that omit them still validate. This is intentionally NOT the generator
  * output schema — that one keeps `edges` and `sourceEpisodeIds` required for
- * OpenAI strict mode (BP-016).
+ * OpenAI strict mode.
  */
 export const consolidationPersistInputSchema = consolidationOutputSchema.extend({
   edges: z.array(consolidationEdgeObjectSchema.partial({ sourceEpisodeIds: true })).optional(),
@@ -1801,12 +1802,13 @@ function evaluatedCapture(config: MemorySystemBlocksConfig, gate: CaptureEvaluat
     .stepIf((v: JudgedWindow) => v.window !== null, judge)
 }
 
+// FIX-408.
 /**
  * Assembles the full capture pipeline: observe → reflect → tick.
  * When semantic is configured, adds consolidation and prune as .sideChain() steps.
  * Digest regeneration is appended to the consolidation and prune chains
  * (see `withDigestRegenerate`) rather than scheduled per-turn, matching
- * FIX-408's "consolidation completion + sourceSignature delta" trigger. A
+ * the "consolidation completion + sourceSignature delta" trigger. A
  * per-turn run was structurally redundant — the digest's own staleness
  * guard already no-ops when sources haven't drifted — and widened the
  * failure surface of a background-only chain into the user-visible turn.

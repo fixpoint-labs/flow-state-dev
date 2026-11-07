@@ -177,8 +177,9 @@ const VALID_SUSPENSION_STATUSES: ReadonlySet<SuspensionStatus> = new Set<Suspens
   ...TERMINAL_SUSPENSION_STATUSES
 ]);
 
+// FIX-141.
 /**
- * List durable-execution suspensions for a session (FIX-141 operator UI).
+ * List durable-execution suspensions for a session (the operator UI).
  * Reads directly from `ctx.stores.suspensions` — when durability is not
  * configured the store is empty and this naturally returns `{ suspensions: [] }`.
  *

@@ -1,7 +1,8 @@
+// BP-012.
 /**
  * Seed initial tasks into a Task Board collection.
  *
- * State-mutation-only — wired with `.tap()` per BP-012. No
+ * State-mutation-only — wired with `.tap()`. No
  * `outputSchema`, no `return input`.
  *
  * Idempotent on replay: if any task with a given id already lives in

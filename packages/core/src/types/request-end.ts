@@ -241,8 +241,9 @@ export function readRequestTotalSpend(ctx: object): RequestSpend | undefined {
   return seam?.total?.();
 }
 
+// FIX-2145, shared by FIX-2288.
 /**
- * One source of a request's spend (FIX-2145, shared by FIX-2288): a model, or
+ * One source of a request's spend: a model, or
  * a harness billed one way. What {@link requestSpendSources} turns a
  * {@link RequestSpend} into, so a worker's usage and a task's tokens count
  * the same way.

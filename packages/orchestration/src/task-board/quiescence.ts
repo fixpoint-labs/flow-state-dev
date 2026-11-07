@@ -1,5 +1,6 @@
+// FIX-982; FIX-990; FIX-2076; FIX-2131.
 /**
- * The one definition of a task board's exit question (FIX-990).
+ * The one definition of a task board's exit question.
  *
  * Two blocks need to know whether a board still has work to do: the worker's
  * idle-wait predicate (`predicates.ts`), which decides whether a sleeping
@@ -24,7 +25,7 @@
  * - `exit` — `onIdle: "wait"` and the caller's `shouldExit` said to stop.
  * - `continue` — there is still something to wait on.
  *
- * ## "for this drain" is the FIX-982 change, and it is not a widening
+ * ## "for this drain" is the change, and it is not a widening
  *
  * `drained` used to mean "every task reached a terminal status", which was the
  * same sentence as the one above while every worker ran inside the claiming
@@ -36,7 +37,7 @@
  * question.
  *
  * So the classifier now takes `runsElsewhere` and both of its counting arms
- * honour it. It is supplied by the board from its declared mode (FIX-2076),
+ * honour it. It is supplied by the board from its declared mode,
  * and is `undefined` for a plan board — whose `in_progress` row still holds
  * the drain open, unchanged and deliberately so.
  *
@@ -57,7 +58,7 @@
  * `hasClaimableTask(c) || boardQuiescence(c, opts) !== "continue"` — the
  * claimable disjunct is deliberate and load-bearing, not redundant.
  *
- * ## A row waiting on a person is not an active worker (FIX-2131)
+ * ## A row waiting on a person is not an active worker
  *
  * A running row with an open hold — a question it asked, or the mirror of its
  * run's stop for a person — is in flight, so the board isn't `drained`, but

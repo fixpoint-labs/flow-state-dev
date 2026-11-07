@@ -2382,11 +2382,12 @@ async function handleGeneratorStreamChunk(
   }
 }
 
+// FIX-480.
 /**
  * Post-stream finalization shared by both streaming paths: closes out
  * reasoning, emits the message envelope when no text arrived, validates the
  * accumulated text against the output schema, emits `content.done` +
- * `item.done`, and installs the FIX-480 ref-output hint. Returns the parsed
+ * `item.done`, and installs the ref-output hint. Returns the parsed
  * output; the caller reports usage via `onGeneratorModelResult` (legacy
  * passes the final result's usage, the owned loop its per-step aggregate).
  */

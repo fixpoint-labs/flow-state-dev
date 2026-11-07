@@ -1,3 +1,4 @@
+// BP-011.
 /**
  * `createClaudeCodeWorkspaceCapability` — a coding run whose files are resources.
  *
@@ -8,7 +9,7 @@
  * that could not be settled are written where the caller can read them.
  *
  * Composed as a sequencer rather than folded into the handler, because a
- * handler calling two other blocks is the thing BP-011 names.
+ * handler does not call other blocks.
  */
 import { mkdirSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";

@@ -60,9 +60,9 @@ export interface TaskProgress {
 import type { TaskWriteToken } from "../write-provenance";
 import type { TaskSpendWrite } from "../spend";
 
+// FIX-981; FIX-976; FIX-982; FIX-1780.
 /**
- * Why a write was refused (FIX-976; `not-my-task` added by FIX-981;
- * `immutable-assignee` by FIX-982). Resolved in a **fixed precedence order** —
+ * Why a write was refused. Resolved in a **fixed precedence order** —
  * `immutable-assignee` → `terminal` → `not-my-task` → `disallowed` →
  * `lost-claim` — so a decline where two conditions hold always reports the
  * same one, and two callers cannot render two different messages for the same
@@ -70,7 +70,7 @@ import type { TaskSpendWrite } from "../spend";
  *
  * - `immutable-assignee` — the board dispatches work, and an attempt holds the
  *   task (`in_progress`): its dispatch is keyed by the assignee it was claimed
- *   with. A pending or held task can change hands (FIX-1780).
+ *   with. A pending or held task can change hands.
  * - `terminal` — the task had already reached `completed` / `errored` /
  *   `cancelled`. The majority of the exposure, but not all of it.
  * - `not-my-task` — the presented `claim` names a different board, a different
@@ -163,8 +163,9 @@ export type TaskWriteDeclineReason =
   /** A retry on a board whose `maxTotalRetries` is spent. */
   | "retry-budget";
 
+// FIX-951; FIX-976; BP-030.
 /**
- * What a write actually did (FIX-976).
+ * What a write actually did.
  *
  * Produced **inside** the same atomic write that made the decision, so the
  * verdict cannot race the write it describes and no caller has to re-read task
@@ -182,17 +183,17 @@ export type TaskWriteDeclineReason =
  * - `unchanged` — the desired state already held, so nothing was written and no
  *   `task-change` item was emitted. This is a **task-level** outcome: on the
  *   resource backing the underlying `updateState` still runs, so a
- *   `resource_change` may still fire (unchanged from before FIX-976).
+ *   `resource_change` may still fire (as it always has).
  * - `declined` — the write was refused, carrying why and the status observed
  *   inside the write. A decline is a **value, not an error**: it never throws.
  *
  * `unchanged` is not a nicety. Without it an idempotent `setAssignee` (the
  * assignee already matches) would have to report `recorded`, claiming a write
- * that did not happen — the same dishonesty FIX-976 exists to remove.
+ * that did not happen — the same dishonesty write outcomes exist to remove.
  *
- * Discarding the return value is a supported way to call these methods
- * (BP-030). The substrate's own containment write-backs do exactly that, which
- * is what keeps FIX-951's behaviour intact: reporting a decline and acting on
+ * Discarding the return value is a supported way to call these methods.
+ * The substrate's own containment write-backs do exactly that, which
+ * is what keeps the behaviour intact: reporting a decline and acting on
  * one are deliberately separate.
  */
 export type TaskWriteOutcome =
@@ -220,19 +221,20 @@ export interface TaskWaitSlot {
 
 /** Options for `claim` — let the claim order narrow eligibility and tweak ordering. */
 export interface ClaimOptions {
+  // FIX-1005; FIX-2080.
   /**
    * Per-task predicate that **narrows** the substrate's candidates. It does not
    * replace them: the substrate admits a task first, then CAS-claims the first
    * admitted task that also passes this. Default: no narrowing.
    *
-   * **The candidate set is no longer `pending` only (FIX-1005).** It is every
+   * **The candidate set is no longer `pending` only.** It is every
    * task the substrate considers claimable, which since lease-based recovery
    * includes an `in_progress` row whose lease has run out — a task whose worker
    * died. So the predicate sees both, and the obvious-looking assertion is the
    * one thing not to write here:
    *
    * ```ts
-   * // WRONG since FIX-1005 — silently opts out of abandoned-job recovery.
+   * // WRONG — silently opts out of abandoned-job recovery.
    * eligibility: (t) => t.status === "pending" && t.assignee === "researcher"
    *
    * // Right: narrow on what you care about, and leave claimability alone.
@@ -245,7 +247,7 @@ export interface ClaimOptions {
    * composing rather than replacing is what stops the newest invariant being
    * the one most easily switched off by accident.
    *
-   * `rows` is the board as the claim write reads it (FIX-2080), so a
+   * `rows` is the board as the claim write reads it, so a
    * predicate that depends on other rows (one open task per session) is
    * decided against the same state as the claim.
    */
@@ -275,9 +277,9 @@ export interface ClaimOptions {
   leaseDurationMs?: number;
 }
 
+// FIX-976; FIX-951; FIX-981.
 /**
- * Opt-in guards for the lifecycle write-backs (FIX-951; widened to every
- * worker-callable transition by FIX-981).
+ * Opt-in guards for every worker-callable lifecycle write-back.
  *
  * Both guards are evaluated **inside** the same atomic write that performs
  * the transition, so there is no window between checking and writing. Both
@@ -285,7 +287,7 @@ export interface ClaimOptions {
  * is skipped and **never throws**, so a late worker cannot abandon its
  * siblings by losing a race.
  *
- * It is *not* silent, and that is the FIX-976 change. The call returns a
+ * It is *not* silent, and that is the change. The call returns a
  * {@link TaskWriteOutcome}; a rejected write yields `outcome: "declined"`
  * carrying `reason` — which guard fired — so a caller that wants to know can
  * read it without re-reading the task. A caller that doesn't care may keep
@@ -446,16 +448,17 @@ export interface FailOptions extends TaskTransitionOptions {
   noRetry?: boolean;
 }
 
+// FIX-480; FIX-480 §3.1.
 /**
  * `Task` plus a runtime accessor for the items the worker emitted while it
- * held the claim window (FIX-480 §3.1). Returned from `list` / `get` so
+ * held the claim window. Returned from `list` / `get` so
  * pattern aggregators (synthesizers, reviewers, replanners) can pick from
  * a worker's natural emissions — messages, sources, tool calls, reasoning
  * — instead of relying solely on `task.output`.
  *
  * Mixed staleness contract:
  *   - Data fields (`status`, `output`, `goal`, ...) are snapshot at the
- *     moment `list` / `get` returned, matching the pre-FIX-480 `Task` read
+ *     moment `list` / `get` returned, matching the older `Task` read
  *     contract. Holding a handle past a mutation reads stale data fields
  *     — re-call `get(id)` to refresh.
  *   - `items()` is live — re-reads the response item log on every call.
@@ -725,11 +728,12 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
     id: string,
     options: { claim: TaskClaimTicket; takenIn: string }
   ): Promise<TaskWriteOutcome & { readonly taken?: readonly string[] }>;
+  // FIX-976; FIX-981.
   /**
    * Cancel the task (terminal).
    *
    * Advisory by construction: cancelling an already-settled task writes
-   * nothing. Since FIX-976 it also **says so** — the returned
+   * nothing. It also **says so** — the returned
    * {@link TaskWriteOutcome} is `declined` with reason `terminal`, instead of
    * returning silently and leaving the caller to infer success. Discard the
    * verdict and behaviour is exactly as before.
@@ -737,7 +741,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * `options.ifAllowed` is forced on regardless of what you pass, which is what
    * "advisory by construction" means here. `options.claim` is honoured, so a
    * worker cancelling through this method is held to the same ownership check
-   * as one completing through `complete` (FIX-981).
+   * as one completing through `complete`.
    */
   cancel(id: string, reason?: string, options?: CancelOptions): Promise<TaskWriteOutcome>;
   // FIX-1005.
@@ -990,13 +994,14 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Optional: both built-in backings implement it.
    */
   payHoldDeadlines?(): Promise<string[]>;
+  // FIX-1005.
   /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one
    * `task-change(kind: 'resumed', prevStatus: 'in_progress')` per reset
    * — the lifecycle UI cares only that the task is back to pending.
    *
-   * Not the recovery path. Since FIX-1005 an abandoned row is recovered inside
+   * Not the recovery path. An abandoned row is recovered inside
    * `claim`, so nothing has to call this for you; the verb is unchanged and
    * stays available for a caller that wants to reset leases by hand.
    *
@@ -1015,7 +1020,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *
    * So the promise is precise: recovery **the substrate performs on its own**
    * is bounded. A sweeper built on this verb opts out of that bound — which was
-   * the only way to recover anything before FIX-1005, and is now a manual
+   * once the only way to recover anything, and is now a manual
    * override rather than the mechanism. If bounded recovery is what you want,
    * delete the sweeper and let `claim` do it.
    */

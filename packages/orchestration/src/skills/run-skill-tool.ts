@@ -1,3 +1,4 @@
+// FIX-918.
 /**
  * The `runSkill` tool — the agent's mid-flow entry point into the skills
  * system (the legacy session-global surface).
@@ -8,7 +9,7 @@
  * which patches `activeSkills` so the next generator step renders the
  * substituted body in its system prompt.
  *
- * After FIX-918 there is only one mode (`inline`) — the `fork` and `pattern`
+ * There is only one mode (`inline`) — the `fork` and `pattern`
  * dispatch routes were removed. The router shell is kept for the mid-flow
  * activation path; the per-generator binding surface (`createSkillsLibrary`) is
  * the modern home for inline activation.

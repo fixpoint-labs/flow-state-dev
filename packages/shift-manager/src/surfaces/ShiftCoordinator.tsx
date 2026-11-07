@@ -1,14 +1,15 @@
+// FIX-1722; BR-4 to BR-8; BR-10 to BR-18.
 /**
- * Shift Coordinator (FIX-1722): where Shift Manager opens. The shift summary,
+ * Shift Coordinator: where Shift Manager opens. The shift summary,
  * then the user's conversation with the Lab's shift-coordinator worker; the right
  * panel lists its delegates and tasks.
  *
  * **The summary is Shift Manager's, not the worker's (D1).** It is drawn from
  * the one snapshot, with the helpers Inbox and Tasks use, so its numbers are
  * theirs. Each ask is drawn by Inbox's card and answered through Inbox's path,
- * so answering it in either place clears both (BR-4 to BR-8).
+ * so answering it in either place clears both.
  *
- * **The conversation is the worker's session (BR-10 to BR-18).** Which worker is
+ * **The conversation is the worker's session.** Which worker is
  * the Shift Coordinator is one rule, `shiftCoordinatorOf`. A line goes in through the
  * worker's door by the one send path, and shows *delivered* only once the
  * session holds it. What is drawn below it is what the session stores, read
@@ -201,7 +202,8 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   );
 }
 
-/** The conversation, or the named state in its place (BR-10 to BR-12), under `lead`. */
+// BR-10 to BR-12.
+/** The conversation, or the named state in its place, under `lead`. */
 function ShiftCoordinatorConversation({ snapshot, gaps, lead }: { snapshot: LoadedSnapshot; gaps: Gaps; lead: ReactNode }) {
   const { refresh } = useLab();
   if (!snapshot.inventory.ok) {

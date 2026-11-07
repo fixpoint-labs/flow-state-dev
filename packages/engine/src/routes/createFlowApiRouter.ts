@@ -302,11 +302,12 @@ type AdapterBindings = {
   bindings: TransportBindings;
 };
 
+// FIX-438.
 /**
  * Returned by `createFlowApiRouter`. The four method properties are the
  * canonical `{ GET, POST, PATCH, DELETE }` dispatcher for the catch-all
  * route. The shape matches what Next.js / Vercel / Hono catch-all routes
- * expect; it is intentionally backward-compatible with the pre-FIX-438
+ * expect; it is intentionally backward-compatible with the earlier
  * router so consumers indexing by HTTP method (`router[method]`,
  * `keyof typeof router`) keep working.
  *

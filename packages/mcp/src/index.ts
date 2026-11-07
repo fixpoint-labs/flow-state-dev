@@ -1,3 +1,4 @@
+// FIX-22.
 /**
  * `@flow-state-dev/mcp` — MCP transport adapter for the Flow State Dev
  * runtime. Exposes every flow with `mcp.enabled: true` as its own MCP
@@ -14,8 +15,8 @@
  *     adapters: [createMcpTransportAdapter()]
  *   });
  *
- * See FIX-22 for the design and v1 limitations (stateless only, single
- * JSON tool result, no progress notifications).
+ * v1 limitations: stateless only, a single JSON tool result, no progress
+ * notifications.
  */
 export {
   createMcpTransportAdapter,

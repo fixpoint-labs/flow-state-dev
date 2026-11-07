@@ -56,6 +56,7 @@ import { toBareState } from "../stores/resource-state-views";
 import { deepEqual, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { scopeStateSchema } from "./scope-state-defaults";
 
+// FIX-1000; FIX-1068.
 /**
  * Release a newborn session from the resource-state tombstones a previous
  * session under the same id left behind.
@@ -118,10 +119,10 @@ import { scopeStateSchema } from "./scope-state-defaults";
  * against a session that plainly already exists from reclaiming at all, so
  * only a genuine create race can reach step 3. It cannot close the race,
  * because there is no transaction across the two stores. Closing it needs a
- * **scope generation**, which is tracked and specced as FIX-1000 ("A create
+ * **scope generation**, which is tracked separately ("A create
  * racing session deletion lands in a purged, caller-reusable scope — fence the
  * scope generation") and deliberately not attempted here. Reach for that, not
- * for a second primitive: `lineageId` is a lineage address (FIX-1068) and
+ * for a second primitive: `lineageId` is a lineage address and
  * answers a different question.
  *
  * The one thing the narrowing to tombstones does buy: a losing reclaimer can

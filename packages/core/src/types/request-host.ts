@@ -1,6 +1,7 @@
+// FIX-2129; FIX-2078 D1; FIX-2082; FIX-2160 D2; FIX-999.
 /**
  * The request host — the single declared seam through which a capability reaches
- * facilities only the runtime can provide (FIX-999).
+ * facilities only the runtime can provide.
  *
  * A capability's helper functions are typed against the context `core` declares,
  * and `core` must not depend on `engine`. Some helpers need to start a child
@@ -33,11 +34,11 @@
  * The seam is **closed at eight verbs**. The fifth, `resumeWait`, was added by
  * a reviewed decision (a wait: a dispatched task the caller waits on), with one
  * fact beside it, `hasWaitSweeper`, which says whether a wait can be bounded
- * here; FIX-2129 widened it to cancel a wait for a user, rather than add a
- * verb. The sixth, `wakes`, by another (FIX-2078 D1: a debt's due time is a
- * wake the engine keeps). The seventh, `waits`, by FIX-2082 (one wait gate:
- * its deadline bounds and the depth the engine counts). The eighth,
- * `sessions`, by FIX-2160 D2: a message's server checks a target session of the
+ * here; a later decision widened it to cancel a wait for a user, rather than
+ * add a verb. The sixth, `wakes`, by another (a debt's due time is a wake the
+ * engine keeps). The seventh, `waits`, by another (one wait gate: its deadline
+ * bounds and the depth the engine counts). The eighth, `sessions`, by another:
+ * a message's server checks a target session of the
  * principal's before anything is written. Adding a ninth verb is a decision
  * someone reviews, not a surface that grows by transitivity; a later lookup of
  * the principal's sessions extends `sessions` instead.

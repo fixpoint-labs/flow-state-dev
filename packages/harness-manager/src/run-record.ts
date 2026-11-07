@@ -1,10 +1,11 @@
+// FIX-1179 / FIX-1246; LAB-139; LAB-154.
 /**
  * `runs/**` — one row per issue-phase, and the fence that keeps it honest.
  *
  * The row is conductor's own bookkeeping: which checkout a run was given, which
  * harness session it was, how the last attempt ended and why. It is **not** the
  * association a resume reads from — that is a typed top-level field on the task
- * and belongs to FIX-1179 / FIX-1246. Nothing here stands in for it.
+ * and is designed separately. Nothing here stands in for it.
  *
  * ## Two vocabularies, never interchangeable
  *
@@ -49,7 +50,7 @@
  * ## The session id IS read back, and the rules that make that safe
  *
  * **This ledger is where an attempt's harness session lives, and the next
- * attempt resumes from it** (LAB-154). It was observability-only before that,
+ * attempt resumes from it**. It was observability-only before that,
  * and the note here said so; the note is gone rather than softened, because a
  * contract that describes the opposite of the code instructs the next
  * maintainer to preserve the wrong thing.
@@ -70,9 +71,8 @@
  * attempt after that starts fresh.
  *
  * **This is still not the task-owned resume association.** That is a typed
- * top-level field on the task and belongs to FIX-1179 / FIX-1246; nothing here
- * stands in for it, and LAB-139 stays gated on FIX-1246 rather than draining
- * this. What this row carries is the manager's own record of its own runs.
+ * top-level field on the task and is designed separately; nothing here
+ * stands in for it, and nothing drains this in its place. What this row carries is the manager's own record of its own runs.
  *
  * The checkout path is still **derived** from the durable task rather than read
  * back from here (see `./workspace`). This row records a copy. That has not

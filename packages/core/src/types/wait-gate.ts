@@ -1,6 +1,7 @@
+// FIX-1816; FIX-2082.
 /**
  * The wait gate: what a request parks on while it waits for work that runs
- * elsewhere (FIX-1816; one gate for every wait since FIX-2082).
+ * elsewhere (one gate for every wait).
  *
  * A request waits on work already started: a task it filed (`getTask` with
  * `wait`), a row its plan board handed to another session, or a request a
@@ -97,13 +98,14 @@ export type WaitRow = {
  */
 export type WaitGateBinding = WaitRow | { readonly requestId: string };
 
+// FIX-2082.
 /**
  * Why a wait ended without an answer. A model never reads these: the waiting
  * call turns them into what it returns.
  *
  * - `wait_task_failed` — the waited-on work failed for good.
  * - `wait_task_cancelled` — the waited-on work was cancelled.
- * - `wait_timed_out` — only on a gate parked before FIX-2082, whose deadline
+ * - `wait_timed_out` — only on a gate parked before gates carried a deadline, whose deadline
  *   was the suspension's expiry: the durability sweep resumes it with this.
  */
 export type WaitEndingErrorCode = "wait_timed_out" | "wait_task_failed" | "wait_task_cancelled";
@@ -202,11 +204,12 @@ export type WaitGateData = {
   readonly deadline?: number;
 };
 
+// FIX-2082; BP-030.
 /**
  * Read a wait gate's data back from its suspension record: what it waits on,
  * the waiting request's own row, and its deadline. `undefined` for a record
- * that carries no binding. A gate parked before FIX-2082 has no deadline in
- * its data (its expiry is its deadline) and no own row (BP-030).
+ * that carries no binding. A gate parked before gates carried a deadline has
+ * none in its data (its expiry is its deadline) and no own row.
  */
 export function waitGateDataOf(record: { readonly data?: Record<string, unknown> | undefined }): WaitGateData | undefined {
   const data = record.data;

@@ -10,7 +10,6 @@ import {
   SuspensionReceipt,
 } from "./suspension-card-shell";
 
-// FIX-849.
 /**
  * Polished clarifying-question card — the themeable counterpart to
  * `QuestionRenderer` in `@flow-state-dev/react`. Renders a free-text

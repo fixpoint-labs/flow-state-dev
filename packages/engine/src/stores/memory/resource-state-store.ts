@@ -1,3 +1,4 @@
+// FIX-1323; FIX-1266.
 /**
  * In-memory resource state store implementation.
  *
@@ -9,7 +10,7 @@
  *
  * It used to be one flat map keyed `scopeType:scopeId:resourceKey`, scanned by
  * string prefix. Concatenating three caller-supplied strings and re-splitting
- * them by position is ambiguous, and FIX-1323 makes the ambiguity reachable:
+ * them by position is ambiguous, and instance-keyed scopes make it reachable:
  * instance ids are now part of the `scopeId`, so scope `user:reviewer-a` and
  * scope `user:reviewer-a:b` share a string prefix — one copy's `getAll`,
  * `deleteAll` or `purgeTombstones` would have listed, tombstoned or purged the
@@ -24,7 +25,7 @@
  *
  * Every crossing of the store boundary is deep-copied, in both directions: a
  * write through `toStoredState` (the JSON round-trip, so this adapter commits
- * the same value the serializing adapters do — FIX-1266), a read via
+ * the same value the serializing adapters do), a read via
  * `cloneValue`. This adapter is the only one that keeps the caller's object graph
  * alive between calls — the other three serialize (filesystem writes JSON, both
  * SQL adapters stringify on write and parse per read), so they get this for

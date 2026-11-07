@@ -944,9 +944,10 @@ function label(
  */
 const MAX_LINEAGE_DEPTH = 32;
 
+// FIX-1440.
 /**
  * Whether `sessionId` is **a** dispatch run on this caller's flow, under the
- * same principal and tenant (FIX-1440).
+ * same principal and tenant.
  *
  * The arm beside {@link isDescendantSession}, not a replacement for it. A
  * dispatcher's work runs in a session of the flow in its own right, so "is my
@@ -960,7 +961,7 @@ const MAX_LINEAGE_DEPTH = 32;
  * present — under this principal, this tenant and this flow instance. It is
  * deliberately **not** required that the dispatching session be the caller's
  * own: that condition is what the descendant walk already tests, and a run
- * reachable only through it is the case FIX-1440 exists to open. So a run this
+ * reachable only through it is the case this exists to open. So a run this
  * principal started from another of their conversations on this flow answers
  * here, and that is the widening D4 authorised.
  *

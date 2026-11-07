@@ -1,3 +1,4 @@
+// FIX-405.
 /**
  * Builds a CAS persist callback for a scope record.
  *
@@ -5,7 +6,7 @@
  * state writes to the store's delta verbs (`patchField` / `incField` /
  * `pushToArray`) when implemented, falling back to a full `set` of the
  * record otherwise. Multi-field patches, `setState`, and record-level
- * mutations always go through `set` per the FIX-405 decision tree —
+ * mutations always go through `set` —
  * decomposing them into N delta calls would bump the version counter per
  * field and break single-version semantics for one logical mutation.
  *

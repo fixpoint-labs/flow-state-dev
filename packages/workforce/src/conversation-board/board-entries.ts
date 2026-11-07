@@ -36,9 +36,10 @@ export const STEER_TURN_ENTRY = "onTaskSteered";
  */
 export const TASK_SETTLED_ENTRY = "onTaskSettled";
 
+// FIX-2077; FIX-1802 S4.
 /**
- * The metadata key a split row parked on its pieces carried (FIX-1802 S4).
- * Retired by FIX-2077, which no longer parks a split. A caller's filing or
+ * The metadata key a split row parked on its pieces carried.
+ * Retired: nothing parks a split now. A caller's filing or
  * patch still never writes it, so no row can be made to look like one.
  */
 export const SPLIT_MARKER = "splitInto";

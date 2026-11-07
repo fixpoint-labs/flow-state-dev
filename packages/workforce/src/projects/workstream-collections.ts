@@ -64,7 +64,8 @@ export {
   type WorkstreamStatus
 };
 
-/** The entries' key pattern. **Pinned**: persisted, and FIX-1792 and FIX-1794 read it. */
+// FIX-1792 and FIX-1794.
+/** The entries' key pattern. **Pinned**: persisted, and read by other packages. */
 export const WORKSTREAMS_PATTERN = "workstreams/[project]/[owner]/[workstream]";
 
 // BP-015.

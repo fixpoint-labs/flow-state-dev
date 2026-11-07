@@ -120,7 +120,8 @@ export const workerMessageRowSchema = z.object({
    * stopped for the user, or its task is held on one. Cleared when it lands.
    */
   queuedBehind: z.literal("user").optional(),
-  /** The `onMessageReceived` request that took it (FIX-2123's take, on a message). */
+  // FIX-2123.
+  /** The `onMessageReceived` request that took it (the take, on a message). */
   takenBy: z.string().min(1).optional(),
   /** The request it landed in. Set once. */
   deliveredAs: z.string().min(1).optional(),

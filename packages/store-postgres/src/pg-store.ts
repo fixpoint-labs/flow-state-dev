@@ -1,9 +1,10 @@
+// FIX-405.
 /**
  * Generic PostgreSQL record store abstraction.
  * All 4 record stores (session, request, user, org) use this base
  * with store-specific column mappings and filter builders.
  *
- * Implements FIX-405 delta verbs (`patchField` / `incField` / `pushToArray`)
+ * Implements the delta verbs (`patchField` / `incField` / `pushToArray`)
  * using JSONB native ops (`jsonb_set`, `||`) wrapped in CAS-predicated
  * UPDATEs. Each verb mutates only the targeted path inside `data->state`
  * while keeping the `version` and `updated_at` columns and their mirrored

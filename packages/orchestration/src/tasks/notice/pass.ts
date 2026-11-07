@@ -242,7 +242,8 @@ async function stoppedFilingRequests(ctx: BlockContext, ref: TaskCollectionRef, 
   }
 }
 
-/** Give each owed-notice marker that carries no due time (stored before FIX-2078) one: `now`. */
+// FIX-2078.
+/** Give each owed-notice marker that carries no due time (stored by an older version) one: `now`. */
 async function stampLegacyNotices(ref: TaskCollectionRef, now: number): Promise<void> {
   for (const row of ref.list()) {
     const stamped: Record<string, unknown> = {};

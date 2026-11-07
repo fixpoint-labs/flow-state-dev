@@ -1,3 +1,4 @@
+// BP-012.
 /**
  * Board-level meta emission.
  *
@@ -24,7 +25,7 @@
  *
  * Both emitting blocks are state-mutation-only sentinels — they
  * produce no novel output, just side-effect a component item via
- * `ctx.emit.component`. Wired with `.tap()` per BP-012.
+ * `ctx.emit.component`. Wired with `.tap()`.
  *
  * ## Why dispatch needs a reason of its own
  *

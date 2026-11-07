@@ -1,5 +1,6 @@
+// FIX-1816, BR-16 to BR-16c; FIX-2108; FIX-1846; FIX-1850.
 /**
- * Stopping a parked turn (FIX-1816, BR-16 to BR-16c).
+ * Stopping a parked turn.
  *
  * A running turn is stopped by recording the intent and firing its signal
  * (`execution/record-request-stop.ts`). A suspended turn has no signal to
@@ -23,7 +24,7 @@
  *
  * Unless the turn never ran again: a person resolved its gate (approved it,
  * say) and the process died before the turn continued, so it waits on the
- * sweep's re-drive (FIX-2108). The stop wins over that resolution. The gate is
+ * sweep's re-drive. The stop wins over that resolution. The gate is
  * re-recorded `stopped`, under the request's lease and fenced on the
  * resolution read, and the turn continues as a stop of a pending gate
  * continues it: it ends `aborted`, and the approved step never runs. The
@@ -36,14 +37,14 @@
  * before the turn leaves `suspended`, the durability sweep's re-drive finishes
  * it ({@link redriveResolvedGate}).
  *
- * The same re-drive carries an approval that expired (FIX-1846): the turn
+ * The same re-drive carries an approval that expired: the turn
  * continues with the gate read as a rejection marked expired, so the gated
  * call does not run and the model is told the approval is no longer valid.
  * A stop of a turn parked behind one still ends it `aborted`: the stop is
  * recorded on the turn, which its first abort poll reads before anything runs.
  *
  * And it carries a gate a person resolved (approved, rejected, submitted or
- * skipped) whose turn never continued (FIX-1850): the turn continues with the
+ * skipped) whose turn never continued: the turn continues with the
  * person's recorded resolution, as their resume would have.
  */
 import { isUserSuspension, RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";

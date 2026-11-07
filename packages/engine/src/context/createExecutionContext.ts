@@ -474,10 +474,11 @@ function createEmitMessageAwaited(
   };
 }
 
+// FIX-387.
 /**
  * Request-scoped status slot. Shared across every `createEmitStatus` call
  * within a single request so nested scopes see the same "current message"
- * value — implements the single-slot semantics from FIX-387.
+ * value — implements the single-slot semantics.
  */
 type StatusSlot = { message: string };
 
@@ -2106,15 +2107,16 @@ export async function createExecutionContext<
   const userLazyLoad = makeLazyLoad("user");
   const orgLazyLoad = makeLazyLoad("org");
 
+  // FIX-688 Waves 2 & 3; FIX-701.
   /**
-   * FIX-688 Waves 2 & 3 loader. Loads the eager, not-yet-cached entries from a
+   * The dispatch-time loader. Loads the eager, not-yet-cached entries from a
    * declared-resources map into the per-scope caches. With `loadLazySingles`
    * it also loads `prefetchMode: 'lazy'` single resources (block dispatch).
    * Lazy collections are always skipped — the async accessor fetches them.
    * Cache wins over the store snapshot on conflict, so a concurrent mutation
    * is never clobbered by an in-flight read.
    *
-   * FIX-701: each entry records a resource-load — `cacheHit: true` when the
+   * Each entry records a resource-load — `cacheHit: true` when the
    * key/prefix is already cached (a benign cross-wave dedupe), `cacheHit:
    * false` timed around the store round-trip otherwise. The load source is
    * derived from `loadLazySingles`: the action-dispatch caller (Wave 2) passes
@@ -2289,8 +2291,9 @@ export async function createExecutionContext<
     const versionRef = scopeVersionRef(scope);
     const contentRef = scopeContentRef(scope);
     return {
+      // FIX-663; FIX-992 (D10).
       /**
-       * FIX-992 (D10): the CAS boundary for resource state.
+       * The CAS boundary for resource state.
        *
        * The driver owns the retry, because only here does the caller's intent
        * still exist as a mutator — one layer down, at the store call, the next
@@ -2306,7 +2309,7 @@ export async function createExecutionContext<
        * the code. `options.signal` is the composed transport signal and fires
        * on client disconnect / SSE teardown, so threading it would abandon the
        * resource writes of a `.sideChain()` background task the request is still
-       * running — the exact failure FIX-663 exists to prevent. And there is no
+       * running — the exact failure the background signal exists to prevent. And there is no
        * per-scope signal available at this seam anyway: persisters and
        * `ResourceRef`s are built once per context, while `ctx.signal` is
        * per-execution-scope, so one ref serves foreground and background

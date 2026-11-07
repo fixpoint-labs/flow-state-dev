@@ -1,5 +1,6 @@
+// FIX-1802 BR-21a.
 /**
- * The chain limit an app sets through `hireWorkforce` (FIX-1802 BR-21a): the
+ * The chain limit an app sets through `hireWorkforce`: the
  * most tasks one top task may have under it, at any depth, for every chain on
  * an installation's flows. A leaf module, so the filing factory reads it without
  * importing the installation.

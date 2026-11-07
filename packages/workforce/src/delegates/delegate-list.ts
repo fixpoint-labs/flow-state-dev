@@ -1,11 +1,12 @@
+// FIX-1793; FIX-1802 D1.
 /**
  * A session's delegates: the records in its server-written session state,
  * and the one way they change. Any worker whose file lists `delegates:` has
- * them, on any flow that carries this list (FIX-1802 D1); a coordinator routes
+ * them, on any flow that carries this list; a coordinator routes
  * its posts to them, and any worker files tasks for the ones that take one.
  *
  * A delegate record is a worker, an optional note on what it's good at, and an
- * optional target a caller resolves (FIX-1793's workstream address). Records
+ * optional target a caller resolves (the workstream address). Records
  * are told apart by worker and target together, so one worker with two
  * targets is two delegates; uniqueness and the cap go by the record.
  *

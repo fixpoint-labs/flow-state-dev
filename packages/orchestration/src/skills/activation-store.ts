@@ -94,11 +94,12 @@ function scopeStateSnapshot(
   return scopeHandle(ctx, scope)?.state;
 }
 
+// FIX-914.
 /**
  * Append (dedup by name+mode) a dynamic activation entry, from the writer's
  * point of view (a child block of the generator — e.g. the load tool). For the
  * block default this writes the parent generator's block state via `ctx.parent`
- * (FIX-914's child→ancestor handle); for an explicit location it writes the
+ * (the child→ancestor handle); for an explicit location it writes the
  * chosen scope's field. Uses an atomic mutator so concurrent tool calls don't
  * clobber one another.
  */

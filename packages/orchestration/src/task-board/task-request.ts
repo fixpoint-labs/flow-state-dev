@@ -838,8 +838,9 @@ export type MidwayAsk =
   | { readonly ok: true; readonly questions: readonly string[] }
   | { readonly ok: false; readonly reason: "no-claim" | "not-supported" | AskDeclineReason };
 
+// FIX-2131; FIX-2133; FIX-2241.
 /**
- * Ask questions midway, from the turn holding the task's claim (FIX-2133): the
+ * Ask questions midway, from the turn holding the task's claim: the
  * collection's one write opens them on the row, drops its lease and ends the
  * turn unsettled, and this request stops renewing that lease. What the turn
  * did stands (its writes, messages and last checkpoint); the next turn starts
@@ -848,9 +849,9 @@ export type MidwayAsk =
  *
  * The claim is the one this request holds (the gate's or an admission's,
  * server-set), never one from input, so only the turn holding the current
- * ticket asks. FIX-2131's model tool calls this.
+ * ticket asks. The model's tool calls this.
  *
- * After the question is opened, a ledger that declares `onMidwayQuestion` (FIX-2241) is told the
+ * After the question is opened, a ledger that declares `onMidwayQuestion` is told the
  * row's open midway questions, read from the committed row, so its filer
  * hears them; a replay whose ask is declined tells them again, and the
  * declaration's implementer dedupes per hold (Workforce by message id). Only

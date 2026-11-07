@@ -361,10 +361,11 @@ export interface InboundTransportHost {
    */
   validateDispatch(envelope: InboundRequestEnvelope): Promise<void>;
 
+  // FIX-23.
   /**
    * Resolve the principal for a request. Phase 1 delegates to the body-
-   * userId stub. FIX-23 will replace the stub with a configurable hook on
-   * `createFlowApiRouter`. Adapter code does not change between phases —
+   * userId stub. A configurable hook on
+   * `createFlowApiRouter` replaces the stub later. Adapter code does not change between phases —
    * adapters always call this method.
    */
   resolvePrincipal(

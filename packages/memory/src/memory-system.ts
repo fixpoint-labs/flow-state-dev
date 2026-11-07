@@ -295,13 +295,14 @@ export interface SemanticMemoryConfig {
   relations?: boolean | RelationsConfig
 }
 
+// FIX-411.
 /**
- * Configuration for the memory hygiene pass (FIX-411).
+ * Configuration for the memory hygiene pass.
  *
  * Drives the janitor block that decays semantic-fact confidence over time
  * and applies durability-based TTL to episodic episodes. Default-on:
  * omitting `hygiene` from `memory.system()` opts into
- * `DEFAULT_HYGIENE_CONFIG`. Pass `false` to revert to pre-FIX-411 behaviour
+ * `DEFAULT_HYGIENE_CONFIG`. Pass `false` to turn it off
  * — no decay, unbounded growth.
  */
 export interface HygieneConfig {
@@ -393,12 +394,13 @@ export interface MemorySystemConfig {
   episodic?: EpisodicMemoryConfig | true
   /** Semantic memory config. `true` for defaults. Omit to disable. Requires episodic. */
   semantic?: SemanticMemoryConfig | true
+  // FIX-408.
   /**
    * Digest tier config. `true` for defaults; omit to disable.
    *
    * Requires `semantic` (the digest summarises the same store the semantic
    * tier owns). Scope is inherited from semantic; there is no separate
-   * `digest.scope` knob — see [FIX-408] simplification.
+   * `digest.scope` knob.
    */
   digest?: DigestSystemConfig | true
   /** Optional custom name for the capture pipeline. */
@@ -411,9 +413,10 @@ export interface MemorySystemConfig {
   maxAssistantChars?: number
   /** Recall-tool config. Omit to use defaults (`llm-filter` strategy). */
   tool?: MemoryToolConfig
+  // FIX-411.
   /**
-   * Memory hygiene configuration (FIX-411). Default-on. Pass `false` to
-   * revert to pre-FIX-411 behaviour: no confidence decay, no episodic TTL,
+   * Memory hygiene configuration. Default-on. Pass `false` to
+   * turn it off: no confidence decay, no episodic TTL,
    * stores grow without bound.
    */
   hygiene?: HygieneConfig | true | false

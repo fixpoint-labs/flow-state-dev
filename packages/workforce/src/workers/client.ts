@@ -267,10 +267,11 @@ function rosterMayHaveChanged(notice: WireNotice | null): boolean {
   return path === undefined || ROSTER_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
+// FIX-2551.
 /**
  * Run `read` on request, one at a time: a request made while a read runs
  * queues exactly one more. A copy of react's internal `coalescedReads`,
- * until FIX-2551 lifts one into the client.
+ * until one moves into the client.
  */
 function coalesced(read: () => Promise<void>): { request: () => void; close: () => void } {
   let running = false;

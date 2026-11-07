@@ -1,3 +1,4 @@
+// FIX-435.
 /**
  * Internal: tier-config resolution.
  *
@@ -9,7 +10,7 @@
  * and cannot drift between the two entry points.
  *
  * Resolution produces plain config objects — never `defineResource()`
- * references — so sharing it has no bearing on the FIX-435
+ * references — so sharing it has no bearing on the
  * same-reference discipline (which governs resources, not configs).
  * Internal-only — not re-exported from the package index.
  */

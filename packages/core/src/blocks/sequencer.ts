@@ -436,14 +436,15 @@ function childBlockPath(
   return path;
 }
 
+// FIX-663; FIX-573.
 /**
  * Run a single child block at a caller-derived `path` with full execution-scope
- * wiring. Forwards the input descriptor stashed by the calling op (FIX-573),
+ * wiring. Forwards the input descriptor stashed by the calling op,
  * intercepts generator model usage, and — when the server installed
  * `ctx._withExecutionScope` — opens a scoped child context that drives the
  * unified trace lifecycle; otherwise it runs the block directly (unit-test
  * contexts). The `options.phase`/`signalOverride` thread background dispatch
- * (`"sideChain"` phase, FIX-663 signal) into the descendant scope. The kernel
+ * (`"sideChain"` phase, background signal) into the descendant scope. The kernel
  * primitives (`runChild`/`runSideChain`) and the loop/aggregator/rescue paths
  * all dispatch through here; it is the one place a child block is invoked.
  */
@@ -773,13 +774,14 @@ export function composeSideChainSignal(
   return AbortSignal.any([background, extra]);
 }
 
+// FIX-663.
 /**
  * Build the context for a background `.sideChain()` / `.sideChainIf()` /
- * `.forEachSideChain()` task. FIX-663: when the request executor supplied a
+ * `.forEachSideChain()` task. When the request executor supplied a
  * `_requestSideChainSignal`, substitute it for `ctx.signal` so the task tree
  * survives transport teardown and aborts only on explicit user cancellation.
  * Returns the parent ctx unchanged in unit-test contexts (no background
- * signal), preserving pre-FIX-663 behavior. The returned `signalOverride` is
+ * signal), where it keeps the parent's signal. The returned `signalOverride` is
  * threaded into `executeBlock` so descendant scopes inherit the same signal.
  */
 export function sideChainTaskCtx(ctx: BlockContext): {

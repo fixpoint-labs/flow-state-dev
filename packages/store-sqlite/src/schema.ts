@@ -164,8 +164,9 @@ CREATE INDEX IF NOT EXISTS idx_active_requests_user_id    ON active_requests(use
 CREATE INDEX IF NOT EXISTS idx_active_requests_session_id ON active_requests(session_id);
 `;
 
+// FIX-438.
 /**
- * Add `source` column to pre-FIX-438 `active_requests` tables. SQLite has
+ * Add `source` column to older `active_requests` tables. SQLite has
  * no `ADD COLUMN IF NOT EXISTS`, so we probe `pragma_table_info` first.
  * The new column carries a `NOT NULL DEFAULT 'http'` so existing rows
  * read back as the HTTP transport without needing a data backfill.
@@ -185,14 +186,15 @@ function migrateAddActiveRequestsSource(db: Database.Database): void {
   }
 }
 
+// FIX-999; BP-030.
 /**
- * Add the `queued_at` column to pre-FIX-999 `active_requests` tables.
+ * Add the `queued_at` column to older `active_requests` tables.
  *
  * Nullable with no default, and **no backfill is possible or wanted**: the
  * column marks a request that was registered at enqueue time and not yet
  * claimed by a worker, and nothing can reconstruct that after the fact. NULL
  * reads back as "claimed", which is the pre-existing behaviour for every row —
- * they are swept on `last_heartbeat_at` exactly as before (BP-030).
+ * they are swept on `last_heartbeat_at` exactly as before.
  */
 function migrateAddActiveRequestsQueuedAt(db: Database.Database): void {
   const tableExists = db
@@ -208,8 +210,9 @@ function migrateAddActiveRequestsQueuedAt(db: Database.Database): void {
   }
 }
 
+// FIX-682.
 /**
- * Add the `tenant_id` column to pre-FIX-682 `sessions`, `requests`, and
+ * Add the `tenant_id` column to older `sessions`, `requests`, and
  * `active_requests` tables. SQLite has no `ADD COLUMN IF NOT EXISTS`, so we
  * probe `pragma_table_info` first. The column is nullable with no default, so
  * existing rows read back as no-tenant (single-tenant), which is the correct
@@ -337,8 +340,9 @@ function migrateAddFlowId(db: Database.Database): void {
   }
 }
 
+// FIX-1009.
 /**
- * Add the `parent_session_id` column to a pre-FIX-1009 `sessions` table.
+ * Add the `parent_session_id` column to an older `sessions` table.
  * SQLite has no `ADD COLUMN IF NOT EXISTS`, so we probe `pragma_table_info`
  * first, which also makes a second boot a no-op. Must run BEFORE the index DDL
  * so `idx_sessions_parent_session_id` finds the column.
@@ -593,8 +597,9 @@ CREATE TABLE IF NOT EXISTS wakes (
 CREATE INDEX IF NOT EXISTS idx_wakes_due_at ON wakes(due_at);
 `;
 
+// FIX-428.
 /**
- * One-shot rename migrations for databases initialised under the pre-FIX-428
+ * One-shot rename migrations for databases initialised under the older
  * `project` scope. SQLite (3.25+) supports `ALTER TABLE ... RENAME COLUMN`
  * and `ALTER TABLE ... RENAME TO`, but neither has an `IF EXISTS` form on the
  * column case — so we probe pragma_table_info / sqlite_master first and only
@@ -640,9 +645,10 @@ function migrateProjectToOrg(db: Database.Database): void {
   }
 }
 
+// FIX-141.
 /**
- * FIX-141: add the denormalized `status` / `resolved_at` columns to a
- * pre-FIX-141 `suspension_records` table so `pruneTerminalBefore` has an
+ * Add the denormalized `status` / `resolved_at` columns to a
+ * older `suspension_records` table so `pruneTerminalBefore` has an
  * indexed access path. SQLite has no `ADD COLUMN IF NOT EXISTS`, so we probe
  * `pragma_table_info` first. After adding the columns we backfill them from the
  * JSON `data` blob: terminal records resolved before the upgrade are never

@@ -1,10 +1,11 @@
+// FIX-786.
 /**
  * Path resolution for resource content files (`contentFile`) and template
  * files (string / anchored `contentTemplate`). Bare strings keep their
  * historical working-directory resolution; `AnchoredPath` values resolve
  * relative to the declaring module first, with a working-directory fallback,
  * so flows load the same files regardless of where the process started
- * (the FIX-786 candidate semantics, applied server-side).
+ * (the candidate semantics, applied server-side).
  */
 import { existsSync } from "node:fs";
 import path from "node:path";

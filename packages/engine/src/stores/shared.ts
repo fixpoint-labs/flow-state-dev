@@ -41,8 +41,9 @@ export function applyOffsetLimit<TValue>(
   return sliced.slice(0, Math.max(0, limit));
 }
 
+// FIX-438.
 /**
- * Backfill `source` on records persisted before FIX-438 added the field.
+ * Backfill `source` on records persisted before the field existed.
  * New writes always carry it; this guard runs at every read site so callers
  * see a complete record without having to re-handle the historical default.
  */
@@ -88,13 +89,12 @@ export function withActiveRequestSourceDefault<T extends ActiveRequestEntry | un
   return { ...(entry as ActiveRequestEntry), source: "http" } as T;
 }
 
+// BP-030; FIX-999.
 /**
- * Read a request registry's cross-process sharedness declaration, fail-closed
- * (FIX-999).
+ * Read a request registry's cross-process sharedness declaration, fail-closed.
  *
  * An adapter compiled against the contract before the declaration existed
- * reports `undefined`, and this returns `false` for it — the `== null` guard
- * BP-030 asks for. The direction matters: liveness answers "is this request
+ * reports `undefined`, and this returns `false` for it — an `== null` guard. The direction matters: liveness answers "is this request
  * running?" from registry entries, and on a per-process registry another
  * process's healthy request is simply absent. Guessing `true` would report live
  * work dead, which is the answer that causes double execution. Guessing `false`

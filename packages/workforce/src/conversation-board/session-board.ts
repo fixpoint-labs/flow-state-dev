@@ -1,6 +1,7 @@
+// FIX-1802 S1 to S3; FIX-2286.
 /**
  * `defineSessionBoard`: the filing factory a worker flow carries so its workers
- * file tasks for their delegates (FIX-1802 S1 to S3).
+ * file tasks for their delegates.
  *
  * A worker files when its session's delegate list holds one that takes a task
  * (D1): no flag. What its flow carries for that is three things, and this
@@ -16,7 +17,7 @@
  *   doesn't file, and the four delegate actions (`addDelegate`,
  *   `removeDelegate`, `setFallback`, `listDelegates`).
  * - **The reads**: `reads`, the task list as a read named `listTasks_tasks`,
- *   which an app watches without storing a request per look (FIX-2286).
+ *   which an app watches without storing a request per look.
  * - **The entries**: `entries(turn)`, the internal entries the board runs on
  *   (a run of the board), its notices arrive on (`onTaskSettled`), and a
  *   worker's message arrives on, and the session state they keep

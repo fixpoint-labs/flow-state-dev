@@ -1,12 +1,13 @@
+// S7, BR-18 to BR-23; FIX-2398.
 /**
- * The right panel's task slot: the task inspector (S7, BR-18 to BR-23).
+ * The right panel's task slot: the task inspector.
  *
  * Worker and team from the worker inventory, started from the row, the ask the
  * run waits on (on the highlighter, a way to it in Inbox), the plan and
  * files the run recorded under its own request (read once per open, no
  * stream), the rows it waits on and the rows waiting on it from the same board
  * read, and a link that opens the run's session in the devtool served beside
- * Shift Manager. Harness, tokens and cost are the row's spend line (FIX-2398);
+ * Shift Manager. Harness, tokens and cost are the row's spend line;
  * acceptance and *review by* are named gaps from the gap registry.
  */
 import { useEffect, useState, type ReactNode } from "react";

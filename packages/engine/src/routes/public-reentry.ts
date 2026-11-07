@@ -1,5 +1,6 @@
+// FIX-1021; FIX-999.
 /**
- * Which transport sources may be re-entered through a public route (FIX-999).
+ * Which transport sources may be re-entered through a public route.
  *
  * `retry`, `continue` and `resume` are public re-dispatch surfaces: they take a
  * request id and run its handler again, and retry additionally accepts a
@@ -24,7 +25,7 @@
  * an allow-list nobody can extend would take retry, continue and resume away
  * from it permanently.
  *
- * FIX-1021 generalizes this predicate; it does not replace it.
+ * A later generalization extends this predicate; it does not replace it.
  */
 import {
   INTERNAL_SOURCE,

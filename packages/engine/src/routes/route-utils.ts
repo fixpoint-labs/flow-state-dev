@@ -624,10 +624,11 @@ export async function computeClientData(options: {
   return out;
 }
 
+// FIX-579; FIX-427.
 /**
  * Builds the client-visible `resources` snapshot for one scope.
  *
- * Collections (FIX-427): emit `count` always, plus a `prefetched` window when
+ * Collections: emit `count` always, plus a `prefetched` window when
  * the collection declares `prefetchWindow > 0`. Per-item `clientData` in the
  * window is included only when `client.state.read === true`.
  *
@@ -635,8 +636,7 @@ export async function computeClientData(options: {
  * prefetched content).
  *
  * Strictly client-shaped: resources without a `client` config are omitted.
- * The DevTool's previous `includeInternal` escape hatch was removed in
- * FIX-579 — use `/api/flows/sessions/:id/debug/resources*` for full
+ * The DevTool's previous `includeInternal` escape hatch was removed — use `/api/flows/sessions/:id/debug/resources*` for full
  * server-side inspection.
  */
 export async function buildResourceSnapshot(options: {
@@ -914,12 +914,13 @@ export function resolveOwnerFlow(
   };
 }
 
+// FIX-1442.
 /**
  * The `409 migration-required` for a record this process cannot attribute, or
  * `undefined` for any record it can read.
  *
  * Two axes, one answer. A record is unattributed when its legacy history names
- * no single flow instance, OR — since FIX-1442 — when it names no organization.
+ * no single flow instance, OR when it names no organization.
  * Both are the same situation from an operator's worker: data that predates a
  * requirement, which the runtime preserves and refuses to serve rather than
  * guess about, and which one offline migration pass fixes. Giving them one

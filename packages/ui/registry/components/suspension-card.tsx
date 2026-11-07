@@ -10,7 +10,6 @@ import { Form } from "./form";
 import { ReviewSuspension, takesReviewVerdict } from "./review-hold";
 import { useSuspensionResolution } from "./suspension-resolution";
 
-// FIX-849.
 /**
  * Polished dispatcher for `type === "suspension"` items. Registered as
  * the single `suspension` renderer; it picks the right card by `reason` and

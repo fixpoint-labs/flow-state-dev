@@ -1,5 +1,6 @@
+// FIX-610 (Wave 1 tool-cache + Wave 2 flow policy).
 /**
- * Task Board wiring for FIX-610 (Wave 1 tool-cache + Wave 2 flow policy).
+ * Task Board wiring for the tool-result cache and the flow policy.
  *
  * The board's outer sequencer fires `installBoardCacheAndLedger` at the
  * top of every run (before `seedCollection`), which constructs a fresh
@@ -111,8 +112,9 @@ interface BoardRunFlowState {
   ledger?: ObservationLedger;
   policy?: TaskFlowPolicy;
   collectionId: string;
+  // FIX-1236; FIX-963.
   /**
-   * Identifies THIS drain, minted fresh on every install (FIX-963).
+   * Identifies THIS drain, minted fresh on every install.
    *
    * Recorder-failure reports land on the per-REQUEST item buffer, which
    * outlives a single drain — a request can run the same board twice. Stamping
@@ -121,13 +123,14 @@ interface BoardRunFlowState {
    *
    * Two batches of one board OVERLAPPING in a request still interfere, because
    * they share this slot: the second install overwrites the first's stamp. That
-   * is the pre-existing interference tracked as FIX-1236 and is not narrowed
+   * is a known, separately tracked interference and is not narrowed
    * here — sequential re-entry, which is what the board actually does, is
    * correct.
    */
   runId: string;
 }
 
+// FIX-981.
 /**
  * Per-worker **claim ticket**, scoped via Node's `AsyncLocalStorage`. Each
  * forEach iteration runs in its own async context tree (Node propagates
@@ -137,7 +140,7 @@ interface BoardRunFlowState {
  * including any cacheable tool call inside a generator — reads its own
  * claim, not a sibling's.
  *
- * It carried a bare task id until FIX-981. Widening it to the whole ticket
+ * It once carried a bare task id. Widening it to the whole ticket
  * gives the model-facing task tools an ownership token to present without
  * threading anything new through `BlockContext`, and reuses the argument this
  * seam already won: a shared field races under `concurrency > 1`, and the

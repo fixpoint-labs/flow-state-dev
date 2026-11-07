@@ -1,5 +1,6 @@
+// FIX-2535; FIX-2534, epic D1.
 /**
- * A provider's service flow (FIX-2534, epic D1): routes each normalized event
+ * A provider's service flow: routes each normalized event
  * to the sessions that subscribed to one of its threads, in code, with no model.
  *
  * Two internal entries, on either side of a fence (D2):
@@ -33,7 +34,7 @@
  * doesn't redeliver loses it).
  *
  * An ingestion (a verified webhook, a poll) normalizes each event and calls
- * `routeServiceEvent` with the routing entry. FIX-2535 wires GitHub's.
+ * `routeServiceEvent` with the routing entry, as GitHub's does.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";

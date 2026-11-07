@@ -105,8 +105,9 @@ function asJsonValue(value: unknown): JsonValue {
   return out;
 }
 
+// FIX-739.
 /**
- * The internal mutation-seam change vocabulary, also the FIX-739 client
+ * The internal mutation-seam change vocabulary, also the client
  * `resource_change` wire format. Distinct from the author-facing *reactive*
  * kinds (`created` / `deleted` / `stateUpdated` / `contentUpdated`): a content
  * write fires the seam as `"updated"` with a {@link ResourceChangeDelta.contentWrite}
@@ -195,8 +196,9 @@ function readOnlyRefusal(message: string): FlowError {
   return new FlowError(message, { code: "resource_read_only", retryable: false });
 }
 
+// FIX-965.
 /**
- * Read a state field as an OWN property (FIX-965's guard, applied here).
+ * Read a state field as an OWN property (the own-property guard, applied here).
  *
  * `current[field]` on a plain object falls through to `Object.prototype` for a
  * field the object does not own, so `constructor`, `toString`, `valueOf` and
@@ -231,12 +233,13 @@ function setOwnField(target: JsonObject, field: string, value: JsonValue): void 
   });
 }
 
+// BP-023.
 /**
  * `incState`'s mutator body: add each delta to its field.
  *
  * Builds a fresh object and returns it only once every field passed, so a
  * multi-field call with one wrong-typed field applies none of it. An absent or
- * `null` field is that field's empty state (BP-023 declares state fields
+ * `null` field is that field's empty state (state fields are declared
  * `.nullable().default(null)`, so an untouched counter reads as `null`), not a
  * wrong kind of value — it starts from `0`.
  */
@@ -741,13 +744,14 @@ export async function loadDeclaredResourceState(
   return seed;
 }
 
+// FIX-688 Wave 1.
 /**
- * FIX-688 Wave 1: narrow a scope's declared resources to the flow-level,
+ * Narrow a scope's declared resources to the flow-level,
  * non-lazy subset that loads at request start. Resources declared inside an
  * action's block tree load at action/block dispatch (Waves 2 & 3); lazy
  * resources load on first access. When `flowLevelKeys` covers every accessor
  * (the back-compat default), this returns the full set — preserving the
- * pre-FIX-688 "load everything at request start" behaviour.
+ * "load everything at request start" behaviour.
  */
 export function filterFlowLevelEager(
   configs: Record<string, ResourceConfig | ResourceCollectionConfig>,

@@ -1,3 +1,4 @@
+// FIX-1794's POC, leg E1.
 /**
  * A task ledger kept per partition: one set of rows per partition value, at the
  * owner's user scope (`defineTaskCollection({ partitionBy })`).
@@ -9,7 +10,7 @@
  * narrows the ledger itself, not a claim filter over it, so **every** operation
  * a ref makes goes through it: list, read, claim, the drain's wake and exit
  * counts, the task tools, change events. A filter at the claim alone holds the
- * claim and leaves the read and the wake open (FIX-1794's POC, leg E1).
+ * claim and leaves the read and the wake open.
  *
  * Orchestration knows no conversation or worker. The composing layer supplies
  * the partition as a function of the running context, and it must read data

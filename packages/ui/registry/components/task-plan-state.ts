@@ -1,4 +1,3 @@
-// FIX-445; FIX-444 / FIX-446; FIX-446.
 /**
  * Pure data-extraction helpers for the `<TaskPlan />` component.
  *
@@ -137,7 +136,6 @@ export type TaskPlanState = {
 // imports at runtime.
 // ---------------------------------------------------------------------------
 
-// FIX-2080.
 /**
  * The status `held` replaced: a trace recorded before then carries
  * `blocked` on `task-change.task.status` and a `counts.blocked` key on
@@ -244,7 +242,6 @@ export function scopeItemsToLatestCollectionRequest(
 // Chat-thread vs task-board ownership
 // ---------------------------------------------------------------------------
 
-// FIX-658.
 /**
  * Return the set of `item.id` values that belong to a task whose board
  * `items` mounts a `<TaskPlan />` for (a `task-board-meta` item for its
@@ -294,7 +291,6 @@ export function collectTaskOwnedItemIds(
 // Per-task item windowing
 // ---------------------------------------------------------------------------
 
-// FIX-658.
 /**
  * Returns, per task id, the items emitted under that task in `collectionId`,
  * driving each task's expansion in `<TaskPlan />`.

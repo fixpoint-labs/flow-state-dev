@@ -39,11 +39,12 @@ function generateTaskId(): string {
   return generateId("task");
 }
 
+// FIX-480.
 /**
  * Build a `TaskHandle` factory closed over the collection's id and item-log
- * accessor (FIX-480). Both backings call this once at construction.
+ * accessor. Both backings call this once at construction.
  *
- * Data fields are snapshot at wrap time (matches the pre-FIX-480 `Task`
+ * Data fields are snapshot at wrap time (matches the older `Task`
  * read contract). `items()` is live — re-reads the item log at call time
  * so synthesizers running after worker completion see the latest window.
  */
@@ -160,9 +161,10 @@ export interface FilingStamp {
   readonly holdDueMs?: number;
 }
 
+// BP-030; FIX-1005.
 /**
  * How many times this task's work was abandoned by a dead worker and handed
- * back out (FIX-1005), with the BP-030 legacy guard applied.
+ * back out, with the legacy guard applied.
  *
  * The `readRetryLedger` posture exactly, and for the same reason: **absent
  * reads as zero**. A row persisted before the upgrade — or one an older
@@ -221,12 +223,13 @@ export function markWaitWrite(
   };
 }
 
+// FIX-2082.
 /**
  * The one rule for lapsing a wait slot at its deadline
- * (`TaskCollectionRef.lapseWait`, FIX-2082), inside the write that loses to an
+ * (`TaskCollectionRef.lapseWait`), inside the write that loses to an
  * ending already written: a row that has ended is refused `terminal`, and its
  * caller reads the ending instead. The slot names the request that lapsed it,
- * the one an ending is then held for: a slot a filing wrote before FIX-2082
+ * the one an ending is then held for: a slot an older version's filing wrote
  * named none.
  *
  * @returns The patch to write, `undefined` when the slot is another gate's or
@@ -302,9 +305,9 @@ export function noticeTakeWrite(
   return { patch: { metadata: { ...(task.metadata ?? {}), ...taken } } };
 }
 
+// FIX-2081; FIX-2080.
 /**
- * The fields a filing may change until the task first starts (FIX-2080,
- * ER-4; the brief's fields and the assignee since FIX-2081). Each field's rule
+ * The fields a filing may change until the task first starts (ER-4; the brief's fields and the assignee). Each field's rule
  * is the field table's (`./field-rules`), read inside the write.
  */
 export interface TaskSettingsPatch {
@@ -333,11 +336,12 @@ export interface TaskSettingsPatch {
 }
 
 
+// FIX-2080; BP-030.
 /**
- * A release and nothing else, of a row stored `blocked` before FIX-2080
+ * A release and nothing else, of a row an older version stored `blocked`
  * (`heldFromBlocked`, set only at the read boundary). Such a row may have
- * started before it was blocked, and a release is how it runs again
- * (BP-030). No current path holds a started row, so any other started held
+ * started before it was blocked, and a release is how it runs again.
+ * No current path holds a started row, so any other started held
  * row keeps the field table's rule: no release. Field edits stay locked.
  */
 function legacyReleaseOnly(task: Task, patch: TaskSettingsPatch): boolean {
@@ -360,9 +364,9 @@ function patchFields(patch: TaskSettingsPatch): TaskEditField[] {
   ) as TaskEditField[];
 }
 
+// FIX-2081; FIX-2080.
 /**
- * The one guard on editing a filing (FIX-2080, ER-4; every field since
- * FIX-2081), decided on the freshest committed row, inside the write: each
+ * The one guard on editing a filing (ER-4; every field), decided on the freshest committed row, inside the write: each
  * field the patch names changes only while the field table allows it
  * (`TASK_FIELD_RULES`), which for every field here is until the row first
  * starts. Both backings run it. Terminal rows are refused by the caller's
@@ -576,12 +580,13 @@ const SETTLEMENT_CHANGE_KINDS = new Set<TaskChangeKind>([
   "retried",
 ]);
 
+// FIX-948, BP-030; FIX-948.
 /**
- * Read a task's retry ledger with the BP-030 legacy guard applied (FIX-948).
+ * Read a task's retry ledger with the legacy guard applied.
  *
  * One `== null` check on the object rather than one per member, which is the
  * concrete reason the two facts live in one field. Absent means "no counted
- * history" — a task persisted before FIX-948, or one that has never failed.
+ * history" — a task persisted by an older version, or one that has never failed.
  * Never let an absent ledger become `undefined` arithmetic in the sum.
  */
 function readRetryLedger(task: Task): { granted: number; deniedByBudget: boolean } {
@@ -634,9 +639,10 @@ export function anyRetryDeniedByBudget(tasks: Iterable<Task>): boolean {
   return false;
 }
 
+// FIX-948.
 /**
  * How `fail(id, error)` should route this failure — the one place retry-vs-
- * terminal is decided, widened by FIX-948 to also answer the collection's
+ * terminal is decided, widened to also answer the collection's
  * cumulative retry budget.
  *
  * - `retry` — re-pend. `countsAgainstBudget` says whether this grant is recorded
@@ -772,9 +778,9 @@ export function ticketClaimsRow(ticket: TaskClaimTicket, collectionId: string, t
   );
 }
 
+// FIX-951; FIX-976; target binding FIX-981; FIX-976 / epic constraint A1; FIX-1005; FIX-1305.
 /**
- * Decide whether an advisory write should decline, and say **why**
- * (FIX-951; reason reporting added by FIX-976; target binding by FIX-981).
+ * Decide whether an advisory write should decline, and say **why**.
  *
  * **The one convergence point for the ownership guard.** Called from inside
  * each backing's transition wrapper — i.e. inside the atomic write — so the
@@ -810,16 +816,16 @@ export function ticketClaimsRow(ticket: TaskClaimTicket, collectionId: string, t
  * for a reason that happens to be available, which no caller can act on and no
  * model can correct itself from.
  *
- * The terminal and disallowed arms remain separate for the FIX-951 reason:
+ * The terminal and disallowed arms remain separate for the reason:
  * `isTransitionAllowed` treats same-status as allowed, so `cancelled →
  * cancelled` is legal *and* terminal, and letting it through would clobber the
  * reason and timestamp of the settlement already recorded.
  *
  * This is the **transition** hook. The assignment terminal guard is a separate
- * patch-hook on the patch helper (FIX-976 / epic constraint A1) and deliberately
+ * patch-hook on the patch helper and deliberately
  * not a further arm here: `setAssignee` never travels this path.
  *
- * ## The lease fence (FIX-1005)
+ * ## The lease fence
  *
  * The last arm is the holder's half of {@link leaseLapsed}. A ticket-fenced
  * write on an `in_progress` row whose lease has already gone is declined
@@ -835,7 +841,7 @@ export function ticketClaimsRow(ticket: TaskClaimTicket, collectionId: string, t
  * after a lost lease is refused so the row stays recoverable instead of being
  * terminalized `errored` by our own liveness mechanism.
  *
- * Its one opt-out is `adoptLapsedLease` on a renewal (FIX-1305): a claimant
+ * Its one opt-out is `adoptLapsedLease` on a renewal: a claimant
  * that has not started yet takes the row back rather than being refused, and
  * because every other arm still runs, "took it back" and "lost it" are decided
  * by this same write. See the option for why only the caller can tell the two
@@ -1003,11 +1009,12 @@ export function committedLeaseSpan(task: Task): number | undefined {
   return task.leaseUntil - task.updatedAt;
 }
 
+// FIX-1005.
 /**
  * True when `task` is ready to be claimed: status is `pending` and
  * deps are satisfied.
  *
- * Kept as the narrower "never been started" question. Since FIX-1005 the
+ * Kept as the narrower "never been started" question. The
  * substrate's admission test is {@link isClaimable}, which is this **plus**
  * a row whose worker died — claim orders that used to spell out `isReady`
  * dropped the conjunct rather than widening it, because widening three copies
@@ -1246,19 +1253,20 @@ export function requireClaimTicket(
   }
 }
 
+// FIX-2086; FIX-2077; FIX-2133.
 /**
- * The patch `setKeptOpenBy` writes (FIX-2077): set, with the request's answer
+ * The patch `setKeptOpenBy` writes: set, with the request's answer
  * kept by {@link completionPatch}'s output rule and no lease unless one is
  * given; or cleared, with the lease the admission starts.
  *
- * FIX-2133: with `hold`, a task run's stop for a person is mirrored on the
+ * With `hold`, a task run's stop for a person is mirrored on the
  * row as a suspension hold, in the same write (the caller's guard refuses it
  * on a row with an open row hold). Cleared with `resume`, the run's own
  * resume closes that mirror; a later request admitted while the run stays
  * parked leaves it. A clear that takes a turn the row owes (`turnOwed`: its
  * last question answered, or a steer no request took) is that turn's claim: it
  * advances the turn generation and clears the mark. Set with `owesTurn`, the
- * wait is a turn owed (FIX-2086's steer turn), which the claim may take.
+ * wait is a turn owed (the steer turn), which the claim may take.
  *
  * @throws when clearing without a finite `leaseUntil`: a programming error.
  */
@@ -1544,8 +1552,9 @@ function recordCascadeOwed<TInput, TOutput>(
   return { ...row, cascadeOwed: { due: row.updatedAt + CASCADE_DUE_MS, endedAt: row.updatedAt } };
 }
 
+// FIX-1794 P2 with FIX-1816.
 /**
- * The one ending signal (FIX-1794 P2 with FIX-1816). Every write that changes a
+ * The one ending signal. Every write that changes a
  * row goes through {@link applyTransition} or {@link applyAbandonmentSettlement},
  * on both backings, so this is where an ending is detected, once, and where
  * every recorder runs, in that same write:

@@ -1,3 +1,4 @@
+// FIX-443.
 /**
  * eventActors pattern — stigmergic multi-agent coordination on the
  * unified TaskCollection substrate.
@@ -10,7 +11,7 @@
  * `maxDepth`).
  *
  * The entry log lives as a sibling writable resource — Tasks are about
- * actor invocations, not entry storage. This matches the FIX-443 audit
+ * actor invocations, not entry storage. This matches the audit
  * call: "TaskCollection drives actor-dispatch; entry log stays as content."
  *
  * Pipeline shape (per `eventActors.emit` invocation):

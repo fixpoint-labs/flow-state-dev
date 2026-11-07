@@ -1,7 +1,8 @@
+// FIX-2078; FIX-2083; FIX-2080; FIX-1793.
 /**
  * The `coordinator` worker flow: a worker that hands each of its user's
  * messages to delegates from their own roster, by its routing policy, by
- * filing a task (FIX-2083).
+ * filing a task.
  *
  * One registered copy runs every coordinator worker, the way any worker flow
  * on the installation does: each session names its worker when it is
@@ -51,10 +52,10 @@
  * rides as written on the task's server-written brief. The board hands it to
  * the delegate's `work` entry, behind the claim gate, like any task; the
  * delegate's session is created on first use, naming the delegate as its
- * worker. A session works one task at a time (FIX-2080), so a second message
+ * worker. A session works one task at a time, so a second message
  * to a busy delegate waits, pending in the user's list, until the first ends.
  *
- * **A project's coordinator** (FIX-1793): a conversation linked to a project
+ * **A project's coordinator**: a conversation linked to a project
  * (its readonly `projectId`) has a delegate record per workstream its user has
  * open there, the lead with the workstream as the record's target
  * (`../projects/project-coordinator.ts`). A task for such a record names it
@@ -64,7 +65,7 @@
  *
  * **How an answer lands.** The delegate's run settles its task with its
  * answer, through the claim gate, and the task's ending reaches this
- * conversation once, on `onTaskSettled` (FIX-2078's one path). It lands as a
+ * conversation once, on `onTaskSettled` (the one path). It lands as a
  * line under the delegate's name; no turn wakes for it. The round, the
  * delegate and the message come from the task's brief, never from the answer.
  * With `rounds: 0`, an answer routes nowhere further.
@@ -441,10 +442,11 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const roundsIn = (state: Readonly<Record<string, unknown>>) =>
     (state[ROUNDS_STATE] as Array<OpenRound & { ended?: unknown }>).map(({ ended: _ended, ...open }): OpenRound => open);
 
+  // FIX-2083.
   /**
    * The open rounds' tasks, read off the conversation's board before a write
    * that may close one: one read of the board, grouped by the message and
-   * round their briefs carry (a post row stored before FIX-2083 carries both
+   * round their briefs carry (a post row stored by an older version carries both
    * too), after the rounds themselves are read, so the write can tell a
    * routing filed tasks since. A round the read didn't see (opened since)
    * can't close on it. An answer is a reply only when it says something, as
@@ -1555,9 +1557,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   // --- a routed task's ending ------------------------------------------------
 
+  // FIX-2078; FIX-2115; FIX-2266.
   /**
    * A task whose result goes to this conversation ended, heard through
-   * `onTaskSettled` (FIX-2078's one path), whose dedupe and the task's claim
+   * `onTaskSettled` (the one path), whose dedupe and the task's claim
    * are the only fence. The notice is acknowledged only once this has run, so
    * a failure here leaves it owed for the board's next touch, and an answer
    * its round already keeps isn't kept or said twice. Completed, its answer
@@ -1569,8 +1572,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * routing a message) only lands its answer. Like every wake,
    * it also closes each round past its deadline. It says no failure and wakes
    * no turn of its own: `onTaskSettled` says a failure after this has run, and
-   * wakes the judgment turn for a task that turn filed (FIX-2115, FIX-2266,
-   * `task-settled.ts`).
+   * wakes the judgment turn for a task that turn filed (`task-settled.ts`).
    */
   const routedEnded = handler({
     name: "coordinator-routed-ended",

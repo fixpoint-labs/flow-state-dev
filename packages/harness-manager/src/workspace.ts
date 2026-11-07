@@ -1,7 +1,8 @@
+// FIX-150; FIX-1179; BP-031.
 /**
  * The run's own checkout: where it is, how it is made, and who holds it.
  *
- * Three things live here, and they are separable on purpose — FIX-150's
+ * Three things live here, and they are separable on purpose — managed
  * workspaces replace this module, not the manager's shape.
  *
  * 1. **Derivation.** Where an issue-phase's checkout is, as a pure function of
@@ -28,14 +29,14 @@
  * depended on the gap. A record readable from everywhere is still a record.
  *
  * The alternative worth naming: moving the association onto the durable task as
- * a typed top-level field. That is FIX-1179's to design, and this lab is
+ * a typed top-level field. That is designed separately, and this lab is
  * explicitly not allowed to stand in for it.
  *
  * The run record still RECORDS the path, exactly as it records the harness
  * session id: a copy conductor reads to say where a run was, never the source
  * anything resolves from.
  *
- * ## The derivation's inputs are not model-writable (BP-031)
+ * ## The derivation's inputs are not model-writable
  *
  * `issue` and `phase` ride on the task's typed `input` payload. The model-facing
  * `updateTask` tool patches `priority`, `metadata`, `assignee` and labels — and

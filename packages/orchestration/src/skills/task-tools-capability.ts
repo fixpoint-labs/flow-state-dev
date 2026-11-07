@@ -1,42 +1,43 @@
+// FIX-1816; `getTask` since FIX-2082; FIX-2081; FIX-2086; FIX-2133; FIX-2131; FIX-1875; FIX-2082; FIX-918.
 /**
  * `taskTools` capability — the model's surface onto a task board.
  *
- * The filer's four task tools (FIX-2081): `createTask` files a task,
+ * The filer's four task tools: `createTask` files a task,
  * `getTask` reads one whole, `listTasks` lists them without results, and
  * `updateTask` changes one, each field by its one rule (the field table,
  * `TASK_FIELD_RULES`): edits, a hold and a release before the task first
  * starts; a cancel and a message until it finishes; nothing after. A message
- * steers (FIX-2086): it is kept on the task, joins its brief, and reaches a
+ * steers: it is kept on the task, joins its brief, and reaches a
  * running request before its next model call, using no attempt. Every refusal
  * names the field, the state and the next move. A finished task's output never
  * changes: more work is a follow-up, and the task view reads the latest
  * completed follow-up as `current`. A question a task holds on is answered
- * with `updateTask({ id, answers, message })` (FIX-2133).
+ * with `updateTask({ id, answers, message })`.
  *
  * Nothing on this surface settles a task: a task ends when its worker returns
  * or throws, and the drain or the claim gate records that. The worker's own
  * tools act on the row the turn's claim holds, never on a task id from input:
  * `reportProgress` (`createReportProgress`) reports a note and a checkpoint of
  * its output while it runs, and `holdTaskForUser` (`createHoldTaskForUser`) asks the
- * user a question the task holds on (FIX-2131). `suspendForUser`
+ * user a question the task holds on. `suspendForUser`
  * (`createSuspendForUserTool`) stops a turn for the user's approval, review or,
  * on a turn with no task row, input.
  *
- * ## Dispatching (FIX-1875)
+ * ## Dispatching
  *
  * On a board that starts a ready row at once (`TaskToolsOptions.dispatches`,
  * a conversation's board), `createTask` starts a ready row at once: the board
  * hands it over as soon as it is filed. A held row is released with `updateTask({ id, status: "pending" })`, and a
- * wait is `getTask`'s (FIX-2082).
+ * wait is `getTask`'s.
  *
  * `createTask` starts a task as its start setting says: at once, after its
  * `deps`, or `held` until a release.
  *
- * Board resolution goes through the resolver the caller passes (FIX-918). With
+ * Board resolution goes through the resolver the caller passes. With
  * no board resolvable, every tool returns
  * `{ ok: false, error: "no_delegation_board" }` rather than throwing.
  *
- * ## Waiting on a task (FIX-1816; `getTask` since FIX-2082)
+ * ## Waiting on a task
  *
  * On a request whose host can hold a wait (`canHoldWait`), on a board that
  * resumes waits (`TaskToolsOptions.resumesWaits`), `getTask` takes two more
@@ -192,9 +193,10 @@ function readable(value: unknown): { value: unknown; cut: boolean } {
   return { value: text.slice(0, READ_OUTPUT_LIMIT), cut: true };
 }
 
+// FIX-2077; FIX-2133.
 /**
- * What a running task waits on while no worker holds it (FIX-2077's
- * `keptOpenBy`), and what holds it for the user (FIX-2133): its open holds.
+ * What a running task waits on while no worker holds it (its
+ * `keptOpenBy`), and what holds it for the user: its open holds.
  */
 function waitingOf(t: Task) {
   const open = openHolds(t);
@@ -320,10 +322,11 @@ export interface AssigneeRoster {
   soleAssignee?(): string | undefined;
 }
 
+// FIX-1794 T1.
 /**
  * Where the task tools read their roster from: a fixed {@link AssigneeRoster},
  * or a function of the running context that returns one, read on every call
- * that checks an assignee (FIX-1794 T1).
+ * that checks an assignee.
  *
  * The function form is for a board whose team changes while it is in use: an
  * assignee added between two calls is accepted on the second, and one removed
@@ -350,6 +353,7 @@ const unknownAssigneeError = (assignee: string, roster: AssigneeRoster) => ({
     `assignee unset to run the task on the default worker.`,
 });
 
+// FIX-940; BP-030; FIX-923 / FIX-641.
 /**
  * The single gate deciding whether an assignee may be written to a task.
  * Returns an error result when the assignee is invalid, `undefined` when it is
@@ -358,14 +362,14 @@ const unknownAssigneeError = (assignee: string, roster: AssigneeRoster) => ({
  * Two shapes pass unchecked, both deliberate:
  *
  * - **No assignee.** An unassigned task is a valid plan — it runs on the board's
- *   default worker (its floor, FIX-940). Reaching the floor by *intent* stays
+ *   default worker (its floor). Reaching the floor by *intent* stays
  *   open; only reaching it by *accident* (a typo) is closed.
  * - **No roster.** A caller that passes none supplies none — there is nothing to validate against, so
- *   validation is inert and every assignee is accepted as before (BP-030:
- *   tolerate the old, roster-less shape).
+ *   validation is inert and every assignee is accepted as before (the old,
+ *   roster-less shape is tolerated).
  *
- * This is the one place the definition of "a valid assignee" lives. FIX-923 /
- * FIX-641 widen it here (to admit an explicit ad-hoc agent spec) rather than
+ * This is the one place the definition of "a valid assignee" lives. A later
+ * change widens it here (to admit an explicit ad-hoc agent spec) rather than
  * scattering the rule across the three tools that call it.
  */
 export function checkAssignee(
@@ -510,13 +514,13 @@ const followUpAssigneeError = (followUpOf: string) => ({
     `with its worker, and another worker is another session. Leave assignee unset.`,
 });
 
+// FIX-1817 BR-20 to BR-25; FIX-2080.
 /**
- * Check a follow-up against the board it is filed on (FIX-1817 BR-20 to
- * BR-25): the named task is on this board (its partition, so another
+ * Check a follow-up against the board it is filed on: the named task is on this board (its partition, so another
  * conversation's or user's task is unknown here), and its root ran with a
  * worker, so there is a session to follow up in. A session still busy with
  * another task doesn't refuse it: the follow-up waits, and starts in that
- * session once the open task ends (FIX-2080, the board's one-open-task start
+ * session once the open task ends (the board's one-open-task start
  * test). Answers the root, the first task of the chain, and the worker that
  * root ran on.
  */
@@ -751,8 +755,9 @@ export function createReportProgress(options: ReportProgressOptions) {
  */
 const QUESTION_LIMIT = MAX_QUESTION_PROMPT;
 
+// FIX-2131, on FIX-2133's hold.
 /**
- * The worker's question (FIX-2131, on FIX-2133's hold): `holdTaskForUser({ question })`,
+ * The worker's question (on a task's hold): `holdTaskForUser({ question })`,
  * for a task turn, and the rule for when a turn is offered it.
  *
  * - **Which row.** The one the turn holds ({@link claimedRowOf}), never a task
@@ -835,8 +840,9 @@ export function createHoldTaskForUser(options: TaskTurnToolOptions) {
 /** What a model's `suspendForUser` asks for: an approval, a review or, on a turn with no task row, input. */
 const WAIT_KINDS = ["approval", "review", "input"] as const;
 
+// FIX-2131, on FIX-2129's.
 /**
- * The model's stop for the user (FIX-2131, on FIX-2129's `ctx.suspendForUser`):
+ * The model's stop for the user (on `ctx.suspendForUser`):
  * `suspendForUser({ kind, prompt })`, an approval, a review or an input, and the
  * rule for when a turn is offered it.
  *
@@ -1757,9 +1763,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     };
   }
 
+  // FIX-2077; FIX-2133.
   /**
-   * What a running task waits on while no worker holds it (FIX-2077's
-   * `keptOpenBy`), and what holds it for a person (FIX-2133): its open holds,
+   * What a running task waits on while no worker holds it (its
+   * `keptOpenBy`), and what holds it for a person: its open holds,
    * a question or a confirm on the row, or a task run's stop, each with what
    * it asks and when it falls due. One shape for every stop.
    */

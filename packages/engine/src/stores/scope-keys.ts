@@ -1,8 +1,9 @@
+// FIX-735; FIX-1323; FIX-1538; FIX-435; FIX-1790.
 /**
  * Storage key derivation for user- and org-scope records and their resources.
  *
- * Two storage concerns key off the user/org identity, and FIX-735 decouples
- * them because they answer different questions:
+ * Two storage concerns key off the user/org identity, and they are kept
+ * apart because they answer different questions:
  *
  *   - The **scope record** (`stores.user` / `stores.org`) holds scope-level
  *     `state` (`ctx.user.state`). It is a single blob per scope, so its key
@@ -13,16 +14,16 @@
  *     resource. Each user/org-scoped resource keys at the shared bucket
  *     when shared (effective `flowIsolation` false) or the bucket plus the
  *     flow id when isolated (effective `flowIsolation` true) — honoring the
- *     resource-level override the API advertises (FIX-435) rather than a
+ *     resource-level override the API advertises rather than a
  *     flow-wide OR. `resolveResourceIsolation` + `resolveResourceScopeId`
  *     answer this per resource; `resourceScopeIds` enumerates the distinct
  *     buckets a read path must consult.
  *
- * Before FIX-735 both concerns shared one key derived from a flow-wide OR, so
+ * They once shared one key derived from a flow-wide OR, so
  * a `flowIsolation: false` resource was silently isolated whenever any sibling
  * was isolated. The opt-out direction is now honored.
  *
- * FIX-1323: the isolation coordinate is the **instance** `id`, not the `kind`.
+ * The isolation coordinate is the **instance** `id`, not the `kind`.
  * Two registered copies of one collection definition are two flows for every
  * purpose except their shared schema, so private data that keyed off the kind
  * was private from other definitions and shared between copies of the same
@@ -39,13 +40,13 @@
  * two different (identity, instance) pairs could name one cell — which is the
  * opposite of what isolation promises.
  *
- * FIX-1790: every **user** key carries the organization. A user's shared data
+ * Every **user** key carries the organization. A user's shared data
  * lives in one cell per (user, org), `<user>:~org:<org>`, and flow-isolated
  * data adds the instance, `<user>:~org:<org>:<flow>`. The org is the admitted
  * run's or the stored session's, never a request field's, and it is a
  * required argument: a missing or malformed one throws `OrgRequiredError`
  * rather than build a key that every org would read. The shared form is the
- * cell FIX-1538 gave owner-pinned instances, so a hired worker's shared data
+ * cell owner-pinned instances once had, so a hired worker's shared data
  * did not move; it now shares that cell with every other flow in the org, as
  * any two flows share user data. The pin no longer chooses a key.
  *
@@ -95,11 +96,12 @@ export interface CellIdentity {
   orgId: string;
 }
 
+// FIX-1323.
 /**
  * Coerce a flow-ish object into {@link IsolationFlow}, defaulting the two
  * optional isolation flags. One copy, because a second coercion that dropped
  * `id` would silently route a read back into a kind-wide bucket — which is
- * how the two that existed before FIX-1323 drifted apart. Its one caller is
+ * how the two that once existed drifted apart. Its one caller is
  * `getPersistedData`, the single persisted-read function every read-side
  * projection (`/state`, the resource routes, the debug snapshot, sibling
  * transports) goes through.
@@ -125,6 +127,7 @@ export function toIsolationFlow(flow: {
   };
 }
 
+// FIX-1323.
 /**
  * Escape one component of an isolation storage key. `\` and the `:`
  * delimiter are backslash-escaped; every other character passes through, so a
@@ -147,7 +150,7 @@ export function toIsolationFlow(flow: {
  * distinctness a property rather than a hope.
  *
  * An id containing `:` or `\` therefore keys differently than it did before
- * FIX-1323 — such a deployment already had ambiguous keys, and re-keys through
+ * instance-keyed storage — such a deployment already had ambiguous keys, and re-keys through
  * the same offline cutover in `apps/docs/docs/persistence/overview.md`.
  */
 function encodeScopeKeyComponent(value: string): string {

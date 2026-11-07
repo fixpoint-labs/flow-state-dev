@@ -173,6 +173,7 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    * `defineResource`.
    */
   scope: ResourceScope;
+  // FIX-1323; FIX-435.
   /**
    * Cross-flow sharing intent. Default `false`:
    *   - `user` / `org` scope: stored at `(scopeId, ref)` — shared across
@@ -185,18 +186,18 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    *
    * Set `true` to opt user/org-scoped resources into per-flow isolation —
    * stored at `(scopeId, flowInstanceId, ref)`. The coordinate is the
-   * resolved **instance** id, not the kind (FIX-1323): two registered copies
+   * resolved **instance** id, not the kind: two registered copies
    * of one `collection` definition each get their own cell. An instance
    * registered at runtime is one instance too, so this keys per instance.
    *
    * A singleton's instance id is its kind, so its keys are normally unchanged
    * — with one exception: each key component is escaped before joining, so an
    * id containing `:` or `\` (in the kind, or in the `userId` / `orgId`) keys
-   * differently than it did before FIX-1323 and needs the offline cutover in
+   * differently than it did before instance-keyed storage and needs the offline cutover in
    * `apps/docs/docs/persistence/overview.md`. Such a deployment already had
    * ambiguous keys. See `scope-keys.ts` for the encoding.
    *
-   * See FIX-435 conflict-detection rules for collisions across flows.
+   * Collisions across flows are refused at registration.
    */
   flowIsolation?: boolean;
   // FIX-1068.

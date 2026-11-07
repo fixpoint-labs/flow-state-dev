@@ -120,8 +120,9 @@ export type CreateSQLiteRequestStoreOptions = {
   subscribePollIntervalMs?: number;
 };
 
+// FIX-438.
 /**
- * Backfill `source` on records persisted before FIX-438 added the field.
+ * Backfill `source` on records persisted before the field existed.
  * Records written by the new code path always carry it.
  */
 function withSourceDefault(record: RequestRecord | undefined): RequestRecord | undefined {

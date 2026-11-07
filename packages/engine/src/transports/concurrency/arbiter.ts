@@ -171,8 +171,9 @@ export interface ConcurrencyArbiter {
   readonly arbitratesAcrossProcesses: boolean;
 }
 
+// FIX-682.
 /** Tenant-namespace a raw id so identical ids in different tenants never
- *  collide on the same key (mirrors FIX-682 store-key isolation). */
+ *  collide on the same key (mirrors the stores' tenant key isolation). */
 function namespaced(tenantId: string | undefined, id: string): string {
   return tenantId == null ? id : `${tenantId}:${id}`;
 }

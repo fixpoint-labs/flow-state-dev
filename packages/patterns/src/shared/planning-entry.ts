@@ -237,10 +237,11 @@ function connectCustomContextEnricher(block: BlockDefinition<any, any>) {
   }));
 }
 
+// BP-011; FIX-827.
 /**
  * Build the default goal synthesizer — a self-contained sub-sequencer that
  * rewrites a possibly context-dependent goal into a self-contained one
- * before planning (FIX-827).
+ * before planning.
  *
  * Composed at the *pattern pipeline* top (before `stampOuterGoal`), not
  * inside `createPlanningEntry`. The spec (D5) placed it inside the entry on
@@ -258,7 +259,7 @@ function connectCustomContextEnricher(block: BlockDefinition<any, any>) {
  * to catch a planner failure) and returns the original goal stashed in the
  * sub-sequencer's state. The model call stays inside a real `generator()`
  * (history-aware, schema-validated) rather than being reimplemented in a
- * handler, which keeps it BP-011-clean.
+ * handler, so no handler calls a block.
  *
  * Output is `{ goal }` — equal to `{ ...input, goal }` for the `{ goal }`
  * pattern inputs in use today.

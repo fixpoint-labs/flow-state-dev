@@ -308,11 +308,12 @@ export type ExposedResourceEntry = {
   mimeType: string;
 };
 
+// FIX-22.
 /**
  * Enumerate the resources a flow exposes to external transports — i.e.
  * resources whose `client.content.read` is `true`.
  *
- * v1 of FIX-22 (MCP server) ships with no general "flow scope" concept
+ * The MCP server's v1 ships with no general "flow scope" concept
  * in the resource model (resources are session/user/org). The MCP
  * adapter consumes this helper today; until the resource model grows a
  * truly flow-bound scope, this returns an empty list — sibling code

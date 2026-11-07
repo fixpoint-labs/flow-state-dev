@@ -135,12 +135,13 @@ export function ToolOutputView({
   );
 }
 
+// FIX-480.
 /**
  * Resolves a ref's `sourceItemId` to its underlying content and renders it
  * inline beneath the ref pill, so a ref reads as "this block re-emits the
  * output of {sourceBlock}, which was: {value}". `resolveBlockValue` deep-
  * resolves through the source's own BlockValue (or joins the text content
- * for FIX-480 message refs), giving us the same payload the runtime sees.
+ * for message refs), giving us the same payload the runtime sees.
  */
 function RefResolvedValue({ sourceItemId }: { sourceItemId: string }) {
   const { getItem } = useTraceLookup();

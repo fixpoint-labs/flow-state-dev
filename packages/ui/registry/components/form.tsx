@@ -10,7 +10,6 @@ import {
   SuspensionReceipt,
 } from "./suspension-card-shell";
 
-// FIX-849.
 /**
  * Polished flat-form card — the themeable counterpart to `SchemaFormRenderer` in
  * `@flow-state-dev/react`. Renders one control per property of a flat

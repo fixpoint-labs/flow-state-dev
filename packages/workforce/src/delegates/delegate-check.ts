@@ -1,3 +1,4 @@
+// FIX-1788; FIX-2083; FIX-1842.
 /**
  * The one delegate check: every add, every routed task and every filing,
  * from the app or a worker's own tool, on any flow, asks it about the
@@ -6,9 +7,9 @@
  * A worker passes when it is on the session's user's roster now (one of
  * their own, read at their scope, or a standard one), its row can be read,
  * and its flow declares the `contributor` role: that is what makes a worker
- * a delegate, for an add, a routed message or a filing alike (FIX-2083). The
+ * a delegate, for an add, a routed message or a filing alike. The
  * hire guarantees the entry behind the role, a `work` built by
- * `workerTaskEntry` that takes a conversation's tasks (FIX-1842). Another
+ * `workerTaskEntry` that takes a conversation's tasks. Another
  * user's worker is simply not on this user's roster, so it gets exactly the
  * answer a worker that doesn't exist gets.
  *
@@ -17,7 +18,7 @@
  * lives in `delegate-list.ts`, not here.
  *
  * The check answers "is it yours, and can it take this", never "may it run":
- * FIX-1788's create check still links each delegate session at create, and
+ * The create check still links each delegate session at create, and
  * the delegate's own turn still loads its worker.
  *
  * `flowTakes` reads the same fact about a flow, for `listDelegates` to say

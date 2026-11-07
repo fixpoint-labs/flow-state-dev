@@ -30,21 +30,20 @@ function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
   return block.staticTools ?? [];
 }
 
+// FIX-925; FIX-1074; FIX-1578.
 /**
  * Every block reachable from the roots, through composition AND through a
  * generator's static `tools` array.
  *
  * **The tool edge is here because a board can be handed to a model as a tool**
- * (`tools: [board.drain]`, the shape FIX-925 shipped). Without it a board
+ * (`tools: [board.drain]`). Without it a board
  * reached only that way was invisible to the walk: its dispatchers went
  * unresolved, so the first time the model called the tool the board failed on
- * a configuration the author had every reason to think was supported
- * (FIX-1074).
+ * a configuration the author had every reason to think was supported.
  *
  * Resource collection takes the same walk: composition bubbles a child's
  * declarations into its parent, but a tool does not, so a block reached only
- * as a generator's tool would otherwise never register what it declares
- * (FIX-1578).
+ * as a generator's tool would otherwise never register what it declares.
  *
  * A block is visited once: blocks are shared freely (one handler across several
  * actions) and a router route may point back up the tree, so revisits and cycles

@@ -1,3 +1,4 @@
+// FIX-522 design spec §Q4.
 /**
  * Typed error class for the voice surface. Providers throw `VoiceError` so
  * callers can branch on a discriminated `kind` instead of parsing message
@@ -5,7 +6,7 @@
  * knowledge.
  *
  * `VoiceError` extends `Error` directly rather than `FlowError` — see the
- * FIX-522 design spec §Q4 for rationale. Field naming (`retryable`, `cause`)
+ * Field naming (`retryable`, `cause`)
  * mirrors `FlowError` for consistency.
  */
 

@@ -1,6 +1,7 @@
+// FIX-976; FIX-989.
 /**
  * Durable write provenance — how a caller finds out whether its own task write
- * committed, after a call that threw (FIX-989).
+ * committed, after a call that threw.
  *
  * ## The gap this closes
  *
@@ -8,7 +9,7 @@
  * as a tail call, strictly after the durable write resolves, so a failure in
  * the announcement rejects a call whose write already landed. The caller sees
  * only a rejection, and a rejected promise carries no value — so the write
- * verdict FIX-976 added (`TaskWriteOutcome`) cannot reach it.
+ * verdict (`TaskWriteOutcome`) cannot reach it.
  *
  * Reading the task back does not close the gap either. Two histories read
  * identically:

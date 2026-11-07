@@ -221,9 +221,10 @@ export type SessionRequestSummary = {
   sessionId?: string;
   /** The organization the request ran in. Absent only on a legacy record. */
   orgId?: string;
+  // FIX-438.
   /**
    * Inbound transport provenance — see server `RequestRecord.source`.
-   * Records summarized from a server that pre-dates FIX-438 may omit the
+   * Records summarized from an older server may omit the
    * field; clients should default missing values to `"http"`.
    */
   source?: string;
@@ -315,10 +316,11 @@ export type CollectionSnapshotPrefetchedItem = {
   content?: string;
 };
 
+// FIX-427.
 /**
  * Client-visible metadata for a collection resource in the snapshot.
  *
- * As of FIX-427 the per-item `items` map is no longer materialized by default.
+ * The per-item `items` map is not materialized by default.
  * `count` is always emitted for client-visible collections; `prefetched` is
  * populated only when the collection declares a non-zero `prefetchWindow`.
  */
@@ -368,12 +370,13 @@ export type CollectionItemState = {
   clientData?: unknown;
 };
 
+// FIX-296; FIX-741.
 /**
  * React-layer wrapper around a collection item. Augments the server's
- * `{ topic, clientData? }` payload with the FIX-296 lazy-content ergonomic
+ * `{ topic, clientData? }` payload with the lazy-content ergonomic
  * (`fetchContent()`) so consumers don't have to plumb the client themselves.
  *
- * `TClient` (FIX-741) is the projected client-data shape — supplied by the
+ * `TClient` is the projected client-data shape — supplied by the
  * React hook generic, typically via `ClientDataOf<typeof collection>`. Defaults
  * to `unknown` so untyped call sites are unaffected. The runtime payload is the
  * `JsonValue` produced by the server projection; the type is a hook-boundary

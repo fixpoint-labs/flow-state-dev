@@ -1,7 +1,8 @@
+// FIX-671.
 /**
  * `claudeCodeAgent` — handler block running the Claude Code Agent SDK in-process.
  *
- * This is the FIX-671 "Level 2 agent adapter": the SDK owns its own agentic
+ * This is a "Level 2 agent adapter": the SDK owns its own agentic
  * loop and built-in tools; FSD observes, translates, and persists. The block
  * resumes a prior SDK session (via the session provider + persisted
  * `sdkSessionId`), runs `query()` to completion, pipes each streamed message

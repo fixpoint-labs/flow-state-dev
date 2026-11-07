@@ -1,5 +1,6 @@
+// FIX-141.
 /**
- * Suspensions view (FIX-141 operator UI).
+ * Suspensions view (the operator UI for durable suspensions).
  *
  * Lists the durable-execution suspensions for the active session and lets an
  * operator approve or reject a pending one. A status filter narrows the list;

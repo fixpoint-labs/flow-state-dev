@@ -1,5 +1,6 @@
+// FIX-992; FIX-443 §3.2; FIX-990.
 /**
- * ResourceCollection-backed TaskCollection (FIX-443 §3.2).
+ * ResourceCollection-backed TaskCollection.
  *
  * Tasks live as instances of a parameterized resource collection
  * (typically `tasks/{id}` pattern), with `scope ∈ { session, user, org }`.
@@ -20,7 +21,7 @@
  *   4. Loop until a claim succeeds or the candidate list is exhausted.
  *
  * Two concurrent workers attempting to claim the same id flow through
- * the same updater. Since FIX-992 that updater runs under a conditional
+ * the same updater. That updater runs under a conditional
  * write: a version conflict **re-runs the mutator against refreshed
  * state**, so the loser's re-check sees the winner's `in_progress` row
  * and skips the candidate. A lost race therefore resolves to *no task*,
@@ -46,7 +47,7 @@
  * snapshot of their data. Tasks created via `createTask`/`createTasks` are
  * inserted into the mirror as they are created.
  *
- * Freshness boundary (FIX-990). The mirror is **shared by every
+ * Freshness boundary. The mirror is **shared by every
  * `TaskCollectionRef` resolved over the same resource-collection
  * instance**, so within one request every resolution reads one task set:
  * a task added through any of them is immediately visible to all of them,
@@ -110,9 +111,10 @@ import {
 } from "./method-table";
 
 
+// FIX-951; extended by FIX-976.
 /**
- * Module-private signal that a write declined (FIX-951; extended to the patch
- * path and given a reason by FIX-976).
+ * Module-private signal that a write declined, on the complete and patch
+ * paths, with its reason.
  *
  * Thrown from inside `updateState`'s updater and caught around the call.
  * Never crosses this module's boundary, and never reaches a user: the only
@@ -185,9 +187,9 @@ export interface ResourceBackedOptions {
    * no filer.
    */
   createdBy?: string;
+  // FIX-1780; FIX-982.
   /**
-   * Refuse `setAssignee` on a task an attempt holds (FIX-982, narrowed by
-   * FIX-1780 to `in_progress`).
+   * Refuse `setAssignee` on a task an attempt holds (narrowed to `in_progress`).
    *
    * Set by a task board with dispatcher assignees. The assignee is what a
    * dispatched task's routing key derives from, so reassigning a task whose

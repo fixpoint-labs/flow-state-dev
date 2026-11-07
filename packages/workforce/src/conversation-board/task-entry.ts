@@ -1,5 +1,6 @@
+// FIX-2078; FIX-1794 S6; FIX-2083; FIX-2106; FIX-1817; FIX-2077.
 /**
- * The `work` task entry a worker flow takes tasks through (FIX-1794 S6): the
+ * The `work` task entry a worker flow takes tasks through: the
  * task as one turn of the worker, behind the claim gate, and the notice its
  * ending owes, sent to the conversation that filed it.
  *
@@ -8,25 +9,25 @@
  *   user's scope only. Every check a board's gate runs (row, attempt, identity,
  *   status, assignee, lease, run link) runs on the ledger the hand-over names.
  *   A session takes tasks only from the conversation it was opened for, and a
- *   workstream's session the routed tasks filed for it there (FIX-2083).
- * - **A routed task** (FIX-2083). Its turn reads the message it hands on, as
+ *   workstream's session the routed tasks filed for it there.
+ * - **A routed task**. Its turn reads the message it hands on, as
  *   written (`../coordinator/routed-brief`), and its model is shown the
  *   conversation's recent lines for that turn when the flow's generator reads
  *   `routedTaskHistory`.
- * - **Its hop count** (FIX-2106). The turn starts at the worker-message hop
+ * - **Its hop count**. The turn starts at the worker-message hop
  *   count and chain its filing recorded on the row, read off the row the gate
  *   verified, so a message from it counts on in its filer's exchange, in an
  *   ongoing session as in one of its own. A row filed before rows recorded
  *   one reads the session's count, as before.
- * - **The message** (FIX-1817). The task as filed is the turn's user item,
+ * - **The message**. The task as filed is the turn's user item,
  *   so it is part of the session's history; on the attempt an answer to the
  *   worker's question re-queued, the answer is, labelled as one.
  * - **The ending.** The gate settles the row through the ledger, whose ending
  *   recorder marks the notice owed in that same write (orchestration's notice
  *   module).
- * - **The notice** (FIX-2078). The gate's ending is delivered by
+ * - **The notice**. The gate's ending is delivered by
  *   orchestration in that write's own pass: the filer's wake first, then the
- *   notice to the session that filed the task. Before FIX-2078, after the gate,
+ *   notice to the session that filed the task. In older versions, after the gate,
  *   on success or failure, each notice the
  *   session's task still owes (the task the hand-over named at the session's
  *   birth, and the follow-ups that run after it in the same session, one at
@@ -39,7 +40,7 @@
  *   for the conversation's next touch of its board. A conversation whose
  *   worker was fired accepts the send and then refuses to run it: the notice
  *   stays owed, and this session never hears of that refusal.
- * - **Its pieces** (FIX-2077). A turn that files pieces on the task
+ * - **Its pieces**. A turn that files pieces on the task
  *   session's own board leaves its task running when it ends, with no lease
  *   (`keptOpenBy: "filed"`); the turn each piece's ending wakes runs for the
  *   task (`./task-admission`), and the request after which no piece holds it

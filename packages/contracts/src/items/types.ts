@@ -84,6 +84,7 @@ export type OutputItemBase = {
   agentName?: string;
 };
 
+// FIX-413: the design rationale and the full per-method kind table.
 /**
  * Discriminated union describing how a block's `output` item carries its content.
  *
@@ -102,7 +103,6 @@ export type OutputItemBase = {
  *   not by runtime equality. Consumers can reason about composition intent from
  *   the shape: `inline` on a sequencer means a transform happened at that node.
  *
- * See FIX-413 for the design rationale and the full per-method kind table.
  */
 export type BlockValue<T = unknown> =
   | { kind: "inline"; value: T }
@@ -150,6 +150,7 @@ export type StructureShape =
   | { container: "array"; entries: BlockValueInternal<unknown>[] }
   | { container: "object"; entries: Record<string, BlockValueInternal<unknown>> };
 
+// FIX-478, restored by FIX-586.
 /**
  * Unified block trace item — the single record describing one block's execution
  * across its lifecycle (added → input → generator → output). Replaces the prior
@@ -176,8 +177,7 @@ export type StructureShape =
  * - `output` is set on completion. Carries the BlockValue (inline / ref /
  *   structure) so pass-through composers don't duplicate content at every
  *   level.
- * - `transient` inherits the originating block's `transient` flag (FIX-478,
- *   restored by FIX-586). A `transient: true` block streams its trace
+ * - `transient` inherits the originating block's `transient` flag. A `transient: true` block streams its trace
  *   lifecycle live to active SSE consumers but the trace is not retained in
  *   the persisted items log. Non-transient blocks (the default) keep the
  *   canonical retained-trace behavior.

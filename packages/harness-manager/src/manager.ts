@@ -207,9 +207,8 @@ export interface PhaseRunContext {
   epic: string;
   issue: string;
   phase: string;
-  // `FIX-2165`.
   /**
-   * The tracker issue the task names, or `null` when it names
+   * The tracker issue the task names (`ENG-142`), or `null` when it names
    * none. On a fixed board it is {@link issue}. On a board read from the
    * claim, `issue` is the row's own id and this is the issue its
    * `harnessFeature` key names, so a prompt can say what the work is for.
@@ -817,12 +816,11 @@ export const harnessTaskInputSchema = z.object({
 /**
  * What a task names under {@link HARNESS_FEATURE_KEY} on a board read from the
  * claim: the issue, and optionally the phase. A key naming only the issue runs
- * as the manager's own phase, so a lead filing "implement FIX-2165" names the
+ * as the manager's own phase, so a lead filing "implement ENG-142" names the
  * issue and nothing it would have to know about the manager.
  */
 export const harnessFeatureSchema = z.object({
-  // `FIX-2165`.
-  /** The tracker issue the task is for. */
+  /** The tracker issue the task is for (`ENG-142`). */
   issue: z.string(),
   /** Which phase of it. Absent: the manager's own. */
   phase: z.string().optional(),
@@ -1429,9 +1427,10 @@ function pullRequestText(
   return { title, body: body.join("\n") };
 }
 
+// FIX-2268.
 /**
  * The pull request an accept opened, written to the run session's record
- * (FIX-2268's `observed-pull-requests`) so every reader of the record shows
+ * (`observed-pull-requests`) so every reader of the record shows
  * it. Never throws: a record that can't be written is a status note.
  */
 async function recordLandedPullRequest(ctx: BlockContext, landed: Extract<Landed, { kind: "pull-request" }>): Promise<void> {

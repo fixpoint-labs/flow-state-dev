@@ -4,7 +4,6 @@ import type { SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { SuspensionStatus } from "@flow-state-dev/core/types";
 import { useSessionItems } from "./session-items-context";
 
-// FIX-849.
 /**
  * Derive whether (and how) a suspension resolved from the live session item
  * stream. Shared by the polished suspension cards so each collapses to

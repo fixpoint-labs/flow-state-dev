@@ -81,9 +81,10 @@ export type UseResourceCollectionResult<TClient = unknown> = {
    * reflect mid-stream mutations without a refetch.
    */
   live: Record<string, { clientData?: unknown; deleted?: boolean }> | undefined;
+  // FIX-296.
   /**
    * Wraps a raw `{ topic, clientData? }` page item from `list()` as a
-   * `CollectionItemHandle` with the FIX-296 lazy `fetchContent()` ergonomic.
+   * `CollectionItemHandle` with the lazy `fetchContent()` ergonomic.
    * Reuses the hook's resource client; the convenience hooks
    * (`useResourceCollectionList` / `useResourceCollectionItem`) share this
    * to avoid constructing redundant clients.

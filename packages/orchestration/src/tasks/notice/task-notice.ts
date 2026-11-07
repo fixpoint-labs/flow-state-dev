@@ -1,6 +1,7 @@
+// FIX-2078; FIX-1794 P2, S6 and S7; FIX-2078 D2; FIX-2123; FIX-2082.
 /**
  * The child-finished signal: how a delegated task's ending becomes one notice
- * to the session that filed it (FIX-1794 P2, S6 and S7; FIX-2078).
+ * to the session that filed it.
  *
  * Pure functions over a board row and the notice it owes. Nothing here reads
  * a store, runs a block or knows a worker, a delegate or a conversation, and a
@@ -17,7 +18,7 @@
  * filer's delivery clears a marker ({@link clearNotice}), and a clear names one
  * marker, so it can't erase a later ending's.
  *
- * ## Which endings owe a notice (FIX-2078 D2)
+ * ## Which endings owe a notice
  *
  * A completion, a final failure and a park that asks someone something each
  * owe one. A cancel owes one too, unless the filer already knows of it:
@@ -35,7 +36,7 @@
  * filer's wait on it was made owes one at its ending, and the wait that finds
  * it ended drops it ({@link deliveredByWait}): the wait's answer delivered it.
  *
- * ## A notice is taken before it runs (FIX-2123)
+ * ## A notice is taken before it runs
  *
  * The filer's `onTaskSettled` takes a notice before it runs the flow's block,
  * in one conditional write that records its request beside the marker
@@ -49,7 +50,7 @@
  * and takes it over once that request has ended without clearing it (its
  * block failed, or its process died).
  *
- * ## An ending held for the request that waited (FIX-2082)
+ * ## An ending held for the request that waited
  *
  * A wait's deadline lapses the row's wait slot rather than clearing it. An
  * ending written onto a lapsed slot owes the filer's notice, **held**: no fast
@@ -65,16 +66,17 @@
  * {@link decideNotice} is the one choice: a waited-on row's ending resumes the
  * turn parked on it, and any other wakes the filer's judgment turn, or lands
  * as a line under a fixed routing policy. A retried notice, which only a row
- * stored before FIX-2078 can still owe, runs the board. {@link noticeKey} is
+ * stored by an older version can still owe, runs the board. {@link noticeKey} is
  * the dedupe key, task and attempt and ending, so a notice sent twice is acted
  * on once.
  */
 import type { Task } from "../schema/task";
 import type { TaskEnding } from "../collection/ending";
 
+// FIX-2078.
 /**
- * The endings a filer hears about. `retried` is read only off a marker stored
- * before FIX-2078, which recorded one.
+ * The endings a filer hears about. `retried` is read only off a marker an
+ * older version stored, which recorded one.
  */
 export type NoticeEnding = "completed" | "errored" | "retried" | "cancelled";
 
@@ -91,7 +93,8 @@ export interface TaskNotice {
   readonly ending: NoticeEnding;
   readonly output?: unknown;
   readonly error?: string;
-  /** The row is waited on: a turn is parked on its ending (read off a marker stored before FIX-2078). */
+  // FIX-2078.
+  /** The row is waited on: a turn is parked on its ending (read off a marker stored by an older version). */
   readonly waitedOn?: true;
   // FIX-2078 D2.
   /**
@@ -151,7 +154,8 @@ interface OwedMarker {
   readonly ending: NoticeEnding;
   readonly error?: string;
   readonly question?: string;
-  /** When it falls due (epoch ms). Absent on a marker stored before FIX-2078: due at once. */
+  // FIX-2078.
+  /** When it falls due (epoch ms). Absent on a marker stored by an older version: due at once. */
   readonly due?: number;
   // FIX-2082.
   /**
@@ -161,12 +165,13 @@ interface OwedMarker {
   readonly held?: true;
 }
 
+// FIX-2123.
 /**
  * Where the `onTaskSettled` request delivering an owed notice records that it
- * took it (FIX-2123), by its request id, server-written, and when. Kept beside
+ * took it, by its request id, server-written, and when. Kept beside
  * the marker, as a resend record is, and left when the marker clears: a wait
  * reads it to tell that the request delivering the ending still runs. Absent
- * for a notice no request has taken, and for every notice owed before FIX-2123.
+ * for a notice no request has taken, and for every notice owed by an older version.
  */
 const TAKEN_PREFIX = "noticeTaken:";
 
@@ -431,9 +436,10 @@ export function owesAnyNotice(row: Task): boolean {
   return false;
 }
 
+// FIX-2078.
 /**
  * When the earliest notice `row` owes falls due, or `undefined` when it owes
- * none. A marker stored before FIX-2078 carries no due time: it is due at once.
+ * none. A marker stored by an older version carries no due time: it is due at once.
  */
 export function noticeDueAt(row: Task): number | undefined {
   let due: number | undefined;
@@ -513,14 +519,15 @@ export function deferredNoticePatch(
   return { [`${DEFERRED_PREFIX}${notice.attempt}:${notice.ending}`]: { at: now, ...(whileRunning !== undefined ? { whileRunning } : {}) } };
 }
 
+// FIX-2149; BP-030.
 /**
- * The request `notice` was last turned away for (FIX-2149): the filing
+ * The request `notice` was last turned away for: the filing
  * request, which was running then, when no copy has been sent again since.
  * Once that request parks or ends, the notice is due at once, past its
  * backoff: its backoff grew only while that request held it. `undefined` for
  * a notice `row` no longer owes, one a busy session turned away
- * (`taskSettledEntry`'s `defer`), one sent again since, and a record written
- * before FIX-2149 (BP-030).
+ * (`taskSettledEntry`'s `defer`), one sent again since, and a record an older
+ * version wrote.
  */
 export function heldWhileRunning(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">): string | undefined {
   const key = markerKey(notice.attempt, notice.ending);
@@ -607,8 +614,9 @@ export type NoticeDecision =
   | { readonly act: "wake-turn" }
   /** An ending, under a fixed policy: a line in the conversation. */
   | { readonly act: "line" }
+  // FIX-2078.
   /**
-   * A waited-on row's ending, owed by a marker stored before FIX-2078: resume
+   * A waited-on row's ending, owed by a marker stored by an older version: resume
    * the turn parked on it in the filer's pass, with no turn woken and no line:
    * the answer is the waiting call's result.
    */

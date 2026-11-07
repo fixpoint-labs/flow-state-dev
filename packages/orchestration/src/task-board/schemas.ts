@@ -60,6 +60,7 @@ export const taskBoardWorkerStateSchema = z.object({
   lastClaimed: transientSlot(z.boolean().default(false)),
 });
 
+// FIX-981; BP-030.
 /**
  * Worker-body sequencer state.
  *
@@ -76,9 +77,9 @@ export const taskBoardWorkerStateSchema = z.object({
  * transition onto someone else's live attempt — and so a write can only ever
  * land on the task this worker actually claimed.
  *
- * It replaced the separate `currentTaskId` / `currentAttempt` slots in FIX-981;
+ * It replaced the separate `currentTaskId` / `currentAttempt` slots;
  * one ticket carries what two loose fields used to, and the target it is valid
- * for travels with it rather than being supplied by the call site. BP-030
+ * for travels with it rather than being supplied by the call site. A
  * consequence, for the narrow case of a body state checkpointed under the old
  * shape and resumed under this one: `currentClaim` reads absent, so the
  * recorders write nothing and the task is recovered by the ordinary lease

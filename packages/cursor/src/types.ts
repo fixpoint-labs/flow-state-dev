@@ -63,6 +63,7 @@ export interface CursorRunUsage {
   reasoningTokens: number;
 }
 
+// LAB-152.
 /**
  * Handle for a single Cursor run.
  *
@@ -73,7 +74,7 @@ export interface CursorRunUsage {
  * `outcome` is `"finished"` on a run the SDK reports as finished and `"failed"`
  * on one it reports as errored or cancelled. Cursor reports no turn or budget
  * cap, so `"stopped-at-limit"` is never produced here — and a run stopped by the
- * CALLER's deadline is a throw, not a handle (LAB-152's abort contract).
+ * CALLER's deadline is a throw, not a handle (the harness abort contract).
  *
  * `sessionId` is the agent id, not the run id. That is the thing `resume` takes:
  * a Cursor agent is the durable conversation, and each `send` is one run inside

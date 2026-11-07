@@ -129,10 +129,11 @@ function lastItemIndexOf(items: readonly RuntimeItem[]): number {
   return items.reduce((last, item) => Math.max(last, item.itemIndex), -1);
 }
 
+// FIX-663.
 /**
  * Renders an `AbortSignal.reason` into a log-safe string. Reasons are
  * usually a `DOMException`/`Error`, but may be any thrown value, so this
- * never throws. Used by the FIX-663 abort diagnostics.
+ * never throws. Used by the abort diagnostics.
  */
 function serializeAbortReason(reason: unknown): string {
   if (reason === undefined) {

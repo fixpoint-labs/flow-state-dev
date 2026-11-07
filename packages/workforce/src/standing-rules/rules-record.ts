@@ -27,7 +27,8 @@ import {
   type StandingRules
 } from "./rules-list";
 
-/** The accessor a flow declares the record under. **Pinned**: BR-12 rests on it. */
+// BR-12.
+/** The accessor a flow declares the record under. **Pinned**: a reader rests on it. */
 export const STANDING_RULES_RESOURCE = "standing-rules";
 
 /**
