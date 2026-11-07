@@ -21,12 +21,12 @@ import { createFlowRegistry } from "../src";
 import { createInMemoryStores } from "../src/host";
 import type { SessionRecord } from "../src/stores/types";
 import {
-  handleDebugListCollectionItems,
+  handleDebugListCollectionResources,
   handleDebugListResources,
   resolveDebugConfig
 } from "../src/routes/debug-routes";
 import {
-  handleGetCollectionItemState,
+  handleGetCollectionResourceState,
   handleListCollectionState
 } from "../src/routes/resource-routes";
 import { buildResourceSnapshot } from "../src/routes/route-utils";
@@ -120,7 +120,7 @@ describe("secret resource fields", () => {
 
   it("the debug item listing omits a collection item's secret field", async () => {
     const ctx = await setup();
-    const res = await handleDebugListCollectionItems(
+    const res = await handleDebugListCollectionResources(
       new Request(`http://localhost/api/flows/sessions/${SESSION}/debug/resources/keys/items`),
       { kind: "debug_list_collection_items", sessionId: SESSION, ref: "keys" },
       ctx
@@ -154,7 +154,7 @@ describe("secret resource fields", () => {
     expect(list.text).not.toContain(SENTINEL);
     expect(list.json.items[0].clientData).toEqual({ setAt: SET_AT });
 
-    const got = await handleGetCollectionItemState(
+    const got = await handleGetCollectionResourceState(
       new Request(`http://localhost/api/flows/sessions/${SESSION}/resources/keys/linear/state`),
       { kind: "get_collection_item_state", sessionId: SESSION, ref: "keys", topic: "linear" } as never,
       ctx as never

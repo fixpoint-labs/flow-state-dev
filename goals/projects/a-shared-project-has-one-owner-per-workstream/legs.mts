@@ -46,7 +46,7 @@ export interface Inputs {
 type WorkstreamInput = { id: string; title: string; objectives: string[]; due: string };
 
 /** The engine's refusal of a write by anyone but the row's owner. */
-const OWNER_RULE = "A row of an owner-writes collection is written only by the user it belongs to.";
+const OWNER_RULE = "A resource in an owner-writes collection is written only by the user it belongs to.";
 
 const PROJECTS_FLOW = "projects";
 const ROSTER_KIND = "workforce-roster";

@@ -19,7 +19,7 @@ import { TERMINAL_SUSPENSION_STATUSES } from "@flow-state-dev/core/types";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { jsonResponse, loadCheckedSession } from "./route-utils";
 import {
-  buildDebugCollectionItems,
+  buildDebugCollectionResources,
   buildDebugResourceTree,
   lookupDebugContent,
   type DebugContentResult
@@ -225,7 +225,7 @@ export async function handleDebugListSuspensions(
   return jsonResponse(200, { suspensions });
 }
 
-export async function handleDebugListCollectionItems(
+export async function handleDebugListCollectionResources(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "debug_list_collection_items" }>,
   ctx: DebugRouteContext
@@ -244,7 +244,7 @@ export async function handleDebugListCollectionItems(
       details: "limit must be a positive integer"
     });
   }
-  const result = await buildDebugCollectionItems({
+  const result = await buildDebugCollectionResources({
     sessionId: route.sessionId,
     ref: route.ref,
     limit: limit as number | null,
@@ -291,7 +291,7 @@ export async function handleDebugGetResourceContent(
   return contentResponse(result, route.ref, null);
 }
 
-export async function handleDebugGetCollectionItemContent(
+export async function handleDebugGetCollectionResourceContent(
   request: Request,
   route: Extract<
     ParsedFlowRoute,

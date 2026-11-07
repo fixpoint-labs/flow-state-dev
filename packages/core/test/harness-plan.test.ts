@@ -20,7 +20,7 @@ import {
   observedPlanListStateSchema,
   harnessConversationNamespace,
   planKeySegment,
-  planRowsPrefix,
+  planResourcesPrefix,
   readPlanTarget,
   replacePlanList,
   type PlanListItem,
@@ -282,10 +282,10 @@ describe("finding one request's rows", () => {
   });
 
   it("prefixes the plan rows by default, and the list markers when asked", () => {
-    expect(planRowsPrefix("a/b")).toBe(`${OBSERVED_PLAN}/a%2Fb/`);
-    expect(planRowsPrefix("a/b", OBSERVED_PLAN_LIST)).toBe(`${OBSERVED_PLAN_LIST}/a%2Fb/`);
+    expect(planResourcesPrefix("a/b")).toBe(`${OBSERVED_PLAN}/a%2Fb/`);
+    expect(planResourcesPrefix("a/b", OBSERVED_PLAN_LIST)).toBe(`${OBSERVED_PLAN_LIST}/a%2Fb/`);
     // A request id that is a prefix of another selects only its own rows.
-    expect(`${OBSERVED_PLAN}/req_10/0#0/1`.startsWith(planRowsPrefix("req_1"))).toBe(false);
+    expect(`${OBSERVED_PLAN}/req_10/0#0/1`.startsWith(planResourcesPrefix("req_1"))).toBe(false);
   });
 });
 
@@ -327,7 +327,7 @@ describe("readPlanTarget", () => {
     const target = readPlanTarget("req_2", [
       { topic: "req_2/agent#0", conversation: "conversation/agent-1" },
     ]);
-    expect(target).toEqual({ kind: "conversation", namespace: "conversation/agent-1", rowsPrefix: `${OBSERVED_PLAN}/conversation/agent-1/` });
+    expect(target).toEqual({ kind: "conversation", namespace: "conversation/agent-1", resourcesPrefix: `${OBSERVED_PLAN}/conversation/agent-1/` });
   });
 
   it("takes the last attempt's pointer when a retried block left two", () => {
@@ -342,7 +342,7 @@ describe("readPlanTarget", () => {
     // BP-030: a run marker with no pointer (an older write, or a status-only marker).
     expect(readPlanTarget("a/b", [{ topic: "a%2Fb/agent#0", conversation: null }])).toEqual({
       kind: "run",
-      rowsPrefix: planRowsPrefix("a/b"),
+      resourcesPrefix: planResourcesPrefix("a/b"),
     });
     expect(readPlanTarget("req_1", []).kind).toBe("run");
   });

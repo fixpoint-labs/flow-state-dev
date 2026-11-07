@@ -77,12 +77,12 @@ export {
   worktreeName,
   worktreeOwnerSchema,
   worktreePullRequestSchema,
-  worktreeRowSchema,
+  worktreeResourceStateSchema,
   worktreesCollection,
-  worktreeStateSchema,
+  worktreeStatusSchema,
 } from "./worktrees";
 export type { CheckoutSnapshot } from "./worktrees";
-export type { WorktreeAttached, WorktreeCollection, WorktreeOwner, WorktreePullRequest, WorktreeRecording, WorktreeRow, WorktreeState } from "./worktrees";
+export type { WorktreeAttached, WorktreeCollection, WorktreeOwner, WorktreePullRequest, WorktreeRecording, WorktreeResourceState, WorktreeStatus } from "./worktrees";
 export { acquireLock, releaseLock, sleep, tryAcquireLock } from "./lock";
 export { checkedOutBranch, occupyWorktree, worktreeLockPath } from "./occupancy";
 export type { AcquireOptions, LockBounds, LockLease } from "./lock";

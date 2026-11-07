@@ -170,7 +170,7 @@ export const observedPlanListCollection = defineResourceCollection({
  * itself raw, which is what `a/b` encodes to now.
  *
  * A writer builds a run's namespace from it (`<planKeySegment(requestId)>/<run>`);
- * a reader finds a request's rows with {@link planRowsPrefix}, which uses it.
+ * a reader finds a request's rows with {@link planResourcesPrefix}, which uses it.
  */
 export function planKeySegment(value: string): string {
   const escaped = value
@@ -195,7 +195,7 @@ export function planKeySegment(value: string): string {
  * @param requestId The request whose rows to select, as the framework names it.
  * @param key Which collection: the plan rows (default) or the list markers.
  */
-export function planRowsPrefix(
+export function planResourcesPrefix(
   requestId: string,
   key: typeof OBSERVED_PLAN | typeof OBSERVED_PLAN_LIST = OBSERVED_PLAN,
 ): string {
@@ -432,14 +432,14 @@ export interface PlanMarkerRead {
 // BP-030.
 /**
  * Where to read one request's plan, from that request's run markers (the
- * markers listed under {@link planRowsPrefix}`(requestId, OBSERVED_PLAN_LIST)`).
+ * markers listed under {@link planResourcesPrefix}`(requestId, OBSERVED_PLAN_LIST)`).
  *
  * - `conversation` — a run of the request left a pointer: the plan is the
- *   conversation's, its rows under `rowsPrefix` and its marker keyed
+ *   conversation's, its rows under `resourcesPrefix` and its marker keyed
  *   `namespace`.
  * - `run` — no run left one: the request was recorded before plans were kept
  *   per conversation, or it never confirmed a conversation. Its own
- *   rows are under `rowsPrefix` and its markers are the ones passed in, as
+ *   rows are under `resourcesPrefix` and its markers are the ones passed in, as
  *   before.
  *
  * With several pointers (a retried block), the last run's wins, by key order.
@@ -448,13 +448,13 @@ export interface PlanMarkerRead {
 export function readPlanTarget(
   requestId: string,
   markers: readonly PlanMarkerRead[],
-): { readonly kind: "conversation"; readonly namespace: string; readonly rowsPrefix: string } | { readonly kind: "run"; readonly rowsPrefix: string } {
+): { readonly kind: "conversation"; readonly namespace: string; readonly resourcesPrefix: string } | { readonly kind: "run"; readonly resourcesPrefix: string } {
   const pointer = markers
     .filter((m) => typeof m.conversation === "string" && m.conversation.length > 0)
     .sort((a, b) => a.topic.localeCompare(b.topic, "en", { numeric: true }))
     .at(-1)?.conversation;
   if (typeof pointer === "string") {
-    return { kind: "conversation", namespace: pointer, rowsPrefix: `${OBSERVED_PLAN}/${pointer}/` };
+    return { kind: "conversation", namespace: pointer, resourcesPrefix: `${OBSERVED_PLAN}/${pointer}/` };
   }
-  return { kind: "run", rowsPrefix: planRowsPrefix(requestId) };
+  return { kind: "run", resourcesPrefix: planResourcesPrefix(requestId) };
 }

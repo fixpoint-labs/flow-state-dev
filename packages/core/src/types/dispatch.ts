@@ -508,7 +508,7 @@ export type DispatchRefusal =
    * recipient's concurrency policy would not be applied to it.
    * A `key` child is unaffected.
    */
-  | "external-dispatcher"
+  | "external-flow-runner"
   /**
    * A `{ from: true }` target on a request the runtime did not dispatch — no
    * trusted `metadata.dispatch.from`. A caller-written bag on an HTTP body is

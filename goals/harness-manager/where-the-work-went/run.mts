@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { harnessSessionFlow, harnessStub, workPlace, type HarnessSessionFeeds, type PhaseSpec } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost, type WorktreeRow } from "@flow-state-dev/workspace";
+import { localWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
   REPO_ROOT,
@@ -181,12 +181,12 @@ await runGoal(async (failures) => {
     const http = actingAs((await app.getRouter()) as never, USER);
     const sessionId = await http.open(SESSION_KIND, { model: "stub-model" });
     /** The row a session points at, both read through the client's routes as a page reads them. */
-    const rowOf = async (id: string): Promise<WorktreeRow | undefined> => {
+    const rowOf = async (id: string): Promise<WorktreeResourceState | undefined> => {
       const state = (await http.client.sessions.state(id)) as { clientData?: { session?: { workspace?: { worktree?: string | null } | null } } };
       const key = state.clientData?.session?.workspace?.worktree;
       if (key == null) return undefined;
       const listed = await http.call("GET", ["sessions", id, "resources", "worktrees"]);
-      const items = (JSON.parse(listed.text) as { items?: Array<{ clientData?: WorktreeRow }> }).items ?? [];
+      const items = (JSON.parse(listed.text) as { items?: Array<{ clientData?: WorktreeResourceState }> }).items ?? [];
       return items.map((item) => item.clientData).find((row) => row?.key === key);
     };
 

@@ -181,7 +181,7 @@ export async function handleGetResourceContent(
  * GET /sessions/:sessionId/resources/:ref/:topic/content
  * Fetches rendered content for a collection item.
  */
-export async function handleGetCollectionItemContent(
+export async function handleGetCollectionResourceContent(
   _request: Request,
   route: Extract<ParsedFlowRoute, { kind: "get_collection_item_content" }>,
   ctx: ResourceRouteContext
@@ -261,7 +261,7 @@ export async function handleGetCollectionItemContent(
  * POST /sessions/:sessionId/resources/:ref
  * Creates a new item in a collection resource.
  */
-export async function handleCreateCollectionItem(
+export async function handleCreateCollectionResource(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "create_collection_item" }>,
   ctx: ResourceRouteContext
@@ -609,7 +609,7 @@ export async function handleListCollectionState(
  * session, user, and org scope; for user/org a missing scope record (no item
  * written yet) reads as a not-present topic (200 + null), never an error.
  */
-export async function handleGetCollectionItemState(
+export async function handleGetCollectionResourceState(
   _request: Request,
   route: Extract<ParsedFlowRoute, { kind: "get_collection_item_state" }>,
   ctx: ResourceRouteContext
@@ -800,7 +800,7 @@ export async function handleGetResourceManifest(
  * DELETE /sessions/:sessionId/resources/:ref/:topic
  * Deletes a collection item.
  */
-export async function handleDeleteCollectionItem(
+export async function handleDeleteCollectionResource(
   _request: Request,
   route: Extract<ParsedFlowRoute, { kind: "delete_collection_item" }>,
   ctx: ResourceRouteContext

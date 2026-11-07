@@ -77,7 +77,7 @@ import type {
   SettleParentTaskInput,
   SettleParentTaskResult,
   WaitDeadlines,
-  WaitRow
+  TaskAddress
 } from "@flow-state-dev/core/internal";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveEntry } from "@flow-state-dev/core";
@@ -191,7 +191,7 @@ export type RequestHostInputs = {
     provider: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">;
     deadlines: WaitDeadlines;
     requestId: string;
-    own: WaitRow | undefined;
+    own: TaskAddress | undefined;
     /** The request that dispatched this one and waits on it, read off its trusted dispatch stamp. */
     waitedBy?: WaiterOf;
     /** A request's record with its item log, for `waits.ended`. */
@@ -726,7 +726,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         // under-delivering. A `key` child is unaffected: it is a fresh session
         // whose run the queue owns, exactly like a detached start.
         return refuse(
-          "external-dispatcher",
+          "external-flow-runner",
           "this deployment dispatches work to an external queue whose worker adapter supplies " +
             "no lease backend, so a delivery into an existing session cannot be arbitrated " +
             "against that session's concurrency policy; delivery refuses rather than " +
@@ -762,7 +762,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       return {
         ok: false,
         refused: "no-parent-task",
-        detail: "this request was not dispatched for a parent-board task, so there is no row to settle"
+        detail: "this request was not dispatched for a parent-board task, so there is no task to settle"
       };
     }
     return inputs.parentTask.settle(input);

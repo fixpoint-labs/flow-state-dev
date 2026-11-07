@@ -36,7 +36,7 @@ import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import { principalOwnsRequest } from "../context/request-principal";
 import type { SessionCreateRefusedError } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
-import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
+import { OWNER_RESOURCE_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
 import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";
@@ -478,7 +478,7 @@ export function createScopeResources(options: {
         },
         async get(key: string | Record<string, string>) {
           if (!ownerKeyAdmits(extConfig, resolveCollectionKey(pattern, key), options.userId)) {
-            throw new Error(OWNER_ROW_REFUSAL);
+            throw new Error(OWNER_RESOURCE_REFUSAL);
           }
           const ref = await readThrough(key);
           if (ref === undefined) {
@@ -528,7 +528,7 @@ export function createScopeResources(options: {
         get(key: string | Record<string, string>) {
           const storageKey = resolveCollectionKey(pattern, key);
           if (!ownerKeyAdmits(collection, storageKey, options.userId)) {
-            throw new Error(OWNER_ROW_REFUSAL);
+            throw new Error(OWNER_RESOURCE_REFUSAL);
           }
           const value = persisted[storageKey];
           if (value === undefined) {

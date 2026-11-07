@@ -111,7 +111,7 @@ function parseOwnerRun(value: unknown, flowKind: string, orgId: string): OwnerRu
   const run = value as Record<string, unknown>;
   const owner = run.owner as Record<string, unknown> | undefined;
   if (run.flowKind !== flowKind) return `names flow "${String(run.flowKind)}", not the service's own "${flowKind}"`;
-  if (!isString(run.entry) || !isString(run.rowKey)) return "names no entry or row";
+  if (!isString(run.entry) || !isString(run.rowKey)) return "names no entry or task";
   if (typeof owner !== "object" || owner === null || !isString(owner.userId)) return "names no owner";
   if (owner.orgId !== orgId) return "names an owner in another org";
   if (owner.tenantId !== undefined && !isString(owner.tenantId)) return "names a malformed tenant";

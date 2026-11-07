@@ -36,7 +36,7 @@ import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
   harnessConversationNamespace,
-  planRowsPrefix,
+  planResourcesPrefix,
   readPlanTarget,
 } from "@flow-state-dev/core/harness";
 
@@ -533,7 +533,7 @@ function TurnPlan(props: TurnPlanProps) {
     return (
       <PlanRows
         {...props}
-        rowsPrefix={planRowsPrefix(turn.requestId)}
+        resourcesPrefix={planResourcesPrefix(turn.requestId)}
         markers={runMarkers}
         conversation={null}
         whenEmpty={source.whenEmpty === null ? null : conversationOf(source.whenEmpty)}
@@ -543,7 +543,7 @@ function TurnPlan(props: TurnPlanProps) {
   // A flow that declares the rows but no markers has no marker, and no pointer, to read.
   if (markerRef === undefined) return show([]);
   return (
-    <MarkersUnder session={session} markerRef={markerRef} prefix={planRowsPrefix(turn.requestId, OBSERVED_PLAN_LIST)} render={show} />
+    <MarkersUnder session={session} markerRef={markerRef} prefix={planResourcesPrefix(turn.requestId, OBSERVED_PLAN_LIST)} render={show} />
   );
 }
 
@@ -556,11 +556,11 @@ function TurnPlan(props: TurnPlanProps) {
 function ConversationPlan(props: TurnPlanProps & { markerRef: string; namespace: string }) {
   const { session, turn, records, turnsByRequest, markerRef, namespace } = props;
   const earliest = earliestTurnOf(records, (id) => harnessConversationNamespace(id) === namespace);
-  const rowsPrefix = `${OBSERVED_PLAN}/${namespace}/`;
+  const resourcesPrefix = `${OBSERVED_PLAN}/${namespace}/`;
   const show = (markers: readonly PlanMarkerItem[], predates: boolean) => (
     <PlanRows
       {...props}
-      rowsPrefix={rowsPrefix}
+      resourcesPrefix={resourcesPrefix}
       markers={markers.filter((m) => m.topic === namespace)}
       conversation={{ turns: turnsByRequest, predates }}
     />
@@ -577,7 +577,7 @@ function ConversationPlan(props: TurnPlanProps & { markerRef: string; namespace:
           <MarkersUnder
             session={session}
             markerRef={markerRef}
-            prefix={planRowsPrefix(earliest, OBSERVED_PLAN_LIST)}
+            prefix={planResourcesPrefix(earliest, OBSERVED_PLAN_LIST)}
             render={(first) => show(markers, readPlanTarget(earliest, first).kind !== "conversation")}
           />
         )
@@ -593,12 +593,12 @@ function PlanRows({
   turn,
   ended,
   planRef,
-  rowsPrefix,
+  resourcesPrefix,
   markers,
   conversation,
   whenEmpty = null,
 }: TurnPlanProps & {
-  rowsPrefix: string;
+  resourcesPrefix: string;
   markers: readonly PlanMarkerItem[];
   conversation: { turns: ReadonlyMap<string, number>; predates: boolean } | null;
   /** Shown instead once the read finds no rows and there are no markers. */
@@ -609,13 +609,13 @@ function PlanRows({
   const rows = useResourceCollectionList<{ title?: string | null; status?: string | null; requestId?: string | null }>(
     session,
     planRef,
-    { topicPrefix: rowsPrefix, limit: PLAN_ROW_LIMIT },
+    { topicPrefix: resourcesPrefix, limit: PLAN_ROW_LIMIT },
   );
   if (rows.error !== undefined) {
     return <p className="text-sm text-destructive">The plan can't be read: {rows.error.message}</p>;
   }
   const rowItems: PlanRowItem[] = rows.items
-    .filter((item) => ownTopic(rowsPrefix, item.topic))
+    .filter((item) => ownTopic(resourcesPrefix, item.topic))
     .map((item) => ({
       topic: item.topic,
       title: item.clientData?.title ?? null,

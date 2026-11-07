@@ -331,14 +331,14 @@ export function dispatcher(
         ? `[dispatcher] "${name}" must name a non-empty action entry, or a choice ` +
             `{ among: [...names], by: (task) => name } among declared ones`
         : `[dispatcher] "${name}" must name a non-empty action entry. Only a task ` +
-            `dispatcher chooses its entry per row.`
+            `dispatcher chooses its entry per task.`
     );
   }
   if (type !== "internal" && type !== "task") {
     throw new Error(
       `[dispatcher] "${name}" dispatches type "${String(type)}", which authored code cannot ` +
         `supply the trust for. A block may dispatch "internal" (its own request's authority) ` +
-        `or "task" (a claim on a durable row, minted by the task board that holds the dispatcher).`
+        `or "task" (a claim on a durable task, minted by the task board that holds the dispatcher).`
     );
   }
 
@@ -542,9 +542,9 @@ function assertEntryChoice(name: string, choice: TaskEntryChoice): void {
     typeof choice.by === "function";
   if (!valid) {
     throw new Error(
-      `[dispatcher] "${name}" chooses its entry per row but declares ${JSON.stringify(among)} ` +
+      `[dispatcher] "${name}" chooses its entry per task but declares ${JSON.stringify(among)} ` +
         `as the entries it chooses among. Declare { among: ["entry", ...], by: (task) => entry }: ` +
-        `at least one entry, each named once, so every entry a row can land on is verified.`
+        `at least one entry, each named once, so every entry a task can land on is verified.`
     );
   }
 }

@@ -17,7 +17,7 @@ import {
   OBSERVED_PLAN_LIST,
   OBSERVED_PULL_REQUESTS,
   planKeySegment,
-  planRowsPrefix,
+  planResourcesPrefix,
   readPlanTarget,
 } from "@flow-state-dev/core/harness";
 
@@ -90,12 +90,12 @@ export async function readRecordedWork(client: RecordedWorkClient, run: Recorded
   };
   const readPlan = async () => {
     if (recordedRef(manifest, RECORDED.plan) === undefined) return null;
-    const pointers = await read(RECORDED.markers, planRowsPrefix(run.requestId, OBSERVED_PLAN_LIST));
+    const pointers = await read(RECORDED.markers, planResourcesPrefix(run.requestId, OBSERVED_PLAN_LIST));
     const markers = (pointers?.items ?? []).map((item) => ({
       topic: item.topic,
       conversation: field(item.clientData, "conversation") as string | null | undefined,
     }));
-    return read(RECORDED.plan, readPlanTarget(run.requestId, markers).rowsPrefix);
+    return read(RECORDED.plan, readPlanTarget(run.requestId, markers).resourcesPrefix);
   };
   const field = (data: unknown, key: string) => (data as Record<string, unknown> | undefined)?.[key];
   const [plan, files, pullRequests] = await Promise.all([
