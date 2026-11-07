@@ -63,6 +63,21 @@ describe("check-tracker-ids --strict --json --root <tree>", () => {
     assert.equal(status, 1);
   });
 
+  it("prints its whole verdict to a pipe, however many sites it names", () => {
+    const big = mkdtempSync(join(tmpdir(), "tracker-ids-big-"));
+    try {
+      const sites = Array.from({ length: 3000 }, (_, i) => `/** Site ${i} (FIX-${i + 1}). */\nexport const s${i} = ${i};`).join("\n");
+      plant(big, {
+        "packages/demo/package.json": JSON.stringify({ name: "@flow-state-dev/demo" }),
+        "packages/demo/src/many.ts": `${sites}\n`,
+      });
+      const { verdict } = strict(big);
+      assert.equal(verdict.violations.length, 3000);
+    } finally {
+      rmSync(big, { recursive: true, force: true });
+    }
+  });
+
   it("passes a tree with only // pointers in shipped source", () => {
     const clean = mkdtempSync(join(tmpdir(), "tracker-ids-clean-"));
     try {

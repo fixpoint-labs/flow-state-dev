@@ -197,7 +197,10 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    * `apps/docs/docs/persistence/overview.md`. Such a deployment already had
    * ambiguous keys. See `scope-keys.ts` for the encoding.
    *
-   * Collisions across flows are refused at registration.
+   * Registration refuses two flow kinds that declare the same shared ref with
+   * conflicting settings. It does not catch overlapping collection patterns
+   * (`files/*` beside `files/a`), or two instances of one kind whose resource
+   * overrides differ; the engine's `validateScope` documents both gaps.
    */
   flowIsolation?: boolean;
   // FIX-1068.

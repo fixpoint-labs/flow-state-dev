@@ -59,4 +59,5 @@ else {
   for (const v of violations) console.log(`${v.name}  ${v.detail}`);
   console.log(violations.length ? `FAIL: ${violations.length} tracker id(s)` : "PASS: no tracker ids");
 }
-process.exit(violations.length ? 1 : 0);
+// Not `process.exit()`: a large verdict written to a pipe would be cut off.
+process.exitCode = violations.length ? 1 : 0;
