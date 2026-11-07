@@ -41,9 +41,7 @@ import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board"
 import type { TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
-  MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
-  WORKER_TASK_ENTRY,
   workerConfigSchema,
   workerFlow,
   workerConfigOf,
@@ -186,12 +184,12 @@ export function coderFlow(options: CoderFlowOptions) {
         },
         internal: {
           actions: {
-            [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: CODER_FLOW, hears: "task-sessions" }),
+            onMessageReceived: messageReceivedEntry({ installation, flowKind: CODER_FLOW, hears: "task-sessions" }),
           },
         },
         task: {
           actions: {
-            [WORKER_TASK_ENTRY]: workerTaskEntry({ name: `${CODER_FLOW}-${WORKER_TASK_ENTRY}`, block: byHarness }),
+            work: workerTaskEntry({ name: `${CODER_FLOW}-work`, block: byHarness }),
           },
         },
       } as never);

@@ -20,6 +20,9 @@ import { taskDispatchInputSchema } from "@flow-state-dev/core/types";
 import { workerConfigSchema } from "../src/worker-config";
 import { workerFlowProblems } from "../src/worker-flow-contract";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
+import { steerTurnEntry } from "../src/conversation-board/steer";
+import { messageReceivedEntry } from "../src/messages/message-received-entry";
+import { workstreamOpenedEntry } from "../src/projects/workstream-lead";
 import { defineSessionBoard } from "../src/conversation-board/session-board";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { hireWorkforce } from "../src/workers/register";
@@ -151,6 +154,63 @@ describe("a piece of a role's factory on a flow that doesn't declare the role", 
       internal: { actions: { dispatch: { inputSchema: z.object({}).strict(), block: turn } } }
     });
     expect(workerFlowProblems("own-names", flow, [])).toEqual([]);
+  });
+});
+
+// An entry the framework calls is named by its documented string, as an
+// action is (`respond`): an app writes `onTaskSteered`, not a constant. A
+// piece an entry factory built, under any other name, is a turn the framework
+// owes and never finds, so the hire refuses it, naming the string.
+describe("an entry factory's piece under another name", () => {
+  it("refuses a `steerTurnEntry` under a misspelled key, naming `onTaskSteered`", () => {
+    const flow = flowOn(undefined, "steerd", {
+      internal: { actions: { onTaskSteerd: steerTurnEntry({ name: "roles-steer", turn }) } }
+    });
+    const problems = workerFlowProblems("steerd", flow, []);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('worker flow "steerd"');
+    expect(problems[0]).toContain('"onTaskSteerd"');
+    expect(problems[0]).toContain('"onTaskSteered"');
+    expect(problems[0]).toContain("steerTurnEntry");
+  });
+
+  it("refuses a `messageReceivedEntry` under a misspelled key, naming `onMessageReceived`", () => {
+    const installation = createWorkerInstallation();
+    const flow = flowOn(undefined, "recieved", {
+      internal: { actions: { onMessageRecieved: messageReceivedEntry({ installation, flowKind: "recieved" }) } }
+    });
+    const problems = workerFlowProblems("recieved", flow, []);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('"onMessageRecieved"');
+    expect(problems[0]).toContain('"onMessageReceived"');
+    expect(problems[0]).toContain("messageReceivedEntry");
+  });
+
+  it("refuses a `workerTaskEntry` under a misspelled key, naming `work`, whatever roles the flow declares", () => {
+    const flow = flowOn(undefined, "wrk", { task: { actions: { wrk: workEntry() } } });
+    for (const roles of [[], ["contributor"]] as const) {
+      const problems = workerFlowProblems("wrk", flow, roles);
+      expect(problems.some((problem) => problem.includes('"wrk"') && problem.includes('"work"') && problem.includes("workerTaskEntry"))).toBe(true);
+    }
+  });
+
+  it("refuses a piece under its own name in the wrong section, naming where the framework looks", () => {
+    const flow = flowOn(undefined, "public-steer", {
+      actions: { respond, onTaskSteered: steerTurnEntry({ name: "roles-steer", turn }) }
+    });
+    const problems = workerFlowProblems("public-steer", flow, []);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("`actions`");
+    expect(problems[0]).toContain("`internal.actions`");
+  });
+
+  it("refuses a `workstreamOpenedEntry` under a misspelled key, naming `onWorkstreamOpened`", () => {
+    const flow = flowOn(undefined, "opend", { internal: { actions: { onWorkstreamOpend: workstreamOpenedEntry() } } });
+    const problems = workerFlowProblems("opend", flow, []);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('"onWorkstreamOpend"');
+    expect(problems[0]).toContain('"onWorkstreamOpened"');
+    expect(problems[0]).toContain("workstreamOpenedEntry");
   });
 });
 

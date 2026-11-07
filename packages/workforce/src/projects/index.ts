@@ -153,7 +153,7 @@ export {
 
 export { parseProjectRef, parseWorkstreamRef, projectRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
 
-export { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./workstream-lead";
+export { workstreamOpenedEntry } from "./workstream-lead";
 
 export {
   defineWorkstreamBlocks,

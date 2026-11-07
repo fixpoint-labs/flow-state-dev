@@ -5,7 +5,7 @@
  * worker flow without it mounts `messageReceivedEntry` itself, and the hire
  * refuses one with neither (FIX-2238). `hireWorkforce`'s `messages` sets the budget.
  */
-export { SEND_MESSAGE_TOOL, MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT } from "./keys";
+export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_COMPONENT } from "./keys";
 export {
   messageReceivedEntry,
   messageReceivedInputSchema,

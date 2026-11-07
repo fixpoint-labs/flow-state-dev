@@ -27,7 +27,6 @@ import {
   MAX_DELEGATES,
   projectCoordinatorTools,
   WORKSTREAM_DELEGATE_ACTION,
-  WORKSTREAM_OPENED_ENTRY,
   workerTaskEntry,
   workstreamOpenedEntry
 } from "../src/index";
@@ -36,7 +35,6 @@ import { ROSTER_FLOW } from "../src/workers/keys";
 import { askMidway, currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 import { findTaskPartitions } from "@flow-state-dev/orchestration/internal";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../src/conversation-board/ledger";
-import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
 import { messageReceivedEntry } from "../src/messages/message-received-entry";
 import { workerMessagesResources } from "../src/messages";
 import { bootProjectsHost, countingStores, OTHER_ORG, refusal } from "./projects-harness";
@@ -68,7 +66,7 @@ const standardWorkers: WorkerManifest[] = [
 function openingTools(installation: Parameters<typeof defineWorkstreamBlocks>[0]["installation"], checksFit = false) {
   const workstreams = defineWorkstreamBlocks({
     installation,
-    leadFlows: [{ kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }],
+    leadFlows: [{ kind: "lead", internal: { actions: { onWorkstreamOpened: {} } } }],
     ...(checksFit ? { leadFit: { model: "test/fit" } } : {})
   });
   return {
@@ -107,7 +105,7 @@ async function boot(
   const heard: Heard[] = [];
   const counting = options.counted === true ? countingStores() : undefined;
   const projects = defineProjectBlocks();
-  const leadFlowRef = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+  const leadFlowRef = { kind: "lead", internal: { actions: { onWorkstreamOpened: {} } } };
   const h = await bootProjectsHost(
     {
       standardWorkers:
@@ -140,8 +138,8 @@ async function boot(
         };
       },
       leadInternal: (installation) => ({
-        [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry(),
-        ...(options.hears === true ? { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "lead" }) } : {})
+        onWorkstreamOpened: workstreamOpenedEntry(),
+        ...(options.hears === true ? { onMessageReceived: messageReceivedEntry({ installation, flowKind: "lead" }) } : {})
       }),
       leadTask: (installation) => {
         const turn = handler({

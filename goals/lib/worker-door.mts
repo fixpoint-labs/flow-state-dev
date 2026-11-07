@@ -17,7 +17,7 @@
  * into `internal.actions` and `workerMessagesResources` into its `resources`.
  */
 import { handler } from "@flow-state-dev/core";
-import { MESSAGE_RECEIVED_ENTRY, messageReceivedEntry, type WorkerInstallation } from "@flow-state-dev/workforce";
+import { messageReceivedEntry, type WorkerInstallation } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /** One door, `respond`, the action every worker flow takes a user's message on. */
@@ -46,5 +46,5 @@ export const workerDoor = {
  * @param flowKind The flow's kind.
  */
 export function hearsMessages(installation: WorkerInstallation, flowKind: string) {
-  return { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind }) };
+  return { onMessageReceived: messageReceivedEntry({ installation, flowKind }) };
 }

@@ -93,7 +93,6 @@ import {
   mergeWorkerFlows,
   openInventory,
   resourcesFromDocs,
-  WORKSTREAM_OPENED_ENTRY,
   type CreateProjectInput,
   type CreateProjectOutput,
   type HireOptions,
@@ -316,7 +315,7 @@ function projectSetup(installation: WorkerInstallation) {
  * workstream's session. Read before the flows are built, which need the
  * writes' tools in their catalogs.
  */
-const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
+const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: { actions: { onWorkstreamOpened: {} } } }));
 
 /** The project tools, by the names the Shift Coordinator's and the project coordinator's `tools:` lines spell. */
 const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "setBrief", "openWorkstream", "editWorkstream", "listProjects"];

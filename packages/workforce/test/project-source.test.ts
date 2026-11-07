@@ -36,9 +36,7 @@ import {
   projectWorkspaceCapability,
   SET_WORK_PROJECT_ACTION,
   setWorkProjectAction,
-  WORKER_TASK_ENTRY,
   workerConfigSchema,
-  WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry
 } from "../src/index";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
@@ -149,11 +147,11 @@ async function boot() {
       session: installation.session(),
       resources: { ...installation.resources },
       actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
-      task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "taker-task", turn }) } }
+      task: { actions: { work: workerTaskEntry({ name: "taker-task", turn }) } }
     } as never);
   };
   const projects = defineProjectBlocks();
-  const leadRef = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+  const leadRef = { kind: "lead", internal: { actions: { onWorkstreamOpened: {} } } };
   const h = await bootProjectsHost({
     standardWorkers,
     projectCoordinator: "pc",
@@ -164,7 +162,7 @@ async function boot() {
       seedFile: { block: seedFile }
     }),
     lead: () => toolActions,
-    leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
+    leadInternal: () => ({ onWorkstreamOpened: workstreamOpenedEntry() }),
     flows: (installation) => ({
       reader: { flow: readerFlow(installation), roles: [] },
       taker: { flow: takerFlow(installation), roles: ["contributor"] },

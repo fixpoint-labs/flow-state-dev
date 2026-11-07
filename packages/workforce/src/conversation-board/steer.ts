@@ -28,8 +28,7 @@ import { admitOwnTask, markAdmittedTask } from "./task-admission";
 import { AFTER_REPLY_CONCURRENCY } from "./task-settled";
 import { sessionTaskOf } from "./task-entry";
 import { requestHostOf } from "@flow-state-dev/core/internal";
-
-export { STEER_TURN_ENTRY } from "./board-entries";
+import { markEntryPiece } from "../worker-roles";
 
 /** The lead the turn a late steer is owed opens with. */
 const STEERED_AFTER_ANSWER =
@@ -138,7 +137,7 @@ export type SteerTurnEntryOptions = {
 
 /**
  * The internal entry for the turn a late steer is owed (D2). Spread it as
- * `internal: { actions: { [STEER_TURN_ENTRY]: steerTurnEntry({ ... }) } }`
+ * `internal: { actions: { onTaskSteered: steerTurnEntry({ ... }) } }`
  * on every flow whose `work` entry is a `workerTaskEntry`, with the same
  * `turn` or `block`.
  *
@@ -215,7 +214,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     }
   });
 
-  return {
+  return markEntryPiece({
     inputSchema: z.object({}).passthrough(),
     block: sequencer({ name, inputSchema: z.unknown() })
       // One turn of a task at a time in its session (FIX-2113): while another
@@ -231,5 +230,5 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
       .tapIf((answer: unknown) => !skipped(answer), noteTaskAnswer)
       .tap(settleWake),
     concurrency: options.concurrency ?? AFTER_REPLY_CONCURRENCY
-  };
+  }, "steerTurnEntry");
 }

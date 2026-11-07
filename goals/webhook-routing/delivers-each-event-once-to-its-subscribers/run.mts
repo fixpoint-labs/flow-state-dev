@@ -11,7 +11,6 @@ import { routeServiceEvent } from "@flow-state-dev/engine/internal";
 import { type InboundTransportHost } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import {
-  MESSAGE_RECEIVED_ENTRY,
   ROSTER_FLOW,
   SUBSCRIPTION_ROUTE_ENTRY,
   WORKER_MESSAGES_PATTERN,
@@ -143,7 +142,7 @@ installationFlows.follower = {
       unsubscribe: { inputSchema: tools.unsubscribe.inputSchema, block: tools.unsubscribe }
     },
     // No turn: a message lands as its items and nothing runs.
-    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "follower" }) } },
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
     task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
   })
 };
