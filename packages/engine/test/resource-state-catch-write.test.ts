@@ -12,9 +12,11 @@ import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
-  createInMemoryStores,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { ValidationError } from "../src/errors/flow-error";
 
 const row = defineResource({

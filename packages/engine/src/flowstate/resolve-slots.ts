@@ -4,8 +4,8 @@
  * Given the active profile (a `CapabilitySlotMap`), this realizes each
  * declared adapter and projects the capability slots onto the flat
  * `StoreRegistry` the runtime consumes. `primary` covers all
- * sub-stores; `blobs` / `queue` / `scheduler` are forward-compatible and
- * map to no sub-store today (declaring them is a no-op). `bus` projects onto
+ * sub-stores; `blobs` is reserved and maps to no sub-store today (declaring
+ * it is a no-op). `bus` projects onto
  * `StoreRegistry.bus`, backed by the primary when the profile names no bus
  * and the primary declares it. Any sub-store left uncovered falls back to an
  * in-memory store, preserving the historical `resolveStores()` behavior; the
@@ -17,16 +17,11 @@ import { resolveStores } from "../routes/http-handlers";
 import { FlowStateConfigError } from "../errors/flow-error";
 
 /**
- * Capability slots that have no `StoreRegistry` projection yet. Declaring
- * them keeps user profiles forward-compatible, but they back no sub-store
- * until a concrete adapter interface ships (S3 blobs, a queue store, the
- * scheduler store). See `docs/architecture` follow-ups.
+ * Capability slots that have no `StoreRegistry` projection yet: `blobs`,
+ * reserved for the attachment store that will back it. Declaring it backs no
+ * sub-store until that store ships.
  */
-const FORWARD_COMPATIBLE_SLOTS: ReadonlySet<CapabilitySlot> = new Set([
-  "blobs",
-  "queue",
-  "scheduler"
-]);
+const FORWARD_COMPATIBLE_SLOTS: ReadonlySet<CapabilitySlot> = new Set(["blobs"]);
 
 /** The `StoreRegistry` sub-stores the `primary` capability backs. */
 export const PRIMARY_REGISTRY_SLOTS: ReadonlyArray<keyof StoreRegistry> = [

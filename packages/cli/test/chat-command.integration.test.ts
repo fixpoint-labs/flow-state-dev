@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolve } from "node:path";
 import { Readable, Writable } from "node:stream";
-import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
+import { type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { executeChatCommand } from "../src/commands/chat";

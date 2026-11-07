@@ -8,7 +8,7 @@
  * Real engine and HTTP router; nothing mocked.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createClient } from "@flow-state-dev/client";
 import { createWorkforceClient } from "../src/workers/client";
 import { checkWorkerFlows } from "../src/hire";

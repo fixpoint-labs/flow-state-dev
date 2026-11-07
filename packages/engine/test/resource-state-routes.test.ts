@@ -12,7 +12,8 @@ import {
   defineResourceCollection,
   handler
 } from "@flow-state-dev/core";
-import { createInMemoryStores, createFlowRegistry } from "../src";
+import { createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { StoreRegistry, SessionRecord, UserRecord } from "../src/stores/types";
 import { resolveResourceScopeId, resolveUserStorageKey } from "../src/stores/scope-keys";

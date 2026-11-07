@@ -11,7 +11,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
-import { createInMemoryStores, executeBlock } from "@flow-state-dev/engine";
+import { executeBlock } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createTestContext } from "@flow-state-dev/testing";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";

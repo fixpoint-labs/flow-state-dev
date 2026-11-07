@@ -16,9 +16,11 @@ import {
   createCheckpointDurabilityProvider,
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { type RequestRecord } from "../src/host";
 
 const notes = defineFlow({

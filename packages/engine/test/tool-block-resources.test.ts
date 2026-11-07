@@ -9,7 +9,8 @@
 import { DEFAULT_ORG_ID, defineFlow, defineResource, generator, handler } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 const scratchpad = defineResource({
   scope: "session",

@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { utility } from "@flow-state-dev/core";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { mintWorkers } from "../src/hire";

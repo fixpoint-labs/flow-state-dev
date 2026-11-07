@@ -30,9 +30,11 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import type { FlowApiRouter } from "../src/routes/createFlowApiRouter";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import type { StoreRegistry } from "../src/stores/types";

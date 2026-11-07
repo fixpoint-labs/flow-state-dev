@@ -9,9 +9,11 @@ import { z } from "zod";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import { TransportRouteCollisionError } from "../../src/transports/errors";
 import { type InboundTransportAdapter } from "../../src/host";
 

@@ -17,9 +17,11 @@
 import { describe, expect, it } from "vitest";
 import {
   createFlowApiRouter,
-  createFlowRegistry,
-  createInMemoryStores
+  createFlowRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import chatAgentFlow from "../flows/chat-agent/flow";
 import richTextComponentFlow from "../flows/rich-text-component/flow";
 import weeklyDigestFlow from "../flows/weekly-digest/flow";

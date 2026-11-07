@@ -15,9 +15,11 @@ import { z } from "zod";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   defaultBodyUserIdPrincipalResolver
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { createInboundTransportHost, RequestOwnerMismatchError } from "../src/host";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import type { FlowRunner } from "../src/transports/runner";

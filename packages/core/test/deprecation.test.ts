@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDeprecationWarningsForTests,
+  warnOnce,
   warnOnceDev,
 } from "../src/helpers/deprecation";
 import { firstInProcess } from "../src/helpers/once-per-process";
@@ -61,6 +62,42 @@ describe("warnOnceDev", () => {
     process.env.NODE_ENV = "production";
     const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
     warnOnceDev("dk", "msg");
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+// The production half of `warnOnceDev`: a warning a deployed app must still
+// see (an app that names no store runs in memory and loses data on restart).
+describe("warnOnce", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalQuiet = process.env.FSD_QUIET_WARNINGS;
+
+  beforeEach(() => {
+    delete process.env.NODE_ENV;
+    delete process.env.FSD_QUIET_WARNINGS;
+    __resetDeprecationWarningsForTests();
+  });
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+    process.env.FSD_QUIET_WARNINGS = originalQuiet;
+    vi.restoreAllMocks();
+  });
+
+  it("still warns, once, when NODE_ENV=production", () => {
+    process.env.NODE_ENV = "production";
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    warnOnce("pk", "deployed");
+    warnOnce("pk", "deployed");
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]?.[0]).toBe("[flow-state-dev] deployed");
+  });
+
+  it("respects FSD_QUIET_WARNINGS=1", () => {
+    process.env.NODE_ENV = "production";
+    process.env.FSD_QUIET_WARNINGS = "1";
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    warnOnce("pk", "msg");
     expect(spy).not.toHaveBeenCalled();
   });
 });

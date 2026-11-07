@@ -64,6 +64,29 @@ export {
   type WakeStore,
   withStoredAbortRequested
 } from "./stores";
+/** The registry factories and per-store constructors behind `inMemoryStores` and `filesystemStores`. */
+export {
+  createFilesystemContentStore,
+  createFilesystemOrgStore,
+  createFilesystemRequestStore,
+  createFilesystemResourceStateStore,
+  createFilesystemSessionStore,
+  createFilesystemStores,
+  createFilesystemTraceStore,
+  createFilesystemUserStore,
+  createFilesystemWakeStore,
+  createInMemoryContentStore,
+  createInMemoryLeaseStore,
+  createInMemoryOrgStore,
+  createInMemoryRequestStore,
+  createInMemoryResourceStateStore,
+  createInMemorySessionStore,
+  createInMemoryStores,
+  createInMemorySuspensionStore,
+  createInMemoryTraceStore,
+  createInMemoryUserStore,
+  createInMemoryWakeStore
+} from "./stores";
 export { createInMemoryBus } from "./bus/in-memory-bus";
 export { withChangeBus } from "./bus/publish-writes";
 export {

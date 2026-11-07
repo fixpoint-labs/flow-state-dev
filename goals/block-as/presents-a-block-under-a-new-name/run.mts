@@ -33,9 +33,11 @@ import {
   continueRequest,
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  type StoreRegistry,
+  type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { runAction } from "@flow-state-dev/engine";
 import {
   createWorkerHireBlocks,

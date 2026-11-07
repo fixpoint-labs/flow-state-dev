@@ -4,7 +4,7 @@
  * answers (a built index is read without scanning the collection).
  */
 import { createFindByConformanceTests } from "@flow-state-dev/engine/testing";
-import { createPostgresStores } from "../src";
+import { createPostgresStores } from "../src/host";
 import { freshPglite } from "./shared-pglite";
 
 createFindByConformanceTests({

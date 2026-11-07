@@ -18,9 +18,11 @@ import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { ConcurrencyDeferLimitError } from "../../src/transports/errors";
 import {
   createFlowRegistry,
-  createInMemoryStores,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import { createInMemoryLeaseBackend } from "../../src/internal";
 import {
   createInboundTransportHost,

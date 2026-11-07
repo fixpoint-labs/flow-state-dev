@@ -13,7 +13,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createFilesystemStores, createInMemoryStores } from "../src";
+import { createFilesystemStores, createInMemoryStores } from "../src/host";
 import { type SessionRecord, type SessionStore } from "../src/host";
 
 function makeSessionRecord(

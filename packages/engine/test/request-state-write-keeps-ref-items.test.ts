@@ -10,7 +10,8 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { createExecutionContext, createInMemoryStores } from "../src";
+import { createExecutionContext } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 const flow = defineFlow({
   kind: "state-write-keeps-ref-items",

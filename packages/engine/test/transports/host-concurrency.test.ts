@@ -13,9 +13,11 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowRegistry,
-  createInMemoryStores,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import { createInboundTransportHost } from "../../src/host";
 import { ConcurrencyRejectedError } from "../../src/transports/errors";
 import type { ConcurrencyConfig } from "@flow-state-dev/core";

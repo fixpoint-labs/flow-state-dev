@@ -11,7 +11,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createFlowRegistry, defaultBodyUserIdPrincipalResolver } from "@flow-state-dev/engine";
 import { createInboundTransportHost, RequestOwnerMismatchError } from "@flow-state-dev/engine/host";
-import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
+import { createSQLiteStores, type SQLiteStoreRegistry } from "../src/host";
 
 const FLOW = "sqlite-owner-fence";
 const REQUEST_ID = "req_client_chosen";

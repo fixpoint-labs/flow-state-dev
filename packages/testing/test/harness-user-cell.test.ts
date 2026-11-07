@@ -17,7 +17,7 @@ import {
   handler,
 } from "@flow-state-dev/core";
 import type { FlowInstance, ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createTestContext, testFlow } from "../src";
 import { userSeedCell } from "../src/internal/user-cell";
 

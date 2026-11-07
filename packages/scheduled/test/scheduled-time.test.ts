@@ -4,7 +4,7 @@
  * endpoint, here where the clock can sit a second before a scheduled time.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryResourceStateStore } from "@flow-state-dev/engine";
+import { createInMemoryResourceStateStore } from "@flow-state-dev/engine/host";
 import { claimScheduledTime, scheduledTimeOf } from "../src/scheduledTime";
 
 const HOURLY = "0 * * * *";

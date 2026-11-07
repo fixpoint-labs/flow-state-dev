@@ -21,9 +21,11 @@ import {
   continueRequest,
   createCheckpointDurabilityProvider,
   createFlowRegistry,
-  createInMemoryStores,
   runAction
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { approvalGate, approvalGateInput } from "../flows/chat-agent/approval-gate";
 

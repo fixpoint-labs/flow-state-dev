@@ -17,10 +17,12 @@ import {
   continueRequest,
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter,
   runAction
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import type { StoreRegistry } from "../src";
 

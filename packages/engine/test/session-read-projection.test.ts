@@ -12,7 +12,8 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
+import { createFlowApiRouter, createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { SessionRecord } from "../src/host";
 import type { StoreRegistry } from "../src";
 

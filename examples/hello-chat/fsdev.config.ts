@@ -11,15 +11,11 @@
  * (`OPENAI_API_KEY`, etc.) — model strings like "openai/gpt-6-luna" in the flow
  * resolve automatically.
  */
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState } from "@flow-state-dev/engine";
 import helloChatFlow from "./src/flows/hello-chat/flow";
 
 export default createFlowState({
   flows: { helloChat: helloChatFlow },
-  // In-memory stores — this example keeps no state across restarts.
-  // `createFlowState` requires at least one profile, where `createFlowApiRouter`
-  // defaulted to in-memory implicitly.
-  stores: { default: { primary: inMemoryStores() } },
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },

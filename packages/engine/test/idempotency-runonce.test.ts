@@ -20,11 +20,13 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { NetworkError } from "../src/errors/flow-error";
 import {
-  createInMemoryStores,
-  createFilesystemStores,
   runAction,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores,
+  createFilesystemStores
+} from "../src/host";
 import { createResponseEmitter } from "../src/host";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

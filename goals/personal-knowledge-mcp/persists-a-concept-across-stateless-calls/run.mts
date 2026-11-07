@@ -16,7 +16,7 @@
  * Run: pnpm tsx goals/personal-knowledge-mcp/persists-a-concept-across-stateless-calls/run.mts
  */
 import { PGlite } from "@electric-sql/pglite";
-import type { QueryExecutor } from "@flow-state-dev/store-postgres";
+import type { QueryExecutor } from "@flow-state-dev/store-postgres/host";
 import { loadFixture, runGoal } from "../../lib/index.mts";
 
 const SECRET = process.env.KB_MCP_SECRET ?? "goal-check-secret";

@@ -8,7 +8,8 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import { readCommitted } from "@flow-state-dev/core/helpers";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 function flowWith(writable: boolean) {
   const status = defineResource({

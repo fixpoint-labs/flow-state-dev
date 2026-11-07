@@ -8,7 +8,8 @@ import { DEFAULT_ORG_ID, defineFlow, handler, router, sequencer } from "@flow-st
 import type { BlockDefinition } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 /** A step that returns whatever its enclosing block received as input. */
 const readParentInput = () =>

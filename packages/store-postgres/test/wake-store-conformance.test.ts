@@ -5,7 +5,7 @@
  */
 import type { PGlite } from "@electric-sql/pglite";
 import { createWakeStoreConformanceTests } from "@flow-state-dev/engine/testing";
-import { createPostgresWakeStore, initializeSchema, type QueryExecutor } from "../src";
+import { createPostgresWakeStore, initializeSchema, type QueryExecutor } from "../src/host";
 import { freshPglite } from "./shared-pglite";
 
 function pgliteExecutor(pg: PGlite): QueryExecutor {

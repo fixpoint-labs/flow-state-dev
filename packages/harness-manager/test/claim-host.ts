@@ -316,8 +316,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       return ref.steer!(input.id, { message: input.message, from: "user", by: ALICE });
     },
   });

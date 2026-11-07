@@ -27,9 +27,11 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   runAction
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import type { RequestRecord } from "@flow-state-dev/engine/host";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";

@@ -13,7 +13,8 @@ import type { BusTopic, ChangeNotice } from "@flow-state-dev/engine/host";
 import { BUS_CHANNEL, createPostgresBus, type PostgresBus } from "../src/bus";
 import { FakeNotifyNetwork, delay, until } from "./fake-notify-network";
 import type { PGlite } from "@electric-sql/pglite";
-import { createPostgresStores, postgresStores, type QueryExecutor } from "../src";
+import { postgresStores } from "../src";
+import { createPostgresStores, type QueryExecutor } from "../src/host";
 import { freshPglite } from "./shared-pglite";
 
 const TIMINGS = { pingIntervalMs: 20, staleAfterMs: 50, reconnectMinMs: 5, reconnectMaxMs: 20 };

@@ -18,9 +18,11 @@ import {
 import {
   createExecutionContext,
   createFlowRegistry,
-  createInMemoryStores,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { ValidationError } from "../src/errors/flow-error";
 import { handleCreateCollectionItem } from "../src/routes/resource-routes";
 import type { SessionRecord } from "../src/stores/types";

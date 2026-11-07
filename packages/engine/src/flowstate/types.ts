@@ -20,7 +20,7 @@ import type {
   InProcessPrincipal,
   InProcessPrincipalQuestion
 } from "../transports/host/createInboundTransportHost";
-import type { CapabilitySlot, StoresConfig } from "../stores/store-adapter";
+import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { RuntimeConfig } from "../runtime-config";
@@ -132,11 +132,16 @@ export interface CreateFlowStateOptions<
   voice?: FlowStateVoiceConfig;
 
   /**
-   * Named stores profiles, each a map of capability slots. At least one
-   * profile must be declared. Single-profile users typically use
-   * `{ default: ... }`.
+   * Where the app keeps its data. Three shapes:
+   *
+   * - omitted: in memory, as the `default` profile. Nothing persists across a
+   *   restart; startup says so, and production warns.
+   * - one adapter (`sqliteStores({ filename })`): the `default` profile's
+   *   `primary`, exactly `{ default: { primary: adapter } }`.
+   * - named profiles, each a map of capability slots, for an app that picks a
+   *   store per environment (`defaultProfile`, `FSD_ENV`). At least one.
    */
-  stores: StoresConfig;
+  stores?: StoreAdapter | StoresConfig;
 
   /**
    * Which profile is active at runtime. Resolution chain (first match wins):

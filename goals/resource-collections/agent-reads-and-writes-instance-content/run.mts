@@ -22,7 +22,8 @@ import {
 } from "@flow-state-dev/core";
 import { z } from "zod";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createModelResolver } from "@flow-state-dev/core";
 import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import {

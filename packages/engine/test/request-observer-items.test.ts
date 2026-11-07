@@ -8,7 +8,8 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { parseBlockInstanceId } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
+import { createFlowApiRouter, createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 type Hook = "request.onStarted" | "request.onCompleted" | "request.onFinished" | "action.onCompleted";
 type Item = { type: string; role?: string; content?: Array<{ text?: string }>; blockName?: string; provenance?: { blockInstanceId?: string } };

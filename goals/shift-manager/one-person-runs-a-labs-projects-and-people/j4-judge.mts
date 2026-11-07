@@ -23,7 +23,8 @@
  * judge runs it (FIX-1866 D4).
  */
 import { choice, defineFlow, evaluator, DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createModelResolver } from "@flow-state-dev/core";
 import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import { z } from "zod";

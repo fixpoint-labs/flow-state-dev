@@ -24,7 +24,7 @@
  * Run via `pnpm --filter @flow-state-dev/kitchen-sink migrate` or as part of
  * `vercel-build`.
  */
-import { createPostgresStores } from "@flow-state-dev/store-postgres";
+import { createPostgresStores } from "@flow-state-dev/store-postgres/host";
 
 const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
 if (!dbUrl) {

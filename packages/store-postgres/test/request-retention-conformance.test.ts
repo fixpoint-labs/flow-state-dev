@@ -16,7 +16,7 @@ import {
   createPostgresStores,
   initializeSchema,
   type QueryExecutor
-} from "../src";
+} from "../src/host";
 import { freshPglite } from "./shared-pglite";
 
 function pgliteExecutor(pglite: PGlite): QueryExecutor {

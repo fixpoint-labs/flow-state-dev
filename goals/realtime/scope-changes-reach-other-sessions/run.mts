@@ -37,10 +37,12 @@ import { createClient } from "@flow-state-dev/client";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   runAction,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import {
   FlowProvider,

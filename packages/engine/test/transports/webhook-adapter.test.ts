@@ -9,9 +9,11 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { createInboundTransportConformanceTests } from "@flow-state-dev/testing/conformance";
 import {
   createFlowApiRouter,
-  createFlowRegistry,
-  createInMemoryStores
+  createFlowRegistry
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import { createInboundTransportHost } from "../../src/host";
 import {
   createWebhookTransportAdapter,

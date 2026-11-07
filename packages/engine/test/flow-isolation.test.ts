@@ -17,9 +17,11 @@ import { CrossFlowSchemaConflictError } from "../src/registry/errors";
 import {
   createExecutionContext,
   createFlowRegistry,
-  createInMemoryStores,
   resolveUserStorageKey
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { resolveOrgStorageKey } from "../src/stores/scope-keys";
 import { resolveResourceScopeId } from "../src/stores/scope-keys";
 import { resourceStorageKeys } from "../src/resources/storage-keys";

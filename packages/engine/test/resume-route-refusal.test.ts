@@ -21,7 +21,8 @@ vi.mock("../src/durability/resume-under-lease", () => ({
   }
 }));
 
-import { createFlowRegistry, createInMemoryStores } from "../src";
+import { createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
 import type { ResolvedPrincipal } from "../src/transports/types";

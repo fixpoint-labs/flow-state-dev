@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler, type FlowStateSettings } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createInMemoryStores, runAction } from "../../src";
+import { runAction } from "../../src";
+import { createInMemoryStores } from "../../src/host";
 
 /**
  * Build a flow whose single handler captures `ctx.settings` into the

@@ -20,9 +20,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { GeneratorModel, ResponseEmitterHandle } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
-  createInMemoryStores,
   executeBlock
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { createResponseEmitter } from "../src/host";
 
 describe("untyped response fallback", () => {

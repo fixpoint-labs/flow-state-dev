@@ -15,9 +15,11 @@ import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import {
   createInMemoryBus,
   withChangeBus,

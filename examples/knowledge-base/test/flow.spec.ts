@@ -15,9 +15,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  disposeFlowApiRouter,
+  disposeFlowApiRouter
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { createMcpTransportAdapter } from "@flow-state-dev/mcp";
 import knowledgeFlow from "../src/flow";
 

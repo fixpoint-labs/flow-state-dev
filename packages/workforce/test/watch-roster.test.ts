@@ -18,7 +18,7 @@
  * - after stop, nothing reports and the subscription is closed.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createClient, type SubscribeOptions, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { createWorkforceClient, type RosterEntry } from "../src/workers/client";
 import { bootHost, FIXTURE } from "./worker-model-harness";

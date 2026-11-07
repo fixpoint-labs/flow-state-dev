@@ -10,11 +10,13 @@ import { z } from "zod";
 import {
   createCheckpointDurabilityProvider,
   createFlowRegistry,
-  createInMemoryStores,
   createFlowApiRouter,
   defaultBodyUserIdPrincipalResolver,
   PrincipalResolutionError
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import {
   createInboundTransportHost,
   createResponseEmitter,

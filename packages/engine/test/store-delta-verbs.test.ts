@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { createInMemorySessionStore } from "../src";
+import { createInMemorySessionStore } from "../src/host";
 import { type SessionRecord, type SessionStore } from "../src/host";
 
 function makeSession(

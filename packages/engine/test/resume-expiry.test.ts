@@ -7,7 +7,8 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createFlowRegistry, createInMemoryStores } from "../src";
+import { createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
 import type { SuspensionRecord } from "@flow-state-dev/core/types";

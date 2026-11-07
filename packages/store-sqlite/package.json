@@ -30,6 +30,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "default": "./src/host.ts"
     }
   },
   "license": "MIT",
@@ -45,6 +49,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./host": {
+        "types": "./dist/host.d.ts",
+        "default": "./dist/host.js"
       }
     }
   },

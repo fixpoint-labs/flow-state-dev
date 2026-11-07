@@ -19,7 +19,8 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { createExecutionContext, createInMemoryStores } from "@flow-state-dev/engine";
+import { createExecutionContext } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { conceptCollection, type ConceptState } from "../src/concepts";
 import { importOkf, exportOkf, parseOkfBundle, OKF_VERSION } from "../src/okf/index";
 
