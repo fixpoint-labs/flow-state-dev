@@ -20,7 +20,7 @@ import {
 } from "@flow-state-dev/engine";
 import type { RuntimeConfig } from "@flow-state-dev/engine/host";
 import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
-import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
+import { ITEM_UPDATE_INVARIANT_KEYS, type OutputItem, type RequestStreamEvent } from "@flow-state-dev/core/items";
 
 /** A route's refusal of an answer, as a screen would be told it. */
 export class StopRefusedError extends Error {
@@ -113,8 +113,13 @@ async function itemsOf(res: Response): Promise<OutputItem[]> {
     }
     if (event.type === "item.added" || event.type === "item.done") byId.set(event.item.id, event.item);
     else if (event.type === "item.updated") {
+      // Merged as the client merges it: identity keys in a patch are ignored.
       const current = byId.get(event.itemId);
-      if (current !== undefined) byId.set(event.itemId, { ...current, ...event.patch } as OutputItem);
+      if (current === undefined) continue;
+      const patch = Object.fromEntries(
+        Object.entries(event.patch).filter(([key]) => !(ITEM_UPDATE_INVARIANT_KEYS as readonly string[]).includes(key))
+      );
+      byId.set(event.itemId, { ...current, ...patch } as OutputItem);
     }
   }
   return [...byId.values()].sort((a, b) => a.itemIndex - b.itemIndex);
