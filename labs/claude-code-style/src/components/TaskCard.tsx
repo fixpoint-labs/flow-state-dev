@@ -3,7 +3,7 @@ import { TASK_STATUS, taskSignalTone } from "../lib/task-status";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
 import { TaskTime } from "./flow-state/task-signals";
-import { harnessLabelOf } from "./ThreadStatus";
+import { harnessLabelOf, pullRequestOpenLine, waitsOnPullRequest } from "./ThreadStatus";
 
 /*
  * A background task as a list shows it: a full card while it runs or waits,
@@ -12,6 +12,7 @@ import { harnessLabelOf } from "./ThreadStatus";
  * says *quiet* once its run stopped answering; a finished row says how long
  * ago it ended (the registry's `task-signals`, at the list's `now`). While the
  * list's read is `stale`, a running card never says *quiet*: its rows may be old.
+ * A task waiting on its pull request says *PR open · #7*; its view has the link.
  */
 
 /** A running or waiting task, at full size. */
@@ -34,6 +35,8 @@ export function TaskCard({ task, selected, onOpen, now, stale = false }: { task:
           {task.view === undefined ? status.label : <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={taskSignalTone} fallback={status.label} />}
           {task.statusNote ? ` · "${task.statusNote}"` : ""}
         </span>
+        {/* Plain words: the card is a button, and the link is in the task's view. */}
+        {waitsOnPullRequest(task) ? <span className="block truncate text-xs text-muted-foreground" data-testid="pull-request-wait">{pullRequestOpenLine(task)}</span> : null}
         {task.assignee ? <span className="block text-xs text-muted-foreground">{task.assignee}</span> : null}
         <Spend spend={task.spend} harnessLabel={harnessLabelOf(task)} />
       </span>

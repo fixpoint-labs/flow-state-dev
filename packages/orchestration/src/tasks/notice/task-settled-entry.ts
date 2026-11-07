@@ -200,8 +200,7 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
     name: "task-settled-admit",
     inputSchema: entryInputSchema,
     outputSchema: admittedSchema,
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (input, ctx) => {
       if (!("taskId" in input)) {
         // A wake: pay every delegating ledger this flow declares, at this
         // session's partition. A scan of each, which is fine at a session's
@@ -254,8 +253,7 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
     name: "task-settled-acknowledge",
     inputSchema: admittedSchema,
     outputSchema: z.object({}),
-    execute: async (admitted, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (admitted, ctx) => {
       const notice = admitted.notice as TaskNotice;
       const board = await boardOf(ctx, notice.boardId);
       await board?.ref.patchMetadata(notice.taskId, clearNotice(notice));

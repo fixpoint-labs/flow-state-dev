@@ -2,7 +2,7 @@ import { useSubmit } from "@flow-state-dev/react";
 import type { LabAdapter, TaskRow } from "../adapter";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
-import { HarnessTag, statusColumn, statusLine, ThreadIcon } from "./ThreadStatus";
+import { HarnessTag, PullRequestOpen, statusColumn, statusLine, ThreadIcon, waitsOnPullRequest } from "./ThreadStatus";
 
 /**
  * A compact task card in the main thread, where the lead's `createTask`
@@ -62,7 +62,11 @@ function LoadedThreadCard({
           <span className="truncate text-sm font-semibold">{task.title}</span>
           <HarnessTag task={task} />
         </div>
-        <div className="truncate text-xs text-muted-foreground">{statusLine(task)}</div>
+        {waitsOnPullRequest(task) ? (
+          <PullRequestOpen task={task} className="block" />
+        ) : (
+          <div className="truncate text-xs text-muted-foreground">{statusLine(task)}</div>
+        )}
         <Spend spend={task.spend} />
         {column === "waiting" || column === "review" ? (
           <div className="mt-1.5 flex gap-1.5">

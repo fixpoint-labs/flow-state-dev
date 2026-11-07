@@ -135,8 +135,8 @@ export function historySummary(options: HistorySummaryOptions) {
       default: ["context", "history"],
       context: {
         context: (_input: unknown, ctx: any) => {
-          const state = stateOf(ctx as BlockContext);
-          const window = (ctx as BlockContext).session?.window;
+          const state = stateOf(ctx);
+          const window = ctx.session?.window;
           if (window?.startRequestId !== undefined && state.attempts === 0) {
             throw new Error(
               `historySummary "${name}": turns have left the history window and no fold has run. ` +
@@ -165,7 +165,7 @@ export function historySummary(options: HistorySummaryOptions) {
     execute: async (_input, ctx): Promise<FoldPlan | null> => {
       const window = ctx.session.window;
       if (window === undefined) return null;
-      const state = stateOf(ctx as BlockContext);
+      const state = stateOf(ctx);
       const quarter = Math.max(1, Math.floor(window.turns / 4));
 
       // Turns that left open earlier: fold the ones that have settled since.
@@ -268,7 +268,7 @@ export function historySummary(options: HistorySummaryOptions) {
           : output.summary;
       const decided = ctx.getBlockOutput(plan) as FoldPlan | null | undefined;
       if (decided == null) return;
-      await update(ctx as BlockContext, (state) =>
+      await update(ctx, (state) =>
         // Another turn of this conversation folded first: keep its write.
         state.folds !== decided.expectedFolds
           ? state
@@ -298,7 +298,7 @@ export function historySummary(options: HistorySummaryOptions) {
       // that may never succeed: the oldest unfolded turn, so its leaving is
       // seen, and any turns already lost.
       const decided = ctx.getBlockOutput(plan) as FoldPlan | null | undefined;
-      await update(ctx as BlockContext, (state) =>
+      await update(ctx, (state) =>
         decided == null || state.folds !== decided.expectedFolds
           ? { ...state, attempts: state.attempts + 1 }
           : {

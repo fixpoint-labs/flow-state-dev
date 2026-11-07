@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
-import type { BenchmarkDefinition } from "@flow-state-dev/testing";
+import type { BenchmarkDefinition } from "@flow-state-dev/testing/benchmark";
 import {
   buildBenchmarkRun,
   loadBenchmarkDefinition,

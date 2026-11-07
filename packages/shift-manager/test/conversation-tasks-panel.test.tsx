@@ -49,7 +49,7 @@ async function hear(notice: WireNotice | null) {
   });
 }
 vi.mock("../src/lib/conversation-tasks", async (importOriginal) => ({
-  conversationBoardTopics: (await importOriginal<typeof import("../src/lib/conversation-tasks")>()).conversationBoardTopics,
+  ...(await importOriginal<typeof import("../src/lib/conversation-tasks")>()),
   readConversationTasks: async (_c: unknown, flow: string, sessionId: string) => {
     calls.push(`list ${flow} ${sessionId}`);
     if (refusal !== null) throw new Error(refusal);

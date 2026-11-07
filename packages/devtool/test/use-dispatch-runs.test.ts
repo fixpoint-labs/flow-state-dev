@@ -29,7 +29,7 @@ vi.mock("../src/react/context/devtool-context", () => ({
 }));
 
 import { useDispatchRuns } from "../src/react/hooks/use-dispatch-runs";
-import { useReadFence } from "@flow-state-dev/react";
+import { useReadFence } from "@flow-state-dev/react/internal";
 
 function row(id: string, overrides: Partial<ChildSessionSummary> = {}): ChildSessionSummary {
   return {

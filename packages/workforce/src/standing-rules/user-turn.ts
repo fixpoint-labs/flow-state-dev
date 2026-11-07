@@ -63,7 +63,7 @@ export const markUserTurnStep = handler({
   outputSchema: z.object({}),
   requestStateSchema: userTurnStateSchema,
   execute: async (_input, ctx) => {
-    await markUserTurn(ctx as never);
+    await markUserTurn(ctx);
     return {};
   }
 });

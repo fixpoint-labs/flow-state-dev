@@ -34,6 +34,7 @@ export default defineConfig({
       "@flow-state-dev/engine/host": resolve(root, "packages/engine/src/host.ts"),
       "@flow-state-dev/engine/internal": resolve(root, "packages/engine/src/internal.ts"),
       "@flow-state-dev/engine": resolve(root, "packages/engine/src/index.ts"),
+      "@flow-state-dev/testing/benchmark": resolve(root, "packages/testing/src/benchmark/index.ts"),
       "@flow-state-dev/testing": resolve(root, "packages/testing/src/index.ts"),
     },
   },

@@ -70,13 +70,13 @@
     }
   ],
   "expect": {
-    "surface.root.core": "fail",
+    "surface.root.core": "pass",
     "surface.root.engine": "fail",
     "surface.root.client": "pass",
     "surface.root.react": "fail",
-    "surface.root.testing": "fail",
+    "surface.root.testing": "pass",
     "surface.root.orchestration": "pass",
-    "surface.root.patterns": "fail",
+    "surface.root.patterns": "pass",
     "surface.root.claude-code": "pass",
     "surface.root.codex": "fail",
     "surface.root.cursor": "fail",
@@ -85,7 +85,7 @@
     "surface.root.workforce": "pass",
     "surface.collisions": "fail",
     "surface.core-installed-dts": "pass",
-    "onepath.output-read": "fail",
+    "onepath.output-read": "pass",
     "first-hour.quickstart": "fail",
     "first-hour.example.hello-chat.typecheck": "fail",
     "first-hour.example.hello-chat.test": "fail",
@@ -99,7 +99,7 @@
     "shims.never-published": "pass",
     "shims.human-approval-throws": "pass",
     "shims.stored-human-approval": "pass",
-    "types.typed-handler": "fail",
+    "types.typed-handler": "pass",
     "types.fresh-session-default": "pass"
   },
   "ratchets": {

@@ -5,7 +5,7 @@ argument-hint: "<block or file to test, e.g. 'packages/core/src/utility/summariz
 ---
 
 You are writing the **conventions reference** for block and pattern tests — mock
-context, `mockGenerator`, `testBlock` / `testSequencer` / `testRouter`, and the
+context, `mockGenerator`, `testBlock`, and the
 coverage checklist. The red-green-refactor **loop** is [`tdd`](../tdd/SKILL.md).
 Do not re-teach vertical slices, goal checks, or when to skip TDD here; point at
 that skill.
@@ -52,13 +52,12 @@ import { z } from "zod";
 // For unit tests (core package blocks):
 import { createMockContext } from "./helpers";
 // For integration tests (patterns, cross-package):
-import { testBlock, testSequencer, testRouter } from "@flow-state-dev/testing";
+import { testBlock } from "@flow-state-dev/testing";
 // For scripted generator responses in multi-step tests:
 import { mockGenerator } from "@flow-state-dev/testing";
 ```
 
-- `testSequencer(seq, options)` — returns `TestSequencerResult` with `.steps: StepTrace[]` for inspecting step-by-step execution
-- `testRouter(router, options)` — returns `TestRouterResult` with `.selectedRoute: string`
+- `testBlock(block, options)` — one helper for every block kind. A sequencer's result also carries `.steps: StepTrace[]`, `.sideChainResults` and `.loopIterations` for inspecting step-by-step execution; a router's carries `.selectedRoute`, the chosen route's name
 - `mockGenerator({ name, script })` — creates a generator with scripted responses. Plain entries (`{ text }`, `{ structuredOutput }`, `{ toolCalls }`) consume sequentially, one per call. Predicate entries (`{ when: (input) => boolean, then: ... }`) match by input and stay matchable on every call — use these for concurrent workers (supervisor, parallel plan-and-execute) where call ordering isn't guaranteed.
 
 **Tier 1 vs unit tests.** If the test exercises a whole flow through `runAction` (pattern factory wiring, claim systems, dispatcher loops, multi-pattern interactions, session resume), it belongs in `packages/integration-tests/src/scenarios/`, not the producing package's `test/` directory. Use `testFlow` there. See `apps/docs/docs/testing/flow-integration-tests.md` for the authoring pattern. Keep this skill's scope to single-block / single-router / single-sequencer tests.
@@ -228,7 +227,7 @@ it("exits early when exitIf condition is met", async () => {
     .exitIf((input) => input.done, { output: { skipped: true } })
     .step(expensiveBlock);
 
-  const result = await testSequencer(chain, { input: { done: true } });
+  const result = await testBlock(chain, { input: { done: true } });
   expect(result.output).toEqual({ skipped: true });
   // expensiveBlock should never execute
   expect(result.steps).toHaveLength(1);
@@ -238,7 +237,7 @@ it("runs parallel branches with stepAll", async () => {
   const chain = seq({ name: "parallel", inputSchema: z.any() })
     .stepAll([branchA, branchB]);
 
-  const result = await testSequencer(chain, { input: {} });
+  const result = await testBlock(chain, { input: {} });
   expect(result.steps).toHaveLength(1); // stepAll is one step
   expect(result.output).toHaveProperty("branchA");
   expect(result.output).toHaveProperty("branchB");
@@ -249,7 +248,7 @@ it("conditionally runs background work", async () => {
     .sideChainIf((input) => input.needsCleanup, cleanupBlock)
     .step(mainBlock);
 
-  const result = await testSequencer(chain, { input: { needsCleanup: false } });
+  const result = await testBlock(chain, { input: { needsCleanup: false } });
   // cleanupBlock should be skipped
   expect(result.steps.find(s => s.name === "cleanup")).toBeUndefined();
 });
@@ -275,14 +274,14 @@ it("follows a multi-step plan", async () => {
     .step(mock)  // second call returns step 1
     .step(mock); // third call returns step 2
 
-  const result = await testSequencer(chain, { input: {} });
+  const result = await testBlock(chain, { input: {} });
   expect(result.steps).toHaveLength(3);
 });
 ```
 
-#### F. Pattern Tests (using testBlock / testSequencer)
+#### F. Pattern Tests (using testBlock)
 
-Patterns use `testBlock` from `@flow-state-dev/testing` for integration-level tests. When you need step-level inspection (which sub-blocks ran, in what order, what each produced), use `testSequencer` instead:
+Patterns use `testBlock` from `@flow-state-dev/testing` for integration-level tests. When you need step-level inspection (which sub-blocks ran, in what order, what each produced), read `steps` off a sequencer's result:
 
 ```typescript
 it("runs to completion", async () => {
@@ -295,12 +294,12 @@ it("runs to completion", async () => {
 });
 ```
 
-**Step-level inspection with testSequencer**:
+**Step-level inspection with testBlock**:
 
 ```typescript
 it("executes steps in correct order", async () => {
   const pattern = myPattern({ name: "test" });
-  const result = await testSequencer(pattern, { input: { query: "test" } });
+  const result = await testBlock(pattern, { input: { query: "test" } });
   expect(result.steps.map(s => s.name)).toEqual(["plan", "execute", "summarize"]);
   expect(result.steps[0].output).toMatchObject({ plan: expect.any(Array) });
 });

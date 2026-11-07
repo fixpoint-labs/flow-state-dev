@@ -189,8 +189,8 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
   // finished run worked in and the session it confirmed. Outside any
   // attempt, so it records no session of its own.
   const talkHarness: HarnessBlock = options.harness({
-    cwd: (ctx) => stateOf(ctx as never).cwd ?? "",
-    resume: (ctx) => stateOf(ctx as never).resume,
+    cwd: (ctx) => stateOf(ctx).cwd ?? "",
+    resume: (ctx) => stateOf(ctx).resume,
     onSession: () => undefined,
     // A talk is one turn the person waits on: a line while it runs is its own talk.
     onSteerable: () => undefined,
@@ -237,9 +237,9 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
     outputSchema: harnessTalkOutputSchema,
     sequencerStateSchema: talkStateSchema,
     execute: async (value, ctx) => {
-      releaseTalkLease(ctx as never);
+      releaseTalkLease(ctx);
       const handle = value as { finalMessage?: string | null };
-      return { reply: handle.finalMessage ?? null, taskId: stateOf(ctx as never).taskId ?? "" };
+      return { reply: handle.finalMessage ?? null, taskId: stateOf(ctx).taskId ?? "" };
     },
   });
 
@@ -255,7 +255,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
           outputSchema: z.unknown(),
           sequencerStateSchema: talkStateSchema,
           execute: (error: unknown, ctx) => {
-            releaseTalkLease(ctx as never);
+            releaseTalkLease(ctx);
             throw error;
           },
         }),
@@ -288,7 +288,7 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
       const row = board === undefined ? undefined : sessionRow(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
       if (isTerminalStatus(row.status)) return { talk: input.message };
-      const refused = await steerFromLine(board.tasks, row.id, input.message, ctx as never);
+      const refused = await steerFromLine(board.tasks, row.id, input.message, ctx);
       if (refused !== undefined) throw new SessionDoorRefused(refused);
       const after = board.tasks.get(row.id);
       // A line that answered the task's last open question owes it its turn too (FIX-2133).

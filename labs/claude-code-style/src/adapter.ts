@@ -21,7 +21,9 @@
  * |                 | is the session's requests, read on each request notice                     |
  * | `watchTasks`    | the conversation board's `listTasks` read, and the rows' open holds        |
  * |                 | again on each notice of the board, through `client.subscribe`; a failed   |
- * |                 | row's error from its `getTask`, once per attempt                           |
+ * |                 | row's error from its `getTask`, once per attempt; a row waiting on its pull |
+ * |                 | request (harness-manager's `pullRequestWait`), with each one's link from its |
+ * |                 | run session's pull-request record                                            |
  * | `watchTaskWork` | the items of a task's run session, followed through `sessionFeed`, with   |
  * |                 | its `loadEarlier` too, from the moment the board's read names that session; |
  * |                 | while the task runs, the tool call in flight (the UI registry's            |
@@ -53,7 +55,15 @@ import {
   taskRowView,
 } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
-import { readRecordedWork, reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import {
+  pullRequestWait,
+  readSessionPullRequests,
+  readRecordedWork,
+  reviewDetail,
+  type PullRequestRecordRow,
+  type PullRequestWaitRow,
+  type ReviewDetail,
+} from "@flow-state-dev/harness-manager/browser";
 import {
   createWorkforceClient,
   delegateAnswerOf,
@@ -168,6 +178,13 @@ export interface TaskRow {
   waitingOn?: { kind: "approval" | "input" | "review" | "question"; prompt: string };
   /** The coding harness the assignee runs through, from its `harness` setting; none for a plain worker. */
   harness?: string;
+  /**
+   * The pull requests the task waits on to merge or close (harness-manager's
+   * `awaitPullRequests`): its run is done and its work is not, so it stays
+   * open. Each with its link when its run session's record has one. Absent
+   * while it waits on none.
+   */
+  pullRequests?: { number: number | null; url: string | null; title: string | null }[];
   /**
    * How a harness run's review ended, from its output: `accepted` when you
    * resolved it, `deadline` when nobody answered by the review deadline
@@ -688,10 +705,9 @@ export function createWiredLab(fsd: Client): LabAdapter {
   /** Run one action in a session and hand back its output, or throw why it failed. */
   const run = async (flow: string, sessionId: string, action: string, input: unknown): Promise<any> => {
     const started = await fsd.flow(flow).send(action, input, { sessionId });
-    const { status } = await started.wait();
-    const found = (await fsd.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === started.id);
-    if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}`);
-    const output = found?.result?.output as { ok?: boolean; error?: string } | undefined;
+    const { status, error, output: answered } = await started.result();
+    if (status !== "completed") throw new Error(error?.message ?? `${action} ended ${status}`);
+    const output = answered as { ok?: boolean; error?: string } | undefined;
     if (output?.ok === false) throw new Error(output.error);
     return output;
   };
@@ -951,6 +967,34 @@ export function createWiredLab(fsd: Client): LabAdapter {
     );
   };
 
+  /**
+   * The rows of a run session's pull-request record (`readSessionPullRequests`), read once per
+   * wait: `key` is the wait's hold id, which a new wait replaces, so a later run's pull request is
+   * read then and the board's poll reads nothing more. A read that fails is tried again on the next
+   * poll; until one succeeds the wait shows its numbers, without links.
+   */
+  const pullRequestReads = new Map<string, Promise<PullRequestRecordRow[]>>();
+  const pullRequestRecords = async (runSession: string, key: string): Promise<PullRequestRecordRow[]> => {
+    try {
+      return await (pullRequestReads.get(key) ?? keptUnlessFailed(pullRequestReads, key, readSessionPullRequests(fsd, runSession)));
+    } catch (cause) {
+      console.warn(`[claude-code-style] couldn't read the pull requests of run session ${runSession}:`, cause);
+      return [];
+    }
+  };
+
+  /** What a listed task's open pull-request wait reads, or `undefined` when it waits on none. */
+  const waitOf = (task: Listed, records: readonly PullRequestRecordRow[] = []) =>
+    pullRequestWait({ status: task.status, holds: (task.holds ?? []) as unknown as PullRequestWaitRow["holds"] }, records);
+
+  /** The pull requests a listed task waits on, each with its link from its run session's record; `undefined` when it waits on none. */
+  const pullRequestsOf = async (task: Listed): Promise<TaskRow["pullRequests"]> => {
+    const wait = waitOf(task);
+    if (wait === null) return undefined;
+    const records = task.runSessionId === undefined ? [] : await pullRequestRecords(task.runSessionId, `${task.runSessionId}#${wait.holdId}`);
+    return waitOf(task, records)?.pullRequests.map(({ number, url, title }) => ({ number, url, title }));
+  };
+
   /** Session `sessionId`'s board, bound once its flow is known: every task change goes through it. */
   const boardAt = async (sessionId: string): Promise<BoardActions> =>
     inbox.board({ flowId: await flowOfSession(sessionId), sessionId, board: TASKS_BOARD });
@@ -966,10 +1010,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
         const harness = task.spend?.harness ?? (await harnessOf(task));
         const review = harness !== undefined && row.status === "completed" ? await reviewOf(sessionId, task) : undefined;
         const error = row.status === "errored" ? await errorOf(sessionId, task) : undefined;
+        const pullRequests = await pullRequestsOf(task);
         return {
           ...row,
           ...(Object.keys(run).length === 0 ? {} : { run }),
           ...(harness === undefined ? {} : { harness }),
+          ...(pullRequests === undefined ? {} : { pullRequests }),
           ...(review === undefined ? {} : { review }),
           ...(error === undefined ? {} : { error }),
         };

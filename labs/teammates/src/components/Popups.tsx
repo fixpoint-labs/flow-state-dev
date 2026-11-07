@@ -56,6 +56,51 @@ function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly WorkerRow[])
   return coders.filter((w) => w.takesTasks && w.harness !== undefined && w.harness !== own);
 }
 
+/** The line a task waiting on its pull request offers, while nothing tells it of a merge. */
+export const PULL_REQUEST_HINT = "Merged? Say so here and I'll check.";
+
+/**
+ * *PR open · #7*, each number a link to its pull request once its run
+ * session's record is read, and the line that says how to wake the task.
+ */
+export function PullRequestOpen({ adapter, task }: { adapter: LabAdapter; task: BoardTask }) {
+  const [links, setLinks] = useState<ReadonlyMap<number, string>>(new Map());
+  const numbers = (task.pullRequests ?? []).flatMap((pr) => (pr.number === null ? [] : [pr.number]));
+  const key = numbers.join(",");
+  useEffect(() => {
+    if (task.runSessionId === undefined) return;
+    let current = true;
+    void adapter.readPullRequests(task.runSessionId).then((rows) => {
+      if (current) setLinks(new Map(rows.map((row) => [row.number, row.url])));
+    });
+    return () => {
+      current = false;
+    };
+  }, [adapter, task.runSessionId, key]);
+  return (
+    <section aria-label="Pull request" data-step="pull-request" className="flex flex-col gap-0.5 text-sm">
+      <span data-testid="pull-request-wait">
+        PR open
+        {numbers.map((n, i) => (
+          <span key={n}>
+            {i === 0 ? " · " : ", "}
+            {links.has(n) ? (
+              <a href={links.get(n)} target="_blank" rel="noreferrer" className="underline">
+                #{n}
+              </a>
+            ) : (
+              `#${n}`
+            )}
+          </span>
+        ))}
+      </span>
+      <span data-testid="pull-request-hint" className="text-xs text-muted-foreground">
+        {PULL_REQUEST_HINT}
+      </span>
+    </section>
+  );
+}
+
 /** How a sent message stands. */
 export type AnswerState = "working" | "replied" | "no answer";
 
@@ -149,9 +194,12 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
     ) : task && waiting === "question" ? (
       <TaskQuestion adapter={adapter} sessionId={popup.sessionId} task={task} />
     ) : null;
-  const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : task?.status;
+  const waitsOnPullRequest = task?.boardStatus === "in_progress" && task.pullRequests !== undefined;
+  const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : waitsOnPullRequest ? "PR open" : task?.status;
   return (
     <SessionOverlay variant="modal" label={line} title={title} status={status} onClose={onClose} footer={pinned}>
+      {/* Its run is done and its work is a pull request: open until it merges or closes. The Steer box wakes it to check. */}
+      {task !== undefined && waitsOnPullRequest ? <PullRequestOpen adapter={adapter} task={task} /> : null}
       {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
       {/* What a coding task's runs spent, in and out apart, with the vendor's charge when it reported one. */}
       {task?.spend && isCoding(task.to) ? (
@@ -192,7 +240,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
         </section>
       ) : null}
       {/* The live line ends the feed while it runs: until its first step, the line above says it is starting; a task waiting on you isn't working. */}
-      {task?.status === "running" && task.waiting === undefined && task.runSessionId !== undefined && steps.length > 0 ? (
+      {task?.status === "running" && task.waiting === undefined && !waitsOnPullRequest && task.runSessionId !== undefined && steps.length > 0 ? (
         <WorkingLine adapter={adapter} task={task} runSessionId={task.runSessionId} />
       ) : null}
     </SessionOverlay>

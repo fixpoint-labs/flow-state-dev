@@ -328,10 +328,9 @@ describe("a task held on questions (row holds, FIX-2133)", () => {
   describe("the answer, through the board's updateTask on the board's session", () => {
     const board = (output: unknown) => {
       const send = vi.fn(async () => ({ id: "req_answer" }));
-      const wait = vi.fn(async () => ({ status: "completed" }));
-      const flow = vi.fn(() => ({ send, request: () => ({ wait }) }));
-      const requests = vi.fn(async () => [{ id: "req_answer", result: { output } }]);
-      return { send, flow, inbox: createInboxClient({ flow, sessions: { requests } } as unknown as Client) };
+      const result = vi.fn(async () => ({ status: "completed", output }));
+      const flow = vi.fn(() => ({ send, request: () => ({ result }) }));
+      return { send, flow, inbox: createInboxClient({ flow } as unknown as Client) };
     };
 
     it("a question's words go as its message, naming the question, on the board's own session", async () => {
@@ -424,22 +423,24 @@ describe("a board's task actions: inbox.board(at)", () => {
   /** A client whose board answers `output`, the request listed on page `onPage` (from 0) of the session's requests. */
   const boardClient = (
     output: unknown,
-    { status = "completed", onPage = 0, sendError }: { status?: string; onPage?: number; sendError?: Error } = {},
+    { status = "completed", notRecorded = false, sendError }: { status?: string; notRecorded?: boolean; sendError?: Error } = {},
   ) => {
     const send = vi.fn(async () => {
       if (sendError !== undefined) throw sendError;
       return { id: "req_act" };
     });
-    const wait = vi.fn(async () => ({ status }));
-    const flow = vi.fn(() => ({ send, request: () => ({ wait }) }));
-    const filler = (page: number) => Array.from({ length: 100 }, (_, i) => ({ id: `other_${page}_${i}` }));
-    const requests = vi.fn(async (_session: string, { offset = 0 }: { offset?: number }) => {
-      const page = offset / 100;
-      if (page < onPage) return filler(page);
-      const error = status === "failed" ? { error: { message: "the action failed" } } : {};
-      return page === onPage ? [{ id: "req_act", result: { output, ...error } }] : [];
+    // The answer is read by the request's id; the session's listing is never consulted.
+    const result = vi.fn(async () => ({
+      status,
+      ...(notRecorded ? { outputNotRecorded: true } : output !== undefined ? { output } : {}),
+      ...(status === "failed" ? { error: { code: "execution_error", message: "the action failed" } } : {}),
+    }));
+    const request = vi.fn((_id: string) => ({ result }));
+    const flow = vi.fn(() => ({ send, request }));
+    const requests = vi.fn(async () => {
+      throw new Error("the board's answer must be read by request id, not by listing the session");
     });
-    return { send, flow, requests, actions: createInboxClient({ flow, sessions: { requests } } as unknown as Client).board(AT) };
+    return { send, flow, request, result, actions: createInboxClient({ flow, sessions: { requests } } as unknown as Client).board(AT) };
   };
 
   it("names the board's own action and builds its payload, on the board's session", async () => {
@@ -479,18 +480,19 @@ describe("a board's task actions: inbox.board(at)", () => {
     ]);
   });
 
-  it("finds its answer past the first page of the session's requests", async () => {
-    const { actions, requests } = boardClient({ ok: true, cancelled: ["t4"] }, { onPage: 2 });
+  it("reads its answer by the request's id, however long the session is", async () => {
+    const { actions, request, result } = boardClient({ ok: true, cancelled: ["t4"] });
     expect(await actions.cancel("t1")).toEqual(["t4"]);
-    expect(requests.mock.calls.map((call) => (call as unknown[])[1])).toMatchObject([{ offset: 0 }, { offset: 100 }, { offset: 200 }]);
+    expect(request).toHaveBeenCalledWith("req_act");
+    expect(result).toHaveBeenCalledWith({ pollMs: 150, timeoutMs: 30_000 });
   });
 
-  it("rejects the board's refusal with its words, a failed request with its error, and an answer it can't find", async () => {
+  it("rejects the board's refusal with its words, a failed request with its error, and an answer it can't read", async () => {
     const finished = 'task_finished: task "t1" is completed. Nothing was written.';
     await expect(boardClient({ ok: false, error: finished }).actions.steer("t1", "more")).rejects.toThrow(/task_finished/);
     await expect(boardClient(undefined, { status: "failed" }).actions.cancel("t1")).rejects.toThrow("the action failed");
-    // Every page full of other requests: the answer is never read, so it is never a yes.
-    await expect(boardClient({ ok: true }, { onPage: 99 }).actions.release("t1")).rejects.toThrow(/couldn't be read, so check the board/);
+    // An output the record could not store is never a yes.
+    await expect(boardClient({ ok: true }, { notRecorded: true }).actions.release("t1")).rejects.toThrow(/couldn't be read, so check the board/);
   });
 
   it("rejects a 4xx with the route's reason", async () => {

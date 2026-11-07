@@ -10,8 +10,8 @@
  * - **It is the system's, not a person's.** `actor: "system"`, never
  *   `midway`, so the filer is not told and the Inbox does not list it, and
  *   the readers that say "waiting on a user" don't say it of this row.
- * - **Any line wakes it.** A person's line typed in the task's session, or a
- *   delivered message (`"service"`), answers it, and the release owes the same
+ * - **Any line wakes it.** A person's line typed in the task's session, a
+ *   steer sent through the board, or a delivered message (`"service"`), answers it, and the release owes the same
  *   attempt one more turn, which the claim takes.
  * - **It survives a restart**: a new ref over the same store reads it back.
  * - **A cancel ends it.**
@@ -112,6 +112,16 @@ describe.each([
     expect(row.turnOwed).toBe(true);
     expect(row.steers).toEqual([expect.objectContaining({ message: "fix the lint", from: "user", by: "alice", answers: externalId(row) })]);
     // The owed turn, on the same attempt.
+    expect(await board.claim("w", { leaseDurationMs: 10_000 })).toMatchObject({ id: "t", attempts: 1, turn: 2 });
+  });
+
+  it("a board steer answers it, and the release owes the same attempt one more turn", async () => {
+    const { board, outcome } = await waiting();
+    expect(await board.steer!("t", { message: "fix the lint", from: "user", by: "alice" })).toMatchObject({ outcome: "recorded" });
+    const row = board.get("t")!;
+    expect(openHolds(row)).toEqual([]);
+    expect(row).toMatchObject({ status: "in_progress", turnOwed: true });
+    expect(row.steers).toEqual([expect.objectContaining({ message: "fix the lint", from: "user", by: "alice", answers: outcome.questions![0] })]);
     expect(await board.claim("w", { leaseDurationMs: 10_000 })).toMatchObject({ id: "t", attempts: 1, turn: 2 });
   });
 

@@ -111,13 +111,3 @@ export type {
   DebaterConfig,
   DebateInput,
 } from "./debate";
-export {
-  defaultBenchmarkRegistry,
-  sharedDefaultWorker,
-  supervisorBenchmarkAdapter,
-  planAndExecuteBenchmarkAdapter,
-  parallelTasksBenchmarkAdapter,
-  roundRobinBenchmarkAdapter,
-  debateBenchmarkAdapter,
-  routedSpecialistsBenchmarkAdapter,
-} from "./benchmark";

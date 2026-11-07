@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns";
+import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns/benchmark";
 import benchmark from "../src/benchmark";
 import { tasks } from "../src/tasks";
 

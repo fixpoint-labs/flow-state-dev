@@ -173,39 +173,39 @@ export function messageReceivedEntry(options: {
     execute: async (input, ctx): Promise<Heard> => {
       // Delivered here, and only here (the row says which session it is
       // for), and only by the request that took it.
-      const row = await takeMessage(ctx as never, input.messageId);
+      const row = await takeMessage(ctx, input.messageId);
       if (row === undefined) return { act: "none" };
       // The answer a wait in this session still holds (FIX-2318): it wakes that wait, as the
       // wait's result, and lands as nothing here. Not woken yet: left taken by this request,
       // which ends, so the answer's sender's pass sends it again.
-      const wake = await wakeHeldWait(ctx as never, row);
+      const wake = await wakeHeldWait(ctx, row);
       if (wake === "retry") return { act: "none" };
       if (wake === "woken") {
-        await markDelivered(ctx as never, row.id);
+        await markDelivered(ctx, row.id);
         return { act: "none" };
       }
       // News for a task waiting on something outside the board (FIX-2578): it answers that
       // wait, as the sender's words, and the task's owed turn reads it. Only the item an app
       // draws lands here: no turn of this session runs on it.
-      if (await answerExternalWait(ctx as never, row)) {
-        const emit = storedEmitters(ctx as never);
+      if (await answerExternalWait(ctx, row)) {
+        const emit = storedEmitters(ctx);
         await emit.component(
           RECEIVED_MESSAGE_COMPONENT,
           { id: row.id, from: row.from, text: row.text, ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }), budget: 0 },
           { agentName: row.from, itemVisibility: { client: true, history: false } }
         );
         await emit.stored();
-        await markDelivered(ctx as never, row.id);
+        await markDelivered(ctx, row.id);
         return { act: "none" };
       }
       // Queued behind the user's stop, before anything lands. Not admitted:
       // this request ends with the take, and a resend takes it over.
-      if ((await queueBehindUser(ctx as never, row)) === "not_admitted") return { act: "none" };
-      await startTurnAtHop(ctx as never, row.hop, row.chain ?? null);
+      if ((await queueBehindUser(ctx, row)) === "not_admitted") return { act: "none" };
+      await startTurnAtHop(ctx, row.hop, row.chain ?? null);
       const { budget } = messageLimitsOf(options.installation);
       // What is left is the chain's, not the row's: sends since this one (a
       // branch, or a queue behind a busy recipient) have spent it too.
-      const chainSent = row.chain == null ? 0 : ((await messageChainsOf(ctx as never).getOptional(row.chain))?.state.sent.length ?? 0);
+      const chainSent = row.chain == null ? 0 : ((await messageChainsOf(ctx).getOptional(row.chain))?.state.sent.length ?? 0);
       const received: MessageReceived = {
         id: row.id,
         from: row.from,
@@ -216,7 +216,7 @@ export function messageReceivedEntry(options: {
       };
       // The two items, in one place, after the take: the line the model
       // reads, and the item an app draws.
-      const emit = storedEmitters(ctx as never);
+      const emit = storedEmitters(ctx);
       // A `user` line: the sender's words, which the recipient's model must
       // not read as something it already said.
       await emit.message(`From ${row.from}: ${row.text}`, { role: "user", agentName: row.from, itemVisibility: { client: false, history: true } });
@@ -239,8 +239,8 @@ export function messageReceivedEntry(options: {
       // A reply-requested message owes an answer from here (FIX-2310), owed
       // before it reads delivered: the pass answers it if this request dies
       // before its end does, even right after the delivery.
-      if (wantsReply(row) && carriesPass(options.installation, options.flowKind)) await oweReply(ctx as never, row.id);
-      await markDelivered(ctx as never, row.id);
+      if (wantsReply(row) && carriesPass(options.installation, options.flowKind)) await oweReply(ctx, row.id);
+      await markDelivered(ctx, row.id);
       await ctx.request.atomicState(() => ({
         [RECEIVED_LANDED_STATE]: true,
         ...(wantsReply(row) ? { [RECEIVED_REPLY_OWED_STATE]: row.id } : {})
@@ -278,7 +278,7 @@ export function messageReceivedEntry(options: {
       if (state?.[RECEIVED_LANDED_STATE] !== true) return {};
       // A turnless landing answers blank: "no answer".
       const reply = options.turn === undefined ? "" : replyTextOf(input);
-      await replyOwedHere(ctx as never, reply, options.turn === undefined ? "turnless" : "silent");
+      await replyOwedHere(ctx, reply, options.turn === undefined ? "turnless" : "silent");
       // Landed, and nothing ran on it: no reply, not an empty one.
       if (options.turn === undefined) return { turnless: true as const };
       return { reply: reply.slice(0, MAX_MESSAGE_CHARS) };
@@ -306,7 +306,7 @@ export function messageReceivedEntry(options: {
     requestStateSchema: messageTurnStateSchema,
     resources: { ...workerMessagesResources },
     execute: async (error, ctx) => {
-      await replyOwedHere(ctx as never, "", "failed");
+      await replyOwedHere(ctx, "", "failed");
       throw error;
     }
   });

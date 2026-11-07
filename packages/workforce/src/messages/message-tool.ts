@@ -136,14 +136,14 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
         const { to, text, inReplyTo, replyRequested, wait, deadline } = input;
         const message = { to, text, ...(inReplyTo === undefined ? {} : { inReplyTo }) };
         if (wait === true) {
-          const outcome = await sendAndWaitForReply(ctx as never, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL);
+          const outcome = await sendAndWaitForReply(ctx, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL);
           // A refusal reads as any send's.
           return "ok" in outcome ? { ok: false as const, error: outcome.error } : outcome;
         }
         if (deadline !== undefined) {
           return { ok: false as const, error: "deadline_without_wait: a deadline goes with wait: true. Nothing was sent." };
         }
-        const sent = await sendMessage(ctx as never, installation, flowKind, message, SEND_MESSAGE_TOOL, replyRequested === true ? { replyRequested: {} } : {});
+        const sent = await sendMessage(ctx, installation, flowKind, message, SEND_MESSAGE_TOOL, replyRequested === true ? { replyRequested: {} } : {});
         if (!sent.ok) return { ok: false as const, error: sent.error };
         return { sent: sent.id };
       }
@@ -158,7 +158,7 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
         controlTools: async (ctx) => {
           const self = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
           if (typeof self !== "string") return [];
-          const description = BASE_DESCRIPTION + (await recipientsLine(ctx as never, installation, self));
+          const description = BASE_DESCRIPTION + (await recipientsLine(ctx, installation, self));
           let tool = built.get(description);
           if (tool === undefined) {
             if (built.size > 64) built.clear();

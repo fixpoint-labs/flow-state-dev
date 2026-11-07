@@ -1,6 +1,9 @@
 /**
  * Static import-graph walk for browser-safe entry points.
  *
+ * `@flow-state-dev/testing/bundle` is a repo-only entry: the workspace's own
+ * tests import it, and `publishConfig` leaves it out of the published package.
+ *
  * A package that publishes an entry as safe to bundle for a browser needs a
  * test that fails when a module reachable from that entry imports a Node
  * built-in. A bundler can't resolve `node:async_hooks`, so the break shows up

@@ -36,7 +36,7 @@
  * same way.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import {
   takeOwedNotice,
   decideNotice,
@@ -95,8 +95,7 @@ export const takeFinishedTasks = handler({
   requestStateSchema: taskEndingReadsStateSchema,
   // `settleTakenNotice` ends a failed task's subscriptions (FIX-2534).
   resources: { ...conversationLedgerResources, ...taskChainResources, ...subscriptionResources },
-  execute: async (_input, rawCtx): Promise<FinishedTask[]> => {
-    const ctx = rawCtx as unknown as BlockContext;
+  execute: async (_input, ctx): Promise<FinishedTask[]> => {
     if (!isUserTurn(ctx)) return [];
     const ref = await ownConversationLedger(ctx);
     if (ref === undefined) return [];

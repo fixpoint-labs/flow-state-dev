@@ -35,7 +35,7 @@ export const userWaits = defineCapability({
   presets: {
     tools: {
       controlTools: async (ctx) => {
-        const [asks, waits] = await Promise.all([ask.offered(ctx as never), wait.offered(ctx as never)]);
+        const [asks, waits] = await Promise.all([ask.offered(ctx), wait.offered(ctx)]);
         return [...(asks ? [ask.tool] : []), ...(waits ? [wait.tool] : [])];
       }
     },

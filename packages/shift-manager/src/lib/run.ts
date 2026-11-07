@@ -15,7 +15,7 @@
  * What the run recorded (its plan, files and pull requests) is the one read
  * that is not here: `readRecordedWork` from `@flow-state-dev/harness-manager/browser`.
  */
-import { compareItemOrder, sessionFeed, type SessionConnectionState } from "@flow-state-dev/client";
+import { ClientHttpError, compareItemOrder, sessionFeed, type RequestHandle, type SessionConnectionState } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { Client } from "@flow-state-dev/client";
@@ -274,16 +274,22 @@ export async function interruptRun(
     // 409: the request was already terminal. Anything else is a refusal.
     if (describeFailure(error).httpStatus !== 409) fail(error);
   }
-  const until = Date.now() + (options.timeoutMs ?? SETTLE_TIMEOUT_MS);
-  for (;;) {
-    // The screen that asked has gone: stop reading on its behalf.
+  let settled: Awaited<ReturnType<RequestHandle["wait"]>>;
+  try {
+    settled = await actions.request(run.requestId).wait({
+      pollMs: options.pollMs ?? SETTLE_POLL_MS,
+      timeoutMs: options.timeoutMs ?? SETTLE_TIMEOUT_MS,
+      signal: options.signal,
+    });
+  } catch (error) {
+    // The screen that asked has gone: the wait stopped reading on its behalf.
     if (options.signal?.aborted === true) throw new RunReadError({ message: "The screen closed before the run's record settled." });
-    const { status, endedAtMs } = await readRunRecord(client, run);
-    if (status === "aborted") return endedAtMs === undefined ? { kind: "aborted" } : { kind: "aborted", endedAtMs };
-    if (status !== "in_progress") return { kind: "finished", status };
-    if (Date.now() > until) {
+    if (error instanceof ClientHttpError && error.status === 0) {
       throw new RunReadError({ message: "The abort was recorded, but the run has not stopped yet. It may still be running." });
     }
-    await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? SETTLE_POLL_MS));
+    return fail(error);
   }
+  const { status, completedAtMs } = settled;
+  if (status === "aborted") return completedAtMs === undefined ? { kind: "aborted" } : { kind: "aborted", endedAtMs: completedAtMs };
+  return { kind: "finished", status };
 }

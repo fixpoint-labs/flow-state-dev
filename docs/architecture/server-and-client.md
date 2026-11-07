@@ -180,8 +180,9 @@ await fsd.flow("hello-chat").send("chat", { message: "Hello!" });
 // Typed: the flow's type, imported as a type only
 const sent = await fsd.flow<typeof helloChat>("hello-chat").send("chat", { message: "Hello!" });
 
-// The request: status, wait, abort, continue, retry, resume, stream
-await sent.wait();
+// The request: status, wait, result, abort, continue, retry, resume, stream
+// result() is wait()'s polls by id, each asking for the stored answer; the settling read is returned.
+const { status, output, error } = await sent.result({ timeoutMs: 30_000 });
 for (const lost of await fsd.requests.interrupted()) await lost.continue();
 ```
 

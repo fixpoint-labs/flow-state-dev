@@ -394,9 +394,6 @@ importers:
 
   apps/pattern-benchmark:
     dependencies:
-      '@flow-state-dev/core':
-        specifier: workspace:*
-        version: link:../../packages/core
       '@flow-state-dev/patterns':
         specifier: workspace:*
         version: link:../../packages/patterns

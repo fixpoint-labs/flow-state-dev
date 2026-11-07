@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { z } from "zod";
-import { mockGenerator, testRouter, testSequencer } from "@flow-state-dev/testing";
+import { mockGenerator, testBlock } from "@flow-state-dev/testing";
 import chatAgentFlow from "../flows/chat-agent/flow";
 import { thinkingStyleRouter, backgroundWorkTasks, backgroundWorkSettled } from "../flows/chat-agent/run/thinking-styles";
 import { resolveThinkingStyle } from "../flows/chat-agent/run/steps";
@@ -234,7 +234,7 @@ describe("a message carrying the words that used to steer it", () => {
     "shared workspace, then break it down step by step and argue the pros and cons.";
 
   it("is answered directly, with no classifier call to pay for", async () => {
-    const result = await testSequencer(resolveThinkingStyle, {
+    const result = await testBlock(resolveThinkingStyle, {
       input: runInput(steering),
       flow: testFlow,
       // Nothing on this path may reach a model. A reintroduced classifier is
@@ -258,7 +258,7 @@ describe("a message carrying the words that used to steer it", () => {
       script: [{ structuredOutput: { items: [] } }],
     });
 
-    const routed = await testRouter(thinkingStyleRouter, {
+    const routed = await testBlock(thinkingStyleRouter, {
       input: runInput(steering),
       flow: testFlow,
       session: {
@@ -276,7 +276,7 @@ describe("a message carrying the words that used to steer it", () => {
   });
 
   it("still routes the durable dispatch, which is the one that stayed", async () => {
-    const routed = await testRouter(thinkingStyleRouter, {
+    const routed = await testBlock(thinkingStyleRouter, {
       input: runInput("Write me a briefing on this", "background-work"),
       flow: testFlow,
       session: {

@@ -76,10 +76,13 @@ const packageRules = {
     deny: new Set(["engine", "react", "patterns", "workforce"])
   },
   // Compositions built on the task board — may import orchestration, never
-  // workforce (a sibling layer, not a dependency).
+  // workforce (a sibling layer, not a dependency). `testing` is type-only: the
+  // benchmark adapters on `patterns/benchmark` type against the contract on
+  // `testing/benchmark` (an optional peer), and a type import erases at
+  // runtime, so patterns never loads testing.
   patterns: {
-    allow: new Set(["contracts", "core", "orchestration"]),
-    typeOnly: new Set([]),
+    allow: new Set(["contracts", "core", "orchestration", "testing"]),
+    typeOnly: new Set(["testing"]),
     deny: new Set(["engine", "client", "react", "workforce"])
   },
   // Layer 2 on orchestration — may import orchestration, never patterns.

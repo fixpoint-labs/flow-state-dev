@@ -51,7 +51,7 @@ import { useLiveMode } from "./hooks/use-live-mode";
 import { usePoll } from "./hooks/use-poll";
 import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
 import { useDispatchRuns } from "./hooks/use-dispatch-runs";
-import { useReadFence } from "@flow-state-dev/react";
+import { useReadFence } from "@flow-state-dev/react/internal";
 import { flattenTaskItems } from "./lib/task-collection-state";
 import { isRequestOpen, mergeRawItems, pickFurthestStatus, snapshotSupersedesLive } from "./lib/request-status";
 
@@ -930,7 +930,7 @@ function PanelContent({ className }: { className?: string }) {
           - THIS KEY retires everything mounted below it: the five readers above,
             and the trace/block/item selection, which names an item inside a
             particular request of a particular session.
-          - THE READ FENCE (`useReadFence`, from `@flow-state-dev/react`) retires
+          - THE READ FENCE (`useReadFence`, from `@flow-state-dev/react/internal`) retires
             the readers that STAY mounted across a switch — the panel's own
             request and dispatch-run lists, which live above here. The rail's
             session list is fenced inside `FlowNavigator`, not here.

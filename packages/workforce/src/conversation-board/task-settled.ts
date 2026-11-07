@@ -308,7 +308,7 @@ const runPass = handler({
   inputSchema: z.unknown(),
   outputSchema: z.object({}),
   execute: async (_input, ctx) => {
-    await triggerPass(ctx as never);
+    await triggerPass(ctx);
     return {};
   }
 });
@@ -402,8 +402,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     sessionStateSchema: z.object(conversationBoardStateShape),
     requestStateSchema: taskEndingReadsStateSchema,
     resources: { ...taskChainResources, ...subscriptionResources },
-    execute: async (notice: TaskNotice, rawCtx): Promise<Settled> => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (notice: TaskNotice, ctx): Promise<Settled> => {
       if (notice.boardId !== CONVERSATION_LEDGER_ID) return { act: "none" };
       const ref = await ownConversationLedger(ctx);
       const row = ref?.get(notice.taskId);
@@ -439,8 +438,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     inputSchema: settledSchema,
     outputSchema: z.object({}),
     sessionStateSchema: z.object(conversationBoardStateShape),
-    execute: async (settled: Settled, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (settled: Settled, ctx) => {
       const notice = settled.notice as TaskNotice;
       const ref = await ownConversationLedger(ctx);
       await noteSeen(ctx, noticeKey(notice));

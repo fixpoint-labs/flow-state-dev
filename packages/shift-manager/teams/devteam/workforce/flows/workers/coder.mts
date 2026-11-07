@@ -24,6 +24,14 @@
  * conversation's project, or the one the task names, and with none of these
  * it is refused (D3). A fixed repository runs every feature task there.
  *
+ * **A task whose work is a pull request is done when it merges**
+ * (`awaitPullRequests`, on in both managers): a run that opened one, or an
+ * accept that did (Open a PR), leaves its task open, waiting on it. A line in
+ * the run's session (the door below) wakes it, and so does a delivered
+ * message: the task reads the pull request first, and completes once it
+ * merged, is cancelled once it closed unmerged, or runs the line on the same
+ * coding session while it is still open.
+ *
  * **Jev reads the work** (D4). Both managers carry the judge, which reads a
  * task's goal against the run's answer and commits before it closes.
  *
@@ -221,6 +229,8 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     ...(options.judge === undefined ? {} : { judge: options.judge }),
     ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
     ...(options.approveTools === true ? { approveTools: true } : {}),
+    // A task whose work is a pull request (its run's own, or an accept's Open a PR) is done when it merges.
+    awaitPullRequests: true,
   };
 
   /** How a task's run is keyed: its task id, in its payload's phase or the answer phase. */
