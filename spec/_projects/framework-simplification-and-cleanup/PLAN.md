@@ -5,11 +5,12 @@
 Sequencing, not building. What order the epics run in, what each hands the next, and what is
 deliberately not next. Each epic's own plan owns its checks.
 
-![The arc: eight epic lanes from Aug 10 to Nov 4. Declared surface ran inside one day, Aug 12, and is done. Durable storage ran Aug 13 to Aug 28 and is done. Verified identity's direction merged Sep 22 and its bar runs to the now line with its one child not started. Keeping flows alive's direction merged Sep 29 and its bar runs to the now line with four of eight children done. One owner per fact, filed Oct 15, and durable agents, filed Oct 24, have no bar: both are in Backlog, though some of their children are done. The mechanism sweep ran Oct 30 to 31 and is done. Clean SDK was filed Nov 1 and has no bar; its direction is being drafted.](figures/arc.svg)
+![The arc: nine epic lanes from Aug 10 to Nov 7. Declared surface ran inside one day, Aug 12, and is done. Durable storage ran Aug 13 to Aug 28 and is done. Verified identity's direction merged Sep 22 and its bar runs to the now line with its one child not started. Keeping flows alive's direction merged Sep 29 and its bar runs to the now line with four of eight children done and its closure spec approved. One owner per fact, filed Oct 15, and durable agents, filed Oct 24, have no bar: both are in Backlog, though some of their children are done. The mechanism sweep ran Oct 30 to 31 and is done. Clean SDK was filed Nov 1, its direction merged Nov 5, and its bar runs to the now line with two of twenty children done. Vocabulary was filed Nov 6 and has no bar; its direction is being drafted.](figures/arc.svg)
 
-Two short closed bars in August, two long live ones since late September, then four epics filed in
-three weeks. Only one of those four ran a bar, the two-day mechanism sweep; the other three have
-children landing or filed with no approved direction above them. Verified identity's bar is still
+Two short closed bars in August, two long live ones since late September, then five epics filed in
+three weeks. Two of those five have run a bar: the two-day mechanism sweep, and clean SDK since its
+direction merged Nov 5. Two have children landing with no approved direction above them, and
+vocabulary's direction is being drafted. Verified identity's bar is still
 direction only, six weeks on.
 
 ## What each epic consumes and releases
@@ -39,7 +40,7 @@ The original pass ran in May as 19 issues in three tiers: cleanup, editorial, re
 waiting on the model-layer complexity question, and voice, since moved to the Realtime Voice
 project. The tier structure is not carried forward; later work runs as epics or as single issues.
 
-**35 open issues sit under no epic**, 15 of them bugs. The two largest clusters are resource-store
+**43 open issues sit under no epic**, 17 of them bugs. The two largest clusters are resource-store
 correctness, where stores disagree or silently discard a write, and model strings. Neither has an
 epic yet.
 
