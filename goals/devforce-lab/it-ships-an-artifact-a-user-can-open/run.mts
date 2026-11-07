@@ -82,7 +82,7 @@ import {
 } from "@flow-state-dev/core/harness";
 import { encodeUserSegment, type FlowInstance } from "@flow-state-dev/core/types";
 import { runAction } from "@flow-state-dev/engine";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";

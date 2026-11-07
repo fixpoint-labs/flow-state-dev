@@ -325,7 +325,7 @@ describe("the contract every harness owes a host", () => {
   const HOSTED = [
     {
       mode: "claude-code",
-      entry: () => import("@flow-state-dev/claude-code/sdk") as Promise<Record<string, unknown>>,
+      entry: () => import("@flow-state-dev/claude-code") as Promise<Record<string, unknown>>,
       pass: "CLAUDE_CODE_PASS",
       list: "listClaudeCodeModels",
       // The SDK importer: Claude Code's `supportedModels()`, the default as its own row.
@@ -413,8 +413,8 @@ describe("the contract every harness owes a host", () => {
     {
       mode: "claude-code",
       block: async (seam: (createDefault: unknown) => Record<string, unknown>) => {
-        const { claudeCodeAgent, createDefaultResolveClaudeAgent } = (await import("@flow-state-dev/claude-code/sdk")) as Record<string, any>;
-        return claudeCodeAgent({ resolveClaudeAgent: scriptedClaudeCode(), cwd: () => repo, ...seam(createDefaultResolveClaudeAgent) });
+        const { claudeCodeAgent, createDefaultResolveClaudeCodeAgent } = (await import("@flow-state-dev/claude-code")) as Record<string, any>;
+        return claudeCodeAgent({ resolveClaudeAgent: scriptedClaudeCode(), cwd: () => repo, ...seam(createDefaultResolveClaudeCodeAgent) });
       },
       absent: (create: any) => ({ resolveClaudeAgent: create(async () => Promise.reject(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"))) }),
     },
@@ -530,7 +530,7 @@ describe("the contract every harness owes a host", () => {
       below: "0.3.315",
       above: "0.4.0",
       ready: async (read: unknown) => {
-        const { checkClaudeCodeReadiness } = (await import("@flow-state-dev/claude-code/sdk")) as Record<string, any>;
+        const { checkClaudeCodeReadiness } = (await import("@flow-state-dev/claude-code")) as Record<string, any>;
         return checkClaudeCodeReadiness({ env: {}, timeoutMs: 1, readInstalledSdkVersion: read });
       },
     },
@@ -591,6 +591,103 @@ describe("the contract every harness owes a host", () => {
     const source = readFileSync(join(import.meta.dirname, "..", "lib/cursor-mode.ts"), "utf8");
     expect(source).not.toMatch(/CURSOR_MODELS\s*[:=]/);
     expect(source).toMatch(/listCursorModels/);
+  });
+
+  /**
+   * Each harness package's published surface, as an installer meets it: the
+   * entries in its exports map and the names each one exports (types too),
+   * read by the same per-entry index the export check reads.
+   */
+  const SURFACES = [
+    { mode: "claude-code", pkg: "@flow-state-dev/claude-code", dir: "claude-code", spelling: /ClaudeCode|claudeCode|CLAUDE_CODE_/ },
+    { mode: "codex", pkg: "@flow-state-dev/codex", dir: "codex", spelling: /Codex|codex|CODEX_/ },
+    { mode: "cursor", pkg: "@flow-state-dev/cursor", dir: "cursor", spelling: /Cursor|cursor|CURSOR_/ },
+  ] as const;
+
+  /**
+   * Every `export → type` pair where a public export's signature names a type
+   * declared in the package's own source that its entry doesn't export. Types
+   * from other packages (core's, the vendor's) are another entry's to publish.
+   * Function bodies are not read: only what a caller sees.
+   */
+  async function unreachableTypes(dir: string): Promise<string[]> {
+    const ts = (await import("typescript")).default;
+    const pkgDir = join(import.meta.dirname, "../../../packages", dir);
+    const manifest = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8")) as { exports: Record<string, { default: string }> };
+    const entry = join(pkgDir, manifest.exports["."]!.default);
+    const src = join(pkgDir, "src");
+    const program = ts.createProgram([entry], {
+      noEmit: true,
+      skipLibCheck: true,
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+    });
+    const checker = program.getTypeChecker();
+    const resolve = (symbol: import("typescript").Symbol) =>
+      symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+    const exported = checker.getExportsOfModule(checker.getSymbolAtLocation(program.getSourceFile(entry)!)!);
+    const reachable = new Set(exported.map(resolve));
+    const misses = new Set<string>();
+    for (const symbol of exported) {
+      const visit = (node: import("typescript").Node): void => {
+        if (ts.isBlock(node)) return;
+        if (ts.isTypeReferenceNode(node) || ts.isExpressionWithTypeArguments(node)) {
+          const at = ts.isTypeReferenceNode(node) ? node.typeName : node.expression;
+          const found = checker.getSymbolAtLocation(at);
+          const target = found === undefined ? undefined : resolve(found);
+          const file = target?.declarations?.[0]?.getSourceFile().fileName ?? "";
+          if (target !== undefined && !(target.flags & ts.SymbolFlags.TypeParameter) && file.startsWith(src) && !reachable.has(target)) {
+            misses.add(`${symbol.name} → ${target.name}`);
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      for (const declaration of resolve(symbol).declarations ?? []) {
+        // A variable's initializer is its body; only its declared type is the signature.
+        if (ts.isVariableDeclaration(declaration)) {
+          if (declaration.type !== undefined) visit(declaration.type);
+        } else visit(declaration);
+      }
+    }
+    return [...misses].sort();
+  }
+
+  /** The translation layer and the item emitter: how a harness works, not what a host calls. */
+  const INTERNALS = /translate|Translate|emit[A-Z]|Emit|finalizeOpenItems|closeStreamingItems|drainUnsettledObservations/;
+
+  /** A package's entries and each one's names, from the per-entry export index. */
+  async function surfaceOf(pkg: string): Promise<Map<string, string[]>> {
+    const { fsReader, packageEntryExports } = (await import(join(import.meta.dirname, "../../../scripts/mechanism-exports.mjs"))) as {
+      fsReader: (root: string) => unknown;
+      packageEntryExports: (read: unknown) => Map<string, Map<string, Map<string, unknown>>>;
+    };
+    const entries = packageEntryExports(fsReader(join(import.meta.dirname, "../../.."))).get(pkg) ?? new Map();
+    return new Map([...entries].map(([subpath, names]) => [subpath, [...names.keys()]]));
+  }
+
+  describe.each(SURFACES)("$mode, its published surface", (harness) => {
+    it("is one entry, the package root", async () => {
+      expect([...(await surfaceOf(harness.pkg)).keys()]).toEqual(["."]);
+    });
+
+    it("exports no translation or emitter name", async () => {
+      const names = [...(await surfaceOf(harness.pkg)).values()].flat();
+      expect(names.filter((name) => INTERNALS.test(name))).toEqual([]);
+    });
+
+    it("spells every name it owns with its package's name", async () => {
+      const names = [...(await surfaceOf(harness.pkg)).values()].flat();
+      expect(names.filter((name) => !harness.spelling.test(name))).toEqual([]);
+    });
+
+    // A name on the entry is usable only if every type its signature names is
+    // one a host can reach too: a public option typed by an internal type is a
+    // name no host can call. Checked by the compiler, so a new name of any
+    // spelling is held to it, not only the ones a pattern lists.
+    it("names in its public signatures only types a host can reach", async () => {
+      expect(await unreachableTypes(harness.dir)).toEqual([]);
+    }, 60_000);
   });
 
   it("Kitchen Sink checks no harness's SDK by hand: its modes read the package's readiness", () => {

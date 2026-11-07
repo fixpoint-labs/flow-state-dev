@@ -21,10 +21,12 @@ export const taskSteerSchema = z.object({
    * Who sent it: `"filer"`, the filer's model through its `updateTask` tool;
    * `"user"`, a person, from a screen or a line typed in the task's session;
    * `"board"`, the board itself, closing a question at a deadline a host set
-   * with "no answer came" (FIX-2133). Server-written, never input.
+   * with "no answer came" (FIX-2133); `"service"`, words from outside the
+   * app, a message delivered to the task's session answering its external
+   * wait (FIX-2578), its sender in `by`. Server-written, never input.
    */
-  from: z.enum(["filer", "user", "board"]),
-  /** The user who sent it, when a person did and their id is known. */
+  from: z.enum(["filer", "user", "board", "service"]),
+  /** The user who sent it, when a person did and their id is known; a `"service"` steer's sender. */
   by: z.string().optional(),
   /** When it was kept, in epoch ms. */
   at: z.number(),

@@ -69,7 +69,7 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
+import { readClaudeCodeUsage } from "@flow-state-dev/claude-code";
 import { readCodexUsage } from "@flow-state-dev/codex";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
@@ -204,7 +204,7 @@ const lab = await openLab({
   usage: {
     codex: ({ signal } = {}) =>
       readCodexUsage({ env: codexEnv(), ...(signal === undefined ? {} : { signal }) }),
-    "claude-code": ({ signal } = {}) => readClaudeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
+    "claude-code": ({ signal } = {}) => readClaudeCodeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
   readiness: harness.readiness,
 });

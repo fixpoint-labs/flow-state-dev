@@ -30,7 +30,7 @@ import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
 import { harnessEnv } from "@flow-state-dev/core/harness";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
-import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
 import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {

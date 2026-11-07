@@ -65,7 +65,7 @@ import {
   type FilingStamp,
   type TaskSettingsPatch,
 } from "./internal";
-import { assertAskable, hasOpenHold, holdWrite, holdsDue, newRowHolds, type HoldChange } from "./holds";
+import { assertAskable, externalWaitProblem, hasOpenHold, holdWrite, holdsDue, newExternalHold, newRowHolds, type HoldChange } from "./holds";
 import { stampWrite } from "../write-provenance";
 import { spendAfterWrite } from "../spend";
 import { ticketNamesIncarnation } from "../claim-ticket";
@@ -595,6 +595,19 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
         writeHolds(id, "asked", { op: "ask", holds }, (task) => transitionDeclineReason(task, "in_progress", guards, collectionId, now()))
       );
       return outcome.outcome === "recorded" ? { ...outcome, questions: holds.map((hold) => hold.id) } : outcome;
+    },
+
+    async awaitExternal(id, wait, waitOptions) {
+      requireClaimTicket(waitOptions?.claim, "awaitExternal", "of the turn that waits. Only the request holding a task's claim waits.");
+      const problem = externalWaitProblem(wait);
+      if (problem !== undefined) throw new Error(`[tasks] awaitExternal: ${problem}, so the task can't wait on it. Nothing was written.`);
+      const guards = linkRunGuards({ claim: waitOptions.claim });
+      // Minted once, outside the write, so a retried write opens the same hold. One `ask` write opens every row hold.
+      const hold = newExternalHold(wait, now());
+      const outcome = await confirmed(id, () =>
+        writeHolds(id, "asked", { op: "ask", holds: [hold] }, (task) => transitionDeclineReason(task, "in_progress", guards, collectionId, now()))
+      );
+      return outcome.outcome === "recorded" ? { ...outcome, questions: [hold.id] } : outcome;
     },
 
     async answer(id, answer) {

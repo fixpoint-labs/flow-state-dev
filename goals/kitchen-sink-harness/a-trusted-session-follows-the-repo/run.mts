@@ -26,7 +26,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { testFlow } from "@flow-state-dev/testing";
-import { defaultResolveClaudeAgent, type ResolveClaudeAgent } from "@flow-state-dev/claude-code/sdk";
+import { defaultResolveClaudeCodeAgent, type ResolveClaudeCodeAgent } from "@flow-state-dev/claude-code";
 import { runGoal } from "../../lib/index.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -76,11 +76,11 @@ interface Seen {
  * runs the turns in Claude Code's default mode with `printenv` allowed: it
  * changes how tools are approved, not what the run loads.
  */
-function recordingSdk(seen: Seen[]): ResolveClaudeAgent {
+function recordingSdk(seen: Seen[]): ResolveClaudeCodeAgent {
   const hostPass = (process.env.GOAL_HOST_PASS ?? "").split(",").map((name) => name.trim()).filter(Boolean);
   const permissionMode = process.env.GOAL_PERMISSION_MODE;
   return async (...args) => {
-    const sdk = await defaultResolveClaudeAgent(...args);
+    const sdk = await defaultResolveClaudeCodeAgent(...args);
     return {
       query: (query) => {
         const options = { ...(query.options ?? {}) } as NonNullable<typeof query.options> & Record<string, unknown>;

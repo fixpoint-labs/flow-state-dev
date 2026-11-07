@@ -26,14 +26,23 @@ export interface SteerInput {
 export interface ShownSteer {
   readonly message: string;
   readonly from: TaskSteer["from"];
-  /** The question or confirm this steer answers, as it was asked. */
+  /** The question or confirm this steer answers, as it was asked. Absent on an external wait's answer, which answers no question. */
   readonly question?: string;
+  /** A `"service"` steer's sender (FIX-2578): its words are quoted as theirs, never the person's. */
+  readonly by?: string;
 }
 
 /** `steer` as a worker on `task` is shown it: with the prompt of the question it answers, read off the task's holds. */
-export function shownSteer(task: Pick<Task, "holds">, steer: Pick<TaskSteer, "message" | "from" | "answers">): ShownSteer {
-  const question = steer.answers === undefined ? undefined : task.holds?.find((hold) => hold.id === steer.answers)?.ask.prompt;
-  return { message: steer.message, from: steer.from, ...(question !== undefined ? { question } : {}) };
+export function shownSteer(task: Pick<Task, "holds">, steer: Pick<TaskSteer, "message" | "from" | "answers" | "by">): ShownSteer {
+  const hold = steer.answers === undefined ? undefined : task.holds?.find((h) => h.id === steer.answers);
+  // An external wait's prompt is the board's own line, not something a worker asked.
+  const question = hold === undefined || hold.ask.kind === "external" ? undefined : hold.ask.prompt;
+  return {
+    message: steer.message,
+    from: steer.from,
+    ...(question !== undefined ? { question } : {}),
+    ...(steer.from === "service" && steer.by !== undefined ? { by: steer.by } : {}),
+  };
 }
 
 /** The steers on `task` no request of its current attempt has taken. Rule 6 settles only when this is empty. */
@@ -131,7 +140,8 @@ interface LineSteerLedger {
 }
 
 /**
- * The oldest open question on `taskId`, as stored: never a confirm, which a
+ * The oldest open hold on `taskId` a line answers, as stored: a question, or
+ * an external wait (FIX-2578), which any line ends. Never a confirm, which a
  * typed line can't answer. `null` when the line keyed `key` is on the task
  * already (a replayed request): it is kept, and answers nothing more.
  */
@@ -139,7 +149,7 @@ async function oldestOpenQuestion(ledger: LineSteerLedger, taskId: string, key: 
   const row = ledger.getCommitted !== undefined ? await ledger.getCommitted(taskId) : ledger.get?.(taskId);
   if (row === undefined) return undefined;
   if ((row.steers ?? []).some((steer) => steer.id === key)) return null;
-  return openRowHolds(row).find((hold) => hold.ask.kind === "question")?.id;
+  return openRowHolds(row).find((hold) => hold.ask.kind === "question" || hold.ask.kind === "external")?.id;
 }
 
 /** The request a line arrived on: its verified user and its id, never its input (BP-031). */
@@ -155,7 +165,8 @@ interface LineRequest {
  *
  * The one home for what a line answers (FIX-2133): while the task holds open
  * questions, the line is the answer to the oldest, through the board's one
- * hold write, and the others stay open. Never a confirm: a typed line is no
+ * hold write, and the others stay open. An open external wait (FIX-2578) is
+ * answered the same way: the line wakes it. Never a confirm: a typed line is no
  * yes or no, so a confirm is answered in the Inbox or by `updateTask`. The
  * server picks the question, never a client (BP-031).
  *

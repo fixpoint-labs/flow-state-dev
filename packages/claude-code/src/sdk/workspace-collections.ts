@@ -21,7 +21,7 @@ import { z } from "zod";
  * pattern prefix, so the same name appears in the URL, in `ctx.resources`, and
  * in storage.
  */
-export const WORKSPACE_OUTCOMES = "workspace-outcomes" as const;
+export const CLAUDE_CODE_WORKSPACE_OUTCOMES = "workspace-outcomes" as const;
 
 /**
  * One outcome a flush could not settle, keyed by `<runId>/<path>`.
@@ -30,7 +30,7 @@ export const WORKSPACE_OUTCOMES = "workspace-outcomes" as const;
  * older or newer shape parses rather than throwing inside a flush that must not
  * break the run (BP-030).
  */
-export const workspaceOutcomeStateSchema = z.object({
+export const claudeCodeWorkspaceOutcomeStateSchema = z.object({
   /**
    * Why the path is here.
    *
@@ -55,12 +55,12 @@ export const workspaceOutcomeStateSchema = z.object({
   at: z.number().nullable().default(null),
 });
 
-/** See {@link WORKSPACE_OUTCOMES} for why the key and prefix are one string. */
-export const workspaceOutcomesCollection = defineResourceCollection({
-  pattern: `${WORKSPACE_OUTCOMES}/**`,
+/** See {@link CLAUDE_CODE_WORKSPACE_OUTCOMES} for why the key and prefix are one string. */
+export const claudeCodeWorkspaceOutcomesCollection = defineResourceCollection({
+  pattern: `${CLAUDE_CODE_WORKSPACE_OUTCOMES}/**`,
   scope: "session",
   prefetchMode: "lazy",
-  stateSchema: workspaceOutcomeStateSchema,
+  stateSchema: claudeCodeWorkspaceOutcomeStateSchema,
   client: {
     state: { read: true },
     expose: ["kind", "path", "base", "theirs", "ours", "at"],
@@ -72,10 +72,10 @@ export const workspaceOutcomesCollection = defineResourceCollection({
  * site cannot drift from this one.
  *
  * Typed as the widened entry map rather than left to `const` inference, for the
- * same reason `workRecorderResources` is: a literal type would narrow
+ * same reason `claudeCodeWorkRecorderResources` is: a literal type would narrow
  * `ctx.resources` on the blocks carrying it, and every helper taking a plain
  * `BlockContext` would stop accepting that context.
  */
-export const workspaceResources: Record<string, DeclaredResourceEntry> = {
-  [WORKSPACE_OUTCOMES]: workspaceOutcomesCollection,
+export const claudeCodeWorkspaceResources: Record<string, DeclaredResourceEntry> = {
+  [CLAUDE_CODE_WORKSPACE_OUTCOMES]: claudeCodeWorkspaceOutcomesCollection,
 };

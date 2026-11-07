@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, dispatcher, sequencer } from "@flow-state-dev/core";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { defineTaskCollection, type TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";

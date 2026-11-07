@@ -44,4 +44,29 @@ export type RequestStatusSnapshot = {
    * since those routes are addressed by session.
    */
   sessionId?: string;
+  /**
+   * The request's stored action result, sent only when the read asks with
+   * `include_result_output=true`; the same projection the session request
+   * list sends. Absent without the flag, and on a request that ended without
+   * one (`aborted`, `interrupted`, `suspended`) or is still running.
+   *
+   * | Request ended | `result` |
+   * |---|---|
+   * | `completed` / `incomplete` | `{ output, hasOutput: true }`; `{ hasOutput: false }` when the action returned nothing |
+   * | `failed` | `{ error }`, plus `output` when the action answered before a completion hook failed the request |
+   * | any of those, output not storable as JSON | `outputNotRecorded: true` in place of `output` |
+   */
+  result?: {
+    /** The action's return value, stored as JSON. */
+    output?: unknown;
+    /** Whether the action's return value is stored. */
+    hasOutput: boolean;
+    /**
+     * The action returned a value that could not be stored as JSON. The
+     * request still finished; distinct from returning nothing.
+     */
+    outputNotRecorded?: true;
+    /** Why the request failed, as `FlowError`'s `code` and `message`. */
+    error?: { code: string; message: string };
+  };
 };

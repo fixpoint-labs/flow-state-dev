@@ -77,13 +77,13 @@
     "surface.root.testing": "fail",
     "surface.root.orchestration": "pass",
     "surface.root.patterns": "fail",
-    "surface.root.claude-code": "fail",
+    "surface.root.claude-code": "pass",
     "surface.root.codex": "fail",
     "surface.root.cursor": "fail",
     "surface.root.store-sqlite": "pass",
     "surface.root.store-postgres": "pass",
     "surface.root.workforce": "fail",
-    "surface.collisions": "fail",
+    "surface.collisions": "pass",
     "surface.core-installed-dts": "pass",
     "onepath.output-read": "fail",
     "first-hour.quickstart": "fail",
@@ -100,7 +100,7 @@
     "shims.human-approval-throws": "pass",
     "shims.stored-human-approval": "pass",
     "types.typed-handler": "fail",
-    "types.fresh-session-default": "fail"
+    "types.fresh-session-default": "pass"
   },
   "ratchets": {
     "export-check": "scripts/check-root-exports.mjs",
