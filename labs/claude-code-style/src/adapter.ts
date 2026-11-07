@@ -969,12 +969,15 @@ export function createWiredLab(fsd: Client): LabAdapter {
   };
 
   /**
-   * The rows of a run session's pull-request record (`readSessionPullRequests`); none when it
-   * can't be read, so a wait still shows its numbers, without links.
+   * The rows of a run session's pull-request record (`readSessionPullRequests`), read once per
+   * wait: `key` is the wait's hold id, which a new wait replaces, so a later run's pull request is
+   * read then and the board's poll reads nothing more. A read that fails is tried again on the next
+   * poll; until one succeeds the wait shows its numbers, without links.
    */
-  const pullRequestRecords = async (runSession: string): Promise<PullRequestRecordRow[]> => {
+  const pullRequestReads = new Map<string, Promise<PullRequestRecordRow[]>>();
+  const pullRequestRecords = async (runSession: string, key: string): Promise<PullRequestRecordRow[]> => {
     try {
-      return await readSessionPullRequests(fsd, runSession);
+      return await (pullRequestReads.get(key) ?? keptUnlessFailed(pullRequestReads, key, readSessionPullRequests(fsd, runSession)));
     } catch (cause) {
       console.warn(`[claude-code-style] couldn't read the pull requests of run session ${runSession}:`, cause);
       return [];
@@ -987,8 +990,9 @@ export function createWiredLab(fsd: Client): LabAdapter {
 
   /** The pull requests a listed task waits on, each with its link from its run session's record; `undefined` when it waits on none. */
   const pullRequestsOf = async (task: Listed): Promise<TaskRow["pullRequests"]> => {
-    if (waitOf(task) === null) return undefined;
-    const records = task.runSessionId === undefined ? [] : await pullRequestRecords(task.runSessionId);
+    const wait = waitOf(task);
+    if (wait === null) return undefined;
+    const records = task.runSessionId === undefined ? [] : await pullRequestRecords(task.runSessionId, `${task.runSessionId}#${wait.holdId}`);
     return waitOf(task, records)?.pullRequests.map(({ number, url, title }) => ({ number, url, title }));
   };
 
