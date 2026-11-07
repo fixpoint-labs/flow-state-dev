@@ -11,6 +11,7 @@
 import type { ResumeAction, WireTopic } from "@flow-state-dev/contracts";
 import type { ActionConfig, FlowActionInput, RequestStatusSnapshot } from "@flow-state-dev/core/types";
 import { clientError, createTransport, requireValue, seg, topicPath, type Transport } from "./internal/http";
+import { pause } from "./internal/pause";
 import {
   openRequestStream,
   openSessionStream,
@@ -925,22 +926,6 @@ function requestHandle(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Sleep `ms`, or reject with the signal's reason as soon as it aborts. */
-function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(signal.reason);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason);
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
 
 function sid(sessionId: string): string {
   return seg(requireValue(sessionId, "sessionId"));

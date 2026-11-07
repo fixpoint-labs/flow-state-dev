@@ -110,12 +110,14 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   const [answered, setAnswered] = useState<LabData["answered"]>(undefined);
   // The snapshot on screen is a good read of this client's Lab: a later unreachable one doesn't replace it.
   const loaded = useRef(false);
-  // The client a following answer was given: once it changes or the provider unmounts, this aborts and the wait stops.
-  const following = useRef(new AbortController());
+  // This client's answers: once the client changes or the provider unmounts, this aborts, and an
+  // answer given on it reads and follows nothing more. The controller an answer took is the one
+  // aborted; only the next client's effect, finding it aborted, makes a new one.
+  const following = useRef<AbortController | null>(null);
   useEffect(() => {
     loaded.current = false;
-    const controller = new AbortController();
-    following.current = controller;
+    if (following.current?.signal.aborted === true) following.current = null;
+    const controller = (following.current ??= new AbortController());
     return () => controller.abort();
   }, [client]);
   const bump = useCallback((sessionId: string) => setAnswered((last) => ({ sessionId, count: (last?.count ?? 0) + 1 })), []);
@@ -201,12 +203,14 @@ export function LabProvider({ connection, children }: { connection: Connection; 
 
   const answer = useCallback<LabData["answer"]>(
     async (ask, value) => {
+      // Taken before any wait: a switch to another Lab meanwhile aborts it, and this answer stops there.
+      const stop = (following.current ??= new AbortController()).signal;
       await reader.resume(ask, value);
+      if (stop.aborted) return;
       bump(ask.sessionId);
       await refresh();
       // The run goes on without this page: follow it, so what it did with the answer is drawn too.
-      if (ask.flowId !== null) {
-        const stop = following.current.signal;
+      if (ask.flowId !== null && !stop.aborted) {
         void settled(client, ask.flowId, ask.item.requestId, stop).then(() => {
           if (stop.aborted) return;
           bump(ask.sessionId);

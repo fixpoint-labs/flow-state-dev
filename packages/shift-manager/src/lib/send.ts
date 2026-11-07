@@ -40,6 +40,7 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { ClientHttpError, type Client, type FlowHandle, type RequestResult } from "@flow-state-dev/client";
+import { pause } from "@flow-state-dev/client/internal";
 import { isUserSuspension } from "@flow-state-dev/core/types";
 import { deriveSuspensions } from "@flow-state-dev/react";
 import { describeFailure } from "./reads";
@@ -142,10 +143,8 @@ async function watchHeld(client: Client, sessionId: string, requestId: string, o
       onHeld();
       return true;
     }
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, HELD_POLL_MS);
-      ended.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
-    });
+    // The client's pause lets go of its abort listener each time; an abort just ends the loop.
+    await pause(HELD_POLL_MS, ended).catch(() => undefined);
   }
   return false;
 }

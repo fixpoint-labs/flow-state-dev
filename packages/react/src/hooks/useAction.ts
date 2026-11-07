@@ -65,17 +65,19 @@ export function useAction(
   const flow = useMemo(() => fsd.flow(flowKind!), [fsd, flowKind]);
   const readResult = options.result === true;
 
-  // Stops every wait still running when the component unmounts.
-  const unmounted = useRef(new AbortController());
+  // Stops every wait still running when the component unmounts. One controller
+  // serves every execution, a layout effect's included, and the cleanup aborts
+  // that same one; only a remount (StrictMode) after an abort makes a new one.
+  const unmounted = useRef<AbortController | null>(null);
   useEffect(() => {
-    const controller = new AbortController();
-    unmounted.current = controller;
+    if (unmounted.current?.signal.aborted === true) unmounted.current = null;
+    const controller = (unmounted.current ??= new AbortController());
     return () => controller.abort();
   }, []);
 
   const execute = useCallback(
     async (input: unknown, sessionId?: string): Promise<ExecuteActionResponse | RequestResult> => {
-      const signal = unmounted.current.signal;
+      const signal = (unmounted.current ??= new AbortController()).signal;
       setLoading(true);
       setError(undefined);
 

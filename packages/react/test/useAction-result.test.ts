@@ -7,7 +7,7 @@
  * `execute` resolves on acceptance, as before. Driven through the hook's own
  * client over a recording fetcher, so the assertion is on what left the hook.
  */
-import { createElement, type ReactNode } from "react";
+import { createElement, useLayoutEffect, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ClientFetch } from "@flow-state-dev/client";
@@ -90,6 +90,29 @@ describe("useAction with result: true", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(urls.length).toBe(reads);
     expect(urls.some((url) => url.includes("/abort"))).toBe(false);
+  });
+});
+
+describe("useAction with result: true, executed before the passive effects run", () => {
+  it("stops a wait started from a layout effect when the component unmounts", async () => {
+    const { wrapper, urls } = server();
+    let execution: Promise<unknown> | undefined;
+    const { unmount } = renderHook(
+      () => {
+        const action = useAction({ action: "summarize", result: true });
+        useLayoutEffect(() => {
+          execution ??= action.execute({ ticketId: "t1" }, "sess_1").catch((error: unknown) => error);
+        }, [action]);
+      },
+      { wrapper }
+    );
+    await waitFor(() => expect(urls.some((url) => url.includes("/status"))).toBe(true));
+    unmount();
+
+    expect(await execution).toMatchObject({ name: "AbortError" });
+    const reads = urls.length;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(urls.length).toBe(reads);
   });
 });
 

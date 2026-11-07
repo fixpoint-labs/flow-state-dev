@@ -3,7 +3,8 @@
  * a refusal, a lost request and an answer it can't confirm each come back as.
  * Against stub client, so each answer the Lab can give is staged exactly.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { getEventListeners } from "node:events";
 import { ClientHttpError } from "@flow-state-dev/client";
 import { sendTurn, TurnNotDelivered } from "../src/lib/send";
 import type { Client } from "@flow-state-dev/client";
@@ -113,6 +114,35 @@ describe("sendTurn", () => {
     await expect(sendTurn(client, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: false, stopped: null });
     // Through the target's door, into its session, with the line as `{ message }`.
     expect(sent).toEqual([{ flowId: "eng.coder", action: "message", input: { message: "hello" }, opts: { sessionId: "s_run" } }]);
+  });
+
+  it("looks for the line on every poll of a long run without piling up listeners on its stop signal", async () => {
+    // A run that goes on for 15 held-line looks while the session never shows the line:
+    // each look's pause must let go of its abort listener, or the 11th trips Node's limit.
+    // Counted directly: the most abort listeners any one signal held at once.
+    let most = 0;
+    const add = AbortSignal.prototype.addEventListener;
+    const spy = vi.spyOn(AbortSignal.prototype, "addEventListener").mockImplementation(function (this: AbortSignal, ...args) {
+      add.apply(this, args as Parameters<typeof add>);
+      if (args[0] === "abort") most = Math.max(most, getEventListeners(this, "abort").length);
+    });
+    vi.useFakeTimers();
+    try {
+      const { client } = stubClients({
+        status: "in_progress",
+        later: [...Array.from({ length: 15 }, () => "in_progress"), "completed"],
+        items: [{ requestId: "req_other", role: "user", type: "message" }],
+      });
+      const sending = sendTurn(client, TARGET, "hello", { pollMs: 1_000, onHeld: () => {} }).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(await sending).toBeInstanceOf(TurnNotDelivered);
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      vi.useRealTimers();
+      spy.mockRestore();
+    }
+    expect(most).toBeGreaterThan(0);
+    expect(most).toBeLessThanOrEqual(2);
   });
 
   it("finds the line at the end of a long session, where a new line is", async () => {
