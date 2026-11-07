@@ -21,7 +21,6 @@ import { messageReceivedEntry } from "../src/messages/message-received-entry";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import {
   SUBSCRIPTION_CURSORS_PATTERN,
-  SUBSCRIPTION_ROUTE_ENTRY,
   SUBSCRIPTIONS_PATTERN,
   defineSubscriptionServiceFlow,
   subscribe,
@@ -168,7 +167,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const route = async (event: SubscriptionEvent) => {
     const routed = await routeServiceEvent(await hostOf(), {
       flowKind: "github-service",
-      entry: SUBSCRIPTION_ROUTE_ENTRY,
+      entry: "routeSubscriptionEvent",
       input: event,
       principal: { userId: "service:github", orgId: ORG }
     });
@@ -185,7 +184,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const routeBeside = async (event: SubscriptionEvent) => {
     const routed = await routeServiceEvent(await hostOf(), {
       flowKind: "github-service",
-      entry: SUBSCRIPTION_ROUTE_ENTRY,
+      entry: "routeSubscriptionEvent",
       input: event,
       principal: { userId: "service:github", orgId: ORG }
     });

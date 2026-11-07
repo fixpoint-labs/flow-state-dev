@@ -28,10 +28,10 @@ export const SUBSCRIPTION_INDEX_RESOURCE = "workforceSubscriptionIndex";
 /** The two tools a session subscribes and unsubscribes with. */
 export const SUBSCRIPTION_TOOLS = { subscribe: "subscribe", unsubscribe: "unsubscribe" } as const;
 
-/** The service flow's routing entry: one normalized event in, run as the service. */
+/** The service flow's routing entry: one normalized event in, run as the service. **Pinned**: an ingestion names it by this string; not on the root. */
 export const SUBSCRIPTION_ROUTE_ENTRY = "routeSubscriptionEvent";
 
-/** The service flow's delivery entry: one subscription and one event in, run as that subscription's user. */
+/** The service flow's delivery entry: one subscription and one event in, run as that subscription's user. **Pinned**: not on the root. */
 export const SUBSCRIPTION_DELIVER_ENTRY = "deliverSubscriptionEvent";
 
 /** The sender a delivery's message names: `service:<provider>` (epic D9). */
