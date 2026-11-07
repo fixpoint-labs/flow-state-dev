@@ -643,10 +643,18 @@ type InferCapabilitySessionStateEntry<T> =
   T extends DefinedCapability<any, any, any, any, infer S, any, any, any, any>
     ? T extends { sessionStateType?: infer O }
       ? unknown extends O
-        ? S extends ZodTypeAny ? import("zod").infer<S> : {}
+        ? InferDeclaredSessionState<S>
         : NonNullable<O>
-      : S extends ZodTypeAny ? import("zod").infer<S> : {}
+      : InferDeclaredSessionState<S>
     : {};
+
+/**
+ * A capability's declared session state. One that declares no schema carries
+ * the open `ZodTypeAny` default, which contributes no fields: the runtime
+ * merge (`mergeScopeStateSchemas`) fills none from it, so the type adds none.
+ */
+type InferDeclaredSessionState<S> =
+  S extends ZodTypeAny ? (ZodTypeAny extends S ? {} : import("zod").infer<S>) : {};
 
 /**
  * Infer the merged `ctx.resources` shape contributed by static capabilities.
