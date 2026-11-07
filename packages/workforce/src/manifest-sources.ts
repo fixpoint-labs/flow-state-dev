@@ -1,5 +1,6 @@
+// FIX-1405; FIX-817; FIX-1526.
 /**
- * The workers manifest source (FIX-817) — the workforce's projection into the
+ * The workers manifest source — the workforce's projection into the
  * discovery door.
  *
  * ## Two layers, joined, because neither one alone is an honest answer
@@ -9,7 +10,7 @@
  * on. It cannot say what is live — a file has no idea whether its worker was
  * ever registered.
  *
- * The **live** layer (FIX-1405's `inventory/workers/*`) knows what actually got
+ * The **live** layer (the `inventory/workers/*`) knows what actually got
  * registered in this org. It cannot say what anything is for: a row carries an
  * id, a worker flow and a door. And it is
  * **append-only** — `open-inventory.ts` is explicit that "a row means *was
@@ -32,8 +33,8 @@
  *
  * From BOOT state, handed in once — the file tree — plus, when the app names
  * the roster key, from that collection at call time. A runtime hire has
- * no file; its roster row is the declared half so Discover can see it
- * (FIX-1526). `readDeclaredRoster` is a synchronous filesystem tree walk, and
+ * no file; its roster row is the declared half so Discover can see it.
+ * `readDeclaredRoster` is a synchronous filesystem tree walk, and
  * this runs behind a tool a model may call on every step — so the file tree is
  * resolved where the app already resolves it and passed here as data. That is
  * also why this module is node-free and lives at the package root rather than
@@ -103,6 +104,7 @@ function purposeOf(
   return `The ${noun} "${id}". Its file declares no description.`;
 }
 
+// BP-033.
 /**
  * List one collection's rows, or throw a message naming the key.
  *
@@ -115,8 +117,8 @@ function purposeOf(
  * every other collection consumer in the framework — including its `get()` and
  * pattern-prefix fallbacks.
  *
- * **This lists the whole collection and keeps a subset, which is the thing
- * BP-033 tells you not to do.** Stated here rather than left for a reader to
+ * **This lists the whole collection and keeps a subset, which is usually the
+ * wrong move.** Stated here rather than left for a reader to
  * find: an inventory row is never deleted, so the listed set grows with every
  * worker ever registered in the org while the kept set stays bounded
  * by what the tree currently declares — and this sits behind a tool a model may

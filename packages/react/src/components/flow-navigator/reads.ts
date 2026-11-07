@@ -1,11 +1,12 @@
+// FIX-1477 S2, S3; FIX-2411.
 /**
- * The navigator's two reads (FIX-1477 S2, S3).
+ * The navigator's two reads.
  *
  * The flow-list read is internal on purpose. Three public hooks would let
  * three consumers each trigger their own flow-list read, which is the
  * one-read-per-host rule lost by export rather than by bug — so the navigator
  * mounts it once and nothing else can. The leaf's session read is the public
- * `useSessionList`'s (FIX-2411), which reads no flow list.
+ * `useSessionList`'s, which reads no flow list.
  *
  * Both are fenced on their identity, which includes the client they read
  * through: a host that rebuilds its transport on a token or `baseUrl` change
@@ -91,9 +92,10 @@ export type LeafSessions = {
 export function useLeafSessions(
   source: FlowNavigatorClient,
   leaf: FlowNavigatorLeaf,
+  // FIX-1440.
   /**
-   * Ask the listing for the sessions a dispatcher ran work in as well
-   * (FIX-1440). Part of the read's identity: turning it on is a different
+   * Ask the listing for the sessions a dispatcher ran work in as well.
+   * Part of the read's identity: turning it on is a different
    * question, so the answer to the previous one is retired rather than merged.
    */
   includeDispatchRuns: boolean,

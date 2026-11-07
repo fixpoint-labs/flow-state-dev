@@ -1,3 +1,4 @@
+// FIX-1790.
 /**
  * A user's own worker, as it is stored: one row per worker in the user's
  * scope, at `workforce/workers/<id>`.
@@ -8,7 +9,7 @@
  * is written. So a hire, a fork, an edit and a fire are writes to the user's
  * data, and the next turn on any process reads them.
  *
- * User scope is per (user, organization) for every flow (FIX-1790), so the
+ * User scope is per (user, organization) for every flow, so the
  * same user has a separate roster in each organization, and no other user's
  * read reaches the row.
  */
@@ -17,12 +18,13 @@ import { z } from "zod";
 import { WORKERS_PATTERN } from "./keys";
 import { shownSettingsOf, type ShownSettingsOf } from "./shown-settings";
 
+// BP-030.
 /**
  * One stored worker.
  *
  * `settings` passes keys through: it belongs to the worker's flow, whose own
  * `configSchema` checks it, and it is free to grow keys this package has never
- * heard of (BP-030). The envelope is this package's.
+ * heard of. The envelope is this package's.
  */
 export const workerRowSchema = z.object({
   /** The flow the worker runs on: a registered worker flow's name. */

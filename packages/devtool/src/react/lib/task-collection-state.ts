@@ -1,6 +1,7 @@
+// FIX-444 / FIX-446; FIX-445; FIX-1071.
 /**
  * Local mirror of the unified Plan/Task substrate's component-item types
- * (FIX-444 / FIX-446) for the DevTool TaskCollections panel (FIX-445), plus
+ * for the DevTool TaskCollections panel, plus
  * the derivation that folds a session's item stream back into boards.
  *
  * Inlined rather than imported from `@flow-state-dev/orchestration` to keep the
@@ -11,7 +12,7 @@
  * `packages/patterns/src/task-board/blocks/board-meta.ts`.
  *
  * {@link groupCollections} lived in `components/workspace/task-collections-view`
- * until the ChildSessions panel needed the same boards (FIX-1071). It is a pure
+ * until the ChildSessions panel needed the same boards. It is a pure
  * fold over items with no rendering in it, so it belongs beside the wire shapes
  * it produces rather than inside one of its two consumers.
  */

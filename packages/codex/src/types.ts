@@ -24,9 +24,10 @@ import type { TestedSdk } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessRunHandle } from "@flow-state-dev/core/harness";
 
+// LAB-152.
 /**
  * This harness's `<package>/<door>` name — the convention every writer of a
- * harness handle's `source` owes (LAB-152). The suffix names the door we drive
+ * harness handle's `source` owes. The suffix names the door we drive
  * Codex through, and this package has exactly one: OpenAI's own SDK.
  */
 export const CODEX_SOURCE = "codex/sdk" as const;
@@ -58,6 +59,7 @@ export interface CodexRunUsage {
   reasoningOutputTokens: number;
 }
 
+// LAB-152.
 /**
  * Handle for a single Codex run.
  *
@@ -68,7 +70,7 @@ export interface CodexRunUsage {
  * `outcome` is `"finished"` on a completed turn and `"failed"` on a failed one.
  * Codex reports no turn or budget cap, so `"stopped-at-limit"` is never
  * produced here — a run stopped by the CALLER's deadline is a throw, not a
- * handle (LAB-152's abort contract).
+ * handle (the harness abort contract).
  */
 export interface CodexAgentHandle extends HarnessRunHandle {
   source: typeof CODEX_SOURCE;
@@ -79,12 +81,12 @@ export interface CodexAgentHandle extends HarnessRunHandle {
   failureMessage: string | null;
 }
 
+// BP-030.
 /**
  * Runtime validator for {@link CodexAgentHandle}.
  *
  * The extension's own two fields default to `null` for the same reason the
- * neutral schema's four do: a handle persisted before they existed still parses
- * (BP-030).
+ * neutral schema's four do: a handle persisted before they existed still parses.
  */
 export const codexAgentHandleSchema = harnessRunHandleSchema.extend({
   source: z.literal(CODEX_SOURCE),
@@ -181,12 +183,13 @@ export type CodexThreadEvent =
 // Forwarded option groups
 // ---------------------------------------------------------------------------
 
+// BP-031.
 /**
  * The SDK's `ThreadOptions`, forwarded verbatim and typed locally.
  *
  * `workingDirectory` is deliberately ABSENT: the `cwd` resolver owns it, and
  * passing one here is refused when the block is built rather than merged
- * (BP-031 — one owner). The refusal is a runtime check, because a caller
+ * (one owner). The refusal is a runtime check, because a caller
  * spreading an untyped bag would otherwise slip past the type.
  */
 export interface CodexThreadOptions {

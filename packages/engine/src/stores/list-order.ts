@@ -29,8 +29,9 @@ function compareIdDesc(left: string, right: string): number {
   return left < right ? 1 : -1;
 }
 
+// FIX-1010.
 /**
- * Session listing order (FIX-1010).
+ * Session listing order.
  *
  * `"createdAt"` sorts on `(createdAt, id)` descending — both immutable, so a
  * record written during a caller's walk cannot reorder the pages under them.

@@ -30,7 +30,8 @@ type RecoveryRouteContext = {
   stores: StoreRegistry;
   /** Instance-level runtime options (resolvers, voice provider, logger, …). */
   runtimeConfig: RuntimeConfig;
-  /** Caller's tenant (FIX-682), extracted the same way as every other session-touching route. */
+  // FIX-682.
+  /** Caller's tenant, extracted the same way as every other session-touching route. */
   tenantId?: string;
   /**
    * The authenticated caller, when route-level authentication is active
@@ -166,11 +167,12 @@ export async function handleRetryRequest(
   }
 }
 
+// FIX-637; FIX-811.
 /**
- * Continue an interrupted request under its OWN id (FIX-811 crash recovery).
+ * Continue an interrupted request under its OWN id (crash recovery).
  *
  * Where `retry` re-dispatches a fresh request from scratch (a new id; see
- * FIX-637's resume-vs-retry contract), `continue` re-enters the SAME request:
+ * the resume-vs-retry contract), `continue` re-enters the SAME request:
  * completed blocks are injected from the durable item log and the in-flight
  * block re-runs, transitioning `interrupted → in_progress → terminal` in place.
  * The stale sweeper still only *marks* records `interrupted`; continuing is this
@@ -304,11 +306,12 @@ type ListedRow = OwnedRecord & {
   tenantId?: string | null;
 };
 
+// FIX-682.
 /**
  * Whether a request listing shows `row` to the caller. One rule for both
  * listings, `/active-requests` and `/users/:userId/interrupted-requests`.
  *
- * The tenant is checked first and on its own (FIX-682): both verdicts below
+ * The tenant is checked first and on its own: both verdicts below
  * judge the caller's identity, and one identity can hold rows in several
  * tenants. Then a row owned by an instance with a resolver of its own is
  * judged on that resolver's word, the one its request routes take. Every
@@ -399,10 +402,11 @@ export async function handleListActiveRequests(
  * Records whose status was already terminal (completed/failed/aborted) are
  * silently deregistered and excluded from the response.
  */
+// FIX-682; BR-13; BR-14.
 /**
  * Which entries this sweep may touch.
  *
- * The tenant is checked first and on its own (FIX-682), on every path. The
+ * The tenant is checked first and on its own, on every path. The
  * identity clauses below judge who the caller is, and one identity can hold
  * rows in several tenants, while `listStale` spans every tenant. Without it a
  * caller on one tenant who shares a user id with another tenant reads that
@@ -418,13 +422,13 @@ export async function handleListActiveRequests(
  * The authenticated clause is the organization axis, and it matters more here
  * than on any read route. This route is user-addressed, so its `userId` comes
  * from the path and ownership is satisfied by one person belonging to two
- * organizations (BR-13) — and unlike every other management route, this one
+ * organizations — and unlike every other management route, this one
  * MUTATES: it sweeps in-flight rows to `interrupted`. Without the org check a
  * caller acting for one organization takes down the other's running work.
  * `handleListActiveRequests` filters on the same pair for the read half.
  *
  * An entry with no organization is a legacy row and is left alone rather than
- * swept under a guess (BR-14) — `entry.orgId === callerOrgId` does that by
+ * swept under a guess — `entry.orgId === callerOrgId` does that by
  * construction, since an authenticated caller's org is never undefined.
  */
 function sweepAdmits(
@@ -513,6 +517,7 @@ export async function handleCheckInterruptedRequests(
   return jsonResponse(200, { interrupted });
 }
 
+// BP-033; BP-030.
 /**
  * GET /users/:userId/interrupted-requests — the user's interrupted request
  * records.
@@ -524,7 +529,7 @@ export async function handleCheckInterruptedRequests(
  * same records on every call until each is continued or removed. It sweeps
  * nothing.
  *
- * Records are filtered at the store by user, status and tenant (BP-033), then
+ * Records are filtered at the store by user, status and tenant, then
  * each passes the listing rule `/active-requests` uses (`listingAdmits`): the
  * organization axis and, in a mixed app, the anonymous allow-list. The route
  * guard has already checked the path's `userId` against the caller.
@@ -532,7 +537,7 @@ export async function handleCheckInterruptedRequests(
  * Response: `{ interrupted: [{ requestId, sessionId?, flowKind, flowId,
  * actionName, interruptedAt }] }`. `flowId` is the instance address the
  * request's routes take; a record written before the instance id existed
- * falls back to its `flowKind` (BP-030). `interruptedAt` falls back to the
+ * falls back to its `flowKind`. `interruptedAt` falls back to the
  * record's last update for a record that never stamped one.
  */
 export async function handleListInterruptedRequests(

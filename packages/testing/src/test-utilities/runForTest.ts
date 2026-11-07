@@ -1,6 +1,7 @@
+// FIX-503.
 /**
  * `runForTest` — substrate-friendly entry point for driving a block from
- * test code (FIX-503).
+ * test code.
  *
  * The public `BlockDefinition` type intentionally omits the runtime
  * dispatch entry (`run`); production callers are expected to compose

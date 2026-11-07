@@ -1,5 +1,6 @@
+// FIX-2007.
 /**
- * A roster worker's settings (`/roster/<workerId>/settings`, FIX-2007).
+ * A roster worker's settings (`/roster/<workerId>/settings`).
  * `/roster/<workerId>/rules` still opens it. A flow that keeps no rules gets a
  * line here, not an empty list (BR-21a).
  */
@@ -9,7 +10,8 @@ import { shiftCoordinatorOf, type LoadedSnapshot } from "../lib/derive";
 import { useRoster, withRoster } from "../lib/roster";
 import { RouteLink } from "../components/RouteLink";
 
-/** What Shift Manager calls the `shift-coordinator` worker (FIX-1747). */
+// FIX-1747.
+/** What Shift Manager calls the `shift-coordinator` worker. */
 const SHIFT_COORDINATOR_NAME = "Shift Coordinator";
 
 export function WorkerSettingsView({ snapshot, workerId, devtoolUrl }: { snapshot: LoadedSnapshot; workerId: string; devtoolUrl?: string }) {

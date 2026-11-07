@@ -1,5 +1,6 @@
+// FIX-2173.
 /**
- * Consult another session's history (FIX-2173): answer a read-only question
+ * Consult another session's history: answer a read-only question
  * from what another of the principal's conversations already holds, without
  * waking it.
  *
@@ -30,7 +31,8 @@ import type { LLMMessage } from "../types/scope";
 
 /** The default hard cap on the history tokens the consult's generator receives. */
 export const CONSULT_DEFAULT_BUDGET_TOKENS = 24_000;
-/** The longest reading the tool hands back (BP-042). */
+// BP-042.
+/** The longest reading the tool hands back. */
 const MAX_READING_CHARS = 8_000;
 
 /** Where a consult reads: the session, and how the result names it. */

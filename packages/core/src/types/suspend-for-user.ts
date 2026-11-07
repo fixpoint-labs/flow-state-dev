@@ -1,5 +1,6 @@
+// FIX-2129, ER-1; FIX-2133.
 /**
- * Waiting for a user (FIX-2129, ER-1): the one call a block makes when its
+ * Waiting for a user: the one call a block makes when its
  * code reads a person's answer on its next line.
  *
  *   const asked = await ctx.suspendForUser({ kind: "input", prompt: "Which region?", deadline: 2 * DAY });
@@ -26,8 +27,7 @@
  * writes to the task, and nothing it returns, is kept. Any later wait for a
  * user in that run is cancelled at once.
  *
- * A question the work can go on without is not this: it holds its task
- * (FIX-2133).
+ * A question the work can go on without is not this: it holds its task.
  */
 import type { ZodTypeAny } from "zod";
 import { SuspensionRejectedError, SuspensionTimeoutError, type SuspendOptions } from "../errors/suspension-error";

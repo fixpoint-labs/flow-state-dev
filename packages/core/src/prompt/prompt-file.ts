@@ -71,9 +71,10 @@ export const PromptFileFrontmatter = z
 
 export type PromptFileFrontmatterData = z.infer<typeof PromptFileFrontmatter>;
 
+// FIX-434.
 /** The post-resolution generator-config view exposed to templates as `config`.
  * Constructed by the generator at call time — not the raw config the developer
- * wrote. `context` is the aggregated FIX-434 tag map. */
+ * wrote. `context` is the aggregated tag map. */
 export interface PromptFileConfigView {
   /** Aggregated context tag map, keyed by XML tag name. Each value is the
    * rendered string the framework would otherwise place inside the tag. */

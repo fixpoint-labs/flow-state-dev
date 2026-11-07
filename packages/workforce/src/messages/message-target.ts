@@ -1,5 +1,6 @@
+// FIX-2160.
 /**
- * Where a message addressed to a task or a session lands (FIX-2160), checked
+ * Where a message addressed to a task or a session lands, checked
  * before anything is written.
  *
  * `{ task: id }` lands in the session that works the task: the conversation

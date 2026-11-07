@@ -1,13 +1,14 @@
+// FIX-1794 S11; FIX-2286; FIX-2429.
 /**
- * TASKS, at Shift Coordinator (FIX-1794 S11): the tasks the user's
+ * TASKS, at Shift Coordinator: the tasks the user's
  * conversation filed for its delegates, as the conversation's own
  * `listTasks` read answers them (`lib/conversation-tasks.ts`), which stores
- * nothing, so a poll costs no request (FIX-2286). Each conversation
+ * nothing, so a poll costs no request. Each conversation
  * keeps a board of its own, so this reads that one board and nothing else.
  *
  * It reads when it opens, again each time the Lab is read again (`readAt`),
- * which is after each turn the user sends, and on every board notice
- * (FIX-2429): a task filed, moved or settled in any session, on any process,
+ * which is after each turn the user sends, and on every board notice:
+ * a task filed, moved or settled in any session, on any process,
  * on the conversation's board or its plan ledger. Wherever push can miss a
  * change (no push, the socket down, a bus that doesn't cross, as the SQLite
  * store's) it reads every {@link TASKS_POLL_MS} instead, but only while a task

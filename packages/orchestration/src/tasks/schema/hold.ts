@@ -1,5 +1,6 @@
+// FIX-2133 D2, the epic FIX-2058's ER-8; FIX-2129; FIX-2578.
 /**
- * What holds a task on its row (FIX-2133 D2, the epic FIX-2058's ER-8): one
+ * What holds a task on its row: one
  * list of holds, `Task.holds`, whatever the row's status.
  *
  * Two sources, discriminated on `source.kind`:
@@ -8,12 +9,12 @@
  *   The claim gate's stop arm opens it in the write that drops the lease, and
  *   the write that admits the run's resume closes it. After a cancel it stays,
  *   with its address, until the `cancelled` resume it owes (`resumeOwed`) is
- *   paid. Answered through the engine's answer route (FIX-2129).
+ *   paid. Answered through the engine's answer route.
  * - **`"row"`**: a question or a `confirm`, with nothing parked. It is open
  *   while no steer carries its id (`TaskSteer.answers`), so "answered" is never
  *   stored twice. Released by its first releaser: in this epic only an answer,
  *   a steer from the user carrying its id, or the board's "no answer came"
- *   steer at a deadline a host set. Or an **`external`** wait (FIX-2578):
+ *   steer at a deadline a host set. Or an **`external`** wait:
  *   `actor: "system"`, the running turn waiting on something outside the
  *   board, one `{ by: "event" }` releaser per thing it waits on. It is
  *   released the same way, by any steer that answers it (a person's line, a
@@ -27,7 +28,8 @@
  */
 import { z } from "zod";
 
-/** The most characters of a hold's prompt a row keeps: a list of tasks stays small (BP-042). */
+// BP-042.
+/** The most characters of a hold's prompt a row keeps: a list of tasks stays small. */
 export const MAX_QUESTION_PROMPT = 1_000;
 
 /** Who a hold waits on: the Inbox lists `"user"` holds; an `external` wait is the `"system"`'s. */
@@ -74,7 +76,8 @@ export const rowHoldSchema = z.object({
   ...holdBase,
   source: z.object({ kind: z.literal("row"), closedBy: z.array(releaserSchema) }),
   ask: z.object({
-    /** `question` and `confirm` wait on a person; `external` (FIX-2578, `actor: "system"`) on something outside the board. */
+    // FIX-2578.
+    /** `question` and `confirm` wait on a person; `external` (`actor: "system"`) on something outside the board. */
     kind: z.enum(["question", "confirm", "external"]),
     prompt: z.string(),
     title: z.string().optional(),
@@ -111,8 +114,9 @@ export interface ExternalWaitEvent {
   readonly key: string;
 }
 
+// FIX-2578.
 /**
- * What the turn holding a task's claim waits on outside the board (FIX-2578):
+ * What the turn holding a task's claim waits on outside the board:
  * a line a screen can show (`prompt`), and the events that end the wait.
  */
 export interface ExternalWait {

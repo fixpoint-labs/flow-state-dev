@@ -1,5 +1,6 @@
+// FIX-992; FIX-443 §3.2; FIX-990.
 /**
- * ResourceCollection-backed TaskCollection (FIX-443 §3.2).
+ * ResourceCollection-backed TaskCollection.
  *
  * Tasks live as instances of a parameterized resource collection
  * (typically `tasks/{id}` pattern), with `scope ∈ { session, user, org }`.
@@ -20,7 +21,7 @@
  *   4. Loop until a claim succeeds or the candidate list is exhausted.
  *
  * Two concurrent workers attempting to claim the same id flow through
- * the same updater. Since FIX-992 that updater runs under a conditional
+ * the same updater. That updater runs under a conditional
  * write: a version conflict **re-runs the mutator against refreshed
  * state**, so the loser's re-check sees the winner's `in_progress` row
  * and skips the candidate. A lost race therefore resolves to *no task*,
@@ -46,7 +47,7 @@
  * snapshot of their data. Tasks created via `createTask`/`createTasks` are
  * inserted into the mirror as they are created.
  *
- * Freshness boundary (FIX-990). The mirror is **shared by every
+ * Freshness boundary. The mirror is **shared by every
  * `TaskCollectionRef` resolved over the same resource-collection
  * instance**, so within one request every resolution reads one task set:
  * a task added through any of them is immediately visible to all of them,
@@ -110,9 +111,10 @@ import {
 } from "./method-table";
 
 
+// FIX-951; extended by FIX-976.
 /**
- * Module-private signal that a write declined (FIX-951; extended to the patch
- * path and given a reason by FIX-976).
+ * Module-private signal that a write declined, on the complete and patch
+ * paths, with its reason.
  *
  * Thrown from inside `updateState`'s updater and caught around the call.
  * Never crosses this module's boundary, and never reaches a user: the only
@@ -161,8 +163,9 @@ export interface ResourceBackedOptions {
    * cleared marker): with `onChange`, every row write reaches one of the two.
    */
   onWrite?: (task: Task) => void;
+  // FIX-480.
   /**
-   * Item-log accessor for `TaskHandle.items()` (FIX-480). Reads the
+   * Item-log accessor for `TaskHandle.items()`. Reads the
    * response's persistent item buffer at call time so synthesizer
    * prompt-builders can pick from a worker's natural emissions
    * (messages, sources, tool calls). When omitted, `items()` returns
@@ -171,9 +174,10 @@ export interface ResourceBackedOptions {
   getItems?: () => readonly OutputItem[];
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
+  // FIX-1005.
   /**
-   * Execution coordinate stamped onto `task.claimedBy` at claim time
-   * (FIX-1005). The factory reads it off the `BlockContext` it already
+   * Execution coordinate stamped onto `task.claimedBy` at claim time.
+   * The factory reads it off the `BlockContext` it already
    * receives; omit it and claims record no coordinate.
    */
   claimIdentity?: TaskClaimIdentity;
@@ -183,9 +187,9 @@ export interface ResourceBackedOptions {
    * no filer.
    */
   createdBy?: string;
+  // FIX-1780; FIX-982.
   /**
-   * Refuse `setAssignee` on a task an attempt holds (FIX-982, narrowed by
-   * FIX-1780 to `in_progress`).
+   * Refuse `setAssignee` on a task an attempt holds (narrowed to `in_progress`).
    *
    * Set by a task board with dispatcher assignees. The assignee is what a
    * dispatched task's routing key derives from, so reassigning a task whose
@@ -210,36 +214,40 @@ export interface ResourceBackedOptions {
    * lands in that same write. See `./ending`.
    */
   recordEnding?: TaskEndingRecorder;
+  // FIX-2080.
   /**
-   * The filing settings this board honours (FIX-2080;
-   * `defineTaskCollection({ settings })`). Omitted, only the defaults.
+   * The filing settings this board honours (`defineTaskCollection({ settings })`). Omitted, only the defaults.
    */
   settings?: TaskSettingsSupport;
-  /** What every row this collection files is stamped with beside its filer (FIX-2133). */
+  // FIX-2133.
+  /** What every row this collection files is stamped with beside its filer. */
   filing?: FilingStamp;
+  // FIX-2080 D2.
   /**
-   * The board's payer for the tasks a task filed (FIX-2080 D2;
-   * `defineTaskCollection({ cascadeFiled })`), bound to the running context.
+   * The board's payer for the tasks a task filed (`defineTaskCollection({ cascadeFiled })`), bound to the running context.
    * Omitted, a cascade covers only this board's dependents.
    */
   cascadeFiled?: TaskFiledCascade;
+  // FIX-2078.
   /**
-   * The ledger's delivery (FIX-2078), bound to the running request: the
+   * The ledger's delivery, bound to the running request: the
    * session filing through this resolution (stamped as each row's filer) and
    * the hooks run around every write that may end a row. Omitted on a ledger
    * no board hands rows out from.
    */
   delivery?: {
     ownSession: string;
-    /** The running request, by its engine identity (FIX-2123): stamped as the filing request of each row it files in its own session. */
+    // FIX-2123.
+    /** The running request, by its engine identity: stamped as the filing request of each row it files in its own session. */
     ownRequest?: string;
     hooks: DeliveryHooks;
   };
 }
 
+// FIX-2080.
 /**
  * The read boundary for this backing. Collection instances are stored, not
- * parsed, so a row in a shape the retired-shape map reads (FIX-2080) arrives
+ * parsed, so a row in a shape the retired-shape map reads arrives
  * as stored; it is mapped forward here (see `withRetiredShapes`), before any
  * filter or the transition guard sees it.
  *
@@ -259,8 +267,9 @@ function readTaskState<TInput, TOutput>(
   return readTaskStateOf<TInput, TOutput>(ref.state);
 }
 
+// FIX-990.
 /**
- * Per-resource-collection task-set record, module-scoped (FIX-990). See the
+ * Per-resource-collection task-set record, module-scoped. See the
  * file header for the freshness contract this implements.
  *
  * Keyed on the `ResourceCollectionRef` **instance**, never on the
@@ -292,8 +301,9 @@ function sharedTaskSet(
   return created;
 }
 
+// FIX-2080 D2.
 /**
- * Add the stored task rows `mirror` doesn't hold yet (FIX-2080 D2), for a
+ * Add the stored task rows `mirror` doesn't hold yet, for a
  * touch's sweep: rows another process filed after this mirror was hydrated.
  * Never replaces or retires an entry; construction's {@link reconcileTaskSet}
  * owns that, for the reasons it lists.
@@ -484,7 +494,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     }
   }
 
-  /** Deliver what `row` owes its filer now (FIX-2078). Never fails the committed write. */
+  // FIX-2078.
+  /** Deliver what `row` owes its filer now. Never fails the committed write. */
   async function deliverAfter(row: Task): Promise<void> {
     if (delivery === undefined) return;
     await delivery.hooks.afterEnding(row, listAll(), async (id, patch) => {
@@ -502,10 +513,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     return target === "completed" || target === "errored" || target === "cancelled" || target === "pending";
   }
 
+  // FIX-2078; FIX-2123.
   /**
-   * The filer a new row is stamped with (FIX-2078): the session filing it, or,
+   * The filer a new row is stamped with: the session filing it, or,
    * for a follow-up, its root's filer, whoever typed it. With the request
-   * filing it when that is the filer's session (FIX-2123): the row's notice
+   * filing it when that is the filer's session: the row's notice
    * waits for that request to end.
    */
   function filerFor(init: { followUpOf?: string }): Task["filer"] {
@@ -516,9 +528,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     return { sessionId, ...(filing !== undefined ? { requestId: filing } : {}) };
   }
 
+  // FIX-2123.
   /**
-   * Note a row this request filed with itself as the filing request
-   * (FIX-2123), and ask to be called as the request ends: a notice turned
+   * Note a row this request filed with itself as the filing request,
+   * and ask to be called as the request ends: a notice turned
    * away while it ran is sent then, past any backoff, rather than at the
    * pass's next resend. The delivery registers once per request and board,
    * so the call reads every row the request filed there, whichever
@@ -530,8 +543,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     sendOwedAtStop();
   }
 
+  // FIX-2170.
   /**
-   * Note a wait slot this request lapsed (FIX-2170), and ask to be called as
+   * Note a wait slot this request lapsed, and ask to be called as
    * the request ends, as {@link noteFiled} does: at a park, the delivery owes
    * the filer's pass a wake, and that pass releases the slot, so an ending it
    * holds goes out while the request is parked. No row is read or written at

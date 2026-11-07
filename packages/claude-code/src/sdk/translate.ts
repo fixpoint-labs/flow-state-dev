@@ -113,10 +113,11 @@ function readNestedString(source: unknown, outer: string, inner: string): string
   return readString((source as Record<string, unknown>)[outer], inner);
 }
 
+// BP-030.
 /**
  * Which fields the harness says it actually applied (`TaskUpdateOutput`'s
  * `updatedFields`). `null` when absent — an older or unknown shape, where the
- * tolerant reading is "no opinion", not "applied nothing" (BP-030).
+ * tolerant reading is "no opinion", not "applied nothing".
  */
 function readAppliedFields(structured: unknown): ReadonlySet<string> | null {
   if (typeof structured !== "object" || structured === null) return null;
@@ -896,8 +897,9 @@ function translateResult(msg: Extract<ClaudeCodeSdkMessage, { type: "result" }>)
   return events;
 }
 
+// FIX-2145.
 /**
- * What a whole query spent, cached input counted as input (FIX-2145). The
+ * What a whole query spent, cached input counted as input. The
  * result's `usage` is the main agent loop only, so `modelUsage` (every model
  * the query called, sub-agents included) is read when it is there.
  */

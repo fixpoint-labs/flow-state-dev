@@ -1,12 +1,13 @@
+// FIX-140; FIX-141.
 /**
- * SQLite-backed suspension record store for durable execution (FIX-140).
+ * SQLite-backed suspension record store for durable execution.
  *
  * Stores the full SuspensionRecord as JSON in the `data` column.
  * Scalar columns (`request_id`, `suspension_id`, `created_at`) enable
  * indexed queries; nested filter fields (flowKind, userId, etc.) are
  * filtered in JS from the parsed JSON blob via `matchesSuspensionFilter`.
  *
- * The denormalized `status` / `resolved_at` columns (FIX-141) mirror the
+ * The denormalized `status` / `resolved_at` columns mirror the
  * blob and back the `(status, resolved_at)` index, so `pruneTerminalBefore`
  * runs a bounded indexed DELETE rather than scanning every row.
  */

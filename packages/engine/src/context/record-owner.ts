@@ -25,7 +25,8 @@ import type { FlowRegistry } from "../registry/flow-registry";
 /** The two owner facts every owned record carries. `flowId` is absent on legacy rows. */
 export type OwnedRecord = {
   flowKind: string;
-  /** `null` and `undefined` both mean "written before the field existed" (BP-030). */
+  // BP-030.
+  /** `null` and `undefined` both mean "written before the field existed". */
   flowId?: string | null;
 };
 

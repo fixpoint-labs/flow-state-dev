@@ -1,5 +1,6 @@
+// FIX-443 §3.1; FIX-401.
 /**
- * State-backed TaskCollection (FIX-443 §3.1).
+ * State-backed TaskCollection.
  *
  * Tasks live as a `Record<id, Task>` on an atomic state you pass — a
  * sequencer's state, a generator's own state, or the request (adapted by
@@ -11,7 +12,7 @@
  * Locality: each state owns its own tasks without manufacturing unique
  * resource keys, and nested patterns automatically get isolated collections.
  * Durability follows the ref you pass, and only a sequencer's state is
- * checkpointed (FIX-401, latest-only with always-on default); a generator's
+ * checkpointed (latest-only with always-on default); a generator's
  * own state and the request are not restored on resume.
  *
  * This file is the storage: the state slot, read through the retired-shape
@@ -49,8 +50,9 @@ export interface StateBackedOptions extends TaskCapOptions {
    * cleared marker): with `onChange`, every row write reaches one of the two.
    */
   onWrite?: (task: Task) => void;
+  // FIX-480.
   /**
-   * Item-log accessor for `TaskHandle.items()` (FIX-480). Reads the
+   * Item-log accessor for `TaskHandle.items()`. Reads the
    * response's persistent item buffer at call time so synthesizer
    * prompt-builders can pick from a worker's natural emissions
    * (messages, sources, tool calls). When omitted, `items()` returns
@@ -59,9 +61,10 @@ export interface StateBackedOptions extends TaskCapOptions {
   getItems?: () => readonly OutputItem[];
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
+  // FIX-1005.
   /**
-   * Execution coordinate stamped onto `task.claimedBy` at claim time
-   * (FIX-1005). The factory reads it off the `BlockContext` it already
+   * Execution coordinate stamped onto `task.claimedBy` at claim time.
+   * The factory reads it off the `BlockContext` it already
    * receives; omit it and claims record no coordinate.
    */
   claimIdentity?: TaskClaimIdentity;
@@ -71,20 +74,23 @@ export interface StateBackedOptions extends TaskCapOptions {
    * no filer.
    */
   createdBy?: string;
+  // FIX-2080.
   /**
-   * The filing settings this board honours (FIX-2080). Omitted, only the
+   * The filing settings this board honours. Omitted, only the
    * defaults: a filing with any other `session` or `resultTo` is refused.
    */
   settings?: TaskSettingsSupport;
-  /** What every row this collection files is stamped with beside its filer (FIX-2133). */
+  // FIX-2133.
+  /** What every row this collection files is stamped with beside its filer. */
   filing?: FilingStamp;
 }
 
+// FIX-965; BP-031; FIX-943.
 /**
- * Own-property task lookup (FIX-965). `id` is model-supplied (task tool
- * calls declare `taskId: z.string()`), so BP-031 applies — indexing directly
+ * Own-property task lookup. `id` is model-supplied (task tool
+ * calls declare `taskId: z.string()`), so it is untrusted — indexing directly
  * could resolve an inherited `Object.prototype` member instead of missing.
- * Same guard as `keyedRouter` (FIX-943).
+ * Same guard as `keyedRouter`.
  */
 function ownTask<T>(tasks: Record<string, T>, id: string): T | undefined {
   return Object.hasOwn(tasks, id) ? tasks[id] : undefined;
@@ -103,10 +109,11 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
   const maxEnqueuedTasks = options.maxEnqueuedTasks ?? undefined;
   const maxTotalRetries = options.maxTotalRetries ?? undefined;
 
+  // FIX-2080.
   /**
    * The read boundary for this backing — same job as the resource backing's
    * `readTaskState`. Atomic state is stored, not parsed, so a row in a shape
-   * the retired-shape map reads (`withRetiredShapes`, FIX-2080) arrives as
+   * the retired-shape map reads (`withRetiredShapes`) arrives as
    * stored; it is mapped forward here, before any filter or the transition
    * guard sees it.
    *
@@ -163,9 +170,10 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     });
   }
 
+  // FIX-931.
   /**
-   * Enforce the creation caps against the map an insertion WOULD produce
-   * (FIX-931). Called from inside `casWrite`'s mutator, so it re-evaluates
+   * Enforce the creation caps against the map an insertion WOULD produce.
+   * Called from inside `casWrite`'s mutator, so it re-evaluates
    * against the winner's committed map on every CAS retry: concurrent same-step
    * adds serialize, and a burst at a boundary lands exactly the cap's worth.
    * Throwing here aborts the mutate, so nothing is written — which is also what

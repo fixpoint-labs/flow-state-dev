@@ -1,5 +1,6 @@
+// FIX-2076; FIX-2082.
 /**
- * A board's mode (FIX-2076): whether its drain waits on its rows.
+ * A board's mode: whether its drain waits on its rows.
  *
  * The author declares it on `taskBoard({ mode })`, and the board is refused at
  * construction when its assignees contradict it. Nothing infers it from the
@@ -8,7 +9,7 @@
  *
  * | mode            | rows run                                | the drain waits on |
  * |-----------------|-----------------------------------------|--------------------|
- * | `"plan"`        | in the drain, or handed to a session and waited on (FIX-2082) | every row |
+ * | `"plan"`        | in the drain, or handed to a session and waited on | every row |
  * | `"delegation"`  | in another session                      | no row             |
  *
  * The one test the drain's readers share ({@link runsElsewhereFor}) is the
@@ -34,13 +35,14 @@ export function runsElsewhereFor(mode: TaskBoardMode): ((task: Task) => boolean)
   return mode === "delegation" ? () => true : undefined;
 }
 
+// FIX-2082.
 /**
  * The mode's construction-time refusals, by name and loud.
  *
  * - A plan board holding a dispatcher that says `wait: false`: its drain waits
- *   on every row, the ones it hands over included (FIX-2082).
+ *   on every row, the ones it hands over included.
  * - A delegation board holding a dispatcher that says `wait: true`: its drain
- *   waits on none (FIX-2082).
+ *   waits on none.
  * - A delegation board with an assignee that runs in the drain (named, uniform
  *   or floor): the drain would not wait on work running in it.
  * - A delegation board with no dispatcher: nothing on it is dispatched.

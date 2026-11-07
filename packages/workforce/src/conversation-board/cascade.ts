@@ -1,5 +1,6 @@
+// FIX-2080 D2.
 /**
- * The filed half of a task's cascade on a conversation's board (FIX-2080 D2):
+ * The filed half of a task's cascade on a conversation's board:
  * when a task fails, retries or is cancelled, the open tasks its session
  * filed are cancelled, so no filed task outlives the task that filed it.
  *
@@ -74,9 +75,10 @@ export async function stampFiledMarker(ctx: BlockContext, taskId: string, ledger
   await ref.patchMetadata(taskId, { [FILED_MARKER]: marker });
 }
 
+// FIX-2129.
 /**
  * Refuse a piece of `taskId` before it is added, when the task is already
- * cancelled (FIX-2129): a cancelled task's block runs on to its end, and a
+ * cancelled: a cancelled task's block runs on to its end, and a
  * piece it files then would outlive it, since the cascade cancels only what
  * was filed up to the cancel. Read against the committed row on the board
  * above, not this process's copy of it, so no claimable piece of a cancelled

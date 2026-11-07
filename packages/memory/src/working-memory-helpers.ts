@@ -326,6 +326,7 @@ export function formatForObserveContext(ref: WmRef): string {
     .join('\n')
 }
 
+// FIX-435.
 /**
  * Ready-made `context:` slot for generators that need working memory.
  *
@@ -333,7 +334,7 @@ export function formatForObserveContext(ref: WmRef): string {
  * `defineResource({ scope: 'session' })` declaration) and formats it as a
  * bullet list. Assign to the generator's `context` array. The generator
  * must declare `resources: { workingMemory: workingMemoryResource }` under
- * the unified resource map (FIX-435).
+ * the unified resource map.
  *
  * ```ts
  * const chat = generator({

@@ -55,9 +55,10 @@ function isTerminalRequestStatus(status: RequestStatus | undefined): boolean {
   );
 }
 
+// FIX-2097.
 /**
- * Whether a deferred write found the connection closed, and so is dropped
- * (FIX-2097). At host shutdown a request the drain cancelled can still emit
+ * Whether a deferred write found the connection closed, and so is dropped.
+ * At host shutdown a request the drain cancelled can still emit
  * after the registry closed the database; its write runs in a microtask with
  * no caller to reach, so a throw there would be an uncaught exception that
  * takes the host down. Nothing is left to persist to, so the write is logged
@@ -77,10 +78,11 @@ function droppedAfterClose(
   return true;
 }
 
+// FIX-1026.
 /**
  * Force `abortRequested` to the value already stored, whatever the incoming
  * record says — the adapter half of `RequestStore.set`'s rule that the flag is
- * off its write surface (FIX-1026).
+ * off its write surface.
  *
  * Mirrors the engine's `withStoredAbortRequested`, restated here for the same
  * reason `isTerminalRequestStatus` is: this package keeps a TYPE-ONLY
@@ -118,8 +120,9 @@ export type CreateSQLiteRequestStoreOptions = {
   subscribePollIntervalMs?: number;
 };
 
+// FIX-438.
 /**
- * Backfill `source` on records persisted before FIX-438 added the field.
+ * Backfill `source` on records persisted before the field existed.
  * Records written by the new code path always carry it.
  */
 function withSourceDefault(record: RequestRecord | undefined): RequestRecord | undefined {
@@ -240,13 +243,14 @@ export function createSQLiteRequestStore(
   const pendingItemWrites = new Set<string>();
   /** Holds the most recent items so the queued write always uses the latest data. */
   const latestItemSnapshots = new Map<string, RuntimeItem[]>();
+  // FIX-839.
   /**
    * Per-request map of item id → the JSON last persisted to `request_items`.
    * Diffing by serialized content (not object reference) keeps persistence
    * incremental while still catching in-place field mutations: the runtime
    * mutates a block_trace item in place across in_progress → completed (same
    * reference, new content), so a reference compare would drop the completed
-   * write and leave the row in_progress, defeating resume memoization (FIX-839).
+   * write and leave the row in_progress, defeating resume memoization.
    */
   const lastPersistedItems = new Map<string, Map<string, string>>();
   const pendingEventWrites = new Set<string>();
@@ -371,6 +375,7 @@ export function createSQLiteRequestStore(
     latestItemSnapshots.delete(id);
   }
 
+  // FIX-839.
   /**
    * The items in `snapshot` whose content differs from what was last
    * persisted for the request, de-duplicated by id and sorted for a
@@ -380,7 +385,7 @@ export function createSQLiteRequestStore(
    * block_trace item in place across its in_progress → completed lifecycle
    * (same reference, new content), so a reference compare would never
    * re-persist the completed state — the row would stay in_progress and resume
-   * memoization would re-run the already-completed block (FIX-839).
+   * memoization would re-run the already-completed block.
    * Serializing to compare keeps writes proportional to new/changed items.
    */
   function itemDelta(
@@ -411,9 +416,10 @@ export function createSQLiteRequestStore(
     }
   }
 
+  // FIX-1619.
   /**
    * A record row and its items, read in one transaction so both come from one
-   * snapshot (FIX-1619). Request ids are caller-supplied and retention deletes
+   * snapshot. Request ids are caller-supplied and retention deletes
    * requests, so a request can be deleted and a new one written under its id
    * between two separate reads; read apart, the row of one would carry the
    * items of the other.
@@ -425,7 +431,8 @@ export function createSQLiteRequestStore(
     return { ...record, items: queryItems(id) };
   });
 
-  /** `list({ withItems: true })`'s rows and their items, in one transaction (FIX-1619). */
+  // FIX-1619.
+  /** `list({ withItems: true })`'s rows and their items, in one transaction. */
   const listWithItems = db.transaction((options: RequestListOptions): RequestRecord[] => {
     const withSource = base
       .listSync(options)
@@ -457,9 +464,10 @@ export function createSQLiteRequestStore(
     }));
   });
 
+  // FIX-1750.
   /**
-   * A record row and the items it settles with, written in one transaction
-   * (FIX-1750). The items are written only if the row write lands, so a lost
+   * A record row and the items it settles with, written in one transaction.
+   * The items are written only if the row write lands, so a lost
    * CAS leaves both untouched.
    */
   const setWithItems = db.transaction(

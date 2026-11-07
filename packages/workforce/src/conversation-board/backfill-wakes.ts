@@ -1,5 +1,6 @@
+// FIX-2078, BP-030; FIX-2077.
 /**
- * The upgrade's one-off backfill of wakes (FIX-2078, BP-030).
+ * The upgrade's one-off backfill of wakes.
  *
  * A debt a board recorded before wakes existed has no due time the engine
  * keeps: an owed notice or report marker on a row. Nothing would pay it in a quiet conversation. Run once at host start
@@ -9,7 +10,7 @@
  * stamped due and sent, and an old report marker is sent to the Error
  * Reporter once. A running task a queued message held open (`keptOpenBy:
  * "queued"`) gets a wake for its task session's check entry instead
- * (`CHECK_TASK_ENTRY`, FIX-2077): it reads as answered and waiting on its
+ * (`CHECK_TASK_ENTRY`): it reads as answered and waiting on its
  * filed work, and the check settles it with the answer it kept.
  *
  * Safe to run again: a wake coalesces into the one already kept, and a pass

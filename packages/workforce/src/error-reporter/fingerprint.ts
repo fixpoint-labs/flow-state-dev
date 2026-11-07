@@ -1,5 +1,6 @@
+// FIX-1983 D2.
 /**
- * What "the same bug" is, for the Error Reporter (FIX-1983 D2).
+ * What "the same bug" is, for the Error Reporter.
  *
  * A failure's fingerprint is its flow kind, action, block path, error code and
  * message, with the message's ids, numbers and paths stripped. Two failures

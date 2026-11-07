@@ -90,11 +90,12 @@ export interface RunSourceRefusal {
 /** Everything a run source can answer. */
 export type RunSourceAnswer = RepoRunSource | FilesRunSource | RunSourceRefusal;
 
+// BP-031.
 /**
  * Resolve a run's source from its block context.
  *
  * Handed the context and nothing else, so it can only answer from what the
  * context reaches — stored, server-written data — and never from a row's
- * input, its metadata, or anything a model wrote (BP-031).
+ * input, its metadata, or anything a model wrote.
  */
 export type RunSource = (ctx: LooseBlockContext) => RunSourceAnswer | Promise<RunSourceAnswer>;

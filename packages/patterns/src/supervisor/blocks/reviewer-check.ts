@@ -1,9 +1,10 @@
+// BP-011.
 /**
  * `buildReviewedWorker` — wraps a worker block in a per-task review
  * sequencer.
  *
  * The reviewer is composed as a `.step(reviewerGenerator)` step in the
- * worker's own sequencer chain (BP-011 — reviewer is composed, not
+ * worker's own sequencer chain (reviewer is composed, not
  * invoked from inside a handler's `execute`). `applyVerdict` is a
  * pure handler that synchronously decides "throw or return" based on
  * the verdict already produced upstream — no `block.run` calls.

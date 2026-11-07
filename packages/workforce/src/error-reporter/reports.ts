@@ -1,5 +1,6 @@
+// FIX-1983.
 /**
- * The Error Reporter's report rows and its one intake (FIX-1983).
+ * The Error Reporter's report rows and its one intake.
  *
  * Keys, all under one collection:
  * - `fp-<fingerprint>`: one report per fingerprint;

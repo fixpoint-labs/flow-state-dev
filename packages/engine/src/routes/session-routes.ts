@@ -61,8 +61,9 @@ const STATUS_READS_IN_FLIGHT = 8;
 type SessionRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
+  // FIX-682.
   /**
-   * Tenant id from the request header (FIX-682). Namespaces every session
+   * Tenant id from the request header. Namespaces every session
    * storage key so a route resolves only the calling tenant's session.
    * Undefined for single-tenant requests.
    */
@@ -86,9 +87,10 @@ type SessionRouteContext = {
   checkedSession?: SessionRecord | null;
 };
 
+// FIX-1440.
 /**
  * The one include this listing accepts, spelled for callers rather than for
- * the store (FIX-1440).
+ * the store.
  *
  * `parentage` is a storage concept with three modes; a caller has one question
  * — *do I also want the sessions a dispatcher ran work in?* — so that is what
@@ -100,13 +102,14 @@ const DISPATCH_RUNS_INCLUDE = "dispatch-runs";
 /** The include that adds each row's latest request status. */
 const STATUS_INCLUDE = "status";
 
+// FIX-1009.
 /**
  * Map the `include` query parameter onto a store parentage.
  *
  * `undefined` — no include — leaves the option **off**, so the listing narrows
  * to top-level sessions exactly as it always has. That is the rule, not an
  * implementation detail: a caller that did not ask gets today's result set,
- * unchanged (FIX-1009, and `SessionListOptions.parentage`).
+ * unchanged (and `SessionListOptions.parentage`).
  *
  * An unrecognised token is a **400 naming what is accepted**, never a silent
  * ignore: a caller that misspells the include would otherwise be told nothing

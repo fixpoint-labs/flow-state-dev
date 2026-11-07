@@ -1,3 +1,4 @@
+// FIX-2428.
 /**
  * `serve(app, options)` — stand up a long-lived Node server for a `FlowState`
  * (or a pre-built `FlowApiRouter`).
@@ -17,7 +18,7 @@
  * inside `@hono/node-server` rather than logged to stderr, so there is no longer a
  * server-side signal when a live stream dies mid-flight.
  *
- * Push delivery (FIX-2428): `serve()` is the host that serves the change
+ * Push delivery: `serve()` is the host that serves the change
  * notice socket. It turns push on for the router it fronts, so
  * `GET /capabilities` reports `{ transport: "websocket" }` and the router
  * answers the mint, then takes the WebSocket upgrade on

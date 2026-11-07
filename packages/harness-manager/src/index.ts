@@ -1,3 +1,4 @@
+// FIX-2086.
 /**
  * `@flow-state-dev/harness-manager` — a task-board row becomes a supervised
  * coding run.
@@ -30,7 +31,7 @@
  *   runs. `harnessStub`, a scripted harness for the slot, for checks that run
  *   no model.
  * - `upgradeKeptTurns`, the upgrade's one-off step that writes a line the
- *   coding door kept before FIX-2086 onto its task as a steer.
+ *   coding door kept before lines became steers onto its task as a steer.
  * - `runOwnerClaimOrder`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
  * - `PhaseSpec` and the run-context types a phase's hooks are handed: the

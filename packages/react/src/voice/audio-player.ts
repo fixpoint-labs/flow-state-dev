@@ -1,5 +1,6 @@
+// FIX-523.
 /**
- * Streaming-aware audio player for TTS output (FIX-523).
+ * Streaming-aware audio player for TTS output.
  *
  * Backed by the Web Audio API: each chunk is decoded into an `AudioBuffer`
  * and scheduled on a `AudioBufferSourceNode` at a moving `nextStartTime`

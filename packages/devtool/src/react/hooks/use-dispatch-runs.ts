@@ -1,5 +1,6 @@
+// FIX-1071.
 /**
- * Lists the dispatch runs hanging off one session (FIX-1071).
+ * Lists the dispatch runs hanging off one session.
  *
  * Wraps `client.sessions.children`, the same client-method idiom the other
  * listing hooks use — transport lives in the client, never here.

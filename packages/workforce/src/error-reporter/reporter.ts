@@ -1,5 +1,6 @@
+// FIX-1983.
 /**
- * The Error Reporter (FIX-1983): what a Lab creates once, hands the engine as
+ * The Error Reporter: what a Lab creates once, hands the engine as
  * its `errorCapture` handler, and binds to its runtime. Workforce never
  * imports the engine, so {@link ErrorReporter.bind} takes the runtime
  * operations; one process binds one reporter. A final event and an errored

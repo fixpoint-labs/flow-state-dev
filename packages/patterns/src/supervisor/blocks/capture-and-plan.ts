@@ -18,9 +18,11 @@ export interface CaptureAndPlanOptions {
   planner: BlockDefinition<any, any>;
   /** Per-task retry budget stamped onto every seeded TaskInit. */
   maxAttemptsPerTask: number;
-  /** Per-task context supply (FIX-827). Default `"goal"`. */
+  // FIX-827.
+  /** Per-task context supply. Default `"goal"`. */
   taskContext?: TaskContextSupply;
-  /** The board's resolved creation caps — pass `board.caps` (FIX-931). */
+  // FIX-931.
+  /** The board's resolved creation caps — pass `board.caps`. */
   caps?: TaskCapOptions;
 }
 

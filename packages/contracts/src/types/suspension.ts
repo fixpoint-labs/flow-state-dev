@@ -1,6 +1,7 @@
+// FIX-2129.
 /**
  * Pure suspension-status leaf types consumed by the item taxonomy, and the one
- * test of whether a suspension waits for a user (FIX-2129). The full
+ * test of whether a suspension waits for a user. The full
  * suspension record/filter machinery (and its serialization concerns) stays
  * in `core/types/suspension.ts`, which re-exports these from here.
  */
@@ -14,14 +15,16 @@ export type SuspensionStatus =
   | "skipped"
   | "timed_out"
   | "expired"
+  // FIX-1816.
   /**
-   * A person stopped the parked turn (FIX-1816). Absent on records written
+   * A person stopped the parked turn. Absent on records written
    * before it existed; a reader that does not know it treats it as resolved.
    */
   | "stopped"
+  // FIX-2129.
   /**
    * The suspension's task was cancelled while it waited, or the board
-   * cancelled this one stop (FIX-2129). The block reads it and runs to its
+   * cancelled this one stop. The block reads it and runs to its
    * end. A reader that does not know it treats it as resolved.
    */
   | "cancelled";
@@ -46,8 +49,9 @@ export type SuspensionReason =
  */
 export type ResumeAction = "approve" | "reject" | "submit" | "skip";
 
+// FIX-2129.
 /**
- * What a suspension for a user asks for (`ctx.suspendForUser`, FIX-2129):
+ * What a suspension for a user asks for (`ctx.suspendForUser`):
  *
  * - `approval`: a yes or a no. At a deadline, a no.
  * - `review`: a verdict on work the user looks at.

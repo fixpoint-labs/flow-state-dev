@@ -1,5 +1,6 @@
+// FIX-2426.
 /**
- * The change bus contract (FIX-2426): a notice that something under a topic
+ * The change bus contract: a notice that something under a topic
  * changed, published once the change can be read, and heard by whoever
  * subscribed to the topic.
  *

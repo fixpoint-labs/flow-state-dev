@@ -1,5 +1,6 @@
+// FIX-1945.
 /**
- * Standing rules on a worker's turn (FIX-1945): the numbered list in context,
+ * Standing rules on a worker's turn: the numbered list in context,
  * and the rule tools as `controlTools` on a user turn, so a `tools:` line
  * doesn't fence them. A task turn reads the filing user's list because it
  * runs at that user's scope.

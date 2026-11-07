@@ -227,11 +227,12 @@ export function mergeItems(held: readonly OutputItem[], incoming: readonly Outpu
   return [...byKey.values()].sort(compareItemOrder);
 }
 
+// BR-8; FIX-2009.
 /**
- * What the Session shows of a session's items (BR-8): the items stamped with
+ * What the Session shows of a session's items: the items stamped with
  * this task's id, through the attribution helper the substrate and the UI
  * share, and whether the session also holds another task's work. A request
- * in `sent` shows too: its door turn stores no task stamp (FIX-2009).
+ * in `sent` shows too: its door turn stores no task stamp.
  */
 export function taskItems(
   items: readonly OutputItem[],
@@ -254,7 +255,8 @@ const SETTLE_POLL_MS = 250;
 export type InterruptOutcome =
   /** The request record reads `aborted`, and says when, if it does. */
   | { kind: "aborted"; endedAtMs?: number }
-  /** The request had already finished, with this status, before the abort landed (BR-12). */
+  // BR-12.
+  /** The request had already finished, with this status, before the abort landed. */
   | { kind: "finished"; status: RequestStatus };
 
 /**

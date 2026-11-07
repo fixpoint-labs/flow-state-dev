@@ -767,12 +767,13 @@ export function createModelResolver(
   const intentCacheKey = (name: string, pref: ProviderPreference | undefined) =>
     `${name}::${(normalizePreference(pref) ?? []).join("|")}`;
 
+  // FIX-609.
   /**
    * Sync availability check for the auto-loaded (package) direct-provider
    * path. True when the provider has an API key and its package resolves on
    * disk. Module resolution (not execution) keeps this synchronous — the
    * three sync decision points depend on it: the intent candidate filter,
-   * the direct→gateway fall-through (FIX-609), and public `resolveId`.
+   * the direct→gateway fall-through, and public `resolveId`.
    * Explicit provider instances are handled separately by the caller.
    */
   function isPackageProviderAvailable(providerName: string): boolean {

@@ -1,6 +1,7 @@
+// FIX-2133.
 /**
  * The Inbox's shapes: one item type over what holds a task for the user, its
- * holds, what a read hands the list, and the answer a hold takes (FIX-2133).
+ * holds, what a read hands the list, and the answer a hold takes.
  * `index.ts` publishes the ones a caller uses; the rest stay inside the read.
  */
 import type { SuspendForUserKind } from "@flow-state-dev/core/types";

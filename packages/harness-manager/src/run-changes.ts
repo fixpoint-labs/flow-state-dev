@@ -1,14 +1,15 @@
+// FIX-2384; BP-042; BP-031.
 /**
- * What a board run changed, read from the run's session (FIX-2384): the
+ * What a board run changed, read from the run's session: the
  * files its commits changed and their lines, or one file's patch.
  *
  * A read, not an action: it is answered in the response and stored nowhere,
- * so a patch a person opens never lands in a request record or a session log
- * (BP-042). It runs no harness and takes no checkout lease: git reads the
+ * so a patch a person opens never lands in a request record or a session log.
+ * It runs no harness and takes no checkout lease: git reads the
  * run's committed history, which a running step only adds to.
  *
  * The task is the one the session ran, found from server state as the door
- * finds it (BP-031). A caller may name one of that session's own tasks, a
+ * finds it. A caller may name one of that session's own tasks, a
  * follow-up's or the task it followed; it can name no other. The checkout and
  * the base come from the task's run record, by the rule `readRunCommits`
  * documents, so the files a review's data lists are the files this reads.

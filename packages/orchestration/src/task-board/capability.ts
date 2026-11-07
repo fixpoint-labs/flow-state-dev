@@ -109,8 +109,9 @@ export interface TaskBoardResourceCapabilityOptions {
   resourceKey: string;
   /** Internal resource-declaring capability composed via `uses`. */
   resourceCapability: DefinedCapability;
+  // FIX-982.
   /**
-   * The ledger declaration this board binds (FIX-982). Forwarded to
+   * The ledger declaration this board binds. Forwarded to
    * `resolveResourceTaskCollection`, which reads the frozen-assignee policy off
    * it at resolution time — this accessor and the drain's own factory reach the
    * same rows, so a policy either of them could hold privately is one a caller

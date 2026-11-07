@@ -1,6 +1,7 @@
+// FIX-849.
 /**
  * Headless controller for the non-binary HITL shapes — a clarifying question, a
- * flat form, or a single/multi selection (FIX-849).
+ * flat form, or a single/multi selection.
  *
  * Where `useApproval` owns the binary approve/reject gate, this hook owns the
  * `submit`/`skip` path: it holds the in-progress form value, derives renderable

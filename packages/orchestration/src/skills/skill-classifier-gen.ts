@@ -20,7 +20,8 @@ import {
   matchedSkillSchema,
 } from "./skill-activation-types";
 
-/** Default confidence threshold matching FIX-311's classifier gate. */
+// FIX-311.
+/** Default confidence threshold matching the classifier gate. */
 export const DEFAULT_CONFIDENCE_THRESHOLD = 0.65;
 
 /** Default cap on the number of skills sent to the classifier prompt. */

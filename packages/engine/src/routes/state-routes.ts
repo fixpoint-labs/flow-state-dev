@@ -35,7 +35,8 @@ const DEFAULT_STATE_ITEMS_LIMIT = 100;
 type StateRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
-  /** Tenant id from the request header (FIX-682); namespaces the session key. */
+  // FIX-682.
+  /** Tenant id from the request header; namespaces the session key. */
   tenantId?: string;
   /**
    * The session the owner check read and admitted the caller to

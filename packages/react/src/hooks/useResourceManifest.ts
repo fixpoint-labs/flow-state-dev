@@ -1,5 +1,6 @@
+// FIX-427 §3.11.
 /**
- * Hook for the resource manifest (FIX-427 §3.11).
+ * Hook for the resource manifest.
  *
  * The manifest is static per `flowKind`. A module-level cache, keyed by
  * `flowKind`, ensures that all components mounting this hook for the same

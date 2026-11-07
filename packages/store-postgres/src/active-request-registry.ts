@@ -74,9 +74,9 @@ function deserializeRow(row: Record<string, unknown>): ActiveRequestEntry {
 }
 
 export type PostgresActiveRequestRegistryOptions = {
+  // FIX-999.
   /**
-   * Whether this registry's rows are visible to every process in the deployment
-   * (FIX-999).
+   * Whether this registry's rows are visible to every process in the deployment.
    *
    * Answered by the CONSTRUCTION, not by the package name. A pooled or
    * connection-string store talks to a real server every worker connects to, so

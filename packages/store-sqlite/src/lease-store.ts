@@ -1,5 +1,6 @@
+// FIX-140.
 /**
- * SQLite-backed lease store for durable execution (FIX-140).
+ * SQLite-backed lease store for durable execution.
  *
  * One active lease per request. Acquire uses a transaction to atomically
  * check-and-replace. Expired leases are pruned via DELETE WHERE.

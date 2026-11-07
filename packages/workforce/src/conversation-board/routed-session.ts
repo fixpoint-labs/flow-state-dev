@@ -1,5 +1,6 @@
+// FIX-2083.
 /**
- * Which routed task a session by id works now (FIX-2083): a workstream's
+ * Which routed task a session by id works now: a workstream's
  * session, the one session several of its user's conversations can route to.
  *
  * Rule 5 (one open task per session) is each board's own check, and a

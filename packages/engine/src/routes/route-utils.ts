@@ -66,11 +66,13 @@ export function emptyResponse(status: number): Response {
   return new Response(null, { status });
 }
 
-/** Default HTTP header carrying the tenant id (FIX-406 6D). */
+// FIX-406 6D.
+/** Default HTTP header carrying the tenant id. */
 export const DEFAULT_TENANT_ID_HEADER = "x-tenant-id";
 
+// FIX-682.
 /**
- * Read the tenant id from the configurable HTTP header (FIX-682). Returns
+ * Read the tenant id from the configurable HTTP header. Returns
  * `undefined` when the header is absent or empty — an empty header is treated
  * as single-tenant (bare keys), matching `resolveSessionStorageKey`. The
  * canonical extraction point so action dispatch and every session-touching
@@ -97,9 +99,10 @@ export function extractTenantId(
   return value;
 }
 
+// FIX-682.
 /**
  * Load a session for the calling tenant, returning `undefined` unless the
- * stored record's tenant matches the request's (FIX-682). The
+ * stored record's tenant matches the request's. The
  * `${tenantId}:${sessionId}` storage key is ambiguous when the caller controls
  * `sessionId` — omitting the header while passing `sessionId =
  * "${otherTenant}:${id}"` collides on another tenant's key. Verifying the
@@ -308,8 +311,9 @@ export function getBooleanFlag(value: string | null): boolean {
 /** A stored action result as a read sends it: plus `hasOutput`, with `output` only when asked. */
 export type ProjectedRequestResult = RequestActionResult & { hasOutput: boolean };
 
+// FIX-1661.
 /**
- * Project a request's stored action result for the wire (FIX-1661). The
+ * Project a request's stored action result for the wire. The
  * session request list and the status route send the same shape, so one
  * request reads the same in both: `hasOutput` says whether an output is
  * stored, and `output` is sent only when the caller asked for it.
@@ -399,8 +403,9 @@ export function createScopeResources(options: {
   configs: Record<string, unknown> | undefined;
   persisted: Record<string, unknown> | undefined;
   persistedContent?: Record<string, string> | undefined;
+  // FIX-858.
   /**
-   * FIX-858: trusted context for reading projected collections through their
+   * Trusted context for reading projected collections through their
    * `read` backing when a scope-level `client.data` function references one.
    * Omitted when the scope has no projected collections.
    */
@@ -619,10 +624,11 @@ export async function computeClientData(options: {
   return out;
 }
 
+// FIX-579; FIX-427.
 /**
  * Builds the client-visible `resources` snapshot for one scope.
  *
- * Collections (FIX-427): emit `count` always, plus a `prefetched` window when
+ * Collections: emit `count` always, plus a `prefetched` window when
  * the collection declares `prefetchWindow > 0`. Per-item `clientData` in the
  * window is included only when `client.state.read === true`.
  *
@@ -630,8 +636,7 @@ export async function computeClientData(options: {
  * prefetched content).
  *
  * Strictly client-shaped: resources without a `client` config are omitted.
- * The DevTool's previous `includeInternal` escape hatch was removed in
- * FIX-579 — use `/api/flows/sessions/:id/debug/resources*` for full
+ * The DevTool's previous `includeInternal` escape hatch was removed — use `/api/flows/sessions/:id/debug/resources*` for full
  * server-side inspection.
  */
 export async function buildResourceSnapshot(options: {
@@ -732,11 +737,12 @@ export async function buildResourceSnapshot(options: {
   return hasAny ? out : undefined;
 }
 
+// FIX-811.
 /**
  * The items a session snapshot shows from one request's item log.
  *
- * The request's physical log is collapsed to its canonical view first
- * (FIX-811): a resumed request's suspending block re-emits its pre-suspension
+ * The request's physical log is collapsed to its canonical view first:
+ * a resumed request's suspending block re-emits its pre-suspension
  * items, and the superseded copies must not surface. Per request, because
  * logical ids are scoped by request id. Then either the caller's type filter
  * or, without one, client visibility decides what stays.
@@ -908,12 +914,13 @@ export function resolveOwnerFlow(
   };
 }
 
+// FIX-1442.
 /**
  * The `409 migration-required` for a record this process cannot attribute, or
  * `undefined` for any record it can read.
  *
  * Two axes, one answer. A record is unattributed when its legacy history names
- * no single flow instance, OR — since FIX-1442 — when it names no organization.
+ * no single flow instance, OR when it names no organization.
  * Both are the same situation from an operator's worker: data that predates a
  * requirement, which the runtime preserves and refuses to serve rather than
  * guess about, and which one offline migration pass fixes. Giving them one

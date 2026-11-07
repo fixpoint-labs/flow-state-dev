@@ -1,11 +1,12 @@
+// [FIX-408]; [FIX-407].
 /**
- * Digest memory — fourth memory tier ([FIX-408]).
+ * Digest memory — fourth memory tier.
  *
  * Stores a single LLM-generated narrative paragraph that summarises stable
  * "what I know" framing about the user. Regenerated as a side-effect of
  * consolidation (and prune) when the underlying semantic / episodic stores
  * have actually changed. Bounded by `maxTokens`; consumed by the simplified
- * formatter ([FIX-407]) as the always-on, long-horizon memory inject.
+ * formatter as the always-on, long-horizon memory inject.
  */
 
 import { defineResource } from '@flow-state-dev/core'

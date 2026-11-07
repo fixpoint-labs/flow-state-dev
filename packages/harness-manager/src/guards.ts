@@ -87,6 +87,7 @@ function dispatcherIdentities(variable: string, dispatcher: readonly string[]): 
   });
 }
 
+// BP-034.
 /**
  * Refuse a repository that is the one this process is running from.
  *
@@ -95,7 +96,7 @@ function dispatcherIdentities(variable: string, dispatcher: readonly string[]): 
  * runner kept path equality — and the goal runner is the one that launches a
  * real coding agent, so the site that kept the weaker rule had the larger blast
  * radius. Adopting a rule means moving every site that speaks the old
- * vocabulary (BP-034), and a rule that lives in one function cannot be adopted
+ * vocabulary, and a rule that lives in one function cannot be adopted
  * halfway.
  */
 export function assertDistinctRepository(

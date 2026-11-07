@@ -12,7 +12,7 @@ import {
 
 /**
  * Polished flat-form card — the themeable counterpart to `SchemaFormRenderer` in
- * `@flow-state-dev/react` (FIX-849). Renders one control per property of a flat
+ * `@flow-state-dev/react`. Renders one control per property of a flat
  * `resumeSchema` (text / number / checkbox / select / multi-select). A single
  * form can combine a free-text field, a selection, and a checkbox. Richer schemas
  * (nested/array-of-object/union) route to a custom renderer, not this card.

@@ -58,7 +58,8 @@ export type {
   TaskTargetQuery
 } from "./dispatch";
 
-/** Waiting for a user (FIX-2129): `ctx.suspendForUser`, its options and what it returns. */
+// FIX-2129.
+/** Waiting for a user: `ctx.suspendForUser`, its options and what it returns. */
 export { suspendForUserOn } from "./suspend-for-user";
 export type { ApprovalAnswer, UserAnswer, SuspendForUser, SuspendForUserCancelled, SuspendForUserContext, SuspendForUserOptions } from "./suspend-for-user";
 

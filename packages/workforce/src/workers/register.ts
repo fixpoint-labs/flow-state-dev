@@ -1,3 +1,4 @@
+// FIX-2085.
 /**
  * `hireWorkforce`: the flows an installation registers, one copy each.
  *
@@ -7,7 +8,7 @@
  * registers nothing, and nothing here mints a copy per worker or pins one to
  * an owner. Beside the worker flows sits the roster flow, through which an
  * app reads and writes a user's roster, and which keeps and fires the user's
- * schedules (FIX-2085).
+ * schedules.
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { AGENT_FLOW } from "../agent-worker-flow";

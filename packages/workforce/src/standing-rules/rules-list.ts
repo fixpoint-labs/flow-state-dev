@@ -1,7 +1,7 @@
+// FIX-1945 S2.
 /**
  * A worker's standing rules for one user, as a list: its shape, the one
- * validator every writer goes through, and how the list reads in a prompt
- * (FIX-1945 S2).
+ * validator every writer goes through, and how the list reads in a prompt.
  *
  * Pure: no storage, no context. The record (`./rules-record`) persists what
  * {@link applyRuleEdit} returns, and both writers, the rule tools and the

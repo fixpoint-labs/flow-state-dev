@@ -1,5 +1,6 @@
+// FIX-2085.
 /**
- * One schedule as the roster flow's `listSchedules` answers it (FIX-2085).
+ * One schedule as the roster flow's `listSchedules` answers it.
  * A leaf over zod alone, so a browser parses the answer with the schema the
  * server wrote it by (`@flow-state-dev/workforce/browser`).
  */

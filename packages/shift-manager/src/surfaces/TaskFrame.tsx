@@ -1,6 +1,7 @@
+// FIX-1662; S1, BR-1 to BR-4.
 /**
- * The task level (S1, BR-1 to BR-4): the route `/tasks/:boardRef/:taskId/:tab`
- * inside FIX-1662's frame. A header from the row: Interrupt, the task's
+ * The task level: the route `/tasks/:boardRef/:taskId/:tab`
+ * inside the frame. A header from the row: Interrupt, the task's
  * actions by its board status (the registry's `task-actions` row: Cancel,
  * Release, Retry), a failed task's error, the controls with no shipped
  * operation disabled with their gap line, and four tabs: Session (the run the
@@ -118,7 +119,8 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   );
 }
 
-/** Elapsed time from the row's start, by a clock rather than a read (BR-4), stopped while the server is gone. */
+// BR-4.
+/** Elapsed time from the row's start, by a clock rather than a read, stopped while the server is gone. */
 function Elapsed({ since, running }: { since: number; running: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -258,7 +260,8 @@ function Actions({ gaps }: { gaps: Gaps }) {
   );
 }
 
-/** Brief (BR-24): the row's fields as stored. */
+// BR-24.
+/** Brief: the row's fields as stored. */
 function Brief({ gaps }: { gaps: Gaps }) {
   const { row } = useTask();
   const title = distinctTitle(row);
@@ -292,11 +295,12 @@ function Brief({ gaps }: { gaps: Gaps }) {
   );
 }
 
+// BR-18; FIX-1764.
 /**
- * The composer (BR-18): sends into the session the task's run link names,
+ * The composer: sends into the session the task's run link names,
  * through the door of the flow that session records as its owner, never the
  * board's. Says why when it can't. A finished task takes a message too; what
- * it does is the door's call (FIX-1764).
+ * it does is the door's call.
  */
 function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
   const task = useTask();

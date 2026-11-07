@@ -588,8 +588,9 @@ function TraceNodeView({
   return null;
 }
 
+// FIX-865.
 /**
- * Boundary marker for a `continuation` or `suspension_resume` item (FIX-865).
+ * Boundary marker for a `continuation` or `suspension_resume` item.
  * Separates the prior durable log (rendered above, via `rawItems` so retained
  * partial rows survive) from the live re-run that followed a crash-recovery
  * `/continue` or a resolved HITL suspension. Not "N items replayed" —
@@ -630,9 +631,10 @@ function SideChainBadge() {
   );
 }
 
+// FIX-643.
 /**
  * Compact, single-line input→output summary rendered under a block row, so
- * per-iteration I/O is visible without selecting each block (FIX-643). Refs are
+ * per-iteration I/O is visible without selecting each block. Refs are
  * resolved through the trace lookup; values are truncated, with the full text
  * on hover. Renders nothing when the block has neither input nor output.
  */

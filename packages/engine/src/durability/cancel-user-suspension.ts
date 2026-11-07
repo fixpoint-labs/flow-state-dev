@@ -1,6 +1,7 @@
+// FIX-2129.
 /**
- * Cancel a suspension that waits for a user, and continue its request
- * (FIX-2129): the engine half of `RequestHost.resumeWait({ suspension,
+ * Cancel a suspension that waits for a user, and continue its request:
+ * the engine half of `RequestHost.resumeWait({ suspension,
  * outcome: { cancelled: true } })`.
  *
  * A board pays it when a task waiting on a user is cancelled (the cancel's

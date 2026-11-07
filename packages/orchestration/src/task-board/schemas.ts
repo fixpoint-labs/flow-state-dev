@@ -1,5 +1,6 @@
+// FIX-446.
 /**
- * Schemas for the Task Board pattern (FIX-446).
+ * Schemas for the Task Board pattern.
  *
  * Every schema here is a concrete Zod object — no `z.any()` escape
  * hatches. The pattern's blocks consume each other through these
@@ -39,6 +40,7 @@ export const taskBoardStateSchema: ZodTypeAny = z.object({
   tasks: tasksRecordSchema,
 });
 
+// FIX-477.
 /**
  * Per-worker (outer) sequencer state.
  *
@@ -46,8 +48,7 @@ export const taskBoardStateSchema: ZodTypeAny = z.object({
  * `claimTask`, consumed by `checkBoard` to gate the idle-sleep path.
  * Marked `transientSlot` because the value is purely a worker-local
  * scratch flag — clients have no use for it, and emitting a patch on
- * every idle poll dominates the SSE stream when many workers are idle
- * (FIX-477).
+ * every idle poll dominates the SSE stream when many workers are idle.
  *
  * The currently-held claim lives one level deeper, on the
  * worker-body sequencer's state (`taskBoardWorkerBodyStateSchema`),
@@ -59,6 +60,7 @@ export const taskBoardWorkerStateSchema = z.object({
   lastClaimed: transientSlot(z.boolean().default(false)),
 });
 
+// FIX-981; BP-030.
 /**
  * Worker-body sequencer state.
  *
@@ -75,9 +77,9 @@ export const taskBoardWorkerStateSchema = z.object({
  * transition onto someone else's live attempt — and so a write can only ever
  * land on the task this worker actually claimed.
  *
- * It replaced the separate `currentTaskId` / `currentAttempt` slots in FIX-981;
+ * It replaced the separate `currentTaskId` / `currentAttempt` slots;
  * one ticket carries what two loose fields used to, and the target it is valid
- * for travels with it rather than being supplied by the call site. BP-030
+ * for travels with it rather than being supplied by the call site. A
  * consequence, for the narrow case of a body state checkpointed under the old
  * shape and resumed under this one: `currentClaim` reads absent, so the
  * recorders write nothing and the task is recovered by the ordinary lease

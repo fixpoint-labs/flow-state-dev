@@ -1,5 +1,6 @@
+// FIX-378.
 /**
- * `@flow-state-dev/skills` — runtime implementation of the FIX-378 Skills
+ * `@flow-state-dev/skills` — runtime implementation of the Skills
  * System. Skills are user-modifiable folders (SKILL.md + supporting files)
  * stored as resources, invoked by the agent through a `runSkill` tool.
  *

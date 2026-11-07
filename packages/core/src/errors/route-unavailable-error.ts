@@ -1,5 +1,6 @@
+// FIX-814.
 /**
- * Router resume-stability error (FIX-814). Thrown when a router re-entered
+ * Router resume-stability error. Thrown when a router re-entered
  * during same-request continuation re-runs its `execute` selector and the
  * selection no longer matches the durably recorded `router_decision` — either
  * because the selector re-decided differently (non-deterministic selection) or

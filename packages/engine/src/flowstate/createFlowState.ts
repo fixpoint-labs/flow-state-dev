@@ -261,9 +261,10 @@ class InternalFlowState<TSettings extends object>
   #runtimePromise: Promise<FlowStateRuntime> | null = null;
   #initPromise: Promise<FlowApiRouter> | null = null;
   #disposed = false;
+  // FIX-999.
   /**
    * Whether a router — and therefore a stale-request sweeper — has been asked
-   * for (FIX-999). Set by `#init()` BEFORE it awaits the runtime, so
+   * for. Set by `#init()` BEFORE it awaits the runtime, so
    * `#buildRuntime` can stamp the sweep cadence onto the shared config it is
    * about to hand `worker.startWorker`. A colocated worker starts consuming the
    * moment it is started, and the host a job builds is built once, so a job
@@ -303,8 +304,9 @@ class InternalFlowState<TSettings extends object>
    * sweep owns its own failure reporting.
    */
   #recoverySweep: Promise<void> | undefined;
+  // FIX-1077; FIX-1634.
   /**
-   * The one concurrency arbiter every host in this process shares (FIX-1077).
+   * The one concurrency arbiter every host in this process shares.
    *
    * Two hosts exist in a router deployment — the one the dispatch operation
    * is built over, and the router's. Each would otherwise own a private keyed
@@ -314,7 +316,7 @@ class InternalFlowState<TSettings extends object>
    * Policy is a property of the flow, not of whichever host took the dispatch.
    *
    * Built over the worker adapter's `leaseBackend` when it supplies one, so
-   * every process of the deployment lines up on the same keys (FIX-1634).
+   * every process of the deployment lines up on the same keys.
    */
   readonly #arbiter: ConcurrencyArbiter;
 
@@ -499,6 +501,7 @@ class InternalFlowState<TSettings extends object>
     }
   }
 
+  // FIX-1077.
   /**
    * Wait for in-process detached work before anything it writes to is closed.
    *
@@ -507,8 +510,8 @@ class InternalFlowState<TSettings extends object>
    * script, a test — outliving the request would mean outliving the process, and
    * that is not on offer. The only two options there are draining and silently
    * truncating, and truncating is how a `fsdev run` of a detached board left its
-   * task row stranded `in_progress` with the child failing on a closed store
-   * (FIX-1077). For the tool `AGENTS.md` names as the default way to verify a
+   * task row stranded `in_progress` with the child failing on a closed store.
+   * For the tool `AGENTS.md` names as the default way to verify a
    * flow change, that is the worse answer.
    *
    * A long-lived server is unaffected in practice: it disposes at shutdown, when

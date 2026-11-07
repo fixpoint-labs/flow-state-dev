@@ -1,5 +1,6 @@
+// FIX-849.
 /**
- * Built-in default card for a flat-form suspension (FIX-849).
+ * Built-in default card for a flat-form suspension.
  *
  * Chosen by `ItemRenderer` for a `user_input` suspension whose `resumeSchema` is
  * a flat object of scalars and enums. Renders one control per property (text /

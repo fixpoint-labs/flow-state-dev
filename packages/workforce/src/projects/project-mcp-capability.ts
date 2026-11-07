@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * `projectMcpCapability()`: an agent or coordinator worker gets the MCP
  * servers its conversation's project names, as tools on its model, keyed with
@@ -6,10 +7,10 @@
  * The coding run's relay (`projectMcpTools`) and this capability share one
  * resolution (`planProjectMcp` and `connectProjectMcp`): the project and its
  * owner come from `runProjectOf`, so from the session's server-written fields
- * and stored rows only, never from a tool argument or a prompt (BP-031); the
+ * and stored rows only, never from a tool argument or a prompt; the
  * key is the owner's own (`mcp-credentials/*`), or the operator's `seedEnv`;
  * and the connection is FSD's one MCP client. A lead such as a project's
- * coordinator can then read the issue a user names ("implement FIX-2165")
+ * coordinator can then read the issue a user names ("implement ENG-142")
  * from the tracker rather than guess at it.
  *
  * One preset, `tools`, off until a worker's own file picks it

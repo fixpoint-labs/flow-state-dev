@@ -129,10 +129,11 @@ function lastItemIndexOf(items: readonly RuntimeItem[]): number {
   return items.reduce((last, item) => Math.max(last, item.itemIndex), -1);
 }
 
+// FIX-663.
 /**
  * Renders an `AbortSignal.reason` into a log-safe string. Reasons are
  * usually a `DOMException`/`Error`, but may be any thrown value, so this
- * never throws. Used by the FIX-663 abort diagnostics.
+ * never throws. Used by the abort diagnostics.
  */
 function serializeAbortReason(reason: unknown): string {
   if (reason === undefined) {
@@ -427,10 +428,11 @@ function parseActionInput(action: ActionCore, input: unknown): unknown {
   );
 }
 
+// FIX-1735.
 /**
  * The items a request record holds: no transient item, and no ephemeral
  * content. The one rule for every write of a record's items, so a read while
- * a request runs (FIX-1735) shows what its settled record will. Hands the list
+ * a request runs shows what its settled record will. Hands the list
  * over as it is when nothing in it is left out, since a running request calls
  * this per streamed delta.
  */
@@ -618,9 +620,10 @@ function spentHarnessRunsOf(ctx: object): HarnessRunSpend[] | undefined {
   return runs === undefined || runs.length === 0 ? undefined : runs.map((run) => ({ ...run }));
 }
 
+// FIX-2145.
 /**
  * Writes an interrupted request's settled spend once its ending has handed it
- * on (FIX-2145), only while the record is still `interrupted` under this
+ * on, only while the record is still `interrupted` under this
  * request and no later settlement recorded a further cursor.
  */
 async function recordSettledSpend(
@@ -634,10 +637,11 @@ async function recordSettledSpend(
   await stores.request.setFieldsIfStatus(requestId, spend, ["interrupted"], Date.now(), incarnation);
 }
 
+// FIX-1661.
 /**
  * Ends a request's record: its status and the action result built from
  * `settlement` land in one write, so a poller never sees a final status
- * without its result (FIX-1661). A suspension goes through here too, and
+ * without its result. A suspension goes through here too, and
  * clears any result a prior write left.
  */
 async function settleRequestRecord(
@@ -1076,11 +1080,12 @@ export async function runActionInternal<
   }
 }
 
+// FIX-2082; FIX-2239.
 /**
- * A request that ended may be one a `dispatcher({ wait: true })` waits on
- * (FIX-2082): resume the request parked on it, in the session that dispatched
+ * A request that ended may be one a `dispatcher({ wait: true })` waits on:
+ * resume the request parked on it, in the session that dispatched
  * it. A run that resumed the request (a person answered or stopped it) also
- * resumes what its own session queued behind it (FIX-2239). Best-effort, read
+ * resumes what its own session queued behind it. Best-effort, read
  * off the settled record: a resume this misses is caught by the deadline
  * sweep, which looks at what each waited-on request came to.
  */

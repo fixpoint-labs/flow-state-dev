@@ -1,3 +1,4 @@
+// BR-3.
 /**
  * Shift Manager's frame (S4): three columns, the sidebar, the centre at the level
  * and tab the URL names, and the right panel's slot for that level. The frame
@@ -9,7 +10,7 @@
  *
  * A Lab that refuses the first read for want of a verified organization, or
  * that names no organization for the user, gets the refusal screen and
- * nothing else (BR-3): the sidebar, the tree and every other read wait behind
+ * nothing else: the sidebar, the tree and every other read wait behind
  * it. A first read that can't reach the Lab gets the couldn't-reach screen,
  * which reads again on its own. Once a read has landed, a later failure keeps
  * the shell and draws the connection bar above it instead.

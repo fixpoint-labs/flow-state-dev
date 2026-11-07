@@ -1,6 +1,7 @@
+// FIX-2578.
 /**
  * The pure and host-side halves of a task waiting on its pull requests
- * (FIX-2578, `awaitPullRequests`): which pull requests are the task's, what
+ * (`awaitPullRequests`): which pull requests are the task's, what
  * GitHub says of each, and what that means for the task.
  *
  * The manager decides when (`./manager`, its settle and the wake its wait
@@ -142,8 +143,9 @@ export async function readPullRequestStates(
   return { read };
 }
 
+// FIX-2578.
 /**
- * What a task's pull requests, as read, mean for it (FIX-2578): `hold` while
+ * What a task's pull requests, as read, mean for it: `hold` while
  * any is open; `complete` when none is open and at least one merged (a closed
  * one beside it is noted on the output); `cancel` when every one closed
  * without merging (D2). Never called on an empty list.

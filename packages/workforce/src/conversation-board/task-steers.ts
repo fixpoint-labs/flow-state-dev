@@ -1,5 +1,6 @@
+// FIX-2086.
 /**
- * The worker's steer context (FIX-2086). The row is the conversation ledger
+ * The worker's steer context. The row is the conversation ledger
  * at the partition of the board above the session (`./board-above`): the one
  * it was born for, or the routing conversation in a workstream's session. An
  * inline plan step reads its task's steers; a step takes none of its own.

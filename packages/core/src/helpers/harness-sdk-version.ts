@@ -1,5 +1,6 @@
+// FIX-2458 D2.
 /**
- * The SDK version gate every harness package calls (FIX-2458 D2).
+ * The SDK version gate every harness package calls.
  *
  * A harness package translates its vendor's wire, so an SDK it never ran
  * against produces malformed items, not an error. Each package names the

@@ -1,12 +1,13 @@
+// the epic FIX-2058's ER-7; FIX-2129; FIX-2133 D1; FIX-2381.
 /**
  * The Inbox's browser client: its one answer call, routed by each hold's
- * source (the epic FIX-2058's ER-7). A suspension goes to the engine's answer
- * route (FIX-2129), with the answer its ask takes mapped to the engine's
+ * source. A suspension goes to the engine's answer
+ * route, with the answer its ask takes mapped to the engine's
  * resume action there; a row hold, a question or a confirm, goes to the
  * board's `updateTask` action on the session that holds the board, as the
- * signed-in user (FIX-2133 D1). The routing lives here and nowhere else.
+ * signed-in user. The routing lives here and nowhere else.
  *
- * The same client carries each board's task actions (FIX-2381): `board(at)`
+ * The same client carries each board's task actions: `board(at)`
  * binds one board, and cancel, steer, release, retry and re-file go to that
  * board's own actions through the routine a row answer goes through.
  */

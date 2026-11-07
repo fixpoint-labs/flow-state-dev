@@ -1,5 +1,6 @@
+// FIX-2239, FIX-2318.
 /**
- * Waiting for a reply (FIX-2239, folded into the reply request by FIX-2318):
+ * Waiting for a reply, folded into the reply request:
  * `sendMessage({ to, text, wait: true })` asks for a reply and parks in this
  * request until that answer or the deadline. The answer is `sendMessage({ inReplyTo })`.
  * While the sender still waits, that send is held and is the tool's result.

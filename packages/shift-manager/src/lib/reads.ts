@@ -1,3 +1,4 @@
+// BR-3; BR-10; BR-11.
 /**
  * The one module every Shift Manager surface reads the Lab through.
  *
@@ -13,7 +14,7 @@
  *    out, so without `include: "dispatch-runs"` that worker's ask would be
  *    invisible. This is also Shift Manager's first read: when the Lab refuses it
  *    for want of a verified organization, the snapshot is only that refusal
- *    and nothing else is read (BR-3).
+ *    and nothing else is read.
  * 2. **The organization**, off a listed session. The listing only ever holds
  *    sessions in the organization the Lab resolved for the user, and a
  *    session records it. A user who holds no session of their own on the
@@ -38,7 +39,7 @@
  *    inventory, so the roster is read first, through Workforce's `roster()`,
  *    which answers for the caller only.
  * 6. **Declared documents** a browser may read, from each listed flow's
- *    manifest, for Jump to (BR-10).
+ *    manifest, for Jump to.
  * 7. **The projects the user reads**: every row of the organization's
  *    `projects` collection and of their own private one, found by the
  *    published key pattern and scope on a flow the user holds a session of
@@ -47,7 +48,7 @@
  *    its one prefix, when it opens (`projects.ts`).
  *
  * Every read after the first fails on its own: a failed section carries its
- * failure and the rest of the snapshot is whole (BR-11). Nothing retries by
+ * failure and the rest of the snapshot is whole. Nothing retries by
  * itself, and nothing is filled in from a guess.
  *
  * Manifests are static per flow, so they are cached across refreshes by
@@ -202,8 +203,9 @@ export type BoardRow = {
    */
   run: RunLink | null;
   error: string | null;
+  // FIX-2133.
   /**
-   * What holds the row (FIX-2133): its questions and confirms, and its run's
+   * What holds the row: its questions and confirms, and its run's
    * stop for the user. Empty when nothing does. The Inbox lists the task's
    * item from the open ones.
    */
@@ -243,10 +245,11 @@ export type Ask = {
   item: SuspensionItem;
   /** When the ask was raised, epoch ms. */
   since: number;
+  // FIX-2129.
   /**
    * Why this ask can't be answered from Shift Manager, or `null` when it can.
    * Shown on the card; the card offers no answer when it is set. Every ask
-   * answers through the Lab's answer route (FIX-2129), whatever started its
+   * answers through the Lab's answer route, whatever started its
    * run, a task's included: only one whose session names no flow can't.
    */
   unanswerable: string | null;
@@ -308,7 +311,8 @@ export type LabSnapshot =
        * counts and every "needs you" total read this, and nothing else.
        */
       inbox: Section<InboxItem<Ask>[]>;
-      /** The declared documents Jump to finds and opens read-only (BR-10). */
+      // BR-10.
+      /** The declared documents Jump to finds and opens read-only. */
       resources: Section<DeclaredResource[]>;
     };
 
@@ -449,10 +453,11 @@ export function toWorker(row: unknown): Worker | undefined {
   };
 }
 
+// BP-030.
 /**
  * A project row. A row missing its id, title or owner is not a project anyone
  * can address or own, and is left out; every other field reads as empty when
- * absent, so a row an earlier version wrote still reads (BP-030).
+ * absent, so a row an earlier version wrote still reads.
  */
 export function toProject(row: unknown, visibility: ProjectVisibility = "shared"): Project | undefined {
   const id = text(field(row, "id"));
@@ -472,10 +477,11 @@ export function toProject(row: unknown, visibility: ProjectVisibility = "shared"
   };
 }
 
+// BP-030.
 /**
  * A row's run link. Anything short of all three values reads as no link, so a
  * row stored before the link existed, or a malformed one, is *no run*, never a
- * guess (BP-030).
+ * guess.
  */
 function toRunLink(value: unknown): RunLink | null {
   const sessionId = text(field(value, "sessionId"));
@@ -489,8 +495,9 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
+// FIX-2133.
 /**
- * The holds a row publishes (FIX-2133), each read against the hold's own
+ * The holds a row publishes, each read against the hold's own
  * shape: one that doesn't parse is none, never a guess.
  */
 function toHolds(value: unknown): TaskHold[] {
@@ -632,8 +639,9 @@ export function inboxSection(
   };
 }
 
+// FIX-2133.
 /**
- * Where a row's questions are answered (FIX-2133): the board's `updateTask`
+ * Where a row's questions are answered: the board's `updateTask`
  * action on the conversation that holds it, as the signed-in user, named by
  * orchestration's `taskActionName`. A board that isn't a conversation's has
  * no action Shift Manager names: `null`, and its questions read as
@@ -665,15 +673,17 @@ export type LabReader = {
    * names no owner, or when the Lab refuses the answer.
    */
   resume(ask: Ask, answer: { action: ResumeAction; data?: unknown }): Promise<void>;
+  // FIX-2133.
   /**
    * Answer one of an Inbox item's holds through orchestration's one answer
    * call, routed by its source: a task's question or confirm through its
-   * board's `updateTask`, as the user (FIX-2133). Rejects with the board's
+   * board's `updateTask`, as the user. Rejects with the board's
    * refusal.
    */
   answerOne(hold: InboxHold<unknown>, answer: InboxAnswer): Promise<void>;
+  // FIX-2381.
   /**
-   * The task actions of `conversation`'s board (FIX-2381): cancel, steer,
+   * The task actions of `conversation`'s board: cancel, steer,
    * release, retry and re-file, orchestration's `inbox.board(...)` bound to
    * the conversation's session and the flow that owns it, as the signed-in
    * user. Each rejects with the board's refusal. A conversation whose session

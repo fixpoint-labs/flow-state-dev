@@ -1,5 +1,6 @@
+// FIX-1945 S3, D2.
 /**
- * The mark on a turn a user's own message started (FIX-1945 S3, D2): only
+ * The mark on a turn a user's own message started: only
  * a marked turn is offered the rule tools, and a rule tool refuses on any
  * other.
  *
@@ -23,15 +24,16 @@ export const USER_TURN_STATE = "workforceUserTurn";
 /** The request state the mark is kept in. */
 export const userTurnStateSchema = z.object({ [USER_TURN_STATE]: z.boolean().optional() }).merge(messageTurnStateSchema);
 
+// FIX-1989 D2; FIX-2106; FIX-2238.
 /**
  * Mark this request as a user's turn. Skips a task session and a
  * conversation's delegate session: that message is task input. A user's
- * turn also starts the worker-message hop count again, at 0 in a new chain
- * (FIX-1989 D2), and counts one more user's line on the session (FIX-2106).
+ * turn also starts the worker-message hop count again, at 0 in a new chain,
+ * and counts one more user's line on the session.
  *
  * Once the task and every follow-up in its session have ended, a user's line
  * there is still no user's turn (no rule tools), but it is one a user typed:
- * it starts a fresh budget all the same (FIX-2238).
+ * it starts a fresh budget all the same.
  */
 export async function markUserTurn(ctx: BlockContext): Promise<void> {
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;

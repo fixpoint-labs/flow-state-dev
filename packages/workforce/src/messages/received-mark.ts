@@ -1,9 +1,9 @@
+// FIX-2241.
 /**
  * The mark `messageReceivedEntry` puts on the entry it builds, and its
  * readers. A leaf: the send, the target check and the conversation board read
  * a flow's mark here without importing the entry, whose own imports reach the
- * board (the board's delivery reads the mark for a task's midway question,
- * FIX-2241).
+ * board (the board's delivery reads the mark for a task's midway question).
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { RowHold, Task } from "@flow-state-dev/orchestration/tasks";
@@ -16,7 +16,8 @@ import { MESSAGE_RECEIVED_ENTRY } from "./keys";
  */
 export type MessageHearing = "task-sessions";
 
-/** Tell a task's filer its open midway questions, from the asking request (FIX-2241). */
+// FIX-2241.
+/** Tell a task's filer its open midway questions, from the asking request. */
 export type MidwayQuestionTeller = (ctx: BlockContext, row: Task, questions: readonly RowHold[]) => Promise<void>;
 
 /**
@@ -65,9 +66,10 @@ export function runsMessageTurn(flow: unknown): boolean | undefined {
   return receivedMarkOf(flow)?.runsTurn;
 }
 
+// FIX-2310; FIX-2300.
 /**
- * Why a message asking `to` for a reply (FIX-2310), waited on or not, can't
- * be answered (FIX-2300): its flow runs nothing on a message. The send refuses
+ * Why a message asking `to` for a reply, waited on or not, can't
+ * be answered: its flow runs nothing on a message. The send refuses
  * with it before anything is written where it can tell; where it learns only
  * once the message lands, the answer is the framework's "no answer".
  */
@@ -75,9 +77,10 @@ export function noReplyError(to: string): string {
   return `no_reply: "${to}" takes messages but runs nothing on them, so no reply comes back. Send without replyRequested or wait, or file it a task.`;
 }
 
+// FIX-2241.
 /**
- * How the running flow's worker tells a task's filer its midway question
- * (FIX-2241), or `undefined` for a flow with no entry `messageReceivedEntry`
+ * How the running flow's worker tells a task's filer its midway question,
+ * or `undefined` for a flow with no entry `messageReceivedEntry`
  * built: such a worker can't send, and the question is in the Inbox only.
  */
 export function midwayQuestionTellerOf(flow: unknown): MidwayQuestionTeller | undefined {

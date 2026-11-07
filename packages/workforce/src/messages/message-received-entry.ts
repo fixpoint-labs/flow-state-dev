@@ -1,12 +1,13 @@
+// FIX-1989, FIX-2238; FIX-2240; FIX-2310; FIX-2318; FIX-2578.
 /**
- * How a worker hears a message (FIX-1989, FIX-2238): the `onMessageReceived`
+ * How a worker hears a message: the `onMessageReceived`
  * internal entry, on every worker flow. The hire refuses a worker flow
  * without it ({@link messageReceivedProblem}).
  *
  * The payload names a message id and nothing else: the row in the user's
  * message log is read here, so the sender, the text and the budget are what
  * the sending turn's server code wrote. The entry takes the message on its
- * row before anything lands (`delivery.ts`, FIX-2240), so a copy sent again,
+ * row before anything lands (`delivery.ts`), so a copy sent again,
  * at any distance, wakes the recipient once, and a copy that finds the taker
  * ended without delivering takes over. Then the message lands as two items: a line the model reads
  * in its history, and a client-only `workforce:received` component carrying
@@ -20,11 +21,11 @@
  * Nothing is relayed: a woken worker that wants to answer sends one with
  * `sendMessage` and `inReplyTo`, and one that ends in plain text answers no one.
  *
- * Except a message that asks for a reply (FIX-2310, `./owed-replies`): the turn
+ * Except a message that asks for a reply (`./owed-replies`): the turn
  * owes one answer. When the turn ends without one, the framework sends its
  * final text back through that same `sendMessage`, as this worker, or a "no
  * answer" when the turn said nothing, threw, or runs no turn. A sender that
- * waits for it (`wait: true`, FIX-2318) parks on this request, and reads that
+ * waits for it (`wait: true`) parks on this request, and reads that
  * answer off the log once the request ends; the turn reads the same prompt
  * either way.
  *
@@ -33,8 +34,7 @@
  * entry with no turn outputs `{ turnless: true }`. Between the take and the
  * items, a message to a session stopped for the user, or to a task held on
  * one, queues until nothing holds it (`./queue`). A message to a task session
- * whose task waits on something outside the board (an `external` hold,
- * FIX-2578) answers that wait instead, and runs no turn here: the task's owed
+ * whose task waits on something outside the board (an `external` hold) answers that wait instead, and runs no turn here: the task's owed
  * turn reads it.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
@@ -64,8 +64,9 @@ export const messageReceivedSchema = z.object({
   /** The worker that sent it, as the server recorded it. */
   from: z.string(),
   text: z.string(),
+  // FIX-2310.
   /**
-   * Whether the sender asked for a reply (FIX-2310), waiting for it or not:
+   * Whether the sender asked for a reply, waiting for it or not:
    * the turn's final text goes back to it as this worker's answer, unless the
    * turn answers with `sendMessage` itself. Absent reads as no.
    */
@@ -249,8 +250,9 @@ export function messageReceivedEntry(options: {
     }
   });
 
+  // FIX-2310.
   /**
-   * Send the reply owed to the message this request landed, if it owes one (FIX-2310): `text`,
+   * Send the reply owed to the message this request landed, if it owes one: `text`,
    * or "no answer" for `reason` when it is blank. A turn that ran and gave
    * none is logged: the sender hears only that nothing came back.
    */

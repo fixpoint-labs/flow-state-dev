@@ -72,8 +72,9 @@ export type DefinedTaskCollection = DefinedResourceCollection & {
     readonly settings?: TaskSettingsSupport;
     /** Present when the ledger's tasks file work elsewhere that a cascade cancels. */
     readonly cascadeFiled?: DeclaredFiledCascade;
+    // FIX-2078.
     /**
-     * Present when a board hands the ledger's rows out (FIX-2078): each ending
+     * Present when a board hands the ledger's rows out: each ending
      * owes its filer a notice. Declared, or set by a board with a task
      * dispatcher (`markDelegating`).
      */
@@ -81,8 +82,9 @@ export type DefinedTaskCollection = DefinedResourceCollection & {
   };
 };
 
+// FIX-2080 D2.
 /**
- * A ledger's payer for the tasks its tasks filed (FIX-2080 D2), as declared:
+ * A ledger's payer for the tasks its tasks filed, as declared:
  * `pay` takes the running context, bound when the ledger is resolved.
  */
 export interface DeclaredFiledCascade {
@@ -111,9 +113,10 @@ export interface DefineTaskCollectionOptions<
   id: string;
   /** Intrinsic scope the collection lives in — `"session"`, `"user"`, or `"org"`. */
   scope: ResourceScope;
+  // FIX-1068.
   /**
-   * Give a `session`-scoped board ONE ledger across the session lineage
-   * (FIX-1068), so the child session a dispatched row runs in settles against the
+   * Give a `session`-scoped board ONE ledger across the session lineage,
+   * so the child session a dispatched row runs in settles against the
    * same rows the dispatching session holds. Without it a session-scoped board
    * hydrates empty inside a child session and the task cannot be settled.
    *
@@ -159,23 +162,25 @@ export interface DefineTaskCollectionOptions<
    * taken from what it returns; the transition decides every other field.
    */
   recordEnding?: TaskEndingRecorder;
+  // FIX-2080.
   /**
-   * The filing settings this ledger honours beyond the defaults (FIX-2080):
+   * The filing settings this ledger honours beyond the defaults:
    * `session: ["new", "ongoing"]` when its hand-over can run a task in the
    * delegate's ongoing session, `resultTo: ["filer", "conversation"]` when it
    * can send a result to the conversation. A filing with a value it doesn't
    * list is refused, naming the setting.
    */
   settings?: TaskSettingsSupport;
+  // FIX-2080 D2.
   /**
-   * The ledger's payer for the tasks a task on it filed elsewhere (FIX-2080
-   * D2). A task that fails, retries or is cancelled owes a cascade, recorded
+   * The ledger's payer for the tasks a task on it filed elsewhere. A task that fails, retries or is cancelled owes a cascade, recorded
    * in its ending's write when `owes` says so, and paid by `pay`: at once by
    * the ending's own pass, and by a touch of the ledger once past due.
    */
   cascadeFiled?: DeclaredFiledCascade;
+  // FIX-2078.
   /**
-   * How the ledger's endings reach the sessions that filed them (FIX-2078):
+   * How the ledger's endings reach the sessions that filed them:
    * the pass a wake runs, the entry a notice arrives on, how a filer is
    * reached, and what a notice nobody can take does. A board with a task
    * dispatcher gives its ledger the defaults when it declares none.
@@ -290,9 +295,10 @@ function assertPartitionable(options: DefineTaskCollectionOptions): void {
   }
 }
 
+// FIX-982; narrowed by FIX-1780.
 /**
  * Ledgers whose assignee is frozen while an attempt holds a task, keyed by the
- * declaration itself (FIX-982; narrowed to `in_progress` by FIX-1780).
+ * declaration itself (frozen while `in_progress`).
  *
  * The policy belongs to the **ledger**, not to a ref. `getOrCreateTaskCollection`
  * builds a fresh wrapper per resolution, so an `immutableAssignee` passed as one

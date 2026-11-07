@@ -1,5 +1,6 @@
+// FIX-2578.
 /**
- * A coding task waiting on its pull requests (FIX-2578, `awaitPullRequests`),
+ * A coding task waiting on its pull requests (`awaitPullRequests`),
  * as a screen reads it: the one shape both the manager's wait and a task
  * view share.
  *

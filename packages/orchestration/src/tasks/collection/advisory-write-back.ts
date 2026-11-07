@@ -1,17 +1,17 @@
+// FIX-951; FIX-963, FIX-989; FIX-964.
 /**
- * The advisory write-back seam — where a worker's result meets the store
- * (FIX-964).
+ * The advisory write-back seam — where a worker's result meets the store.
  *
  * ## Why this exists
  *
- * FIX-951 made a late write-back safe by making it *advisory*: pass
+ * Advisory write-backs made a late write-back safe by making it *advisory*: pass
  * `{ ifAllowed, claim }` and a result that arrives after its task was settled
  * by someone else is declined instead of throwing. That containment is what
  * keeps one worker's bad luck from abandoning every sibling on the board.
  *
  * It made containment a property the **store** supplies. Both built-in backings
  * supply it. But `taskBoard({ collection: (ctx) => ... })` is a documented
- * extension point, and a store written before FIX-951 — or written from
+ * extension point, and a store written by an older version — or written from
  * {@link TaskCollectionRef} without reading the prose around it — takes
  * `(id, output)` and JavaScript discards the third argument in silence. It
  * typechecks, it runs, and the first time a result arrives late it throws, the
@@ -48,8 +48,8 @@
  * bug this file fixes.
  *
  * A **store failure on a task the worker still holds** — an outage, CAS
- * exhaustion, an ordinary bug — has nothing to do with the guards. FIX-951's
- * own contract draws this line: a containment guard for task-state conflicts,
+ * exhaustion, an ordinary bug — has nothing to do with the guards. The advisory
+ * contract draws this line: a containment guard for task-state conflicts,
  * not a blanket error suppressor.
  *
  * A **write that committed and then threw** is the harder one, and it is why
@@ -58,10 +58,10 @@
  * failing `onChange` rejects `complete()` with the task already durably
  * terminal at the expected attempt. Read *after* the error, that is
  * indistinguishable from "someone else had already settled it" — so an earlier
- * design of this seam contained it, silently eating the signal FIX-963 exists
+ * design of this seam contained it, silently eating the signal the drain's tail check exists
  * to raise. The split point between the two specs is the commit: this seam
  * contains only what was declinable before it, and everything at or after it is
- * FIX-963's to classify. Neither consumes the other's predicate.
+ * a separate change to classify. Neither consumes the other's predicate.
  *
  * ## What this does and does not guarantee
  *
@@ -70,7 +70,7 @@
  * one*. A store that silently applies a stale write without throwing is still
  * wrong and still uncaught: it corrupts one task's data, which is bad, but it
  * does not abandon the other workers, which is the filed defect. Reproducing
- * FIX-951's full advisory semantics on the store's behalf is not possible from
+ * the full advisory semantics on the store's behalf is not possible from
  * outside its atomic section and is not attempted.
  *
  * Nor is the attribution exact, and it cannot be made exact from here. Two
@@ -78,12 +78,12 @@
  * a snapshot that was already displaced followed by an unrelated outage is
  * contained by (a) when it should propagate, and a legacy write that committed
  * after another worker advanced the attempt is contained by (b) when it should
- * reach FIX-963. Where the two errors are not symmetric, the bias is
+ * reach the drain's tail check. Where the two errors are not symmetric, the bias is
  * deliberate: rethrowing something containable costs one board, while
  * containing something loud costs a sibling issue its entire signal — so the
  * clauses are written narrow.
  *
- * (FIX-989's write provenance does not close that gap either, though it looks
+ * (write provenance does not close that gap either, though it looks
  * like it should. `didWriteLand` answers "cannot tell" for a ref that maintains
  * no provenance — which is every hand-written store, i.e. exactly the case
  * here.)
@@ -280,6 +280,7 @@ function readQuietly(ref: TaskCollectionRef, taskId: string): Task | undefined {
   }
 }
 
+// BP-030.
 /**
  * The clock the lease arm of the predicate compares against, sampled with the
  * snapshot rather than after the write. See {@link CallBasis}.
@@ -289,7 +290,7 @@ function readQuietly(ref: TaskCollectionRef, taskId: string): Task | undefined {
  * exactly the population this seam exists for, so its absence must not cost the
  * board its containment. `Date.now()` is what the interface documents as the
  * right answer for an implementer with no reason to pick another, so it is the
- * right answer here too (BP-030).
+ * right answer here too.
  */
 function readClock(ref: TaskCollectionRef): number {
   try {

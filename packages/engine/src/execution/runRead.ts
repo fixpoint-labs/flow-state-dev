@@ -1,5 +1,6 @@
+// FIX-2286.
 /**
- * Run a flow's read (FIX-2286): a block an app runs on a session to watch a
+ * Run a flow's read: a block an app runs on a session to watch a
  * view the flow computes, answered to the caller and stored nowhere.
  *
  * A read runs through the same context an action does, so it sees the

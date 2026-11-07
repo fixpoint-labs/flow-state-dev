@@ -1,3 +1,4 @@
+// FIX-2083 D2.
 /**
  * Rounds: how far a delegate's answer goes back out (`rounds:`).
  *
@@ -24,7 +25,7 @@
  * is still out. Closing removes the record,
  * so an answer that lands after its round closed lands once and routes
  * nowhere. The deadline is set by the round's first row, and the coordinator
- * owes a wake on its own session at it (FIX-2083 D2), so a round whose
+ * owes a wake on its own session at it, so a round whose
  * delegate is still working closes then, after a host restart too. Every
  * wake also closes each overdue round ({@link closeOverdue}).
  *

@@ -1,25 +1,26 @@
+// FIX-2078; FIX-2080 D2; FIX-2133; FIX-2170; FIX-2082; FIX-2149.
 /**
- * What a board's pass pays, in the filer's own session (FIX-2078): every debt
+ * What a board's pass pays, in the filer's own session: every debt
  * its delegated rows still owe, each by its due time, so nothing waits on a
  * later touch.
  *
  * {@link payBoardDebts} is the repairs half of a pass. It pays, in order:
  *
  * 1. **Cancels owed** (`Task.cancelOwed`): a stopped wait whose cancel failed.
- * 2. **Cascades owed** (`Task.cascadeOwed`) past their due time (FIX-2080 D2),
+ * 2. **Cascades owed** (`Task.cascadeOwed`) past their due time,
  *    before any notice, so a resent notice names what its ending cancelled.
- *    Then **held questions past a deadline the host set** (FIX-2133): each
+ *    Then **held questions past a deadline the host set**: each
  *    closes "no answer came", and the last lets the work go on. A question
  *    with no deadline is never closed here.
  * 3. **Resumes owed** (`Task.resumeOwed`): the turn parked on a waited-on row.
- * 4. **Wait slots lapsed** for a request that has since parked (FIX-2170) or
- *    ended (FIX-2082): released, so an ending held for it is owed to the
+ * 4. **Wait slots lapsed** for a request that has since parked or
+ *    ended: released, so an ending held for it is owed to the
  *    filer's notice. A slot whose request still runs is looked at again less
  *    and less often, and no more once it is past the maximum age.
  * 5. **Notices owed** past their due time, sent again to this session's notice
  *    entry. A send turned away (the 32-notice cap among them) stays owed. One
  *    last turned away for the request that filed its task, which has since
- *    parked or ended, is sent at once, past its backoff (FIX-2149).
+ *    parked or ended, is sent at once, past its backoff.
  *
  * Then it answers when the board's next debt falls due: the earliest due time
  * over the debts still outstanding, a claimed row's lease end among them (a
@@ -213,9 +214,10 @@ export async function payBoardDebts(
   return { nextDue };
 }
 
+// FIX-2149.
 /**
  * The filing requests that notices on `rows` were last turned away for and
- * that no longer run (FIX-2149): parked or ended. One read of those requests,
+ * that no longer run: parked or ended. One read of those requests,
  * made only when such a notice is owed; empty on a host that doesn't record
  * which requests are running, where no notice is held for one.
  */
@@ -240,7 +242,8 @@ async function stoppedFilingRequests(ctx: BlockContext, ref: TaskCollectionRef, 
   }
 }
 
-/** Give each owed-notice marker that carries no due time (stored before FIX-2078) one: `now`. */
+// FIX-2078.
+/** Give each owed-notice marker that carries no due time (stored by an older version) one: `now`. */
 async function stampLegacyNotices(ref: TaskCollectionRef, now: number): Promise<void> {
   for (const row of ref.list()) {
     const stamped: Record<string, unknown> = {};
@@ -283,9 +286,10 @@ export async function settlePassWake(
   }
 }
 
+// FIX-2078.
 /**
  * The boards this flow hands rows out from, at this session's partition: every
- * declared task collection with a delivery (FIX-2078). What the plain
+ * declared task collection with a delivery. What the plain
  * `onTaskSettled` entry pays on a wake. With `only`, just that ledger.
  */
 export async function delegatingBoardsOf(

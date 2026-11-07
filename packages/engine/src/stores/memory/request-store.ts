@@ -163,13 +163,13 @@ export class InMemoryRequestStore implements RequestStore {
     return { applied: true, status: current.status };
   }
 
+  // the FIX-811 contract; FIX-1735; FIX-839.
   /**
-   * Merge a running request's items onto its record by id (the FIX-811
-   * contract), so a read while it runs sees them (FIX-1735). The record is
+   * Merge a running request's items onto its record by id, so a read while it runs sees them. The record is
    * cloned on every `set` and `get`, so items the emitter holds are not on it
    * until something writes them here; without this, a running request read as
    * having no items until it settled. The objects are kept as given rather
-   * than cloned: the runtime advances an item in place (FIX-839), and `get`
+   * than cloned: the runtime advances an item in place, and `get`
    * clones on the way out.
    */
   persistItems(requestId: string, items: RuntimeItem[]): void {

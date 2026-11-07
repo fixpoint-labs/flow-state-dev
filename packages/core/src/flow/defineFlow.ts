@@ -1,12 +1,13 @@
+// FIX-435; FIX-431.
 /**
  * defineFlow — assembles a flow definition into a callable factory.
  *
- * FIX-435: resources are intrinsic to their definition (`scope`,
+ * Resources are intrinsic to their definition (`scope`,
  * `flowIsolation`) and live in a single flat `flow.resources` map. Block
  * declarations bubble up via `declaredResources` and are merged into that
  * flat map; `(scope, ref, flowIsolation)` collisions are surfaced at
  * build time. Conflict detection across flows still lives in the cross-flow
- * schema registry path (FIX-431).
+ * schema registry path.
  */
 import { generator, type GeneratorConfig } from "../blocks/generator";
 import { mergeDeclaredResources } from "../blocks/internal/build-block";
@@ -393,12 +394,13 @@ function resolveInstanceId(
   return suppliedId ?? flowKind;
 }
 
+// FIX-1048.
 /**
  * Reject transport configs that are declared on the flow DEFINITION only.
  *
  * Passing one as an instance option used to type-check and then do nothing at
  * all — the instance carried the definition's values either way, so
- * `flow({ webhooks })` looked configured and was not (FIX-1048). They are gone
+ * `flow({ webhooks })` looked configured and was not. They are gone
  * from {@link FlowInstanceOptions}, so a TypeScript caller now fails to compile;
  * this guard is the runtime half, for the caller who reaches past the types
  * (plain JS, or an `as any` cast): fail loudly rather than accept-and-ignore.
@@ -803,8 +805,9 @@ function typedEntries<TEntry>(
   return value.actions;
 }
 
+// FIX-2286.
 /**
- * Validate the flow's `reads` at definition time (FIX-2286): each is an object
+ * Validate the flow's `reads` at definition time: each is an object
  * with a block, so a read with none fails here by name rather than as a
  * property read on `undefined` when an app calls it.
  */

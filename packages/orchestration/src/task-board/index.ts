@@ -1,5 +1,6 @@
+// FIX-446; BP-011; FIX-2076; FIX-626; FIX-2131.
 /**
- * Task Board Pattern (FIX-446)
+ * Task Board Pattern
  *
  * Concurrent drain over a `TaskCollection` with dependency gating and
  * per-task worker routing. The unified Plan/Task primitive's canonical
@@ -23,7 +24,7 @@
  * `workerStep` is the user's worker block directly (uniform case) OR
  * a `router` that selects by `task.assignee` (registry case). The
  * worker block runs as a first-class step in the sequencer — it is
- * NOT invoked from inside another block's `execute` (BP-011).
+ * NOT invoked from inside another block's `execute`.
  *
  * `recordSuccess` reads `currentClaim` from the worker's own
  * sequencer state and calls `collection.complete`. `recordError` runs
@@ -34,7 +35,7 @@
  * holds against a task the worker no longer owns, not just against
  * one it never named.
  *
- * ## Mode (FIX-2076)
+ * ## Mode
  *
  * `mode: "plan"` (default): every row runs in the drain, and the drain waits on
  * every one. `mode: "delegation"`: every row is handed to another session
@@ -43,7 +44,7 @@
  *
  * ## Termination
  *
- * - `onIdle: 'complete-or-blocked'` (default, FIX-626): exit when the
+ * - `onIdle: 'complete-or-blocked'` (default): exit when the
  *   collection drains, OR when no active worker is in-flight and no
  *   `pending` task is claimable (every remaining pending has a
  *   non-`completed` dep). Handles the DAG case where an upstream task
@@ -63,7 +64,7 @@
  *
  * A running row waiting on a person (an open hold: a question it asked, or
  * its run's stop for a review or an approval) is in flight but is no active
- * worker (FIX-2131), so a `complete-or-blocked` board whose only open rows
+ * worker, so a `complete-or-blocked` board whose only open rows
  * wait on a person exits `blocked` and leaves them as they are. The answer
  * owes the task its next turn; a board built with the removed review option is
  * refused by name.
@@ -320,14 +321,15 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   boardId?: string;
 
+  // FIX-2076; FIX-2082.
   /**
-   * Whether the drain waits on its rows (FIX-2076). The author's choice,
+   * Whether the drain waits on its rows. The author's choice,
    * checked against the assignees when the board is built:
    *
    * - `"plan"` (**default**): the drain waits on every row. A row runs inline,
    *   in the drain, or, through a `dispatcher({ action, session })` assignee or
    *   `newSession`, in another session that the drain waits on until the row
-   *   ends (FIX-2082). A dispatcher that says `wait: false` is refused.
+   *   ends. A dispatcher that says `wait: false` is refused.
    * - `"delegation"`: every row is handed to another session through a
    *   `dispatcher({ action, session })` assignee, and the drain waits on none
    *   of them; the session that works a row settles it. An assignee that runs
@@ -374,8 +376,9 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   workers: TaskWorker<TInput, TOutput> | TaskAssigneeRegistry;
 
+  // FIX-940.
   /**
-   * Optional default worker — the board's **floor** (FIX-940).
+   * Optional default worker — the board's **floor**.
    * Registry path only: wired as the worker router's `fallback`, it runs
    * any task whose `assignee` is unknown or absent. Omit it and a
    * registry miss still fails the task per `onError` exactly as before;
@@ -384,8 +387,9 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   defaultWorker?: TaskAssignee;
 
+  // FIX-2082.
   /**
-   * A plan board's way to run a row in a session of its own (FIX-2082): a
+   * A plan board's way to run a row in a session of its own: a
    * `dispatcher({ action, session })`. A row filed `session: "new"` is handed
    * to it under its own assignee, and the drain waits on it until it ends, as
    * it waits on every row; every other row runs in `workers`. A row filed with
@@ -400,9 +404,10 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   concurrency?: number;
 
+  // FIX-931.
   /**
-   * Maximum tasks that may be *added* while others are still `pending`
-   * (FIX-931). Default 100. Checked at creation against the resulting
+   * Maximum tasks that may be *added* while others are still `pending`.
+   * Default 100. Checked at creation against the resulting
    * `pending` count, so it refreshes as tasks drain — this bounds a single
    * up-front fan-out burst, not concurrent `pending` (a retry, unblock,
    * resume, or reclaim re-pends without passing the cap). `null` is
@@ -422,8 +427,9 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   maxEnqueuedTasks?: number | null;
 
+  // FIX-931.
   /**
-   * Maximum tasks the board may ever hold, terminal ones included (FIX-931).
+   * Maximum tasks the board may ever hold, terminal ones included.
    * Default 500. Never refunded by draining, so it is the backstop against a
    * drain-then-re-enqueue runaway. `null` is explicitly unbounded; same
    * supplied-collection rule as `maxEnqueuedTasks`.
@@ -435,9 +441,10 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   maxTotalTasks?: number | null;
 
+  // FIX-948.
   /**
-   * Cumulative failure retries this board may authorize, across every task
-   * (FIX-948). Default 50. `null` is explicitly unbounded; same
+   * Cumulative failure retries this board may authorize, across every task.
+   * Default 50. `null` is explicitly unbounded; same
    * supplied-collection rule as `maxEnqueuedTasks`.
    *
    * The creation caps above count only *new* tasks, and a retry re-runs one that
@@ -461,16 +468,17 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   claimOrder?: TaskBoardClaimOrderInput;
 
+  // FIX-626.
   /**
    * Termination behavior when the worker pool is idle.
    *
-   * - `"complete-or-blocked"` (default, FIX-626): exit when the
+   * - `"complete-or-blocked"` (default): exit when the
    *   collection drains, OR when no in-flight worker is active and no
    *   `pending` task is claimable. The final `task-board-meta` item's
    *   `terminationReason` field distinguishes `"all-completed"` from
    *   `"blocked-by-failures"`.
    * - `"complete"`: exit only when no `pending` or `in_progress`
-   *   tasks remain. Pre-FIX-626 default; preserved
+   *   tasks remain. The former default; preserved
    *   for boards that wait on an external pump to mark deps complete.
    * - `"wait"`: never auto-exit; defer to `shouldExit`. Long-running
    *   session-scoped boards.
@@ -514,8 +522,9 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   idlePollMs?: number;
 
+  // FIX-610 Layer B.
   /**
-   * Per-board tool-result memoization (FIX-610 Layer B). Enabled
+   * Per-board tool-result memoization. Enabled
    * automatically when any worker tool declares `cacheable`; pass
    * `false` to disable, or an object to tune. The cache is bound to a
    * single board run — it's torn down whether the board completes or
@@ -532,8 +541,9 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   flowPolicy?: import("../tasks").TaskFlowPolicy;
 }
 
+// FIX-610.
 /**
- * Per-board tool-cache tuning (FIX-610). All fields optional.
+ * Per-board tool-cache tuning. All fields optional.
  */
 export interface TaskBoardToolCacheConfig {
   /** Default true when any tool in the board's worker(s) declares `cacheable`. */
@@ -546,10 +556,11 @@ export interface TaskBoardToolCacheConfig {
   defaultScope?: "run" | "request" | "session";
 }
 
+// FIX-910.
 /**
  * The board's once-chosen storage backing, surfaced on the handle so a
- * consumer can classify it without re-deriving from the `collection` config
- * (FIX-910). Mirrors the four discriminants the capability distinguishes:
+ * consumer can classify it without re-deriving from the `collection` config.
+ * Mirrors the four discriminants the capability distinguishes:
  * `request`/`resource` are re-enterable (survive `board.drain` re-entry);
  * `sequencer` is single-invocation; `factory` is caller-opaque.
  */
@@ -593,15 +604,17 @@ export interface TaskBoardHandle<
    * `undefined`).
    */
   capability: DefinedCapability<TName, TaskBoardCapabilityAccessor<TInput, TOutput>>;
+  // FIX-910.
   /**
-   * The board's once-chosen storage backing (FIX-910). Lets a consumer such as
+   * The board's once-chosen storage backing. Lets a consumer such as
    * `goalSeekLoop` reject an unsupported backing at construction (it requires a
    * re-enterable `request`/`resource` board) instead of waiting for a runtime
    * capability throw. Additive and always populated.
    */
   backing: TaskBoardBacking;
+  // FIX-2076.
   /**
-   * The board's declared mode (FIX-2076): `"plan"`, whose drain runs and waits
+   * The board's declared mode: `"plan"`, whose drain runs and waits
    * on every row, or `"delegation"`, whose drain hands every row off and waits
    * on none. A consumer that needs every row ended when the drain returns,
    * such as `goalSeekLoop`, refuses a delegation board on this.
@@ -618,16 +631,18 @@ export interface TaskBoardHandle<
    * Empty on every board that declares no dispatcher assignee.
    */
   dispatchers: readonly DispatchingAssignee[];
+  // FIX-910.
   /**
    * Whether the board's own `initialTasks` seed carries any task without a
-   * stable `id` (FIX-910). An idless initial task is re-added on every drain
+   * stable `id`. An idless initial task is re-added on every drain
    * re-entry (`createSeedCollection` only dedups stable ids), so a multi-drain
    * consumer must reject such a board up front. `false` when there are no
    * initial tasks or all carry ids.
    */
   hasIdlessInitialTasks: boolean;
+  // FIX-931.
   /**
-   * The board's resolved creation caps (FIX-931) — defaults applied, validated.
+   * The board's resolved creation caps — defaults applied, validated.
    * Empty (`{}`) when the caller supplied the collection, since the board then
    * applies none.
    *
@@ -1328,8 +1343,9 @@ export function taskBoard<
 // ---------------------------------------------------------------------------
 // Internals
 
+// FIX-2082.
 /**
- * Read a board's `newSession` (FIX-2082): a task dispatcher, on a plan board.
+ * Read a board's `newSession`: a task dispatcher, on a plan board.
  *
  * @throws {Error} naming the board and the fix, for anything else.
  */
@@ -1357,8 +1373,9 @@ function resolveNewSession(
 }
 // ---------------------------------------------------------------------------
 
+// FIX-931.
 /**
- * Resolve the board's creation caps (FIX-931).
+ * Resolve the board's creation caps.
  *
  * Caps belong to the COLLECTION, so `taskBoard`'s options apply only when the
  * board is the one constructing it — the declarative request/sequencer forms,
@@ -1420,10 +1437,12 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
     TName,
     TaskBoardCapabilityAccessor<TInput, TOutput>
   >;
-  /** The once-chosen backing, surfaced on the handle (FIX-910). */
+  // FIX-910.
+  /** The once-chosen backing, surfaced on the handle. */
   backing: TaskBoardBacking;
+  // FIX-1074.
   /**
-   * The durable collection's own declaration, when there is one (FIX-1074).
+   * The durable collection's own declaration, when there is one.
    * Only the `resource` backing has one; the others carry no scope at all, and
    * a dispatched board on them is already refused on `backing`.
    */
@@ -1440,6 +1459,7 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
   drainUses?: readonly DefinedCapability[];
 }
 
+// FIX-931.
 /**
  * Map the once-chosen `collection` config onto every backing-dependent wiring.
  * Five forms, resolved here so no call site restates the backing:
@@ -1457,7 +1477,7 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
  *   top-level seed handler).
  * - factory — caller-supplied `(ctx) => collection`, passed through unchanged.
  *
- * `caps` (FIX-931) is populated only for the two branches that CONSTRUCT the
+ * `caps` is populated only for the two branches that CONSTRUCT the
  * collection, and is empty for the supplied forms — see `resolveBoardCaps`. It
  * is threaded into both the runtime factory and the capability, so every writer
  * that reaches this board resolves a capped collection, not just the drain.

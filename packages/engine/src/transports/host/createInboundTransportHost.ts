@@ -1,3 +1,4 @@
+// FIX-1551.
 /**
  * Construct an `InboundTransportHost` that adapters consume.
  *
@@ -7,7 +8,7 @@
  * `runAction` directly.
  *
  * Principal resolution is also answered here for in-process callers
- * (`resolveInProcessPrincipal`, FIX-1551), through the same code, and this
+ * (`resolveInProcessPrincipal`), through the same code, and this
  * module is the only place `source: "cli"` can be produced.
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -89,9 +90,10 @@ import type {
   ResolvedPrincipal
 } from "../types";
 
+// FIX-999.
 /**
  * Fallback cadence for beating an enqueue-time registry entry while an
- * in-process queued run waits behind its concurrency key (FIX-999).
+ * in-process queued run waits behind its concurrency key.
  *
  * Matches `runAction`'s own default so the entry's freshness cadence does not
  * change when the worker body takes over. A flow that configures
@@ -135,17 +137,18 @@ export type CreateInboundTransportHostOptions = {
    * external worker (e.g., BullMQ WorkerRunner).
    */
   runner?: FlowRunner;
+  // FIX-1077; FIX-1634.
   /**
    * Concurrency arbiter to enforce policy through. Defaults to a fresh one.
    *
    * Supplied when more than one host serves the same process, so a declared
    * `queue`/`reject` policy is enforced ONCE rather than once per host — two
    * arbiters hold two independent keyed gates, and a request admitted by one
-   * knows nothing about a key the other is holding (FIX-1077).
+   * knows nothing about a key the other is holding.
    *
    * An arbiter over a backend shared across processes
    * (`arbitratesAcrossProcesses`) also arbitrates work this host hands to an
-   * external runner (FIX-1634).
+   * external runner.
    */
   arbiter?: ConcurrencyArbiter;
 };
@@ -167,8 +170,9 @@ function isRefusedAdmission(error: unknown): boolean {
   );
 }
 
+// FIX-1551.
 /**
- * Contexts the engine's in-process entry point built itself (FIX-1551).
+ * Contexts the engine's in-process entry point built itself.
  *
  * `source: "cli"` is reserved: the host refuses it on any context that is not
  * in this set. Module-private on purpose — never exported, never keyed through
@@ -213,11 +217,12 @@ function createPrincipalResolution(options: {
   // very logs an operator reads to find it.
   let warnedDevelopmentDefault = false;
 
+  // FIX-1442.
   /**
    * The organization this request runs under, or a refusal.
    *
    * The single place the framework decides an organization, for every inbound
-   * transport (FIX-1442). Two sources and no third: a configured resolver's
+   * transport. Two sources and no third: a configured resolver's
    * verified value, or — only when the app configures no authentication at all
    * — the reserved development default.
    *
@@ -467,6 +472,7 @@ export function createInboundTransportHost(
    */
   const admissionTurns = new Map<string, Promise<void>>();
 
+  // FIX-982, FIX-1095.
   /**
    * Hand a STARTED run's `finished` to the adapter's keep-alive hook, containing
    * a synchronous throw from it.
@@ -481,8 +487,7 @@ export function createInboundTransportHost(
    * the dispatch operation reads it as "nothing was dispatched" and
    * settles the row it handed over, and the resume route reads it as
    * "setup failed" and reverts the suspension to `pending`, inviting a second
-   * resume against a request whose run is still going. Two writers, one row
-   * (FIX-982, FIX-1095).
+   * resume against a request whose run is still going. Two writers, one row.
    *
    * Containing it here is what makes "a synchronous throw is pre-start" a
    * property those callers can rely on rather than one they assume.
@@ -945,6 +950,7 @@ export function createInboundTransportHost(
         // ignored by every caller that only wants `finished`.
         void inProcessAccepted.catch(() => {});
 
+        // FIX-1077.
         /**
          * `abortHandoff` is a controller the run must take over rather than
          * merely be checked against. The queued branch holds one: an abort that
@@ -952,7 +958,7 @@ export function createInboundTransportHost(
          * would otherwise be thrown away, because `runAction` would register a
          * fresh controller over the one that was aborted. Handing the controller
          * itself over makes the handoff atomic, so the abort cannot fall between
-         * two registrations no matter when it lands (FIX-1077). It is the
+         * two registrations no matter when it lands. It is the
          * controller and its incarnation, not its signal, so the run can still
          * tell a cancel for another request under the id from its own.
          */

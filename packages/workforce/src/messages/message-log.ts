@@ -1,5 +1,6 @@
+// FIX-1989.
 /**
- * The message log (FIX-1989): the user-scoped collection the rows in
+ * The message log: the user-scoped collection the rows in
  * `log-row.ts` live in, and how a block reaches it. Beside it, the chain rows
  * the hop limit counts an exchange in (`hop.ts`).
  */

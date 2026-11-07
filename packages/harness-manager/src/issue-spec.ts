@@ -1,7 +1,7 @@
 /**
  * The issue a coding run is for, and its spec brief.
  *
- * A run can be told which tracker issue it works on (`FIX-2165`): a harness
+ * A run can be told which tracker issue it works on (`ENG-142`): a harness
  * session is born with one, and a board task names one under
  * `harnessFeature: { issue }`. This module holds the two things both entries
  * share about it:
@@ -28,14 +28,14 @@ const MAX_ISSUE_LENGTH = 64;
 /** How much of a spec file the brief carries before it cuts the rest (E3: 64 KB). */
 export const ISSUE_SPEC_MAX_BYTES = 64 * 1024;
 
-/** True when `value` is a usable tracker issue key, such as `FIX-2165`. */
+/** True when `value` is a usable tracker issue key, such as `ENG-142`. */
 export function isTrackerIssue(value: unknown): value is string {
   return typeof value === "string" && value.length <= MAX_ISSUE_LENGTH && OWNED_SEGMENT.test(value);
 }
 
 /** The message a malformed issue is refused with, naming the value's shape rather than echoing it whole. */
 export const TRACKER_ISSUE_REFUSED =
-  "An issue is a tracker key such as FIX-2165: letters and digits joined by single - or _, at most 64 characters.";
+  "An issue is a tracker key such as ENG-142: letters and digits joined by single - or _, at most 64 characters.";
 
 /** Options for the spec brief. */
 export interface IssueSpecOptions {

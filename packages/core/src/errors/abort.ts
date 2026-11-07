@@ -1,9 +1,10 @@
+// See FIX-663.
 /**
  * Abort-error introspection helpers. Used to walk wrapped error chains
  * (e.g. the AI Gateway's doubly-wrapped abort error) back to their root
  * and to discriminate abort-like failures from genuine errors so the
  * block-failure surface can present a legible message instead of opaque
- * gateway noise. See FIX-663.
+ * gateway noise.
  */
 
 /**

@@ -1,9 +1,10 @@
+// FIX-1989; FIX-2238.
 /**
- * Worker messages (FIX-1989): any worker with a conversation can message any
+ * Worker messages: any worker with a conversation can message any
  * other on its user's roster. Talk, not delegation: no task row, no delegate,
  * no task-chain count. The session factory carries the tool and the entry; a
  * worker flow without it mounts `messageReceivedEntry` itself, and the hire
- * refuses one with neither (FIX-2238). `hireWorkforce`'s `messages` sets the budget.
+ * refuses one with neither. `hireWorkforce`'s `messages` sets the budget.
  */
 export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_COMPONENT } from "./keys";
 export {

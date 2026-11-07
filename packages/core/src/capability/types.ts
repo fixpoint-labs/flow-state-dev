@@ -75,8 +75,9 @@ export type PresetDef<TSessionState = any> = {
   // Sequencer-only
   sequencerStateSchema?: ZodTypeAny;
 
+  // FIX-914 PR2.
   /**
-   * Own-state — this block's `ctx.self` container (FIX-914 PR2). Valid on
+   * Own-state — this block's `ctx.self` container. Valid on
    * any block kind, since any block can hold its own request-scoped state.
    * Merged with the block's own `stateSchema` (and any sibling capability's
    * own-state contribution) with explicit duplicate-field collision
@@ -95,8 +96,9 @@ export type PresetDef<TSessionState = any> = {
     | GeneratorTool[]
     | ((ctx: CapabilityPresetCtx<TSessionState>) => GeneratorTool[] | Promise<GeneratorTool[]>);
 
+  // FIX-1393.
   /**
-   * Tools that are NOT subject to a consuming block's `tools:` fence (FIX-1393).
+   * Tools that are NOT subject to a consuming block's `tools:` fence.
    *
    * A block's declared `tools:` is the complete and exclusive set of **catalog**
    * tools the model may call. Anything a capability contributes through `tools`
@@ -121,9 +123,10 @@ export type PresetDef<TSessionState = any> = {
     | GeneratorTool[]
     | ((ctx: CapabilityPresetCtx<TSessionState>) => GeneratorTool[] | Promise<GeneratorTool[]>);
 
+  // FIX-1613.
   /**
    * A query added to every `ctx.session.items.history()` read of the generator
-   * that installs the capability (FIX-1613), whether through the `history`
+   * that installs the capability, whether through the `history`
    * option's default or a history function of its own. The read's own keys win
    * over it; among capabilities, later keys win. Generator only.
    *
@@ -235,7 +238,8 @@ export interface CapabilityConfig<
   name: TName;
 
   // Required surface — always installed when the capability is used
-  /** Flat resource map — accessor key → resource definition (FIX-435). */
+  // FIX-435.
+  /** Flat resource map — accessor key → resource definition. */
   resources?: TResources extends Record<string, DeclaredResourceEntry>
     ? TResources
     : Record<string, DeclaredResourceEntry>;
@@ -246,7 +250,8 @@ export interface CapabilityConfig<
   sequencerStateSchema?: TSequencerStateSchema extends ZodTypeAny
     ? TSequencerStateSchema
     : ZodTypeAny;
-  /** Own-state contribution — see `PresetDef.stateSchema` (FIX-914 PR2). */
+  // FIX-914 PR2.
+  /** Own-state contribution — see `PresetDef.stateSchema`. */
   stateSchema?: TOwnStateSchema extends ZodTypeAny ? TOwnStateSchema : ZodTypeAny;
   targetStateSchemas?: TTargetSchemas extends Record<string, ZodTypeAny>
     ? TTargetSchemas
@@ -377,7 +382,8 @@ export interface DefinedCapability<
   sequencerStateSchema?: TSequencerStateSchema extends ZodTypeAny
     ? TSequencerStateSchema
     : ZodTypeAny;
-  /** Own-state contribution — see `PresetDef.stateSchema` (FIX-914 PR2). */
+  // FIX-914 PR2.
+  /** Own-state contribution — see `PresetDef.stateSchema`. */
   stateSchema?: TOwnStateSchema extends ZodTypeAny ? TOwnStateSchema : ZodTypeAny;
   targetStateSchemas?: TTargetSchemas extends Record<string, ZodTypeAny>
     ? TTargetSchemas
@@ -756,9 +762,10 @@ type InferCapabilitySequencerStateEntry<T> =
       : S extends ZodTypeAny ? import("zod").infer<S> : {}
     : {};
 
+// FIX-914 PR2.
 /**
  * Infer the merged own-state shape (`ctx.self`) contributed by static
- * capabilities (FIX-914 PR2). Same shape as session state — `z.infer` of
+ * capabilities. Same shape as session state — `z.infer` of
  * `stateSchema` per capability, with `stateSchemaType` as an override.
  * Consuming block factories intersect this with their own declared
  * `stateSchema` (block-own on the LEFT — see e.g. `HandlerConfig.TSelfState`).

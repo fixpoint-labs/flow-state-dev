@@ -1,5 +1,6 @@
+// FIX-2534, epic FIX-2471.
 /**
- * Subscriptions (FIX-2534, epic FIX-2471): a session follows a thread, and
+ * Subscriptions: a session follows a thread, and
  * each event on it reaches that session once, from the service, after code
  * screens, as a message. `subscriptionTools` are the two tools; a provider's
  * `defineSubscriptionServiceFlow` routes and delivers; an ingestion calls the

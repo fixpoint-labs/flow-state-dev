@@ -1,8 +1,9 @@
+// BP-011.
 /**
  * Supervisor pattern — per-task review on the taskBoard substrate.
  *
  * Each registered worker is wrapped in a
- * `worker → reviewer → applyVerdict` sequencer (BP-011 — reviewer is
+ * `worker → reviewer → applyVerdict` sequencer (reviewer is
  * composed, never invoked from inside a handler's `execute`). On
  * `reject` / `needs-revision` the verdict feedback becomes the thrown
  * error message; the substrate's `recordError` + `maxAttempts`
@@ -79,8 +80,9 @@ export interface SupervisorConfig<
   maxAttemptsPerTask?: number;
   /** Worker pool size. Default 3. */
   maxConcurrency?: number;
+  // FIX-931.
   /**
-   * Creation bounds for the internal board (FIX-931). Defaults 500/100 —
+   * Creation bounds for the internal board. Defaults 500/100 —
    * unchanged behavior when unset. A planner that legitimately produces more
    * than the enqueue bound would otherwise fail its whole seed with no way to
    * raise the ceiling, so both are reachable here: a number, or `null` for
@@ -88,9 +90,10 @@ export interface SupervisorConfig<
    */
   maxTotalTasks?: number | null;
   maxEnqueuedTasks?: number | null;
+  // FIX-948.
   /**
    * Cumulative failure retries the internal board may authorize, across every
-   * task (FIX-948). Default 50 — a number, or `null` for explicitly unbounded.
+   * task. Default 50 — a number, or `null` for explicitly unbounded.
    *
    * The two bounds above count only *new* tasks, so a task that keeps failing
    * keeps spending while both sit still. This is the one number that bounds

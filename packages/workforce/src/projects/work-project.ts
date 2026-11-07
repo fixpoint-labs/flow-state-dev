@@ -1,5 +1,6 @@
+// FIX-2161; BP-031.
 /**
- * The work-project action (FIX-2161): how a user sets the project one of
+ * The work-project action: how a user sets the project one of
  * their own conversations with a worker works in, a new session of the worker
  * or the worker's one default conversation, from the screen.
  *
@@ -15,7 +16,7 @@
  *   a delegate's or a workstream lead's session, which take their project
  *   from where they were created, filed or opened.
  *
- * The input names the project and nothing else (BP-031). A refusal fails the
+ * The input names the project and nothing else. A refusal fails the
  * request with its reason and stores nothing. Setting another project later
  * replaces it; the tasks already filed keep the one stamped on their rows.
  */

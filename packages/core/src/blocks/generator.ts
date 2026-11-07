@@ -111,10 +111,12 @@ const DEFAULT_REPAIR_ATTEMPTS = 1;
 
 interface DynamicCapSurface {
   contextEntries: Array<unknown>;
-  /** History query entries (FIX-1613) — see `PresetDef.history`. */
+  // FIX-1613.
+  /** History query entries — see `PresetDef.history`. */
   historyEntries: Array<NonNullable<PresetDef["history"]>>;
   tools: GeneratorTool[];
-  /** Fence-exempt controls (FIX-1393) — see `PresetDef.controlTools`. */
+  // FIX-1393.
+  /** Fence-exempt controls — see `PresetDef.controlTools`. */
   controlTools: GeneratorTool[];
 }
 
@@ -202,8 +204,9 @@ async function collectOwnPresets(
   }
 }
 
+// FIX-1613.
 /**
- * The query the generator's capabilities add to its history reads (FIX-1613):
+ * The query the generator's capabilities add to its history reads:
  * every `history` entry, static then dynamic, resolved against this run's
  * context and merged in order, later keys winning. `undefined` when none
  * contributes.
@@ -365,8 +368,9 @@ export type GeneratorRepairMode = "auto" | "rescue" | "fail";
 export interface GeneratorRepairConfig {
   mode?: GeneratorRepairMode;
   maxAttempts?: number;
+  // FIX-841.
   /**
-   * LLM coercion repair (FIX-841). When the deterministic repair pass can't
+   * LLM coercion repair. When the deterministic repair pass can't
    * recover the model's structured output (e.g. it returned the right data
    * under the wrong field names), make one model call that reshapes the raw
    * output to the schema, preserving content. Runs only in `auto` mode and
@@ -525,8 +529,9 @@ export interface GeneratorConfig<
   BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
   "execute" | "onCompleted" | "stateSchema" | "flowConfigSchema"
 > {
+  // FIX-1331.
   /**
-   * What this block requires of whatever flow installs it (FIX-1331). Types
+   * What this block requires of whatever flow installs it. Types
    * `ctx.flow.config` off this schema, and makes the flow refuse when it
    * cannot supply a bag that satisfies it. Names no flow, so the block stays
    * portable. See {@link BlockConfig.flowConfigSchema}.
@@ -543,13 +548,16 @@ export interface GeneratorConfig<
   userStateSchema?: TUserStateSchema;
   orgStateSchema?: TOrgStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
-  /** This generator's own request-scoped state (FIX-914). Exposed via
+  // FIX-914.
+  /** This generator's own request-scoped state. Exposed via
    *  `ctx.self` in `context`/`prompt`/tool-loop callbacks — a generator can
    *  accumulate across its own tool loop (e.g. what it has loaded so far). */
   stateSchema?: TStateSchema;
-  /** Expected shape of the immediate parent's own state (FIX-914). */
+  // FIX-914.
+  /** Expected shape of the immediate parent's own state. */
   parentStateSchema?: TParentStateSchema;
-  /** Flat resource declaration. See `HandlerConfig.resources` (FIX-435). */
+  // FIX-435.
+  /** Flat resource declaration. See `HandlerConfig.resources`. */
   resources?: TResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;
@@ -814,9 +822,10 @@ async function resolveTools<TInput, TCtx extends BlockContext>(
   return blocks;
 }
 
+// FIX-1331.
 /**
  * Refuse a resolved tool whose `flowConfigSchema` the running copy's bag does
- * not satisfy (FIX-1331).
+ * not satisfy.
  *
  * `defineFlow`'s walk takes a generator's STATIC `tools` array, so a tool it
  * declares is checked at the mint and this is a no-op for it. A
@@ -1092,8 +1101,9 @@ async function applyRepairPolicy<TInput, TOutput>(
   }
 }
 
+// FIX-841.
 /**
- * LLM coercion repair (FIX-841). Asks a model to rewrite a candidate that
+ * LLM coercion repair. Asks a model to rewrite a candidate that
  * failed schema validation into one that conforms, preserving the original
  * content. Returns the (deterministically re-parsed) coerced value, or
  * `undefined` when coercion couldn't produce anything usable — in which case
@@ -1231,8 +1241,9 @@ function buildSourceItem(
  * schema validation runs), but reasoning, messages, tool-call progress,
  * and source items are all suppressed.
  */
+// FIX-663.
 /**
- * FIX-663: rewrites a rejected model call into a legible failure. When the
+ * Rewrites a rejected model call into a legible failure. When the
  * error is abort-like and this block's signal aborted (explicit user
  * cancellation propagated to a background `.sideChain()` task, or a foreground
  * `/abort`), surface the unwrapped root-cause text instead of the AI
@@ -1366,9 +1377,10 @@ function remapStepToolCalls(
 
 /** Sums per-step usage into the run aggregate the legacy SDK-owned path
  * reports (the SDK accumulates usage across internal steps the same way). */
+// FIX-2145.
 /**
  * Count one finished step of a framework-owned loop in the request's spend
- * ledger, as the step ends (FIX-2145): a run that later suspends for an
+ * ledger, as the step ends: a run that later suspends for an
  * approval or fails keeps the steps it finished. The trace row still gets the
  * run's one aggregate report, marked so the ledger doesn't count it again.
  */
@@ -1443,6 +1455,7 @@ function partitionStepCalls(
   return { frameworkCalls, providerCalls };
 }
 
+// FIX-814.
 /**
  * Executes a step's tool calls CONCURRENTLY (matching the SDK's same-step
  * behavior) and settles ALL siblings before deciding anything. Ordinary tool
@@ -1450,7 +1463,7 @@ function partitionStepCalls(
  * produced (the failed `tool_output` item is emitted inside
  * `emitToolOutputAround`).
  *
- * Suspension propagation (FIX-814): a tool that calls `ctx.suspend()` throws a
+ * Suspension propagation: a tool that calls `ctx.suspend()` throws a
  * `SuspensionError`. All siblings still settle first — completed siblings'
  * `tool_output`s are recorded, and every suspending sibling has emitted its
  * `SUSPENSION`-coded failed `tool_output` — then, if any sibling suspended,
@@ -1601,9 +1614,10 @@ async function buildOwnedStepMessages(
   return messages;
 }
 
+// FIX-814.
 /**
  * Emits the replay-only `generator_step` artifact for a tool-calling step,
- * BEFORE the loop dispatches that step's tools (FIX-814). Keyed by the
+ * BEFORE the loop dispatches that step's tools. Keyed by the
  * generator's logical path + `stepNumber` and accumulating (one per step), it
  * is the only durable record of the step's assistant turn: the buffered
  * pre-tool text and the full framework tool-call array (ids/names/aliases/args)
@@ -1655,8 +1669,9 @@ async function emitGeneratorStep(
   await ctx.response.emit({ type: "item.done", item });
 }
 
+// FIX-814.
 /**
- * Re-runs (or injects) the suspending step's tool calls on resume (FIX-814),
+ * Re-runs (or injects) the suspending step's tool calls on resume,
  * building that step's assistant + tool-result messages. Per-call:
  *  - `completed` → inject the persisted `modelOutput` (never re-run, never
  *    recompute a mapper);
@@ -1877,8 +1892,9 @@ function activeStepTools(
   return entries.length > 0 ? entries.map((e) => e.modelTool) : undefined;
 }
 
+// FIX-814.
 /**
- * Drives the generator resume pre-phase for an owned loop (FIX-814). Reads the
+ * Drives the generator resume pre-phase for an owned loop. Reads the
  * durable log off `ctx._replayLog`, reconstructs the recorded conversation
  * (visibility-agnostic), re-runs/injects the suspending step's tool calls, and
  * reports the step number the live loop should continue from. Returns
@@ -2366,11 +2382,12 @@ async function handleGeneratorStreamChunk(
   }
 }
 
+// FIX-480.
 /**
  * Post-stream finalization shared by both streaming paths: closes out
  * reasoning, emits the message envelope when no text arrived, validates the
  * accumulated text against the output schema, emits `content.done` +
- * `item.done`, and installs the FIX-480 ref-output hint. Returns the parsed
+ * `item.done`, and installs the ref-output hint. Returns the parsed
  * output; the caller reports usage via `onGeneratorModelResult` (legacy
  * passes the final result's usage, the owned loop its per-step aggregate).
  */

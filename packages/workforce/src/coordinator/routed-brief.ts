@@ -1,5 +1,6 @@
+// FIX-2083; FIX-1872 D2.
 /**
- * A routed task's brief (FIX-2083): what a coordinator attaches to each task
+ * A routed task's brief: what a coordinator attaches to each task
  * it files for a message it routes, and how the delegate's turn reads it.
  *
  * A routed task is an ordinary task on the conversation's board with three
@@ -9,9 +10,9 @@
  * filing step: the message as written, who wrote it, the coordinator, the
  * conversation's recent lines, and the message and round it was routed in.
  * No caller and no model writes it, so a delegate reads the words its user
- * wrote, never a paraphrase (FIX-1872 D2, kept).
+ * wrote, never a paraphrase (kept).
  *
- * A post row stored before FIX-2083 carries the same fields in its payload,
+ * A post row stored by an older version carries the same fields in its payload,
  * so its brief reads the same way (the task map reads the rest of the row).
  *
  * **The lines.** The `work` entry notes a brief's lines for its request
@@ -60,10 +61,11 @@ export function routedBriefOf(task: { readonly sealed?: Readonly<Record<string, 
   return parsed.success ? parsed.data : undefined;
 }
 
+// FIX-2083; FIX-2115.
 /**
  * Whether a routed task was filed by the judgment turn's own `createTask`
- * (its brief names the call), so that turn is its filer and hears its failure
- * (FIX-2115). A policy's filing, and a post row stored before FIX-2083, name
+ * (its brief names the call), so that turn is its filer and hears its failure.
+ * A policy's filing, and a post row stored by an older version, name
  * none.
  */
 export function filedByTurn(brief: RoutedBrief | undefined): boolean {

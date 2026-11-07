@@ -35,8 +35,9 @@ function resolveLiveTailPoolMax(): number {
 }
 
 export type PostgresStoreRegistry = StoreRegistry & {
+  // FIX-2427.
   /**
-   * The Postgres change bus (FIX-2427). It crosses processes while it hears
+   * The Postgres change bus. It crosses processes while it hears
    * its own ping over the tail pool; without a tail pool it stays in process.
    */
   bus: PostgresBus;
@@ -87,9 +88,10 @@ export async function createPostgresStores(
     }
   }
 
+  // FIX-999.
   /**
-   * Sharedness answers from the construction shape, not the package name
-   * (FIX-999). A pooled or connection-string store reaches a Postgres server
+   * Sharedness answers from the construction shape, not the package name.
+   * A pooled or connection-string store reaches a Postgres server
    * every worker connects to. An injected `{ executor }` is documented as
    * PGlite-capable and is process-local — the same reason the live-tail branch
    * below disables `LISTEN` for it — so it declares not shared and the liveness

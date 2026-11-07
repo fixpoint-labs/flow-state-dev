@@ -1,5 +1,6 @@
+// FIX-2085 D2.
 /**
- * One firing per scheduled time (FIX-2085 D2): which scheduled time a fire
+ * One firing per scheduled time: which scheduled time a fire
  * counts against, and the one stored record per schedule that says the latest
  * time it fired.
  *
@@ -127,10 +128,11 @@ function isStale(cron: string, timezone: string, at: number, now: number): boole
   return before !== null && at < before;
 }
 
+// BP-030.
 /**
  * The one record a schedule keeps: the latest time it fired. A record written
  * before it was a floor also carries the cron and zone it fired under; those
- * are read past, never compared (BP-030).
+ * are read past, never compared.
  */
 interface FiredRecord {
   lastFiredAt: number;

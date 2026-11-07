@@ -1,3 +1,4 @@
+// FIX-1068; FIX-1258.
 /**
  * The one function every new session record goes through.
  *
@@ -14,13 +15,13 @@
  *
  * The decisions it carries, and why they are carried once:
  *
- * - **Minting** (FIX-1068). A session's `lineageId` is the address its
+ * - **Minting**. A session's `lineageId` is the address its
  *   `sharedToLineage` resources store under. A creator that omits it leaves the
  *   session on a value derived from its own key, so a deleted id recreated
  *   lands on the same address. The birth mints one unless the caller derives it.
  * - **Racing.** `get`-then-`set` is not create-if-absent: two callers both find
  *   nothing and the loser overwrites the winner. The write is `"absent"`.
- * - **Reclaiming** (FIX-1258). A record coming into existence starts a new
+ * - **Reclaiming**. A record coming into existence starts a new
  *   resource-state incarnation, and the previous one's tombstones go with it
  *   ({@link purgeStaleResourceState}).
  * - **Checking.** The session's initial state, parsed through the flow's
@@ -55,6 +56,7 @@ import { toBareState } from "../stores/resource-state-views";
 import { deepEqual, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { scopeStateSchema } from "./scope-state-defaults";
 
+// FIX-1000; FIX-1068.
 /**
  * Release a newborn session from the resource-state tombstones a previous
  * session under the same id left behind.
@@ -117,10 +119,10 @@ import { scopeStateSchema } from "./scope-state-defaults";
  * against a session that plainly already exists from reclaiming at all, so
  * only a genuine create race can reach step 3. It cannot close the race,
  * because there is no transaction across the two stores. Closing it needs a
- * **scope generation**, which is tracked and specced as FIX-1000 ("A create
+ * **scope generation**, which is tracked separately ("A create
  * racing session deletion lands in a purged, caller-reusable scope — fence the
  * scope generation") and deliberately not attempted here. Reach for that, not
- * for a second primitive: `lineageId` is a lineage address (FIX-1068) and
+ * for a second primitive: `lineageId` is a lineage address and
  * answers a different question.
  *
  * The one thing the narrowing to tombstones does buy: a losing reclaimer can

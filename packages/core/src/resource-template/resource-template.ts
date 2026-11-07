@@ -1,7 +1,8 @@
+// FIX-669.
 /**
  * Isomorphic resource-template parser and renderer.
  *
- * A resource template is a `.md` file in the FIX-669 format (YAML frontmatter
+ * A resource template is a `.md` file in the resource-template format (YAML frontmatter
  * + optional `<system>/<user>/<context>` role tags) rendered against a resource's
  * own `{ state }` scope via hardened LiquidJS. The `<system>` section (or the
  * full body when untagged) becomes the resource's content body on each read.

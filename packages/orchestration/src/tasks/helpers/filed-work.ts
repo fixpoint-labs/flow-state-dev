@@ -1,5 +1,6 @@
+// FIX-2077, rule 6.
 /**
- * Filed work still holding a task (FIX-2077, rule 6): the one answer to
+ * Filed work still holding a task: the one answer to
  * "is anything this task filed keeping it open?".
  *
  * A row a task filed (`Task.filedByTask`) holds it while the row isn't

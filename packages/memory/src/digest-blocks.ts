@@ -1,5 +1,6 @@
+// [FIX-408].
 /**
- * Digest regeneration blocks ([FIX-408]).
+ * Digest regeneration blocks.
  *
  * Three internal blocks composed into one exported sequencer:
  *   guard     — staleness short-circuit; reads sources, decides if regen is needed
@@ -88,8 +89,9 @@ const digestGuardOutputSchema = z.object({
 
 type DigestGuardOutput = z.infer<typeof digestGuardOutputSchema>
 
+// FIX-408.
 /**
- * Generator output schema — bare text per FIX-408's design ("the digest is
+ * Generator output schema — bare text by design ("the digest is
  * text, not a structured object"). Using `z.string()` opts the generator into
  * core's streaming text path, so a response that hits `maxTokens` produces a
  * shorter-but-valid string rather than an unparseable truncated JSON object.

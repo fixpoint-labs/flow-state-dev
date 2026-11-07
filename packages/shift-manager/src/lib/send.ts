@@ -1,3 +1,4 @@
+// BR-4.
 /**
  * The one way Shift Manager sends a user's line into a worker's session (S10).
  *
@@ -7,7 +8,7 @@
  * declares: the worker inventory row for the flow the session records as its
  * owner names it. Shift Manager knows no flow name and no action name of its own.
  *
- * **Delivered means the session holds it (BR-4).** The door's request is
+ * **Delivered means the session holds it.** The door's request is
  * followed until it ends or stops. A line counts as delivered only when that
  * request is `completed` or `suspended` **and** the target session holds the
  * request's user item. The HTTP answer alone never says so: it only says the
@@ -207,9 +208,10 @@ async function stopWithin(until: number, stop: Promise<TurnStop>): Promise<TurnS
   }
 }
 
+// BR-4.
 /**
  * Send `message` through the target's door, and resolve only once it is
- * delivered (BR-4). Rejects with {@link TurnNotDelivered} otherwise.
+ * delivered. Rejects with {@link TurnNotDelivered} otherwise.
  *
  * @param options.onHeld called once, while the request is still running, when
  * the session first holds the line. A request that ends before a poll sees it

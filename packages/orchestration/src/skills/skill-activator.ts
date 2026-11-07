@@ -1,5 +1,6 @@
+// FIX-421.
 /**
- * `createSkillActivator` — the public factory for FIX-421's up-front
+ * `createSkillActivator` — the public factory for the up-front
  * skill-activation router.
  *
  * Composes a three-tier sequencer that decides which skills (if any) apply

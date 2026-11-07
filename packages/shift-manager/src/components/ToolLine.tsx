@@ -1,5 +1,6 @@
 "use client";
 
+// FIX-1989; FIX-2239.
 /**
  * Tool calls as background, not content.
  *
@@ -14,8 +15,7 @@
  *
  * A `sendMessage` call is talk, not background: it is its own line, *To
  * <recipient>: <text>*, with a link to Messages, and a refused one says it
- * wasn't sent and why (FIX-1989). One that waits for the answer (a call,
- * FIX-2239) reads *Asked <recipient>* and shows the reply under it, or says no
+ * wasn't sent and why. One that waits for the answer (a call) reads *Asked <recipient>* and shows the reply under it, or says no
  * answer came by its deadline.
  *
  * This is Shift Manager's own presentation: `flow-state/tool.tsx` is the
@@ -138,7 +138,8 @@ function isMessageCall(item: ToolOutputItem): boolean {
   return item.toolCall?.name === SEND_MESSAGE_TOOL;
 }
 
-/** Who a message call names: a worker's id, a task, or a conversation (FIX-2160). */
+// FIX-2160.
+/** Who a message call names: a worker's id, a task, or a conversation. */
 function messageTargetLabel(to: unknown): string {
   if (typeof to === "string") return to;
   const target = (typeof to === "object" && to !== null ? to : {}) as { task?: unknown; session?: unknown };
@@ -147,7 +148,8 @@ function messageTargetLabel(to: unknown): string {
   return "another worker";
 }
 
-/** What a waited send's answer says under its line: the reply, or why none came yet (FIX-2318). */
+// FIX-2318.
+/** What a waited send's answer says under its line: the reply, or why none came yet. */
 function waitOutcomeLine(output: { status?: unknown; reply?: unknown; recipient?: unknown } | undefined): string | null {
   if (output?.status === "answered" && typeof output.reply === "string") return output.reply;
   if (output?.status === "running") {

@@ -1,3 +1,4 @@
+// FIX-1506.
 /**
  * The reads the workforce panels share.
  *
@@ -7,7 +8,7 @@
  * fence protocol lives there, once. A live `BoardList` reads its board again on
  * each board notice (`liveBoardDriver`); a live `Roster` or `BoardColumns`
  * reads its collection again on another session's change to it, heard through
- * `client.subscribe` (`liveScopeDriver`, FIX-1506). Internal on purpose —
+ * `client.subscribe` (`liveScopeDriver`). Internal on purpose —
  * exporting a read would let a host mount it twice.
  */
 import { useMemo } from "react";
@@ -16,17 +17,19 @@ import { coalescedReads } from "../../internal/coalescedReads";
 import { LIVE_POLL_MS, mayBelongTo, storagePrefixOf } from "../../internal/scopeNotices";
 import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
 
+// BR-29.
 /**
  * The slice of the one client a panel reads, and the type says which method.
  *
  * A host passes the client it already holds — with its own `fetcher`, so every
  * request carries whatever credential that transport adds. A panel that built
  * its own client would read through no credential and fail against any
- * deployment that authenticates (BR-29).
+ * deployment that authenticates.
  */
 export type PanelRowSource = { readonly resources: Pick<ResourcesApi, "listCollectionItems"> };
 
-/** `WorkerDetail`'s read is one item, not a page — the method name says which (FIX-1500 BR-27). */
+// FIX-1500 BR-27.
+/** `WorkerDetail`'s read is one item, not a page — the method name says which. */
 export type PanelItemSource = { readonly resources: Pick<ResourcesApi, "getCollectionItemState"> };
 
 /**
@@ -142,6 +145,7 @@ function liveScopeDriver(sessionId: string, ref: string, client: PanelNoticeSour
   };
 }
 
+// BR-19, BR-21.
 /**
  * Every row of a collection, for one session — traversing `nextCursor` until
  * the route stops returning one, through the client's shared
@@ -156,7 +160,7 @@ function liveScopeDriver(sessionId: string, ref: string, client: PanelNoticeSour
  * that hands back a `nextCursor` forever, not a limit anyone is expected to
  * reach. A collection with pages left after it, or a server that repeats a
  * cursor, is an error (the panel's error line and Retry), never the rows read
- * so far (BR-19, BR-21).
+ * so far.
  *
  * With `live.board`, `ref` is a task board, and the rows are read again on
  * each of its board notices (see `liveBoardDriver`). With `live.notices`, they

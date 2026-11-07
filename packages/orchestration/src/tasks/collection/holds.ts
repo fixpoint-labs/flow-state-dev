@@ -1,7 +1,8 @@
+// FIX-2317; FIX-2133 D2; the epic FIX-2058's ER-8.
 /**
  * The one hold write, and the one predicate every reader asks of it, *open
- * holds* (FIX-2133 D2, the epic FIX-2058's ER-8; a question is one kind of
- * hold since FIX-2317).
+ * holds* (a question is one kind of
+ * hold).
  *
  * Both backings call {@link holdWrite} for every change to `Task.holds`, decided
  * on the committed row inside their write: a filing or a midway ask opens row
@@ -30,7 +31,8 @@ export function isRowHold(hold: TaskHold): hold is RowHold {
   return hold.source.kind === "row";
 }
 
-/** Whether `hold` is an external wait (FIX-2578): the running turn waits on something outside the board. */
+// FIX-2578.
+/** Whether `hold` is an external wait: the running turn waits on something outside the board. */
 export function isExternalHold(hold: TaskHold): hold is RowHold {
   return hold.source.kind === "row" && hold.ask.kind === "external";
 }
@@ -55,8 +57,9 @@ export function openHolds(row: Pick<Task, "status" | "holds" | "steers">): TaskH
   return row.holds.filter((hold) => !isRowHold(hold) || answerOf(row, hold.id) === undefined);
 }
 
+// FIX-2133.
 /**
- * The turn-asked fact (FIX-2133): whether `row` records that the turn a
+ * The turn-asked fact: whether `row` records that the turn a
  * ticket holds asked questions midway, on that ticket's attempt. The one
  * reading of `askedInTurn`; each caller adds what its own rule needs on top
  * (the request's own flag, the row's current turn).
@@ -70,8 +73,9 @@ export function hasOpenHold(row: Pick<Task, "status" | "holds" | "steers">): boo
   return openHolds(row).length > 0;
 }
 
+// FIX-2578.
 /**
- * **Who `row` waits on now**, the one reading of a hold's `actor` (FIX-2578):
+ * **Who `row` waits on now**, the one reading of a hold's `actor`:
  * `"user"` while any open hold is a person's (a question, a confirm, a run's
  * stop for a person), else `"system"` while an external wait is open, else
  * `undefined`. A reader that says "waiting on a user" asks for `"user"`; one
@@ -83,7 +87,8 @@ export function holdActorOf(row: Pick<Task, "status" | "holds" | "steers">): "us
   return open.some((hold) => hold.actor === "user") ? "user" : "system";
 }
 
-/** The row's open external wait, if it has one (FIX-2578): a turn opens at most one. */
+// FIX-2578.
+/** The row's open external wait, if it has one: a turn opens at most one. */
 export function externalHoldOf(row: Pick<Task, "status" | "holds" | "steers">): RowHold | undefined {
   return openHolds(row).find(isExternalHold) as RowHold | undefined;
 }
@@ -167,8 +172,9 @@ export function externalWaitProblem(wait: ExternalWait): string | undefined {
   return undefined;
 }
 
+// FIX-2578.
 /**
- * The one constructor of an external wait (FIX-2578): `actor: "system"`, kind
+ * The one constructor of an external wait: `actor: "system"`, kind
  * `external`, one `{ by: "event" }` releaser per event, opened at `at`. Never
  * `midway`, so its filer is not told of it as a question, and no deadline:
  * it waits until a steer answers it or the task is cancelled.
@@ -188,10 +194,11 @@ export interface QuestionAnswer {
   /** The row hold it answers. */
   readonly questionId: string;
   readonly message: string;
+  // FIX-2578.
   /**
    * Who sent it: a person (`"user"`), the filer for a midway question
    * (`"filer"`), or words from outside the app, a delivered message
-   * (`"service"`, FIX-2578), whose sender is `by`.
+   * (`"service"`), whose sender is `by`.
    */
   readonly from: "user" | "filer" | "service";
   /** The user who answered, server-set; for a `"service"` answer, the sender's handle. */
@@ -231,12 +238,13 @@ function released(before: Task, next: Pick<Task, "status" | "holds" | "steers">)
   return { turnOwed: true };
 }
 
+// FIX-2578.
 /**
  * The one question write (ER-8), decided on the committed row `task`.
  *
  * - `ask`: refused `open-question` while a suspension questions the row (one wait per
  *   turn, one source at a time), and `steer-limit` when its answers would
- *   take the row past {@link MAX_STEERS} places. An external wait (FIX-2578)
+ *   take the row past {@link MAX_STEERS} places. An external wait
  *   opened over a line no request of the attempt took, one that landed after
  *   the turn's last steer check, opens answered by it: the line is what wakes
  *   the wait, so the same attempt is owed its turn in this write, and the line
@@ -357,11 +365,12 @@ export function nextHoldDue(row: Pick<Task, "status" | "holds" | "steers">): num
   return next;
 }
 
+// FIX-2086.
 /**
  * Whether `row` owes a turn on its same attempt that the claim takes (D3): a
  * running row with no lease and no open question, marked `turnOwed` by its last
  * row question's release, or by the turn a steer no request took is owed
- * (FIX-2086, beside its `keptOpenBy: "steer"`). The mark, not `keptOpenBy`:
+ * (beside its `keptOpenBy: "steer"`). The mark, not `keptOpenBy`:
  * `"steer"` is also what a later request parked after the task answered
  * leaves, with that request still to resume.
  */

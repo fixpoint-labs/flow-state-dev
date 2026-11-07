@@ -1,3 +1,4 @@
+// FIX-2409.
 /**
  * The one snapshot every surface draws from, and when it is read again.
  *
@@ -9,8 +10,8 @@
  * app costs no reads. Inbox, the Stream's asks, the sidebar counts and the
  * Tasks list all come from the same snapshot.
  *
- * It also reads again on its own when another session changes what it shows
- * (FIX-2409): one subscription through the provider's client, on the topics
+ * It also reads again on its own when another session changes what it shows:
+ * one subscription through the provider's client, on the topics
  * and notices `snapshot-subscribe.ts` names, and every
  * {@link SNAPSHOT_POLL_MS} wherever push can miss a change. Those reads give
  * no sign while they run; only a read the user asked for dims the counts

@@ -1,5 +1,6 @@
+// FIX-1477 S4.
 /**
- * `FlowNavigator` — the rail that browses your flows (FIX-1477 S4).
+ * `FlowNavigator` — the rail that browses your flows.
  *
  * It browses *flows*, not a workforce: kinds, the copies under a kind, and
  * those copies' sessions. One mount holds every section, so there is one flow
@@ -81,9 +82,10 @@ export type FlowNavigatorRow =
       readonly leaf: FlowNavigatorLeaf;
       readonly session: SessionSummary;
       readonly isSelected: boolean;
+      // FIX-1440.
       /**
-       * Present when a dispatcher started this session rather than a person
-       * (FIX-1440). `parentSessionId` is the session it was started from, and
+       * Present when a dispatcher started this session rather than a person.
+       * `parentSessionId` is the session it was started from, and
        * `parentInView` says whether that session is one of the rows on screen
        * — a run whose parent is not in the listing is drawn at the left margin
        * and still carries its provenance.
@@ -149,9 +151,10 @@ export type FlowNavigatorProps = {
    * client every render.
    */
   readonly client?: FlowNavigatorClient;
+  // FIX-1440.
   /**
    * Also list the sessions a dispatcher ran work in, drawn one level under the
-   * session that started each one (FIX-1440).
+   * session that started each one.
    *
    * Off by default, matching the server: a host that does not ask lists the
    * sessions a person started, exactly as before. A tool that inspects a

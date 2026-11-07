@@ -1,6 +1,7 @@
+// FIX-141.
 /**
  * Resolves a durable-execution suspension by approving or rejecting it
- * (FIX-141 operator UI).
+ * (the operator UI for durable suspensions).
  *
  * Wraps the DevTool client's call for the stop: `answer()` for a user's stop
  * (`isUserSuspension`), which answers it whatever started the run, a task's

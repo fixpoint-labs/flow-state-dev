@@ -196,10 +196,11 @@ export interface RosterWorker {
   name: string | null;
   /** Its team's display name, its `TEAM.md` `name:`, or `null` when it has none or no team. */
   teamName: string | null;
+  // FIX-2081 D2.
   /**
    * The delegates its configuration lists (`delegates:`), by worker id; empty
    * when it lists none. `"all"` when its file says `delegates: all`: the
-   * whole roster, read when it is used (FIX-2081 D2).
+   * whole roster, read when it is used.
    */
   delegates: readonly string[] | typeof ALL_DELEGATES;
   /** Why it can't run, when its row can't be read or names a flow kept for standard workers. */

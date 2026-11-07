@@ -27,10 +27,11 @@ import { INTERNAL_SOURCE, TASK_SOURCE } from "./transport-sources";
 export type DispatchStamp = {
   readonly type: "internal" | "task";
   readonly action: string;
+  // BP-030.
   /**
    * The flow the entry was resolved on, present only when the dispatch crossed
    * a flow boundary. Absent is same-flow — including on every record written
-   * before cross-flow addressing shipped (BP-030), which is the same reading.
+   * before cross-flow addressing shipped, which is the same reading.
    */
   readonly flowKind?: string;
   /**
@@ -45,9 +46,10 @@ export type DispatchStamp = {
   readonly from: {
     readonly block: string;
     readonly sessionId: string;
+    // BP-030.
     /**
      * The sender incarnation at stamp time. Optional so a record written
-     * before the field shipped still parses (BP-030). `{ from: true }`
+     * before the field shipped still parses. `{ from: true }`
      * compares it against the live session when present, so a deleted and
      * recreated sender is not treated as who dispatched this request.
      */
@@ -65,6 +67,7 @@ export type DispatchStamp = {
   readonly recipientLineageId?: string;
 };
 
+// BP-030.
 /**
  * Read the dispatch stamp off a request, **only** when the runtime stamped a
  * dispatch source. Returns `undefined` for every other source, including a
@@ -72,7 +75,7 @@ export type DispatchStamp = {
  *
  * Shape-checked rather than cast: the bag has survived a store round-trip and
  * may have been written by an older release, so a missing field is a real
- * state (BP-030), and every consumer treats "no stamp" as "not a dispatched
+ * state, and every consumer treats "no stamp" as "not a dispatched
  * request", which is the safe reading.
  */
 export function readDispatchStamp(

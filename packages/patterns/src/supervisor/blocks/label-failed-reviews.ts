@@ -1,3 +1,4 @@
+// BP-012.
 /**
  * `labelFailedReviews` — post-drain audit: label every `errored` task
  * by failure category.
@@ -14,7 +15,7 @@
  * instead of `task.metadata` keeps reviewer-side audit traffic off the
  * task collection's CAS-driven request scope.
  *
- * Wired in via `.tap()` per BP-012 (state-mutation only).
+ * Wired in via `.tap()` (state-mutation only).
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";

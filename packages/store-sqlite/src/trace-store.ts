@@ -1,5 +1,6 @@
+// FIX-506.
 /**
- * SQLite-backed trace event store with FIFO retention by request (FIX-506).
+ * SQLite-backed trace event store with FIFO retention by request.
  *
  * Two tables:
  *   - `trace_events` holds the events themselves, keyed by

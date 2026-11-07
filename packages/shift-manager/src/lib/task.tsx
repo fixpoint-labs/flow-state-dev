@@ -1,3 +1,4 @@
+// BR-3.
 /**
  * One open task: its row, the run the row's link names, and that run's state.
  * Held once for the task screen and its inspector, so the centre and the right
@@ -5,7 +6,7 @@
  *
  * **The row.** From the snapshot, then from one board's re-read. While the row
  * is not on the board yet, or is `in_progress` with no run linked, it is
- * re-read every 2 s, at most 30 times (BR-3): the run writes its link as it
+ * re-read every 2 s, at most 30 times: the run writes its link as it
  * starts, and nothing pushes that to a view following another session. Once
  * the linked run settles on a row still queued or running, it is re-read the
  * same way, in a fresh window, until the row links the next attempt; the
@@ -78,7 +79,8 @@ export type TaskView = {
   /** When an aborted run stopped, by its request record; `undefined` when the record has no end time. */
   stoppedAt: number | undefined;
   devtoolUrl: string | undefined;
-  /** Request ids this composer started, newest last, for this open task only (FIX-2009): the Session follows each. */
+  // FIX-2009.
+  /** Request ids this composer started, newest last, for this open task only: the Session follows each. */
   sent: readonly string[];
   /**
    * The ones among `sent` whose door keeps no task id, so their items carry no
@@ -99,7 +101,8 @@ export function useTask(): TaskView {
   return value;
 }
 
-/** Whether the row should be re-read while the screen waits (BR-3). */
+// BR-3.
+/** Whether the row should be re-read while the screen waits. */
 function awaitingLink(row: BoardRow | undefined): boolean {
   return row === undefined || (row.status === "in_progress" && row.run === null);
 }

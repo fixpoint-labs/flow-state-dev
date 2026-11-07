@@ -1,6 +1,7 @@
+// FIX-1816; FIX-2082.
 /**
  * The wait gate: what a request parks on while it waits for work that runs
- * elsewhere (FIX-1816; one gate for every wait since FIX-2082).
+ * elsewhere (one gate for every wait).
  *
  * A request waits on work already started: a task it filed (`getTask` with
  * `wait`), a row its plan board handed to another session, or a request a
@@ -43,8 +44,9 @@ import { requestHostOf } from "./request-host";
 /** The suspension reason a wait gate carries. */
 export const WAIT_GATE_REASON = "wait" as const;
 
+// FIX-2082 D1.
 /**
- * The internal entry a wait's deadline wake names (FIX-2082 D1). The engine
+ * The internal entry a wait's deadline wake names. The engine
  * fires it itself: no flow declares it. One wake per session carries the
  * earliest deadline of the waits parked there.
  */
@@ -62,11 +64,12 @@ export function isWaitGate(suspension: { readonly reason: string }): boolean {
   return suspension.reason === WAIT_GATE_REASON;
 }
 
+// FIX-2129.
 /**
  * Whether a suspension that passed its deadline carries its turn on: not a
  * wait, past its deadline (`expired`), and either one a person could have
  * rejected (an approval, read as a no marked expired) or one that waits for a
- * user (FIX-2129: a review or an input, which resumes its block with
+ * user (a review or an input, which resumes its block with
  * `SuspensionTimeoutError`). Any other suspension that allows no `reject`
  * only expires. `allow` is absent on records written before it existed,
  * which read as approve/reject.
@@ -88,19 +91,21 @@ export type WaitRow = {
   readonly taskId: string;
 };
 
+// FIX-2082.
 /**
  * What the parked request waits on: one row on one board, or one request it
- * dispatched (a `dispatcher({ wait: true })`, FIX-2082).
+ * dispatched (a `dispatcher({ wait: true })`).
  */
 export type WaitGateBinding = WaitRow | { readonly requestId: string };
 
+// FIX-2082.
 /**
  * Why a wait ended without an answer. A model never reads these: the waiting
  * call turns them into what it returns.
  *
  * - `wait_task_failed` — the waited-on work failed for good.
  * - `wait_task_cancelled` — the waited-on work was cancelled.
- * - `wait_timed_out` — only on a gate parked before FIX-2082, whose deadline
+ * - `wait_timed_out` — only on a gate parked before gates carried a deadline, whose deadline
  *   was the suspension's expiry: the durability sweep resumes it with this.
  */
 export type WaitEndingErrorCode = "wait_timed_out" | "wait_task_failed" | "wait_task_cancelled";
@@ -199,11 +204,12 @@ export type WaitGateData = {
   readonly deadline?: number;
 };
 
+// FIX-2082; BP-030.
 /**
  * Read a wait gate's data back from its suspension record: what it waits on,
  * the waiting request's own row, and its deadline. `undefined` for a record
- * that carries no binding. A gate parked before FIX-2082 has no deadline in
- * its data (its expiry is its deadline) and no own row (BP-030).
+ * that carries no binding. A gate parked before gates carried a deadline has
+ * none in its data (its expiry is its deadline) and no own row.
  */
 export function waitGateDataOf(record: { readonly data?: Record<string, unknown> | undefined }): WaitGateData | undefined {
   const data = record.data;
@@ -222,9 +228,9 @@ export function waitGateDataOf(record: { readonly data?: Record<string, unknown>
   return undefined;
 }
 
+// FIX-1816 BR-5, FIX-2082 D1.
 /**
- * Whether the running request's host can hold a wait (FIX-1816 BR-5, FIX-2082
- * D1): durable execution (the resume is wired), a durability sweeper that
+ * Whether the running request's host can hold a wait: durable execution (the resume is wired), a durability sweeper that
  * resumes a wait at its deadline (`RequestHost.hasWaitSweeper`), and wakes
  * (`RequestHost.waits`, present only where they are kept). Read off the
  * server's request host, never from input. Every wait checks it before

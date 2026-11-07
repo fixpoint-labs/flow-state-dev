@@ -25,9 +25,10 @@ import type { TestedSdk } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessRunHandle, PlanListItem } from "@flow-state-dev/core/harness";
 
+// LAB-152.
 /**
  * This harness's `<package>/<door>` name — the convention every writer of a
- * harness handle's `source` owes (LAB-152). The suffix names the door we drive
+ * harness handle's `source` owes. The suffix names the door we drive
  * Cursor through, and this package has exactly one: Cursor's own SDK, on its
  * local runtime.
  */
@@ -62,6 +63,7 @@ export interface CursorRunUsage {
   reasoningTokens: number;
 }
 
+// LAB-152.
 /**
  * Handle for a single Cursor run.
  *
@@ -72,7 +74,7 @@ export interface CursorRunUsage {
  * `outcome` is `"finished"` on a run the SDK reports as finished and `"failed"`
  * on one it reports as errored or cancelled. Cursor reports no turn or budget
  * cap, so `"stopped-at-limit"` is never produced here — and a run stopped by the
- * CALLER's deadline is a throw, not a handle (LAB-152's abort contract).
+ * CALLER's deadline is a throw, not a handle (the harness abort contract).
  *
  * `sessionId` is the agent id, not the run id. That is the thing `resume` takes:
  * a Cursor agent is the durable conversation, and each `send` is one run inside
@@ -87,12 +89,12 @@ export interface CursorAgentHandle extends HarnessRunHandle {
   failureMessage: string | null;
 }
 
+// BP-030.
 /**
  * Runtime validator for {@link CursorAgentHandle}.
  *
  * The extension's own two fields default to `null` for the same reason the
- * neutral schema's four do: a handle persisted before they existed still parses
- * (BP-030).
+ * neutral schema's four do: a handle persisted before they existed still parses.
  */
 export const cursorAgentHandleSchema = harnessRunHandleSchema.extend({
   source: z.literal(CURSOR_SOURCE),
@@ -198,12 +200,13 @@ export interface CursorRunResult {
 // Forwarded option groups
 // ---------------------------------------------------------------------------
 
+// BP-031.
 /**
  * The SDK's `AgentOptions`, forwarded verbatim to `Agent.create` /
  * `Agent.resume` and typed locally.
  *
  * Three things are deliberately ABSENT, and each is refused at build time
- * rather than merged, because each has exactly one owner (BP-031):
+ * rather than merged, because each has exactly one owner:
  *
  * - `agentId` — the `resume` resolver decides which conversation continues.
  * - `local.cwd` — the `cwd` resolver decides where a run works. The rest of

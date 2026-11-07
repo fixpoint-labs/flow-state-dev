@@ -94,8 +94,9 @@ const storedUsageWindowSchema = harnessUsageWindowSchema.extend({
   origin: z.enum(["read", "run"]).default("read"),
 });
 
+// BP-023/BP-030.
 /**
- * One harness's usage record. Every field defaults (BP-023/BP-030), so a row
+ * One harness's usage record. Every field defaults, so a row
  * written under an older shape still parses rather than blanking.
  */
 export const harnessUsageStateSchema = z.object({

@@ -1,6 +1,7 @@
+// FIX-2082.
 /**
  * `dispatcher()` — a block that sends one dispatch to one declared entry, and
- * with `wait: true` waits for what it started (FIX-2082).
+ * with `wait: true` waits for what it started.
  *
  * A **router** picks a block to run *here*. A **dispatcher** names an entry to
  * run *elsewhere*: in a child session it derives, or in a session that already
@@ -86,7 +87,7 @@
  * only a board holds one. Run anywhere else it dispatches an envelope no board
  * minted, and the entry's gate refuses it against the ledger.
  *
- * ## Waiting for the result (FIX-2082)
+ * ## Waiting for the result
  *
  * An `internal` dispatcher with `wait: true` sends its dispatch, then parks its
  * request on the one wait gate, bound to the request it started, and outputs
@@ -468,8 +469,9 @@ export function dispatcher(
   return markDispatcher(block, address);
 }
 
+// FIX-2082.
 /**
- * Send the dispatch once, then wait for the request it started (FIX-2082).
+ * Send the dispatch once, then wait for the request it started.
  *
  * Every check comes before anything is sent: a host that can hold the wait,
  * and a chain no deeper than {@link MAX_WAIT_DEPTH}. The dispatch and the

@@ -1,5 +1,6 @@
+// FIX-2082, FIX-2077; FIX-1816; BP-031; FIX-2112; FIX-2123; FIX-2170; FIX-2181.
 /**
- * Waiting on a task (FIX-1816; one wait since FIX-2082): a request waits on a
+ * Waiting on a task (one wait): a request waits on a
  * task already filed, until it ends or its deadline passes, whichever is first.
  *
  * Two ways in share this one function: `getTask({ id, wait: true })`, and a
@@ -8,7 +9,7 @@
  * 1. **Pass the same checks**, each before anything is written, each naming
  *    the rule: the host can hold a wait (durable execution, wakes, a sweeper);
  *    the deadline is within the host's bounds; this session filed the task
- *    (its server-written filer, never input, BP-031); its result doesn't go
+ *    (its server-written filer, never input); its result doesn't go
  *    to the conversation; it isn't a step a plan's drain handed over and
  *    waits on (the mark the drain's own wait writes on the slot, which
  *    stays while the slot is lapsed); one wait per model step; and the chain of waits it
@@ -17,14 +18,14 @@
  *    that waits again at its deadline counts again before each new park,
  *    except a drain on a row it handed over, whose wait already exists.
  *    A task already ended is returned at once, and the notice its ending
- *    owes the filer is dropped: this answer delivered it (FIX-2112). Unless
- *    `onTaskSettled` has already taken that notice (FIX-2123): then the notice
+ *    owes the filer is dropped: this answer delivered it. Unless
+ *    `onTaskSettled` has already taken that notice: then the notice
  *    is the delivery, and the answer says the ending arrives as one.
  * 2. **Take the row's wait slot** in one conditional write (`markWait`): a
  *    second request waiting on the same task is refused.
  * 3. **Park** on the one wait gate (`parkOnWait`), whose deadline the engine
  *    keeps as a wake. Nothing holds a request open while it waits, and a
- *    request working a task keeps its claim (FIX-2077's `keptOpenBy`).
+ *    request working a task keeps its claim (the `keptOpenBy`).
  * 4. **Resume once**, with the ending the claim gate wrote (the filing
  *    session's pass resumes it, `payOwedResumes`), or at the deadline with the
  *    task still running. The deadline cancels nothing: the slot lapses, in one
@@ -33,11 +34,11 @@
  *    read of the task delivers it. Once it parks (on a person or another
  *    wait) or ends without that read, the ending goes to the filer's
  *    `onTaskSettled`, once (`releaseWait`): at a park, by the filer's pass,
- *    which the park owes a wake (FIX-2170); at its end, in this process; and,
+ *    which the park owes a wake; at its end, in this process; and,
  *    whatever became of the process, by the filer's next pass, which the
  *    lapse owes a wake (`releaseEndedWaits`). A wait on the task after the
  *    resume then answers that its ending arrives as a notice while that
- *    notice is being delivered, and with the task once it has been (FIX-2181).
+ *    notice is being delivered, and with the task once it has been.
  *
  * A person stopping a waiting request ends it and cancels the task it waited
  * on, as before. A request whose own task is cancelled while it waits ends at
@@ -124,7 +125,8 @@ export type TaskWaitRefusal =
   | "wait_unavailable"
   /** The deadline is outside the host's bounds. It is never clamped. */
   | "wait_deadline_out_of_range"
-  /** This session didn't file the task, or the row names no filer (filed before FIX-2078). */
+  // FIX-2078.
+  /** This session didn't file the task, or the row names no filer (filed by an older version). */
   | "wait_not_filer"
   /** The task's result goes to the conversation, which hears it when it ends. */
   | "wait_on_conversation_result"
@@ -139,10 +141,11 @@ export type TaskWaitRefusal =
 
 /** What {@link waitOnTask} came to. */
 export type TaskWaitResult =
+  // FIX-2123.
   /**
    * The task once it ended (`ended: true`), or as it stands at the deadline
    * (`ended: false`, still running). The caller returns it as `getTask` would,
-   * except with `arrivesAsNotice` (FIX-2123): the filer's `onTaskSettled`
+   * except with `arrivesAsNotice`: the filer's `onTaskSettled`
    * had already taken the ending's notice, which is the filer's one hearing of
    * it, so the caller answers {@link arrivesAsNoticeAnswer} instead.
    */
@@ -151,7 +154,8 @@ export type TaskWaitResult =
       readonly task: Task;
       readonly ended: boolean;
       readonly arrivesAsNotice?: true;
-      /** This answer is the filer's one hearing of the ending, in place of its notice (FIX-2138). */
+      // FIX-2138.
+      /** This answer is the filer's one hearing of the ending, in place of its notice. */
       readonly delivered?: true;
     }
   | { readonly ok: false; readonly error: TaskWaitRefusal; readonly message: string }
@@ -176,18 +180,19 @@ export interface WaitOnTaskOptions {
    * step. Omitted for a drain, which is no model step.
    */
   readonly step?: string;
+  // FIX-2082 D2.
   /**
    * At the deadline, take the slot again and go on waiting, rather than return
-   * the task as it stands: a drain never moves past a running row (FIX-2082
-   * D2). Each round is a check-in at the host's default deadline, and counts
+   * the task as it stands: a drain never moves past a running row. Each round is a check-in at the host's default deadline, and counts
    * the chain again before it parks, unless `ownBoard` is set.
    */
   readonly waitAgain?: boolean;
   /** Shown wherever the parked request is listed. */
   readonly message?: string;
+  // FIX-2082 D2.
   /**
    * The waiting request is the board's own drain, waiting on a row it handed
-   * to another session (FIX-2082 D2): it waits on any row it handed over, so
+   * to another session: it waits on any row it handed over, so
    * there is no filer check, and the request's own row is the task it works,
    * never the row its drain claimed.
    */
@@ -549,13 +554,14 @@ function claimBoardOf(ctx: BlockContext, collectionId: string) {
   }
 }
 
+// FIX-2112; FIX-2123; FIX-2138.
 /**
  * The waited-on row ended: clear what it owes the resume, and return it. An
  * ending that came before the wait owes its filer a notice; when the filer is
- * the one waiting, this answer delivers it, so it is dropped (FIX-2112). One
- * the filer's `onTaskSettled` already took is its delivery instead (FIX-2123).
- * `delivered` says this answer is the filer's one hearing of the ending
- * (FIX-2138): the ending resumed this wait, which owes no notice, or this
+ * the one waiting, this answer delivers it, so it is dropped. One
+ * the filer's `onTaskSettled` already took is its delivery instead.
+ * `delivered` says this answer is the filer's one hearing of the ending:
+ * the ending resumed this wait, which owes no notice, or this
  * wait dropped the notice, or it read an ending held for it.
  *
  * @param gateId This round's gate, the same on the replay after the resume.
@@ -585,17 +591,17 @@ async function ended(ctx: BlockContext, collection: TaskCollectionRef, taskId: s
   };
 }
 
+// FIX-2112; FIX-2123; FIX-2181; FIX-2138.
 /**
- * Drop the notice an ending owes its filer, when the filer's own wait read it
- * (FIX-2112). Never fails the call: a drop that fails leaves the notice owed,
+ * Drop the notice an ending owes its filer, when the filer's own wait read it.
+ * Never fails the call: a drop that fails leaves the notice owed,
  * and the filer hears the ending a second time.
  *
  * @returns `arrivesAsNotice`: whether the filer's `onTaskSettled` took the
- *   notice first (FIX-2123), read off the row as stored after the drop: that
+ *   notice first, read off the row as stored after the drop: that
  *   notice, still under way or to be sent again, is the delivery, and the wait
  *   says so. A notice already delivered is not: the wait answers with the
- *   ending, as a read does (FIX-2181). `dropped`: this wait dropped the notice, so its answer is the delivery
- *   (FIX-2138).
+ *   ending, as a read does. `dropped`: this wait dropped the notice, so its answer is the delivery.
  */
 async function deliverEndedBeforeWait(
   ctx: BlockContext,
@@ -623,8 +629,9 @@ async function deliverEndedBeforeWait(
   return { arrivesAsNotice, dropped: owed && !arrivesAsNotice && Object.keys(deliveredByWait(row)).length === 0 };
 }
 
+// FIX-2123.
 /**
- * What a wait answers when the task's ending arrives as a notice (FIX-2123):
+ * What a wait answers when the task's ending arrives as a notice:
  * the task, by name, and that its ending reaches the conversation as a notice
  * in its own right, so a model doesn't read it as "no result" and wait again.
  */
@@ -658,13 +665,14 @@ async function clearMarker(collection: TaskCollectionRef, taskId: string): Promi
   }
 }
 
+// BR-16; FIX-1844.
 /**
- * A person stopped the request while it waited (BR-16): end the waited-on
+ * A person stopped the request while it waited: end the waited-on
  * row, clear what it owes, and end this request `aborted`, with no further
  * model call. Safe to run again on a re-drive after a crash (BR-16c): a row
  * that already ended is left as it is. The request ends even when that
  * cleanup fails: a marker left set is cleared by the next touch, and a cancel
- * that failed is owed on the row, for the next touch to pay (FIX-1844).
+ * that failed is owed on the row, for the next touch to pay.
  */
 async function endStopped(ctx: BlockContext, collection: TaskCollectionRef, taskId: string): Promise<TaskWaitResult> {
   try {
@@ -676,8 +684,9 @@ async function endStopped(ctx: BlockContext, collection: TaskCollectionRef, task
   return { ok: false, error: "wait_ended_the_request", message: "The waiting request was stopped." };
 }
 
+// FIX-2082.
 /**
- * The request's own task was cancelled while it waited (FIX-2082): the wait is
+ * The request's own task was cancelled while it waited: the wait is
  * over and so is the request. It ends `aborted` with no further model call;
  * the claim gate refuses whatever it would have written, and its return is
  * never recorded. The waited-on task is the cancel's to cascade, not this.
@@ -706,12 +715,13 @@ export function lapsedSlotsHeldInProcess(): ReadonlyMap<string, ReadonlySet<stri
   return new Map([...lapsedByRequest].map(([requestId, entry]) => [requestId, new Set(entry.tasks.keys())]));
 }
 
+// FIX-2170.
 /**
  * Release this request's lapsed slot on `taskId` when the request ends. An
  * ending held for it and never read goes to the filer's notice, once. A park
  * releases nothing here: no row is written while a request parks. The board
- * owes the filer's pass a wake at the park, and that pass releases the slot
- * (FIX-2170), so a parked request holds no ending. This release is what pays
+ * owes the filer's pass a wake at the park, and that pass releases the slot,
+ * so a parked request holds no ending. This release is what pays
  * a slot the pass hadn't reached before the resume.
  */
 function releaseAtRequestEnd(ctx: BlockContext, collection: TaskCollectionRef, taskId: string): void {
@@ -767,9 +777,10 @@ function forgetLapsed(requestId: string, taskId: string): void {
   if (entry.tasks.size === 0) lapsedByRequest.delete(requestId);
 }
 
+// FIX-2170.
 /**
  * Release every slot on `collection` that lapsed for a request that no longer
- * runs its work ({@link requestStates}): parked (FIX-2170) or ended. Run by
+ * runs its work ({@link requestStates}): parked or ended. Run by
  * the filer's pass. An ending held for such a request goes to the filer's
  * notice, once.
  *
@@ -841,16 +852,17 @@ export async function releaseEndedWaits(
   return next;
 }
 
+// FIX-2082; FIX-2170; FIX-2138.
 /**
- * A read of `task` by the running request delivers an ending held for it
- * (FIX-2082): the request's wait on the task lapsed at its deadline, the task
- * ended while the request still ran, no park has released the slot since
- * (FIX-2170), and this read is that request's. The held
+ * A read of `task` by the running request delivers an ending held for it:
+ * the request's wait on the task lapsed at its deadline, the task
+ * ended while the request still ran, no park has released the slot since,
+ * and this read is that request's. The held
  * notice is dropped and the slot released, so the filer's `onTaskSettled` is
  * never told. A no-op for any other read.
  *
  * @returns Whether this read delivered an ending: the task ended, and its
- *   ending was held for this request (FIX-2138).
+ *   ending was held for this request.
  */
 export async function deliverHeldEnding(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<boolean> {
   rearmLapsed(ctx);
@@ -864,9 +876,10 @@ export async function deliverHeldEnding(ctx: BlockContext, collection: TaskColle
   return released?.outcome === "recorded" && isTerminalStatus(task.status) && holdsAnEnding(task);
 }
 
+// FIX-1844.
 /**
- * {@link cancelIfOpen} for a wait that is over, which never fails the request
- * (FIX-1844): a cancel that throws is recorded on the row as owed
+ * {@link cancelIfOpen} for a wait that is over, which never fails the request:
+ * a cancel that throws is recorded on the row as owed
  * (`Task.cancelOwed`), and the next touch of the board pays it
  * ({@link payOwedResumes}, in the pass). A mark that throws too leaves the row open.
  *
@@ -949,10 +962,11 @@ export type ResumeOwedReport = {
 /** The reason a touch cancels a row whose wait was stopped with. A record for people, never read back. */
 const WAIT_OVER_REASON = "The waiting request was stopped before the task finished.";
 
+// FIX-1844.
 /**
  * Resume every request this board's rows are owed (the board touch).
  *
- * First it pays every cancel owed (`Task.cancelOwed`, FIX-1844): a row whose
+ * First it pays every cancel owed (`Task.cancelOwed`): a row whose
  * waiting request was stopped and whose cancel failed is cancelled now. That
  * ending owes no resume. A cancel that throws again stays owed for the next
  * touch.

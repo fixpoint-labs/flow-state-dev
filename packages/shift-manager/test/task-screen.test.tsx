@@ -434,14 +434,18 @@ describe("the disabled acts and empty tabs carry their gap lines (BR-15 to BR-17
     fireEvent.click(screen.getByRole("tab", { name: "brief" }));
     expect((await screen.findByTestId("brief-goal")).textContent).toBe(row.goal);
     expect(screen.getByTestId("brief-acceptance-gap").textContent).toBe(GAPS.task.acceptance);
-    // Every gap line in the task registry names an owner, or says it is not
-    // planned in the first cut. Read off the registry, so a line added there is
-    // held to it too; the two tab titles are headings, not gap lines.
+    // Every gap line in the task registry says it arrives later or is not
+    // planned in the first cut, and names no tracker issue: an adopter reads
+    // it. Read off the registry, so a line added there is held to it too; the
+    // two tab titles are headings, not gap lines.
     const lines = Object.entries(GAPS.task).flatMap(([key, value]) =>
       typeof value === "string" ? [[key, value]] : [[`${key}.body`, value.body]],
     );
     expect(lines.length).toBeGreaterThan(8);
-    for (const [key, text] of lines) expect(text, key).toMatch(/FIX-\d+|not planned in the first cut/);
+    for (const [key, text] of lines) {
+      expect(text, key).toMatch(/arrives? in a later release|not planned in the first cut/);
+      expect(text, key).not.toMatch(/\b(FIX|LAB)-\d+\b/);
+    }
   }, 30_000);
 });
 

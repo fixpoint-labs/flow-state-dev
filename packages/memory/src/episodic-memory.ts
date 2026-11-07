@@ -16,13 +16,14 @@ export const episodeSchema = z.object({
   significance: z.number().min(0).max(1),
   /** Semantic category of this episode. */
   category: z.enum(['identity', 'event', 'preference', 'task', 'relationship', 'profession', 'belief', 'attribute', 'pattern']),
+  // FIX-703.
   /**
    * Who or what this episode is about. `'user'` for the primary user, a
    * lowercase first name for other people (`'moni'`), a lowercase-hyphenated
    * name for organizations. Carried from the observer so consolidation reads
    * the owner instead of re-inferring it from bare predicate text.
    * Defaults to `'user'` for backward-compatible deserialization of
-   * pre-FIX-703 episodes (no `subject` field) rather than failing validation.
+   * older episodes (no `subject` field) rather than failing validation.
    */
   subject: z.string().default('user'),
   /** Contextual metadata about when this episode occurred. */
@@ -32,13 +33,14 @@ export const episodeSchema = z.object({
   }),
   /** Whether this episode has been consolidated into semantic memory. */
   consolidated: z.boolean().default(false),
+  // FIX-411.
   /**
    * Durability classification at encode time. `transient` and `session`
    * never reach the episodic store (reflect routes only `persistent` and
    * `permanent` here), so the schema restricts the field accordingly.
    * Drives janitor TTL: `persistent` is cullable, `permanent` is sacrosanct.
    * Defaults to `persistent` for backward-compatible deserialization of
-   * pre-FIX-411 episodes.
+   * older episodes.
    */
   durability: z.enum(['persistent', 'permanent']).default('persistent'),
   /**
@@ -64,10 +66,11 @@ export const episodicMemoryStateSchema = z.object({
 /** The full episodic memory state. */
 export type EpisodicMemoryState = z.infer<typeof episodicMemoryStateSchema>
 
+// FIX-435.
 /**
  * Create an episodic memory resource definition at the given scope.
  *
- * Under FIX-435 each resource carries its scope intrinsically. Episodic
+ * Each resource carries its scope intrinsically. Episodic
  * memory persists across sessions, so it lives at `'user'` or `'org'`
  * scope; pick the scope that matches the access pattern and storage
  * boundary you want.

@@ -1,3 +1,4 @@
+// FIX-1405; BP-031.
 /**
  * `createWorkforceCapability` — the discovery door a workforce's workers read
  * through.
@@ -5,7 +6,7 @@
  * Compose it into a worker flow's `uses` and every worker on that flow gains one
  * tool: `discover`, which answers what is in scope for it right now. The
  * capability installs the workforce's own domain (workers, projected from the declared roster (files, and when asked the durable
- * roster) joined to FIX-1405's live inventory rows —
+ * roster) joined to the live inventory rows —
  * see `./manifest-sources`) and carries whatever other domains the app hands
  * it, so there is ONE registration point and one door rather than a second
  * registry per package.
@@ -14,7 +15,7 @@
  *
  * The **registry** is the fence, built once here from the sources the app
  * declared. It is the complete set of domains any worker on this flow can reach,
- * and a domain that is not in it cannot be reached by naming it (BP-031).
+ * and a domain that is not in it cannot be reached by naming it.
  *
  * A **worker's own file** narrows that with `discover:` — a choice, resolved per
  * turn, that can only subtract. See `./worker-discovery`.

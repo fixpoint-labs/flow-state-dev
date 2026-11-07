@@ -1,10 +1,11 @@
+// BR-24; BR-25; BR-18; BR-21; BR-22.
 /**
- * Inbox (S10): everything waiting on the user, oldest first (BR-24): every
+ * Inbox (S10): everything waiting on the user, oldest first: every
  * pending approval and question in the worker sessions the Lab lists for this
  * user, dispatch runs included, and every task holding questions for them. It
  * draws the snapshot's `inbox` section and reads no other list (`inbox.ts`).
  * A list and a detail pane; the detail draws an ask with the same card Shift
- * Coordinator uses, and answers it through the same resume (BR-25).
+ * Coordinator uses, and answers it through the same resume.
  *
  * Drawn as design v2's Inbox (v2:559-645): a 400px list whose items carry the
  * highlighter square (each one waits on the user), and a detail on the
@@ -12,13 +13,13 @@
  * title has its message drawn under it at body size, as markdown, rather than
  * the whole ask set in display type. Under it, *From the
  * session* lists the worker's last tool calls before it asked, and the
- * user's own lines sent into that session follow (BR-18), both read from
+ * user's own lines sent into that session follow, both read from
  * the ask's session.
  *
  * Under the detail, a reply box sends a line into the session the ask sits in,
- * through the door of the worker that owns that session (BR-21). A worker whose
+ * through the door of the worker that owns that session. A worker whose
  * worker flow has no door gets the box disabled, saying so; Approve and Reject are
- * untouched (BR-22).
+ * untouched.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
@@ -269,10 +270,11 @@ function AskDetail({
   );
 }
 
+// FIX-2133.
 /**
  * A task holding questions: every open one, oldest first, and the task they
  * hold. One item however many it holds (rule 11). Each is answered here,
- * through the task's board as the user (FIX-2133): a question with words, a
+ * through the task's board as the user: a question with words, a
  * confirm with a yes or a no.
  */
 function HeldQuestions({ item }: { item: InboxItem }) {
@@ -397,9 +399,10 @@ type AskSessionRead =
   | { ok: true; value: { calls: SessionCall[]; replies: SessionReply[] } | null; truncated: boolean }
   | { ok: false; failure: Failure };
 
+// BR-18.
 /**
- * *From the session* and the user's replies, read from the ask's session
- * (BR-18). Read when the ask opens and again after each reply is delivered
+ * *From the session* and the user's replies, read from the ask's session.
+ * Read when the ask opens and again after each reply is delivered
  * (`reread`), so the reply shows once the session holds it; a Lab refresh for
  * anything else doesn't re-read the session. The component is keyed by the
  * ask, so the ask it reads around never changes under it.
@@ -490,7 +493,8 @@ function replyRoute(ask: Ask, snapshot: LoadedSnapshot, gaps: Gaps): { blocked: 
   return { blocked: null, flowId: ask.flowId, door };
 }
 
-/** The reply box under an ask (BR-21, BR-22). */
+// BR-21, BR-22.
+/** The reply box under an ask. */
 function Reply({
   ask,
   snapshot,

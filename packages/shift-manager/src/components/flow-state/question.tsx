@@ -12,7 +12,7 @@ import {
 
 /**
  * Polished clarifying-question card — the themeable counterpart to
- * `QuestionRenderer` in `@flow-state-dev/react` (FIX-849). Renders a free-text
+ * `QuestionRenderer` in `@flow-state-dev/react`. Renders a free-text
  * box; submit sends the typed string. Logic comes from `useSuspensionForm`.
  */
 export function Question({

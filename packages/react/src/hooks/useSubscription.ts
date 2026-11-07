@@ -1,5 +1,6 @@
+// FIX-2428.
 /**
- * `useSubscription(topics, read, options)` (FIX-2428): run a screen's read
+ * `useSubscription(topics, read, options)`: run a screen's read
  * again when something under `topics` changes.
  *
  * It subscribes through the provider's client (`client.subscribe`), or the

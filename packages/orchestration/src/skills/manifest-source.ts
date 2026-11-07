@@ -1,5 +1,6 @@
+// FIX-817.
 /**
- * The skills manifest source (FIX-817) — the skills domain's projection into
+ * The skills manifest source — the skills domain's projection into
  * the discovery door.
  *
  * Built over `listLoadableInlineSkills`, which applies the same two filters the

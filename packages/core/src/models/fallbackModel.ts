@@ -247,12 +247,13 @@ async function* executeStreamWithFallback(
 // Public API
 // ---------------------------------------------------------------------------
 
+// FIX-814.
 /**
  * Creates a GeneratorModel that tries models in order with retry-per-model.
  * On retryable errors, retries the current model up to `maxAttemptsPerModel`,
  * then falls back to the next model in the list.
  *
- * Exposes the single-step `generateStep`/`streamStep` (FIX-814) — but only
+ * Exposes the single-step `generateStep`/`streamStep` — but only
  * over the subset of candidates that implement them — so a generator using a
  * fallback model group can drive the framework-owned per-step loop (and the
  * in-loop suspension built on it). Each step call runs the same

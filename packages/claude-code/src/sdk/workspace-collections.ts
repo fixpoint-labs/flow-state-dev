@@ -23,12 +23,13 @@ import { z } from "zod";
  */
 export const CLAUDE_CODE_WORKSPACE_OUTCOMES = "workspace-outcomes" as const;
 
+// BP-023; BP-030.
 /**
  * One outcome a flush could not settle, keyed by `<runId>/<path>`.
  *
- * Every field nullable with a null default (BP-023) so a row written by an
+ * Every field nullable with a null default so a row written by an
  * older or newer shape parses rather than throwing inside a flush that must not
- * break the run (BP-030).
+ * break the run.
  */
 export const claudeCodeWorkspaceOutcomeStateSchema = z.object({
   /**

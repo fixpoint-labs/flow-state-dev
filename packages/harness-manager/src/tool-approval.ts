@@ -1,5 +1,6 @@
+// FIX-2389.
 /**
- * A coding run's tool calls, approved by a person (FIX-2389).
+ * A coding run's tool calls, approved by a person.
  *
  * With `approveTools` on, a manager hands its harness an `onToolApproval`
  * feed. A call the harness hasn't pre-allowed comes to it; one a grant of

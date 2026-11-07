@@ -1,5 +1,6 @@
+// FIX-745.
 /**
- * `createConnectTool` — agent-invocable relation-graph tool (FIX-745 read-side).
+ * `createConnectTool` — agent-invocable relation-graph tool (read side).
  *
  * Where the recall tool searches facts and episodes by relevance, the connect
  * tool walks the semantic resource's typed-edge graph (relations tier). The

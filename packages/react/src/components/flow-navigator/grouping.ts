@@ -1,5 +1,6 @@
+// FIX-1477 S2.
 /**
- * Grouping the flow list into the rows a navigator draws (FIX-1477 S2).
+ * Grouping the flow list into the rows a navigator draws.
  *
  * This is the level the flat instance list did not have. A flat list draws one
  * row per registered instance, so two copies of one kind are two top-level

@@ -19,17 +19,21 @@ export type TaskChangeKind =
   | "completed"
   | "errored"
   | "retried"
+  // FIX-2383.
   /**
-   * A failed or cancelled task was put back to waiting by a person or an app
-   * (FIX-2383): not an ending, unlike `retried`. It starts again as any
+   * A failed or cancelled task was put back to waiting by a person or an app:
+   * not an ending, unlike `retried`. It starts again as any
    * waiting task does.
    */
   | "retry_requested"
-  /** A task that hadn't started was held: it won't start until released (FIX-2080). */
+  // FIX-2080.
+  /** A task that hadn't started was held: it won't start until released. */
   | "held"
-  /** A held task was released: it starts once its dependencies have finished (FIX-2080). */
+  // FIX-2080.
+  /** A held task was released: it starts once its dependencies have finished. */
   | "released"
-  /** A task's start or attempts settings changed before it started (FIX-2080). */
+  // FIX-2080.
+  /** A task's start or attempts settings changed before it started. */
   | "settings_changed"
   | "resumed"
   | "cancelled"
@@ -37,26 +41,34 @@ export type TaskChangeKind =
   | "metadata_changed"
   | "priority_changed"
   | "assignee_changed"
+  // FIX-1668.
   /**
-   * A dispatched run wrote itself onto its task (FIX-1668) — the row's `run`
+   * A dispatched run wrote itself onto its task — the row's `run`
    * now names that run. Published on the run's own session, like every write
    * the run makes; a view following another session sees the link on its next
    * read of the row.
    */
   | "run_linked"
-  /** A running task's worker reported its progress: a status note, a checkpoint of its output, or both (FIX-2081). */
+  // FIX-2081.
+  /** A running task's worker reported its progress: a status note, a checkpoint of its output, or both. */
   | "progress_reported"
-  /** A waited-on row's resume-owed marker was cleared: its waiting turn has its answer (FIX-1816). */
+  // FIX-1816.
+  /** A waited-on row's resume-owed marker was cleared: its waiting turn has its answer. */
   | "resume_settled"
-  /** Words were sent into an open task: a steer, kept on the row for every later attempt (FIX-2086). */
+  // FIX-2086.
+  /** Words were sent into an open task: a steer, kept on the row for every later attempt. */
   | "steered"
-  /** A waited-on row's wait is over and its cancel failed: the row owes that cancel (FIX-1844). */
+  // FIX-1844.
+  /** A waited-on row's wait is over and its cancel failed: the row owes that cancel. */
   | "cancel_owed"
-  /** A request took the row's wait slot, the slot lapsed at its deadline, or it was released (FIX-2082). */
+  // FIX-2082.
+  /** A request took the row's wait slot, the slot lapsed at its deadline, or it was released. */
   | "wait_changed"
-  /** A running task's turn asked questions: the row is held on them, with no lease (FIX-2133). */
+  // FIX-2133.
+  /** A running task's turn asked questions: the row is held on them, with no lease. */
   | "asked"
-  /** A question or a confirm was answered, or its deadline closed it: the last one lets the work go on (FIX-2133). */
+  // FIX-2133.
+  /** A question or a confirm was answered, or its deadline closed it: the last one lets the work go on. */
   | "answered";
 
 /**
@@ -103,9 +115,9 @@ export function createTaskChangeEmitter<TInput, TOutput>(
   };
 }
 
+// FIX-1005.
 /**
- * Task fields the substrate keeps server-side and never publishes to a client
- * (FIX-1005).
+ * Task fields the substrate keeps server-side and never publishes to a client.
  *
  * ## Why this is a deny-list and must stay one
  *
@@ -129,9 +141,10 @@ export const SERVER_ONLY_TASK_FIELDS = ["claimedBy", "createdBy", "filer", "file
   keyof Task
 >;
 
+// FIX-1005.
 /**
  * Project a task for client emission — the whole row minus
- * {@link SERVER_ONLY_TASK_FIELDS} (FIX-1005).
+ * {@link SERVER_ONLY_TASK_FIELDS}.
  *
  * Applied where the component-item payload is built, because **schema
  * membership is itself a publication**: the collection factory spreads the

@@ -1,5 +1,6 @@
+// FIX-401.
 /**
- * PostgreSQL-backed sequencer checkpoint store (FIX-401).
+ * PostgreSQL-backed sequencer checkpoint store.
  *
  * Latest-only persistence keyed by `(request_id, block_instance_id)`.
  * Writes use `INSERT ... ON CONFLICT DO UPDATE` so each step boundary either

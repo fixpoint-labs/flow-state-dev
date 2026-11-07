@@ -1,7 +1,8 @@
+// BR-6; BR-11.
 /**
  * The sidebar (S5): in order, Shift Coordinator, Inbox, Tasks and Roster with
  * their counts, Messages, PROJECTS, TEAMS, then Settings pinned above a footer
- * (BR-6) with the ⌘K tip and the on-shift count. A header above them all carries
+ * with the ⌘K tip and the on-shift count. A header above them all carries
  * the mark, which changes the theme with a click, and names the theme.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
@@ -11,7 +12,7 @@
  * TEAMS is one row per
  * team with a status square per worker, the user's own workers included,
  * opening Roster for that team. A failed
- * read shows its section's Retry and nothing else changes (BR-11).
+ * read shows its section's Retry and nothing else changes.
  *
  * Drawn in design v2's frame: 248px wide on v2's sidebar surface, darker than
  * the page; square; labels, counts and the footer in mono (v2:26-113). Shift
@@ -268,11 +269,12 @@ function SidebarRail({
   );
 }
 
+// BR-18.
 /**
  * One project under PROJECTS, its workstreams beneath it while it is open. A
  * project opens with its toggle, and is open while it is the current screen.
  * Only an open project's entries are read, by its one prefix, as its view
- * reads them (BR-18); a closed one costs nothing.
+ * reads them; a closed one costs nothing.
  */
 function ProjectGroup({
   project,
@@ -374,7 +376,8 @@ function StreamItem({ entry, active, to }: { entry: WorkstreamEntry; active: boo
   );
 }
 
-/** PROJECTS (BR-22): each project by title, with its workstreams beneath it while it is open. */
+// BR-22.
+/** PROJECTS: each project by title, with its workstreams beneath it while it is open. */
 function ProjectsSection({ snapshot, route, onRetry }: { snapshot: LoadedSnapshot; route: Route; onRetry: () => void }) {
   const view = projectsOf(snapshot);
   if (!view.ok) {

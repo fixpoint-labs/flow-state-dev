@@ -1,6 +1,7 @@
+// FIX-999.
 /**
  * Build the request-bound operations attached to a block context: the
- * `ctx.requestHost` bundle (FIX-999) and the dispatch seam.
+ * `ctx.requestHost` bundle and the dispatch seam.
  *
  * Constructed **once** per request in `createExecutionContext`; nested scopes
  * inherit the same object references, exactly as `stores` already does. Every
@@ -123,17 +124,19 @@ export type RequestHostInputs = {
   identity: {
     userId: string;
     tenantId: string | undefined;
+    // FIX-1442.
     /**
      * The organization the running request was admitted under. Required
-     * (FIX-1442) — everything this request spawns inherits it verbatim, and a
+     * — everything this request spawns inherits it verbatim, and a
      * running request that could not name one would have been refused at
      * admission.
      */
     orgId: string;
     /** The running request's session — the parent of anything it spawns. */
     sessionId: string;
+    // FIX-1068.
     /**
-     * The lineage the running session belongs to (FIX-1068). Inherited by the
+     * The lineage the running session belongs to. Inherited by the
      * child verbatim, which is the whole of what makes parent and descendant
      * address one bucket — there is nothing to re-derive and nothing to agree on.
      */
@@ -151,10 +154,11 @@ export type RequestHostInputs = {
    * answer for a process that cannot see past the one flow it was handed.
    */
   resolveFlow?: (address: string) => FlowInstance | undefined;
+  // FIX-1077.
   /**
    * The config this request runs under, handed to the dispatch operation so
-   * a child inherits it rather than the host's construction-time one
-   * (FIX-1077). See `DispatchOperation`.
+   * a child inherits it rather than the host's construction-time one.
+   * See `DispatchOperation`.
    */
   effectiveRuntimeConfig?: RuntimeConfig;
   /** Absent unless this request was dispatched for a parent-board task. */
@@ -170,13 +174,15 @@ export type RequestHostInputs = {
   dispatchRunsHere?: () => boolean;
   /** The host's deadline for a user's stop, when it sets one; see `RequestHost.userDeadlineMs`. */
   userDeadlineMs?: number;
+  // FIX-2078 D1.
   /**
    * The store debts' due times are kept in, and how they are bounded
-   * (`RequestHost.wakes`, FIX-2078 D1). Absent when the host keeps none.
+   * (`RequestHost.wakes`). Absent when the host keeps none.
    */
   wakes?: { store: WakeStore; maxDebtAgeMs: number; fenceMs: number };
+  // FIX-2082.
   /**
-   * Waits (`RequestHost.waits`, FIX-2082): where the depth of a chain of waits
+   * Waits (`RequestHost.waits`): where the depth of a chain of waits
    * is read, the deadline bounds, and the running request's id and the row it
    * works as the engine reads them. Offered only beside `waitResume` and
    * `wakes`: a wait parks durably, and its deadline is a wake.
@@ -235,11 +241,12 @@ type ResolvedSession =
   | {
       ok: true;
       sessionId: string;
+      // BR-11.
       /**
        * Always the running request's own organization. For a delivery into an
        * existing session it is the stored one, which the guard above has
        * already proved equal — never borrowed from the recipient to repair a
-       * sender that lacked one (BR-11).
+       * sender that lacked one.
        */
       orgId: string;
       adopted: boolean;
@@ -354,10 +361,11 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     orgId: identity.orgId
   });
 
+  // FIX-1258.
   /**
    * Birth a dispatch session. State comes from the block (`fromCaller: false`),
    * so a server-owned field is the flow's to set; the target schema parses it
-   * (defaults applied). Judged `via: "dispatch"`, tombstones reclaimed (FIX-1258),
+   * (defaults applied). Judged `via: "dispatch"`, tombstones reclaimed,
    * written create-if-absent. A refused create check is `create-refused`.
    */
   const birthDispatchSession = async (
@@ -936,9 +944,10 @@ function label(
  */
 const MAX_LINEAGE_DEPTH = 32;
 
+// FIX-1440.
 /**
  * Whether `sessionId` is **a** dispatch run on this caller's flow, under the
- * same principal and tenant (FIX-1440).
+ * same principal and tenant.
  *
  * The arm beside {@link isDescendantSession}, not a replacement for it. A
  * dispatcher's work runs in a session of the flow in its own right, so "is my
@@ -952,7 +961,7 @@ const MAX_LINEAGE_DEPTH = 32;
  * present — under this principal, this tenant and this flow instance. It is
  * deliberately **not** required that the dispatching session be the caller's
  * own: that condition is what the descendant walk already tests, and a run
- * reachable only through it is the case FIX-1440 exists to open. So a run this
+ * reachable only through it is the case this exists to open. So a run this
  * principal started from another of their conversations on this flow answers
  * here, and that is the widening D4 authorised.
  *

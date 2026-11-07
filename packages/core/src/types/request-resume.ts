@@ -1,5 +1,6 @@
+// FIX-2129.
 /**
- * How the running request resumed (FIX-2129): a framework package reads it
+ * How the running request resumed: a framework package reads it
  * where it admits a resumed request, before any of the request's own blocks
  * run. The claim gate reads it to let a task's own run, resumed `cancelled`
  * from a wait for a user, run to its end on a row already cancelled, holding

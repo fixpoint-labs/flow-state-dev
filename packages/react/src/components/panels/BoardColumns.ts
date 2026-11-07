@@ -1,13 +1,14 @@
+// FIX-1477 S6; BR-21; BR-22.
 /**
- * `BoardColumns` — one board's rows, grouped by status (FIX-1477 S6).
+ * `BoardColumns` — one board's rows, grouped by status.
  *
- * **No status vocabulary is minted here** (BR-21). The columns are the task
+ * **No status vocabulary is minted here**. The columns are the task
  * statuses the substrate already has, in the order work moves through them,
  * and a row carrying a status this list does not know gets its own column at
  * the end rather than disappearing — a card that renders nowhere is the one
  * failure a column layout can have silently.
  *
- * **An empty board states the likely cause rather than spinning** (BR-22).
+ * **An empty board states the likely cause rather than spinning**.
  * Board wiring is explicit per worker, so the ordinary reason a board is empty
  * is that nothing drains it — and a spinner in that spot reads as "still
  * loading", which is the wrong thing to tell somebody whose board is simply
@@ -88,21 +89,23 @@ type BoardColumnsCommonProps = {
    * `eng.feature.work`. One path segment, so it carries no slash.
    */
   readonly boardRef: string;
+  // BR-21.
   /**
    * Rows to request per page: the size of each fetch, not a cap on what
    * renders. The panel follows the cursor for up to 1,000 pages; a collection
    * with pages left after that shows the error line and Retry, never the
-   * rows read so far (BR-21). See `usePanelRows`.
+   * rows read so far. See `usePanelRows`.
    */
   readonly limit?: number;
   readonly slots?: BoardColumnsSlots;
 };
 
+// BR-29.
 /**
  * What reads the board, and what hears its changes: one client.
  *
  * - `client`: the host's own client, so the read carries the host's transport
- *   and its credential (BR-29). Pass a STABLE reference — see `Roster`.
+ *   and its credential. Pass a STABLE reference — see `Roster`.
  * - `live`: read the board again whenever another session changes a task on
  *   it, heard through the client's `subscribe`. A client that only reads
  *   takes no `live`.
@@ -113,12 +116,13 @@ type BoardColumnsTransportProps =
 
 export type BoardColumnsProps = BoardColumnsCommonProps & BoardColumnsTransportProps;
 
+// BR-24, V5.
 /**
  * The published prop names, as a value.
  *
  * Asserted rather than described, by the type test beside it — so an `orgId`,
  * or any other spelling of a filter the stack cannot honour, fails whether or
- * not whoever added it remembered this array (BR-24, V5).
+ * not whoever added it remembered this array.
  */
 export const boardColumnsPropNames = [
   "boardRef",

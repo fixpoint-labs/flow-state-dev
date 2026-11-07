@@ -1,6 +1,7 @@
+// FIX-1802 S1 to S3; FIX-2286.
 /**
  * `defineSessionBoard`: the filing factory a worker flow carries so its workers
- * file tasks for their delegates (FIX-1802 S1 to S3).
+ * file tasks for their delegates.
  *
  * A worker files when its session's delegate list holds one that takes a task
  * (D1): no flag. What its flow carries for that is three things, and this
@@ -16,7 +17,7 @@
  *   doesn't file, and the four delegate actions (`addDelegate`,
  *   `removeDelegate`, `setFallback`, `listDelegates`).
  * - **The reads**: `reads`, the task list as a read named `listTasks_tasks`,
- *   which an app watches without storing a request per look (FIX-2286).
+ *   which an app watches without storing a request per look.
  * - **The entries**: `entries(turn)`, the internal entries the board runs on
  *   (a run of the board), its notices arrive on (`onTaskSettled`), and a
  *   worker's message arrives on, and the session state they keep
@@ -79,8 +80,9 @@ import {
   taskSettledEntry
 } from "./task-settled";
 
+// FIX-1989, FIX-2240.
 /**
- * The session state worker messages keep (FIX-1989, FIX-2240): the session's
+ * The session state worker messages keep: the session's
  * hop count, and the messages it sent that are still owed. Both server-owned.
  */
 export const workerMessageStateShape = { ...messageHopStateShape, ...messageDeliveryStateShape } as const;
@@ -128,9 +130,10 @@ export interface SessionBoardOptions {
    * coordinator's flow seeds one per workstream its user has open there.
    */
   readonly seed?: (ctx: BlockContext) => Promise<readonly DelegateRecord[] | undefined>;
+  // FIX-2083.
   /**
    * How a flow that routes messages files a routed task from its model's
-   * turn (FIX-2083): on a turn routing one, a filing whose result goes to the
+   * turn: on a turn routing one, a filing whose result goes to the
    * conversation is handed here, which attaches the message.
    */
   readonly routes?: RoutedFiling;
@@ -179,37 +182,43 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     board,
     /** The model's task tools, granted per call: one entry for the model block's `uses`. */
     tools: board.tools,
+    // FIX-2131.
     /**
      * `holdTaskForUser` on a task turn, and `suspendForUser` for an approval, a review
-     * or (with no task row) input (FIX-2131): one entry for the model block's
+     * or (with no task row) input: one entry for the model block's
      * `uses`, beside `tools`.
      */
     questions: userWaits,
+    // FIX-2081 D3.
     /**
-     * `reportProgress`, on a task turn holding a running row (FIX-2081 D3):
+     * `reportProgress`, on a task turn holding a running row:
      * one entry for the model block's `uses`, beside `tools`.
      */
     progress: taskProgress,
+    // FIX-2086.
     /**
-     * The steers a running task took (FIX-2086), in the worker's context, read
+     * The steers a running task took, in the worker's context, read
      * before each model call: one entry for the model block's `uses`, beside
      * `tools`.
      */
     steers: taskSteers,
+    // FIX-2081.
     /**
-     * The delegate tools a model's turn is offered (FIX-2081): `listDelegates`
+     * The delegate tools a model's turn is offered: `listDelegates`
      * always, and `addDelegate`, `removeDelegate` and `setFallback` only on a
      * coordinator set to `editsOwnDelegates`. One entry for `uses`.
      */
     delegateTools: delegates.toolsCapability,
+    // FIX-1989.
     /**
-     * `sendMessage` (FIX-1989), on every turn of a session that runs a
+     * `sendMessage`, on every turn of a session that runs a
      * worker: one entry for the model block's `uses`, beside `tools`.
      */
     messages,
+    // FIX-2076.
     /**
-     * Wrap a turn so the steps the worker files for itself run in its request
-     * (FIX-2076): `{ message }` in, the answer out. Wrap each turn the flow
+     * Wrap a turn so the steps the worker files for itself run in its request:
+     * `{ message }` in, the answer out. Wrap each turn the flow
      * runs as the worker, and pass the wrapped turn to {@link entries}: a
      * worker is offered its steps only on a flow that wraps one.
      */
@@ -218,11 +227,13 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     files: board.files as (ctx: BlockContext) => Promise<boolean>,
     /** The session's delegates as a task sees them, read now. */
     taskDelegates: delegates.taskDelegates as (ctx: BlockContext) => Promise<TaskDelegates>,
-    /** File a routed task and start it: the write under a coordinator's one filing step (FIX-2083). */
+    // FIX-2083.
+    /** File a routed task and start it: the write under a coordinator's one filing step. */
     fileRouted: board.fileRouted,
     /** The task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. A manager's. */
     actions: managerActions,
-    /** The task list as a read, `listTasks_tasks`, stored nowhere (FIX-2286), for the flow's `reads`. */
+    // FIX-2286.
+    /** The task list as a read, `listTasks_tasks`, stored nowhere, for the flow's `reads`. */
     reads: board.reads,
     /** The ledger, the chain records and the message log, for the flow's `resources`. */
     resources: { ...board.resources, ...workerMessagesResources },
@@ -230,14 +241,15 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     sessionStateShape: { ...delegateStateShape, ...conversationBoardStateShape, ...workerMessageStateShape },
     /** The session-state fields only this factory writes, for the flow's `session.serverOwned`. */
     serverOwned: SESSION_BOARD_SERVER_OWNED,
+    // FIX-2086; FIX-1989; FIX-2085; FIX-2083.
     /**
      * The internal entries the board needs on its flow, in this order: a run
      * of the board (`dispatch`); the notice of a task the session filed
      * (`onTaskSettled`), the two a flow declaring `manager` is checked for; a check of the
      * session's waiting task (`CHECK_TASK_ENTRY`); the turn a late steer is
-     * owed (`STEER_TURN_ENTRY`, FIX-2086); a worker's message
-     * (`onMessageReceived`, FIX-1989), which always wakes the turn; and a
-     * scheduled task's filing (`fileScheduledTask`, FIX-2085), through the
+     * owed (`STEER_TURN_ENTRY`); a worker's message
+     * (`onMessageReceived`), which always wakes the turn; and a
+     * scheduled task's filing (`fileScheduledTask`), through the
      * board's own `createTask_tasks`. Spread into `internal: { actions: ... }`.
      *
      * @param turn The flow's turn for one message (`{ message }` in), woken
@@ -247,7 +259,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
      *   running session.
      * @param onRouted For a flow that routes messages: a conversation-result
      *   task's completion, failure or cancel (`RoutedEnding` in), handed to
-     *   the flow's own handling instead of a line (FIX-2083).
+     *   the flow's own handling instead of a line.
      */
     entries(
       turn: BlockDefinition<any, any>,

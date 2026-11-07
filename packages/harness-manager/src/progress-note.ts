@@ -1,5 +1,6 @@
+// FIX-2290.
 /**
- * A running task's progress note, from its harness run's activity (FIX-2290).
+ * A running task's progress note, from its harness run's activity.
  *
  * The harness hands each assistant message and tool call to the manager's
  * `onActivity` feed. {@link progressNoteOf} turns one into the one-line note a

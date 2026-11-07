@@ -1,3 +1,4 @@
+// BP-013.
 /**
  * `keyedRouter` — string-keyed dispatch built on top of `router`.
  *
@@ -19,8 +20,8 @@
  * `@flow-state-dev/orchestration` for the same class guarded at the
  * key-owning layer.
  *
- * Input adaptation is intentionally NOT part of this primitive per
- * BP-013: pre-connect adapters on the routed blocks themselves
+ * Input adaptation is intentionally NOT part of this primitive:
+ * pre-connect adapters on the routed blocks themselves
  * (`block.connectInput(...)`), or wrap the whole router. Keep this
  * surface tight.
  */

@@ -1,8 +1,9 @@
+// FIX-522.
 /**
  * The `VoiceProvider` contract. A single ability-flagged object that owns one
  * or more voice surfaces (speak, speakStream, transcribe, listVoices). Replaces
  * the previous two-resolver-factory pattern (`SpeechResolver` /
- * `TranscriptionResolver`). See the FIX-522 design spec for the full rationale.
+ * `TranscriptionResolver`).
  *
  * Per-ability narrowing interfaces (`SpeakCapable` etc.) and runtime type
  * guards (`canSpeak` etc.) let callers branch on what a provider supports.

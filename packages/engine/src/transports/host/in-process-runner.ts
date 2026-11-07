@@ -55,6 +55,7 @@ export interface InProcessRunner extends FlowRunner {
   ): RunnerHandle;
 }
 
+// FIX-1077.
 /**
  * Whether a runner runs work in THIS process.
  *
@@ -66,7 +67,7 @@ export interface InProcessRunner extends FlowRunner {
  *
  * Shared rather than re-tested per call site so the host's dispatch branch and
  * anything else keying on locality cannot drift apart and disagree about the
- * same runner (FIX-1077).
+ * same runner.
  */
 export function isInProcessRunner(
   runner: FlowRunner | undefined

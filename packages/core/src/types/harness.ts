@@ -1,5 +1,6 @@
+// LAB-152; BP-031; FIX-2145, FIX-2288.
 /**
- * The coding-harness contract (LAB-152).
+ * The coding-harness contract.
  *
  * A *harness* is a coding agent driven as a block: you hand it a prompt, it
  * runs to completion in its own agentic loop, and it hands back a handle
@@ -18,7 +19,7 @@
  *   hands a harness per run. The prompt, and nothing else: everything that
  *   decides *where* a run writes or *which* conversation it continues is
  *   harness configuration fed through a trusted channel, never a field on a
- *   schema a model tool can see (BP-031).
+ *   schema a model tool can see.
  * - {@link HarnessRunEnvelope} / {@link harnessRunEnvelopeSchema} — the
  *   identity-and-status core every dispatch produces, including one-way doors
  *   that never report a result.
@@ -40,7 +41,7 @@
  *   harness offers, as each package's model-list function answers.
  * - {@link HarnessRunSpend}, {@link HarnessBilling} and
  *   {@link reportHarnessSpend} — what one run spent, reported into the
- *   running request as the run goes and when it ends (FIX-2145, FIX-2288).
+ *   running request as the run goes and when it ends.
  * - {@link HarnessSteer} and {@link HarnessSteerHook} — how a run that can take
  *   a line into its turn in flight offers that to the host.
  *
@@ -113,12 +114,13 @@ export interface HarnessRunInput {
   prompt: string;
 }
 
+// BP-031.
 /**
  * Runtime validator for {@link HarnessRunInput}.
  *
  * Strips unknown keys rather than rejecting them, deliberately: a smuggled
  * field (`resumeSessionId`, a `cwd`) is dropped instead of honoured, which is
- * all BP-031 asks for here — resume and working directory reach a harness
+ * all a trusted source needs here — resume and working directory reach a harness
  * through the caller-fed {@link HarnessResolver}, never through block input.
  * `.strict()` would fail louder, at the cost of breaking callers that pass
  * framework metadata through the same object.
@@ -173,11 +175,12 @@ export interface HarnessRunHandle extends HarnessRunEnvelope {
   cost: HarnessRunCost | null;
 }
 
+// BP-030.
 /**
  * Runtime validator for {@link HarnessRunHandle}.
  *
  * The four post-envelope fields default to `null` so a handle persisted before
- * a harness reported them still parses (BP-030). The declared shape carries no
+ * a harness reported them still parses. The declared shape carries no
  * vendor field; a harness's extended handle still parses against it, because
  * the contract's job is to say what any reader may rely on — not to reject what
  * a vendor added beside it.
@@ -210,10 +213,11 @@ export const harnessRunHandleSchema = harnessRunEnvelopeSchema.extend({
  * framework asks for a `HarnessBlock` slot.
  */
 export type HarnessBlock = BlockDefinition<any, any, HarnessRunInput, HarnessRunHandle> & {
+  // FIX-2312.
   /**
    * The harness's own word that when its abort signal fires, the block
    * returns only after its process has exited, so a host may stop a run and
-   * start the next one in the same working directory (FIX-2312). A host that
+   * start the next one in the same working directory. A host that
    * drives harnesses, such as harness-manager, reads it unless it was told
    * otherwise. Absent means no. Stamped on the block the harness factory
    * returns, so a block rebuilt from it (`connectInput`, a wrapping sequencer)
@@ -263,13 +267,14 @@ export type HarnessCallbackContext = BlockContext<
   any
 >;
 
+// BP-031.
 /**
  * How a host feeds a harness one piece of per-run configuration.
  *
  * The working directory a run writes in, and the session it resumes, arrive
  * this way rather than on {@link HarnessRunInput} — the input schema is
  * model-facing through a block's capability tool preset, so a field there is a
- * field a model could set (BP-031). A resolver's answer is trusted.
+ * field a model could set. A resolver's answer is trusted.
  *
  * **It is handed the context and NOTHING ELSE, and that is the guarantee rather
  * than a convenience.** An earlier shape passed the run's input alongside the
@@ -277,7 +282,7 @@ export type HarnessCallbackContext = BlockContext<
  * value a caller — or a tool-using model holding the block — controls, and a
  * resolver that can see it can be written, in ordinary-looking code, to pick the
  * directory a run writes in or the conversation it continues *from what the
- * caller sent*. That is the BP-031 defect the resolver exists to prevent,
+ * caller sent*. That is the trust defect the resolver exists to prevent,
  * reintroduced through the resolver.
  *
  * Documentation could not close it. A guarantee a caller violates by writing
@@ -518,23 +523,26 @@ export interface HarnessUsageReport {
  */
 export type HarnessUsageHook = (report: HarnessUsageReport, ctx: HarnessCallbackContext) => void | Promise<void>;
 
+// FIX-2145.
 /**
  * How a harness run was paid for, as the harness knows it from its own
- * sign-in (FIX-2145): `api-key`, billed per token; `subscription`, drawn from
+ * sign-in: `api-key`, billed per token; `subscription`, drawn from
  * a plan's windows. `null` when the harness can't tell.
  */
 export type HarnessBilling = "api-key" | "subscription";
 
+// FIX-2145; FIX-2288.
 /**
- * What one harness run has spent, as its harness reports it (FIX-2145): at
+ * What one harness run has spent, as its harness reports it: at
  * the run's start, on each usage event its vendor sends, and when the run
- * ends, however it ends (FIX-2288). Only what the vendor reported: a token
+ * ends, however it ends. Only what the vendor reported: a token
  * count or a cost the vendor never sent is `null`, never 0 and never an
  * estimate.
  */
 export interface HarnessRunSpend {
+  // FIX-2288.
   /**
-   * The harness's own id for this run (FIX-2288). A later report with the same
+   * The harness's own id for this run. A later report with the same
    * id replaces the earlier one, so a harness reports its running total, never
    * an increment. Absent: the report is one settled run of its own, and the
    * engine names it (a fresh `settled_…` id) as it counts it, so what a reader
@@ -543,11 +551,12 @@ export interface HarnessRunSpend {
   runId?: string;
   /** The harness, by the name a usage record is kept under (`claude-code`, `codex`, `cursor`). */
   harness: string;
+  // FIX-2288; BP-030.
   /**
-   * The model the run uses, as the harness knows it (FIX-2288): the one its
+   * The model the run uses, as the harness knows it: the one its
    * vendor named, else the one the run was started with. `null` when neither
    * is known (the vendor picked its default and never said which). Absent on
-   * a report made before it existed (BP-030).
+   * a report made before it existed.
    */
   model?: string | null;
   /** Input tokens the vendor reported, or `null` when it reported none (a run killed before its usage arrived). */
@@ -560,13 +569,14 @@ export interface HarnessRunSpend {
   billing: HarnessBilling | null;
 }
 
+// FIX-2145; FIX-2288.
 /**
- * Report a harness run's spend to the running request (FIX-2145). It is
+ * Report a harness run's spend to the running request. It is
  * counted in the request's spend, which request-end hooks are handed and
  * `readRequestSpend` reads; it is not a model call, so `ctx.request.tokenUsage`
  * and an action's token budget never see it.
  *
- * **A later report for the same run replaces the earlier one** (FIX-2288).
+ * **A later report for the same run replaces the earlier one**.
  * With a `runId`, a harness reports as its run goes: at its start (its model,
  * tokens `null`), on each usage event its vendor sends (the run's total so
  * far), and from its `finally` when the run ends however it ends (the final
@@ -606,9 +616,10 @@ export type HarnessSteer = (text: string) => Promise<"delivered" | "refused">;
  */
 export type HarnessSteerHook = (steer: HarnessSteer | null, ctx: HarnessCallbackContext) => void;
 
+// FIX-2290.
 /**
- * One thing a run did, as a {@link HarnessActivityHook} is handed it
- * (FIX-2290): a completed assistant message, or a tool call it started, in the
+ * One thing a run did, as a {@link HarnessActivityHook} is handed it:
+ * a completed assistant message, or a tool call it started, in the
  * shapes a harness's translator already produces. Reasoning is never one.
  */
 export type HarnessActivity =

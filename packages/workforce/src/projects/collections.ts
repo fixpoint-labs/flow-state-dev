@@ -71,13 +71,13 @@ export const projectAddressSchema = z
 /** @see projectAddressSchema */
 export type ProjectAddress = z.infer<typeof projectAddressSchema>;
 
+// BP-023, BP-030.
 /**
  * One project, as it is stored.
  *
  * `id`, `title` and `ownerUserId` are required: a row that lost one is not a
  * thinner project, it is one nobody can address or own. Every other field
- * carries a default so a row written by an earlier version still reads
- * (BP-023, BP-030).
+ * carries a default so a row written by an earlier version still reads.
  *
  * `members` decides who opens workstreams in a shared project. It is written
  * only by trusted code — the creator's own
@@ -98,6 +98,7 @@ export const projectRowSchema = z.object({
    * owner. A private project has only its owner.
    */
   members: z.array(z.string()).default([]),
+  // BP-030.
   /**
    * The git remote the project's code lives in, as a member wrote it (for
    * example `https://github.com/acme/storefront.git` or
@@ -106,18 +107,19 @@ export const projectRowSchema = z.object({
    * bare path and a value carrying a credential (`repository-value.ts`).
    * A row written before the field existed has no key in storage, and stored
    * state is not re-parsed on read: read rows through this schema, or guard
-   * with `== null` (BP-030).
+   * with `== null`.
    */
   repository: z.string().nullable().default(null),
+  // BP-030.
   /**
    * The MCP servers every coding run on the project gets, by the bare names
    * the host offers (for example `["linear"]`). Names only: where a server
    * lives is the host's config, and the key a run uses is its owner's own.
    * `[]` names none. A row written before the field existed reads as `[]`
-   * through this schema; guard with `== null` when reading a stored row raw
-   * (BP-030).
+   * through this schema; guard with `== null` when reading a stored row raw.
    */
   mcpServers: z.array(z.string()).default([]),
+  // BP-030.
   /**
    * The commands that check the project's code (for example
    * `["pnpm typecheck", "pnpm --filter web test"]`), run in a coding run's
@@ -125,7 +127,7 @@ export const projectRowSchema = z.object({
    * `projectChecks()`. Each is one program and its arguments, run with no
    * shell (`checkoutCommandProblem` in `@flow-state-dev/workspace`). `[]`
    * names none. A row written before the field existed reads as `[]` through
-   * this schema; guard with `== null` when reading a stored row raw (BP-030).
+   * this schema; guard with `== null` when reading a stored row raw.
    */
   checks: z.array(z.string()).default([])
 });
@@ -133,8 +135,9 @@ export const projectRowSchema = z.object({
 /** One stored project. @see projectRowSchema */
 export type ProjectRow = z.infer<typeof projectRowSchema>;
 
+// BP-015.
 /**
- * Every field of the row, named rather than defaulted (BP-015), so a key a
+ * Every field of the row, named rather than defaulted, so a key a
  * later version adds stays server-side until it is listed here. A shared
  * project is visible to everyone in its organization; that it exists is not
  * a secret.
@@ -210,11 +213,12 @@ const PRIVATE_PROJECTS_COLLECTION = defineResourceCollection({
   client: { state: { read: true }, expose: PROJECT_CLIENT_FIELDS }
 });
 
+// BP-023.
 /**
  * One file a project keeps, as a workspace projection commits it: its path
  * under the project, its content hash, and when it was last synced. The file's
- * body is the row's content, not its state. Nullable with a `null` default
- * (BP-023), so a row written with less still reads.
+ * body is the row's content, not its state. Nullable with a `null` default,
+ * so a row written with less still reads.
  */
 export const projectFileSchema = z.object({
   path: z.string().nullable().default(null),

@@ -1,5 +1,6 @@
+// FIX-751 PR2.
 /**
- * Per-scope reactive-block dispatch (FIX-751 PR2).
+ * Per-scope reactive-block dispatch.
  *
  * A resource/collection mutation fires `onResourceChanged` (see
  * `resource-registry.ts`); for resources that declare `reactTo`, this module

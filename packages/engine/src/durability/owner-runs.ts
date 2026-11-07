@@ -1,5 +1,6 @@
+// FIX-2534 D2; BP-031.
 /**
- * A run as a row's owner, fired host-side (FIX-2534 D2): the sibling of
+ * A run as a row's owner, fired host-side: the sibling of
  * {@link fireWakeThrough} that starts an internal entry as the user whose
  * storage cell holds a row, and the routing call that fires one per run a
  * service flow nominates.
@@ -11,7 +12,7 @@
  * resolver reads ({@link resolveSharedUserCellKey}): the nomination picks a
  * cell and grants nothing. The row must be there, in that user's cell, name
  * the same organization and tenant, and not be switched off
- * (`enabled: false`). Never from the event (BP-031).
+ * (`enabled: false`). Never from the event.
  *
  * Each row's runs share one session, and each service's routings another, so
  * a busy thread doesn't store a new session per event.

@@ -1,5 +1,6 @@
+// FIX-1983.
 /**
- * The Error Reporter's flow (FIX-1983): drafts a bug report, asks the operator
+ * The Error Reporter's flow: drafts a bug report, asks the operator
  * in Inbox, and files it once they answer. It runs on its own flow, never
  * through the Shift Coordinator, which is the part most likely to have failed.
  */

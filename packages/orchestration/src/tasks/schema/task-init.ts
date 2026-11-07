@@ -50,14 +50,16 @@ export type TaskInit<TInput = unknown> = {
    * filing path from the filer's claim or session, never from model input.
    */
   filedByTask?: string;
+  // FIX-2080.
   /**
-   * File the row held (FIX-2080, the start setting): status `held`, so it
+   * File the row held (the start setting): status `held`, so it
    * doesn't start until something releases it (`release`, or `dispatch` on a
    * board that dispatches). Omitted, it starts once its `deps` have finished.
    */
   held?: boolean;
+  // FIX-2133.
   /**
-   * Questions the task waits on before it starts (FIX-2133): each a row hold
+   * Questions the task waits on before it starts: each a row hold
    * (`Task.holds`) the user answers, a plain question or a `confirm` (a yes or
    * a no). The task stays `pending` and starts no attempt until every one is
    * answered, or a deadline the host set passes; every answer joins its
@@ -123,7 +125,8 @@ export type TaskFilter = {
   cancelOwed?: true;
   /** Match only tasks whose ending still owes its cascade (`Task.cascadeOwed`). */
   cascadeOwed?: true;
-  /** Match only tasks a given task's request filed (`Task.filedByTask`, FIX-2081). */
+  // FIX-2081.
+  /** Match only tasks a given task's request filed (`Task.filedByTask`). */
   filedByTask?: string;
   /**
    * Match only tasks whose `sealed` payload holds each of these keys at this

@@ -1,5 +1,6 @@
+// FIX-1442.
 /**
- * The one interpretation of a stored record's organization (FIX-1442).
+ * The one interpretation of a stored record's organization.
  *
  * Organization identity is required on everything the framework writes, but a
  * store that predates the requirement holds rows with no organization at all.
@@ -23,7 +24,8 @@ import { isValidOrgId } from "@flow-state-dev/core";
 
 /** The organization fact every admitted record carries. */
 export type OrgAttributedRecord = {
-  /** `null` and `undefined` both mean "written before organization was required" (BP-030). */
+  // BP-030.
+  /** `null` and `undefined` both mean "written before organization was required". */
   orgId?: string | null;
 };
 
@@ -53,12 +55,13 @@ export class UnattributedOrgError extends Error {
   }
 }
 
+// BR-14.
 /**
  * Whether this record carries a usable organization.
  *
  * The predicate every list, sweep and index scan filters on, so an
  * unattributed row is omitted rather than refused where refusing would stop a
- * whole listing for one bad row (BR-14).
+ * whole listing for one bad row.
  */
 export function isOrgAttributed(record: OrgAttributedRecord | undefined): boolean {
   return record !== undefined && isValidOrgId(record.orgId);

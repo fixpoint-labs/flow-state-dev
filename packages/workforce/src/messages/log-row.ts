@@ -1,5 +1,6 @@
+// FIX-1989.
 /**
- * A message log row's shape and the log's pinned names (FIX-1989): a leaf
+ * A message log row's shape and the log's pinned names: a leaf
  * module (zod only), so a browser reads the log with the schema the server
  * writes it with. The log itself is `message-log.ts`.
  *
@@ -18,7 +19,8 @@ export const WORKER_MESSAGES_PATTERN = "workforce/messages/*";
 /** The accessor a flow declares the log under. */
 export const WORKER_MESSAGES_RESOURCE = "workforceMessages";
 
-/** The longest text a message may carry. A longer one is refused, not cut (BP-042). */
+// BP-042.
+/** The longest text a message may carry. A longer one is refused, not cut. */
 export const MAX_MESSAGE_CHARS = 8_000;
 
 /** Where a message is delivered: a session on a worker flow, and the state it starts with when it isn't there yet. */
@@ -33,8 +35,9 @@ export const messageAddressSchema = z
 
 export type MessageAddress = z.infer<typeof messageAddressSchema>;
 
+// FIX-2240.
 /**
- * What became of a message (FIX-2240): `unconfirmed` until the recipient's
+ * What became of a message: `unconfirmed` until the recipient's
  * `onMessageReceived` takes it; `delivered` once it landed there; `refused`,
  * final; `undeliverable` once it was owed past the host's debt age.
  */
@@ -47,8 +50,9 @@ export const workerMessageRowSchema = z.object({
   from: z.string().min(1),
   /** The recipient worker's id. */
   to: z.string().min(1),
+  // FIX-2160.
   /**
-   * How the sender addressed it (FIX-2160): by a task (`task`) or a conversation
+   * How the sender addressed it: by a task (`task`) or a conversation
    * (`session`). Absent when by the worker's name, as on every row from before.
    */
   addressedBy: z.enum(["task", "session"]).optional(),
@@ -75,42 +79,49 @@ export const workerMessageRowSchema = z.object({
   status: z.enum(MESSAGE_STATUSES),
   /** Why it was refused or couldn't be delivered, or why its last send failed. */
   reason: z.string().optional(),
+  // FIX-2310.
   /**
-   * The sender asked for a reply (FIX-2310): the recipient owes one answer,
+   * The sender asked for a reply: the recipient owes one answer,
    * and it always comes, the recipient's or the framework's "no answer". From
    * the tool's `replyRequested`, or its `wait`, which asks too. Absent on a
    * plain message.
    */
   replyRequested: z.literal(true).optional(),
+  // FIX-2318.
   /**
-   * When the sender stops waiting for the answer in its own turn (epoch ms,
-   * FIX-2318): set only when it waits (`wait: true`). An answer given while it
+   * When the sender stops waiting for the answer in its own turn (epoch ms): set only when it waits (`wait: true`). An answer given while it
    * still waits is its tool's result; one after reaches it as a message.
    */
   deadlineAt: z.number().optional(),
+  // FIX-2318.
   /**
-   * When the waiting sender stopped waiting with no answer yet (FIX-2318):
+   * When the waiting sender stopped waiting with no answer yet:
    * written once, guarded against `answeredBy`, so the answer that comes after
    * goes to it as a message and never into a wait that ended.
    */
   waitEndedAt: z.number().optional(),
+  // FIX-2318.
   /**
-   * The wait gate the waiting sender parks on now, and its request (FIX-2318),
+   * The wait gate the waiting sender parks on now, and its request,
    * written before each park: the answer, landing in the sender's session,
    * resumes it there, so a turn that answers and goes on doesn't keep the
    * sender waiting.
    */
   waitGate: z.object({ gateId: z.string().min(1), requestId: z.string().min(1) }).optional(),
-  /** The message that answered this one, once one did (FIX-2310): set once, so a second answer is never sent. */
+  // FIX-2310.
+  /** The message that answered this one, once one did: set once, so a second answer is never sent. */
   answeredBy: z.string().min(1).optional(),
-  /** This message is the framework's "no answer" to the one it answers (FIX-2310): its recipient's turn ended with nothing to say, or failed. */
+  // FIX-2310.
+  /** This message is the framework's "no answer" to the one it answers: its recipient's turn ended with nothing to say, or failed. */
   noAnswer: z.literal(true).optional(),
+  // FIX-2239.
   /**
-   * Why a taken message waits before it lands (FIX-2239): its session is
+   * Why a taken message waits before it lands: its session is
    * stopped for the user, or its task is held on one. Cleared when it lands.
    */
   queuedBehind: z.literal("user").optional(),
-  /** The `onMessageReceived` request that took it (FIX-2123's take, on a message). */
+  // FIX-2123.
+  /** The `onMessageReceived` request that took it (the take, on a message). */
   takenBy: z.string().min(1).optional(),
   /** The request it landed in. Set once. */
   deliveredAs: z.string().min(1).optional(),

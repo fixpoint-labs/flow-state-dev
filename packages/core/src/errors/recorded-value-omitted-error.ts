@@ -1,5 +1,6 @@
+// FIX-1772.
 /**
- * Resume refusal for a value the record left out (FIX-1772). A block output or
+ * Resume refusal for a value the record left out. A block output or
  * tool result over the server's `maxRecordedValueBytes` is recorded as an
  * `omitted` placeholder: its size and a preview, not the value. A resumed
  * request that would have to hand that value on cannot rebuild it, so it fails

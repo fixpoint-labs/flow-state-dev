@@ -89,9 +89,10 @@ export type DispatchOperation = (spec: {
    */
   userId: string;
   tenantId?: string;
+  // BR-11, FIX-1442.
   /**
    * The organization the SENDING request was admitted under, carried to the
-   * child unchanged (BR-11, FIX-1442). Required: a child dispatch runs below
+   * child unchanged. Required: a child dispatch runs below
    * principal resolution, so there is nothing downstream that could recover an
    * organization this spec omits — and borrowing one from the child's own
    * session would let an incomplete envelope repair itself out of whatever
@@ -104,9 +105,10 @@ export type DispatchOperation = (spec: {
    * task id). Server-assembled; never the caller's bag.
    */
   metadata?: Record<string, unknown>;
+  // FIX-1077.
   /**
    * The runtime config the SENDING request is running under, for the
-   * dispatched request to inherit (FIX-1077).
+   * dispatched request to inherit.
    *
    * A host is built once, but a caller may run a given request under a derived
    * config — `fsdev run` builds `{ ...appConfig, modelResolver, logger }` so
@@ -160,6 +162,7 @@ export type DispatchOperationInputs = {
     InboundTransportHost,
     "dispatch" | "usesExternalRunner" | "arbitratesExternalDispatch"
   >;
+  // FIX-1077.
   /**
    * Called with the dispatched request's `finished` promise the moment the
    * dispatch is made.
@@ -170,7 +173,7 @@ export type DispatchOperationInputs = {
    * exactly what happened under `fsdev run` — the CLI disposes the runtime the
    * moment the parent returns, closing pooled stores while an in-process child
    * was still writing, and the child's task row was stranded `in_progress`
-   * forever (FIX-1077).
+   * forever.
    *
    * A host that owns a process lifetime (`FlowState.dispose`) uses this to drain
    * before shutting down. A long-lived server has nothing to do here and leaves

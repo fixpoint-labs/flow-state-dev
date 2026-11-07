@@ -1,9 +1,10 @@
+// FIX-1989; FIX-2310; FIX-2318.
 /**
- * Who talked to whom (FIX-1989), from the user's message log.
+ * Who talked to whom, from the user's message log.
  * A message makes no task row, so nothing here is on Tasks.
  *
- * A message that asks for a reply (FIX-2310) says where its answer is:
- * waiting, answered, or, when its sender waited (FIX-2318), answered after
+ * A message that asks for a reply says where its answer is:
+ * waiting, answered, or, when its sender waited, answered after
  * the wait ended.
  */
 import { useMemo } from "react";

@@ -25,20 +25,22 @@ import { z } from "zod";
 import { parseNextFireAt } from "./parseNextFireAt";
 import type { ScheduleIndex, ScheduleIndexRow } from "./scheduleIndex";
 
+// FIX-838.
 /**
  * Schema for the state stored under each schedule resource. Mirrors the
  * shape consumed by `createResourceCollectionScheduleResolver` /
  * `ScheduleResourceState`.
  *
- * `kind` is a handler discriminator, not a flow-action name (FIX-838): a
+ * `kind` is a handler discriminator, not a flow-action name: a
  * block cannot be serialized into resource state, so the persisted row stores
  * a string key that the resolver maps to a real block via its host-provided
  * `blocks` map. This replaces the former `action` field — a breaking change to
  * the persisted record shape.
  */
 const SCHEDULE_RESOURCE_SCHEMA = z.object({
+  // FIX-1442; BP-030.
   /**
-   * The organization this schedule fires into (FIX-1442).
+   * The organization this schedule fires into.
    *
    * Not a caller's choice. `create` writes the creating execution's own
    * (server-derived) organization here when the caller names none, which is
@@ -49,7 +51,7 @@ const SCHEDULE_RESOURCE_SCHEMA = z.object({
    * organization) is refused from the index below and therefore never fires.
    * Optional on the schema
    * because callers omit it and because a pre-attribution row has to stay
-   * readable to be diagnosed (BP-030).
+   * readable to be diagnosed.
    */
   orgId: z.string().optional(),
   cron: z.string(),
@@ -183,6 +185,7 @@ function stripPrefix(storageKey: string, pattern: string): string {
  * falls out of it rather than being named: `undefined` is never an execution's
  * org, so such a row is refused by construction and needs no clause of its own.
  */
+// BR-19.
 /**
  * The organization to index this row under, or `null` to refuse it.
  *
@@ -200,7 +203,7 @@ function stripPrefix(storageKey: string, pattern: string): string {
  *  - **Stores a DIFFERENT organization.** That is a claim, and it disagrees
  *    with the execution writing it. Indexing under either organization would
  *    point a standing instruction somewhere nobody authorised, so the row stays
- *    out until it is written from the organization it names (BR-19).
+ *    out until it is written from the organization it names.
  *
  * This stamp lives on the index row only, because this runs in a lifecycle
  * hook, which fires after the write has already committed. The state's own

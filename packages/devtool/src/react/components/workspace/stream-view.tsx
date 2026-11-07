@@ -1,3 +1,4 @@
+// FIX-865.
 /**
  * Stream view: chat-first layout.
  *
@@ -10,7 +11,7 @@
  *   - Status (transient progress indicators, e.g. "Using web_search…")
  *   - Sources (citation URLs from provider-native search)
  *   - Continuation / suspension_resume boundary markers (crash-recovery and
- *     HITL-resume seams, FIX-865) — rendered as compact divider rows
+ *     HITL-resume seams) — rendered as compact divider rows
  *
 
  * Operational items (block_output lifecycle, router_decision, context,
@@ -75,7 +76,8 @@ type StreamViewProps = {
   onReplayFromCursor?: (requestId: string) => void;
   onReconnect?: (requestId: string) => void;
   onContinue?: (requestId: string) => void;
-  /** True while a continuation is already streaming for the given request (FIX-865). */
+  // FIX-865.
+  /** True while a continuation is already streaming for the given request. */
   isContinuing?: (requestId: string) => boolean;
   /** How many actions the person has sent from the panel: each new one takes the stream to its end. */
   sends?: number;

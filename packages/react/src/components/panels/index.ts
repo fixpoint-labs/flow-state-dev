@@ -1,5 +1,6 @@
+// FIX-1477 S5, S6; FIX-1622 S1.
 /**
- * The standing right-panel regions (FIX-1477 S5, S6; FIX-1622 S1).
+ * The standing right-panel regions.
  *
  * `Roster` lists an organization's workers; `BoardColumns` groups one board's
  * rows by status, and `BoardList` draws them as one list with each row's

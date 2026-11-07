@@ -38,8 +38,9 @@ export interface ScheduleIndexRow {
   cell: string;
   /** Who the schedule runs as. */
   userId: string;
+  // FIX-1442.
   /**
-   * The organization this schedule fires into (FIX-1442).
+   * The organization this schedule fires into.
    *
    * The TARGET's organization, captured from the execution that created the
    * row — not the organization of whichever scheduler gateway later fires it,

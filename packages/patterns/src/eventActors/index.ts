@@ -1,3 +1,4 @@
+// FIX-443.
 /**
  * eventActors pattern — stigmergic multi-agent coordination on the
  * unified TaskCollection substrate.
@@ -10,7 +11,7 @@
  * `maxDepth`).
  *
  * The entry log lives as a sibling writable resource — Tasks are about
- * actor invocations, not entry storage. This matches the FIX-443 audit
+ * actor invocations, not entry storage. This matches the audit
  * call: "TaskCollection drives actor-dispatch; entry log stays as content."
  *
  * Pipeline shape (per `eventActors.emit` invocation):
@@ -193,8 +194,9 @@ export interface EventActorsConfig {
    */
   maxDepth?: number;
 
+  // FIX-931.
   /**
-   * Creation bounds for the internal board (FIX-931). Defaults 500/100 —
+   * Creation bounds for the internal board. Defaults 500/100 —
    * unchanged behavior when unset. A long-running reactive chain can
    * legitimately exceed them, so both are reachable here: raise the number, or
    * pass `null` for explicitly unbounded on that axis.
@@ -277,9 +279,10 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     );
   }
 
+  // FIX-931.
   /**
    * The `TaskInit`s one entry would spawn — built, not inserted, so a caller
-   * handling several entries can submit them as ONE batch (FIX-931). Separating
+   * handling several entries can submit them as ONE batch. Separating
    * "what to create" from "create it" is what lets the unit of atomicity be the
    * caller's, rather than being fixed at one entry.
    */

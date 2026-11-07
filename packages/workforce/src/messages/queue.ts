@@ -1,5 +1,6 @@
+// FIX-2239, epic ER-4 and D3; FIX-2058 ER-2; FIX-2578.
 /**
- * A message queues behind the user (FIX-2239, epic ER-4 and D3): one to a
+ * A message queues behind the user: one to a
  * session stopped for the user, or to a task held on one, lands only once
  * nothing holds it. Checked at `onMessageReceived`'s admission, after the take
  * and before the items, the one point every send, call and resend passes.
@@ -10,8 +11,7 @@
  *   The message parks on the wait gate bound to that request, and the engine
  *   resumes it when that request ends: it waits for the stopped request to
  *   end, not merely resume, since the session is busy until then.
- * - **in a task's session, an open hold on its task** (`hasOpenHold`, FIX-2058
- *   ER-2): a stop for the user and a question both hold. A question has no
+ * - **in a task's session, an open hold on its task** (`hasOpenHold`): a stop for the user and a question both hold. A question has no
  *   request to wait on, so the message parks bound to the task row, with a
  *   short deadline, and looks again.
  *
@@ -22,7 +22,7 @@
  * ends without landing it, and the sending session's pass sends it again.
  *
  * One hold never queues a message: a task's wait on something outside the
- * board (an `external` hold, FIX-2578, such as a coding task's wait on its
+ * board (an `external` hold, such as a coding task's wait on its
  * pull request). The system holds it, not the user, and a message is news it
  * waits for, so {@link answerExternalWait} answers it with the message's words
  * before the queue is reached.
@@ -55,9 +55,10 @@ async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
   return null;
 }
 
+// FIX-2578.
 /**
  * Answer the open `external` hold of the running task session's task with
- * message `row` (FIX-2578): its words, as `"service"`, by its sender's
+ * message `row`: its words, as `"service"`, by its sender's
  * handle, so the run reads them quoted as the sender's, never as the user's.
  * The answer owes the task one more turn on the same attempt, which reads
  * them. Keyed by the message, so a copy sent again answers once.

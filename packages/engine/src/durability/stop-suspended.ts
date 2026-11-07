@@ -1,5 +1,6 @@
+// FIX-1816, BR-16 to BR-16c; FIX-2108; FIX-1846; FIX-1850.
 /**
- * Stopping a parked turn (FIX-1816, BR-16 to BR-16c).
+ * Stopping a parked turn.
  *
  * A running turn is stopped by recording the intent and firing its signal
  * (`execution/record-request-stop.ts`). A suspended turn has no signal to
@@ -23,7 +24,7 @@
  *
  * Unless the turn never ran again: a person resolved its gate (approved it,
  * say) and the process died before the turn continued, so it waits on the
- * sweep's re-drive (FIX-2108). The stop wins over that resolution. The gate is
+ * sweep's re-drive. The stop wins over that resolution. The gate is
  * re-recorded `stopped`, under the request's lease and fenced on the
  * resolution read, and the turn continues as a stop of a pending gate
  * continues it: it ends `aborted`, and the approved step never runs. The
@@ -36,14 +37,14 @@
  * before the turn leaves `suspended`, the durability sweep's re-drive finishes
  * it ({@link redriveResolvedGate}).
  *
- * The same re-drive carries an approval that expired (FIX-1846): the turn
+ * The same re-drive carries an approval that expired: the turn
  * continues with the gate read as a rejection marked expired, so the gated
  * call does not run and the model is told the approval is no longer valid.
  * A stop of a turn parked behind one still ends it `aborted`: the stop is
  * recorded on the turn, which its first abort poll reads before anything runs.
  *
  * And it carries a gate a person resolved (approved, rejected, submitted or
- * skipped) whose turn never continued (FIX-1850): the turn continues with the
+ * skipped) whose turn never continued: the turn continues with the
  * person's recorded resolution, as their resume would have.
  */
 import { isUserSuspension, RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
@@ -59,7 +60,8 @@ import { continueUnderLease, latestGateIdOf, resumeUnderLease, type ResumeDeps }
 
 /** What a stop of a parked turn needs from the host. */
 export type SuspendedStopDeps = ResumeDeps & {
-  /** `wakes`, where kept: a stop of a request that owes its park lets the owe go (FIX-2269). */
+  // FIX-2269.
+  /** `wakes`, where kept: a stop of a request that owes its park lets the owe go. */
   stores: Pick<StoreRegistry, "request" | "wakes">;
 };
 
@@ -250,14 +252,15 @@ async function stopAtNonWaitGate(
   return "busy" in result && (await deps.provider.loadSuspension(record.id, gate.suspensionId))?.status === "stopped";
 }
 
+// FIX-2129; BR-16.
 /**
  * Whether a stop of this parked request ends it at its gate rather than
- * before anything runs (FIX-2129): a task's run (`task` source) parked on a
+ * before anything runs: a task's run (`task` source) parked on a
  * user's suspension. Its continuation re-enters the board's claim gate, which
  * reads the stop and cancels the task, and then ends at the suspension itself:
  * `ctx.suspend` reads `stopped`, records the stop on the request and throws
  * its abort, so no block runs past it. Every other parked request is stopped
- * before anything runs, as before (BR-16).
+ * before anything runs, as before.
  */
 export function stopsAtItsGate(
   record: Pick<RequestRecord, "source">,
@@ -304,10 +307,11 @@ function personResolutionOf(gate: Pick<SuspensionRecord, "reason" | "status">): 
   return actions.find((action) => RESUME_ACTION_STATUS[action] === gate.status);
 }
 
+// FIX-2269.
 /**
  * Whether an `interrupted` request will run again: the last gate on its log is
  * still pending (a resume drives it), or resolved and owed a re-drive, which
- * the durability sweep gives it (step 2b); or it owes a park (FIX-2269),
+ * the durability sweep gives it (step 2b); or it owes a park,
  * whatever gate an earlier wait left on its log, and the sweep continues it (`park-owed.ts`, read from
  * `wakes` when given). An interrupted request with none of these died while it
  * ran, and nothing drives it again: its work is over.
@@ -403,14 +407,15 @@ function recordedResume(current: SuspensionRecord, action: ResumeAction) {
 /** Why a re-drive left a request alone. */
 export type RedriveRefusal = "not-parked" | "superseded";
 
+// FIX-1846; FIX-1850.
 /**
  * Drive on a request left parked behind a gate that is already resolved: the
  * re-drive (BR-11a, BR-16c). Any wait outcome continues the turn with the
  * recorded outcome, never a new one; a non-wait gate resolved `stopped`
  * continues it with the stop recorded on it, so it ends `aborted` through its
  * own lifecycle; an approval that expired continues it with a rejection that
- * `runAction` marks expired from the gate (FIX-1846); a person's resolution of
- * any other gate continues it with that resolution and its data (FIX-1850).
+ * `runAction` marks expired from the gate; a person's resolution of
+ * any other gate continues it with that resolution and its data.
  * Under the request's lease, so a live resume is never raced.
  *
  * `gate` must be the request's latest gate; a request that has since parked

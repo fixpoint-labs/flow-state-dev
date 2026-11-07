@@ -99,10 +99,11 @@ export function createSQLiteActiveRequestRegistry(
   );
 
   return {
+    // FIX-999.
     /**
      * The database file may be on a volume every worker opens, or on a local
      * disk only this process sees — and this adapter cannot tell which from the
-     * handle it is given (FIX-999). Where it cannot know, it declares not
+     * handle it is given. Where it cannot know, it declares not
      * shared, so liveness is refused rather than answered wrongly.
      */
     sharedAcrossProcesses: false,

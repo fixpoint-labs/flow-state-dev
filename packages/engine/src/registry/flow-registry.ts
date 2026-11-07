@@ -242,6 +242,7 @@ class InMemoryFlowRegistry implements FlowRegistry {
     }
   }
 
+  // FIX-1207.
   /**
    * Releases one address, and **deliberately leaves the participant entry for
    * that kind in place** — including when this was the kind's last instance.
@@ -272,7 +273,7 @@ class InMemoryFlowRegistry implements FlowRegistry {
    *
    * All three are a process restart away from fixed, and they are the side of
    * the trade that loses no data. Closing them means changing what identity
-   * the check keys on, which is FIX-1207's — see `validateScope`. Pinned by
+   * the check keys on, which is a separate change — see `validateScope`. Pinned by
    * the "known gap" case in `test/registry/runtime-registration.test.ts`.
    */
   unregister(id: string): boolean {
@@ -337,6 +338,7 @@ class InMemoryFlowRegistry implements FlowRegistry {
     });
   }
 
+  // FIX-1207; FIX-435.
   /**
    * Compares an incoming declaration against every other registered kind.
    *
@@ -361,10 +363,10 @@ class InMemoryFlowRegistry implements FlowRegistry {
    *      instances of one definition are therefore never compared, even when
    *      their overrides disagree over a shared cell.
    *
-   * Both are excluded **by design, not by oversight**, and both are FIX-1207's.
+   * Both are excluded **by design, not by oversight**, and both are a separate change.
    * They are one question — what identity the check keys on — and answering it
    * means extending the identity model, which is new capability. This check had
-   * not run at all since FIX-435; restoring it is the repair, and widening it
+   * not run at all since resources went flat; restoring it is the repair, and widening it
    * here would turn a one-file fix into a subsystem change.
    */
   private validateScope(
@@ -509,6 +511,7 @@ function storageRef(
   return storageKeys[accessor] ?? accessor;
 }
 
+// FIX-435.
 /**
  * What one flow contributes to a scope's shared-storage view.
  *
@@ -520,8 +523,8 @@ function storageRef(
  *     by the flow-level `isolateUserState` / `isolateOrgState` flag
  *     (`resolveUserStorageKey`). Flow-level isolation removes it from the
  *     shared view entirely.
- *   - **Resources** key per resource off the flat `flow.resources` map
- *     (FIX-435), each entry carrying its own intrinsic `scope` and its own
+ *   - **Resources** key per resource off the flat `flow.resources` map,
+ *     each entry carrying its own intrinsic `scope` and its own
  *     `flowIsolation` override — which wins over the flow-level flag in BOTH
  *     directions. So effective isolation is resolved per resource
  *     (`resolveResourceIsolation`, the same helper the storage-key path uses),
@@ -530,7 +533,7 @@ function storageRef(
  *     flow's, so it does not participate.
  *
  * Before this was fixed the resource half read `flow.user.resources` /
- * `flow.org.resources` — maps that stopped existing at FIX-435 — so it
+ * `flow.org.resources` — maps that no longer exist — so it
  * iterated `undefined` and collected nothing for either scope.
  */
 function collectScopeDeclaration(

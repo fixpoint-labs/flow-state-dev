@@ -1,6 +1,7 @@
+// FIX-2077.
 /**
- * The requests a task session runs for its task beside the `work` entry
- * (FIX-2077): a notice of a piece's ending (`onTaskSettled`), the check entry
+ * The requests a task session runs for its task beside the `work` entry:
+ * a notice of a piece's ending (`onTaskSettled`), the check entry
  * and the turn a late steer is owed. While the task waits, each is admitted
  * for it through orchestration's `taskRequestAdmission`, and the task is
  * checked at its end (rule 6), as at the end of `work`. A worker's message
@@ -55,9 +56,10 @@ export function piecesHold(board: TaskCollectionRef, taskId: string): boolean {
   return board.list().some((row) => row.filedByTask == null && row.metadata?.[PIECE_OF] === taskId && keepsFilerOpen(row));
 }
 
+// FIX-2086 D2.
 /**
  * What else holds a task session's task open, beside its own request (rule
- * 6), and the entry that runs the turn a late steer is owed (FIX-2086 D2).
+ * 6), and the entry that runs the turn a late steer is owed.
  */
 export const conversationEndRules: TaskEndRules = {
   filedWorkKeepsOpen: async (ctx, task) => {
@@ -100,13 +102,14 @@ export function checkTaskEntry(concurrency: ConcurrencyConfig) {
   };
 }
 
+// FIX-2113.
 /**
  * Admit the running request for this session's task while it waits: first in
  * the entry's sequencer, `.tap(admitOwnTask(...))`. The entry's flow declares
  * the conversation ledger (the session factory's resources).
  *
  * @param answerCounts Whether the entry's turn answer can be the task's result (a woken turn's can; the check entry, which runs no turn, can't).
- * @param options.unlessAnotherTurnWaits Admit nothing while another request in the session waits on a step of its own plan (a steer's turn, FIX-2113).
+ * @param options.unlessAnotherTurnWaits Admit nothing while another request in the session waits on a step of its own plan (a steer's turn).
  */
 export function admitOwnTask(name: string, answerCounts: boolean, options: { readonly unlessAnotherTurnWaits?: boolean } = {}) {
   return taskRequestAdmission({

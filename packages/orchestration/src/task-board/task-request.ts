@@ -1,6 +1,7 @@
+// FIX-2077, rule 6; FIX-2086 D2; FIX-2133 D2; FIX-2133 D3.
 /**
  * A request admitted for a dispatched task, and the one check that settles
- * the task at that request's end (FIX-2077, rule 6).
+ * the task at that request's end.
  *
  * **Done** means: a request for the task ended with a result, its background
  * work ended too, no steer is untaken by its attempt, and no filed work still
@@ -20,7 +21,7 @@
  *   what holds it (`keptOpenBy: "filed"`),
  *   keeps that answer as its output, and drops its lease, so no reclaim takes
  *   it back. The next request admitted for it checks again.
- * - **a steer no request of its attempt took** (FIX-2086 D2): one more turn
+ * - **a steer no request of its attempt took**: one more turn
  *   before it settles. The check owes the task session's steer entry a wake,
  *   records `keptOpenBy: "steer"` with no lease (the answer kept as for any
  *   wait), and starts that entry at once; the entry admits a same-attempt
@@ -29,7 +30,7 @@
  * - **suspended** — the row records the stop (`keptOpenBy: "suspended"`) and drops
  *   its lease (D1), in one write; a stop for a person, by the one predicate
  *   `isUserSuspension`, is mirrored in that write as the row's suspension hold
- *   (`Task.holds`, FIX-2133 D2), what it asks with it. The resume is admitted
+ *   (`Task.holds`), what it asks with it. The resume is admitted
  *   like any request, and its admission closes the mirror. A row a question
  *   holds takes no mirror (one wait per turn): the stop is cancelled instead,
  *   and the run resumes `cancelled`.
@@ -43,7 +44,7 @@
  * the row a lease again, renewed until the request ends. Admitting a turn the
  * row owes (its last question answered, or a steer no request took) is that
  * turn's claim: the write advances the turn generation, and the ticket is
- * minted again from the row it left (FIX-2133 D3). Only the task's own
+ * minted again from the row it left. Only the task's own
  * entry is admitted while no request waits: any other request is admitted
  * only while the task is waiting, so two requests never check it at once.
  *
@@ -84,9 +85,10 @@ export interface TaskEndRules {
    * (`filedWorkKeepsOpen`).
    */
   filedWorkKeepsOpen?: (ctx: BlockContext, task: Task, ledger: TaskCollectionRef) => Promise<boolean>;
+  // FIX-2086 D2.
   /**
    * The internal entry, on the task session's own flow, that runs one more
-   * turn for a steer no request of the attempt took (FIX-2086 D2). The check
+   * turn for a steer no request of the attempt took. The check
    * starts it in the running session, with a wake owed for it first, and the
    * entry admits its request for the task. Absent: a steer that lands after a
    * request's last model call waits for the attempt's next request, if any,
@@ -95,9 +97,10 @@ export interface TaskEndRules {
   steerTurn?: { readonly entry: string };
 }
 
+// FIX-2086 D2.
 /**
  * When a steer's owed turn falls due if its fast-path start was lost: write +
- * 2 s (FIX-2086 D2), the wake's due time.
+ * 2 s, the wake's due time.
  */
 export const STEER_TURN_DUE_MS = 2_000;
 
@@ -116,8 +119,9 @@ interface Admitted {
   answer?: { output: unknown };
   /** No request-end seam: the check runs where the answer is noted. */
   readonly inline: boolean;
+  // FIX-2133.
   /**
-   * This request asked questions midway (FIX-2133): its turn is over, and the
+   * This request asked questions midway: its turn is over, and the
    * row is the next turn's once they're answered, even when the last answer
    * lands before this request ends.
    */
@@ -127,10 +131,12 @@ interface Admitted {
    * later one admitted for it while it waits (a notice, a steer's turn).
    */
   readonly own: boolean;
-  /** The tick writing this request's live spend onto the row (FIX-2288), while it runs. */
+  // FIX-2288.
+  /** The tick writing this request's live spend onto the row, while it runs. */
   spendTick?: Ticker;
+  // FIX-2288.
   /**
-   * This admission's own id, on each spend write (FIX-2288): a request continued
+   * This admission's own id, on each spend write: a request continued
    * in a new process is admitted again under the same request id, and the row
    * tells that run's writes from the dead one's by it.
    */
@@ -146,9 +152,10 @@ interface Admitted {
   readonly recovered: RequestSpend | undefined;
 }
 
+// FIX-2288 D2.
 /**
  * How often a request admitted for a task writes what it has spent so far
- * onto the row, while that changes (FIX-2288 D2).
+ * onto the row, while that changes.
  */
 export const SPEND_TICK_MS = 2_000;
 
@@ -164,9 +171,10 @@ function requestKey(ctx: BlockContext): string {
   return ctx.request.identity.id;
 }
 
+// FIX-2082.
 /**
  * The task the running request was admitted for in this process, and the
- * ledger it is on: what a wait reads its request's own task from (FIX-2082).
+ * ledger it is on: what a wait reads its request's own task from.
  * `undefined` when the request was admitted for no task.
  */
 export function admittedTaskOf(ctx: BlockContext): { readonly ref: TaskCollectionRef; readonly taskId: string } | undefined {
@@ -175,17 +183,19 @@ export function admittedTaskOf(ctx: BlockContext): { readonly ref: TaskCollectio
   return record === undefined ? undefined : { ref: record.ref, taskId: record.ticket.taskId };
 }
 
+// FIX-2133 D3.
 /**
  * Whether the row is still on the claim `ticket` names: same row, running,
- * same attempt and same turn (FIX-2133 D3), by the one predicate the write
+ * same attempt and same turn, by the one predicate the write
  * fence shares (`ticketClaimsRow`).
  */
 function claimHolds(ref: TaskCollectionRef, ticket: TaskClaimTicket, row: Task | undefined): row is Task {
   return ticketClaimsRow(ticket, ref.collectionId, row);
 }
 
+// FIX-2133.
 /**
- * Whether `record`'s turn asked questions midway (FIX-2133): this request
+ * Whether `record`'s turn asked questions midway: this request
  * asked, or the row's `askedInTurn` names the turn its ticket holds (a resume of
  * the asking turn, whose own record is new).
  */
@@ -294,8 +304,9 @@ export async function admitClaimedTask(
   return { renewal, ticket };
 }
 
+// FIX-2288.
 /**
- * Write one part of the request's spend onto its task (FIX-2288): the one
+ * Write one part of the request's spend onto its task: the one
  * writer of `Task.spend`. Never fails the request: a write that can't land is
  * logged, and the next tick or the ending writes again.
  */
@@ -338,9 +349,10 @@ function startSpendTick(record: Admitted): Ticker | undefined {
   });
 }
 
+// FIX-2288.
 /**
  * Settle what the request's ending handed on into its task's spend, clearing
- * its live part, in one write, once no live write is in flight (FIX-2288).
+ * its live part, in one write, once no live write is in flight.
  * Before the task's check, so the check's own write never races it. A context
  * whose ending carries no spend (the inline check) writes nothing.
  */
@@ -352,9 +364,10 @@ async function settleSpend(record: Admitted, spend: RequestSpend | undefined): P
   await writeSpend(record, "settle", spend);
 }
 
+// FIX-2133 D3.
 /**
  * The admission a request lost: the row moved on between its read and the
- * write (another claim took the turn it was owed first, FIX-2133 D3). A
+ * write (another claim took the turn it was owed first). A
  * request admitted for a task while it waits admits nothing on it.
  */
 class TaskAdmissionLost extends Error {
@@ -386,10 +399,11 @@ async function noteAnswer(ctx: BlockContext, output: unknown): Promise<void> {
   }
 }
 
+// FIX-963.
 /**
  * The request admitted for a task ended: check the task, then stop renewing
  * its lease. A failure to record the result is handed back as the request's
- * own (FIX-963), so the run's status never reads as success.
+ * own, so the run's status never reads as success.
  */
 async function endRequest(
   key: string,
@@ -500,9 +514,9 @@ function stopOf(record: Admitted, ending: TaskEnding): { on: TaskKeptOpenBy; for
   return { on: "suspended", forPerson: suspension !== undefined && isUserSuspension(suspension) };
 }
 
+// FIX-2133 D2.
 /**
- * The row's mirror of its run's stop for a person (a suspension hold,
- * FIX-2133 D2), from the request's ending: its address, what it asks, and its
+ * The row's mirror of its run's stop for a person (a suspension hold), from the request's ending: its address, what it asks, and its
  * deadline (the stop's own, which the engine ends). The flow its answer goes
  * through is the run's session's, which a reader reads off the session the
  * row's run link names. `undefined` when the ending names no suspension id (a
@@ -531,8 +545,9 @@ function mirrorOf(ctx: BlockContext, ending: TaskEnding): SuspensionHold | undef
 /** How long the cancel of a refused stop keeps trying while its request finishes parking. */
 const REFUSED_STOP_RETRY_MS = [50, 100, 250, 500, 1_000, 2_000, 5_000];
 
+// FIX-2133.
 /**
- * Cancel a stop a held row refused to mirror (FIX-2133, one wait per turn),
+ * Cancel a stop a held row refused to mirror (one wait per turn),
  * through ER-1's cancel: the run resumes `cancelled` and reads it, and no
  * Inbox item survives for it. Called while the request is still parking, so
  * the cancel is tried again until the engine has recorded it parked. Not the
@@ -635,10 +650,11 @@ async function holdingWork(record: Admitted, row: Task): Promise<"filed" | undef
   return undefined;
 }
 
+// FIX-2133.
 /**
  * Record what the task waits on, with no lease, and keep `answer` as its
  * output while it waits; with `hold`, mirror its run's stop for a person on
- * the row in the same write (FIX-2133). A later request that leaves the task
+ * the row in the same write. A later request that leaves the task
  * waiting on what it waited on passes none, and the mirror stays. A ref
  * without `setKeptOpenBy` keeps its lease instead.
  */
@@ -726,6 +742,7 @@ export interface TaskRequestAdmissionOptions {
   readonly endRules?: TaskEndRules;
 }
 
+// FIX-2133.
 /**
  * Admit a request for a task that is waiting, as the head of its entry:
  * `.tap(taskRequestAdmission({ ... }))`, first in the entry's sequencer, and
@@ -734,7 +751,7 @@ export interface TaskRequestAdmissionOptions {
  * included), renews its lease, and checks the task at its end.
  *
  * A task that is not waiting (no `keptOpenBy`, and no turn owed for its
- * answered questions, FIX-2133) is left to the request working it, and this
+ * answered questions) is left to the request working it, and this
  * request is admitted for nothing. Nor is one whose owed turn another claim
  * took first: whichever claims first wins (D3).
  */
@@ -821,8 +838,9 @@ export type MidwayAsk =
   | { readonly ok: true; readonly questions: readonly string[] }
   | { readonly ok: false; readonly reason: "no-claim" | "not-supported" | AskDeclineReason };
 
+// FIX-2131; FIX-2133; FIX-2241.
 /**
- * Ask questions midway, from the turn holding the task's claim (FIX-2133): the
+ * Ask questions midway, from the turn holding the task's claim: the
  * collection's one write opens them on the row, drops its lease and ends the
  * turn unsettled, and this request stops renewing that lease. What the turn
  * did stands (its writes, messages and last checkpoint); the next turn starts
@@ -831,9 +849,9 @@ export type MidwayAsk =
  *
  * The claim is the one this request holds (the gate's or an admission's,
  * server-set), never one from input, so only the turn holding the current
- * ticket asks. FIX-2131's model tool calls this.
+ * ticket asks. The model's tool calls this.
  *
- * After the question is opened, a ledger that declares `onMidwayQuestion` (FIX-2241) is told the
+ * After the question is opened, a ledger that declares `onMidwayQuestion` is told the
  * row's open midway questions, read from the committed row, so its filer
  * hears them; a replay whose ask is declined tells them again, and the
  * declaration's implementer dedupes per hold (Workforce by message id). Only
@@ -889,8 +907,9 @@ export async function askMidway(
   return asked;
 }
 
+// FIX-2578.
 /**
- * Wait on something outside the board (FIX-2578), from the turn holding the
+ * Wait on something outside the board, from the turn holding the
  * task's claim: the collection's `awaitExternal` opens one external wait on
  * the row (`actor: "system"`), drops its lease and ends the turn unsettled,
  * and this request stops renewing that lease, as {@link askMidway} does for a
@@ -926,10 +945,10 @@ export async function waitExternally(ctx: BlockContext, ledger: TaskCollectionRe
 /** What {@link cancelFromTurn} answers: the board's write, or that the request holds no claim to cancel with. */
 export type TurnCancel = Awaited<ReturnType<TaskCollectionRef["cancel"]>> | { readonly outcome: "declined"; readonly reason: "no-claim" };
 
+// FIX-2578 D2.
 /**
  * Cancel the task from the turn holding its claim, when what it worked toward
- * was closed by a person and another attempt would end the same way (FIX-2578
- * D2: its pull requests were closed without merging). The claim is the one
+ * was closed by a person and another attempt would end the same way (its pull requests were closed without merging). The claim is the one
  * this request holds, server-set, as {@link waitExternally}'s is, so only the
  * turn holding the current ticket cancels; a later turn's claim declines it.
  * Once the row ends this request stops renewing its lease, and the check at

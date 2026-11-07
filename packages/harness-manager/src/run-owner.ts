@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * Whose coding run a row is, on a board kept per organization.
  *
@@ -11,7 +12,7 @@
  *
  * So the run belongs to the member who started it. The manager records that
  * member on the row the first time it runs it, from the request's resolved
- * identity (BP-031), and two doors enforce it:
+ * identity, and two doors enforce it:
  *
  * - {@link runOwnerClaimOrder} narrows the board's claim,
  *   so another member's drain never claims the row. That is the door that
@@ -47,11 +48,12 @@ const runOwnerSchema = z.object({
 /** Who a run belongs to, as recorded on its row. */
 export type RunOwner = z.infer<typeof runOwnerSchema>;
 
+// BP-030.
 /**
  * The owner recorded on a row, or `null` when none is.
  *
  * `null` for a row the manager has never run, for any row written before the
- * rule existed (BP-030), and for a record that does not parse. The last one is
+ * rule existed, and for a record that does not parse. The last one is
  * deliberate: the next run records its own principal, which is the same thing
  * that happens to a row nobody has run.
  */
@@ -103,12 +105,13 @@ export interface RequestIdentityContext {
   request?: { identity?: unknown } | undefined;
 }
 
+// BP-031.
 /**
  * Who this run belongs to, from the request's RESOLVED identity.
  *
  * `ctx.user.identity` is what the principal resolver produced, not anything a
- * caller put in a body — which is what makes it usable as an isolation boundary
- * (BP-031). A missing user id is refused rather than defaulted: a default would
+ * caller put in a body — which is what makes it usable as an isolation boundary.
+ * A missing user id is refused rather than defaulted: a default would
  * put every unauthenticated run in one shared checkout, which is the exact
  * collision the principal is here to prevent.
  */

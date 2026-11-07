@@ -1,5 +1,6 @@
+// FIX-2173.
 /**
- * Consulting a conversation (FIX-2173): a worker answers a read-only question
+ * Consulting a conversation: a worker answers a read-only question
  * from another of its user's conversations, without waking it.
  *
  * `consultSessionsCapability(installation)` puts `consultSessionHistory` on a

@@ -1,8 +1,9 @@
+// FIX-2310; FIX-2318; FIX-2240.
 /**
- * A message that asks for a reply gets one (FIX-2310): the obligation a
+ * A message that asks for a reply gets one: the obligation a
  * reply-requested message puts on the session that lands it, and the one way
  * it is met. The answer reaches the sender as a message, or, while the sender
- * still waits for it (`wait: true`, FIX-2318), as that wait's tool result:
+ * still waits for it (`wait: true`), as that wait's tool result:
  * the send holds it for the wait instead of dispatching it
  * (`./wait-for-reply`). Either way it is one answer, sent one way.
  *
@@ -14,8 +15,7 @@
  * first, so the other sends nothing.
  *
  * One case the turn's end can't reach: the server died mid-turn. So the
- * landing request owes its session's pass (as a send owes it for delivery,
- * FIX-2240): the pass answers "no answer" for a message whose landing request
+ * landing request owes its session's pass (as a send owes it for delivery): the pass answers "no answer" for a message whose landing request
  * ended without one.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";

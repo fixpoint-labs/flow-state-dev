@@ -1,21 +1,21 @@
+// FIX-2133, the epic FIX-2058's Inbox read; FIX-2129; FIX-2381.
 /**
  * `@flow-state-dev/orchestration/inbox` — the Inbox: one item type over what
- * holds a task for the user, and the one call that answers it (FIX-2133, the
- * epic FIX-2058's Inbox read).
+ * holds a task for the user, and the one call that answers it.
  *
  * **One item type.** An item is one task row's open holds for the user, or a
  * suspension for the user in a request with no task row. Each hold says where
  * its answer goes and whether the Inbox can answer it; an item is answerable
  * when one of its holds is. {@link createInboxClient}'s `answer` routes each
  * hold by its source: a suspension to the engine's answer route
- * (`client.flow(..).request(..).answer(..)`, FIX-2129), a question or a
+ * (`client.flow(..).request(..).answer(..)`), a question or a
  * confirm to the board's `updateTask` action on the session that holds the
  * board, as the user. The answer is typed by what the hold asks
  * ({@link InboxAnswerFor}).
  *
  * **A board's task actions.** `board(at)` on the same client binds one board
  * and cancels, steers, releases, retries and re-files its tasks through the
- * board's own actions (FIX-2381). {@link taskActionName} is the one place an
+ * board's own actions. {@link taskActionName} is the one place an
  * app gets a board action's name, for a reader that builds a row's holder.
  *
  * **Where an item comes from.** A task run's stop lists under its row, never

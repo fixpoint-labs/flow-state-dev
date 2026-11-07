@@ -25,10 +25,11 @@ export function allRows(snapshot: LoadedSnapshot): BoardRow[] {
   return Object.values(snapshot.boards).flatMap((boards) => (boards.ok ? boards.value.rows : []));
 }
 
+// BR-40.
 /**
  * What a row's board is called on a screen: the workstream the conversation
  * that holds it leads (its `workstreamId`), so one worker's two workstreams
- * are two boards (BR-40); else the worker the conversation is with
+ * are two boards; else the worker the conversation is with
  * (`@<worker>`); else the conversation's id.
  */
 export function boardOwnerOf(snapshot: LoadedSnapshot, row: BoardRow): string {
@@ -40,7 +41,8 @@ export function boardOwnerOf(snapshot: LoadedSnapshot, row: BoardRow): string {
   return worker === null ? row.ownerSessionId : `@${worker}`;
 }
 
-/** The rows Tasks shows: every attached board's, excluding done ones (BR-15). */
+// BR-15.
+/** The rows Tasks shows: every attached board's, excluding done ones. */
 export function openRows(snapshot: LoadedSnapshot): BoardRow[] {
   return allRows(snapshot).filter((row) => !isDone(row.status));
 }
@@ -48,6 +50,7 @@ export function openRows(snapshot: LoadedSnapshot): BoardRow[] {
 /** The workers a row's assignee is resolved against. */
 export type Roster = { workers: readonly Worker[] };
 
+// FIX-1672.
 /**
  * The worker a row is held by, or `undefined` when no single worker is.
  *
@@ -60,8 +63,8 @@ export type Roster = { workers: readonly Worker[] };
  *
  * A name more than one worker carries, or none, is no worker: a row is never shown against
  * several workers, or against a guess. Which worker actually claimed the row is
- * not published to a browser, and a declared assignee-to-worker map is
- * FIX-1672's.
+ * not published to a browser, and a declared assignee-to-worker map
+ * arrives in a later release.
  */
 export function workerFor(roster: Roster, row: BoardRow): Worker | undefined {
   if (row.assignee === null) return undefined;
@@ -167,8 +170,9 @@ export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxI
   return items.find((item) => item.id === id) ?? items.find((item) => item.holds.some((hold) => hold.id === id)) ?? null;
 }
 
+// FIX-2131.
 /**
- * Whether a task holds on a question or confirm for you (FIX-2131): its Inbox
+ * Whether a task holds on a question or confirm for you: its Inbox
  * item has a hold the board keeps on the row. A task waiting on its run's stop
  * for you (an approval, a review) shows that stop as an ask instead
  * ({@link asksOfTask}). `false` while the snapshot or its Inbox isn't read.
@@ -180,8 +184,9 @@ export function waitsOnYou(snapshot: LabSnapshot | undefined, row: BoardRow | un
   );
 }
 
+// BR-17.
 /**
- * The pending asks a task's run waits on (BR-17): those in the session its
+ * The pending asks a task's run waits on: those in the session its
  * row's run link names, stamped with this task, or unstamped and raised by
  * the very request the link names. Empty while the snapshot or its asks
  * aren't read.
@@ -231,8 +236,9 @@ export function teamsOf(workers: readonly Worker[]): Array<{ team: string; name:
 /** PROJECTS: every project the user reads. */
 export type ProjectsView = { projects: Project[] };
 
+// BR-22.
 /**
- * PROJECTS (BR-22): every project the user reads, shared ones and their own
+ * PROJECTS: every project the user reads, shared ones and their own
  * private ones. Derived from the snapshot alone: no read of its own. Fails when
  * the projects read did.
  */
@@ -301,12 +307,13 @@ function boardFailure(snapshot: LoadedSnapshot): Failure | undefined {
   return undefined;
 }
 
+// D1, BR-4; FIX-2131; BR-8.
 /**
- * The shift summary's numbers (D1, BR-4): what waits on the user, as Inbox
+ * The shift summary's numbers: what waits on the user, as Inbox
  * lists it (one item per task held on a question, a review or an approval,
- * and per ask no task holds, FIX-2131); the asks the worker sessions hold,
+ * and per ask no task holds); the asks the worker sessions hold,
  * each drawn as a card; and the runs going with how many workstreams they run
- * in, from the rows Tasks reads. Each line fails on its own read (BR-8).
+ * in, from the rows Tasks reads. Each line fails on its own read.
  */
 export function shiftSummary(snapshot: LoadedSnapshot): {
   inbox: Section<InboxItem<Ask>[]>;

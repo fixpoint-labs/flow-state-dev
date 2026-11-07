@@ -66,12 +66,13 @@ export function useVoice(
   const playerRef = useRef<AudioPlayer | null>(null);
   const recognitionRef = useRef<SpeechRecognitionHandle | null>(null);
   const playedKeysRef = useRef<Set<string>>(new Set());
+  // FIX-523.
   /**
    * `(itemId, contentIndex)` pairs that have received streaming audio
    * deltas in this session. The batch-path scanner below skips any
    * `OutputAudioContent` whose key is in this set so a streaming TTS turn
    * doesn't get double-played when the final snapshot arrives via
-   * `content.added` after the chunks (FIX-523). Writes happen synchronously
+   * `content.added` after the chunks. Writes happen synchronously
    * inside the audio-delta callback — before any `decodeAudioData` await —
    * so the batch scanner can never observe a streaming part without its
    * dedup entry already in place.

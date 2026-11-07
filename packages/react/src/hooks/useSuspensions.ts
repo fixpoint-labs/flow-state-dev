@@ -1,7 +1,7 @@
+// FIX-276, generalized in FIX-849; FIX-276.
 /**
  * useSuspensions — derives pending/resolved suspension state from a session's
- * live item stream and provides resolution actions (FIX-276, generalized in
- * FIX-849). `resolve(id, { action, data })` is the general resolver (submit a
+ * live item stream and provides resolution actions. `resolve(id, { action, data })` is the general resolver (submit a
  * typed payload, skip an optional step, or approve/reject); `approve`/`reject`
  * are thin wrappers over it.
  *
@@ -11,7 +11,7 @@
  * This hook folds both halves into a stable view and exposes `approve`/`reject`
  * callbacks that resolve through the session's STREAMING resume — so the resumed
  * continuation streams straight into `session.items` and the resolution renders
- * live, with no page refresh (FIX-276). Transport lives in the client /
+ * live, with no page refresh. Transport lives in the client /
  * `useSession`; this hook only derives state and tracks in-flight/error UI
  * status.
  */
@@ -217,9 +217,10 @@ export async function resolveSuspension(
   }
 }
 
+// BP-010.
 /**
  * Derives suspension state from `session.items` and returns approve/reject
- * actions. Derivation is a `useMemo` over the live stream (BP-010); resolution
+ * actions. Derivation is a `useMemo` over the live stream; resolution
  * goes through `session.answerSuspension`.
  */
 export function useSuspensions(

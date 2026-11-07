@@ -1,6 +1,7 @@
+// FIX-2239.
 /**
  * `waitOnRequest` — park the running request on the one wait gate, bound to a
- * request that already exists, and map how that request ended (FIX-2239).
+ * request that already exists, and map how that request ended.
  *
  * The park half of `dispatcher({ wait: true })`: it sends nothing. A caller
  * that dispatches sends first, under its own `runOnce` key, then waits here; a

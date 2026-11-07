@@ -140,15 +140,17 @@ export type FilesystemStoreRegistryOptions = {
    * so the surface here is narrower than `CreateStoreOptions.traceStore`.
    */
   traceStore?: { maxRequests?: number };
+  // FIX-406 6B.
   /**
    * Fired when any filesystem adapter's background write fails, before the
    * adapter's safety-net log. The structured channel operators wire to alert
-   * on persistence loss (FIX-406 6B). When unset, failures are still logged.
+   * on persistence loss. When unset, failures are still logged.
    */
   onPersistError?: PersistErrorHandler;
+  // FIX-406 6A.
   /**
-   * Acknowledge that the filesystem store is for local development only
-   * (FIX-406 6A). Its O(N²) event persistence collapses under production
+   * Acknowledge that the filesystem store is for local development only.
+   * Its O(N²) event persistence collapses under production
    * load — use `createSQLiteStores` (`@flow-state-dev/store-sqlite`) for any
    * real workload. When this is not `true`, construction logs a one-time
    * warning. The flag changes no behavior; it only records intent and

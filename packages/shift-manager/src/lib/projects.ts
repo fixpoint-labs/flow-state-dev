@@ -1,8 +1,9 @@
+// BR-18; BR-38.
 /**
  * A project's own reads, beside the snapshot: its workstreams and the Lab's
  * project setup.
  *
- * **What a project view reads** (BR-18): the project's row and its workstream
+ * **What a project view reads**: the project's row and its workstream
  * entries by one prefix, through the user's own session on the roster flow,
  * which declares both. Never a Lab read. Progress is worked out from the
  * entries here, by Workforce's own `projectProgress`, so the view and the
@@ -15,7 +16,7 @@
  *
  * Shift Manager opens no workstream itself. The user asks their project
  * coordinator for the work, and the coordinator opens one with a lead from
- * their roster (BR-38).
+ * their roster.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { SessionSummary } from "@flow-state-dev/client";
@@ -37,7 +38,8 @@ export type ProjectAddress = { visibility: ProjectVisibility; id: string };
 /** One objective of a workstream, met or not. */
 export type WorkstreamObjective = { text: string; met: boolean };
 
-/** One workstream of a project: its entry, as everyone who reads the project reads it (BR-12). */
+// BR-12.
+/** One workstream of a project: its entry, as everyone who reads the project reads it. */
 export type WorkstreamEntry = {
   /** Its storage key in the project's workstreams: where its report is read. */
   key: string;
@@ -52,7 +54,8 @@ export type WorkstreamEntry = {
   due: string | null;
   objectives: WorkstreamObjective[];
   updatedAt: string;
-  /** Whether it has gone quiet, as the project's progress counts it (BR-19): one clock, `progress.stale`. */
+  // BR-19.
+  /** Whether it has gone quiet, as the project's progress counts it: one clock, `progress.stale`. */
   stale: boolean;
 };
 
@@ -198,8 +201,9 @@ export type ProjectReadState = { value: ProjectRead | null } | { failure: Failur
 /** How often a project's entries are read again while they are on screen. */
 const PROJECT_POLL_MS = 5_000;
 
+// BR-18.
 /**
- * The project's own read, row and entries (BR-18), when the view opens, each
+ * The project's own read, row and entries, when the view opens, each
  * time the Lab is read again (`readAt`), and every {@link PROJECT_POLL_MS}
  * while its entries are on screen, on a tab that draws them or open under
  * the project in the sidebar: a workstream is opened by

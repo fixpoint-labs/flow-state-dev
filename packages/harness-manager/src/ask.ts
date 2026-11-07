@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * How a run surfaces a question — a file in its own checkout, at a path that
  * carries the attempt and the run.
@@ -35,7 +36,7 @@
  * start over in a checkout that survived, still meets no earlier marker.
  *
  * Both numbers are server-derived (the board's attempt counter and the run
- * record's), so nothing the model writes decides which file is read (BP-031).
+ * record's), so nothing the model writes decides which file is read.
  *
  * ## Why `<checkout>/.fsdev/ask/`, and not somewhere tidier
  *

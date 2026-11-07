@@ -1,6 +1,7 @@
+// FIX-1506.
 /**
  * What `useSession({ live })` and the live workforce panels share when they
- * act on another session's change notice (FIX-1506): the timer's pace, and
+ * act on another session's change notice: the timer's pace, and
  * the one rule for whether a notice's resource path may belong to a resource
  * a view holds, with how a view learns a resource's storage prefix. Internal.
  */

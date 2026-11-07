@@ -1,5 +1,6 @@
+// FIX-2086 D2.
 /**
- * Starting the turn a steer is owed (FIX-2086 D2), in the session its task's
+ * Starting the turn a steer is owed, in the session its task's
  * run link names.
  *
  * A leaf, so the board (`./board`), which starts the turn after a steer that

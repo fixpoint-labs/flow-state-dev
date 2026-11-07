@@ -1,6 +1,7 @@
+// FIX-1983.
 /**
  * The Error Reporter's names, in a leaf module: the board's drain sends an
- * owed report by them without importing the reporter (FIX-1983).
+ * owed report by them without importing the reporter.
  */
 
 /** The flow the reporter runs on: its conversation and its report sessions. */

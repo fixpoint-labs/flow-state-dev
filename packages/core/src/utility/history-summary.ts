@@ -1,5 +1,6 @@
+// FIX-1613.
 /**
- * History summary (FIX-1613): a long conversation keeps what it said before
+ * History summary: a long conversation keeps what it said before
  * its history window.
  *
  * `historySummary({ summarize })` returns two halves, the way memory's

@@ -144,8 +144,9 @@ export const episodicMemoryCapability = createEpisodicMemoryCapability()
 export interface SemanticMemoryCapabilityConfig extends MemoryResourceOptions {
   /** Resource scope. Default: 'user'. */
   scope?: 'user' | 'org'
+  // FIX-745.
   /**
-   * Edge-slot config for the relations tier (FIX-745). When set, the semantic
+   * Edge-slot config for the relations tier. When set, the semantic
    * resource is created with a typed-edge graph (`edges` field + `.edges` API).
    * Omit to disable relations (no edge field, no behaviour change).
    */

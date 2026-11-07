@@ -1,3 +1,4 @@
+// FIX-2466.
 /**
  * One user's conversation with one worker, read from the worker's session.
  *
@@ -6,8 +7,8 @@
  * id is not this view's. Items are read when the view opens and then
  * followed on the session stream (`followSessionItems`): a line sent here,
  * a reply, another worker's message, each shows as it is stored, from any
- * process, and nothing is read on a clock or on the snapshot's refresh
- * (FIX-2466). Nothing is sent until the first read has landed, and a session
+ * process, and nothing is read on a clock or on the snapshot's refresh.
+ * Nothing is sent until the first read has landed, and a session
  * a line opened here holds nothing the user hasn't seen. A lapse after the
  * first read keeps it on screen; only a failed first read shows.
  */

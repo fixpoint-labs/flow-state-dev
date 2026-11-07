@@ -1,3 +1,4 @@
+// FIX-2384; FIX-2398; FIX-2389, FIX-2432.
 /**
  * One session flow for any coding harness: a person talks to a harness over
  * many turns of one session, and the session continues one conversation.
@@ -48,7 +49,7 @@
  * Each turn's record also keeps the commit the session's checkout was on when
  * the turn first reached it (`base`) and the one it was on when the turn
  * ended (`head`). The `changes` read answers what the turn's commits changed
- * between the two, file by file or one file's patch (FIX-2384), so a page
+ * between the two, file by file or one file's patch, so a page
  * shows each turn's own changes, never a later turn's.
  *
  * With `verify`, a turn the harness finished also runs the host's checks in
@@ -62,7 +63,7 @@
  * request (`reportHarnessSpend`), folded by orchestration's `requestSpendView`
  * so a turn reads like a task. And a subscription window a harness hears
  * about during a run (`onUsage`) lands in the person's usage record, read
- * through the flow's `harnessUsage` query (FIX-2398).
+ * through the flow's `harnessUsage` query.
  *
  * **Where a session starts** (`start`) is the person's pick at create, fixed
  * like the model: a ref to cut a new branch from, an existing branch, or a
@@ -81,8 +82,8 @@
  * failed: the owner's branch is the owner's.
  *
  * With `approveTools`, a tool call the harness hasn't been told it may make
- * stops the turn and waits on the user, as the manager's run waits
- * (FIX-2389, FIX-2432). The flow hands the harness `onToolApproval`; a held
+ * stops the turn and waits on the user, as the manager's run waits.
+ * The flow hands the harness `onToolApproval`; a held
  * call stops the harness step, the turn waits as `suspendForUser({ kind:
  * "approval" })`, and the answer resumes the conversation the turn confirmed.
  * A yes leaves a grant the re-issued call passes on, once or for the rest of
@@ -185,10 +186,11 @@ export const harnessTurnRecordSchema = z.object({
     })
     .nullable()
     .default(null),
+  // BP-030.
   /**
    * The commit the session's checkout was on when the turn first reached it:
    * where the turn's changes start. `null` when the checkout isn't a git
-   * repository, and on a turn recorded before this field (BP-030).
+   * repository, and on a turn recorded before this field.
    */
   base: z.string().nullable().default(null),
   /** The commit the checkout was on when the turn ended: where its changes end. `null` while it runs. */
@@ -204,10 +206,11 @@ export const harnessTurnRecordSchema = z.object({
   spend: taskSpendViewSchema.nullable().default(null),
   /** When the turn ended, in epoch millis: its duration is `endedAt - at`. */
   endedAt: z.number().nullable().default(null),
+  // BP-030.
   /**
    * Whether the turn is waiting now for a user's answer about a tool call
    * (`approveTools`). No other turn of the session runs while it is. `null`
-   * on a turn that never waited, and on one recorded before this field (BP-030).
+   * on a turn that never waited, and on one recorded before this field.
    */
   waitsOnApproval: z.boolean().nullable().default(null),
 });
@@ -234,12 +237,13 @@ export const harnessSessionStartSchema = z.union([
 /** Where a session starts. */
 export type HarnessSessionStart = z.infer<typeof harnessSessionStartSchema>;
 
+// BP-030.
 /**
  * Where a session works: a pointer to its worktree's row in the user's list
  * (`worktreesCollection`), which owns the path, branch, base, commit count,
  * owner and state. Nothing of the worktree is copied here, so the row is the
  * one owner. A record stored before this shape held copies of the path and
- * branch; they are dropped on read (BP-030).
+ * branch; they are dropped on read.
  */
 export const harnessSessionWorkspaceRecordSchema = z.object({
   /**
@@ -267,7 +271,7 @@ export const harnessSessionStateSchema = z.object({
    */
   model: z.string().min(1).optional().readonly(),
   /**
-   * The tracker issue this session works on (`FIX-2165`), named at create and
+   * The tracker issue this session works on (`ENG-142`), named at create and
    * fixed for the session's life, like `model`. Absent for a session that
    * names none, and on every session stored before issues could be named.
    */
@@ -479,9 +483,10 @@ export interface HarnessSessionFlowOptions {
    * query reads only what runs recorded.
    */
   readonly usageReaders?: Readonly<Record<string, HarnessUsageReader>>;
+  // FIX-2432.
   /**
-   * A user approves each tool call the harness hasn't been told it may make
-   * (FIX-2432): the turn waits on them, and their answer resumes its
+   * A user approves each tool call the harness hasn't been told it may make:
+   * the turn waits on them, and their answer resumes its
    * conversation. Off by default, and with it off no feed is handed. Needs
    * durable execution: a turn on a host without it is refused.
    */
@@ -1178,8 +1183,9 @@ function turnEndOf(ctx: object, requestId: string): { spend: TaskSpendView | nul
 }
 
 
+// FIX-2432.
 /**
- * A turn's tool approvals (FIX-2432), on the turn's sequencer state so a
+ * A turn's tool approvals, on the turn's sequencer state so a
  * resume after a restart reads them: the call the turn waits on, the grants
  * the user's answers left, and how many answers resumed it. A turn is one
  * request, so its grants end with it.

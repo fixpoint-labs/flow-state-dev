@@ -1,5 +1,6 @@
+// FIX-2160.
 /**
- * The rows that run in one session (FIX-2160): the one answer to "which tasks
+ * The rows that run in one session: the one answer to "which tasks
  * is this session working?".
  *
  * A row names the session it ran in by its run link (`run.sessionId`). A

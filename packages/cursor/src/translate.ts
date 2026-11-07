@@ -1,3 +1,4 @@
+// BP-030.
 /**
  * The pure interpretation layer: one Cursor wire message in, the framework's
  * vocabulary out. No side effects, no context, no vendor word past this
@@ -23,7 +24,7 @@
  *
  * So there is one drift rule, not two: an unrecognised message kind, or an
  * unrecognised content block, becomes a **status note**. The wire moves; a run
- * should degrade before it breaks (BP-030).
+ * should degrade before it breaks.
  */
 import type { PlanListItem } from "@flow-state-dev/core/harness";
 import type {

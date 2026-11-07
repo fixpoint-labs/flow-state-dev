@@ -1,5 +1,6 @@
+// FIX-1629.
 /**
- * Which of the viewed flow's actions a Tasks-tab row offers (FIX-1629).
+ * Which of the viewed flow's actions a Tasks-tab row offers.
  *
  * The DevTool changes a task only through the flow's own actions, so a row
  * offers exactly what the flow exposes. The signal is the input: an action
@@ -27,7 +28,8 @@ export function taskToolSuffix(collectionId: string): string {
   return collectionId.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
-/** The generated task tools that name their task `id` (FIX-2081): `getTask_<board>`, `updateTask_<board>`. */
+// FIX-2081.
+/** The generated task tools that name their task `id`: `getTask_<board>`, `updateTask_<board>`. */
 const ID_TOOLS = ["getTask", "updateTask"] as const;
 
 /**
@@ -65,9 +67,10 @@ export function taskIdField(
   return undefined;
 }
 
+// FIX-2081.
 /**
  * The filer's four task tools `taskToolActions` generates for a board, always
- * together (FIX-2081): enough to find a board's family.
+ * together: enough to find a board's family.
  */
 const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask"] as const;
 
@@ -88,9 +91,9 @@ function generatedSuffixes(actions: readonly string[]): string[] {
     .filter((suffix) => TASK_TOOLS.every((tool) => names.has(`${tool}_${suffix}`)));
 }
 
+// BR-9, BR-10.
 /**
- * The actions a row on `collectionId` offers, in the flow's order (BR-9,
- * BR-10).
+ * The actions a row on `collectionId` offers, in the flow's order.
  *
  * The boards an action can belong to are the ones the tab lists, plus every
  * board the flow's generated task tools name (see `generatedSuffixes`). An

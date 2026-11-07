@@ -1,11 +1,12 @@
+// FIX-2532, amending FIX-2160 D1; BP-033; BP-030.
 /**
  * Which partitions of a partitioned ledger hold a task id, answered by the
- * ledger's declared `byTaskId` index (FIX-2532, amending FIX-2160 D1).
+ * ledger's declared `byTaskId` index.
  *
  * A partitioned ledger stores a row at `<ledger id>/<partition segment>/<task
  * id>`, so a bare task id names no row until its partition is known, and
- * listing the whole ledger to find one would load every partition's rows
- * (BP-033). `defineTaskCollection({ partitionBy })` declares `byTaskId` on the
+ * listing the whole ledger to find one would load every partition's rows.
+ * `defineTaskCollection({ partitionBy })` declares `byTaskId` on the
  * ledger, so the engine writes each row's entry in the row's own write, and
  * `findBy` reads it across the partitions, which share one user cell. On a
  * store without index verbs `findBy` scans the cell instead: the same rows,
@@ -14,7 +15,7 @@
  * Rows an older release wrote carry no entries; the first lookup in a scope
  * builds the index from the rows it finds. That release also kept a marker
  * collection beside the ledger (`<ledger id>__ids/**`). Nothing reads or
- * writes it now: its rows are left in the store (BP-030).
+ * writes it now: its rows are left in the store.
  *
  * Orchestration knows no conversation: this answers partitions, and the
  * composing layer decides what an id held in more than one means.

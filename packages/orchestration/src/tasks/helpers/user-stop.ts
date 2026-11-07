@@ -1,9 +1,10 @@
+// FIX-2129; FIX-2133.
 /**
- * A task whose run waits for a user (FIX-2129): its cancel, and the debt the
+ * A task whose run waits for a user: its cancel, and the debt the
  * cancel owes that run.
  *
  * The claim gate mirrors the stop on the row (a suspension hold in
- * `Task.holds`, FIX-2133) in the write that drops its lease. Any write
+ * `Task.holds`) in the write that drops its lease. Any write
  * that then ends the row (a cancel, a cascade's cancel) owes the parked run
  * its `cancelled` resume, on the board's existing owed-resume mark
  * (`Task.resumeOwed`), in that same write, with the mirror it is owed to kept

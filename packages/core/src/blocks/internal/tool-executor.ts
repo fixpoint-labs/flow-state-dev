@@ -50,14 +50,16 @@ export interface ToolExecutorConfig {
   itemVisibility: ItemVisibility | undefined;
   agentName: string | undefined;
   statusGuard: { active: number; saved: string };
+  // FIX-814.
   /**
-   * The model-facing disambiguated alias this tool was compiled under
-   * (FIX-814). Recorded on the emitted `tool_output.toolCall.alias`. Absent on
+   * The model-facing disambiguated alias this tool was compiled under.
+   * Recorded on the emitted `tool_output.toolCall.alias`. Absent on
    * legacy call sites, where alias falls back to the sanitized block name.
    */
   alias?: string;
+  // FIX-814.
   /**
-   * The tool's `mapModelOutput` mapper, when declared (FIX-814). Applied once
+   * The tool's `mapModelOutput` mapper, when declared. Applied once
    * at settle time to compute the persisted `tool_output.modelOutput`.
    */
   mapModelOutput?: (output: unknown, ctx: BlockContext) => unknown | Promise<unknown>;

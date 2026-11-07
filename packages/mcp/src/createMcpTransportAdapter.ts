@@ -1,10 +1,11 @@
+// per FIX-22; see FIX-22 spec § 1; Per the FIX-438 contract.
 /**
  * MCP transport adapter — exposes every flow with `mcp.enabled: true`
  * as its own MCP server over Streamable HTTP. The canonical endpoint is
- * `POST /api/flows/:kind/mcp` (per FIX-22); callers may opt into a dedicated
+ * `POST /api/flows/:kind/mcp`; callers may opt into a dedicated
  * `POST /mcp/:kind` layout.
  *
- * v1 design choices (see FIX-22 spec § 1):
+ * v1 design choices:
  *   - Stateless only. No `Mcp-Session-Id` is issued; every `tools/call`
  *     creates a fresh flow session under `host.dispatch`. Stateful mode
  *     is deferred until a real consumer asks for it.
@@ -22,7 +23,7 @@
  *
  * The adapter is mounted alongside the HTTP adapter via
  * `createFlowApiRouter({ adapters: [createMcpTransportAdapter()] })`.
- * Per the FIX-438 contract, all action execution still flows through
+ * All action execution still flows through
  * `host.dispatch` — the runtime below this layer is identical to HTTP.
  */
 import type {

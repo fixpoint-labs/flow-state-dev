@@ -1,5 +1,6 @@
+// FIX-2082; FIX-2239.
 /**
- * The engine's half of a wait (FIX-2082): the depth a chain of waits reaches,
+ * The engine's half of a wait: the depth a chain of waits reaches,
  * the host's deadline bounds, and the resume a waited-on request's parent is
  * owed when that request ends.
  *
@@ -35,7 +36,7 @@
  * ended before its parent parked is caught as the parent parks.
  *
  * A gate may also wait on a request of its own session that nobody dispatched:
- * a message queued behind a request stopped for a person (FIX-2239). That
+ * a message queued behind a request stopped for a person. That
  * request ends only by a run that resumed it (the person answered, stopped it,
  * or let it expire), so the run of a resumed request looks in its own session
  * too. A request that never parked costs nothing more.
@@ -237,9 +238,10 @@ export function createRequestWaits(inputs: {
   readonly sessionId: string;
   /** A request's record, with its item log, from the request store. */
   readonly readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "tenantId" | "items"> | undefined>;
+  // FIX-2166.
   /**
-   * How `running` tells a request whose process died from one still running
-   * (FIX-2166): its registry entry's heartbeat, read against the host's stale
+   * How `running` tells a request whose process died from one still running:
+   * its registry entry's heartbeat, read against the host's stale
    * threshold, the one past which the stale-request sweep marks it
    * interrupted. Absent where heartbeats can't say (they are off, or beat
    * slower than half the threshold): there `running` reads the record alone.
@@ -260,9 +262,11 @@ export function createRequestWaits(inputs: {
     readonly staleThresholdMs: number;
     readonly now: () => number;
   };
-  /** `owingPark` (FIX-2269), built on the host's wakes (`park-owed.ts`). */
+  // FIX-2269.
+  /** `owingPark`, built on the host's wakes (`park-owed.ts`). */
   readonly owingPark?: RequestWaits["owingPark"];
-  /** The host's wakes, where `ended` reads a park an interrupted request owes (FIX-2269). */
+  // FIX-2269.
+  /** The host's wakes, where `ended` reads a park an interrupted request owes. */
   readonly wakes?: WakeStore;
 }): RequestWaits {
   // An `in_progress` record whose heartbeat stopped past the stale threshold

@@ -1,5 +1,6 @@
+// FIX-2076.
 /**
- * A write a collection refuses for a reason only it can name (FIX-2076).
+ * A write a collection refuses for a reason only it can name.
  *
  * A ref that wraps a ledger with rules of its own (a session board that files
  * a worker's step for itself apart from its tasks for delegates) throws this

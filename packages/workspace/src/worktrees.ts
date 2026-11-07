@@ -72,9 +72,10 @@ export const worktreePullRequestSchema = z.object({
 /** A pull request on a worktree's branch. */
 export type WorktreePullRequest = z.infer<typeof worktreePullRequestSchema>;
 
+// BP-023, BP-030.
 /**
  * One worktree. Every field is nullable or defaulted, so a row written by an
- * older or newer shape still parses (BP-023, BP-030).
+ * older or newer shape still parses.
  */
 export const worktreeRowSchema = z.object({
   /** The row's own key, as {@link worktreeKey} made it. */
@@ -122,10 +123,11 @@ const WORKTREE_FIELDS = [
   "pullRequests",
 ] as const;
 
+// BP-027.
 /**
  * The user's worktree rows.
  *
- * User-scoped and shared across flows (BP-027), so a board run's worktree and
+ * User-scoped and shared across flows, so a board run's worktree and
  * a session's are in one list. Lazy: a writer upserts by exact key and never
  * lists. `llmReadable`, so an agent reads the list with core's resource tools;
  * `live`, so an open page sees a row change mid-turn. No client write, and no

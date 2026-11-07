@@ -42,12 +42,13 @@ export const workingMemoryStateSchema = z.object({
 /** The full working memory state: entries + turn counter. */
 export type WorkingMemoryState = z.infer<typeof workingMemoryStateSchema>
 
+// FIX-435.
 /**
  * Session-scoped resource definition for working memory.
  *
  * Working memory is intrinsically session-bound: it tracks what's currently
  * in mind for the active conversation. Blocks declare it via the unified
- * `resources: { workingMemory: workingMemoryResource }` map (FIX-435) and
+ * `resources: { workingMemory: workingMemoryResource }` map and
  * access it via `ctx.resources.get('workingMemory')` regardless of scope.
  */
 export const workingMemoryResource = defineResource({

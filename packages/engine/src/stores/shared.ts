@@ -5,8 +5,9 @@ import type {
   RequestRecord
 } from "./types";
 
+// FIX-1010.
 /**
- * Request list-filter predicate for `status` and `sessionId` (FIX-1010). A
+ * Request list-filter predicate for `status` and `sessionId`. A
  * single value matches by equality; an array matches set membership, which is
  * what lets "does any non-terminal run exist" (or "which of these runs are
  * unfinished") be one read instead of one per member. An absent filter passes
@@ -40,8 +41,9 @@ export function applyOffsetLimit<TValue>(
   return sliced.slice(0, Math.max(0, limit));
 }
 
+// FIX-438.
 /**
- * Backfill `source` on records persisted before FIX-438 added the field.
+ * Backfill `source` on records persisted before the field existed.
  * New writes always carry it; this guard runs at every read site so callers
  * see a complete record without having to re-handle the historical default.
  */
@@ -53,9 +55,10 @@ export function withRequestSourceDefault<T extends RequestRecord | undefined>(
   return { ...(record as RequestRecord), source: "http" } as T;
 }
 
+// FIX-1026.
 /**
  * Force a request record's `abortRequested` to the value already stored,
- * whatever the incoming record says (FIX-1026).
+ * whatever the incoming record says.
  *
  * The single helper behind `RequestStore.set`'s rule that the flag is off its
  * write surface in both directions. Adapters call it on the value they are
@@ -86,13 +89,12 @@ export function withActiveRequestSourceDefault<T extends ActiveRequestEntry | un
   return { ...(entry as ActiveRequestEntry), source: "http" } as T;
 }
 
+// BP-030; FIX-999.
 /**
- * Read a request registry's cross-process sharedness declaration, fail-closed
- * (FIX-999).
+ * Read a request registry's cross-process sharedness declaration, fail-closed.
  *
  * An adapter compiled against the contract before the declaration existed
- * reports `undefined`, and this returns `false` for it — the `== null` guard
- * BP-030 asks for. The direction matters: liveness answers "is this request
+ * reports `undefined`, and this returns `false` for it — an `== null` guard. The direction matters: liveness answers "is this request
  * running?" from registry entries, and on a per-process registry another
  * process's healthy request is simply absent. Guessing `true` would report live
  * work dead, which is the answer that causes double execution. Guessing `false`
@@ -119,9 +121,10 @@ export function assertMaxDepthTwo(path: string[], verb: string): void {
   }
 }
 
+// FIX-1735.
 /**
  * A full-record `set` whose record carries no `items` keeps the items the
- * store holds (FIX-1735), on the stores that keep items on the record
+ * store holds, on the stores that keep items on the record
  * (in-memory, filesystem). A state write in the middle of a run is built from
  * a snapshot that predates the items persisted since, so it leaves `items`
  * off rather than replace them; the SQL adapters keep items out of `set`
@@ -136,10 +139,11 @@ export function withHeldItems<T extends RequestRecord>(
   return { ...value, items: held };
 }
 
+// FIX-811.
 /**
  * Union two item logs by `id`, last write wins per id, in order: `prior` keeps
  * its positions and ids new in `next` append in `next`'s order. The
- * `RequestStore.persistItems` merge contract (FIX-811), shared by the runtime's
+ * `RequestStore.persistItems` merge contract, shared by the runtime's
  * terminal write of a same-request continuation and the stores that hold
  * items on the record (in-memory, filesystem); the SQL adapters do the same
  * with an UPSERT.

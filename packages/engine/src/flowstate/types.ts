@@ -160,8 +160,9 @@ export interface CreateFlowStateOptions<
   /** HTTP-level error sink. Receives `{ method, path }` context. */
   onError?: CreateFlowApiRouterOptions["onError"];
 
+  // FIX-724.
   /**
-   * Opt-in error-capture sink (FIX-724). Routes runtime block failures (tool
+   * Opt-in error-capture sink. Routes runtime block failures (tool
    * errors, generator failures, handler exceptions) to an external
    * observability service. Distinct from `onError`, which is an HTTP-level sink:
    * `errorCapture` is block-aware and receives the failing block's identity plus
@@ -267,8 +268,9 @@ export interface CreateFlowStateOptions<
    */
   maxChildSessionListLimit?: number;
 
+  // FIX-2063.
   /**
-   * Durable execution for this host (FIX-2063). On by default when the
+   * Durable execution for this host. On by default when the
    * resolved stores persist (filesystem, SQLite, Postgres): `createFlowState`
    * builds the default `createCheckpointDurabilityProvider` from its own
    * resolved stores, so sequencers checkpoint, a crashed request resumes, and
@@ -282,8 +284,9 @@ export interface CreateFlowStateOptions<
    */
   durable?: boolean;
 
+  // FIX-141.
   /**
-   * Retention policy for the durability sweeper (FIX-141). Takes effect
+   * Retention policy for the durability sweeper. Takes effect
    * wherever durable execution is on: by default over persisting stores, or
    * with `durable: true`. Enforces
    * suspension expiry and prunes aged-out suspensions, leases, and orphaned
@@ -291,24 +294,27 @@ export interface CreateFlowStateOptions<
    */
   durabilityRetention?: RuntimeConfig["durabilityRetention"];
 
+  // FIX-2078.
   /**
    * How long past its due time a debt may stay outstanding before a pass
-   * ends it, settled undeliverable and logged (FIX-2078). Only takes effect
+   * ends it, settled undeliverable and logged. Only takes effect
    * with durable execution and a store that keeps wakes. Default 24 hours.
    */
   maxDebtAgeMs?: RuntimeConfig["maxDebtAgeMs"];
 
+  // FIX-2082.
   /**
-   * A wait's deadline bounds (FIX-2082): the deadline a wait that names none
+   * A wait's deadline bounds: the deadline a wait that names none
    * gets (default five minutes), and the shortest and longest one may name
    * (default one second and 24 hours). Only takes effect with durable
    * execution and a store that keeps wakes.
    */
   waitDeadlines?: RuntimeConfig["waitDeadlines"];
 
+  // FIX-2129.
   /**
-   * The deadline a stop that waits for a user gets when it names none
-   * (FIX-2129): every `ctx.suspendForUser` without a `deadline`, and every held
+   * The deadline a stop that waits for a user gets when it names none:
+   * every `ctx.suspendForUser` without a `deadline`, and every held
    * question. Unset by default, so such a stop waits until it is answered,
    * stopped or cancelled. One second to 365 days.
    */

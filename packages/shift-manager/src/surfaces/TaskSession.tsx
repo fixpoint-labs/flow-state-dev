@@ -1,5 +1,6 @@
+// S3, BR-5 to BR-10; FIX-2009.
 /**
- * A task's Session tab (S3, BR-5 to BR-10): the items of the run the task's
+ * A task's Session tab: the items of the run the task's
  * row names, in stored order, live while the tab is open.
  *
  * The run session's feed: its newest items, then each item its stream brings,
@@ -8,8 +9,8 @@
  * is open, so a user reading Brief pays for no stream. A session shared with
  * other tasks shows only the items stamped with this task's id (a line its
  * composer sent, and the reply, carry the stamp when the door takes the task),
- * and the lines it sent to a door that keeps no task id, with their replies
- * (FIX-2009), and says so.
+ * and the lines it sent to a door that keeps no task id, with their replies,
+ * and says so.
  *
  * Each item is drawn by Shift Manager's copy of the registry's item components
  * (`chatAssistantRenderers`: message, reasoning, tool, status, error, task

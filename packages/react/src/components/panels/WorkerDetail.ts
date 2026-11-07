@@ -1,19 +1,20 @@
+// BR-31; FIX-1500 S5; BR-5; BR-27; BR-30.
 /**
- * `WorkerDetail` — one worker's kind and instructions (FIX-1500 S5).
+ * `WorkerDetail` — one worker's kind and instructions.
  *
  * **Kind costs no read.** It is a prop from the row the host already holds —
  * the navigator's flow listing — so opening a worker never re-fetches what the
- * rail already knew before it was clicked (BR-5).
+ * rail already knew before it was clicked.
  *
  * **Instructions are one item read**, `getCollectionItemState(sessionId,
  * collectionRef, workerId)`, through the same `client` seam and the
- * same credential-less fallback `Roster` and `BoardColumns` ship with
- * (BR-27). It reuses their fence (`usePanelItem`, in `reads.ts`) rather than
+ * same credential-less fallback `Roster` and `BoardColumns` ship with.
+ * It reuses their fence (`usePanelItem`, in `reads.ts`) rather than
  * hand-rolling a third read primitive, and `Roster`'s own `isWorker` /
  * `normalizeWorker` so the list and this detail agree on what a worker row is and
  * on how a missing `instructions` value is treated.
  *
- * **A worker with no public roster row gets no read at all** (BR-31): when the
+ * **A worker with no public roster row gets no read at all**: when the
  * host passes no `workerId` — a worker declared in a `WORKER.md`, or one a user
  * hired for themselves — the instructions read is never mounted: mounting is
  * the gate, so no `workerId` means no hook and no request. The host, not this component,
@@ -22,11 +23,11 @@
  * roster topic from an address itself — see the file this issue's PLAN calls
  * out under "Reuse": hand-splitting `<org>.~<user>.<id>` can produce a short
  * id that happens to equal a DIFFERENT, org-visible worker's key, which is
- * exactly the silent-partial failure BR-31 exists to rule out.
+ * exactly the silent-partial failure a missing roster row must rule out.
  *
  * **Five states, kept apart by `data-state`:** the instructions text, *none
- * given* (a hired worker with no instructions, BR-30), *not published* (no
- * public roster row, BR-31), still reading, and could not be read. The last
+ * given* (a hired worker with no instructions), *not published* (no
+ * public roster row), still reading, and could not be read. The last
  * two collapsing into the first pair is the failure V10 is written against.
  *
  * Nothing here publishes a class name and the package brings no CSS framework
@@ -47,13 +48,14 @@ export type WorkerDetailProps = {
    * Rendered as given; this component never reads it.
    */
   readonly kind: string;
+  // BR-31.
   /**
    * The roster topic to read instructions from — pass this ONLY for a worker
    * with a public, org-visible roster row.
    *
    * Leave it out for a worker declared in a `WORKER.md`, or one hired as a
-   * user's own: this component then shows "not published" and makes no read
-   * (BR-31). Never pass a full address (`<org>.~<user>.<id>` or
+   * user's own: this component then shows "not published" and makes no read.
+   * Never pass a full address (`<org>.~<user>.<id>` or
    * `<org>.<workerId>`) here — this is a roster TOPIC, the same string
    * `Roster`'s rows carry as `workerId`.
    */
@@ -63,9 +65,10 @@ export type WorkerDetailProps = {
    * path segment, so it carries no slash — see `RosterProps.collectionRef`.
    */
   readonly collectionRef?: string;
+  // BR-27.
   /**
    * The host's own client, so the read carries the host's transport
-   * and its credential (BR-27). Pass a STABLE reference — see `Roster`.
+   * and its credential. Pass a STABLE reference — see `Roster`.
    */
   readonly client?: PanelItemSource;
 };
