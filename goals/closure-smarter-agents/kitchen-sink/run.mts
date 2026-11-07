@@ -18,14 +18,16 @@
  * ask's failing check, every ask over the public client. The coder ask runs
  * Claude Code mode, which the app turns on only for a non-root server with a
  * Claude Code sign-in; where it is off, the ask fails its setup, naming the
- * app's reason.
+ * app's reason. On Haiku (`GOAL_HAIKU=1`) the key every other ask runs on is
+ * Claude Code's credential too, and the session runs Haiku (`../model.mts`).
  *
  * Run:  GOAL_PASS=cut pnpm tsx goals/closure-smarter-agents/kitchen-sink/run.mts
- *       GOAL_PASS=control (serves 0df5c85) · GOAL_PASS=wrap (sets nothing)
+ *       GOAL_PASS=control (serves 0df5c85) · GOAL_PASS=wrap (sets nothing) · GOAL_HAIKU=1 (on Haiku)
  *       GOAL_ASKS=date,sizing (a subset) · GOAL_RUNS
  */
 import { join } from "node:path";
 import { askWorker, clientFor, gitRepository, heldSkills, itemsOf, runClosure, serveFsdev, untilQuiet, skillFiles, turnChecks, turnOf, type AppDriver } from "../closure.mts";
+import { APP_MODELS, HAIKU_ID } from "../model.mts";
 
 /** Kitchen Sink's one user: its principal is a constant (`lib/kitchen-sink-principal.ts`). */
 const USER = "devuser";
@@ -63,6 +65,7 @@ const driver: AppDriver = {
         // The repository's checks are the host's setting, like a project's in the other apps: a fixture, not a switch.
         KITCHEN_SINK_HARNESS_CHECKS: d.coder.check,
       },
+      model: p.model,
     });
     const fsd = clientFor(served.origin, USER);
     const desk = (line: string) => askWorker(fsd, { user: USER, worker: DESK, line });
@@ -81,7 +84,8 @@ const driver: AppDriver = {
         coder: async (d) => {
           const sessionId = await fsd
             .flow(CLAUDE_CODE_FLOW)
-            .createSession()
+            // A session names the model it runs, as the page's New session does; on Haiku, Haiku.
+            .createSession(p.model === APP_MODELS ? undefined : { state: { model: HAIKU_ID } })
             .then(
               (session) => session.id,
               (error: unknown) => {
