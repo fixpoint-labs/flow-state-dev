@@ -15,10 +15,11 @@
  * Holds when: no `harness`, `internal` or `unexport` name is exported from the
  * root or `core/types`; every `harness` name is on `core/harness`; every
  * `internal` name on `core/internal`; every `unexport` name on no public entry
- * (any specifier without an `internal` segment); `BlockContext` has neither a
- * `requestHost` member nor a symbol-keyed one; and the installed package holds no
- * compiled test file (`*.test.*`, `*.spec.*`). `benchmark` rows move with another
- * issue and are not read.
+ * (any specifier without an `internal` segment); every `benchmark` name on no
+ * public core entry (they moved to `@flow-state-dev/testing/benchmark`, which the
+ * packed-install check's `benchmark-subpaths.mjs` reads); `BlockContext` has
+ * neither a `requestHost` member nor a symbol-keyed one; and the installed package
+ * holds no compiled test file (`*.test.*`, `*.spec.*`).
  *
  * Prints `core-dts: ok`, or `core-dts: FAIL at moved-names: <n> violation(s): …`
  * followed by one line per violation. Anything else (TypeScript missing, a crash)
@@ -32,8 +33,7 @@ const CORE = "@flow-state-dev/core";
 const moved = readFileSync(process.env.FSD_MOVED_TSV, "utf8")
   .split("\n")
   .filter(Boolean)
-  .map((l) => l.split("\t"))
-  .filter(([move]) => move !== "benchmark");
+  .map((l) => l.split("\t"));
 const specs = [...new Set([...JSON.parse(process.env.FSD_CORE_SPECS), CORE, `${CORE}/types`, `${CORE}/harness`, `${CORE}/internal`])];
 
 const probe = "goal-core-dts.probe.ts";
@@ -69,8 +69,8 @@ for (const [move, row] of moved) {
   for (const spec of [CORE, `${CORE}/types`]) for (const n of new Set([row, name])) if (has(spec, n)) violations.push(`${n} (${move}) is still on ${spec}`);
   if (move === "harness" && !has(`${CORE}/harness`, name)) violations.push(`${name} is not on ${CORE}/harness`);
   if (move === "internal" && !has(`${CORE}/internal`, name)) violations.push(`${name} is not on ${CORE}/internal`);
-  if (move === "unexport")
-    for (const spec of publicSpecs) if (has(spec, name)) violations.push(`${name} (unexport) is on ${spec}`);
+  if (move === "unexport" || move === "benchmark")
+    for (const spec of publicSpecs) if (has(spec, name)) violations.push(`${name} (${move}) is on ${spec}`);
 }
 
 const blockContext = exportsOf.get(CORE)?.get("BlockContext") ?? exportsOf.get(`${CORE}/types`)?.get("BlockContext");
