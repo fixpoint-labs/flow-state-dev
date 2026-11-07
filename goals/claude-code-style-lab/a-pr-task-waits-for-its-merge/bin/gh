@@ -1,0 +1,66 @@
+#!/usr/bin/env node
+/*
+ * A stub `gh` for the goal check, first on the lab's PATH. It answers the two
+ * calls a coding task's pull request takes, from the state file the check
+ * writes before each leg (`GOAL_GH_STATE`), and logs every call it gets
+ * (`GOAL_GH_LOG`), one JSON line each:
+ *
+ * - `gh api repos/{owner}/{repo}/pulls?head=…`: the branch listing a run's end
+ *   makes. It lists pull request N when the state names N with a `match` the
+ *   call's path or working folder contains (the run's branch or checkout) and
+ *   the run did its work there (`SCRIPTED-RUN.md`): the run opened it.
+ * - `gh api repos/acme/app/pulls/N`: one pull request's state, as the state
+ *   says (`open`, `merged`, `closed`), or a failure while `fail` is set.
+ *
+ * Anything else fails, naming the call.
+ */
+import fs from "node:fs";
+import path from "node:path";
+const args = process.argv.slice(2);
+const call = args[args.length - 1] ?? "";
+const stateFile = process.env.GOAL_GH_STATE;
+const log = process.env.GOAL_GH_LOG;
+const state = stateFile && fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, "utf8")) : { prs: {} };
+const url = (n) => `https://github.com/acme/app/pull/${n}`;
+const answer = (out, code = 0, err = "") => {
+  if (log) fs.appendFileSync(log, JSON.stringify({ at: Date.now(), args, cwd: process.cwd(), code }) + "\n");
+  if (err) process.stderr.write(err);
+  if (out !== undefined) process.stdout.write(JSON.stringify(out));
+  process.exit(code);
+};
+if (args[0] !== "api") answer(undefined, 1, `stub gh: unexpected call ${args.join(" ")}\n`);
+const where = `${decodeURIComponent(call)} ${process.cwd()}`;
+if (call.includes("/pulls?")) {
+  const worked = fs.existsSync(path.join(process.cwd(), "SCRIPTED-RUN.md"));
+  const listed = Object.entries(state.prs ?? {}).filter(([, pr]) => worked && typeof pr.match === "string" && where.includes(pr.match));
+  answer(
+    listed.map(([n, pr]) => ({
+      number: Number(n),
+      html_url: url(n),
+      title: `Pull request ${n}`,
+      state: pr.state === "open" ? "open" : "closed",
+      draft: false,
+      merged_at: pr.state === "merged" ? new Date().toISOString() : null,
+      created_at: new Date().toISOString(),
+      head: { ref: "branch" },
+    })),
+  );
+}
+const read = /pulls\/(\d+)$/.exec(call);
+if (read !== null) {
+  if (state.fail === true) answer(undefined, 1, "gh: To get started with GitHub CLI, please run:  gh auth login\n");
+  const n = Number(read[1]);
+  const pr = state.prs?.[n];
+  if (pr === undefined) answer(undefined, 1, `gh: Not Found (HTTP 404): pull request ${n}\n`);
+  answer({
+    number: n,
+    html_url: url(n),
+    title: `Pull request ${n}`,
+    state: pr.state === "open" ? "open" : "closed",
+    merged: pr.state === "merged",
+    merged_at: pr.state === "merged" ? new Date().toISOString() : null,
+    head: { ref: "branch", sha: "0000000", repo: { full_name: "acme/app" } },
+    base: { repo: { full_name: "acme/app" } },
+  });
+}
+answer(undefined, 1, `stub gh: unexpected call ${args.join(" ")}\n`);
