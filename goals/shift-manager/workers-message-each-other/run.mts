@@ -69,10 +69,10 @@ const subLegs = new Set(
 ) as Set<SubLeg>;
 for (const s of subLegs) if (!(SUB_LEGS as readonly string[]).includes(s)) throw new Error(`unknown sub-leg "${s}" in GOAL_LEG9`);
 
-/** The names FIX-2070 removed: the vocabulary sweep's two rows (FIX-2242 D2), so there is one list. */
+/** The names FIX-2070 removed: the glossary's two message rules (FIX-2242 D2), so there is one list. */
 type RetiredRow = { id: string; files: RegExp; pattern: RegExp };
-const RULES = new URL("../../vocabulary/one-word-per-thing/rules.mjs", import.meta.url).href;
-const { RETIRED } = (await import(RULES)) as { RETIRED: RetiredRow[] };
+const RULES = new URL("../../../docs/contributing/glossary.mjs", import.meta.url).href;
+const { SWEEP_RULES: RETIRED } = (await import(RULES)) as { SWEEP_RULES: RetiredRow[] };
 const REMOVED_ROWS = RETIRED.filter((r) => r.id === "message-names" || r.id === "message-reply-to");
 
 /** `sweep`: no package's source names a removed name, each row at its own scope. */

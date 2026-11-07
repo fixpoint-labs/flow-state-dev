@@ -3,10 +3,12 @@
  * FIX-1876 vocabulary sweep — one word per thing. The goal check for goal.md beside it.
  *
  * Walks every git-tracked file under the swept roots, finds each use of a retired
- * name or a retired meaning (rules.mjs → RETIRED), and fails on any hit that the
- * keep list (rules.mjs → KEEP) does not classify. A line carrying the marker
- * `retired-name-refusal` names a retired name on purpose (a legacy reader, BP-030, or a refusal)
- * and is counted, not failed.
+ * name or a retired meaning, and fails on any hit that an exemption does not
+ * classify. The words, the roots, the exclusions and the exemptions are all read
+ * from the glossary (docs/contributing/glossary.mjs); this file owns only the walk,
+ * the totality check and the report. A line carrying the glossary's refusal marker
+ * names a retired name on purpose (a legacy reader, BP-030, or a refusal) and is
+ * counted, not failed.
  *
  *   node goals/vocabulary/one-word-per-thing/sweep.mjs            # report + verdict
  *   node goals/vocabulary/one-word-per-thing/sweep.mjs --list     # every unclassified hit
@@ -14,12 +16,12 @@
  *   node goals/vocabulary/one-word-per-thing/sweep.mjs --only ask # one family (rule-id prefix)
  *
  * Totality: every tracked file under a swept root is either scanned or excluded by a
- * named rule in rules.mjs → EXCLUDE; the report prints both counts, and the run fails
+ * named rule (the glossary's EXCLUDE); the report prints both counts, and the run fails
  * if a file is neither. CI's Process guards run it, and again with `--control`.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { EXCLUDE, KEEP, REFUSAL_MARKER, RETIRED, ROOTS } from "./rules.mjs";
+import { EXCLUDE, REFUSAL_MARKER, ROOTS, SWEEP_EXEMPTIONS as KEEP, SWEEP_RULES as RETIRED } from "../../../docs/contributing/glossary.mjs";
 
 const argv = process.argv.slice(2);
 const args = new Set(argv);
