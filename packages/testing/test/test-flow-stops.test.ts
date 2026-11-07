@@ -60,6 +60,8 @@ describe("testFlow and a step that waits for a person", () => {
 
     expect(after.status).toBe("completed");
     expect(after.requestId).toBe(run.requestId);
+    // The step's output, read as a client reads it: from the status route.
+    expect(after.output).toEqual({ refunded: 5 });
     expect(after.suspension).toBeUndefined();
     expect(seen).toEqual(["draft", "answered:yes"]);
     // The items after the stop: its answer, and none of the ones before it.

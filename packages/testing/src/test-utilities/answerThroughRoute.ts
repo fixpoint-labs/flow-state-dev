@@ -5,7 +5,7 @@
  * Each call builds a router over the test's stores and runtime config, posts
  * the answer, and reads what followed the way a client does: the route's
  * stream of the continued run, which closes when the run settles, then one
- * read of the request's status route. The router is disposed before the call
+ * read of the request's status route with its stored result. The router is disposed before the call
  * returns, so no timer of its outlives the test. A refusal (an action the
  * stop doesn't allow, a second answer, data that fails its schema, a stop
  * that isn't there) throws a {@link StopRefusedError} with the route's status
@@ -19,7 +19,7 @@ import {
   type StoreRegistry
 } from "@flow-state-dev/engine";
 import type { RuntimeConfig } from "@flow-state-dev/engine/host";
-import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
+import type { FlowInstance, RequestStatus, RequestStatusSnapshot } from "@flow-state-dev/core/types";
 import { ITEM_UPDATE_INVARIANT_KEYS, type OutputItem, type RequestStreamEvent } from "@flow-state-dev/core/items";
 
 /** A route's refusal of an answer, as a screen would be told it. */
@@ -41,8 +41,15 @@ export type RouteAnswer = {
   headers?: Record<string, string>;
 };
 
-/** What followed the answer: the run's status and the items emitted after the stop. */
-export type RouteOutcome = { status: RequestStatus; items: OutputItem[] };
+/**
+ * What followed the answer: the run's status, the items emitted after the
+ * stop, and the run's stored result as the status route reports it.
+ */
+export type RouteOutcome = {
+  status: RequestStatus;
+  items: OutputItem[];
+  result?: RequestStatusSnapshot["result"];
+};
 
 export async function answerThroughRoute(
   context: { flow: FlowInstance; stores: StoreRegistry; runtimeConfig: RuntimeConfig; requestId: string },
@@ -71,10 +78,10 @@ export async function answerThroughRoute(
     });
     if (!res.ok) throw new StopRefusedError(res.status, await refusalMessage(res));
     const items = await itemsOf(res);
-    const statusRes = await fetcher(`${base}/status`, { headers: answer.headers });
+    const statusRes = await fetcher(`${base}/status?include_result_output=true`, { headers: answer.headers });
     if (!statusRes.ok) throw new StopRefusedError(statusRes.status, await refusalMessage(statusRes));
-    const snapshot = (await statusRes.json()) as { status: RequestStatus };
-    return { status: snapshot.status, items };
+    const snapshot = (await statusRes.json()) as RequestStatusSnapshot;
+    return { status: snapshot.status, items, result: snapshot.result };
   } finally {
     await disposeFlowApiRouter(router);
   }
