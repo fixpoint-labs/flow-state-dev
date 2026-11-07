@@ -116,6 +116,33 @@ describe("useAction with result: true, executed before the passive effects run",
   });
 });
 
+describe("useAction with result: true, under StrictMode", () => {
+  it("reads the result of the execution replayed after the simulated unmount, and loading ends", async () => {
+    const { wrapper, settle } = server();
+    const executions: Array<Promise<unknown>> = [];
+    const { result } = renderHook(
+      () => {
+        const action = useAction({ action: "summarize", result: true });
+        useLayoutEffect(() => {
+          executions.push(action.execute({ ticketId: "t1" }, "sess_1").catch((error: unknown) => error));
+          // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount, as StrictMode replays it
+        }, []);
+        return action;
+      },
+      { wrapper, reactStrictMode: true }
+    );
+    // StrictMode mounts, unmounts and mounts again: two executions, the first stopped with its mount.
+    await waitFor(() => expect(executions).toHaveLength(2));
+    expect(await executions[0]).toMatchObject({ name: "AbortError" });
+
+    settle();
+    await act(async () => {
+      expect(await executions[1]).toEqual({ status: "completed", output: { summary: "short" } });
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+  });
+});
+
 describe("useAction without result", () => {
   it("resolves execute on acceptance, as before", async () => {
     const { wrapper, urls } = server();

@@ -65,32 +65,38 @@ export function useAction(
   const flow = useMemo(() => fsd.flow(flowKind!), [fsd, flowKind]);
   const readResult = options.result === true;
 
-  // Stops every wait still running when the component unmounts. One controller
-  // serves every execution, a layout effect's included, and the cleanup aborts
-  // that same one; only a remount (StrictMode) after an abort makes a new one.
-  const unmounted = useRef<AbortController | null>(null);
+  // Each execution's own controller, while it runs. An unmount aborts every one
+  // of them, so no wait outlives the component, a layout effect's included; a
+  // controller is never reused, so an execution after a (StrictMode) remount
+  // starts unaborted.
+  const running = useRef(new Set<AbortController>());
   useEffect(() => {
-    if (unmounted.current?.signal.aborted === true) unmounted.current = null;
-    const controller = (unmounted.current ??= new AbortController());
-    return () => controller.abort();
+    const live = running.current;
+    return () => {
+      for (const controller of live) controller.abort();
+      live.clear();
+    };
   }, []);
 
   const execute = useCallback(
     async (input: unknown, sessionId?: string): Promise<ExecuteActionResponse | RequestResult> => {
-      const signal = (unmounted.current ??= new AbortController()).signal;
+      const controller = new AbortController();
+      running.current.add(controller);
       setLoading(true);
       setError(undefined);
 
       try {
         const sent = await flow.send(options.action, input, { sessionId });
-        return readResult ? await sent.result({ signal }) : sent.response;
+        return readResult ? await sent.result({ signal: controller.signal }) : sent.response;
       } catch (cause) {
         const normalized =
           cause instanceof Error ? cause : new Error(String(cause));
-        if (!signal.aborted) setError(normalized);
+        if (!controller.signal.aborted) setError(normalized);
         throw normalized;
       } finally {
-        if (!signal.aborted) setLoading(false);
+        running.current.delete(controller);
+        // Loading while any execution still runs, an aborted one included in settling it.
+        setLoading(running.current.size > 0);
       }
     },
     [flow, options.action, readResult]
