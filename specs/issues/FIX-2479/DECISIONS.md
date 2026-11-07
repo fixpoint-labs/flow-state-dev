@@ -2,8 +2,10 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-The owner decided the convention; it is not reopened here. Two decisions draw where the rename
-stops: what a stored hold says, and whether stored data moves at all.
+The owner decided the convention, and on 2026-11-07 the rule for retired words on the wire
+(D3); neither is reopened here. Two decisions draw where the rename stops: what a stored hold
+says, and whether stored data moves at all. D4 is how published quotes of a renamed message
+wait for the release.
 
 ## The tree
 
@@ -14,6 +16,10 @@ flowchart TD
   D1 -.->|"rejected · both holds are asks"| X2["ask"]
   I --> D2["D2 · exported names move · stored fields stay"]
   D2 -.->|"rejected · a dual read per field"| X3["rename stored fields too"]
+  I --> D3["D3 · owner · every value an app sees is renamed before 1.0"]
+  D3 -.->|"rejected · a retired word kept on the wire"| X4["keep external-dispatcher as legacy"]
+  I --> D4["D4 · six released quotes wait for release-docs · one named exemption"]
+  D4 -.->|"rejected · misquotes the released API"| X5["reword the quotes in the docs-fix PR"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -33,9 +39,8 @@ It comes down to what the value says: *ask* fits both holds, *row* names the sto
 says the hold is the task's own rather than a mirror of a parked run.
 
 **What would change my mind:** evidence that no client outside this repository reads the hold
-source. Then it is internal, and keeping `"row"` costs nothing. Or an owner's rule that the epic
-keeps retired words on the wire: `external-dispatcher` is kept that way today
-([Open](#open)).
+source. Then it is internal, and keeping `"row"` costs nothing. The owner's rule (D3) settled
+the other way: retired words on the wire are renamed.
 
 <a name="d2"></a>
 ## D2 · Exported names move; stored field names and storage keys stay
@@ -52,6 +57,50 @@ It comes down to the data already stored: a field rename is a migration, a type 
 
 **What would change my mind:** a stored field that reaches a consumer's code the way the hold
 marker does. That one moves, with its own dual read.
+
+<a name="d3"></a>
+## D3 · Every retired word an app can see is renamed before 1.0 (owner, 2026-11-07)
+
+**The owner's decision, in session, 2026-11-07, verbatim: "Rename all 4."** Recorded as given.
+One rule for a retired word in a value an app reads: rename it before 1.0, in this issue's one
+breaking changeset. It replaces the open fork of the first draft, where `"row"` was renamed and
+`external-dispatcher` kept.
+
+| Value | New | Why this name (checked against `docs/contributing/glossary.mjs`) |
+|---|---|---|
+| Hold marker `"row"` | `"task"` | D1. *Row* is retired outside store adapters and UI lists (the Resource entry) |
+| Refusal `"external-dispatcher"` | `"external-flow-runner"` | The glossary's *Dispatcher* is the dispatcher block only; what hands a request to another process is the deployment's *flow runner* (`FlowRunner`). Engine already calls the branch `usesExternalRunner`. One word swapped, so the code still reads as the same refusal |
+| "A row of an owner-private collection is readable only by the user it belongs to." · "A row of an owner-writes collection is written only by the user it belongs to." | "A resource in an owner-private collection is readable only by the user it belongs to." · "A resource in an owner-writes collection is written only by the user it belongs to." | *Resource*: a resource in a collection is a resource. Only the noun changes, so the sentence says the same thing and still does not say whether the resource exists |
+| `Collection pattern "<P>" can reach the rows of owner-<mode> collection "<Q>".` | `…can reach the resources of owner-<mode> collection "<Q>".` | The same noun. The rest of the message, and the held-flow sentence after it, stay |
+| "That segment is reserved for the user an owner-private collection's row belongs to, …" | "…collection's resource belongs to, …" | The same noun (found in review, Gitar) |
+| 77 more messages, in `core`, `devtool`, `engine`, `orchestration`, `harness-manager`, `workforce` and `scheduled` | *task* where *row* is a task, *resource* elsewhere, *collection resources* for *collection items* | The glossary's *Resource*, and the rule that *row* never means a task. Each is listed in [app-visible-text.md](app-visible-text.md), with how the list was found |
+
+The owner named four; under the rule, a complete sweep of `packages/*/src` finds 2 wire values
+and 81 message sites. The rule, not the count, is what the owner decided, so all of them move.
+
+| | |
+|---|---|
+| **Locks in** | 2 breaking wire values and 81 reworded messages in one minor changeset. The changeset lists old beside new for the wire values and the four owner-collection messages an app is likeliest to match, and states the rule for the rest. `"row"` is still read (D1); nothing else gets a dual read: a refusal and a message are produced per call, and no schema parses one back (the refusal is a type union, not a stored enum). The engine's constants holding the messages follow the type names (`OWNER_ROW_REFUSAL` is the implementer's to rename); tests that match the old text change with it. The Flow runner entry retires `external-dispatcher` in code only, so a published page keeps describing the released value until `/release-docs` |
+
+**What would change my mind:** none to weigh; it is the owner's call. What it costs: every
+client that branches on the refusal or matches a message updates when it upgrades.
+
+<a name="d4"></a>
+## D4 · Six published quotes of a released message wait for `/release-docs`, under one named exemption
+
+| | |
+|---|---|
+| **Instead of** | Rewording the six quotes in the `docs-fix` PR with the other eight lines · leaving the whole-tree rule at added lines until the release |
+| **Because** | The six quote a message the released packages throw today. A `docs-fix` PR fixes a released page to match the released API, so rewording them there would misquote it. Waiting would leave the rule at added lines for a whole release, which ER-6 refuses |
+| **Locks in** | **The only widening of the anti-game rule:** "a published page may quote a released message until `/release-docs` rewrites it." It names the three released message texts the six quote, and matches each on published pages only: the owner-private refusal ("A row of an owner-private collection is readable only by the user it belongs to.", 1 line), the owner-writes refusal ("A row of an owner-writes collection is written only by the user it belongs to.", 4 lines), and the startup overlap error (`Collection pattern "…" can reach the rows of owner-<mode> collection`, 1 line). The overlap quote wraps in a code block, so the exemption matches its first line, the one that carries *rows*. It strips that text, not the line: a second use of *row* on the same line still counts. `/release-docs` rewrites the six from the changeset and deletes the exemption in the same PR. FIX-2602's closure check confirms zero open after that pass, with the exemption gone |
+
+**Why the only one:** every other exemption in the resource entry is permanent and says where
+*row* is the right word. This one keeps a word that is wrong, for a page that can't change yet,
+and it ends at a named event. A quote is the one case where rewording now makes the page false.
+
+**What would change my mind:** moving the whole-tree turn into the `/release-docs` PR of the
+release that ships this issue. No quote would be released and wrong at once, and the exemption
+would never exist. It ties this issue's check to a release date, which is why it isn't the plan.
 
 ## Decided, not asked
 
@@ -110,13 +159,14 @@ marker does. That one moves, with its own dual read.
   `"task"` now rests on where a hold comes from, and the dual read is named permanent. The
   whole-tree goal now waits on a `docs-fix` PR for the published lines the rule already reads,
   and its exemptions are checked by the goal, not by a reviewer.
+- **Amended after merge (2026-11-07)** — the owner closed the open fork: rename every retired word
+  an app can see (D3): 2 wire values and 81 messages, after a complete sweep found more than the
+  four named. Measured on `main`, the whole-tree rule meets 14 published lines in 10
+  files, not 2: 8 plain, for the `docs-fix` PR, and 6 quotes of three released
+  messages (the owner-private and owner-writes refusals, and the overlap error), kept by D4's exemption until `/release-docs`.
 
 <a name="open"></a>
-**Open: one, for the owner at the gate.** One rule for a retired word in a public wire value.
-This set renames `"row"` with a dual read (D1) and keeps `external-dispatcher` by an exemption
-(FIX-2354's debt). Either both are renamed before 1.0, `external-dispatcher` here, since this
-issue already carries the breaking changeset and the `core` and `engine` edits; or both stay as
-documented legacy values, and D1 renames only the types.
+**Open: none.** The wire-value fork was decided by the owner on 2026-11-07 (D3).
 
 ## Notes from review
 

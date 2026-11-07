@@ -71,5 +71,8 @@ Recorded for the implementer, not folded into the design.
 
 - **Drafted in the spec set (2026-11-07)** — the epic's two legs, two journeys, the gap sweep.
   The set review made leg a plant the side-chain check in a `.ts` file, and named the five seams.
+- **Amended with FIX-2479 (2026-11-07)** — leg c added: after the `/release-docs` pass, zero
+  open with FIX-2479 D4's quote exemption gone, and the renamed values (2 wire values, 81
+  messages) are what a client sees (the owner's "Rename all 4", FIX-2479 D3).
 
 **Open: none.**

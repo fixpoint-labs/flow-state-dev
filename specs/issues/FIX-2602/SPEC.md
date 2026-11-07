@@ -42,7 +42,7 @@ change nothing. Leg b proves the code follows the glossary's resource entry.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/vocabulary/glossary-is-the-one-lever/` with two legs · model-free · run by the closure worker on the pinned commit · committed by the closure PR and kept in CI ([D1](DECISIONS.md#d1)) |
-| **Signal** | Leg a: the sweep and the guard each report the planted word, by the new entry, in `packages/core/src/`, `docs/contributing/` and `.agents/skills/`; a second new entry handed to the side-chain check's matcher is reported in a planted `.ts` file; with the entries removed all three PASS. Leg b: the resource entry at whole-tree scope reports OPEN 0, and a task stored with a `kind: "row"` hold is listed and answered |
+| **Signal** | Leg a: the sweep and the guard each report the planted word, by the new entry, in `packages/core/src/`, `docs/contributing/` and `.agents/skills/`; a second new entry handed to the side-chain check's matcher is reported in a planted `.ts` file; with the entries removed all three PASS. Leg b: the resource entry at whole-tree scope reports OPEN 0, and a task stored with a `kind: "row"` hold is listed and answered. Leg c, on the first `main` commit after the `/release-docs` pass that ships FIX-2479: every vocabulary check reports OPEN 0 with [FIX-2479 D4](../FIX-2479/DECISIONS.md#d4)'s quote exemption gone from the glossary, and a client sees the renamed values ([FIX-2479 D3](../FIX-2479/DECISIONS.md#d3)): a new hold written `"task"`, the refusal `"external-flow-runner"`, and none of the 81 listed messages ([the list](../FIX-2479/app-visible-text.md)) saying *row* or *collection items*, the four owner-collection messages checked by triggering them |
 | **Input** | A word generated at run time that no check knows. A different word, or a plant in another file under the same trees, must give the same verdict |
 | **Anti-game** | Leg a's working-copy diff is the glossary file and the plants only. It runs the checks as CI runs them, and reads their output, not their fixture tests. The side-chain check only matches entries that name it, in `.ts` files, since prose is its stated gap |
 | **Control that must fail** | Leg a on the commit before FIX-2601 merged: *each check reports the plant* FAILs. Leg a on the commit before FIX-2354 merged: FAILs on its `docs/contributing/` and `.agents/` plants, while the `packages/core/src/` plant is still refused |
@@ -55,7 +55,8 @@ Read the right column top to bottom: that is the run, in order, on one commit.
 
 **The plan, in order** (each check's verdict and evidence in the report on the closure issue):
 
-1. **The epic's goal check**, legs a and b above, with both controls shown failing.
+1. **The epic's goal check**, legs a and b above, with both controls shown failing. Leg c
+   runs after the release-docs pass; until it passes, the epic's wrap waits on it.
 2. **Journey A · a contributor names a new thing.** Run `issue-spec`'s naming step on a draft
    that coins a term: it points to the glossary. Then open a branch that declares an exported
    name built on a retired word: the PR's CI fails, naming the glossary entry.
