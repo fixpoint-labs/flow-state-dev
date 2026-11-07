@@ -18,3 +18,4 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-07 | 709eb9c01 | n/a | FAIL (expected, on (f) only) | A clean build (no `dist`, no `tsbuildinfo`) of the 13-package closure (contracts, core, engine, client, react, devtool, node, testing, scheduled, store-sqlite, workspace, cli, store-postgres), packed and installed into an empty project. (a)–(e) PASS. (f) FAIL: 28 docs pages and READMEs still write the store line, 2 getting-started pages declare an empty `session`, and 3 docs pages name `queue` or `scheduler` as a slot. All of those are `apps/docs` or README files, which change only at release (`/release-docs`), so (f) clears there. `--control d6a38c09` not run: disk. |
