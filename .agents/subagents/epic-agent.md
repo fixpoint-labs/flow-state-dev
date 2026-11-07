@@ -72,6 +72,9 @@ Take the single action the dispatch calls for:
   trade-off figure, *who owns what* — the ownership matrix figure and the ER-n rules every child
   obeys — and the coordination seams). *What's already here* cites each predecessor by its exact
   prior anchor and says what the set keeps, amends or supersedes.
+  Check every public name the set fixes against [`docs/contributing/glossary.mjs`](../../docs/contributing/glossary.mjs):
+  never a word an entry retires. A set that coins or retires a public term names the child whose
+  PR edits that entry.
   Cite real PR/Linear history where no repository artifact exists; no invented paths or backfill.
   Keep authored figures, assets, and POCs with this set.
 

@@ -14,7 +14,8 @@
  *
  * Each item is drawn by Shift Manager's copy of the registry's item components
  * (`chatAssistantRenderers`: message, reasoning, tool, status, error, task
- * plan), the same copies the design system skins. An ask the run raised and
+ * plan), the same copies the design system skins; a task's brief is one folded
+ * line (`TaskBrief`), never the user's line. An ask the run raised and
  * that still waits is drawn inline, with the one ask card Inbox uses.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -31,6 +32,7 @@ import { useLab } from "../lib/lab-data";
 import { useReportFeedState } from "../lib/feed-health";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
 import { RouteLink } from "../components/RouteLink";
+import { isTaskBrief } from "../components/TaskBrief";
 import { followRequest, followSessionItems, readRunRecord, readTaskClaims, taskItems, type OpenRun, type SessionItems } from "../lib/run";
 import { useTask } from "../lib/task";
 
@@ -250,7 +252,7 @@ function RunItems({ run }: { run: OpenRun }) {
               data-testid="session-item"
               data-item-id={item.id}
               data-item-type={item.type}
-              {...(item.type === "message" && item.role === "user" ? feed.mine(item.id) : {})}
+              {...(item.type === "message" && item.role === "user" && !isTaskBrief(item) ? feed.mine(item.id) : {})}
             >
               {item.type === "suspension" ? (
                 <PendingAsk ask={asks.find((ask) => ask.item.suspensionId === item.suspensionId)} />

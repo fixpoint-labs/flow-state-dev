@@ -25,6 +25,7 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
 import { callRuns, shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
+import { isTaskBrief } from "./TaskBrief";
 import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlierButton, SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
@@ -287,7 +288,7 @@ export function Conversation({
                       data-request-id={item.requestId}
                       data-item-type={item.type}
                       data-role={role}
-                      {...(item.type === "message" && role === "user" ? feed.mine(item.id) : {})}
+                      {...(item.type === "message" && role === "user" && !isTaskBrief(item) ? feed.mine(item.id) : {})}
                     >
                       {item.type === "message" && role === "assistant" ? (
                         // v2's label over each of the worker's messages: its name and the time it was written (v2:135).

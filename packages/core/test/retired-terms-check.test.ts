@@ -18,8 +18,8 @@ import {
   scanCollectionRows,
   // @ts-expect-error — root check script, plain .mjs with no type declarations.
 } from "../../../scripts/check-retired-terms.mjs";
-// @ts-expect-error — vocabulary rule module, plain .mjs with no type declarations.
-import { COLLECTION_ITEM, RETIRED } from "../../../goals/vocabulary/one-word-per-thing/rules.mjs";
+// @ts-expect-error — the vocabulary glossary, plain .mjs with no type declarations.
+import { ADDED_LINE_RULES, SWEEP_RULES } from "../../../docs/contributing/glossary.mjs";
 
 type Hit = { path: string; area: string; term: string; line: number; text: string };
 type Tree = { files: Map<string, string>; paths: string[] };
@@ -187,15 +187,34 @@ const collectionHits = (path: string, text: string, added?: number[]): string[] 
   );
 };
 
-describe("stored collection data added on this change is an item, not a row", () => {
+describe("a resource added on this change is a resource, not a row or a collection item", () => {
   const collectionFile = "packages/orchestration/src/tasks/collection/zz.ts";
+  const rule = (ADDED_LINE_RULES as Array<{ id: string; term: string; say: string }>).find((r) => r.id === "collection-row");
 
-  it("keeps the rule out of the whole-tree sweep", () => {
-    // The sweep fails on every match. Collection rows already fill the tree, so this rule
-    // stays off that list and the added-line check is what enforces it.
-    expect((RETIRED as Array<{ id: string }>).map((r) => r.id)).not.toContain((COLLECTION_ITEM as { id: string }).id);
-    expect((COLLECTION_ITEM as { scope: string; say: string }).scope).toBe("added-lines");
-    expect((COLLECTION_ITEM as { say: string }).say).toBe("collection item");
+  it("keeps the rule out of the whole-tree sweep, under the Resource entry", () => {
+    // The sweep fails on every match. Rows and collection items for resources still fill the
+    // tree until they are renamed, so the added-line check is what enforces the rule.
+    expect((SWEEP_RULES as Array<{ id: string }>).map((r) => r.id)).not.toContain("collection-row");
+    expect(rule?.term).toBe("Resource");
+    // The owner's 2026-11-06 call superseded "say collection item": the message names the resource.
+    expect(rule?.say).toMatch(/ResourceState/);
+    expect(rule?.say).not.toMatch(/collection item/);
+  });
+
+  it("counts a new declaration built on CollectionItem, and leaves a use of an existing one", () => {
+    expect(collectionHits("packages/react/src/zz.ts", "export function useWidgetCollectionItem() {}\n")).toEqual([
+      "1:export function useWidgetCollectionItem() {}",
+    ]);
+    expect(collectionHits("packages/client/src/zz.ts", "export interface CreateWidgetCollectionItemOptions { id: string }\n")).toEqual([
+      "1:export interface CreateWidgetCollectionItemOptions { id: string }",
+    ]);
+    // A call to today's API, before it is renamed, is a use: not refused.
+    const uses = [
+      'import { CollectionItemHandle } from "@flow-state-dev/client";',
+      "const items = await listCollectionItems(ref);",
+      "const handle: CollectionItemHandle = open(ref);",
+    ].join("\n");
+    expect(collectionHits("packages/react/src/zz.ts", uses)).toEqual([]);
   });
 
   it("counts a new collection Row type and docs prose, and leaves what is already there", () => {
@@ -245,11 +264,16 @@ describe("stored collection data added on this change is an item, not a row", ()
     expect(collectionHits("packages/react/src/components/flow-navigator/rows.tsx", "export type SessionRow = { id: string };\n")).toEqual([]);
   });
 
+  it("refuses a …CollectionItem… declaration even where a …Row is a table row", () => {
+    // The table-row path keeps `…Row`; a CollectionItem is a resource wherever it sits.
+    expect(collectionHits("packages/react/src/components/panels/BoardColumns.tsx", "export type WidgetCollectionItem = { id: string };\n")).toHaveLength(1);
+  });
+
   it("does not read the guard's own lines, which name the pattern on purpose", () => {
     const guard = "packages/core/test/retired-terms-check.test.ts";
     expect(collectionHits(guard, "export type WidgetRow = { id: string };\nEach collection row is stored.\n")).toEqual([]);
     expect(collectionHits("scripts/check-retired-terms.mjs", "Each collection row is stored beside the worker.\n")).toEqual([]);
-    expect(collectionHits("goals/vocabulary/one-word-per-thing/rules.mjs", "Each collection row is stored.\n")).toEqual([]);
+    expect(collectionHits("docs/contributing/glossary.mjs", "Each collection row is stored.\n")).toEqual([]);
   });
 });
 

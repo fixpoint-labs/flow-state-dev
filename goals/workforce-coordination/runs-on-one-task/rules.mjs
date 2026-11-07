@@ -12,7 +12,7 @@
  * {@link TOOLS_ALLOWED}, and added the worker's `holdTaskForUser` and `suspendForUser`; FIX-2383
  * added `retryTask`, an action a turn is never offered.
  */
-import { REFUSAL_MARKER, ROOTS } from "../../vocabulary/one-word-per-thing/rules.mjs";
+import { REFUSAL_MARKER, ROOTS } from "../../../docs/contributing/glossary.mjs";
 
 export { REFUSAL_MARKER, ROOTS };
 

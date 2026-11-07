@@ -107,6 +107,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 
 **Read when relevant:**
 
+- `docs/contributing/glossary.mjs` — **Read before naming a public thing.** The vocabulary glossary: each framework term, what it means, the words it retires and what is exempt. The vocabulary checks read it; a change that coins or retires a public term edits its entry in the same PR.
 - `docs/architecture/items.md` — **Read before touching items, rendering, or the stream.** Complete item type registry, classification, and rendering contracts.
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.
 - `docs/contributing/asking-for-decisions.md` — **Read before putting any fork, gate, or sign-off to the user.** The engineer/product-owner contract, the six-part shape, and a worked example.
