@@ -314,6 +314,18 @@ export function claimHost(options: HostOptions) {
       return (await steerFromLine(ref, input.id, input.message, ctx as never)) ?? null;
     },
   });
+  // A steer from the board, as the Inbox's steer and an app's Steer box write it (`updateTask`'s message).
+  const steer = handler({
+    name: "claim-host-steer",
+    inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string(), message: z.string() }),
+    outputSchema: z.unknown(),
+    uses: [ledgerResources],
+    execute: async (input, ctx) => {
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
+      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      return ref.steer!(input.id, { message: input.message, from: "user", by: ALICE });
+    },
+  });
   const cancel = handler({
     name: "claim-host-cancel",
     inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string() }),
@@ -352,6 +364,7 @@ export function claimHost(options: HostOptions) {
       row: { block: rowAction },
       answer: { block: answer },
       line: { block: line },
+      steer: { block: steer },
       cancel: { block: cancel },
       records: { block: records },
       putRecord: { block: putRecordBlock },

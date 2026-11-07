@@ -1330,14 +1330,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           }),
       // A steer (FIX-2086), a routed task's included (FIX-2083): one that
       // leaves the task waiting on it (it ran nothing, waiting on its filed
-      // work) starts the turn it is owed, in the task's session.
+      // work), or that answered its external wait (FIX-2578), starts the turn
+      // it is owed, in the task's session, as a line's does (`./steer`).
       ...(ref.steer === undefined
         ? {}
         : {
             async steer(id: string, steer: Parameters<NonNullable<TaskCollectionRef["steer"]>>[1]) {
               const outcome = await ref.steer!(id, steer);
               const after = ref.get(id);
-              if (outcome.outcome === "recorded" && after?.keptOpenBy === "steer" && after.assignee !== undefined) {
+              if (outcome.outcome === "recorded" && (after?.keptOpenBy === "steer" || after?.turnOwed === true) && after.assignee !== undefined) {
                 await startOwedSteerTurn(ctx, after, (await reach(ctx)).available.get(after.assignee));
               }
               return outcome;
