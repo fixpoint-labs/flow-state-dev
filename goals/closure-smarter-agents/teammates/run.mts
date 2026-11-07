@@ -28,7 +28,7 @@ const tree = (root: string) => join(lab(root), "workforce");
 
 const driver: AppDriver = {
   app: "teammates",
-  plant: (d, p) => skillFiles(join(tree(p.root), "teams", "teammates", "workers", "lead"), d.skill, p.switches),
+  plant: (d, p) => skillFiles(join(tree(p.root), "teams", "teammates", "workers", "chief-of-staff"), d.skill, p.switches),
   start: async (d, p, scratch) => {
     const store = join(scratch, "teammates.sqlite");
     // The working folder: a git checkout holding the draw's files, the coder ask's failing check, and on
