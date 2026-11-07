@@ -66,4 +66,28 @@ export default defineConfig(
       "use-isnan": "off",
     },
   },
+  {
+    // A block's own ctx is a BlockContext however the block is typed, so the
+    // framework's source passes it as it is. Three spellings, so a cast can't
+    // move to another one. Tests are out: their mocks are partial on purpose.
+    files: ["packages/*/src/**/*.{ts,tsx,mts,cts}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "TSAsExpression[expression.name='ctx'] > TSNeverKeyword",
+          message: "Pass ctx as it is; it is a BlockContext.",
+        },
+        {
+          selector: "TSAsExpression[expression.name='ctx'][typeAnnotation.typeName.name='BlockContext']",
+          message: "Pass ctx as it is; it is a BlockContext.",
+        },
+        {
+          selector:
+            "TSAsExpression[expression.expression.name='ctx'][typeAnnotation.typeName.name='BlockContext']",
+          message: "Pass ctx as it is; it is a BlockContext.",
+        },
+      ],
+    },
+  },
 );
