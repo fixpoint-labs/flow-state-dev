@@ -1,5 +1,84 @@
 # @flow-state-dev/orchestration
 
+## 0.7.0
+
+### Minor Changes
+
+- 2cb6326: A coding task can wait for its pull request to merge before it completes (FIX-2578).
+
+  - **harness-manager:** new option `awaitPullRequests` (off by default). When it is on, a task whose run opened a pull request does not complete at its settle. It waits on its pull requests, and each wake reads them through `gh`: all merged completes the task with no new run; none open with some merged completes it and the output notes the closed ones; all closed without merging cancels it with the reason "its pull request was closed without merging"; any still open runs the wake's words as a steer on the same attempt and session, then waits again. A pull request that can't be read never settles the task: it runs the steer, waits again, and adds a status note. A completed run's output gains `pullRequests` (`{ url, number, title, state }[]`, `null` when no wait ran).
+  - **harness-manager:** `pullRequestWait(row, records?)` and `PULL_REQUEST_EVENT`, from the package root and from `./browser`, read a task's open pull-request wait for a screen: the hold, when it opened, and each pull request's number, link and title. `CLOSED_WITHOUT_MERGING` is the cancel reason.
+  - **orchestration:** a new row hold kind, `external`, for a running task that waits on something outside the board. It is the system's (`actor: "system"`), never a question: the filer is not told of it, the Inbox does not list it, and `waitsOnUser` is false. It holds the row as a question does (no lease, unclaimable, the waiting turn cannot settle). Open one from the turn holding the claim with `waitExternally(ctx, ledger, { prompt, events })` (`./task-board`) or `ref.awaitExternal(id, wait, { claim })`. A person's line in the task's session answers it, and so does an answer from `"service"`. New readers `holdActorOf(row)` (`"user"`, `"system"` or `undefined`), `externalHoldOf(row)` and `isExternalHold(hold)` from `./tasks`. A board whose only open rows wait on an event ends with the reason `waiting-on-an-event`.
+  - **orchestration:** steers and answers gain the source `"service"`, for words from outside the app, with the sender's handle as `by`. A run reads them quoted as the sender's, never as the user's. The filer's `answerQuestion` on an `external` hold is refused (`wait_is_not_a_question`).
+  - **workspace:** `readPullRequest({ cwd, number, repository?, host? })` reads a pull request's `state` and `merged`, a fork's included. `pullRequestHead` also returns `state` and `merged`.
+  - **core:** `writePullRequests` keeps a pull request's `state` current: a sighting's state replaces the stored one. Other fields still fill only when null.
+  - **workforce:** a message delivered to a task's session whose task waits on an `external` hold answers that wait, as `"service"` from its sender, instead of queueing behind it.
+
+  Docs: packages/harness-manager/README.md (settling: a section "Waiting on a pull request" for `awaitPullRequests`, the four outcomes, the unreadable case, `pullRequestWait` in the `./browser` list, the `pullRequests` output field), packages/orchestration/README.md (the `external` hold kind beside questions and confirms, `waitExternally` / `awaitExternal`, `holdActorOf`, the `"service"` steer source, the `waiting-on-an-event` reason), packages/workspace/README.md (`readPullRequest`), packages/workforce/README.md (a message to a task waiting on an outside event answers its wait).
+
+- c049036: The task row shapes no published orchestration wrote (`questions`, `keptOpenBy: "wait"` or `"queued"`, the recorded-not-started mark, `reopened`, a post row) no longer read, and `taskSchema` refuses `keptOpenBy: "wait"`. The board's `onReview` option, the collection's `"sequencer"` and `"request"` backings, and a SKILL.md `agents:` block are no longer refused by name: the backings fail as unknown backings, and `onReview` and `agents:` are ignored like any unknown key. `SkillAgentsRemovedError` is gone. Also gone are the refusals of `expectAttempt`, an assignee's `dispatch: { mode }`, `{ block, session }` or `{ worker, dispatch }` (still refused as not a block), SKILL.md `context: fork` / `pattern`, `pattern:` and `workers:`, `createTask`'s `waitForResponse` and `updateTask`'s `question`. A stored `status: "blocked"` row still reads as `held` (FIX-2454).
+
+  Docs: packages/orchestration/README.md (drop "a row stored with the old names still reads"; only a stored `blocked` row reads, as `held`). The old names and shapes are removed outright, with no refusal message.
+
+- 80175df: **Breaking:** names only FSD's own packages read move to a new `@flow-state-dev/orchestration/internal` entry, and names nothing reads are no longer exported (FIX-2459). `./internal` is published so sibling packages resolve it, but it is not for apps and sits outside semver. There are no deprecated aliases: an old import fails to compile with "has no exported member".
+
+  - **Moved to `./internal`** from the root: `payBoardDebts`, `settlePassWake`, `takeOwedNotice`, `splitFrontmatter`, `parseFrontmatterYaml`, the lease-renewal scope (`openLeaseRenewalScope`, `withLeaseRenewalScope`, `stampLeaseRenewal`, `currentLeaseRenewal`), `TASK_SESSION_TASK_KEY`, `taskToolReads`, `taskToolsForTurn`, `taskToolSuffix`, `readTaskView`, `STATUS_NOTE_LIMIT`, the steer-context helpers and `pushActiveSkill`. From `./tasks`: both backing constructors (`createStateBackedTaskCollection`, `createResourceBackedTaskCollection`), `TASK_SETTLED_ENTRY`, `filerResolver`, the filing asserts, the notice helpers, the steer helpers, `readCommittedTask`, `taskLedgerResources`, `findTaskPartitions`, `TaskWriteRefusedError` and the rest the census found only our packages read. From `./task-board`: `taskBoardStateSchema`, `afterTaskCheck`, `packWorkerInput`, `checkWaitable`, `toolCallOf` and the board's component-type markers. Open a collection with `defineTaskCollection` or `getOrCreateTaskCollection`.
+  - **One home each:** `taskToolActions` is on `./task-board` only, no longer on the root. `isTaskTurn` is on the root only, no longer on `./task-board`. `TaskSessionPolicy` is imported from `@flow-state-dev/core/types`.
+  - **No longer exported**, with no reader: from the root, `camelToKebab`, `kebabToCamel`, `buildSkillsCatalogContext`, `buildActiveSkillsContext`, `ensureSeeded` and other skill-format internals; from `./tasks`, the observation-ledger constructors, `isDefinedTaskCollection`, `freezeLedgerAssignee`, the cap defaults and lease bounds; from `./task-board`, the board's own block factories (`createClaimTask`, `createCheckBoard`, `createTaskGate`, `createSeedCollection`, …) and their state schemas.
+
+  Docs: packages/orchestration/README.md (one line saying `./internal` is not for apps; move the passages on the pass pair, the filing asserts, `taskToolReads` and the lease-renewal scope to `docs/architecture/`; name `taskToolActions` from `./task-board`; document the skill-format API the docs site already describes in prose: `parseSkillMd`, `serializeSkillMd`, `ParsedSkillMd`, `ParseSkillMdOptions`, `createRunSkillTool`, `RunSkillToolOptions`, `inlineActivate`, `matchedSkillSchema`, `skillActivationSourceSchema`, `MatchedSkill`, `SkillActivationSource`, `SkillState`, `SkillContextMode`); and the orchestration row of the page on what each package root is for: the root for skills, the task-turn test and the settled entry, `./internal` for FSD's own packages
+
+- b9bb900: **Breaking:** the task board has two named claim orders, `"fifo"` and `"priority"`, and `"fifo"` is the default (FIX-2459). `topologicalClaimOrder` and the `"topological"` name are removed. They had `fifoClaimOrder`'s body: neither claims a task with unmet `deps`, because the collection's own admission rule gates on them. A board that names no claim order behaves as before. Replace `claimOrder: "topological"` with `claimOrder: "fifo"` (or drop the option), and `topologicalClaimOrder` with `fifoClaimOrder` from `@flow-state-dev/orchestration/tasks`. There is no alias: the old name fails to compile.
+
+  Docs: packages/orchestration/README.md, packages/patterns/README.md, apps/docs/docs/orchestration/task-board.md, apps/docs/docs/orchestration/task-substrate.md, apps/docs/docs/orchestration/configuration.md, apps/docs/docs/glossary.md, apps/docs/guides/building-a-research-team.md (two claim orders, `fifo` the default; drop `topologicalClaimOrder` and the "behave identically" line; `claimOrder: "topological"` examples become `"fifo"` or drop the option)
+
+- fabd6a7: **Breaking:** the task substrate's names are no longer exported from the `@flow-state-dev/orchestration` root. Import them from `@flow-state-dev/orchestration/tasks`, their one home, which is safe to bundle for a browser (FIX-2459). This covers every name on `./tasks`, about 220, among them `defineTaskCollection`, `getOrCreateTaskCollection`, `taskSchema`, `Task`, `TaskCollectionRef`, `flowPolicy`, `ticketForClaim`, `beginTaskWrite`, `onTaskChangeFor` and `ShownSteer`. There are no deprecated aliases: an old root import fails to compile with "has no exported member". The root keeps skills, `resolveCatalogTools`, `isTaskTurn` and the `taskSettledEntry` family.
+
+  Docs: packages/orchestration/README.md, packages/patterns/README.md, apps/docs/docs/orchestration/task-substrate.md, apps/docs/docs/orchestration/flow-policy.md, apps/docs/docs/sequencers/wait-for-condition.md (import task names from `@flow-state-dev/orchestration/tasks`, not the root; the orchestration README's header line "depends only on core" is also wrong, it depends on client too)
+
+### Patch Changes
+
+- 9dde49f: A steer sent through the board now answers a running task's open `external` wait (FIX-2578).
+
+  - **orchestration:** `updateTask`'s `message` (the Inbox's steer, an app's Steer box) and `ref.steer` answer a running task's open external wait in the same write, as a line typed in the task's session already did: the steer carries `answers`, and the same attempt is owed its turn. A task waiting on its pull request no longer sleeps with an untaken steer. The answer has its place under the steer cap kept, so a full task still takes it.
+  - **workforce:** a board steer that answered a task's wait starts the turn it owes, in the task's session.
+
+  Docs: packages/orchestration/README.md (the `external` hold: a board steer answers it, beside a line and a `"service"` answer).
+
+- 6407fbf: An action's answer is read with one call, by the request's id, however long its session is (FIX-2455).
+
+  - **client:** `request.result({ pollMs?, timeoutMs?, signal? })` on every request handle polls the request by its id, as `wait()` does, with its stored result, and returns the read that found it settled. It resolves `{ status, output?, outputNotRecorded?, error? }` for every way a request settles: branch on `status`. A failure resolves `failed` with its `error`, and a stop for a person resolves `suspended`. It rejects only past `timeoutMs`, on a transport error, or when `signal` aborts. New types: `RequestResult` and `WaitOptions`. `wait()` takes `signal` too. Stopping either wait never stops the run. `steerRunningTurn` reads the steer's answer by id, so a steer behind 20 newer requests no longer reads as not taken.
+  - **react:** `useAction({ action, result: true })`: `execute` resolves to `request.result()`'s shape, `loading` holds until the request settles, and an unmount stops the wait without stopping the run. Without the option, `execute` resolves on acceptance, as before.
+  - **react (breaking):** `useReadFence` and `ReadFence` are no longer exported from `@flow-state-dev/react`. They moved to `@flow-state-dev/react/internal`, a subpath for the framework's own packages, with no alias. Apps should not import it.
+  - **orchestration:** the Inbox client's board actions and row answers read the board's answer by request id. A session holding more than 2,000 requests no longer rejects an answer the board gave.
+  - **workforce:** the Workforce client's roster and project actions (`hire`, `fork`, `edit`, `fire`, the standing rules and the work project) read their answer by request id, so a roster session longer than 100 requests no longer reads a finished action as unread.
+  - **shift-manager:** actions, sent lines, interrupts and answered asks wait through the client's one wait and read their answer by request id.
+
+  Docs: packages/client/README.md (a `result()` row in the request handle table, with its resolved shape and the rule that it resolves for every ending; `wait`'s `signal`; the _Sending an action_ example reads `const { status, output, error } = await sent.result()` instead of listing the session's requests), packages/react/README.md (`useAction`'s `result: true` option: what `execute` resolves to and how long `loading` holds; drop `useReadFence`), packages/engine/README.md (the status endpoint's `include_result_output` is what `result()` reads), apps/docs/docs/client/overview.md (_Sending an action_ and the _Requests_ table: `result()`), apps/docs/docs/fundamentals/actions.md (_From the client SDK_: read the answer with `sent.result()`), apps/docs/docs/api/client.md (`result` and `wait`'s `signal`), apps/docs/docs/client/react.md and apps/docs/docs/api/react.md (`useAction`'s `result` option), apps/docs/docs/fundamentals/flows.md (_Reads_: one line pointing at the `useSubscription` recipe in `client/react.md`), the package-roots page FIX-2448 adds, apps/docs/docs/api/package-roots.md (react's row gains `react/internal`: our packages' entry, not for apps)
+
+- 3e7d5f3: The board's `listTasks` action (a client's read, not the model's tool) answers each row's `createdAt`, and its `startedAt` and `completedAt` once they happen, beside `updatedAt`. `taskRowView(row).times` now fills from a board read, so a screen can show how long a task has run and order ended tasks by when they ended (FIX-2395).
+
+  Docs: the orchestration README's `listTasks` spend paragraph should name these times beside `updatedAt`.
+
+- Updated dependencies [801aa5e]
+- Updated dependencies [2cb6326]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [c049036]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [6407fbf]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [13e3970]
+  - @flow-state-dev/client@0.6.0
+  - @flow-state-dev/core@0.6.0
+
 ## 0.6.0
 
 ### Minor Changes

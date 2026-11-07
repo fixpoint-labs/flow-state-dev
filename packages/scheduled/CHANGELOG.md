@@ -1,5 +1,34 @@
 # @flow-state-dev/scheduled
 
+## 0.3.3
+
+### Patch Changes
+
+- c049036: `createScheduledTransportAdapter` no longer refuses `idempotencyWindowMs` or `idempotencyOptions`; each is an unknown option that nothing reads (FIX-2454).
+
+  Docs: apps/docs/docs/server/scheduled.md and packages/scheduled/README.md (drop the lines that say the adapter throws on `idempotencyWindowMs` or `idempotencyOptions`). The old names are removed outright, with no refusal message.
+
+- Updated dependencies [2cb6326]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [819c2a5]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+- Updated dependencies [13e3970]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/engine@0.6.0
+
 ## 0.3.2
 
 ### Patch Changes
