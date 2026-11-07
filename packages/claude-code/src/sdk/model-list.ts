@@ -9,7 +9,7 @@
  */
 import type { HarnessModelInfo, HarnessModelList } from "@flow-state-dev/core/harness";
 import { runIdleQuery } from "./idle-query";
-import type { SdkImporter } from "./sdk-client";
+import type { ClaudeCodeSdkImporter } from "./sdk-client";
 
 /** Options for {@link listClaudeCodeModels}. */
 export interface ListClaudeCodeModelsOptions {
@@ -18,7 +18,7 @@ export interface ListClaudeCodeModelsOptions {
   /** How long to wait for Claude Code's answer. Default 10 000 ms. */
   timeoutMs?: number;
   /** How the SDK module is loaded. A seam for tests; the default imports the installed SDK. */
-  importSdk?: SdkImporter;
+  importSdk?: ClaudeCodeSdkImporter;
 }
 
 /** A row of the SDK's `supportedModels()`, as far as this reads it. */

@@ -31,10 +31,10 @@ import { defineFlow } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import {
   claudeCodeAgent,
-  defaultResolveClaudeAgent,
-  type ResolveClaudeAgent,
-  type SdkAgentHandle,
-} from "@flow-state-dev/claude-code/sdk";
+  defaultResolveClaudeCodeAgent,
+  type ResolveClaudeCodeAgent,
+  type ClaudeCodeAgentHandle,
+} from "@flow-state-dev/claude-code";
 import { actingAs, loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 
 type Job = { name: string; files: Record<string, string>; prompt: string };
@@ -81,9 +81,9 @@ type Seen = {
 };
 
 /** The default resolver, with the call's options and the stream noted on the way past. */
-function tappedResolver(seen: Seen): ResolveClaudeAgent {
+function tappedResolver(seen: Seen): ResolveClaudeCodeAgent {
   return async (ctx) => {
-    const resolved = await defaultResolveClaudeAgent(ctx);
+    const resolved = await defaultResolveClaudeCodeAgent(ctx);
     return {
       query: (args) => {
         // What the real SDK is handed: the surface the default is decided on.
@@ -183,7 +183,7 @@ async function attempt(arm: Arm, job: Job) {
 
     const listed = await call("GET", ["sessions", sessionId, "requests"], undefined, "?include_result_output=true&limit=10");
     const request = (JSON.parse(listed.text).requests ?? []).find((r: { id: string }) => r.id === requestId);
-    const handle = request?.result?.output as SdkAgentHandle | undefined;
+    const handle = request?.result?.output as ClaudeCodeAgentHandle | undefined;
     const runError = request?.result?.error;
 
     // The recorder escapes the request id into one key segment. Ids the

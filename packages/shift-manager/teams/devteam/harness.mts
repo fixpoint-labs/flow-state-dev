@@ -43,7 +43,7 @@
  * {@link workerHarnesses} is the set a hire picks from.
  */
 
-import { CLAUDE_CODE_PASS, checkClaudeCodeReadiness, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { CLAUDE_CODE_PASS, checkClaudeCodeReadiness, claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
 import { harnessEnv } from "@flow-state-dev/core/harness";
 import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";

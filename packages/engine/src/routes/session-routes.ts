@@ -5,7 +5,6 @@ import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type {
-  RequestActionResult,
   RequestRecord,
   SessionParentage,
   SessionRecord,
@@ -35,6 +34,8 @@ import {
   loadTenantSession,
   unknownSessionResponse,
   parseJsonBody,
+  projectRequestResult,
+  type ProjectedRequestResult,
   refuseUnattributedRecord,
   sessionCreateRefusedResponse
 } from "./route-utils";
@@ -661,21 +662,15 @@ export async function handleListSessionRequests(
 }
 
 /**
- * A request as the session list sends it: its stored `result` plus
- * `hasOutput`, with `result.output` only when the caller asked for it. A
- * record with no `result` (unfinished, or written before results were
- * stored) is sent as it is.
+ * A request as the session list sends it: its stored `result` through
+ * `projectRequestResult`. A record with no `result` (unfinished, or written
+ * before results were stored) is sent as it is.
  */
 function withListedResult(
   record: RequestRecord,
   includeOutput: boolean
-): RequestRecord | (Omit<RequestRecord, "result"> & { result: ListedRequestActionResult }) {
+): RequestRecord | (Omit<RequestRecord, "result"> & { result: ProjectedRequestResult }) {
   const result = record.result;
   if (result == null) return record;
-  const hasOutput = Object.prototype.hasOwnProperty.call(result, "output");
-  const { output: _output, ...summary } = result;
-  return { ...record, result: { ...(includeOutput ? result : summary), hasOutput } };
+  return { ...record, result: projectRequestResult(result, includeOutput) };
 }
-
-/** A stored action result as the session list sends it. */
-type ListedRequestActionResult = RequestActionResult & { hasOutput: boolean };

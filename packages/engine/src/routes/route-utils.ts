@@ -28,7 +28,7 @@ import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-s
 import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
-import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
+import type { RequestActionResult, RequestRecord, SessionRecord, SessionStore } from "../stores/types";
 import { terminalAtMs } from "../stores/request-ended-at";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
@@ -303,6 +303,24 @@ export function getBooleanFlag(value: string | null): boolean {
 
   const normalized = value.trim().toLowerCase();
   return normalized === "true" || normalized === "1";
+}
+
+/** A stored action result as a read sends it: plus `hasOutput`, with `output` only when asked. */
+export type ProjectedRequestResult = RequestActionResult & { hasOutput: boolean };
+
+/**
+ * Project a request's stored action result for the wire (FIX-1661). The
+ * session request list and the status route send the same shape, so one
+ * request reads the same in both: `hasOutput` says whether an output is
+ * stored, and `output` is sent only when the caller asked for it.
+ */
+export function projectRequestResult(
+  result: RequestActionResult,
+  includeOutput: boolean
+): ProjectedRequestResult {
+  const hasOutput = Object.prototype.hasOwnProperty.call(result, "output");
+  const { output: _output, ...summary } = result;
+  return { ...(includeOutput ? result : summary), hasOutput };
 }
 
 export type ClientDataScope = "session" | "user" | "org";

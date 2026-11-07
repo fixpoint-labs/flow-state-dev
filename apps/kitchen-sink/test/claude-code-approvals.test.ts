@@ -23,7 +23,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import type { ClaudeAgentQueryOptions, ResolveClaudeAgent } from "@flow-state-dev/claude-code/sdk";
+import type { ClaudeCodeQueryOptions, ResolveClaudeCodeAgent } from "@flow-state-dev/claude-code";
 import type { HarnessSessionState } from "@flow-state-dev/harness-manager";
 
 import { CLAUDE_CODE_SESSION, PRE_ALLOWED_TOOLS, claudeCodeSessionFlow } from "@/lib/claude-code-mode";
@@ -62,13 +62,13 @@ afterEach(() => vi.unstubAllEnvs());
 
 /** A durable host for Claude Code mode, recording what each run of the scripted SDK was handed. */
 function host() {
-  const runs: ClaudeAgentQueryOptions[] = [];
+  const runs: ClaudeCodeQueryOptions[] = [];
   const scripted = scriptedClaudeCode();
-  const resolve: ResolveClaudeAgent = async (...args) => {
+  const resolve: ResolveClaudeCodeAgent = async (...args) => {
     const agent = await scripted(...args);
     return {
       query: (query) => {
-        runs.push(query.options ?? ({} as ClaudeAgentQueryOptions));
+        runs.push(query.options ?? ({} as ClaudeCodeQueryOptions));
         return agent.query(query);
       },
     };

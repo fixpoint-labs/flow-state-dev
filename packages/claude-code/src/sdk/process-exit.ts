@@ -20,7 +20,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 
 /** What the SDK hands `spawnClaudeCodeProcess`. Declared here so the SDK stays an optional peer. */
-export interface ClaudeAgentSpawnOptions {
+export interface ClaudeCodeSpawnOptions {
   command: string;
   args: string[];
   cwd?: string;
@@ -34,7 +34,7 @@ const STDERR_TAIL_CHARS = 4_000;
 /** One run's spawned process, observed. */
 export interface TrackedProcess {
   /** The hook to pass as the SDK's `spawnClaudeCodeProcess`. */
-  spawn: (options: ClaudeAgentSpawnOptions) => ChildProcess;
+  spawn: (options: ClaudeCodeSpawnOptions) => ChildProcess;
   /**
    * Resolves once the spawned process has exited. `null` when nothing was
    * spawned through {@link TrackedProcess.spawn} — a scripted `query`, or an

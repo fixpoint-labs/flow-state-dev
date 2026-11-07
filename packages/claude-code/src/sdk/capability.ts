@@ -12,10 +12,10 @@ import { defineCapability } from "@flow-state-dev/core";
 import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import {
   claudeCodeAgent,
-  claudeAgentSessionStateSchema,
+  claudeCodeSessionStateSchema,
   type ClaudeCodeAgentOptions,
 } from "./agent";
-import { workRecorderResources } from "./work-collections";
+import { claudeCodeWorkRecorderResources } from "./work-collections";
 
 /**
  * Create the Claude Code Agent SDK capability. Forwards all agent options
@@ -27,7 +27,7 @@ export function createClaudeCodeAgentCapability(options: ClaudeCodeAgentOptions 
   const { detached = false, recordWork = false } = options;
   const agent = claudeCodeAgent(options);
   const resources = {
-    ...(recordWork ? workRecorderResources : {}),
+    ...(recordWork ? claudeCodeWorkRecorderResources : {}),
     ...promotedResources(options.uses),
   };
 
@@ -44,7 +44,7 @@ export function createClaudeCodeAgentCapability(options: ClaudeCodeAgentOptions 
     // declaring the schema puts the key back through the one door the refusal
     // cannot check, and the flow accepts a dispatched worker carrying exactly
     // the collision that refusal exists to prevent.
-    ...(detached ? {} : { sessionStateSchema: claudeAgentSessionStateSchema }),
+    ...(detached ? {} : { sessionStateSchema: claudeCodeSessionStateSchema }),
     // Declared HERE, not inherited from the agent block below — and forwarding
     // the option alone is NOT enough, which is the failure this comment exists
     // to prevent recurring. The block sits in the capability's `tools` preset,

@@ -1,5 +1,5 @@
 /**
- * `createWorkspaceAgentCapability` — a coding run whose files are resources.
+ * `createClaudeCodeWorkspaceCapability` — a coding run whose files are resources.
  *
  * The agent block on its own is handed a directory and left there: whatever it
  * writes stays on that disk, and nothing carries it back. This capability
@@ -32,16 +32,16 @@ import {
   runNamespace,
   type ClaudeCodeAgentOptions,
 } from "./agent";
-import { sdkAgentHandleSchema } from "./types";
-import { WORKSPACE_OUTCOMES, workspaceResources } from "./workspace-collections";
+import { claudeCodeAgentHandleSchema } from "./types";
+import { CLAUDE_CODE_WORKSPACE_OUTCOMES, claudeCodeWorkspaceResources } from "./workspace-collections";
 
 /** The block context these callbacks see. Loose for the reasons `./agent` gives. */
 type WorkspaceContext = BlockContext<any, any, any, any, any, any, any, any, any>;
 
 /** A collection selection entry. A bare string is `{ key, writable: true }`. */
-export type WorkspaceCollectionSpec = string | { key: string; writable?: boolean };
+export type ClaudeCodeWorkspaceCollectionSpec = string | { key: string; writable?: boolean };
 
-export interface WorkspaceAgentCapabilityOptions
+export interface ClaudeCodeWorkspaceCapabilityOptions
   extends Omit<ClaudeCodeAgentOptions, "cwd"> {
   /**
    * Where the projection lands on disk, resolved once per run.
@@ -64,7 +64,7 @@ export interface WorkspaceAgentCapabilityOptions
    * Which collections to mount. Default: every collection on `ctx.resources`
    * whose pattern gives a directory to mount it at.
    */
-  collections?: WorkspaceCollectionSpec[];
+  collections?: ClaudeCodeWorkspaceCollectionSpec[];
   /** Accessor keys to skip during auto-discovery. */
   exclude?: string[];
   /**
@@ -150,7 +150,7 @@ function isCollectionRef(value: unknown): value is ResourceCollectionRef<JsonObj
   return typeof v.pattern === "string" && typeof v.list === "function";
 }
 
-const normalizeSpec = (spec: WorkspaceCollectionSpec) =>
+const normalizeSpec = (spec: ClaudeCodeWorkspaceCollectionSpec) =>
   typeof spec === "string" ? { key: spec } : spec;
 
 /**
@@ -163,7 +163,7 @@ const normalizeSpec = (spec: WorkspaceCollectionSpec) =>
  */
 export function discoverMountsForTest(
   ctx: WorkspaceContext,
-  explicit?: WorkspaceCollectionSpec[],
+  explicit?: ClaudeCodeWorkspaceCollectionSpec[],
   exclude?: string[],
 ): Mount[] {
   return discoverMounts(ctx, explicit, exclude);
@@ -171,7 +171,7 @@ export function discoverMountsForTest(
 
 function discoverMounts(
   ctx: WorkspaceContext,
-  explicit: WorkspaceCollectionSpec[] | undefined,
+  explicit: ClaudeCodeWorkspaceCollectionSpec[] | undefined,
   exclude: string[] | undefined,
 ): Mount[] {
   const principal = principalFromContext(ctx as unknown as Parameters<typeof principalFromContext>[0]);
@@ -188,7 +188,7 @@ function discoverMounts(
     // The run's own outcome log is not part of its workspace. Projecting it
     // would lay this run's conflicts into the directory as files, and the next
     // flush would read them back as the run's work.
-    if (key === WORKSPACE_OUTCOMES) continue;
+    if (key === CLAUDE_CODE_WORKSPACE_OUTCOMES) continue;
     if (wanted ? !wanted.has(key) : excluded.has(key)) continue;
     if (!isCollectionRef(value)) continue;
     // A projected collection answers the duck-type — it has a `pattern` and a
@@ -274,7 +274,7 @@ function physicalPath(root: string): string {
  * `allowWrite` adds the root to what the run may write, because the root is
  * not the directory the process itself is in. It is additive, not a fence.
  */
-export function containmentSandbox(root: string) {
+export function claudeCodeContainmentSandbox(root: string) {
   return {
     enabled: true,
     // A command asking to run unsandboxed is asking for the boundary to be
@@ -292,8 +292,8 @@ export function containmentSandbox(root: string) {
  * capability owns: the directory is the projection's, and a caller setting it
  * would point the run at a tree the projection never filled.
  */
-export function createWorkspaceAgentCapability(
-  options: WorkspaceAgentCapabilityOptions,
+export function createClaudeCodeWorkspaceCapability(
+  options: ClaudeCodeWorkspaceCapabilityOptions,
 ) {
   const {
     root: resolveRoot,
@@ -392,7 +392,7 @@ export function createWorkspaceAgentCapability(
 
       const at = Date.now();
       const log = (ctx as { resources: Record<string, any> }).resources[
-        WORKSPACE_OUTCOMES
+        CLAUDE_CODE_WORKSPACE_OUTCOMES
       ];
       for (const outcome of unsettled) {
         const state =
@@ -450,7 +450,7 @@ export function createWorkspaceAgentCapability(
     name: `${name}-flush`,
     description: "Reconcile the run's workspace back into its collections.",
     inputSchema: z.any(),
-    resources: workspaceResources,
+    resources: claudeCodeWorkspaceResources,
     execute: async (_input: unknown, ctx) => {
       await reconcile(ctx as WorkspaceContext);
     },
@@ -489,7 +489,7 @@ export function createWorkspaceAgentCapability(
           ],
           sandbox:
             agentOptions.sandbox ??
-            ((ctx) => containmentSandbox(rootFor(ctx as WorkspaceContext))),
+            ((ctx) => claudeCodeContainmentSandbox(rootFor(ctx as WorkspaceContext))),
         }
       : {}),
   });
@@ -499,7 +499,7 @@ export function createWorkspaceAgentCapability(
     description:
       "Run the Claude Code Agent SDK against a workspace projected from resource collections, and reconcile what it changed back into them.",
     inputSchema: z.object({ prompt: z.string() }),
-    outputSchema: sdkAgentHandleSchema,
+    outputSchema: claudeCodeAgentHandleSchema,
     stateSchema: workspaceSequencerState,
   })
     .tap(hydrateWorkspace)
@@ -511,7 +511,7 @@ export function createWorkspaceAgentCapability(
     // Declared HERE, not inherited from the blocks below. A capability's
     // `tools` do not carry resource declarations up to the flow — see
     // `./capability` for the full account of that seam.
-    resources: workspaceResources,
+    resources: claudeCodeWorkspaceResources,
     presets: {
       tools: { tools: [workspaceAgent] },
       default: ["tools"],
