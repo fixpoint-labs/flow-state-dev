@@ -106,6 +106,13 @@ decision.
 - **`Task<I, O>` keeps its name** as the typed view over `TaskResourceState`.
 - **"Row" stays** only in store adapters and visual UI list rows.
 
+**The owner's decision, 2026-11-07** ("Rename all 4"), recorded as given. **One rule for a
+retired word on the wire: rename it before 1.0.** Every value an app can see that carries a
+retired word is renamed in FIX-2479's one breaking changeset: the hold marker `"row"` (still
+read, BP-030), the `external-dispatcher` refusal, and the owner-collection refusal and overlap
+messages. No child keeps a retired word as a documented legacy value. The new names are
+FIX-2479's ([D3](../../issues/FIX-2479/DECISIONS.md#d3)).
+
 **Decided while drafting (engineering calls, under the EM posture):**
 
 - **`RowHold`'s new name is FIX-2479's call, under the *ask* rule as it stands.** The draft
@@ -169,5 +176,7 @@ independent analyst the skill asks for. A fresh pass in the spec-set review cove
   tracked file to be read or excluded by name, and reaches names everywhere and English meanings
   in code and pages only (FIX-2354). The collapse trigger did not fire: FIX-2601 moves the tree
   map without widening it, so FIX-2354 stays. FIX-2479's count is about eighty names, not twenty.
+- **Amended after merge (2026-11-07)** — the owner set the wire-value rule: rename before 1.0
+  (FIX-2479 D3). It closes the fork FIX-2479 and FIX-2354 left open.
 
 **Open: none.**
