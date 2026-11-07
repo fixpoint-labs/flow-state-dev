@@ -16,10 +16,12 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { StateSnapshotItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import {
-  createFilesystemStores,
-  createInMemoryStores,
   runAction
 } from "../src";
+import {
+  createFilesystemStores,
+  createInMemoryStores
+} from "../src/host";
 import { createResponseEmitter, type CheckpointStore } from "../src/host";
 import { createInMemoryCheckpointStore } from "../src/stores/memory/checkpoint-store";
 import { createFilesystemCheckpointStore } from "../src/stores/filesystem/checkpoint-store";

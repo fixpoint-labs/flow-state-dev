@@ -22,7 +22,8 @@
 import { defineFlow, generator } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { goalSessionId, loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 
 // --- the fixture world -----------------------------------------------------

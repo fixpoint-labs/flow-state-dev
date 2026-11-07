@@ -8,7 +8,8 @@
  * — `set()` only fires when the entity is missing, so prior journal entries
  * and resources survive subsequent runs.
  */
-import { createInMemoryStores, resolveDurabilityProvider, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { resolveDurabilityProvider, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";

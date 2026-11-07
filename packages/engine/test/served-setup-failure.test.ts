@@ -15,13 +15,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
-  createFilesystemStores,
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter,
   type StoreRegistry
 } from "../src";
+import {
+  createFilesystemStores,
+  createInMemoryStores
+} from "../src/host";
 
 const DEFAULT_MODEL_ENV = "FSDEV_DEFAULT_MODEL";
 // An `intent/*` value is rejected at resolver construction — a reliable

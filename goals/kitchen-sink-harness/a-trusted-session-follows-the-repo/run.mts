@@ -24,7 +24,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { testFlow } from "@flow-state-dev/testing";
 import { defaultResolveClaudeAgent, type ResolveClaudeAgent } from "@flow-state-dev/claude-code/sdk";
 import { runGoal } from "../../lib/index.mts";

@@ -21,12 +21,14 @@
 import type { StoreAdapter } from "@flow-state-dev/engine";
 import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
 import {
+  createPostgresScheduleIndex
+} from "@flow-state-dev/store-postgres";
+import {
   createPostgresStores,
-  createPostgresScheduleIndex,
   createPgPoolTx,
   type PostgresStoreRegistry,
   type QueryExecutor
-} from "@flow-state-dev/store-postgres";
+} from "@flow-state-dev/store-postgres/host";
 import type { Pool, PoolConfig } from "pg";
 import { vercelPgPoolOptions } from "./pg";
 

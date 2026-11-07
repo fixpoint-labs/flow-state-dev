@@ -41,10 +41,12 @@ import {
   continueRequest,
   createFlowRegistry,
   createFlowState,
-  createInMemoryStores,
   inMemoryStores,
   runAction
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createWaitResumeOperation } from "../src/context/wait-resume-operation";
 import { resumeWaitGate } from "../src/durability/resume-wait-gate";

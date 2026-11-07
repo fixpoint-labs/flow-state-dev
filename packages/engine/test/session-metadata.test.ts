@@ -8,9 +8,11 @@ import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFlowApiRouter,
-  createFlowRegistry,
-  createInMemoryStores
+  createFlowRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { parseFlowRoute } from "../src/host";
 import type { SessionRecord } from "../src/host";
 import type { StoreRegistry } from "../src";

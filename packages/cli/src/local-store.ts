@@ -12,8 +12,9 @@
  * the flag.
  */
 import { mkdir } from "node:fs/promises";
-import { createFilesystemStores, type StoreRegistry } from "@flow-state-dev/engine";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { type StoreRegistry } from "@flow-state-dev/engine";
+import { createFilesystemStores } from "@flow-state-dev/engine/host";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { CliError } from "./resolve-block";
 import { EXIT_INVALID_ARGS } from "./exit-codes";
 

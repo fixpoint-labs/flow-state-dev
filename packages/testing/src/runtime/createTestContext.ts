@@ -6,9 +6,11 @@ import { cloneValue, deepEqual } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 import {
   createExecutionContext,
-  createInMemoryStores,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { createResponseEmitter, type ExecutionContext } from "@flow-state-dev/engine/host";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {

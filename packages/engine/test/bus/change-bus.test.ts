@@ -14,7 +14,8 @@ import {
   type RequestRecord,
   type SessionRecord
 } from "../../src/host";
-import { createInMemoryStores, type StoreRegistry } from "../../src";
+import { type StoreRegistry } from "../../src";
+import { createInMemoryStores } from "../../src/host";
 import { resolveStores } from "../../src/routes/http-handlers";
 import { storeIdentity } from "../../src/bus/publish-writes";
 

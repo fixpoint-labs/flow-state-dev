@@ -17,7 +17,8 @@ import type {
   InstanceOwnerPin,
   ResourceCollectionRef,
 } from "@flow-state-dev/core/types";
-import { createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 function boot(options: { flowIsolation?: boolean } = {}) {
   const seen: CollectionHookContext[] = [];

@@ -9,7 +9,8 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { MessageItem } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { itemToLLMMessages } from "../src/context/history";
 
 const DATA = { taskNotice: { taskId: "task_1", ending: "completed" } };

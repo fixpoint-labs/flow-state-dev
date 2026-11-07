@@ -19,7 +19,8 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { dispatchThroughSeam, requireRequestHost } from "@flow-state-dev/core/internal";
-import { createInMemoryStores, runAction } from "../../src";
+import { runAction } from "../../src";
+import { createInMemoryStores } from "../../src/host";
 import type { StoreRegistry } from "../../src/stores/types";
 
 /** Construction inputs that satisfy all three arms of the liveness gate. */

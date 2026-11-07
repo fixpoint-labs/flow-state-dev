@@ -22,11 +22,13 @@ import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core"
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   createInProcessFetch,
   disposeFlowApiRouter,
   resolveDurabilityProvider
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
 

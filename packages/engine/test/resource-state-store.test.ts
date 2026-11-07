@@ -16,7 +16,7 @@ import type { ContentScopeType, ResourceStateStore } from "../src/stores/types";
 import {
   createInMemoryResourceStateStore,
   createFilesystemResourceStateStore
-} from "../src";
+} from "../src/host";
 import { createResourceStateStoreConformanceTests } from "../src/testing";
 import { createFilesystemStoreGuardConformanceTests } from "./filesystem-store-guard-conformance";
 import { InMemoryResourceStateStore } from "../src/stores/memory/resource-state-store";

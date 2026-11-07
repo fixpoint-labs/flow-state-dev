@@ -4,7 +4,7 @@
  * built index is read without scanning the collection).
  */
 import { createFindByConformanceTests } from "@flow-state-dev/engine/testing";
-import { createSQLiteStores } from "../src";
+import { createSQLiteStores } from "../src/host";
 
 createFindByConformanceTests({
   name: "SQLite stores",

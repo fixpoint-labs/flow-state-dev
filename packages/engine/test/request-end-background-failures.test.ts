@@ -9,7 +9,8 @@ import { onRequestEnded, type RequestEnding } from "@flow-state-dev/core/interna
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import { abortRequest } from "../src/host";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

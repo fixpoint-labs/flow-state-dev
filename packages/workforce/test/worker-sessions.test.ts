@@ -7,7 +7,8 @@
  * what each caller gets back and what a turn runs as, never a stored key.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { bootHost, FIXTURE, messageOf, ORG, OTHER } from "./worker-model-harness";
 
 function host() {

@@ -27,10 +27,12 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createFlowState,
-  createInMemoryStores,
   inMemoryStores,
   runAction
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import type { StoreRegistry } from "../../src/stores/types";
 
 /** A registry that declares itself shared, as a real Postgres-backed one does. */

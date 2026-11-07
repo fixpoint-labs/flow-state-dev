@@ -11,7 +11,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { SessionRecord } from "@flow-state-dev/engine/host";
-import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
+import { createSQLiteStores, type SQLiteStoreRegistry } from "../src/host";
 
 function makeSession(id: string, version: number, state: JsonObject = {}): SessionRecord {
   const ts = Date.now();

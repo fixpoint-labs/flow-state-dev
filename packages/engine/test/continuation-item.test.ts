@@ -14,9 +14,11 @@ import { describe, expect, it } from "vitest";
 import {
   continueRequest,
   createFlowRegistry,
-  createInMemoryStores,
   runAction
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { retryRequest } from "../src/execution/request-recovery";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { FlowInstance } from "@flow-state-dev/core/types";

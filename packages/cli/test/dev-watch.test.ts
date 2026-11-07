@@ -38,7 +38,8 @@ export const flow = defineFlow({
 `;
 
 const CONFIG = `
-import { createFlowState, createInMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { existsSync, readFileSync } from "node:fs";
 import { flow } from "./flows/hello.mts";

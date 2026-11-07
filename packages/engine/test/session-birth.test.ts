@@ -29,11 +29,13 @@ import { describe, expect, it } from "vitest";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   resolveUserStorageKey,
   runAction,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { ReadonlySessionStateError, SessionCreateRefusedError } from "../src/host";
 import { createRequestHost } from "../src/context/create-request-host";
 import { ensureSessionForWebhook } from "../src/transports/webhook/session-resolver";

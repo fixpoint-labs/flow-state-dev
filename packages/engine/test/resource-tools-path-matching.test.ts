@@ -32,7 +32,8 @@ import {
 import { asRuntime } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createExecutionContext, createInMemoryStores } from "../src";
+import { createExecutionContext } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 const s = z.object({ v: z.string().default("") });
 const keyed = z.object({ v: z.string().default(""), key: z.string().default("") });

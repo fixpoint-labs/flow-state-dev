@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createFilesystemStores } from "../src";
+import { createFilesystemStores } from "../src/host";
 
 /**
  * FIX-406 6A: the filesystem store's O(N^2) event persistence is a production

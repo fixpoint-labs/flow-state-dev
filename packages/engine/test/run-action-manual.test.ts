@@ -12,7 +12,8 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 /** A trivial single-handler flow that emits one assistant message. */
 function buildMessageFlow() {

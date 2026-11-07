@@ -6,7 +6,7 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/engine";
+import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/engine/host";
 import { testFlow } from "@flow-state-dev/testing";
 import { INTERNAL_CURSOR_SDK_VERSION_READER, type CursorAgentOptions } from "../../../packages/cursor/src/agent";
 import { TESTED_CURSOR_SDK } from "../../../packages/cursor/src/types";

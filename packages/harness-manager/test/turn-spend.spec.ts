@@ -23,7 +23,8 @@ import {
   type HarnessBlock,
   type HarnessCallbackContext,
 } from "@flow-state-dev/core/harness";
-import { continueRequest, createCheckpointDurabilityProvider, createFlowRegistry, createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { continueRequest, createCheckpointDurabilityProvider, createFlowRegistry, runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 

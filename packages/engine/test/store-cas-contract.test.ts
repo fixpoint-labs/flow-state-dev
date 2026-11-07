@@ -20,10 +20,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  ConcurrentModificationError,
+  ConcurrentModificationError
+} from "../src";
+import {
   createFilesystemSessionStore,
   createInMemorySessionStore
-} from "../src";
+} from "../src/host";
 import { runWithCAS } from "../src/stores/cas";
 import { createStateContainer } from "../src/stores/state-container";
 import { type SessionRecord, type SessionStore } from "../src/host";

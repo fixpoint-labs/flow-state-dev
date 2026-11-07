@@ -7,7 +7,8 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, sequencer } from "@flow-state-dev/core";
 import type { ModelResolver } from "@flow-state-dev/core/types";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { defineSkillsCollection } from "@flow-state-dev/orchestration";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 

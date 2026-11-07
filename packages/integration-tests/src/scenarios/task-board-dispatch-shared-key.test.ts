@@ -26,7 +26,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { validateConcurrencyConfig } from "@flow-state-dev/core/types";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,

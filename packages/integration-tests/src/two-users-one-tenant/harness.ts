@@ -47,10 +47,12 @@ import {
 } from "@flow-state-dev/bullmq";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import {
-  createSQLiteStores,
-  sqliteStores,
-  type SQLiteStoreRegistry
+  sqliteStores
 } from "@flow-state-dev/store-sqlite";
+import {
+  createSQLiteStores,
+  type SQLiteStoreRegistry
+} from "@flow-state-dev/store-sqlite/host";
 
 /** The tenant both users share. */
 export const TENANT_ID = "tenant_shared";

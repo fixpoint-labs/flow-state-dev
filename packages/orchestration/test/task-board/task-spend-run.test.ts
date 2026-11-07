@@ -22,7 +22,8 @@ import {
   type RequestSpend
 } from "@flow-state-dev/core/internal";
 import { reportHarnessSpend } from "@flow-state-dev/core/harness";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { z } from "zod";
 import { SPEND_TICK_MS, taskWorkerInputSchema } from "../../src/task-board";
 import { createTaskGate } from "../../src/task-board/task-entry";

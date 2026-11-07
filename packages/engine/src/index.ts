@@ -1,6 +1,6 @@
 /**
  * `@flow-state-dev/engine`: what an app author imports to run flows on a
- * server — `createFlowState`, the stores, `createFlowApiRouter`, the in-process
+ * server — `createFlowState`, the store adapters, `createFlowApiRouter`, the in-process
  * fetch, `runAction`, and the auth and webhook helpers an app wires in.
  *
  * Two more entries split the rest by reader. `@flow-state-dev/engine/host` is
@@ -14,26 +14,6 @@ export {
   type CapabilitySlot,
   type CapabilitySlotMap,
   ConcurrentModificationError,
-  createFilesystemContentStore,
-  createFilesystemOrgStore,
-  createFilesystemRequestStore,
-  createFilesystemResourceStateStore,
-  createFilesystemSessionStore,
-  createFilesystemStores,
-  createFilesystemTraceStore,
-  createFilesystemUserStore,
-  createFilesystemWakeStore,
-  createInMemoryContentStore,
-  createInMemoryLeaseStore,
-  createInMemoryOrgStore,
-  createInMemoryRequestStore,
-  createInMemoryResourceStateStore,
-  createInMemorySessionStore,
-  createInMemoryStores,
-  createInMemorySuspensionStore,
-  createInMemoryTraceStore,
-  createInMemoryUserStore,
-  createInMemoryWakeStore,
   filesystemStores,
   inMemoryStores,
   resolveUserStorageKey,

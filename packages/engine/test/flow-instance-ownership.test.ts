@@ -16,10 +16,12 @@ import { describe, expect, it } from "vitest";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   runAction,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { FlowInstanceBindingMismatchError } from "../src/context/binding-errors";
 import { type FlowRegistry, type SessionRecord } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";

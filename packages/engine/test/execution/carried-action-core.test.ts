@@ -11,7 +11,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createInMemoryStores, runAction } from "../../src";
+import { runAction } from "../../src";
+import { createInMemoryStores } from "../../src/host";
 import { createResponseEmitter } from "../../src/host";
 
 describe("runAction — carried action core", () => {
