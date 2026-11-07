@@ -1,5 +1,81 @@
 # @flow-state-dev/engine
 
+## 0.6.0
+
+### Minor Changes
+
+- 819c2a5: **Breaking:** engine's exports are split across three entries by who imports them (FIX-2449). No deprecated aliases: an import from the wrong entry fails to compile with "has no exported member".
+
+  - **`@flow-state-dev/engine`, the root,** carries what an app imports: `createFlowState`, the store adapters (`inMemoryStores`, `filesystemStores`; the registry factories and per-store constructors are on `engine/host`, see the store-roots changeset), `StoresConfig`, `createFlowApiRouter`, `createInProcessFetch`, `runAction`, `executeBlock`, `continueRequest`, `createFlowRegistry`, and the principal, webhook and durability helpers an app wires in.
+  - **`@flow-state-dev/engine/host`, new,** carries what a host, transport or store adapter author needs, and the types the root's functions take and return: the inbound transport contract (`InboundTransportAdapter`, `InboundTransportHost`, `createInboundTransportHost`, `InboundDispatchHandle`), the flow runner and stream bridge (`FlowRunner`, `RunnerHandle`, `StreamBridge`, `StreamBridgeEvent`), the store contracts (`SessionStore`, `RequestStore`, `ResourceStateStore` and the rest), the lease and concurrency planners, and the options and result types such as `CreateFlowStateOptions` and `FlowApiRouter`. Public and semver-covered.
+  - **`@flow-state-dev/engine/internal`, new,** carries seams only FSD's own packages read. It has no semver promise.
+  - `FlowDispatchHandle` is renamed `RunnerHandle`, beside `FlowRunner`.
+  - The `unstable_` resource helpers are on `engine/internal` without the prefix (`listExposedResources`, `findResourceConfig`, `getPersistedData`, `renderContent`). `unstable_isCollectionConfig` is gone: import `isCollectionConfig` from `@flow-state-dev/core/types`.
+  - Engine no longer re-exports core's names (`createModelResolver` and the other model helpers, `FlowError`, `ExpectedVersion`, `RequestStatus`, `ResolvePrincipalFn`, `ResolvedPrincipal`, `PrincipalResolutionContext`, `InboundSource`, `AuthenticationConfig`). Import them from `@flow-state-dev/core`, `@flow-state-dev/core/types` or `@flow-state-dev/core/helpers`.
+  - Error classes: `ConcurrentModificationError` and `PrincipalResolutionError` stay on the root. These move to `@flow-state-dev/engine/host`: `ConcurrencyLeaseLostError`, `ConcurrencyQueueTimeoutError`, `ConcurrencyRejectedError`, `OrgBindingMismatchError`, `OrgRequiredError`, `ReadonlySessionStateError`, `RequestOwnerMismatchError`, `SessionCreateRefusedError`, `StoreSubscriptionError`, `UnattributedOrgError` and `UserBindingMismatchError`. `FlowError` is imported from `@flow-state-dev/core`. These are no longer exported: `AmbiguousBlockNameError`, `ConcurrencyDeferLimitError`, `ContextLengthError`, `CrossFlowSchemaConflictError`, `FlowIdentityConflictError`, `FlowInstanceBindingMismatchError`, `FlowStateConfigError`, `FlowStateDisposedError`, `ModelError`, `NetworkError`, `ProviderUnavailableError`, `RateLimitError`, `ResourceAlreadyExistsError`, `ResourceDeletedError`, `ScopeMutationTimeoutError`, `TenantBindingMismatchError`, `TimeoutError`, `ToolExecutionError`, `TransportRouteCollisionError`, `UnknownReadError` and `ValidationError`.
+  - The other names nothing outside engine imported are no longer exported, among them `BoundedQueue`, `replayRequestEvents`, `serializeSSEFrame`, `runWithCAS`, `normalizeError`, `retryWithPolicy`, the TTS helpers, and `createDurabilitySweeper`.
+
+  Docs: packages/engine/README.md (split _Public API_ into the root and `@flow-state-dev/engine/host`; name `StoresConfig`, what `createFlowState({ stores })` takes; `RunnerHandle` replaces `FlowDispatchHandle`; `ChangeBus`, `ChangeNotice` and `BusTopic` are imported from `@flow-state-dev/engine/host`), apps/docs/docs/advanced/inbound-transports.md (import `InboundTransportAdapter` from `@flow-state-dev/engine/host`), apps/docs/docs/server/authentication.md (import `ResolvePrincipalFn` from `@flow-state-dev/core/types`), apps/docs/docs/server/host-adapters.md (adapter imports come from `@flow-state-dev/engine/host`), the package-roots page (engine's row: the root, `engine/host`, `engine/internal`)
+
+- 4394069: A session, user or org field that a block or capability declares with a default now reads as that default on a fresh or older record, with no restating on the flow (FIX-2576). Three upgrade refusals come with it. `defineFlow` throws when two declarations of one field (the flow's, a block's, a capability's) differ in type or default, naming the field and both declarers. It also throws on a default factory (`.default(() => ...)`) that would never run: one a block or capability declares that isn't the flow's own session factory, and any in user or org state, the flow's own schema included. Use a static default, or declare the factory on the flow's session schema. Reads now fill static defaults only and never run a factory, so a stored record always reads the same value: a factory default runs only when a new session is born. A field whose schema declares a factory default or a `z.lazy` anywhere is read exactly as stored, so a static default nested inside such a field no longer fills on read. A block, capability or user/org declaration whose field holds a `z.lazy` is refused at `defineFlow`. The one behaviour change from before: a stored session that lacks a field the flow defaults with a factory reads that field as missing, where it used to read a fresh value on every read. The server refuses to start when two flows type or default a shared user or org field differently. `hireWorkforce` no longer requires a manager flow to spread the board's `sessionStateShape` into its session schema.
+
+  Docs: apps/docs/docs/fundamentals/state-and-scopes.md (Schema bubbling: block and capability declarations now fill defaults, drop the "only the flow's own stateSchema" paragraph and the restate advice, add the two refusals; Creating sessions: defaults from every declaration the flow reaches) · apps/docs/docs/fundamentals/capabilities.md (a line beside the `sessionStateSchema` row) · packages/workforce/README.md and apps/docs/docs/workforce/delegating-work.md (a manager flow no longer needs to spread `sessionStateShape`)
+
+- c049036: `createFlowState` no longer refuses `middleware`, `detachedDrainTimeoutMs` or `maxWorkstreamListLimit` by name; no published engine accepted them, and each is now an unknown option. `ctx.suspend({ reason: "human_approval" })` and `{ reason: "human_input" }` throw, naming `user_approval` or `user_input`, instead of suspending under a custom reason that never reaches the Inbox; a stop core 0.2.0 stored under either still resumes, as a user's stop (FIX-2454).
+
+  Docs: apps/docs/docs/advanced/durable-execution.md (a new `human_*` reason throws, naming its `user_*` replacement). The removed options go outright, with no refusal message.
+
+- 3ef3979: **Breaking:** engine's names that another package also exports for something else are renamed or no longer exported, so one name means one thing (FIX-2449). No deprecated aliases: an old import fails to compile with "has no exported member".
+
+  - `DispatchHandle`, what an inbound transport host's `dispatch` returns, is renamed `InboundDispatchHandle`. Core's dispatcher-block result keeps the name `DispatchHandle`.
+  - The bridge frame `StreamEvent` is renamed `StreamBridgeEvent`. The stream item from contracts and core keeps the name `StreamEvent`.
+  - The policy-aware retry predicate (`isRetryableError(error, policy)`) is no longer exported. Core's one-argument helper of that name is unchanged.
+  - `ChildSessionStatus` and `ChildSessionSummary` are no longer exported from engine; import them from `@flow-state-dev/client`.
+  - `enginePackageMarker` is removed.
+
+  Docs: packages/engine/README.md (the bridge list names `StreamBridgeEvent`, not `StreamEvent`)
+
+- 95f3cce: **Breaking:** each store package's root carries what an app author imports, and a new `./host` entry carries what a host or adapter author builds with (FIX-2452). Nothing is deleted, and there are no aliases: an import from the root of a name that moved fails to compile with "has no exported member". Change the import path to `/host`.
+
+  - **`@flow-state-dev/store-sqlite`** keeps `sqliteStores`, `SQLiteStoreOptions` and `createSQLiteScheduleIndex`. Moved to **`@flow-state-dev/store-sqlite/host`**: `createSQLiteStores`, `SQLiteStoreRegistry`, the per-store constructors (`createSQLiteSessionStore`, `createSQLiteRequestStore`, `createSQLiteUserStore`, `createSQLiteOrgStore`, `createSQLiteActiveRequestRegistry`, `createSQLiteCheckpointStore`, `createSQLiteTraceStore`, `createSQLiteSuspensionStore`, `createSQLiteLeaseStore`, `createSQLiteWakeStore`), `SQLiteTraceStoreOptions`, `CreateSQLiteRequestStoreOptions`, `initializeSchema`, `initializeSchemaDDL` and `applyConnectionPragmas`.
+  - **`@flow-state-dev/store-postgres`** keeps `postgresStores`, `PostgresStoreOptions`, `PoolConfig` and `createPostgresScheduleIndex`. Moved to **`@flow-state-dev/store-postgres/host`**: `createPostgresStores`, `PostgresStoreRegistry`, the per-store constructors (`createPostgresSessionStore`, `createPostgresRequestStore`, `createPostgresUserStore`, `createPostgresOrgStore`, `createPostgresActiveRequestRegistry`, `createPostgresContentStore`, `createPostgresResourceStateStore`, `createPostgresCheckpointStore`, `createPostgresSuspensionStore`, `createPostgresLeaseStore`, `createPostgresWakeStore`), `initializeSchema`, `createPgPoolTx`, `QueryExecutor`, `TxClient` and `PostgresBus`.
+  - **`@flow-state-dev/engine`** keeps the adapters `inMemoryStores` and `filesystemStores`, and `StoreAdapter`, `StoresConfig`, `CapabilitySlot` and `CapabilitySlotMap`. Moved to **`@flow-state-dev/engine/host`**: the registry factories `createInMemoryStores` and `createFilesystemStores`, and the per-store constructors (`createInMemorySessionStore`, `createInMemoryRequestStore`, `createInMemoryUserStore`, `createInMemoryOrgStore`, `createInMemoryContentStore`, `createInMemoryResourceStateStore`, `createInMemoryTraceStore`, `createInMemorySuspensionStore`, `createInMemoryLeaseStore`, `createInMemoryWakeStore`, and the `createFilesystem…Store` constructors for session, request, user, org, content, resource state, trace and wake).
+
+  The two `initializeSchema` functions, one per store package, are no longer both on a package root.
+
+  Docs: FIX-2452. packages/store-sqlite/README.md and packages/store-postgres/README.md: the root's names, then a _For host and adapter authors_ section listing `./host` and its names. packages/engine/README.md: the store factories and per-store constructors listed under `@flow-state-dev/engine/host`, `inMemoryStores` and `filesystemStores` on the root. packages/vercel/README.md and packages/cli/README.md: any `createPostgresStores` or `createSQLiteStores` import comes from `/host`. `server/schedule-index.md` and `streaming/trace-channel.md`: the `./host` import paths. The package-roots page: the store-sqlite and store-postgres rows (the root for app authors, `./host` for host and adapter authors, the rule `engine/host` follows), and engine's row names its store factories on `engine/host`.
+
+- 0454257: `createFlowState`'s `stores` is optional, and takes one adapter as well as named profiles (FIX-2452).
+
+  - **Omitted:** the app runs in memory, as the `default` profile. The startup line says so (`active profile: "default" (no \`stores\` set: the app runs in memory, ...)`), and with `NODE_ENV=production`it also warns once per process, naming`stores`as the fix. Nothing persists across a restart.`FSD_QUIET_WARNINGS=1` silences the production warning.
+  - **One adapter:** `stores: sqliteStores({ filename })` is exactly `{ default: { primary: sqliteStores({ filename }) } }`. A primary that declares `bus` backs the bus, and an `FSD_ENV` naming another profile still refuses.
+  - **Named profiles:** unchanged, for an app that picks a store per environment.
+
+  **Breaking:** the `queue` and `scheduler` profile slots are removed from `CapabilitySlotMap` (and so from `CapabilitySlot`). Neither backed anything. A typed profile that names one fails to compile: delete the line. Queues come from a worker adapter (`worker:` on `createFlowState`, e.g. `@flow-state-dev/bullmq`); schedules come from the schedule index (`createSQLiteScheduleIndex`, `createPostgresScheduleIndex`, or the Vercel adapter's `scheduleIndex`). `blobs` stays, reserved for the attachment store.
+
+  Docs: FIX-2452. Getting-started pages (`getting-started/installation.md`, `quick-start.md`, `your-first-flow.md`, `project-structure.md`, `setting-up-models.md`) drop the `stores` line and its `inMemoryStores` import, and drop the empty `session: { stateSchema: z.object({}) }` blocks. `server/setup.md`, `configuration/runtime.md`, `persistence/overview.md` and `api/server.md` show the bare form first (`stores: sqliteStores({ filename })`), say an app with no `stores` runs in memory and production warns, keep named profiles for per-environment stores, drop `queue` and `scheduler` from the slot list, and keep `blobs` as reserved. Every other guide or page that writes `stores: { default: { primary: inMemoryStores() } }` drops it. packages/engine/README.md, packages/cli/README.md and packages/shift-manager/README.md: the same.
+
+### Patch Changes
+
+- 85ca2a3: `GET /api/flows/:flowKind/requests/:requestId/status?include_result_output=true` returns the request's stored action result, read by the request's id, so a caller holding a request id reads what the action answered without listing the session's requests (FIX-2455). The snapshot gains an optional `result` (`output`, `outputNotRecorded`, `error`, `hasOutput`), the same projection `GET /sessions/:id/requests` sends with that flag; `RequestStatusSnapshot` in `@flow-state-dev/core/types` declares it. Without the flag the snapshot is unchanged and carries no `result`.
+
+  Docs: packages/engine/README.md (the read-only status endpoint row: `include_result_output=true` adds the stored `result`, same shape as the session request list), apps/docs/docs/server/connection-resilience.md (the status endpoint step: the optional `result` behind the flag), apps/docs/docs/api/client.md (the `RequestStatusSnapshot` shape gains an optional `result`)
+
+- Updated dependencies [2cb6326]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [c049036]
+- Updated dependencies [3ef3979]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [13e3970]
+  - @flow-state-dev/core@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes

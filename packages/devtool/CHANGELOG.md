@@ -1,5 +1,52 @@
 # @flow-state-dev/devtool
 
+## 0.4.0
+
+### Minor Changes
+
+- 819c2a5: **Breaking:** `getAssetPath()` is renamed `getDevToolAssetPath()`, so the name no longer means two things across published packages (FIX-2449). `getAssetPath()` stays the name an app package exports for `fsdev dev --app`. No deprecated alias. `fsdev`'s optional peer on `@flow-state-dev/devtool` is now a caret range on this release, so an older DevTool no longer satisfies it.
+
+  Docs: packages/devtool/README.md (the `getAssetPath(): string` section and its example become `getDevToolAssetPath()`)
+
+### Patch Changes
+
+- 801aa5e: A stop answered from a React screen is answered whatever started its run, a task board's or a webhook's included (FIX-2450).
+
+  - **react:** `useApproval`, `useSuspensionForm`, `useSuspensions` and `session.answerSuspension` answer a user's stop (`ctx.suspendForUser`, or a raw `user_approval` / `user_input`) through the client's `answer`, and a developer's own custom-reason `ctx.suspend` through `resume`. Before, they always called `resume`, which answers 404 for a task's or a webhook's run.
+  - **react:** `session.resumeSuspension` is renamed to `session.answerSuspension`. The old name is removed. To migrate, rename your calls and pass `session.answerSuspension` to `<SuspensionResolverProvider resolve>`.
+  - **react:** `resumedBy` is gone from the arguments of `answerSuspension`, `SuspensionResolver` and `resolveSuspension`. The server sets who answered; the field was ignored. Remove it from your calls.
+  - **client:** `request.answer(body, { stream: true })` returns the answer route's SSE `Response`, as `resume` and `continue` do. `resumedBy` is gone from `ResumeSuspensionBody`; it has been ignored since 0.3.0. Remove it from your calls.
+  - **devtool:** the suspension panel answers a user's stop through `answer`, so it approves a task's stop.
+
+  Docs: packages/react/README.md (`session.answerSuspension` replaces `session.resumeSuspension` in the session example, the `SuspensionResolverProvider` snippet and `useSuspensions`; a note that a user's stop goes through `answer` and a custom-reason `ctx.suspend` through `resume`; the old name is removed, with no alias), packages/client/README.md (`answer` and `resume` rows: which stop each answers, `answer(body, { stream: true })`, no `resumedBy`), apps/docs/docs/api/client.md (same as the client README), apps/docs/docs/api/react.md (same as the React README), apps/docs/docs/client/react.md (`answerSuspension` in the inline-card streaming section), apps/docs/guides/human-in-the-loop.md (the two HTTP routes, `answer` for a user's stop, no `resumedBy` in the body), apps/docs/docs/advanced/durable-execution.md (`answerSuspension` where it names the React call)
+
+- c049036: The task panel no longer reads a logged task's holds under `questions`, a shape no published version wrote (FIX-2454).
+
+  Docs: none. The old shape is removed outright.
+
+- Updated dependencies [801aa5e]
+- Updated dependencies [2cb6326]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [c049036]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [866945a]
+- Updated dependencies [6407fbf]
+- Updated dependencies [da9484b]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [13e3970]
+  - @flow-state-dev/client@0.6.0
+  - @flow-state-dev/react@0.6.0
+  - @flow-state-dev/core@0.6.0
+
 ## 0.3.2
 
 ### Patch Changes

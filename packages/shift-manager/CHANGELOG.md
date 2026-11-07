@@ -1,5 +1,31 @@
 # @flow-state-dev/shift-manager
 
+## 0.2.2
+
+### Patch Changes
+
+- 6407fbf: An action's answer is read with one call, by the request's id, however long its session is (FIX-2455).
+
+  - **client:** `request.result({ pollMs?, timeoutMs?, signal? })` on every request handle polls the request by its id, as `wait()` does, with its stored result, and returns the read that found it settled. It resolves `{ status, output?, outputNotRecorded?, error? }` for every way a request settles: branch on `status`. A failure resolves `failed` with its `error`, and a stop for a person resolves `suspended`. It rejects only past `timeoutMs`, on a transport error, or when `signal` aborts. New types: `RequestResult` and `WaitOptions`. `wait()` takes `signal` too. Stopping either wait never stops the run. `steerRunningTurn` reads the steer's answer by id, so a steer behind 20 newer requests no longer reads as not taken.
+  - **react:** `useAction({ action, result: true })`: `execute` resolves to `request.result()`'s shape, `loading` holds until the request settles, and an unmount stops the wait without stopping the run. Without the option, `execute` resolves on acceptance, as before.
+  - **react (breaking):** `useReadFence` and `ReadFence` are no longer exported from `@flow-state-dev/react`. They moved to `@flow-state-dev/react/internal`, a subpath for the framework's own packages, with no alias. Apps should not import it.
+  - **orchestration:** the Inbox client's board actions and row answers read the board's answer by request id. A session holding more than 2,000 requests no longer rejects an answer the board gave.
+  - **workforce:** the Workforce client's roster and project actions (`hire`, `fork`, `edit`, `fire`, the standing rules and the work project) read their answer by request id, so a roster session longer than 100 requests no longer reads a finished action as unread.
+  - **shift-manager:** actions, sent lines, interrupts and answered asks wait through the client's one wait and read their answer by request id.
+
+  Docs: packages/client/README.md (a `result()` row in the request handle table, with its resolved shape and the rule that it resolves for every ending; `wait`'s `signal`; the _Sending an action_ example reads `const { status, output, error } = await sent.result()` instead of listing the session's requests), packages/react/README.md (`useAction`'s `result: true` option: what `execute` resolves to and how long `loading` holds; drop `useReadFence`), packages/engine/README.md (the status endpoint's `include_result_output` is what `result()` reads), apps/docs/docs/client/overview.md (_Sending an action_ and the _Requests_ table: `result()`), apps/docs/docs/fundamentals/actions.md (_From the client SDK_: read the answer with `sent.result()`), apps/docs/docs/api/client.md (`result` and `wait`'s `signal`), apps/docs/docs/client/react.md and apps/docs/docs/api/react.md (`useAction`'s `result` option), apps/docs/docs/fundamentals/flows.md (_Reads_: one line pointing at the `useSubscription` recipe in `client/react.md`), the package-roots page FIX-2448 adds, apps/docs/docs/api/package-roots.md (react's row gains `react/internal`: our packages' entry, not for apps)
+
+- 686dc0d: A coding task whose work is a pull request now stays open until that pull request merges or closes (FIX-2578). Both of the coder's managers turn on harness-manager's `awaitPullRequests`, so a run that opened a pull request, or an accept's Open a PR, leaves its task waiting on it. The conversation's task line shows **PR open · #N** with the link and "Merged? Say so here and I'll check."; a line in the task's session wakes it to read the pull request: merged completes it, closed unmerged cancels it, still open runs the line on the same coding session.
+
+  Docs: none beyond the package's own UI; the harness-manager release notes cover the option.
+
+- fc17146: Shift Manager's conversation and a task's Session tab draw the registry's _Jump to latest_ button, from its installed `conversation` item, in place of their own (FIX-2456). The button still shows only while there is more below, takes no height, and keeps Shift Manager's square look.
+- Updated dependencies [801aa5e]
+- Updated dependencies [819c2a5]
+- Updated dependencies [c049036]
+  - @flow-state-dev/devtool@0.4.0
+  - @flow-state-dev/fsdev@1.0.0
+
 ## 0.2.1
 
 ### Patch Changes

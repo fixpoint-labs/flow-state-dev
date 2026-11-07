@@ -1,5 +1,88 @@
 # @flow-state-dev/workforce
 
+## 0.6.0
+
+### Minor Changes
+
+- 9e77cd9: **Breaking:** a worker flow names each entry the framework calls by its documented string, the way it names its `respond` action, and the `*_ENTRY` constants for them leave the `@flow-state-dev/workforce` root with no alias (FIX-2463). An old import fails to compile with "has no exported member".
+
+  - **The names:** `work` (a task entry, built by `workerTaskEntry`), `onTaskSteered` (`steerTurnEntry`), `onMessageReceived` (`messageReceivedEntry`), `onWorkstreamOpened` (`workstreamOpenedEntry`), and `onTaskSettled` (orchestration's `taskSettledEntry`, spread by `board.entries(turn)`). Write `task: { actions: { work: workerTaskEntry({ name, turn }) } }` and `internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind }) } }`. The strings themselves are unchanged.
+  - **Removed from the root:** `WORKER_TASK_ENTRY`, `STEER_TURN_ENTRY`, `MESSAGE_RECEIVED_ENTRY`, `WORKSTREAM_OPENED_ENTRY` and `FILE_SCHEDULED_TASK_ENTRY`. `MESSAGE_RECEIVED_ENTRY` also leaves `@flow-state-dev/workforce/browser`.
+  - **New refusal at hire:** a piece one of those factories built, under any other name or in another section (`onTaskSteerd: steerTurnEntry(...)`, say), is refused by `hireWorkforce` and `workerFlowProblems`, naming the entry it belongs under. Before, a misspelled steer or workstream entry was hired and its turn never ran.
+
+  Docs: packages/workforce/README.md (every `MESSAGE_RECEIVED_ENTRY`, `STEER_TURN_ENTRY`, `WORKER_TASK_ENTRY` and `WORKSTREAM_OPENED_ENTRY` example and table row becomes the string; the entry names are documented strings, and a misnamed factory piece is refused at hire), apps/docs/docs/workforce/messaging-workers.md and apps/docs/docs/workforce/projects.md (the entries as strings: `onMessageReceived`, `onWorkstreamOpened`), packages/harness-manager/README.md and apps/docs/docs/orchestration/harness-manager.md (`onTaskSteered` and `onMessageReceived` as strings in the coder flow example)
+
+- 4394069: A session, user or org field that a block or capability declares with a default now reads as that default on a fresh or older record, with no restating on the flow (FIX-2576). Three upgrade refusals come with it. `defineFlow` throws when two declarations of one field (the flow's, a block's, a capability's) differ in type or default, naming the field and both declarers. It also throws on a default factory (`.default(() => ...)`) that would never run: one a block or capability declares that isn't the flow's own session factory, and any in user or org state, the flow's own schema included. Use a static default, or declare the factory on the flow's session schema. Reads now fill static defaults only and never run a factory, so a stored record always reads the same value: a factory default runs only when a new session is born. A field whose schema declares a factory default or a `z.lazy` anywhere is read exactly as stored, so a static default nested inside such a field no longer fills on read. A block, capability or user/org declaration whose field holds a `z.lazy` is refused at `defineFlow`. The one behaviour change from before: a stored session that lacks a field the flow defaults with a factory reads that field as missing, where it used to read a fresh value on every read. The server refuses to start when two flows type or default a shared user or org field differently. `hireWorkforce` no longer requires a manager flow to spread the board's `sessionStateShape` into its session schema.
+
+  Docs: apps/docs/docs/fundamentals/state-and-scopes.md (Schema bubbling: block and capability declarations now fill defaults, drop the "only the flow's own stateSchema" paragraph and the restate advice, add the two refusals; Creating sessions: defaults from every declaration the flow reaches) · apps/docs/docs/fundamentals/capabilities.md (a line beside the `sessionStateSchema` row) · packages/workforce/README.md and apps/docs/docs/workforce/delegating-work.md (a manager flow no longer needs to spread `sessionStateShape`)
+
+- c049036: `createWorkforceCapability` drops the `agents` and `catalog` option types; either is now an unknown option, rejected by TypeScript and ignored at runtime. Pass `roster` and `inventory`; a tool catalog reaches a worker flow through `defineAgentWorkerFlow({ catalog })`. The refusals of `messages.hopLimit` and a worker naming the `handOff` tool, and the reads of a coordinator's saved `handOffs` and `deliveries`, are gone, and the conversation ledger no longer lists a row's `questions` (FIX-2454).
+
+  Docs: none. The old names and shapes are removed outright, with no refusal message.
+
+### Patch Changes
+
+- 2cb6326: A coding task can wait for its pull request to merge before it completes (FIX-2578).
+
+  - **harness-manager:** new option `awaitPullRequests` (off by default). When it is on, a task whose run opened a pull request does not complete at its settle. It waits on its pull requests, and each wake reads them through `gh`: all merged completes the task with no new run; none open with some merged completes it and the output notes the closed ones; all closed without merging cancels it with the reason "its pull request was closed without merging"; any still open runs the wake's words as a steer on the same attempt and session, then waits again. A pull request that can't be read never settles the task: it runs the steer, waits again, and adds a status note. A completed run's output gains `pullRequests` (`{ url, number, title, state }[]`, `null` when no wait ran).
+  - **harness-manager:** `pullRequestWait(row, records?)` and `PULL_REQUEST_EVENT`, from the package root and from `./browser`, read a task's open pull-request wait for a screen: the hold, when it opened, and each pull request's number, link and title. `CLOSED_WITHOUT_MERGING` is the cancel reason.
+  - **orchestration:** a new row hold kind, `external`, for a running task that waits on something outside the board. It is the system's (`actor: "system"`), never a question: the filer is not told of it, the Inbox does not list it, and `waitsOnUser` is false. It holds the row as a question does (no lease, unclaimable, the waiting turn cannot settle). Open one from the turn holding the claim with `waitExternally(ctx, ledger, { prompt, events })` (`./task-board`) or `ref.awaitExternal(id, wait, { claim })`. A person's line in the task's session answers it, and so does an answer from `"service"`. New readers `holdActorOf(row)` (`"user"`, `"system"` or `undefined`), `externalHoldOf(row)` and `isExternalHold(hold)` from `./tasks`. A board whose only open rows wait on an event ends with the reason `waiting-on-an-event`.
+  - **orchestration:** steers and answers gain the source `"service"`, for words from outside the app, with the sender's handle as `by`. A run reads them quoted as the sender's, never as the user's. The filer's `answerQuestion` on an `external` hold is refused (`wait_is_not_a_question`).
+  - **workspace:** `readPullRequest({ cwd, number, repository?, host? })` reads a pull request's `state` and `merged`, a fork's included. `pullRequestHead` also returns `state` and `merged`.
+  - **core:** `writePullRequests` keeps a pull request's `state` current: a sighting's state replaces the stored one. Other fields still fill only when null.
+  - **workforce:** a message delivered to a task's session whose task waits on an `external` hold answers that wait, as `"service"` from its sender, instead of queueing behind it.
+
+  Docs: packages/harness-manager/README.md (settling: a section "Waiting on a pull request" for `awaitPullRequests`, the four outcomes, the unreadable case, `pullRequestWait` in the `./browser` list, the `pullRequests` output field), packages/orchestration/README.md (the `external` hold kind beside questions and confirms, `waitExternally` / `awaitExternal`, `holdActorOf`, the `"service"` steer source, the `waiting-on-an-event` reason), packages/workspace/README.md (`readPullRequest`), packages/workforce/README.md (a message to a task waiting on an outside event answers its wait).
+
+- 9dde49f: A steer sent through the board now answers a running task's open `external` wait (FIX-2578).
+
+  - **orchestration:** `updateTask`'s `message` (the Inbox's steer, an app's Steer box) and `ref.steer` answer a running task's open external wait in the same write, as a line typed in the task's session already did: the steer carries `answers`, and the same attempt is owed its turn. A task waiting on its pull request no longer sleeps with an untaken steer. The answer has its place under the steer cap kept, so a full task still takes it.
+  - **workforce:** a board steer that answered a task's wait starts the turn it owes, in the task's session.
+
+  Docs: packages/orchestration/README.md (the `external` hold: a board steer answers it, beside a line and a `"service"` answer).
+
+- 6407fbf: An action's answer is read with one call, by the request's id, however long its session is (FIX-2455).
+
+  - **client:** `request.result({ pollMs?, timeoutMs?, signal? })` on every request handle polls the request by its id, as `wait()` does, with its stored result, and returns the read that found it settled. It resolves `{ status, output?, outputNotRecorded?, error? }` for every way a request settles: branch on `status`. A failure resolves `failed` with its `error`, and a stop for a person resolves `suspended`. It rejects only past `timeoutMs`, on a transport error, or when `signal` aborts. New types: `RequestResult` and `WaitOptions`. `wait()` takes `signal` too. Stopping either wait never stops the run. `steerRunningTurn` reads the steer's answer by id, so a steer behind 20 newer requests no longer reads as not taken.
+  - **react:** `useAction({ action, result: true })`: `execute` resolves to `request.result()`'s shape, `loading` holds until the request settles, and an unmount stops the wait without stopping the run. Without the option, `execute` resolves on acceptance, as before.
+  - **react (breaking):** `useReadFence` and `ReadFence` are no longer exported from `@flow-state-dev/react`. They moved to `@flow-state-dev/react/internal`, a subpath for the framework's own packages, with no alias. Apps should not import it.
+  - **orchestration:** the Inbox client's board actions and row answers read the board's answer by request id. A session holding more than 2,000 requests no longer rejects an answer the board gave.
+  - **workforce:** the Workforce client's roster and project actions (`hire`, `fork`, `edit`, `fire`, the standing rules and the work project) read their answer by request id, so a roster session longer than 100 requests no longer reads a finished action as unread.
+  - **shift-manager:** actions, sent lines, interrupts and answered asks wait through the client's one wait and read their answer by request id.
+
+  Docs: packages/client/README.md (a `result()` row in the request handle table, with its resolved shape and the rule that it resolves for every ending; `wait`'s `signal`; the _Sending an action_ example reads `const { status, output, error } = await sent.result()` instead of listing the session's requests), packages/react/README.md (`useAction`'s `result: true` option: what `execute` resolves to and how long `loading` holds; drop `useReadFence`), packages/engine/README.md (the status endpoint's `include_result_output` is what `result()` reads), apps/docs/docs/client/overview.md (_Sending an action_ and the _Requests_ table: `result()`), apps/docs/docs/fundamentals/actions.md (_From the client SDK_: read the answer with `sent.result()`), apps/docs/docs/api/client.md (`result` and `wait`'s `signal`), apps/docs/docs/client/react.md and apps/docs/docs/api/react.md (`useAction`'s `result` option), apps/docs/docs/fundamentals/flows.md (_Reads_: one line pointing at the `useSubscription` recipe in `client/react.md`), the package-roots page FIX-2448 adds, apps/docs/docs/api/package-roots.md (react's row gains `react/internal`: our packages' entry, not for apps)
+
+- Updated dependencies [801aa5e]
+- Updated dependencies [2cb6326]
+- Updated dependencies [9dde49f]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [cc91d7a]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [80175df]
+- Updated dependencies [b9bb900]
+- Updated dependencies [fabd6a7]
+- Updated dependencies [6407fbf]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [3e7d5f3]
+- Updated dependencies [13e3970]
+  - @flow-state-dev/client@0.6.0
+  - @flow-state-dev/orchestration@0.7.0
+  - @flow-state-dev/workspace@0.4.1
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/scheduled@0.3.3
+  - @flow-state-dev/tools@0.2.3
+
 ## 0.5.0
 
 ### Minor Changes

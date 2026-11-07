@@ -1,5 +1,48 @@
 # @flow-state-dev/fsdev
 
+## 1.0.0
+
+### Patch Changes
+
+- 819c2a5: **Breaking:** `getAssetPath()` is renamed `getDevToolAssetPath()`, so the name no longer means two things across published packages (FIX-2449). `getAssetPath()` stays the name an app package exports for `fsdev dev --app`. No deprecated alias. `fsdev`'s optional peer on `@flow-state-dev/devtool` is now a caret range on this release, so an older DevTool no longer satisfies it.
+
+  Docs: packages/devtool/README.md (the `getAssetPath(): string` section and its example become `getDevToolAssetPath()`)
+
+- Updated dependencies [801aa5e]
+- Updated dependencies [2cb6326]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [819c2a5]
+- Updated dependencies [819c2a5]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [78daf33]
+- Updated dependencies [4394069]
+- Updated dependencies [cc91d7a]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+- Updated dependencies [5ce9228]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [298aae0]
+- Updated dependencies [13e3970]
+  - @flow-state-dev/devtool@0.4.0
+  - @flow-state-dev/workspace@0.4.1
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/engine@0.6.0
+  - @flow-state-dev/testing@0.4.0
+  - @flow-state-dev/store-sqlite@0.5.0
+  - @flow-state-dev/node@0.3.1
+
 ## 0.5.0
 
 ### Minor Changes
