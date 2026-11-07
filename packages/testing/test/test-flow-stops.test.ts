@@ -134,8 +134,8 @@ describe("testFlow and a step that waits for a person", () => {
   });
 
   it("checks an input stop's answer against its schema", async () => {
-    const ask = handler({
-      name: "ask",
+    const nameStep = handler({
+      name: "name-prompt",
       inputSchema: z.object({}),
       outputSchema: z.object({ name: z.string() }),
       execute: async (_input, ctx) => {
@@ -147,8 +147,8 @@ describe("testFlow and a step that waits for a person", () => {
         return { name: answer.cancelled ? "" : answer.answer.name };
       }
     });
-    const flow = defineFlow({ kind: "ask", actions: { ask: { inputSchema: z.object({}), block: ask } } })({ id: "ask" });
-    const run = await testFlow({ flow, action: "ask", input: {}, userId: "u1" });
+    const flow = defineFlow({ kind: "names", actions: { name: { inputSchema: z.object({}), block: nameStep } } })({ id: "names" });
+    const run = await testFlow({ flow, action: "name", input: {}, userId: "u1" });
     expect(run.suspension).toMatchObject({ kind: "input" });
 
     await expect(run.answer({ action: "submit", data: { name: 7 } })).rejects.toMatchObject({ status: 400 });

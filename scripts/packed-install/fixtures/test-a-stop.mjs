@@ -123,8 +123,8 @@ function refunds(seen) {
 
 // An input stop's answer is checked against its schema.
 {
-  const ask = handler({
-    name: "ask",
+  const nameStep = handler({
+    name: "name-prompt",
     inputSchema: z.object({}),
     outputSchema: z.object({ name: z.string() }),
     execute: async (_input, ctx) => {
@@ -132,8 +132,8 @@ function refunds(seen) {
       return { name: answer.cancelled ? "" : answer.answer.name };
     }
   });
-  const flow = defineFlow({ kind: "ask", actions: { ask: { inputSchema: z.object({}), block: ask } } })({ id: "ask" });
-  const run = await testFlow({ flow, action: "ask", input: {}, userId: "u1" });
+  const flow = defineFlow({ kind: "names", actions: { name: { inputSchema: z.object({}), block: nameStep } } })({ id: "names" });
+  const run = await testFlow({ flow, action: "name", input: {}, userId: "u1" });
   if (run.status !== "suspended" || run.suspension?.kind !== "input") fail("input stop", `status ${run.status}`);
   await refusedWith("input schema", run.answer({ action: "submit", data: { name: 7 } }), 400);
   const after = await run.answer({ action: "submit", data: { name: "Ada" } });
