@@ -21,6 +21,8 @@ type Glossary = {
   ENTRIES: Array<{ term: string; means: string; retires: object[] }>;
   SWEEP_RULES: Rule[];
   GUARD_TERMS: Rule[];
+  SWEEP_EXEMPTIONS: Array<{ rules?: string[] }>;
+  GUARD_EXEMPTIONS: Array<{ terms?: string[]; where?: (path: string) => boolean; strip?: (path: string, line: string) => string }>;
   PUBLISHED_TERMS: string[];
 };
 
@@ -79,5 +81,37 @@ describe("the vocabulary glossary loads only when every entry is well formed", (
     expect(sweep?.files?.test("apps/docs/docs/a.md")).toBe(true);
     expect(sweep?.pattern?.test("export const zzRetiredName = 1;")).toBe(true);
     expect(sweep?.pattern?.test("export const zzRetiredNames = 1;")).toBe(false);
+  });
+
+  it("gives a bare retirement's exemption to both text checks, so one word has one answer", async () => {
+    const plantExemption = (text: string) =>
+      text.replace("const EXEMPTIONS = [\n", 'const EXEMPTIONS = [\n  { path: /^packages\\/zz\\//, line: /^kept:/, rules: ["zzRetiredName"], why: "planted" },\n');
+    const g = await load((text) => plantExemption(withEntry('{ term: "Zz term", means: "x", retires: [{ name: "zzRetiredName" }] }')(text)));
+    expect(g.SWEEP_EXEMPTIONS.filter((e) => e.rules?.includes("zzRetiredName"))).toHaveLength(1);
+    const guard = g.GUARD_EXEMPTIONS.filter((e) => e.terms?.includes("zzRetiredName"));
+    expect(guard).toHaveLength(1);
+    const [e] = guard;
+    expect(e.where?.("packages/zz/a.ts")).toBe(true);
+    expect(e.where?.("packages/core/a.ts")).toBe(false);
+    // On a kept line the guard strips the name; on any other line it leaves it to be refused.
+    expect(e.strip?.("packages/zz/a.ts", "  kept: zzRetiredName")).not.toMatch(/zzRetiredName/);
+    expect(e.strip?.("packages/zz/a.ts", "const zzRetiredName = 1;")).toMatch(/zzRetiredName/);
+  });
+
+  it("fails to load on a guard-only exemption for a word the sweep reads too", async () => {
+    const plantExemption = (text: string) =>
+      text.replace("const EXEMPTIONS = [\n", 'const EXEMPTIONS = [\n  { id: "zz-guard-only", terms: ["zzRetiredName"], strip: /zzRetiredName/g, why: "planted" },\n');
+    await expect(load((text) => plantExemption(withEntry('{ term: "Zz term", means: "x", retires: [{ name: "zzRetiredName" }] }')(text)))).rejects.toThrow(/sweep reads too/);
+  });
+
+  it("fails to load on a side-chain retirement at a position the check never reads, or with no name", async () => {
+    await expect(load(withEntry('{ term: "Zz", means: "x", retires: [{ id: "zz-sc", check: "side-chain", position: "contract-fields", names: ["zzWord"] }] }'))).rejects.toThrow(/never reads/);
+    await expect(load(withEntry('{ term: "Zz", means: "x", retires: [{ id: "zz-sc", check: "side-chain", position: "called" }] }'))).rejects.toThrow(/no side-chain name/);
+  });
+
+  it("fails to load when the side-chain exemption grows past the two rename-boundary tests", async () => {
+    const edit = (text: string) =>
+      text.replace("const EXEMPTIONS = [\n", 'const EXEMPTIONS = [\n  { rules: ["side-chain-verb"], files: ["packages/zz/test/a.test.ts"], why: "planted" },\n');
+    await expect(load(edit)).rejects.toThrow(/exactly the two rename-boundary tests/);
   });
 });

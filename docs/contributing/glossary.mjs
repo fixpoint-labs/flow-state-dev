@@ -1155,10 +1155,11 @@ export const AREAS = [
 // What each check reads from the entries. Derived, never written by hand.
 // ---------------------------------------------------------------------------------------------
 
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Escape `s` for use as a literal inside a regular expression. */
+export const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Every retirement, with the term it belongs to. A bare `{ name }` becomes one sweep rule and one guard term. */
-const RETIREMENTS =ENTRIES.flatMap((entry) =>
+const RETIREMENTS = ENTRIES.flatMap((entry) =>
   entry.retires.map((r) => ({ reach: "name", ...r, id: r.id ?? r.name, term: entry.term })),
 );
 
@@ -1192,7 +1193,27 @@ const byCheck = (check) => {
   return EXEMPTIONS.filter((e) => (e.rules ?? e.terms).every((id) => ids.has(id)) && (check === "guard") === (e.terms !== undefined));
 };
 export const SWEEP_EXEMPTIONS = byCheck("sweep");
-export const GUARD_EXEMPTIONS = byCheck("guard");
+
+/** The bare retirements: they name no check, so the sweep and the guard both read them. */
+const BARE = new Set(RETIREMENTS.filter((r) => r.check === undefined).map((r) => r.id));
+
+/**
+ * A sweep-shaped exemption that keeps a bare retirement keeps it for the guard too, so one
+ * exemption gives both checks one answer (D2): in the files it names, on the lines it keeps,
+ * the guard strips the retired name.
+ */
+const SHARED_GUARD_EXEMPTIONS = SWEEP_EXEMPTIONS.filter((e) => e.rules.some((id) => BARE.has(id))).map((e, i) => {
+  const terms = e.rules.filter((id) => BARE.has(id));
+  const res = GUARD_TERMS.filter((t) => terms.includes(t.id)).map((t) => t.re);
+  return {
+    id: `shared-${i}-${terms.join("+")}`,
+    terms,
+    why: e.why,
+    where: (path) => e.path.test(path),
+    strip: (_path, line) => (e.line && !e.line.test(line.trim()) ? line : res.reduce((l, re) => l.replace(re, " "), line)),
+  };
+});
+export const GUARD_EXEMPTIONS = [...byCheck("guard"), ...SHARED_GUARD_EXEMPTIONS];
 export const SIDE_CHAIN_EXEMPT_FILES = byCheck("side-chain").flatMap((e) => e.files);
 export const ADDED_LINE_EXEMPTIONS = byCheck("added-lines");
 
@@ -1232,7 +1253,19 @@ export const PUBLISHED_TERMS = ENTRIES.filter((e) => e.published === true).map((
     if (!Array.isArray(named) || named.length === 0) fail(`an exemption (${e.id ?? e.why}) keeps no retirement`);
     for (const id of named) if (!ids.has(id)) fail(`an exemption (${e.id ?? e.why}) keeps "${id}", which nothing retires`);
     if (typeof e.why !== "string" || e.why === "") fail(`an exemption keeping ${named.join(", ")} gives no reason`);
+    const bare = (e.terms ?? []).filter((id) => BARE.has(id));
+    if (bare.length > 0) fail(`a guard exemption (${e.id}) keeps ${bare.join(", ")}, which the sweep reads too: give it the sweep's shape (path, line, rules), which both checks read`);
   }
-  const placed = SWEEP_EXEMPTIONS.length + GUARD_EXEMPTIONS.length + byCheck("side-chain").length + ADDED_LINE_EXEMPTIONS.length;
+  const POSITIONS = new Set(["any", "called", "contract-field", "path-op", "tier-value"]);
+  for (const r of RETIREMENTS) {
+    if (r.check !== "side-chain") continue;
+    if (!POSITIONS.has(r.position ?? "any")) fail(`"${r.id}" has side-chain position "${r.position}", which the side-chain check never reads`);
+    const names = r.names ?? [r.name];
+    if (names.length === 0 || names.some((n) => typeof n !== "string" || n === "")) fail(`"${r.id}" retires no side-chain name`);
+  }
+  if (!(SIDE_CHAIN.any?.length > 0)) fail("the side-chain check would read no retired names");
+  // The side-chain check has no escape hatch: it keeps exactly the two rename-boundary tests.
+  if (SIDE_CHAIN_EXEMPT_FILES.length !== 2) fail(`the side-chain exemptions must hold exactly the two rename-boundary tests; found ${SIDE_CHAIN_EXEMPT_FILES.length}`);
+  const placed = SWEEP_EXEMPTIONS.length + byCheck("guard").length + byCheck("side-chain").length + ADDED_LINE_EXEMPTIONS.length;
   if (placed !== EXEMPTIONS.length) fail("an exemption keeps retirements from more than one check, or in the wrong shape for its check");
 }

@@ -177,7 +177,7 @@ const DOC_FILE = /\.(?:md|mdx)$/;
  * Each rule refuses, on an added line: its `prose` in a page; a declaration of
  * a name built on its item word (`declaresItem`); and a `…Row` declaration
  * (`declaresRow`) in its context. An exemption's `line` keeps the whole line,
- * its `path` keeps the file's declarations, its `name` keeps one name.
+ * its `path` keeps the file's `…Row` declarations, its `name` keeps one name.
  * @param {string} path
  * @param {string} text
  * @param {Set<number>} added
@@ -202,14 +202,14 @@ export function scanCollectionRows(path, text, added) {
         hits.push(hit);
         continue;
       }
-      if (keptPath) continue;
       const declared = (re) => {
         re.lastIndex = 0;
         const names = [];
         for (let m = re.exec(raw); m !== null; m = re.exec(raw)) names.push(m[1]);
         return names.filter((name) => !keeps.some((e) => e.name?.test(name)));
       };
-      if (declared(rule.declaresItem).length > 0 || declared(rule.declaresRow).some((name) => inContext(rule, path, raw, name))) hits.push(hit);
+      // A kept path is where a `…Row` is a rendered table row; a `…CollectionItem…` is a resource wherever it sits.
+      if (declared(rule.declaresItem).length > 0 || (!keptPath && declared(rule.declaresRow).some((name) => inContext(rule, path, raw, name)))) hits.push(hit);
     }
   }
   return hits;

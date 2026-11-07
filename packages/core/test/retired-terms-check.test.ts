@@ -264,6 +264,11 @@ describe("a resource added on this change is a resource, not a row or a collecti
     expect(collectionHits("packages/react/src/components/flow-navigator/rows.tsx", "export type SessionRow = { id: string };\n")).toEqual([]);
   });
 
+  it("refuses a …CollectionItem… declaration even where a …Row is a table row", () => {
+    // The table-row path keeps `…Row`; a CollectionItem is a resource wherever it sits.
+    expect(collectionHits("packages/react/src/components/panels/BoardColumns.tsx", "export type WidgetCollectionItem = { id: string };\n")).toHaveLength(1);
+  });
+
   it("does not read the guard's own lines, which name the pattern on purpose", () => {
     const guard = "packages/core/test/retired-terms-check.test.ts";
     expect(collectionHits(guard, "export type WidgetRow = { id: string };\nEach collection row is stored.\n")).toEqual([]);

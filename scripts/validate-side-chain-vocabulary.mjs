@@ -108,7 +108,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { Project, Node } from "ts-morph";
-import { SIDE_CHAIN, SIDE_CHAIN_EXEMPT_FILES } from "../docs/contributing/glossary.mjs";
+import { SIDE_CHAIN, SIDE_CHAIN_EXEMPT_FILES, escapeRe } from "../docs/contributing/glossary.mjs";
 
 const rootDir = process.cwd();
 
@@ -137,7 +137,7 @@ const rootDir = process.cwd();
  * The property to preserve, and the one the fixtures pin: adding `scheduleWork`
  * to this repo tomorrow must not fail CI, and reintroducing `.work()` must.
  */
-const RETIRED_NAMES = new Set(SIDE_CHAIN.any ?? []);
+const RETIRED_NAMES = new Set(SIDE_CHAIN.any);
 
 /**
  * Where the denylist deliberately STOPS.
@@ -285,16 +285,10 @@ export const retiredNames = [
  * surface is a decision someone has to make out loud. The list is asserted by
  * name in the fixtures so it cannot quietly become an escape hatch — the
  * invariant that matters is that it is closed and named, not that it is one.
- * The files are the glossary's side-chain exemption.
+ * The files are the glossary's side-chain exemption, and the glossary refuses to
+ * load unless it holds exactly these two.
  */
 const EXEMPT_FILES = SIDE_CHAIN_EXEMPT_FILES;
-
-if (EXEMPT_FILES.length !== 2) {
-  console.error(
-    `[side-chain-vocabulary] The exemption list must hold exactly the two rename-boundary tests; found ${EXEMPT_FILES.length}.`
-  );
-  process.exit(1);
-}
 
 /** Exported so a test can pin the exemption by name. */
 export const exemptFiles = EXEMPT_FILES;
@@ -302,7 +296,7 @@ export const exemptFiles = EXEMPT_FILES;
 /** Op literals that become block-path segments or default block names. */
 const PATH_OP_LITERALS = new Set(SIDE_CHAIN["path-op"] ?? []);
 /** The op literals as one regex alternation, for the segment, template and regex forms of E4. */
-const OPS = [...PATH_OP_LITERALS].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+const OPS = [...PATH_OP_LITERALS].map(escapeRe).join("|");
 /** E2: the string values that stood for the tier. */
 const TIER_VALUES = new Set(SIDE_CHAIN["tier-value"] ?? []);
 /** E4: an already-built segment literal, `op[index]`. */
