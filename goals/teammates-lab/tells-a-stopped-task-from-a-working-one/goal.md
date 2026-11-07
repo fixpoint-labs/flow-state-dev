@@ -65,3 +65,4 @@ each runs only the leg it must fail):
 | 2026-11-04 | 2d5b2b75 | n/a | PASS | clock 0 s against 1 s, then 4 s; alive 80 reads over 240 s, all working, 6 lease deadlines; quiet `quiet for 4m` 0.4 s after the server answered (after a reload), lease lapsed 126 s before |
 | 2026-11-05 | e8c6a3e0 (the board read's stale gate) | n/a | PASS | clock 0 s against 1 s, then 4 s; alive 80 reads over 240 s, all working, 7 lease deadlines; quiet `quiet for 4m` 243 s after the kill, lease lapsed 126 s before |
 | 2026-11-05 | e8c6a3e0 | n/a | FAIL (control `never-quiet`) | quiet only: 207 fresh reads of a row lapsed by up to 181 s read `working · …`, last `5m 0s` |
+| 2026-11-07 | 9478c9ce (the lead renamed `teammates.lead`) | n/a | PASS | clock 0 s against 1 s since the retry's run started, then 4 s; alive 79 reads over 237 s, all working, 6 lease deadlines; quiet `quiet for 4m` 243 s after the kill (0.5 s after the server answered, after a reload), lease lapsed 124 s before |
