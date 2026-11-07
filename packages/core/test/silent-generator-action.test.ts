@@ -36,14 +36,14 @@ describe("a generator mounted as a caller action with no itemVisibility", () => 
   });
 
   it("warns once when the flow is built, naming the flow, the action and both fixes", () => {
-    const flow = defineFlow({ kind: "support-desk", actions: { ask: { block: silent() } } });
+    const flow = defineFlow({ kind: "support-desk", actions: { chat: { block: silent() } } });
     flow();
     flow();
 
     const found = warnings(spy);
     expect(found).toHaveLength(1);
     expect(found[0]).toContain('"support-desk"');
-    expect(found[0]).toContain('"ask"');
+    expect(found[0]).toContain('"chat"');
     expect(found[0]).toContain("itemVisibility: { client: true, history: true }");
     expect(found[0]).toContain("itemVisibility: { client: false, history: false }");
   });
@@ -56,13 +56,13 @@ describe("a generator mounted as a caller action with no itemVisibility", () => 
   });
 
   it("stays quiet when the generator sets itemVisibility", () => {
-    defineFlow({ kind: "shown-desk", actions: { ask: { block: shown() } } })();
+    defineFlow({ kind: "shown-desk", actions: { chat: { block: shown() } } })();
     expect(warnings(spy)).toHaveLength(0);
   });
 
   it("stays quiet on a handler action", () => {
     const h = handler({ name: "h", execute: () => ({ ok: true }) });
-    defineFlow({ kind: "handler-desk", actions: { ask: { block: h } } })();
+    defineFlow({ kind: "handler-desk", actions: { chat: { block: h } } })();
     expect(warnings(spy)).toHaveLength(0);
   });
 
@@ -82,7 +82,7 @@ describe("a generator mounted as a caller action with no itemVisibility", () => 
 
   it("stays quiet in production", () => {
     process.env.NODE_ENV = "production";
-    defineFlow({ kind: "prod-desk", actions: { ask: { block: silent() } } })();
+    defineFlow({ kind: "prod-desk", actions: { chat: { block: silent() } } })();
     expect(warnings(spy)).toHaveLength(0);
   });
 });

@@ -184,17 +184,17 @@ function signalD(project) {
     defineFlow({ kind: "help-desk", authentication: { defaultUserId: "u", requireUser: false }, ${entries} })();
     console.log(JSON.stringify(warned.filter((m) => m.includes("itemVisibility"))));`], project, env);
   const read = (r) => { try { return JSON.parse(r.out.trim().split("\n").pop()); } catch { return [`unreadable: ${r.err.slice(-200)}`]; } };
-  const hit = read(run(`actions: { ask: { block: g() } }`));
+  const hit = read(run(`actions: { chat: { block: g() } }`));
   if (hit.length !== 1) f.push(`silent generator action: ${hit.length} warning(s), wanted 1`);
-  else for (const s of ['"help-desk"', '"ask"', "{ client: true, history: true }", "{ client: false, history: false }"])
+  else for (const s of ['"help-desk"', '"chat"', "{ client: true, history: true }", "{ client: false, history: false }"])
     if (!hit[0].includes(s)) f.push(`the warning does not name ${s}`);
   const quiet = {
-    "itemVisibility set": [`actions: { ask: { block: g({ client: true, history: true }) } }`],
+    "itemVisibility set": [`actions: { chat: { block: g({ client: true, history: true }) } }`],
     internal: [`actions: {}, internal: { actions: { wake: { block: g() } } }`],
     task: [`actions: {}, task: { actions: { work: { block: g(), from: pass } } }`],
     webhook: [`actions: {}, webhooks: { stripe: { on: { "invoice.paid": { block: g(), input: () => ({}) } } } }`],
     schedule: [`actions: {}, schedules: { static: { nightly: { block: g(), cron: "0 3 * * *" } } }`],
-    production: [`actions: { ask: { block: g() } }`, { NODE_ENV: "production" }],
+    production: [`actions: { chat: { block: g() } }`, { NODE_ENV: "production" }],
   };
   for (const [name, [entries, env]] of Object.entries(quiet)) {
     const w = read(run(entries, env));
