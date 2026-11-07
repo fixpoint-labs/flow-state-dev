@@ -11,6 +11,7 @@ At the start of a new conversation in this repo, read:
 - `docs/contributing/best-practices.md` — implementation standards (the active BPs at the top of that file)
 - `docs/contributing/architecture-reference.md` — quick reference for locked contracts
 - Relevant docs in `docs/architecture/` for the task at hand
+- `docs/contributing/glossary.mjs` before naming a public thing: one word per concept, and the words it retires. A change that coins or retires a public term edits its entry in the same PR; the vocabulary checks read nothing else
 
 **Authority order**: `docs/philosophy.md` > `docs/architecture/*` > `docs/contributing/best-practices.md` > this file. When two in-repo docs disagree, the more specific one wins; when code and grounding disagree with no doc to settle it, that is a philosophy gap to surface, not to route around.
 

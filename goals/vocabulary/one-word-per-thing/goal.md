@@ -3,26 +3,16 @@
 **Issue:** FIX-1876
 **Outcome:** Each word names one mechanism, everywhere a reader meets it: an API name, a stack trace, a test name, a page. *Dispatch* starts work on another worker, *wait* is what a turn does on a task it dispatched, *ask* is only a question to a person, and *hand-off* is only passing work that is already under way. A reader who meets one of these words looks for one mechanism, not two.
 **Input:** the repository itself. Every git-tracked file under `packages`, `apps`, `docs/architecture`, `.changeset` and `goals`. Held-out by construction: the next commit is a different input, and a new file that uses a retired word fails it.
-**Signal:** `sweep.mjs` scans every tracked file under those roots, or excludes it by a named rule. It fails on any use of a retired name or meaning (`rules.mjs` → `RETIRED`) that the keep list (`KEEP`, each entry with its reason) doesn't classify and that doesn't carry `retired-name-refusal` on its line. It also fails on any file that is neither scanned nor excluded. Passes at OPEN 0 with no unruled file.
-**Anti-game:** A sweep that reads nothing passes everything, so `--control` plants `parkOnAsk` in a file the sweep reads, through the same path as a real file, and the goal fails unless the sweep reports it. The keep list is never widened to silence a hit: `KEEP` grows only with a reason a reviewer can check, and `RETIRED` is never narrowed. The totality check stops a new root or file type from slipping past unread.
+**Signal:** `sweep.mjs` scans every tracked file under those roots, or excludes it by a named rule. It fails on any use of a retired name or meaning (the glossary's retirements, `docs/contributing/glossary.mjs`) that an exemption (each with its reason) doesn't classify and that doesn't carry `retired-name-refusal` on its line. It also fails on any file that is neither scanned nor excluded. Passes at OPEN 0 with no unruled file.
+**Anti-game:** A sweep that reads nothing passes everything, so `--control` plants `parkOnAsk` in a file the sweep reads, through the same path as a real file, and the goal fails unless the sweep reports it. An exemption is never widened to silence a hit: one is added only with a reason a reviewer can check, and a retirement is never narrowed. The totality check stops a new root or file type from slipping past unread.
 **Model:** n/a — model-free.
 **Run:** `pnpm tsx goals/vocabulary/one-word-per-thing/run.mts` (CI's Process guards run `node goals/vocabulary/one-word-per-thing/sweep.mjs` and the same with `--control`)
 **Output:** `run.mts` passes `--list`, so a local FAIL prints every open line; CI's step prints only the per-file summary. Both fail on the same lines.
 **Controls:** `--control` on `sweep.mjs`: the planted `parkOnAsk`, and FIX-2070's `messageWorker` and `replyTo` (FIX-2242 D2), must each be reported by its own rule.
 
-## Collection item
+## The words
 
-Stored collection data is an **item**, not a row. In prose, say "collection item". The public client names are the anchor: `CreateCollectionItemOptions`, `CollectionItemHandle` (`rules.mjs` → `COLLECTION_ITEM`).
-
-**Record** stays a verb (`recordHarnessUsage`, a run record). It is not the noun for collection data.
-
-**Entry** is already taken (inbox entries, flow entries, `CollectionSnapshotEntry`). It is not the noun for collection data either.
-
-Core's `OutputItem` and `getItems` are response items: what a run streams back (a message, a tool result, a status). They are not collection items. A collection item is the value a collection stores. The two share the word "item" and nothing else.
-
-**Exempt:** a real UI table row. That is a rendered table, a grid row, a DOM `<tr>`, or a component such as BoardColumns.
-
-**Scope:** new code and new docs only. This sweep does not apply the rule. The existing names stay until someone next edits that file. `scripts/check-retired-terms.mjs` flags a line this change adds. A new `type` or `interface` whose name ends in `Row` counts when the file is a collection module, the line mentions a collection, or the name contains `Collection`. Docs prose counts when it says "collection row", "collection's row", or "the row of the collection". The guard's other areas apply: history, process, goals, and root config stay out.
+The words, what each retires, where each reaches and what is exempt are in the glossary, `docs/contributing/glossary.mjs`. Nothing here restates them.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

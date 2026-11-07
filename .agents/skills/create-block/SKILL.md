@@ -24,6 +24,8 @@ Parse $ARGUMENTS to determine:
    - Standalone blocks for a specific flow: in the flow's directory
    - Blocks for `@thought-fabric/core`: `packages/thought-fabric/src/<domain>/blocks/`
 
+**Name it from the glossary.** Check the block's name, and any exported names it adds, against [`docs/contributing/glossary.mjs`](../../../docs/contributing/glossary.mjs): use the word an entry gives, never one it retires. A block that coins a public term adds its entry in the same change.
+
 If the user's description suggests a reusable, configurable generator (like "sentiment analyzer" or "code reviewer"), it's a **utility block**. If it's a handler that does a specific job (like "fetch URL" or "run shell command"), it's a **tool block**.
 
 ### Step 2: Read Reference Examples

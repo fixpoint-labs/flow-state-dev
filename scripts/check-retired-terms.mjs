@@ -2,12 +2,12 @@
 /**
  * Guard: Workforce's retired words stay retired.
  *
- * One idea, one name. A worker is a worker, never a seat; a task board's entry
- * is an assignee; the flow a worker runs on is its worker flow; a user is a
- * user. This guard reads every line of every tracked file and fails on a
- * retired word (seat, hired seat, hired roster, mailbox and its members and
- * threads, room, talk session, and, on Workforce's ground, kind, owner pin,
- * flow instance and person) anywhere it isn't kept on purpose.
+ * One idea, one name. This guard reads every line of every tracked file and
+ * fails on a retired word anywhere it isn't kept on purpose. Which words, what
+ * each says instead, which are read on Workforce's ground only, the areas and
+ * the exceptions all come from the glossary (`docs/contributing/glossary.mjs`).
+ * This file owns how it finds them: the areas walk, the ground, the token
+ * strip and the added-lines scan.
  *
  * ## Totality, twice
  *
@@ -22,14 +22,13 @@
  * So a second retired word on an excepted line still counts. Each exception
  * names the terms it may strip and the rule behind it. An exception that strips
  * nothing fails the run: an exception nobody needs is a hole waiting for a
- * live use. "Seat" has no exception at all, a task board's included. Never
- * widen an exception to go green: rename the line.
+ * live use. Never widen an exception to go green: rename the line.
  *
  * ## Ground is a surface, not a folder
  *
- * "Kind", "owner pin", "flow instance", "member", "thread" and "person" have
- * live meanings elsewhere (the engine's flow kind, a project's members, a chat
- * thread), so they are scanned on Workforce's ground only: Workforce's and
+ * A term marked `ground: "workforce"` has live meanings elsewhere (the engine's
+ * flow kind, a project's members, a chat thread), so it is scanned on
+ * Workforce's ground only: Workforce's and
  * Shift Manager's packages and pages, any path that names Workforce (the
  * kitchen-sink app's `workforce/` tree, the React panels, the architecture
  * notes), the glossary's Workforce and Shift Manager sections, and any file
@@ -37,24 +36,19 @@
  *
  * ## The glossary
  *
- * Each shipped vocabulary term is defined by exactly one glossary row. Shift
- * Manager's rows name its screens (its Roster screen beside Workforce's
- * roster), so they don't count toward a term.
+ * Each term the glossary flags `published` is defined by exactly one row of the
+ * published glossary page. Shift Manager's rows name its screens (its Roster
+ * screen beside Workforce's roster), so they don't count toward a term.
  *
- * ## Collection item
+ * ## Added lines
  *
- * Stored collection data is an item, not a row
- * (`goals/vocabulary/one-word-per-thing` → `COLLECTION_ITEM`). The sweep does
- * not apply it: the existing tree keeps its names. This guard flags a line the
- * checkout adds against the base ref, and only that line. A `type` or
- * `interface` whose name ends in `Row` counts when it names collection data:
- * the file is a collection module, the line says collection, or the name
- * contains `Collection`. Docs prose that calls collection data a row counts.
- * A rendered table row does not: panels, the flow navigator, BoardColumns, a
- * table or grid path, a `TableRow`-style name, a DOM `<tr>`, or the words
- * "table row" / "grid row". Core's `OutputItem` and `getItems` are response
- * items and do not match. Record and entry do not match. History, process,
- * goals and root config stay out of scope, same as the other terms.
+ * A retirement the glossary reads at `added-lines` scope (today, the resource
+ * entry's) is refused only on a line the checkout adds against the base ref:
+ * the existing tree keeps its names until they are renamed. A declaration of a
+ * name the rule retires counts; a use does not. Docs prose the rule names counts
+ * in a page. Its exemptions (a rendered table row) come from the glossary too.
+ * History, process, goals and root config stay out of scope, same as the other
+ * terms.
  *
  * Run: node scripts/check-retired-terms.mjs [--root <dir>] [--list [term]] [--control]
  *   --root     scan another checkout (default: this repository)
@@ -68,28 +62,20 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { COLLECTION_ITEM } from "../goals/vocabulary/one-word-per-thing/rules.mjs";
+import {
+  ADDED_LINE_EXEMPTIONS,
+  ADDED_LINE_RULES,
+  AREAS,
+  GUARD_EXEMPTIONS as EXCEPTIONS,
+  GUARD_TERMS as TERMS,
+  PERSON_PINS,
+  PUBLISHED_TERMS,
+} from "../docs/contributing/glossary.mjs";
+
+/** The glossary's areas, terms, exceptions and pins, re-exported for this guard's tests and codemods. */
+export { AREAS, EXCEPTIONS, PERSON_PINS, TERMS };
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-
-/** This guard's own test plants retired words on purpose, so it is process tooling. */
-const GUARD_TEST = "packages/core/test/retired-terms-check.test.ts";
-
-/** First match wins. `scope: true` is swept; `false` keeps its words by design. */
-export const AREAS = [
-  { id: "history", scope: false, re: /^specs\/|^spec\/|^spec-poc|^docs\/internal\/|(^|\/)CHANGELOG\.md$|^\.changeset\/|^apps\/docs\/blog\/|^docs\/atlas\/|^docs\/superpowers\/|^pnpm-lock\.yaml$/, why: "dated records: no rewriting history" },
-  { id: "process", scope: false, re: new RegExp(`^\\.agents\\/|^\\.husky\\/|^\\.omp\\/|^\\.github\\/|^\\.claude\\/|^\\.cursor\\/|^plugins\\/|^scripts\\/|^docs\\/contributing\\/|^docs\\/(philosophy|objectives|PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CLAUDE|AGENTS|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`), why: "process tooling and contributor instructions" },
-  { id: "goals", scope: false, re: /^goals\//, why: "tests of behaviour: renamed identifiers reach them through typecheck, their words stay" },
-  { id: "config", scope: false, re: /^[^/]+\.(json|ya?ml)$|^eslint\.config\.mjs$|^LICENSE$|^\.gitignore$|^\.ignore$/, why: "root configuration" },
-  { id: "package-src", scope: true, re: /^packages\/[^/]+\/src\// },
-  { id: "package-tests", scope: true, re: /^packages\/[^/]+\/(test|tests|e2e)\// },
-  { id: "package-other", scope: true, re: /^packages\// },
-  { id: "docs-site", scope: true, re: /^apps\/docs\// },
-  { id: "apps", scope: true, re: /^apps\// },
-  { id: "labs", scope: true, re: /^labs\// },
-  { id: "examples", scope: true, re: /^examples\// },
-  { id: "reference-docs", scope: true, re: /^docs\/architecture\/|^docs\/mechanisms\/|^README\.md$/ },
-];
 
 /** The area a path falls in, or undefined when none names it. */
 export const areaOf = (path) => AREAS.find((a) => a.re.test(path));
@@ -117,168 +103,6 @@ export function workforceGround(path, text) {
   const on = WORKFORCE_PATHS.test(path) || WORKFORCE_IMPORT.test(text);
   return () => on;
 }
-
-/**
- * The retired terms and what each says instead. `ground: "workforce"` scans
- * Workforce's ground only. "Seat" matches at the start of a word part, so
- * `leaseAtClaim` and `closeAt` are not seats.
- */
-export const TERMS = [
-  { id: "seat", re: /(?<![a-z])[Ss]eat|(?<=[a-z0-9])Seat|SEAT/g, say: "worker; on a task board, assignee" },
-  { id: "hired-roster", re: /hired[ _-]?roster/gi, say: "roster" },
-  { id: "mailbox", re: /mailbox/gi, say: "coordinator; a member is a delegate" },
-  { id: "member", re: /\b[Mm]embers?\b|\bMEMBERS?\b|[Mm]ember(?=[A-Z_])|(?<=[a-z])Members?\b/g, ground: "workforce", say: "delegate, where it means a mailbox member" },
-  { id: "thread", re: /\bthreads?\b/gi, ground: "workforce", say: "the delegate's session, where it means a mailbox thread" },
-  { id: "room", re: /\b[Rr]ooms?\b|room-(?:lines|seq|answers|deliveries)|Room[A-Z]\w*|\broom[A-Z]\w*|\bROOM_\w*/g, say: "the project coordinator" },
-  { id: "talk-session", re: /talk[ _-]?sessions?|talk-?template|talkFor\b|\bTALK_\w+/gi, say: "the project coordinator" },
-  { id: "person", re: /\bpersons?\b|\bperson's\b/gi, ground: "workforce", say: "user, where it means the signed-in user" },
-  { id: "kind", re: /kind/gi, ground: "workforce", say: "worker flow, where it means the flow a worker runs on" },
-  { id: "owner-pin", re: /owner[ _-]?pins?/gi, ground: "workforce", say: "access to the worker" },
-  { id: "flow-instance", re: /flow[ _-]?instances?/gi, ground: "workforce", say: "worker, where it means a worker" },
-];
-
-/**
- * A person who isn't the signed-in user stays (BR-5), pinned by file and
- * phrase. Another "person" on the same line, or the phrase in another file,
- * still counts.
- */
-export const PERSON_PINS = [
-  // A support desk's example worker: a human on the support team, not the customer writing in.
-  { path: "apps/docs/docs/workforce/coordinators.md", phrase: /\bhow to reach a person\b/g },
-  // A triage worker's example: it escalates to a human, not back to the user who asked.
-  { path: "apps/docs/docs/workforce/overview.md", phrase: /\bor to a person\b/g },
-  { path: "apps/docs/docs/workforce/workers-on-disk.md", phrase: /\bhands off to a person\b/g },
-];
-
-/**
- * The projects surface, where "member" is a project's: Workforce's projects
- * modules, their tests, and the Projects page and its figure.
- */
-const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workforce\/test\/(?:projects?|workstreams?)[\w-]*\.test\.ts$|^apps\/docs\/docs\/workforce\/(?:projects\.md|project-overview\.svg)$/;
-
-/**
- * The tokens each exception strips. Only `terms` may be stripped by it. `where`
- * narrows an exception to the files it covers.
- */
-export const EXCEPTIONS = [
-  {
-    id: "field-named-kind",
-    terms: ["kind"],
-    strip: /\bflowKinds?\b|\bkind\s*\??:\s*Kind\b|(?<=[!=]==\s*)kind\b|\bkinds?\s*\??:|\.kinds?\b|\bkind\s*[!=]==?|["'`]kinds?["'`]|\bdata-kind\b|\bkind=\{|\bkind="|(?<=[{(,]\s*)kind(?=\s*[,})=])|\$\{kind\}|\bconst kind\b|\bof kinds\b|\blastKind\b|\bflowsByKind\b|<kind>/g,
-    why: "a field named kind: the engine's flow kind or a type discriminant (BR-10)",
-  },
-  {
-    id: "kind-type-names",
-    terms: ["kind"],
-    strip: /\b\w+ErrorKind\b|\bEntryKind\b|\bTaskChangeKind\b|\bPathReport<Kind\b|\bKind extends\b|:\s*Kind\b|\b(?:WRITER|PLAIN)_KIND\b|\bworkerWriterKind\b|\b(?:suspendForUserKindOf|SuspendForUserKind)\b|`Kind`/g,
-    why: "a type discriminant's own type, core's names for what a user's stop asks (FIX-2129), and the engine flow kinds a test registers (BR-10)",
-  },
-  {
-    id: "engine-flow-kind",
-    terms: ["kind"],
-    strip: /\b(?:a |the |that |this |each |every |another |its |their |your )?flow(?:'s)? (?:own )?kinds?\b|\b(?:its|their) own kind\b|\bits kind is\b|\bis its kind\b|\b(?:under|at) (?:the flow's|its|their) (?:own )?kind\b|\bkind names?\b|\*\*Kind\.\*\*/gi,
-    why: "the engine's flow kind: a flow's name to the engine (BR-10)",
-  },
-  {
-    id: "english-kind",
-    terms: ["kind"],
-    strip: /\b(?:a|an|any|one|the same|this|that|what|which|some|every|each|another|other|same|no|either|second|different)\s+kinds?\s+of\b|\bkinds\s+of\b|\bof (?:any|that|this|each|either|one|the same) kind\b|\b(?:the same|same) kind\b|\bkindly\b|\bkinder\b|\bBe kind\b/gi,
-    why: "the English word",
-  },
-  {
-    id: "other-kinds",
-    terms: ["kind"],
-    strip: /\b(?:block|item|content|event|channel|part|tool|error|message|node|trace|step|manifest|change|ask|path|entry)[ -]kinds?\b/gi,
-    why: "another subsystem's kind",
-  },
-  {
-    id: "core-flow-instance-type",
-    terms: ["flow-instance"],
-    strip: /\b(?:Any)?FlowInstance\w*|\bisFlowInstance\b|\bcreateFlowInstance\b/g,
-    why: "core's type for any registered flow; the engine keeps the term (BR-10)",
-  },
-  {
-    id: "english-room",
-    terms: ["room"],
-    strip: /\b(?:make|makes|making|made|leave|leaves|leaving|left|have|has|had|ran out of|run out of|out of|given|give|gives|enough|reserve|reserves|reserved|no|more|less|little|plenty of)\s+room\b|\broom\s+(?:for|to)\b|room-temperature/gi,
-    why: "the English 'room for'",
-  },
-  {
-    id: "landing-room-metaphor",
-    terms: ["room"],
-    where: (path) => path === "apps/build-site/public/index.html",
-    strip: /\binside their room\b|\brebuild the room\b/g,
-    why: "flow-state.build's headline metaphor (an assistant's room you can rebuild), not the retired coordinator term",
-  },
-  {
-    id: "project-member",
-    terms: ["member"],
-    strip: /\b(?:project|org|organization|team)(?:'s)?\s+members?\b|\b(?:project|org)Members?\b|\bmembers\??\s*:|\bmembers\?(?=,)|\bone of its members\b|\.members\b|["'`]members["'`]|\bisMember\b|\bnot-a-member\b|\bprivate-has-members\b|\bnon-members?\b|\b(?:is|are|aren't|isn't|they're|not) a member of\b|\ba member of any team\b|\bmembers? of (?:both|the default) projects\b|\bmembers?\s+of\s+(?:the |a |an |that |this |its |their |your |every )?(?:shared |private )?(?:project|org|organization|team)s?\b|\b[Mm]embers only\b|\bLAB_USERS\.member\b|\bas: "member"|\bmember(?=: \{ userId)|\bu_devforce_member\b|\bdevforce-lab-verified-member\b/g,
-    why: "a project's or an org's member is a user (the project's `members`), not a mailbox's",
-  },
-  {
-    id: "project-modules-member",
-    terms: ["member"],
-    where: (path) => PROJECT_MODULES.test(path),
-    strip: /\b[Mm]embers?\b/g,
-    why: "in the projects modules and page, a member is the project's: a user its `members` lists",
-  },
-  {
-    id: "type-member",
-    terms: ["member"],
-    strip: /\b(?:inherited|prototype|required|union) member\b|\bany member of a union\b|\bObject\.prototype member\b/g,
-    why: "a member of a type or an object, in TypeScript's sense",
-  },
-  {
-    id: "chat-thread",
-    terms: ["thread"],
-    strip: /\bchat[ -]threads?\b|\bthread:\s*\{/gi,
-    why: "a chat thread in the UI, and a coding harness's own `thread:` option, not a mailbox's",
-  },
-  {
-    id: "claude-code-threads",
-    terms: ["thread"],
-    where: (path) => path.startsWith("labs/claude-code-style/"),
-    strip: /\bthreads?\b/gi,
-    why: "Claude Code's threads mode, which the Claude Code-style lab copies by name: a thread is a task in a session of its own, not a mailbox's",
-  },
-  {
-    id: "subscription-modules",
-    terms: ["thread", "member", "kind"],
-    where: (path) => /^packages\/workforce\/(?:src\/subscriptions\/|test\/subscriptions-)/.test(path),
-    strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
-    why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there, and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
-  },
-  {
-    id: "subscription-docs",
-    terms: ["thread", "member", "kind"],
-    where: (path) => path === "packages/workforce/README.md" || path === "apps/docs/docs/workforce/messaging-workers.md",
-    // Only on a line that names the outside service, so a mailbox's thread elsewhere on the page still counts.
-    strip: /\bSCREEN_KINDS\b|(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)(?=[^\n]*(?:subscri|provider|\bPR\b|pull request|repositor|outside|`thread`|canRead|github))|(?<=(?:subscri|provider|\bPR\b|pull request|repositor|outside|canRead|github)[^\n]*)(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)/g,
-    why: "the subscription pages' outside thread, a sender's member role and an event's kind (FIX-2471), on lines that name the outside service",
-  },
-  {
-    id: "old-page-redirect",
-    terms: ["mailbox"],
-    where: (path) => path === "apps/docs/docusaurus.config.ts",
-    strip: /(?<=from: ")\/docs\/workforce\/mailboxes(?=")/g,
-    why: "a redirect from a removed page's address, so an old link still lands",
-  },
-  {
-    id: "registry-copies",
-    terms: ["kind", "person"],
-    where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\//.test(path),
-    strip: /\bkinds?\b|\bpersons?\b|\bperson's\b/gi,
-    why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test: its words are the registry's",
-  },
-  {
-    id: "person-any-human",
-    terms: ["person"],
-    where: (path) => PERSON_PINS.some((pin) => pin.path === path),
-    strip: (path, line) => PERSON_PINS.filter((pin) => pin.path === path).reduce((out, pin) => out.replace(pin.phrase, " "), line),
-    why: "a person who isn't the signed-in user stays, pinned by file and phrase (BR-5)",
-  },
-];
 
 const TERM_IDS = new Set(TERMS.map((t) => t.id));
 for (const e of EXCEPTIONS) for (const t of e.terms) if (!TERM_IDS.has(t)) throw new Error(`exception ${e.id} names unknown term ${t}`);
@@ -330,52 +154,30 @@ export function scanFile(path, text, exceptions, stripped = {}) {
 }
 
 /**
- * A collection module: a `collection` directory, or a file whose name says collection.
- * `tasks/collection/types.ts` and `collections.md` both count. `overview.md` does not.
- */
-const COLLECTION_FILE = /(?:^|\/)collections?(?:\/|$)|(?:^|\/)[^/]*collection[^/]*\.(?:[cm]?[jt]sx?|mdx?)$/i;
-
-/**
- * Where a row is a rendered table, not stored collection data. Panels and the
- * flow navigator draw board and session rows; BoardColumns is one of those
- * components; a `table` or `grid` path is the same thing.
- */
-const UI_ROW_PATH = /(?:^|\/)components\/(?:panels|flow-navigator)\/|BoardColumns|(?:^|\/)(?:table|grid)s?(?:\/|$)|\.(?:table|grid)\.[cm]?[jt]sx?$/i;
-
-/** Type names that are table rows. `WidgetRow` does not match. `DataTableRow` does. */
-const UI_ROW_NAME = /(?:Table|Grid|BoardCard|BoardColumn|RosterWorker|FlowNavigator|Panel)Row$/;
-
-/** A declaration of a type whose name ends in Row. Uses of an existing name do not match. */
-const TYPE_ROW = /\b(?:export\s+)?(?:declare\s+)?(?:type|interface)\s+(\w*Row)\b/g;
-
-/**
- * Docs calling stored collection data a row: "collection row", "collection's row",
- * "collections' rows", or "the row of the collection".
- */
-const PROSE_ROW = /\bcollection\s+rows?\b|\bcollection(?:'s|s')\s+rows?\b|\brows?\s+(?:in|of|from|inside|on)\s+(?:the\s+|a\s+|an\s+)?(?:[\w'-]+\s+){0,4}collection\b/i;
-
-/** A line that is itself a rendered table row, so the collection-item rule leaves it. */
-const UI_ROW_LINE = /<tr\b|<\/tr>|\b(?:table|grid)\s+rows?\b/i;
-
-const DOC_FILE = /\.(?:md|mdx)$/;
-
-/**
- * Whether a `*Row` declaration is stored collection data.
+ * Whether a `*Row` declaration names a resource, by the rule's context: the file
+ * is a collection module, the line says collection, or the name does.
+ * @param {{ context: { file: RegExp; line: RegExp; name: RegExp } }} rule
  * @param {string} path
  * @param {string} line
  * @param {string} name
  */
-function inCollectionContext(path, line, name) {
-  if (COLLECTION_FILE.test(path)) return true;
-  if (/\bcollections?\b/i.test(line)) return true;
-  if (name.includes("Collection")) return true;
-  return false;
+function inContext(rule, path, line, name) {
+  return rule.context.file.test(path) || rule.context.line.test(line) || rule.context.name.test(name);
 }
 
+/** The exemptions that keep one added-lines rule's words. */
+const exemptionsOf = (rule) => ADDED_LINE_EXEMPTIONS.filter((e) => e.rules.includes(rule.id));
+
+const DOC_FILE = /\.(?:md|mdx)$/;
+
 /**
- * Collection-item violations on lines a change adds. `added` is the 1-based
- * line numbers added in `path`. A line the change did not add is ignored, and
- * so is a file outside this guard's in-scope areas.
+ * The glossary's added-lines retirements, refused on lines a change adds.
+ * `added` is the 1-based line numbers added in `path`. A line the change did
+ * not add is ignored, and so is a file outside this guard's in-scope areas.
+ * Each rule refuses, on an added line: its `prose` in a page; a declaration of
+ * a name built on its item word (`declaresItem`); and a `…Row` declaration
+ * (`declaresRow`) in its context. An exemption's `line` keeps the whole line,
+ * its `path` keeps the file's declarations, its `name` keeps one name.
  * @param {string} path
  * @param {string} text
  * @param {Set<number>} added
@@ -388,24 +190,26 @@ export function scanCollectionRows(path, text, added) {
   const lines = text.split("\n");
   const hits = [];
   const isDoc = DOC_FILE.test(path);
-  const uiPath = UI_ROW_PATH.test(path);
-  for (const n of [...added].sort((a, b) => a - b)) {
-    const raw = lines[n - 1];
-    if (raw === undefined) continue;
-    if (UI_ROW_LINE.test(raw)) continue;
-    if (isDoc && PROSE_ROW.test(raw)) {
-      hits.push({ term: COLLECTION_ITEM.id, line: n, text: raw.trim().slice(0, 160) });
-      continue;
-    }
-    if (uiPath) continue;
-    TYPE_ROW.lastIndex = 0;
-    let match;
-    while ((match = TYPE_ROW.exec(raw)) !== null) {
-      const name = match[1];
-      if (UI_ROW_NAME.test(name)) continue;
-      if (!inCollectionContext(path, raw, name)) continue;
-      hits.push({ term: COLLECTION_ITEM.id, line: n, text: raw.trim().slice(0, 160) });
-      break;
+  for (const rule of ADDED_LINE_RULES) {
+    const keeps = exemptionsOf(rule);
+    const keptPath = keeps.some((e) => e.path?.test(path));
+    for (const n of [...added].sort((a, b) => a - b)) {
+      const raw = lines[n - 1];
+      if (raw === undefined) continue;
+      if (keeps.some((e) => e.line?.test(raw))) continue;
+      const hit = { term: rule.id, line: n, text: raw.trim().slice(0, 160) };
+      if (isDoc && rule.prose.test(raw)) {
+        hits.push(hit);
+        continue;
+      }
+      if (keptPath) continue;
+      const declared = (re) => {
+        re.lastIndex = 0;
+        const names = [];
+        for (let m = re.exec(raw); m !== null; m = re.exec(raw)) names.push(m[1]);
+        return names.filter((name) => !keeps.some((e) => e.name?.test(name)));
+      };
+      if (declared(rule.declaresItem).length > 0 || declared(rule.declaresRow).some((name) => inContext(rule, path, raw, name))) hits.push(hit);
     }
   }
   return hits;
@@ -526,7 +330,7 @@ export function addedLines(root) {
 }
 
 /**
- * Added lines, in scope, that name stored collection data as a row.
+ * Added lines, in scope, that the glossary's added-lines retirements refuse.
  * @param {string} [root]
  * @returns {{ path: string; term: string; line: number; text: string }[]}
  */
@@ -545,25 +349,8 @@ export function findAddedCollectionRows(root = ROOT) {
   return hits;
 }
 
-/** The vocabulary that has shipped: each is defined by exactly one glossary row. */
-export const GLOSSARY_TERMS = [
-  "User",
-  "Assignee",
-  "Hand-off",
-  "Worker",
-  "Worker flow",
-  "Standard worker",
-  "Fork",
-  "Roster",
-  "Coordinator",
-  "Delegate",
-  "Delegation",
-  "Door",
-  "Project",
-  "Workstream",
-  "Project coordinator",
-  "Shift Coordinator",
-];
+/** The glossary's published terms: each is defined by exactly one row of the published page. */
+export const GLOSSARY_TERMS = PUBLISHED_TERMS;
 
 /**
  * Count the glossary's rows per term, Shift Manager's screens left out.
@@ -660,9 +447,9 @@ export const PLANTS = [
   { path: PERSON_PINS[0].path, line: "If you can't help, say how to reach a person, and tell the person who signed in.", term: "person" },
   { path: GLOSSARY, line: "| **Worker** | workforce | A second definition. | Worker |", term: null },
   { path: "zz-planted-folder/notes.md", line: "Nothing retired here.", term: null },
-  // Stored collection data named as a row. In memory, so the control does not need a dirty tree.
-  { path: "packages/orchestration/src/tasks/collection/zz-planted.ts", line: "export type WidgetRow = { id: string };", term: COLLECTION_ITEM.id },
-  { path: "apps/docs/docs/zz-collection-planted.md", line: "Each collection row is stored beside the worker.", term: COLLECTION_ITEM.id },
+  // A resource in a collection named as a row, refused on an added line. In memory, so the control does not need a dirty tree.
+  { path: "packages/orchestration/src/tasks/collection/zz-planted.ts", line: "export type WidgetRow = { id: string };", term: "collection-row" },
+  { path: "apps/docs/docs/zz-collection-planted.md", line: "Each collection row is stored beside the worker.", term: "collection-row" },
 ];
 
 /** An exception that matches nothing, which the run must report stale. */
@@ -687,7 +474,7 @@ export function control(tree) {
   const r = census({ files, paths }, { extraExceptions: [STALE_PLANT] });
   const results = PLANTS.filter((p) => p.term !== null).map((p) => {
     const line = lineOf.get(p);
-    const refused = p.term === COLLECTION_ITEM.id
+    const refused = ADDED_LINE_RULES.some((rule) => rule.id === p.term)
       ? scanCollectionRows(p.path, files.get(p.path) ?? "", new Set([line])).some((h) => h.line === line)
       : r.hits.some((h) => h.path === p.path && h.line === line && h.term === p.term);
     return { what: `${p.path}:${line} (${p.term})`, refused };
@@ -710,8 +497,12 @@ function print(r, rowHits) {
   for (const h of r.hits) byTerm[h.term] = (byTerm[h.term] ?? 0) + 1;
   for (const t of TERMS) if (byTerm[t.id]) console.log(`  ${t.id}: ${byTerm[t.id]} counted (say ${t.say})`);
   if (rowHits.length > 0) {
-    console.error(`  ${COLLECTION_ITEM.id}: ${rowHits.length} added line(s) name stored collection data as a row (say ${COLLECTION_ITEM.say}: ${COLLECTION_ITEM.anchor.join(", ")})`);
-    for (const h of rowHits) console.error(`  ${h.path}:${h.line}  ${h.text}`);
+    for (const rule of ADDED_LINE_RULES) {
+      const own = rowHits.filter((h) => h.term === rule.id);
+      if (own.length === 0) continue;
+      console.error(`  ${rule.id}: ${own.length} added line(s) use a word the ${rule.term} entry retires (say ${rule.say}: ${rule.anchor.join(", ")})`);
+      for (const h of own) console.error(`  ${h.path}:${h.line}  ${h.text}`);
+    }
   }
   if (r.unscoped.length > 0) console.error(`UNSCOPED (no area): ${r.unscoped.join(", ")}`);
   if (r.stale.length > 0) console.error(`STALE EXCEPTIONS (remove them): ${r.stale.join(", ")}`);
@@ -720,8 +511,8 @@ function print(r, rowHits) {
   const lines = new Set(r.hits.map((h) => `${h.path}:${h.line}`));
   const inFiles = new Set(r.hits.map((h) => h.path));
   if (r.hits.length > 0) console.error(`FAIL · ${lines.size} lines in ${inFiles.size} files use a retired term`);
-  if (rowHits.length > 0) console.error(`FAIL · ${rowHits.length} added line(s) name stored collection data as a row`);
-  if (r.ok && rowHits.length === 0) console.log("check-retired-terms: PASS · no retired term outside its exceptions, every exception strips something, every file has an area, one glossary row per term, no added line names collection data as a row");
+  if (rowHits.length > 0) console.error(`FAIL · ${rowHits.length} added line(s) use a retired word`);
+  if (r.ok && rowHits.length === 0) console.log("check-retired-terms: PASS · no retired term outside its exceptions, every exception strips something, every file has an area, one glossary row per term, no added line uses a retired word");
 }
 
 function main() {

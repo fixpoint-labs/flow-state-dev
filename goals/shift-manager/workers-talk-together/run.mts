@@ -64,10 +64,10 @@ const control: Control | undefined = controlName === "" ? undefined : CONTROLS[c
 const scenes = new Set((process.env.GOAL_SCENES ?? (control === undefined ? SCENES.join(",") : control.scenes.join(","))).split(",").map((s) => s.trim()).filter(Boolean)) as Set<Scene>;
 for (const s of scenes) if (!(SCENES as readonly string[]).includes(s)) throw new Error(`unknown scene "${s}" in GOAL_SCENES`);
 
-/** The vocabulary sweep's two message rows (FIX-2242 D2), read from this checkout's rules. */
+/** The glossary's two message rules (FIX-2242 D2), read from this checkout. */
 type RetiredRow = { id: string; files: RegExp; pattern: RegExp };
-const RULES = fileURLToPath(new URL("../../vocabulary/one-word-per-thing/rules.mjs", import.meta.url));
-const { RETIRED } = (await import(pathToFileURL(RULES).href)) as { RETIRED: RetiredRow[] };
+const RULES = fileURLToPath(new URL("../../../docs/contributing/glossary.mjs", import.meta.url));
+const { SWEEP_RULES: RETIRED } = (await import(pathToFileURL(RULES).href)) as { SWEEP_RULES: RetiredRow[] };
 const MESSAGE_ROWS = RETIRED.filter((r) => r.id === "message-names" || r.id === "message-reply-to");
 /** Build output and installs, which the vocabulary sweep never reads either (it reads tracked files only). */
 const SKIP_DIRS = new Set(["node_modules", ".next", ".turbo", "build", "coverage", "storybook-static", ".docusaurus", ".git"]);
