@@ -239,20 +239,28 @@ describe("writePullRequests — one pull request, one row", () => {
     expect(pullRequestKey({ host: "github.com", owner: "a", name: "..", number: 1 })).toBe("github.com/a/%2E%2E/1");
   });
 
-  it("never moves the opening request; a later sighting only fills what was null", async () => {
+  it("never moves the opening request; a later sighting fills what was null, and its state replaces the stored one", async () => {
     const collection = memoryCollection();
     await writePullRequests(collection, [ref({ state: "open" })], { source: "tool", requestId: "r1" });
     await writePullRequests(collection, [ref({ title: "Late title", state: "merged", branch: "notes" })], {
       source: "branch",
       requestId: "r2",
     });
+    // A screen reading the row after a read that saw the merge must say merged, not the state at opening.
     expect(collection.rows.get("github.com/acme/app/88")).toMatchObject({
       requestId: "r1",
       title: "Late title",
-      state: "open",
+      state: "merged",
       branch: "notes",
       source: "tool",
     });
+  });
+
+  it("keeps the stored state when a sighting names none", async () => {
+    const collection = memoryCollection();
+    await writePullRequests(collection, [ref({ state: "closed" })], { source: "branch", requestId: "r1" });
+    await writePullRequests(collection, [ref()], { source: "tool", requestId: "r1" });
+    expect(collection.rows.get("github.com/acme/app/88")).toMatchObject({ state: "closed" });
   });
 
   it("upgrades a branch row a create call names later, and fills its request", async () => {

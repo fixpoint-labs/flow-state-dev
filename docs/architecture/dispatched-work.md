@@ -593,20 +593,32 @@ suspension mirrored from a `suspendForUser` stop (FIX-2131) — is excused from
 `countWaitable` as separate predicates rather than one widened predicate,
 because they answer different questions:
 
-| | routing exclusion (`runsElsewhere`) | person-wait exclusion (`waitsOnUser`) |
+| | routing exclusion (`runsElsewhere`) | hold-wait exclusion (`waitsOnHold`) |
 |---|---|---|
-| Asks | where does this row's work belong? | is this row waiting on a *human*? |
-| Derived from | the board's declared `mode` (FIX-2076) | the row's open questions |
-| Applies to | `in_progress` rows | `in_progress` rows with an open question |
+| Asks | where does this row's work belong? | is this row waiting on an open hold (a *human*, or an outside event)? |
+| Derived from | the board's declared `mode` (FIX-2076) | the row's open holds |
+| Applies to | `in_progress` rows | `in_progress` rows with an open hold |
 | Applies on | `mode: "delegation"` boards, every row | any board, in the active-worker count only |
 | Liveness conjunct | **yes** — the lease | **no** |
 
-The person-wait exclusion is what lets a `complete-or-blocked` board whose only
+The hold-wait exclusion is what lets a `complete-or-blocked` board whose only
 open rows wait on a person stop `blocked` instead of polling them: nobody is
 working them, and the answer is a write that starts the row's next turn on its
 own. It needs no lease conjunct because a row waiting on a person holds no
 lease — the turn that asked gave it up — so there is no claimant that could
 have died while the row still says someone is on it.
+
+A row waiting on something outside the board is excused the same way: an
+`external` row hold (FIX-2578), such as a coding task's wait on its pull
+request. Its actor is `"system"`, never a
+person, so `waitingOn(row)` says `"system"`, `waitsOnUser` is false, the Inbox
+does not list it and the filer is not told of it; but nothing in a drain moves
+it either, so the excuse reads `waitsOnHold` (any open hold), and a board whose
+only open rows wait so ends `waiting-on-an-event`, after the user rung. Any
+line answers it: a person's line typed in the task's session (`from: "user"`),
+or a delivered message to that session (`from: "service"`, with the sender's
+handle as `by`, its words shown to the run quoted as the sender's). Like a
+question's answer, that owes the same attempt one more turn.
 
 `runsElsewhere` is the board's declared mode, not an inference from its
 assignees (FIX-2076): a delegation board's every assignee dispatches, so every

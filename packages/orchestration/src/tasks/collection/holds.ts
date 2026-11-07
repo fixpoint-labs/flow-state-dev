@@ -18,7 +18,7 @@
 import { generateId } from "../generate-id";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
-import { MAX_QUESTION_PROMPT, type QuestionInit, type RowHold, type SuspensionHold, type TaskHold } from "../schema/hold";
+import { MAX_QUESTION_PROMPT, type ExternalWait, type QuestionInit, type RowHold, type SuspensionHold, type TaskHold } from "../schema/hold";
 import { MAX_STEERS, type TaskSteer } from "../schema/steer";
 import type { TaskWriteDeclineReason } from "./types";
 
@@ -28,6 +28,11 @@ export const NO_ANSWER_CAME = "No answer came before this question's deadline. G
 /** Whether `hold` is a row question (a question or a confirm). */
 export function isRowHold(hold: TaskHold): hold is RowHold {
   return hold.source.kind === "row";
+}
+
+/** Whether `hold` is an external wait (FIX-2578): the running turn waits on something outside the board. */
+export function isExternalHold(hold: TaskHold): hold is RowHold {
+  return hold.source.kind === "row" && hold.ask.kind === "external";
 }
 
 /** Whether `hold` mirrors a task run's stop. */
@@ -63,6 +68,24 @@ export function askedOnTicket(row: Pick<Task, "askedInTurn" | "attempts"> | unde
 /** Whether `row` waits on anything now. */
 export function hasOpenHold(row: Pick<Task, "status" | "holds" | "steers">): boolean {
   return openHolds(row).length > 0;
+}
+
+/**
+ * **Who `row` waits on now**, the one reading of a hold's `actor` (FIX-2578):
+ * `"user"` while any open hold is a person's (a question, a confirm, a run's
+ * stop for a person), else `"system"` while an external wait is open, else
+ * `undefined`. A reader that says "waiting on a user" asks for `"user"`; one
+ * that only needs "nothing in a drain moves it" asks for any.
+ */
+export function waitingOn(row: Pick<Task, "status" | "holds" | "steers">): "user" | "system" | undefined {
+  const open = openHolds(row);
+  if (open.length === 0) return undefined;
+  return open.some((hold) => hold.actor === "user") ? "user" : "system";
+}
+
+/** The row's open external wait, if it has one (FIX-2578): a turn opens at most one. */
+export function externalHoldOf(row: Pick<Task, "status" | "holds" | "steers">): RowHold | undefined {
+  return openHolds(row).find(isExternalHold) as RowHold | undefined;
 }
 
 /** The row's open questions and confirms, oldest first. */
@@ -132,13 +155,46 @@ export function newRowHolds(asks: readonly QuestionInit[], at: number, options: 
   }));
 }
 
-/** An answer to one row question: the user's words, or the filer's for a midway question. */
+/**
+ * Why an external wait can't be opened, or `undefined` when it can: a prompt
+ * empty or past {@link MAX_QUESTION_PROMPT} characters, or no event to wait on.
+ */
+export function externalWaitProblem(wait: ExternalWait): string | undefined {
+  if (wait.events.length === 0) return "it waits on no event";
+  if (wait.events.some((event) => event.event.trim() === "" || event.key.trim() === "")) return "an event it waits on has no name or key";
+  if (wait.prompt.trim().length === 0) return "its prompt is empty";
+  if (wait.prompt.length > MAX_QUESTION_PROMPT) return `its prompt is ${wait.prompt.length} characters, past the ${MAX_QUESTION_PROMPT} a task keeps`;
+  return undefined;
+}
+
+/**
+ * The one constructor of an external wait (FIX-2578): `actor: "system"`, kind
+ * `external`, one `{ by: "event" }` releaser per event, opened at `at`. Never
+ * `midway`, so its filer is not told of it as a question, and no deadline:
+ * it waits until a steer answers it or the task is cancelled.
+ */
+export function newExternalHold(wait: ExternalWait, at: number): RowHold {
+  return {
+    id: generateId("wait"),
+    actor: "system",
+    openedAt: at,
+    source: { kind: "row", closedBy: wait.events.map((event) => ({ by: "event" as const, event: event.event, key: event.key })) },
+    ask: { kind: "external", prompt: wait.prompt, ...(wait.title !== undefined ? { title: wait.title } : {}) },
+  };
+}
+
+/** An answer to one row hold: the user's words, the filer's for a midway question, or a service's for an external wait. */
 export interface QuestionAnswer {
-  /** The row question it answers. */
+  /** The row hold it answers. */
   readonly questionId: string;
   readonly message: string;
-  readonly from: "user" | "filer";
-  /** The user who answered, server-set. */
+  /**
+   * Who sent it: a person (`"user"`), the filer for a midway question
+   * (`"filer"`), or words from outside the app, a delivered message
+   * (`"service"`, FIX-2578), whose sender is `by`.
+   */
+  readonly from: "user" | "filer" | "service";
+  /** The user who answered, server-set; for a `"service"` answer, the sender's handle. */
   readonly by?: string;
   /**
    * A key naming this answer, so the same request run again adds nothing
@@ -150,7 +206,7 @@ export interface QuestionAnswer {
 
 /** Every change to `Task.holds`. */
 export type HoldChange =
-  /** A midway ask: the turn holding the claim opens questions. The caller fences it on the claim. */
+  /** A midway ask, or an external wait: the turn holding the claim opens row holds. The caller fences it on the claim. */
   | { readonly op: "ask"; readonly holds: readonly RowHold[] }
   /** An answer, kept as the user's steer carrying the question's id; `steerId` is minted once, outside the write. */
   | { readonly op: "answer"; readonly answer: QuestionAnswer; readonly steerId: string; readonly at: number }

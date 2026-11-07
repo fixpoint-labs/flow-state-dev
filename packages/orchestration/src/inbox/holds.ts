@@ -3,7 +3,7 @@
  * Inbox can answer each. Inside the read; not published.
  */
 import { isTerminalStatus, type TaskStatus } from "../tasks/schema/task-status";
-import { openHolds } from "../tasks/collection/holds";
+import { isSuspensionHold, openHolds } from "../tasks/collection/holds";
 import type { Task } from "../tasks/schema/task";
 import type { InboxHold, InboxRow, InboxSuspension } from "./types";
 
@@ -66,6 +66,9 @@ export function openUserHolds<TDetail>(
     const title = hold.ask.title !== undefined ? { title: hold.ask.title } : {};
     const due = hold.due !== undefined ? { due: hold.due } : {};
     if (hold.source.kind === "row") {
+      // An external wait is the system's (FIX-2578): never a person's to answer here.
+      const kind = hold.ask.kind;
+      if (kind === "external") continue;
       const holder = row.holder ?? null;
       holds.push(
         withAnswerable<TDetail>({
@@ -77,7 +80,7 @@ export function openUserHolds<TDetail>(
             action: holder?.action ?? null,
             taskId: row.id,
           },
-          ask: { kind: hold.ask.kind, prompt: hold.ask.prompt, ...title },
+          ask: { kind, prompt: hold.ask.prompt, ...title },
           openedAt: hold.openedAt,
           ...due,
         }),
@@ -85,7 +88,7 @@ export function openUserHolds<TDetail>(
       continue;
     }
     // A task run's stop: its answer goes to the run's session, where it is parked.
-    if (row.run == null) continue;
+    if (!isSuspensionHold(hold) || row.run == null) continue;
     const found = foundFor(hold.source.suspensionId);
     const flowId = flowOf(row.run.sessionId) ?? found?.flowId ?? null;
     holds.push(

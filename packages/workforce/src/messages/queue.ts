@@ -20,11 +20,18 @@
  * message is a wait, never the user's stop: nothing the user answers counts it.
  * A message whose park would pass `MAX_WAIT_DEPTH` isn't admitted: its request
  * ends without landing it, and the sending session's pass sends it again.
+ *
+ * One hold never queues a message: a task's wait on something outside the
+ * board (an `external` hold, FIX-2578, such as a coding task's wait on its
+ * pull request). The system holds it, not the user, and a message is news it
+ * waits for, so {@link answerExternalWait} answers it with the message's words
+ * before the queue is reached.
  */
 import { requestHostOf, canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { WaitGateBinding } from "@flow-state-dev/core/internal";
 import { findTaskPartitions, hasOpenHold, rowsInSession } from "@flow-state-dev/orchestration/internal";
+import { externalHoldOf } from "@flow-state-dev/orchestration/tasks";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-board/ledger";
 import { TASK_ID_STATE_KEY } from "../workers/keys";
 import { messageLogOf, type WorkerMessageRow } from "./message-log";
@@ -46,6 +53,34 @@ async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
     if (held !== undefined) return { board: ledger.collectionId, taskId: held.id };
   }
   return null;
+}
+
+/**
+ * Answer the open `external` hold of the running task session's task with
+ * message `row` (FIX-2578): its words, as `"service"`, by its sender's
+ * handle, so the run reads them quoted as the sender's, never as the user's.
+ * The answer owes the task one more turn on the same attempt, which reads
+ * them. Keyed by the message, so a copy sent again answers once.
+ *
+ * @returns `true` once the hold took it; `false` when the session runs no
+ *   task, the task holds no open external wait, or the write was declined
+ *   (an answer landed first), and the message goes on as any other.
+ */
+export async function answerExternalWait(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "from" | "text">): Promise<boolean> {
+  const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
+  if (typeof taskId !== "string" || taskId.length === 0) return false;
+  const sessionId = ctx.session.identity.id;
+  for (const partition of await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId)) {
+    const ledger = await conversationLedgerAt(ctx, partition);
+    if (ledger?.answer === undefined) continue;
+    for (const task of rowsInSession(ledger, sessionId)) {
+      const hold = externalHoldOf(task);
+      if (hold === undefined) continue;
+      const outcome = await ledger.answer(task.id, { questionId: hold.id, message: row.text, from: "service", by: row.from, key: `message:${row.id}` });
+      return outcome.outcome === "recorded";
+    }
+  }
+  return false;
 }
 
 /**

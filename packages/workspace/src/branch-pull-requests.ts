@@ -14,8 +14,11 @@
  * it: a branch an agent switched to may carry pull requests from before the
  * turn, and those are not the turn's.
  *
- * `pullRequestHead` is the other question asked here: which branch a pull
- * request's work is on, so a run can be started on it.
+ * `readPullRequest` is the other question asked here: one pull request, as
+ * GitHub has it now (its state, whether it merged, its head). `pullRequestHead`
+ * asks it to learn which branch a pull request's work is on, so a run can be
+ * started on it, and refuses a fork's; a waiting task asks it whether its pull
+ * request merged, a fork's included.
  *
  * Host-side only: this is where the framework talks to GitHub. It never throws.
  * A missing or signed-out `gh`, a checkout with no GitHub remote, or a store
@@ -211,6 +214,104 @@ export async function recordBranchPullRequests(
   return { status: "recorded", branches: [...branches], pullRequests: found };
 }
 
+/** Options for {@link readPullRequest}. */
+export interface ReadPullRequestOptions {
+  /**
+   * Where `gh` runs. Without {@link repository}, a checkout of the repository
+   * the pull request is in: `gh` resolves the repository from its remote.
+   */
+  readonly cwd: string;
+  /** The pull request's number. */
+  readonly number: number;
+  /** `owner/name`, when known: asked directly, with no remote to resolve. */
+  readonly repository?: string;
+  /** The forge's host, when it is not `github.com` (a GitHub Enterprise host). */
+  readonly host?: string;
+  /** The wall clock for the one `gh` call. Default {@link BRANCH_PULL_REQUESTS_TIMEOUT_MS}. */
+  readonly timeoutMs?: number;
+  /** The `gh` to run. Default `"gh"` on `PATH`. */
+  readonly gh?: string;
+}
+
+/** One pull request, as {@link readPullRequest} read it. */
+export interface PullRequestRead {
+  readonly number: number;
+  readonly url: string | null;
+  readonly title: string | null;
+  /** GitHub's own state: `open` or `closed`. A merged pull request is `closed`, with {@link merged} set. */
+  readonly state: "open" | "closed";
+  /** Whether it was merged. */
+  readonly merged: boolean;
+  /** The branch its work is on. */
+  readonly branch: string | null;
+  /** The commit at its head when asked. */
+  readonly commit: string | null;
+  /** `owner/name` of the repository its head is in; another repository's for a fork's. `null` once that repository is gone. */
+  readonly headRepository: string | null;
+  /** `owner/name` of the repository it merges into. */
+  readonly baseRepository: string | null;
+}
+
+/** What GitHub answered for one pull request; `state` is `null` when it named none. */
+type AskedPullRequest = Omit<PullRequestRead, "state"> & { readonly state: PullRequestRead["state"] | null };
+
+/** The one `gh` call both readers make: `repos/<repo>/pulls/<n>`, never refusing a fork's. */
+async function askPullRequest(options: ReadPullRequestOptions): Promise<AskedPullRequest> {
+  if (!Number.isInteger(options.number) || options.number < 1) {
+    throw new WorkspaceRefusedError("pull-request-unreadable", `${JSON.stringify(options.number)} is not a pull request number.`);
+  }
+  let answer: {
+    html_url?: unknown;
+    title?: unknown;
+    state?: unknown;
+    merged?: unknown;
+    merged_at?: unknown;
+    head?: { ref?: unknown; sha?: unknown; repo?: { full_name?: unknown } | null };
+    base?: { repo?: { full_name?: unknown } | null };
+  };
+  const repo = options.repository ?? "{owner}/{repo}";
+  const host = options.host !== undefined && options.host.toLowerCase() !== "github.com" ? ["--hostname", options.host] : [];
+  try {
+    const { stdout } = await run(options.gh ?? "gh", ["api", ...host, `repos/${repo}/pulls/${options.number}`], {
+      cwd: options.cwd,
+      timeoutMs: options.timeoutMs ?? BRANCH_PULL_REQUESTS_TIMEOUT_MS,
+      env: { GH_PROMPT_DISABLED: "1" },
+    });
+    answer = JSON.parse(stdout) as typeof answer;
+  } catch (err) {
+    throw new WorkspaceRefusedError("pull-request-unreadable", `GitHub could not be asked about pull request #${options.number}: ${reasonOf(err)}`);
+  }
+  const text = (value: unknown) => (typeof value === "string" && value !== "" ? value : null);
+  return {
+    number: options.number,
+    url: text(answer.html_url),
+    title: text(answer.title),
+    state: answer.state === "open" || answer.state === "closed" ? answer.state : null,
+    merged: answer.merged === true || typeof answer.merged_at === "string",
+    branch: text(answer.head?.ref),
+    commit: text(answer.head?.sha),
+    headRepository: text(answer.head?.repo?.full_name),
+    baseRepository: text(answer.base?.repo?.full_name),
+  };
+}
+
+/**
+ * One pull request, asked of GitHub through the host's `gh`
+ * (`repos/<owner>/<repo>/pulls/<n>`): its state, whether it merged, and its
+ * head. A fork's pull request reads like any other.
+ *
+ * Throws `pull-request-unreadable` when `gh` can't say: missing, signed out,
+ * timed out, or an answer that names no state. The caller decides what an
+ * unreadable pull request means.
+ */
+export async function readPullRequest(options: ReadPullRequestOptions): Promise<PullRequestRead> {
+  const read = await askPullRequest(options);
+  if (read.state === null) {
+    throw new WorkspaceRefusedError("pull-request-unreadable", `GitHub named no state for pull request #${options.number}.`);
+  }
+  return { ...read, state: read.state };
+}
+
 /** Options for {@link pullRequestHead}. */
 export interface PullRequestHeadOptions {
   /** A checkout of the repository the pull request is in; `gh` resolves the repository from its remote. */
@@ -230,12 +331,17 @@ export interface PullRequestHead {
   /** The commit at its head when asked. */
   readonly commit: string | null;
   readonly url: string | null;
+  /** GitHub's state when asked: `open` or `closed`; `null` when it named none. */
+  readonly state: "open" | "closed" | null;
+  /** Whether it was merged. */
+  readonly merged: boolean;
 }
 
 /**
  * The branch a pull request's work is on, asked of GitHub through the host's
- * `gh`, so a run can work on it (`PlaceRequest.existing`) and its commits land
- * where the pull request sees them once pushed.
+ * `gh` (the call {@link readPullRequest} makes), so a run can work on it
+ * (`PlaceRequest.existing`) and its commits land where the pull request sees
+ * them once pushed.
  *
  * Unlike the turn-end check, this one throws: the run cannot start without
  * an answer. Refused, `pull-request-unreadable`, when `gh` can't say, and
@@ -243,40 +349,19 @@ export interface PullRequestHead {
  * branch is not on this one's remote.
  */
 export async function pullRequestHead(options: PullRequestHeadOptions): Promise<PullRequestHead> {
-  if (!Number.isInteger(options.number) || options.number < 1) {
-    throw new WorkspaceRefusedError("pull-request-unreadable", `${JSON.stringify(options.number)} is not a pull request number.`);
-  }
-  let answer: {
-    html_url?: unknown;
-    head?: { ref?: unknown; sha?: unknown; repo?: { full_name?: unknown } | null };
-    base?: { repo?: { full_name?: unknown } | null };
-  };
-  try {
-    const { stdout } = await run(options.gh ?? "gh", ["api", `repos/{owner}/{repo}/pulls/${options.number}`], {
-      cwd: options.cwd,
-      timeoutMs: options.timeoutMs ?? BRANCH_PULL_REQUESTS_TIMEOUT_MS,
-      env: { GH_PROMPT_DISABLED: "1" },
-    });
-    answer = JSON.parse(stdout) as typeof answer;
-  } catch (err) {
-    throw new WorkspaceRefusedError("pull-request-unreadable", `GitHub could not be asked about pull request #${options.number}: ${reasonOf(err)}`);
-  }
-  const branch = answer.head?.ref;
-  if (typeof branch !== "string" || branch === "") {
+  const read = await askPullRequest(options);
+  const branch = read.branch;
+  if (branch === null) {
     throw new WorkspaceRefusedError("pull-request-unreadable", `GitHub named no head branch for pull request #${options.number}.`);
   }
-  const head = answer.head?.repo?.full_name;
-  const base = answer.base?.repo?.full_name;
-  if (typeof head !== "string" || head !== base) {
+  const head = read.headRepository;
+  const base = read.baseRepository;
+  if (head === null || head !== base) {
     throw new WorkspaceRefusedError(
       "pull-request-from-fork",
-      `pull request #${options.number} comes from ${typeof head === "string" ? head : "a repository that no longer exists"}, ` +
+      `pull request #${options.number} comes from ${head ?? "a repository that no longer exists"}, ` +
         `not ${String(base)}: its branch "${branch}" is not on this repository's remote, so a run can't work on it here.`,
     );
   }
-  return {
-    branch,
-    commit: typeof answer.head?.sha === "string" ? answer.head.sha : null,
-    url: typeof answer.html_url === "string" ? answer.html_url : null,
-  };
+  return { branch, commit: read.commit, url: read.url, state: read.state, merged: read.merged };
 }

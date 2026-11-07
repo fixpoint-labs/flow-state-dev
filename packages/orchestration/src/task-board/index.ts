@@ -235,7 +235,7 @@ export {
   type TaskLedgersOptions,
 } from "./task-entry";
 export type { TaskDispatchInput } from "./task-entry";
-export { askMidway, noteTaskAnswer, taskRequestAdmission, SPEND_TICK_MS } from "./task-request";
+export { askMidway, noteTaskAnswer, taskRequestAdmission, waitExternally, SPEND_TICK_MS } from "./task-request";
 export type { MidwayAsk, TaskEndRules, TaskRequestAdmissionOptions } from "./task-request";
 // A durable board's eight task tools as flow actions (FIX-1629). Defined with
 // the tools; its one home is this entry, where a board's author reaches for it.

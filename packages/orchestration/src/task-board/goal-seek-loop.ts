@@ -26,7 +26,9 @@
  * ends the loop's pass there: no judge, no replan, no finalize, and no
  * iteration spent, with the termination reason `"waiting-on-a-user"`. The
  * answer owes the task its next turn; run the loop again once it is answered,
- * and its drain takes that turn and the loop goes on.
+ * and its drain takes that turn and the loop goes on. A task waiting on an
+ * event outside the board (an external wait, FIX-2578) ends the pass the same
+ * way, with `"waiting-on-an-event"` when no task waits on a person.
  *
  * An answer can land after the drain stops and before the loop reads the
  * board (FIX-2210). The question is closed then, but the task still owes the
@@ -58,7 +60,7 @@ import type {
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import type { TaskCollectionRef, TaskInit } from "../tasks";
-import { hasOpenHold, owesTurn } from "../tasks/collection/holds";
+import { owesTurn, waitingOn } from "../tasks/collection/holds";
 import type { TaskBoardHandle } from "./index";
 import { createApplyReplan, type TaskContextSupply } from "./apply-replan";
 import { setNextDrainUnseeded } from "./blocks/seed-collection";
@@ -240,12 +242,16 @@ const goalSeekLoopStateSchema = z.object({
   goalSeekLoopDrainResult: z.unknown().nullable().default(null),
   /** Whether the last drain left a task waiting on a person: the pass ends without a judge. */
   goalSeekLoopWaiting: z.boolean().default(false),
+  /** Who the waiting task waits on (FIX-2578): a person, or only an event outside the board. `null` when none waits. */
+  goalSeekLoopWaitingOn: z.enum(["user", "system"]).nullable().default(null),
   /** Whether the last drain left a task owing a turn, and none waiting on a person: the pass drains again. */
   goalSeekLoopOwed: z.boolean().default(false),
 });
 
 /** The termination reason of a pass a task waiting on a person ended. */
 const WAITING_ON_A_USER = "waiting-on-a-user";
+/** The termination reason of a pass a task waiting on an event outside the board ended, with none waiting on a person. */
+const WAITING_ON_AN_EVENT = "waiting-on-an-event";
 
 /** Whether the loop's last drain left a task waiting on a person. */
 const waitingNow = (_input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
@@ -364,8 +370,14 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     execute: async (_input, ctx) => {
       const ref = await resolveBoardRef(ctx, boardCapName);
       const rows = ref.list();
-      const waiting = rows.some((row) => hasOpenHold(row));
-      await ctx.sequencer!.patchState({ goalSeekLoopWaiting: waiting, goalSeekLoopOwed: !waiting && rows.some(owesTurn) } as any);
+      const on = rows.map((row) => waitingOn(row));
+      const waitingOnWho = on.includes("user") ? "user" : on.includes("system") ? "system" : null;
+      const waiting = waitingOnWho !== null;
+      await ctx.sequencer!.patchState({
+        goalSeekLoopWaiting: waiting,
+        goalSeekLoopWaitingOn: waitingOnWho,
+        goalSeekLoopOwed: !waiting && rows.some(owesTurn),
+      } as any);
     },
   });
 
@@ -373,7 +385,14 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   const waitingVerdict = handler({
     name: `${name}-gsl-waiting-verdict`,
     inputSchema: z.unknown(),
-    execute: (): Verdict => ({ decision: "done", reason: WAITING_ON_A_USER }),
+    sequencerStateSchema: merged,
+    execute: (_input, ctx): Verdict => ({
+      decision: "done",
+      reason:
+        (ctx.sequencer?.state as { goalSeekLoopWaitingOn?: string | null } | undefined)?.goalSeekLoopWaitingOn === "system"
+          ? WAITING_ON_AN_EVENT
+          : WAITING_ON_A_USER,
+    }),
   });
 
   const incrementDrainCount = handler({

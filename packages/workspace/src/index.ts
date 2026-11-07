@@ -59,12 +59,14 @@ export {
   splitCheckoutCommand,
 } from "./checkout-commands";
 export type { CheckoutCommandResult, RunCheckoutCommandsOptions } from "./checkout-commands";
-export { BRANCH_PULL_REQUESTS_TIMEOUT_MS, pullRequestHead, recordBranchPullRequests } from "./branch-pull-requests";
+export { BRANCH_PULL_REQUESTS_TIMEOUT_MS, pullRequestHead, readPullRequest, recordBranchPullRequests } from "./branch-pull-requests";
 export type {
   BranchPullRequestsContext,
   BranchPullRequestsResult,
   PullRequestHead,
   PullRequestHeadOptions,
+  PullRequestRead,
+  ReadPullRequestOptions,
   RecordBranchPullRequestsOptions,
 } from "./branch-pull-requests";
 export type { RunOptions } from "./exec";
