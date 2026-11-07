@@ -1,6 +1,6 @@
 # @flow-state-dev/example-knowledge-base (reference app)
 
-A complete, working personal knowledge wiki, preserved as a frozen reference app. Built as **FIX-813**: an [Open Knowledge Format (OKF)](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing) v0.1 interchange adapter and a thin `knowledgeBase` capability over the resource graph — hardened by **FIX-855** into a secured, user-scoped personal MCP server: a small always-on wiki that Claude (or any MCP client) can read, search, create, update, delete, and link concepts on, over a bearer-secured network connection.
+A complete, working personal knowledge wiki, preserved as a frozen reference app. Built as an [Open Knowledge Format (OKF)](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing) v0.1 interchange adapter and a thin `knowledgeBase` capability over the resource graph — hardened into a secured, user-scoped personal MCP server: a small always-on wiki that Claude (or any MCP client) can read, search, create, update, delete, and link concepts on, over a bearer-secured network connection.
 
 This grew up in `labs/` and moved here once it was done; its living successor is the Knowledge Hub lab ([`labs/knowledge-hub`](../../labs/knowledge-hub)), which builds a larger system on the same OKF long-term-memory layer. Treat this app as frozen — a self-contained snapshot to read and copy from, not a place for new features.
 
@@ -116,10 +116,10 @@ These are deliberate v0 scope choices; each is a follow-up, not a bug:
 
 ## Decision records
 
-The two evaluation questions FIX-813 asked are answered in the [implementation spec](https://linear.app/fixpoint-labs/document/fix-813-portable-knowledge-base-format-okf-over-the-resource-graph-fd644e5eaa51) §11:
+Two design questions this example was built to answer, and the answers:
 
 - **#4** — OKF is an external *interchange boundary*, not a new internal authoring surface. It does not merge or replace the SKILL.md / generator-prompt / resource-template `.md` surfaces.
-- **#5** — Curated KB navigation reduces but does not eliminate vector RAG; they are complements routed by corpus shape. The RAG roadmap (FIX-72 / FIX-71) stays, scoped toward large/uncurated/fuzzy corpora.
+- **#5** — Curated KB navigation reduces but does not eliminate vector RAG; they are complements routed by corpus shape. The RAG roadmap stays, scoped toward large/uncurated/fuzzy corpora.
 
 ## Status and future
 

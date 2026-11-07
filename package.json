@@ -10,7 +10,7 @@
     "dev": "node apps/super-app/run.mjs dev",
     "serve": "node apps/super-app/run.mjs serve",
     "typecheck": "turbo run typecheck && node scripts/validate-package-boundaries.mjs && node scripts/validate-updater-purity.mjs && node scripts/validate-side-chain-vocabulary.mjs && node scripts/validate-test-typecheck.mjs && pnpm --filter @flow-state-dev/goals guard:control-shape",
-    "lint": "eslint --cache --cache-location node_modules/.cache/eslint/ --pass-on-unpruned-suppressions .",
+    "lint": "eslint --cache --cache-location node_modules/.cache/eslint/ .",
     "prepare": "husky",
     "fallow": "fallow",
     "fallow:ci": "fallow dead-code --unresolved-imports --unlisted-deps",

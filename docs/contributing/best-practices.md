@@ -202,7 +202,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-002 | Spec-driven execution — every change maps to a Linear-linked spec with deliverables + verification; a decided surface survives a build constraint (a conflict to re-gate, never a fork to offer) |
 | BP-004 | Public boundary first — lock import/export shape before behavior depth |
 | BP-005 | *(Superseded by BP-022)* dual changelog requirement |
-| BP-006 | Keep planning/tracking labels (spec IDs, Linear refs) out of code and tests |
+| BP-006 | Keep planning/tracking labels (spec IDs, Linear refs) out of code and tests; a pointer lives in a `//` comment, never JSDoc, a string or a copied file |
 | BP-008 | Keep root README onboarding-first and current |
 | BP-009 | Maintain package-level READMEs for public packages |
 | BP-037 | Retain issue and epic specs as reviewed design history; repository canonical, Linear links/status; project exception unchanged |
