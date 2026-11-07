@@ -116,9 +116,11 @@ export { CLOSED_WITHOUT_MERGING } from "./await-pull-requests";
 export {
   PULL_REQUEST_EVENT,
   pullRequestWait,
+  readSessionPullRequests,
   type PullRequestRecordRow,
   type PullRequestWait,
   type PullRequestWaitRow,
+  type SessionPullRequest,
   type WaitedPullRequest,
 } from "./pull-request-wait";
 
