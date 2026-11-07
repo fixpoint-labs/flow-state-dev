@@ -60,21 +60,33 @@ function must(cmd, argv, cwd, env) {
 }
 
 // ── Pack the entry packages and their workspace closure ────────────────────
-function closure(tree) {
-  const seen = new Set();
+/**
+ * The entry packages and their workspace closure, each after its workspace
+ * dependencies: a package's build reads its dependencies' emitted declarations,
+ * so on a clean tree (and under `--control`) they must exist first. Post-order:
+ * a package is appended once its dependencies are; `visiting` catches a cycle.
+ */
+function buildOrder(tree) {
+  const order = [];
+  const done = new Set();
+  const visiting = new Set();
   const visit = (dir) => {
-    if (seen.has(dir)) return;
-    seen.add(dir);
+    if (done.has(dir)) return;
+    if (visiting.has(dir)) throw new Error(`workspace dependency cycle through packages/${dir}`);
+    visiting.add(dir);
     const m = JSON.parse(readFileSync(join(tree, "packages", dir, "package.json"), "utf8"));
     for (const [name, v] of Object.entries(m.dependencies ?? {}))
       if (String(v).startsWith("workspace:")) visit(name.replace("@flow-state-dev/", ""));
+    visiting.delete(dir);
+    done.add(dir);
+    order.push(dir);
   };
   ENTRY.forEach(visit);
-  return [...seen];
+  return order;
 }
 
 function pack(tree, dest) {
-  const dirs = closure(tree);
+  const dirs = buildOrder(tree);
   for (const d of dirs) must("pnpm", ["--dir", join(tree, "packages", d), "run", "build"], tree);
   return dirs.map((d) => {
     const before = new Set(readdirSync(dest));
@@ -257,7 +269,7 @@ try {
   const tarballs = join(work, "tarballs");
   const project = join(work, "app");
   must("mkdir", ["-p", tarballs, project], work);
-  console.log(`packing ${closure(tree).join(", ")} from ${control ?? "the working tree"}…`);
+  console.log(`packing ${buildOrder(tree).join(", ")} from ${control ?? "the working tree"}…`);
   const packed = pack(tree, tarballs);
   writeFileSync(join(project, "package.json"), JSON.stringify({ name: "store-ceremony-app", private: true, type: "module" }));
   must("npm", ["install", "--no-audit", "--no-fund", "--loglevel=error", ...packed, "zod@3", "typescript@5"], project);
