@@ -196,6 +196,24 @@ describe("a coding task whose run opened a pull request", () => {
     expect(untakenSteers(again)).toEqual([]);
   }, 60_000);
 
+  it("a steer from the board while the pull request is open wakes the wait as a line does: one more run on the same session", async () => {
+    setGh({ listed: [7], states: { 7: "open" } });
+    const lab = await waitingLab();
+    await run(lab);
+
+    expect((await lab.act("steer", { ...AT, id: "t1", message: "fix the lint" })).output).toMatchObject({ outcome: "recorded" });
+    const woken = await row(lab);
+    // Never left behind a wait only an event ends, untaken.
+    expect(openHolds(woken)).toEqual([]);
+    expect(woken).toMatchObject({ status: "in_progress", attempts: 1, turnOwed: true });
+
+    await run(lab);
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.resume).toBe("sess_1");
+    expect(lab.seen[1]!.prompt).toContain("fix the lint");
+    expect(untakenSteers(await row(lab))).toEqual([]);
+  }, 60_000);
+
   it("merged: a line completes the task with the pull request on its output, and no harness run", async () => {
     setGh({ listed: [7], states: { 7: "open" } });
     const lab = await waitingLab();
