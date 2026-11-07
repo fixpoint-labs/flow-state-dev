@@ -59,7 +59,7 @@ export {
   externalHoldOf,
   isExternalHold,
   openHolds,
-  waitingOn,
+  holdActorOf,
   type QuestionAnswer,
 } from "./collection/holds";
 

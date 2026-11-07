@@ -68,7 +68,7 @@ import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
 import { isDispatched, waitsOnHold, type RunsElsewhere } from "../shared";
 import { leaseLapsed } from "../../tasks";
-import { waitingOn } from "../../tasks/collection/holds";
+import { holdActorOf } from "../../tasks/collection/holds";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -297,9 +297,9 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
             ? "blocked-by-failures"
             : hasRowGoingNowhere(all, remaining, now)
               ? "blocked-by-failures"
-              : remaining.some((task) => waitingOn(task) === "user")
+              : remaining.some((task) => holdActorOf(task) === "user")
                 ? "waiting-on-a-user"
-                : remaining.some((task) => waitingOn(task) === "system")
+                : remaining.some((task) => holdActorOf(task) === "system")
                   ? "waiting-on-an-event"
                   : allRemainingDispatched
                   ? "dispatched"

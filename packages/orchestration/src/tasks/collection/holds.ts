@@ -77,7 +77,7 @@ export function hasOpenHold(row: Pick<Task, "status" | "holds" | "steers">): boo
  * `undefined`. A reader that says "waiting on a user" asks for `"user"`; one
  * that only needs "nothing in a drain moves it" asks for any.
  */
-export function waitingOn(row: Pick<Task, "status" | "holds" | "steers">): "user" | "system" | undefined {
+export function holdActorOf(row: Pick<Task, "status" | "holds" | "steers">): "user" | "system" | undefined {
   const open = openHolds(row);
   if (open.length === 0) return undefined;
   return open.some((hold) => hold.actor === "user") ? "user" : "system";

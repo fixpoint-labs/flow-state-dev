@@ -253,10 +253,10 @@ export interface PullRequestRead {
 }
 
 /** What GitHub answered for one pull request; `state` is `null` when it named none. */
-type AskedPullRequest = Omit<PullRequestRead, "state"> & { readonly state: PullRequestRead["state"] | null };
+type FetchedPullRequest = Omit<PullRequestRead, "state"> & { readonly state: PullRequestRead["state"] | null };
 
 /** The one `gh` call both readers make: `repos/<repo>/pulls/<n>`, never refusing a fork's. */
-async function askPullRequest(options: ReadPullRequestOptions): Promise<AskedPullRequest> {
+async function fetchPullRequest(options: ReadPullRequestOptions): Promise<FetchedPullRequest> {
   if (!Number.isInteger(options.number) || options.number < 1) {
     throw new WorkspaceRefusedError("pull-request-unreadable", `${JSON.stringify(options.number)} is not a pull request number.`);
   }
@@ -305,7 +305,7 @@ async function askPullRequest(options: ReadPullRequestOptions): Promise<AskedPul
  * unreadable pull request means.
  */
 export async function readPullRequest(options: ReadPullRequestOptions): Promise<PullRequestRead> {
-  const read = await askPullRequest(options);
+  const read = await fetchPullRequest(options);
   if (read.state === null) {
     throw new WorkspaceRefusedError("pull-request-unreadable", `GitHub named no state for pull request #${options.number}.`);
   }
@@ -349,7 +349,7 @@ export interface PullRequestHead {
  * branch is not on this one's remote.
  */
 export async function pullRequestHead(options: PullRequestHeadOptions): Promise<PullRequestHead> {
-  const read = await askPullRequest(options);
+  const read = await fetchPullRequest(options);
   const branch = read.branch;
   if (branch === null) {
     throw new WorkspaceRefusedError("pull-request-unreadable", `GitHub named no head branch for pull request #${options.number}.`);

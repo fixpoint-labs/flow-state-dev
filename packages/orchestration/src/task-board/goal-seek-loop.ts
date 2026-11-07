@@ -60,7 +60,7 @@ import type {
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import type { TaskCollectionRef, TaskInit } from "../tasks";
-import { owesTurn, waitingOn } from "../tasks/collection/holds";
+import { owesTurn, holdActorOf } from "../tasks/collection/holds";
 import type { TaskBoardHandle } from "./index";
 import { createApplyReplan, type TaskContextSupply } from "./apply-replan";
 import { setNextDrainUnseeded } from "./blocks/seed-collection";
@@ -370,7 +370,7 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     execute: async (_input, ctx) => {
       const ref = await resolveBoardRef(ctx, boardCapName);
       const rows = ref.list();
-      const on = rows.map((row) => waitingOn(row));
+      const on = rows.map((row) => holdActorOf(row));
       const waitingOnWho = on.includes("user") ? "user" : on.includes("system") ? "system" : null;
       const waiting = waitingOnWho !== null;
       await ctx.sequencer!.patchState({

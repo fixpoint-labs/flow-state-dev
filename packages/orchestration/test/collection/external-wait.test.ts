@@ -19,9 +19,10 @@
 import { describe, expect, it } from "vitest";
 import {
   externalHoldOf,
+  isExternalHold,
   openHolds,
   ticketForClaim,
-  waitingOn,
+  holdActorOf,
   type ExternalWait,
   type Task,
   type TaskCollectionRef,
@@ -95,7 +96,7 @@ describe.each([
   it("is the system's: the readers that say 'waiting on a user' don't say it, and the Inbox does not list it", async () => {
     const { board } = await waiting();
     const row = board.get("t")!;
-    expect(waitingOn(row)).toBe("system");
+    expect(holdActorOf(row)).toBe("system");
     expect(waitsOnUser(row)).toBe(false);
     // Nothing in a drain moves it, so it is excused as a user's wait is.
     expect(waitsOnHold(row)).toBe(true);
@@ -133,7 +134,8 @@ describe.each([
     const fresh = await reopen();
     const row = fresh.get("t")!;
     const hold = externalHoldOf(row);
-    expect(hold).toMatchObject({ actor: "system", ask: { kind: "external" } });
+    expect(hold?.actor).toBe("system");
+    expect(hold !== undefined && isExternalHold(hold)).toBe(true);
     expect(taskHoldSchema.parse(hold)).toEqual(hold);
     expect(await fresh.claim("w")).toBeNull();
   });
@@ -144,7 +146,7 @@ describe.each([
     const row = board.get("t")!;
     expect(row.status).toBe("cancelled");
     expect(openHolds(row)).toEqual([]);
-    expect(waitingOn(row)).toBeUndefined();
+    expect(holdActorOf(row)).toBeUndefined();
   });
 
   it("refuses a wait on nothing, writing nothing", async () => {

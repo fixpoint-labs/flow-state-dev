@@ -900,7 +900,7 @@ export async function askMidway(
  * Nobody is told: an external wait is no question for the filer, and the
  * Inbox lists only a person's holds.
  *
- * Once per request for the same turn and wait (`ctx.runOnce`), as an ask is.
+ * Once per request for the same turn and wait (`ctx.runOnce`), as a question is.
  *
  * @param ledger The board the task is on, as the request resolves it.
  */
@@ -915,7 +915,7 @@ export async function waitExternally(ctx: BlockContext, ledger: TaskCollectionRe
   };
   const key = `task-board:wait-externally:${claim.collectionId}:${claim.taskId}:${claim.attempt}:${claim.turn}:${JSON.stringify(wait)}`;
   const waited = ctx.runOnce !== undefined ? await ctx.runOnce(key, write) : await write();
-  // The turn is over, as after an ask: the gate's end-of-request check records nothing for it.
+  // The turn is over, as after a question: the gate's end-of-request check records nothing for it.
   if (waited.ok && record !== undefined) {
     record.askedQuestions = true;
     record.renewal?.stop();

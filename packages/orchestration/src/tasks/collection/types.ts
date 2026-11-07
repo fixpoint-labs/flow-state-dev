@@ -905,7 +905,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /**
    * Wait on something outside the board (FIX-2578): the turn holding the
    * task's claim opens one external wait (`actor: "system"`, kind
-   * `external`) through the same write an ask makes, so the row stays
+   * `external`) through the same write a question makes, so the row stays
    * `in_progress` on its attempt with no lease, the claim skips it, and the
    * turn ends unsettled. Any steer that answers it (a person's line, a
    * delivered message) releases it and owes the same attempt one more turn

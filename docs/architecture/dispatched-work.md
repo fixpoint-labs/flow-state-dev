@@ -611,7 +611,7 @@ have died while the row still says someone is on it.
 A row waiting on something outside the board is excused the same way: an
 `external` row hold (FIX-2578), such as a coding task's wait on its pull
 request. Its actor is `"system"`, never a
-person, so `waitingOn(row)` says `"system"`, `waitsOnUser` is false, the Inbox
+person, so `holdActorOf(row)` says `"system"`, `waitsOnUser` is false, the Inbox
 does not list it and the filer is not told of it; but nothing in a drain moves
 it either, so the excuse reads `waitsOnHold` (any open hold), and a board whose
 only open rows wait so ends `waiting-on-an-event`, after the user rung. Any

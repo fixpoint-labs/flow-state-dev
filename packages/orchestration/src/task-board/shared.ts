@@ -17,7 +17,7 @@ import {
   type ClaimOrder,
   type TaskStatus,
 } from "../tasks";
-import { hasOpenHold, waitingOn } from "../tasks/collection/holds";
+import { hasOpenHold, holdActorOf } from "../tasks/collection/holds";
 
 /**
  * Accepted shapes for the Task Board's `claimOrder` config: either a
@@ -176,14 +176,14 @@ function countWaitable(
 
 /**
  * Whether a running row waits on a user (FIX-2131): it has an open hold
- * whose actor is the user (`waitingOn`, FIX-2578), a question it asked (a row
+ * whose actor is the user (`holdActorOf`, FIX-2578), a question it asked (a row
  * hold, its lease dropped) or the mirror of its run's stop for a user (a
  * suspension hold). An external wait alone is not a user's. Read off the
  * row's open holds (ER-8), never off a status: no row is parked. Nothing in a
  * drain moves such a row; the user's answer does.
  */
 export function waitsOnUser(row: Task): boolean {
-  return row.status === "in_progress" && waitingOn(row) === "user";
+  return row.status === "in_progress" && holdActorOf(row) === "user";
 }
 
 /**

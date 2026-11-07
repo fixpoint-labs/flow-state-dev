@@ -602,7 +602,7 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
       const problem = externalWaitProblem(wait);
       if (problem !== undefined) throw new Error(`[tasks] awaitExternal: ${problem}, so the task can't wait on it. Nothing was written.`);
       const guards = linkRunGuards({ claim: waitOptions.claim });
-      // Minted once, outside the write, so a retried write opens the same hold. The ask op: one write opens every row hold.
+      // Minted once, outside the write, so a retried write opens the same hold. One `ask` write opens every row hold.
       const hold = newExternalHold(wait, now());
       const outcome = await confirmed(id, () =>
         writeHolds(id, "asked", { op: "ask", holds: [hold] }, (task) => transitionDeclineReason(task, "in_progress", guards, collectionId, now()))
