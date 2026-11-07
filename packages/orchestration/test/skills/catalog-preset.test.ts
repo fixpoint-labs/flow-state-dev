@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { generator } from "@flow-state-dev/core";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { InitialSkill } from "@flow-state-dev/core/types";
 import { createSkillsLibrary } from "../../src/skills/library";
 import { createMockSkillsCollection } from "./mocks";
 

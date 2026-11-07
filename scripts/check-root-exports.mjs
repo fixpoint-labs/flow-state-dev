@@ -49,14 +49,20 @@
  *
  *   node scripts/check-root-exports.mjs [base-ref]   # default: merge base with origin/main, else HEAD^1
  *   node scripts/check-root-exports.mjs --list [pkg] # every failing root name today, by package
+ *   node scripts/check-root-exports.mjs --strict --json --root <tree>
+ *     the adopter goal's strict run (`runRatchet` in `scripts/packed-install/goal.mjs`): the tree
+ *     at <tree>, with no base, every failing root name and every adopter `/internal` import as
+ *     one JSON line, `{ "violations": [...] }`. <tree> need not be a git checkout.
  *
  * Its plants are in `scripts/root-exports.test.mjs` (`node --test`).
  */
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { importCensus, isInternalSubpath } from "./import-census.mjs";
-import { fsReader, gitReader, packageEntryExports } from "./mechanism-exports.mjs";
+import { dirReader, fsReader, gitReader, packageEntryExports } from "./mechanism-exports.mjs";
 
 export const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -186,10 +192,11 @@ function typeMentions(read, memo, resolve, file, name) {
 /**
  * Every published root's names and why each passes or fails, read through `read`.
  *
- * Returns `{ roots, internalImports, collisions }`:
+ * Returns `{ roots, missingRoots, internalImports, collisions }`:
  *   collisions       name → [{ entry, file, decl }], from {@link collisions}
  *   roots            package → Map(name → { file, why }), `why` one of
  *                    "adopter" | "docs" | "readme" | "reached" | "failing"
+ *   missingRoots     published packages with no "." entry: no root an adopter can import
  *   internalImports  [{ file, spec, form }] from the import census
  */
 export function rootReport(read) {
@@ -199,6 +206,7 @@ export function rootReport(read) {
   const pending = changesetDocs(read);
   const memo = new Map();
   const roots = new Map();
+  const missingRoots = [...published.keys()].filter((pkg) => !entries.get(pkg)?.has(".")).sort();
   for (const [pkg, dir] of [...published].sort(([a], [b]) => a.localeCompare(b))) {
     const exp = entries.get(pkg)?.get(".") ?? new Map();
     const readmePath = `packages/${dir}/README.md`;
@@ -228,7 +236,7 @@ export function rootReport(read) {
     }
     roots.set(pkg, out);
   }
-  return { roots, internalImports, collisions: collisions(read, entries) };
+  return { roots, missingRoots, internalImports, collisions: collisions(read, entries) };
 }
 
 const failing = (report) =>
@@ -290,6 +298,25 @@ export function render({ newFailing, newInternal, readmeCleared, newCollisions =
   return { ok: newFailing.length === 0 && newInternal.length === 0 && newCollisions.length === 0, lines: out };
 }
 
+/**
+ * Every failing root name and every adopter `/internal` import in `report`, with no base: the
+ * strict-run protocol's `violations`. An `/internal` import is the violation of the package
+ * whose `/internal` it reaches, named by its specifier. A published package with no root entry
+ * is a violation too (`(root)`): its `surface.root.*` cell would otherwise pass on nothing.
+ */
+export function violations(report) {
+  const out = (report.missingRoots ?? []).map((pkg) => ({ package: pkg, name: "(root)", detail: "root entry missing: the package publishes no \".\" export" }));
+  for (const [pkg, m] of report.roots) {
+    for (const [name, { file, why }] of m) {
+      if (why === "failing") out.push({ package: pkg, name, detail: `on the root (${file}); no app, example, lab or docs page imports it and the README doesn't name it` });
+    }
+  }
+  for (const { file, spec, form } of report.internalImports) {
+    out.push({ package: /^@flow-state-dev\/[\w.-]+/.exec(spec)[0], name: spec, detail: `${file}: ${form} of ${spec}` });
+  }
+  return out;
+}
+
 function defaultBase() {
   const git = (args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   try { return git(["merge-base", "HEAD", "origin/main"]); } catch { return "HEAD^1"; }
@@ -297,7 +324,14 @@ function defaultBase() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const args = process.argv.slice(2);
-  if (args.includes("--list")) {
+  if (args.includes("--strict")) {
+    const tree = resolve(args.includes("--root") ? args[args.indexOf("--root") + 1] : ROOT);
+    const found = violations(rootReport(existsSync(join(tree, ".git")) ? fsReader(tree) : dirReader(tree)));
+    if (args.includes("--json")) console.log(JSON.stringify({ violations: found }));
+    else for (const v of found) console.log(`${v.package}: ${v.name}: ${v.detail}`);
+    // Not process.exit(): through a pipe, it would cut the verdict at 64 KiB before stdout drains.
+    process.exitCode = found.length ? 1 : 0;
+  } else if (args.includes("--list")) {
     const only = args.find((a) => !a.startsWith("--"));
     const { roots, internalImports } = rootReport(fsReader(ROOT));
     for (const [pkg, m] of roots) {
@@ -308,10 +342,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.log(`/internal imports from adopter or docs code: ${internalImports.length}`);
     for (const i of internalImports) console.log(`  ${i.file}: ${i.form} of ${i.spec}`);
     process.exit(0);
+  } else {
+    const ref = args[0] ?? defaultBase();
+    const result = render(compare(rootReport(gitReader(ROOT, ref)), rootReport(fsReader(ROOT))));
+    for (const l of result.lines) console.log(l);
+    console.log(result.ok ? `PASS: no published root gained a failing name or a collision, and no adopter code gained an /internal import since ${ref}` : `FAIL: against ${ref}`);
+    process.exit(result.ok ? 0 : 1);
   }
-  const ref = args[0] ?? defaultBase();
-  const result = render(compare(rootReport(gitReader(ROOT, ref)), rootReport(fsReader(ROOT))));
-  for (const l of result.lines) console.log(l);
-  console.log(result.ok ? `PASS: no published root gained a failing name or a collision, and no adopter code gained an /internal import since ${ref}` : `FAIL: against ${ref}`);
-  process.exit(result.ok ? 0 : 1);
 }

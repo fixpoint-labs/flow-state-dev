@@ -169,6 +169,20 @@ export function formatVerdict(verdict) {
   return lines;
 }
 
+// ── The moved list's later renames ─────────────────────────────────────────
+
+/**
+ * Moved core names a later change renamed, old → new. The export census's
+ * `moved.tsv` is frozen at the spec's census, so its readers (the
+ * `surface.core-installed-dts` leg and `goals/core/root-is-for-app-authors`)
+ * look for a renamed row under its new name in its new home, and under both
+ * names on the entries it left. A rename belongs here only with the reason.
+ */
+export const MOVED_RENAMES = {
+  // Renamed so it no longer collides with react's public `SessionView`.
+  SessionView: "PeerSessionView",
+};
+
 // ── The ratchet strict-run protocol ────────────────────────────────────────
 
 /**

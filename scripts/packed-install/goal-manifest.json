@@ -72,10 +72,10 @@
   "expect": {
     "surface.root.core": "fail",
     "surface.root.engine": "fail",
-    "surface.root.client": "fail",
+    "surface.root.client": "pass",
     "surface.root.react": "fail",
     "surface.root.testing": "fail",
-    "surface.root.orchestration": "fail",
+    "surface.root.orchestration": "pass",
     "surface.root.patterns": "fail",
     "surface.root.claude-code": "fail",
     "surface.root.codex": "fail",
@@ -84,7 +84,7 @@
     "surface.root.store-postgres": "fail",
     "surface.root.workforce": "fail",
     "surface.collisions": "fail",
-    "surface.core-installed-dts": "fail",
+    "surface.core-installed-dts": "pass",
     "onepath.output-read": "pass",
     "first-hour.quickstart": "fail",
     "first-hour.example.hello-chat.typecheck": "fail",
@@ -100,10 +100,10 @@
     "shims.human-approval-throws": "pass",
     "shims.stored-human-approval": "pass",
     "types.typed-handler": "fail",
-    "types.fresh-session-default": "fail"
+    "types.fresh-session-default": "pass"
   },
   "ratchets": {
-    "export-check": null,
+    "export-check": "scripts/check-root-exports.mjs",
     "collision-check": "scripts/check-collisions.mjs",
     "tracker-id-lint": null
   },

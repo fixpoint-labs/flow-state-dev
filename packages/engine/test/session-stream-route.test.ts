@@ -8,7 +8,8 @@ import v8 from "node:v8";
 import vm from "node:vm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { buildBlockInstanceId, DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { buildBlockInstanceId } from "@flow-state-dev/core/internal";
 import type { OutputItem, SessionStreamEvent } from "@flow-state-dev/core/items";
 import {
   createFlowApiRouter,

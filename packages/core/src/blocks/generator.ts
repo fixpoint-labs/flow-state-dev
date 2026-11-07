@@ -20,7 +20,7 @@ import type {
   RetryPolicy
 } from "../types/block";
 import { asRuntime } from "../types/block";
-import type { ItemQuery, MessageLimit } from "../types/scope";
+import type { ItemQuery } from "../types/scope";
 import type { ItemVisibility } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
@@ -359,13 +359,6 @@ export type GeneratorHistoryConfig<TInput = unknown, TCtx = BlockContext> =
   | true
   | ItemQuery
   | GeneratorSlot<TInput, TCtx>;
-
-export type GeneratorSlotRefOptions = {
-  optional?: boolean;
-  missing?: "error" | "empty";
-  limit?: MessageLimit;
-  as?: string;
-};
 
 export type GeneratorRepairMode = "auto" | "rescue" | "fail";
 

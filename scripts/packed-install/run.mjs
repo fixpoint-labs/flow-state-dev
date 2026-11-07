@@ -82,6 +82,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { publishableDists } from "../add-esm-extensions.mjs";
 import {
+  MOVED_RENAMES,
   formatVerdict,
   judge,
   judgeControl,
@@ -287,6 +288,12 @@ export const CHECKS = [
     },
   },
   {
+    // An adopter unit-tests a step that waits for a person with the installed
+    // testing package alone, answering it through the engine's own routes.
+    name: "the installed testFlow stops on a step that waits for a person, and answers it through the engine's route",
+    run: (project) => runFixture(project, "test-a-stop.mjs", "test-a-stop"),
+  },
+  {
     name: "a server starts and answers an action",
     run: (project) => runFixture(project, "serve.mjs", "serve"),
   },
@@ -483,7 +490,7 @@ export const GOAL_CHECKS = [
   })),
   {
     id: "surface.core-installed-dts",
-    name: "installed core's .d.ts: no moved name on the root or core/types, each on its entry, no requestHost on BlockContext",
+    name: "installed core's .d.ts: no moved name on the root or core/types, each on its entry, no requestHost or symbol-keyed member on BlockContext, no compiled test file in the tarball",
     run(project) {
       npmInstall(project.dir, [TYPESCRIPT_SPEC]);
       const installed = join(project.dir, "node_modules", "@flow-state-dev/core");
@@ -491,6 +498,7 @@ export const GOAL_CHECKS = [
       const { specs } = importSpecifiers(manifest, packageFiles(installed));
       return goalFixture(project, "goal-core-dts.mjs", "core-dts", {
         FSD_MOVED_TSV: MOVED_TSV,
+        FSD_MOVED_RENAMES: JSON.stringify(MOVED_RENAMES),
         FSD_CORE_SPECS: JSON.stringify(specs),
       });
     },

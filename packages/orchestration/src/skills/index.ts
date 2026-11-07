@@ -143,12 +143,4 @@ export {
 } from "./import-directory";
 
 // Re-export the canonical types from core.
-export type {
-  InitialSkill,
-  MatchedSkill,
-  SkillActivationSource,
-  SkillContextMode,
-  SkillFile,
-  SkillState,
-  ToolCatalog,
-} from "@flow-state-dev/core";
+export type { InitialSkill, MatchedSkill, SkillActivationSource, SkillContextMode, SkillFile, SkillState, ToolCatalog } from "@flow-state-dev/core/types";

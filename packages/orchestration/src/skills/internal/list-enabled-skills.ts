@@ -5,8 +5,7 @@
  * in the v1 router module just to read the catalog.
  */
 
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { SkillContextMode, SkillState } from "@flow-state-dev/core";
+import type { ResourceCollectionRef, SkillContextMode, SkillState } from "@flow-state-dev/core/types";
 
 export interface EnabledSkill {
   name: string;

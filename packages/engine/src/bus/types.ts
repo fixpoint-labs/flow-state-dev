@@ -17,7 +17,7 @@
  * Postgres bus, which Postgres stores fill by default), which says `true` only
  * while it does.
  */
-import type { ChangeKind, TopicScope } from "@flow-state-dev/core";
+import type { ChangeKind, TopicScope } from "@flow-state-dev/core/internal";
 
 /**
  * A topic as the server names it: a scope, the scope's id (the bare session

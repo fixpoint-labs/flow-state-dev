@@ -46,7 +46,7 @@ import { createInMemoryBus } from "./in-memory-bus";
 import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
 import { FlowStateConfigError } from "../errors/flow-error";
 import type { BusTopic, ChangeBus, ChangeNotice } from "./types";
-import type { ChangeKind } from "@flow-state-dev/core";
+import type { ChangeKind } from "@flow-state-dev/core/internal";
 import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry } from "../stores/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 

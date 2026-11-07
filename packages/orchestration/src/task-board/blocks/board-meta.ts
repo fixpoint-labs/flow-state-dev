@@ -66,9 +66,9 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
-import { isDispatched, waitsOnUser, type RunsElsewhere } from "../shared";
+import { isDispatched, waitsOnHold, type RunsElsewhere } from "../shared";
 import { leaseLapsed } from "../../tasks";
-import { hasOpenHold } from "../../tasks/collection/holds";
+import { holdActorOf } from "../../tasks/collection/holds";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -154,10 +154,11 @@ function hasRowGoingNowhere(
     if (
       task.status === "completed" ||
       // A row that asked midway dropped its lease, so the lease test below
-      // would call it abandoned; the answer owes it a turn, so it is not.
+      // would call it abandoned; the answer owes it a turn, so it is not. So
+      // does a row waiting on an event outside the board (FIX-2578).
       // Only the running one: a `pending` row filed on questions still needs
       // its deps once answered, so it enters through the expansion below.
-      waitsOnUser(task) ||
+      waitsOnHold(task) ||
       (task.status === "in_progress" && !leaseLapsed(task, now))
     ) {
       willResolve.add(task.id);
@@ -207,6 +208,9 @@ function hasRowGoingNowhere(
  * - `"waiting-on-a-user"` — the board stopped because the work it has left
  *   waits on a user: a question, a confirm, or a run's stop for a review or
  *   approval (FIX-2214). The same words `goalSeekLoop` ends a pass with.
+ * - `"waiting-on-an-event"` — the work it has left waits on something outside
+ *   the board, and none of it on a user: an external wait (FIX-2578), such as a
+ *   coding task waiting for its pull request to merge.
  *
  * **The ladder's order is the contract.** First match wins:
  *
@@ -218,11 +222,12 @@ function hasRowGoingNowhere(
  *    a row stuck by its own *status*; this catches one stuck by its
  *    *dependencies*, or abandoned by a worker that died. See
  *    {@link hasRowGoingNowhere}.
- * 5. any remaining row has an open hold, so waits on a user →
+ * 5. any remaining row has an open hold whose actor is a user →
  *    `waiting-on-a-user`. Rung 3 left only `pending` and `in_progress`
  *    rows, and rung 4 already vouches for the others.
- * 6. every remaining row is dispatched → `dispatched`.
- * 7. otherwise → `blocked-by-failures`.
+ * 6. any remaining row has an open external wait → `waiting-on-an-event`.
+ * 7. every remaining row is dispatched → `dispatched`.
+ * 8. otherwise → `blocked-by-failures`.
  *
  * Note: in `onIdle: "wait"` mode an early-firing `shouldExit` while tasks are
  * still `in_progress` / `pending` reports `"blocked-by-failures"` even though
@@ -283,7 +288,8 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         | "blocked-by-failures"
         | "retry-budget-exhausted"
         | "dispatched"
-        | "waiting-on-a-user" = anyRetryDeniedByBudget(all)
+        | "waiting-on-a-user"
+        | "waiting-on-an-event" = anyRetryDeniedByBudget(all)
         ? "retry-budget-exhausted"
         : remaining.length === 0
           ? "all-completed"
@@ -291,9 +297,11 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
             ? "blocked-by-failures"
             : hasRowGoingNowhere(all, remaining, now)
               ? "blocked-by-failures"
-              : remaining.some(hasOpenHold)
+              : remaining.some((task) => holdActorOf(task) === "user")
                 ? "waiting-on-a-user"
-                : allRemainingDispatched
+                : remaining.some((task) => holdActorOf(task) === "system")
+                  ? "waiting-on-an-event"
+                  : allRemainingDispatched
                   ? "dispatched"
                   : "blocked-by-failures";
       ctx.emit.component(

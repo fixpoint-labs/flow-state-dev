@@ -31,7 +31,7 @@ import {
   type Task,
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
-import { taskLedgerResources, openRowHolds } from "@flow-state-dev/orchestration/internal";
+import { taskLedgerResources, openRowHolds, steerFromLine } from "@flow-state-dev/orchestration/internal";
 import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,
@@ -153,15 +153,22 @@ export interface HostOptions {
   beforePrompt?: (ctx: BlockContext) => Promise<unknown>;
   /** The resolver a `claim` host's manager is given. Default: the conversations ledger, at the claim's partition. */
   ledgers?: (ledgerId: string, ctx: BlockContext, partition: string | undefined) => Promise<TaskCollectionRef | undefined>;
+  /**
+   * Another host's folder and stores, so this host is that one after a
+   * restart: a new manager and engine over the same rows, records and checkouts.
+   */
+  restartOf?: { readonly dir: string; readonly stores: unknown };
 }
 
 /** Build one host. */
 export function claimHost(options: HostOptions) {
-  const dir = mkdtempSync(join(tmpdir(), "harness-manager-claim-host-"));
-  dirs.push(dir);
+  const dir = options.restartOf?.dir ?? mkdtempSync(join(tmpdir(), "harness-manager-claim-host-"));
   const sourceRepo = join(dir, "repo");
-  mkdirSync(sourceRepo, { recursive: true });
-  seedRepo(sourceRepo);
+  if (options.restartOf === undefined) {
+    dirs.push(dir);
+    mkdirSync(sourceRepo, { recursive: true });
+    seedRepo(sourceRepo);
+  }
 
   const fixedLedger = defineTaskCollection({ id: FIXED_BOARD, scope: "user" as const });
   const conversations = defineTaskCollection({
@@ -295,6 +302,18 @@ export function claimHost(options: HostOptions) {
       return ref.answer!(input.id, { questionId: hold.id, message: input.answer, from: "user", by: ALICE });
     },
   });
+  // A line typed in the task's session, as its door writes it (`steerFromLine`): a steer, or the answer to what the row waits on.
+  const line = handler({
+    name: "claim-host-line",
+    inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string(), message: z.string() }),
+    outputSchema: z.unknown(),
+    uses: [ledgerResources],
+    execute: async (input, ctx) => {
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
+      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      return (await steerFromLine(ref, input.id, input.message, ctx as never)) ?? null;
+    },
+  });
   const cancel = handler({
     name: "claim-host-cancel",
     inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string() }),
@@ -332,6 +351,7 @@ export function claimHost(options: HostOptions) {
       claim: { block: claim },
       row: { block: rowAction },
       answer: { block: answer },
+      line: { block: line },
       cancel: { block: cancel },
       records: { block: records },
       putRecord: { block: putRecordBlock },
@@ -354,9 +374,10 @@ export function claimHost(options: HostOptions) {
       },
     },
   } as never)({ id: "claim-host" } as never);
+  const stores = options.restartOf?.stores ?? inMemoryStores();
   const state = createFlowState({
     flows: { "claim-host": flow },
-    stores: { test: { primary: inMemoryStores() } },
+    stores: { test: { primary: stores } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
     ...(options.durable === true ? { durable: true } : {}),
@@ -460,6 +481,7 @@ export function claimHost(options: HostOptions) {
     seen,
     answersSeen,
     dir,
+    stores,
   };
 }
 

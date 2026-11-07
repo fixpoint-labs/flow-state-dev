@@ -32,7 +32,10 @@
  * a message; one that acted on nothing (a copy) outputs no reply, and an
  * entry with no turn outputs `{ turnless: true }`. Between the take and the
  * items, a message to a session stopped for the user, or to a task held on
- * one, queues until nothing holds it (`./queue`).
+ * one, queues until nothing holds it (`./queue`). A message to a task session
+ * whose task waits on something outside the board (an `external` hold,
+ * FIX-2578) answers that wait instead, and runs no turn here: the task's owed
+ * turn reads it.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
@@ -46,7 +49,7 @@ import { carriesPass, markDelivered, storedEmitters, takeMessage } from "./deliv
 import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "./keys";
 import { messageLimitsOf } from "./message-limits";
 import { MAX_MESSAGE_CHARS, messageChainsOf, workerMessagesResources } from "./message-log";
-import { queueBehindUser } from "./queue";
+import { answerExternalWait, queueBehindUser } from "./queue";
 import { messageHearingOf, RECEIVED_MARK, type MessageHearing, type ReceivedMark } from "./received-mark";
 import { sendQuestionToFiler } from "./midway-question";
 import { wakeHeldWait } from "./wait-for-reply";
@@ -178,6 +181,20 @@ export function messageReceivedEntry(options: {
       const wake = await wakeHeldWait(ctx as never, row);
       if (wake === "retry") return { act: "none" };
       if (wake === "woken") {
+        await markDelivered(ctx as never, row.id);
+        return { act: "none" };
+      }
+      // News for a task waiting on something outside the board (FIX-2578): it answers that
+      // wait, as the sender's words, and the task's owed turn reads it. Only the item an app
+      // draws lands here: no turn of this session runs on it.
+      if (await answerExternalWait(ctx as never, row)) {
+        const emit = storedEmitters(ctx as never);
+        await emit.component(
+          RECEIVED_MESSAGE_COMPONENT,
+          { id: row.id, from: row.from, text: row.text, ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }), budget: 0 },
+          { agentName: row.from, itemVisibility: { client: true, history: false } }
+        );
+        await emit.stored();
         await markDelivered(ctx as never, row.id);
         return { act: "none" };
       }

@@ -48,13 +48,18 @@ export {
   rowHoldSchema,
   suspensionHoldSchema,
   type ConfirmOnNo,
+  type ExternalWait,
+  type ExternalWaitEvent,
   type QuestionInit,
   type RowHold,
   type SuspensionHold,
   type TaskHold,
 } from "./schema/hold";
 export {
+  externalHoldOf,
+  isExternalHold,
   openHolds,
+  holdActorOf,
   type QuestionAnswer,
 } from "./collection/holds";
 
