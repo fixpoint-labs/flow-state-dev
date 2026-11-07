@@ -82,7 +82,7 @@
     "surface.root.cursor": "fail",
     "surface.root.store-sqlite": "pass",
     "surface.root.store-postgres": "pass",
-    "surface.root.workforce": "fail",
+    "surface.root.workforce": "pass",
     "surface.collisions": "pass",
     "surface.core-installed-dts": "pass",
     "onepath.output-read": "pass",

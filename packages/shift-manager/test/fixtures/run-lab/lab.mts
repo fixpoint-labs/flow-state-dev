@@ -79,7 +79,6 @@ import {
   workerConfigSchema,
   workerTaskEntry,
   type InventoryActionRequest,
-  MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   workerMessagesResources,
 } from "@flow-state-dev/workforce";
@@ -335,7 +334,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean;
         ...workerMessagesResources,
       },
       actions: { ...(options.untaskedDoors === true ? untaskedHearingDoor : hearingDoor) },
-      internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: flow }) } },
+      internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: flow }) } },
       task: { actions: { work: workerTaskEntry({ name: `run-lab-${flow}-task`, turn: scriptedRun }) } },
     } as never);
   const coordinator = defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL });

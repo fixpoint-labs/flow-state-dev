@@ -51,7 +51,6 @@ export { type HireOptions, type WorkerFlowEntry } from "./hire";
 export { workerFlowProblems } from "./worker-flow-contract";
 export { WORKER_ROLES, type WorkerRole } from "./worker-roles";
 export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } from "./shared-resource";
-export { WORKER_TASK_ENTRY } from "./worker-task-entry";
 export {
   conversationLedgers,
   filingConversationBoard,
@@ -64,9 +63,9 @@ export { sessionIdOfFiling } from "./conversation-board/filing-session";
 // A routed task's recent lines (FIX-2083), for a flow of its own whose `work` turn is a generator.
 export { routedTaskHistory } from "./coordinator/routed-brief";
 // Steering a task a worker runs (FIX-2086): the turn a late steer is owed, on
-// every flow whose `work` entry is a `workerTaskEntry`, and how a write starts it.
+// every flow whose `work` entry is a `workerTaskEntry` (declared as the internal
+// entry `onTaskSteered`), and how a write starts it.
 export {
-  STEER_TURN_ENTRY,
   startOwedSteerTurn,
   steerTurnEntry,
   type SteerTurnEntryOptions

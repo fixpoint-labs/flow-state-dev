@@ -89,8 +89,8 @@ import {
   type WorkstreamObjective,
   type WorkstreamView
 } from "./workstream-collections";
-import { leadsWorkstreams, WORKSTREAM_OPENED_ENTRY } from "./workstream-lead";
-import { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
+import { leadsWorkstreams } from "./workstream-lead";
+import { parseWorkstreamRef, WORKSTREAM_OPENED_ENTRY, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
 import { ALL_DELEGATES } from "../delegates/delegate-keys";
 
 /** What a write hands on for its coordinator's record: none, or the change and the record. */

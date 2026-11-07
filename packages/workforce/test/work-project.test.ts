@@ -25,9 +25,7 @@ import {
   projectWorkspaceCapability,
   SET_WORK_PROJECT_ACTION,
   setWorkProjectAction,
-  WORKER_TASK_ENTRY,
   workerConfigSchema,
-  WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry
 } from "../src/index";
 import { claimedTask } from "../src/conversation-board/held-task";
@@ -108,7 +106,7 @@ function takerFlow(installation: WorkerInstallation, runs: Run[]) {
       [SET_WORK_PROJECT_ACTION]: setWorkProjectAction
     },
     internal: { actions: board.entries(planned) },
-    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "taker-task", turn: planned }) } }
+    task: { actions: { work: workerTaskEntry({ name: "taker-task", turn: planned }) } }
   } as never);
 }
 
@@ -129,7 +127,7 @@ async function boot() {
   const runs: Run[] = [];
   const projects = defineProjectBlocks();
   const judgment = mockGenerator({ script: [{ when: () => true, then: { text: "Noted." } }] });
-  const leadRef = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+  const leadRef = { kind: "lead", internal: { actions: { onWorkstreamOpened: {} } } };
   const h = await bootProjectsHost({
     standardWorkers,
     projectCoordinator: PROJECT_COORDINATOR,
@@ -137,7 +135,7 @@ async function boot() {
     // The harness's own `lead` flow is the workstream lead: an app's own worker
     // flow, declaring the action as every worker flow does.
     lead: () => ({ [SET_WORK_PROJECT_ACTION]: setWorkProjectAction }),
-    leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
+    leadInternal: () => ({ onWorkstreamOpened: workstreamOpenedEntry() }),
     flows: (installation) => ({
       taker: { flow: takerFlow(installation, runs), roles: ["contributor", "manager"] },
       [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" }),

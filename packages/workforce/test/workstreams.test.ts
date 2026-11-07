@@ -21,7 +21,6 @@ import { createWorkforceClient } from "../src/browser";
 import {
   defineProjectBlocks,
   defineWorkstreamBlocks,
-  WORKSTREAM_OPENED_ENTRY,
   WORKSTREAM_RESOURCES,
   WORKSTREAMS_RESOURCE,
   workstreamEntryKey,
@@ -118,8 +117,8 @@ async function boot(): Promise<ProjectsHost & { lab: (user: string) => Promise<s
   const projects = defineProjectBlocks();
   const h = await bootProjectsHost({
     lab: (installation) => {
-      const leadFlow = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
-      const lead2Flow = { kind: "lead2", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+      const leadFlow = { kind: "lead", internal: { actions: { onWorkstreamOpened: {} } } };
+      const lead2Flow = { kind: "lead2", internal: { actions: { onWorkstreamOpened: {} } } };
       const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [leadFlow, lead2Flow] });
       return {
         ...projects.actions,
@@ -129,12 +128,12 @@ async function boot(): Promise<ProjectsHost & { lab: (user: string) => Promise<s
         plantStalledOpen: { block: plantStalledOpen }
       };
     },
-    leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
-    lead2Internal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
+    leadInternal: () => ({ onWorkstreamOpened: workstreamOpenedEntry() }),
+    lead2Internal: () => ({ onWorkstreamOpened: workstreamOpenedEntry() }),
     lead: (installation) => {
       const { updateWorkstreamTool } = defineWorkstreamBlocks({
         installation,
-        leadFlows: [{ kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }]
+        leadFlows: [{ kind: "lead", internal: { actions: { onWorkstreamOpened: {} } } }]
       });
       // The lead's turn: load its worker, as a worker flow's turn does, then run the tool.
       const loadWorker = handler({

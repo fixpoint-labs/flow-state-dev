@@ -21,9 +21,7 @@ import {
   defineWorkstreamBlocks,
   projectWorkspace,
   projectWorkspaceCapability,
-  WORKER_TASK_ENTRY,
   workerConfigSchema,
-  WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry
 } from "../src/index";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
@@ -100,7 +98,7 @@ const takeOffProject = handler({
 
 async function boot() {
   const projects = defineProjectBlocks();
-  const leadFlow = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+  const leadFlow = { kind: "lead", internal: { actions: { onWorkstreamOpened: {} } } };
   const h = await bootProjectsHost({
     lab: (installation) => ({
       ...projects.actions,
@@ -110,7 +108,7 @@ async function boot() {
       askSource: { block: askSource }
     }),
     lead: () => ({ askSource: { block: askSource } }),
-    leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() })
+    leadInternal: () => ({ onWorkstreamOpened: workstreamOpenedEntry() })
   });
   const lab = (user: string) => h.openSession(user, "lab");
   /** `user` opens workstream `id` in `project`, and returns its lead's session. */
@@ -232,7 +230,7 @@ describe("projectWorkspace for a task filed from a workstream session", () => {
       session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
       resources: { ...installation.resources, ...board.resources },
       actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
-      internal: { actions: { ...board.entries(door), [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() } }
+      internal: { actions: { ...board.entries(door), onWorkstreamOpened: workstreamOpenedEntry() } }
     } as never);
   }
 
@@ -255,14 +253,14 @@ describe("projectWorkspace for a task filed from a workstream session", () => {
       session: installation.session(),
       resources: { ...installation.resources },
       actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
-      task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "taker-task", turn }) } }
+      task: { actions: { work: workerTaskEntry({ name: "taker-task", turn }) } }
     } as never);
   }
 
   async function bootFiling() {
     const answers: Array<{ state: Record<string, unknown>; answer: unknown }> = [];
     const projects = defineProjectBlocks();
-    const filerRef = { kind: "filer", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+    const filerRef = { kind: "filer", internal: { actions: { onWorkstreamOpened: {} } } };
     const h = await bootProjectsHost({
       lab: (installation) => ({
         ...projects.actions,
