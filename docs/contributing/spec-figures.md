@@ -25,7 +25,7 @@ the **position** of an element means. If the thing is a graph, mermaid wins on e
 |---|---|---|---|---|
 | Issue | **How we'll know it's met** — the goal check: what runs, on what input, what counts as PASS, and the control that must FAIL as a dashed path | mermaid `flowchart LR`, ≤ 8 nodes | `SPEC.md`, under the goal | **Yes**, as a mermaid fence |
 | Issue | **What changes** — the thing before and after, side by side, same vocabulary | SVG when position carries it (a drawer, a fence, a stack); mermaid pair otherwise | `SPEC.md` | **Yes**, this one always |
-| Issue | **How it reaches the seat** — the mechanism as a path through layers | mermaid `flowchart LR`, ≤ 10 nodes | `SPEC.md` | No |
+| Issue | **How it gets there** — the mechanism as a path through layers | mermaid `flowchart LR`, ≤ 10 nodes | `SPEC.md` | No |
 | Issue | **The decision tree** — the issue, its decisions, what each rejected | mermaid `flowchart TD` | `DECISIONS.md` | No |
 | Issue | **The trade-off** — one per decision on the sign-off: the options side by side on the rows that decide it, the row it comes down to, what it locks in, what would flip it | SVG (options aligned on the same rows), fixed layout — see [below](#the-trade-off--one-per-decision-someone-signs) | `DECISIONS.md` beside its card | **Yes**, under its sign-off line |
 | Issue | **A decision's mechanism** — a matrix, a layer boundary, a grid of moments | SVG, only when the trade-off can't carry it, usually zero | `DECISIONS.md` beside its card | No |
@@ -93,7 +93,7 @@ and after filing, and a reader can follow one node through all three states.
 ```mermaid
 flowchart LR
   A["FIX-1361 · contract"] --> B["FIX-XXX · the built-in kind"]
-  B --> C["FIX-XXX · per-seat skills"]
+  B --> C["FIX-XXX · per-worker skills"]
   classDef done stroke-width:2px
   classDef proposed stroke-dasharray:4 3
   class A done

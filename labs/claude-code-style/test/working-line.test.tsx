@@ -91,7 +91,7 @@ describe("a running task's view ends in a live working line", () => {
   });
 
   it("is not shown while the task waits on you", () => {
-    const view = open({ ...RUNNING, status: "held", waitingOn: { kind: "question", prompt: "Which region?" } });
+    const view = open({ ...RUNNING, status: "held", openHold: { kind: "question", prompt: "Which region?" } });
     expect(view.line()).toBeNull();
   });
 });
@@ -137,7 +137,7 @@ describe("session mode's opened task ends in the same live working line", () => 
   it("is gone once the task ends, and while it waits on you", () => {
     const view = openInPane(RUNNING);
     expect(view.line()).not.toBeNull();
-    view.setTask({ waitingOn: { kind: "question", prompt: "Which region?" } });
+    view.setTask({ openHold: { kind: "question", prompt: "Which region?" } });
     expect(view.line()).toBeNull();
     view.setTask({ status: "completed" });
     expect(view.line()).toBeNull();

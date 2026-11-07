@@ -147,7 +147,7 @@ export function createKnowledgeBaseCapability() {
         },
         /** Mount an external OKF bundle into the collection. */
         importBundle: (dir: string) => importOkf(dir, ref()),
-        /** Hand the collection off as a portable OKF bundle. */
+        /** Export the collection as a portable OKF bundle. */
         exportBundle: (dir: string) => exportOkf(ref(), dir),
       };
     },

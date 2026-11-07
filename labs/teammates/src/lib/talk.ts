@@ -24,7 +24,7 @@ export function pendingFor(worker: string, rows: TalkRow[], entries: Conversatio
  * request first. A message sent without asking owes no answer, and one that never
  * landed gets none.
  */
-export function waitingOn(worker: string, rows: TalkRow[]): string[] {
+export function owedRepliesFrom(worker: string, rows: TalkRow[]): string[] {
   const answered = new Set(rows.flatMap((m) => (m.inReplyTo ? [m.inReplyTo] : [])));
   return [...new Set(rows.filter((m) => m.from === worker && m.replyRequested && !m.undelivered && !answered.has(m.id)).map((m) => m.to))];
 }

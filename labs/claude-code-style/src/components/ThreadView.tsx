@@ -50,7 +50,7 @@ export function ThreadView({
   // The board keys this view by task, so a change of task remounts it and the feed starts over.
   const feed = useJumpToLatest();
   const column = statusColumn(task);
-  const question = task.waitingOn && task.waitingOn.kind !== "review" ? task.waitingOn : undefined;
+  const question = task.openHold && task.openHold.kind !== "review" ? task.openHold : undefined;
   const words = text.trim();
   const finished = task.status === "completed" || task.status === "cancelled" || task.status === "errored";
 
@@ -201,7 +201,7 @@ export function ThreadView({
       {/* Ready for review closes the feed, in the one scroll area, so a long review reads like the rest of it. Resolve and the request for changes stay under it. */}
       {column === "review" ? <ReviewCard task={task} review={work?.review} /> : null}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
-      {task.status === "in_progress" && task.waitingOn === undefined && !waitsOnPullRequest(task) ? (
+      {task.status === "in_progress" && task.openHold === undefined && !waitsOnPullRequest(task) ? (
         <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
     </SessionOverlay>

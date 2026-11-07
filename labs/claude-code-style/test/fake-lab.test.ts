@@ -77,7 +77,7 @@ describe("the fake's threads", () => {
     await lab.sayInThread(id, a.id, "Check their status page too.");
     await lab.resolve(id, a.id);
     expect(row("Vendor A · pricing and uptime")?.status).toBe("in_progress");
-    expect(row("Vendor A · pricing and uptime")?.waitingOn).toBeUndefined();
+    expect(row("Vendor A · pricing and uptime")?.openHold).toBeUndefined();
   });
 
   it("files threads with ordinary task assignees, and a code change with the coder's harness", async () => {
@@ -101,7 +101,7 @@ describe("the fake's threads, on review", () => {
     await vi.advanceTimersByTimeAsync(4000);
     await lab.send(id, "Add a CHANGELOG line for the vendor pick");
     await vi.advanceTimersByTimeAsync(4000);
-    expect(rows.map((t) => t.waitingOn?.kind)).toEqual(["review", "review"]);
+    expect(rows.map((t) => t.openHold?.kind)).toEqual(["review", "review"]);
   });
 
   it("marks the line that asked for threads, not one queued behind it", async () => {

@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { toEntries, type TalkRow } from "../src/adapter";
 import { pendingFor } from "../src/lib/talk";
 
-const LEAD = "teammates.chief-of-staff";
+const LEAD = "teammates.lead";
 const RESEARCHER = "teammates.researcher";
 const WORKERS = new Set([LEAD, RESEARCHER]);
 
@@ -20,7 +20,7 @@ const answer = (id: string, ts: number, text: string) =>
 /** A reply landing in the thread: the received line the worker reads it through. */
 const received = (id: string, ts: number, messageId: string) =>
   ({ id, type: "component", component: "workforce:received", status: "completed", requestId: `req_${id}`, itemIndex: 0, ts, agentName: RESEARCHER, data: { id: messageId, from: RESEARCHER, text: "Nov 12" } });
-const reply = (id: string, at: number): TalkRow => ({ id, from: RESEARCHER, to: LEAD, text: "Nov 12", at, inReplyTo: "msg_ask" });
+const reply = (id: string, at: number): TalkRow => ({ id, from: RESEARCHER, to: LEAD, text: "Nov 12", at, inReplyTo: "msg_question" });
 
 describe("pending replies in a thread's window", () => {
   // Three replies from researcher, all older than the newest window of items, which starts at 1000.

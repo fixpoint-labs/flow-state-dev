@@ -172,7 +172,7 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
       <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
-      {task.status === "in_progress" && task.waitingOn === undefined && !waitsOnPullRequest(task) ? (
+      {task.status === "in_progress" && task.openHold === undefined && !waitsOnPullRequest(task) ? (
         <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
     </SessionOverlay>

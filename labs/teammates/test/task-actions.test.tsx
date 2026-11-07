@@ -5,7 +5,7 @@
  * Steer box while it runs, Retry and one Re-run per other harness once it
  * failed or was cancelled. A failed task's reason shows as an error, never in
  * the Result box. Without these, the only way to stop a run going wrong, or
- * to try a failed task on another harness, is to type it to Chief of Staff
+ * to try a failed task on another harness, is to type it to Lead
  * and hope its turn does what you meant.
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -21,11 +21,11 @@ afterEach(() => {
 });
 
 const TASK = "Coding task: Fix the typo in the README's first line";
-const COS = "conversation:teammates.chief-of-staff";
+const LEAD_CONVERSATION = "conversation:teammates.lead";
 
-/** Ask Chief of Staff to have `agent` fix the typo, then open the task's popup from its line. */
+/** Ask Lead to have `agent` fix the typo, then open the task's popup from its line. */
 async function openCodingTask(agent: string) {
-  const box = await screen.findByLabelText("Message Chief of Staff");
+  const box = await screen.findByLabelText("Message Lead");
   await act(async () => {
     fireEvent.change(box, { target: { value: `Have ${agent} fix the typo in the README's first line.` } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -38,10 +38,10 @@ async function openCodingTask(agent: string) {
 const buttons = (popup: HTMLElement) =>
   [...popup.querySelectorAll<HTMLElement>('[data-testid="task-action-row"] button')].map((b) => b.textContent ?? "");
 
-/** Chief of Staff's conversation's rows, as the adapter reads them. */
+/** Lead's conversation's rows, as the adapter reads them. */
 function rowsOf(lab: FixtureLab): BoardTask[] {
   let rows: BoardTask[] = [];
-  lab.watchTasks(COS, (tasks) => (rows = tasks))();
+  lab.watchTasks(LEAD_CONVERSATION, (tasks) => (rows = tasks))();
   return rows;
 }
 

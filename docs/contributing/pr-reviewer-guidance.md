@@ -232,7 +232,7 @@ don't catch, the shape, and a worked example of both filters run over a real blo
 ### The rule that catches the most inflation
 
 **A decision that merely describes what the change does belongs to block 2, not here.** *"A lens missing
-evidence counts for a fraction of a seat"* is the mechanism; it was already stated above.
+evidence counts for a fraction of a vote"* is the mechanism; it was already stated above.
 Block 3 is only for calls where a reasonable person could have gone the other way and the
 product owner would care which. Re-listing the mechanism as decisions is what turns a
 two-decision change into a six-item ask.
@@ -278,11 +278,11 @@ hardest first, with the one to weigh named and a link to `DECISIONS.md`:
 It comes down to prompt cost: always-on pays for every skill on every turn. **If wrong:** the
 first thing people try looks broken.
 
-### A seat holds a copy. Refresh is deliberate and replaces the folder whole · D2
+### A worker holds a copy. Refresh is deliberate and replaces the folder whole · D2
 
 <img src="…/figures/d2-copy.svg" width="940" alt="…" />
 
-It comes down to a teammate's edit: live-linked, it changes a seat mid-task. **If wrong:**
+It comes down to a teammate's edit: live-linked, it changes a worker mid-task. **If wrong:**
 withdrawn instructions stay live, or a refresh destroys edits someone expected to keep.
 
 **Open: none.** D1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
@@ -333,10 +333,10 @@ the six is theirs:
 ```md
 | # | Decision | If it's wrong |
 |---|---|---|
-| 1 | A lens that reported missing evidence counts for a fraction of a seat, and only when it agrees with the majority | Agreement is no longer a headcount, so the same evidence can produce a smaller suggested position |
+| 1 | A lens that reported missing evidence counts for a fraction of a vote, and only when it agrees with the majority | Agreement is no longer a headcount, so the same evidence can produce a smaller suggested position |
 | 2 | The discount may change the headline read — live fork, asked in full below | Well-founded calls on partly-thin data get sized smaller than today |
 | 3 | Feed the new lenses by putting the four missing valuation figures on the shared evidence surface, not by wiring data to them | The panel splits into lenses reading two versions of the same company, and the fix has to be made twice |
-| 4 | Seat the two lenses the original design named, accepting that three of six now read through a value frame | A "they all agree" read is partly a property of who we seated |
+| 4 | Add the two lenses the original design named, accepting that three of six now read through a value frame | A "they all agree" read is partly a property of who we added |
 | 5 | A cheap-preset report states the panel did not run, instead of omitting the block | A reader can't tell "nobody checked" from "the philosophies agreed" |
 | 6 | Ships as two PRs: the agreement-honesty fix first, the pack expansion second | The honesty half reaches readers weeks later than it needs to |
 ```
@@ -351,9 +351,9 @@ and two decisions, each answerable from its heading:
 
 *(the six-part fork goes here)*
 
-### Three of the six seated lenses read through a value frame, so the report says the panel is value-tilted
+### Three of the six lenses on the panel read through a value frame, so the report says the panel is value-tilted
 
-- The original design named these two lenses; seating them tips the balance, so the report
+- The original design named these two lenses; adding them tips the balance, so the report
   states the tilt rather than implying an even spread.
 - **If this is wrong:** we publish "the philosophies agree" when what we built was a panel
   that mostly shares one philosophy.
@@ -636,8 +636,8 @@ Two workers on one shared, durable task board can both believe they own the same
 the loser's late "I finished it" lands on the winner's row. The check that should refuse it
 asks *"is this task still on the attempt I claimed?"* — a bare integer that collides
 constantly across a board, so it can be satisfied by **a different task on the same
-attempt**. And the model-facing tools (`completeTask`, `failTask`, `cancelTask`) pass no
-ownership token at all, so for them the check never runs.
+attempt**. And the model-facing tool (`updateTask`, which completes, fails or cancels) passes no
+ownership token at all, so for it the check never runs.
 
 **Why now.** Conductor M2 runs many issues in parallel on one shared board by construction,
 so a rare interleaving becomes the default path. The cost isn't a hang — it's two agents

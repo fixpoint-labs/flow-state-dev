@@ -9,7 +9,7 @@ Its theme is its own: a dark, chat-first look like Grok Bot's, in `src/lib/theme
 registry's `tokens` item. The other labs take theirs from the design system; this one keeps a local
 theme so it reads as the app it copies.
 
-- **Left:** the teammates, Chief of Staff, researcher and writer. Each row is a teammate with an
+- **Left:** the teammates, Lead, researcher and writer. Each row is a teammate with an
   ongoing role, never a list of sessions. A row shows the teammate's icon on its color, a line
   saying what it is doing now (*Replying to you*, *Messaging writer*, *Running coding task: …*,
   *Idle*), and how many new entries its conversation has since you last looked. The same icon
@@ -71,45 +71,45 @@ no session list. The design and the decisions behind it are in the
 
 ### Messages and tasks
 
-Workers message each other where you can see it. When Chief of Staff messages researcher, a line,
-*Messaged researcher*, shows in Chief of Staff's conversation and the message lands in researcher's.
+Workers message each other where you can see it. When Lead messages researcher, a line,
+*Messaged researcher*, shows in Lead's conversation and the message lands in researcher's.
 The line opens researcher's turn on it in a popup: what it read, what it did, and the reply it sent.
-The reply lands in Chief of Staff's conversation under researcher's name. A message never interrupts
-the turn you are in: while Chief of Staff is answering you, researcher's reply shows as a pending
-line, and Chief of Staff reads it right after.
+The reply lands in Lead's conversation under researcher's name. A message never interrupts
+the turn you are in: while Lead is answering you, researcher's reply shows as a pending
+line, and Lead reads it right after.
 
 Each worker does real work. researcher reads the working folder's files and searches the web, writer
-drafts from the working folder's files and from pages it fetches, and Chief of Staff hands out the
-work. Chief of Staff sends a quick ask as a message, and real work as a task: a job that needs the
+drafts from the working folder's files and from pages it fetches, and Lead hands out the
+work. Lead sends a quick ask as a message, and real work as a task: a job that needs the
 folder's files read goes to researcher or writer, and a job in several parts goes out as several
-tasks, in order. Every result lands back in Chief of Staff's conversation as one line, *researcher
+tasks, in order. Every result lands back in Lead's conversation as one line, *researcher
 finished: Look up the launch date*, that opens the task in a popup, where the whole result is. A task
-that finished without writing a result says so there, in place of the result. Chief of Staff's own
+that finished without writing a result says so there, in place of the result. Lead's own
 answer on it shows in full below.
 
 ### Coding tasks
 
 A code change is a coding task, not a teammate's job. Coding runs in the background, the way a
-coding agent's job does: you watch it, you don't talk to it. Ask Chief of Staff for a code change
-and Chief of Staff starts a coding task in the working folder, on one of three coding agents:
+coding agent's job does: you watch it, you don't talk to it. Ask Lead for a code change
+and Lead starts a coding task in the working folder, on one of three coding agents:
 Claude Code, Codex or Cursor. Name one ("have Codex do it") and that one runs; name none and Cursor
 does, with no question first. Each agent is a worker of its own, off the list and never
 messaged, whose `WORKER.md` names its `harness:`. The rest of that file is the agent's
-instructions: every run on it is told them before the task. A line in Chief of Staff's conversation and a
-row in Chief of Staff's panel show the task, tagged with the agent it runs on (and the model, once the
+instructions: every run on it is told them before the task. A line in Lead's conversation and a
+row in Lead's panel show the task, tagged with the agent it runs on (and the model, once the
 run reports one), and open its run in a popup. Once the run reports what it spent, the line adds its
 tokens and, when the vendor reported a charge, the cost; the popup splits input from output tokens, and
-the panel totals Chief of Staff's coding tasks. A run billed by subscription shows tokens and no cost.
-The result lands in Chief of Staff's conversation as
-the coding task's line, *Coding task finished: …*. To change a coding task, tell Chief of Staff, who starts the next one,
+the panel totals Lead's coding tasks. A run billed by subscription shows tokens and no cost.
+The result lands in Lead's conversation as
+the coding task's line, *Coding task finished: …*. To change a coding task, tell Lead, who starts the next one,
 or use the task's buttons.
 
-A task's popup has its buttons, which act on the task's row with no turn of Chief of Staff's in
+A task's popup has its buttons, which act on the task's row with no turn of Lead's in
 between. While the task runs: **Cancel**, which asks once, and a **Steer** line whose words reach
 the run. Once it failed or was cancelled: **Retry**, which runs it again as the same task, and, for
 a coding task, one **Re-run on …** per other coding agent. A re-run is a new task on that agent,
 its brief the old one plus a line naming the task it re-runs; the old task stays as it was, and the
-result lands in Chief of Staff's conversation like any other. When the board refuses a press (the
+result lands in Lead's conversation like any other. When the board refuses a press (the
 same work is already open on that agent, say), its words show in place. A failed task's reason
 shows as an error at the top of its popup.
 
@@ -145,7 +145,7 @@ Coding harnesses on this machine:
 ? Claude Code: The check did not answer within 30 s.
 ```
 
-Chief of Staff sees the same rows, so it starts coding tasks only on an agent marked ✓ and tells
+Lead sees the same rows, so it starts coding tasks only on an agent marked ✓ and tells
 you what to run for one that isn't. The `harness-readiness` flow's `read` action returns the rows,
 and `{ refresh: true }` checks again. A task on an agent last read as not ready is checked once
 more before it starts, so signing in after the lab started works without a restart. If it still
@@ -166,7 +166,7 @@ name another one.
 ### Your own teammates
 
 You can hire teammates of your own (*Hire a teammate*, under the list): a name, one line on what it
-does, and its instructions. It joins the list at once, you can talk to it, and Chief of Staff can
+does, and its instructions. It joins the list at once, you can talk to it, and Lead can
 hand it tasks. Your own teammates' panels have *Edit instructions*, which replaces their instructions
 from the next turn on, and their header has *Fire*, which takes them off the list; their conversation stays readable.
 The three teammates from the files can't be edited or fired.
@@ -183,7 +183,7 @@ The command builds the pages and serves them with the lab's server (`fsdev.confi
 
 | Variable | What it sets | Default |
 |---|---|---|
-| `TEAMMATES_MODEL` | the model Chief of Staff, researcher and writer answer on | `openai/gpt-6-luna` |
+| `TEAMMATES_MODEL` | the model Lead, researcher and writer answer on | `openai/gpt-6-luna` |
 | `TEAMMATES_WORKDIR` | the working folder: an absolute path to a git checkout on this machine | the root of this repository |
 | `TEAMMATES_HARNESS` | the harness a coding worker whose file names none runs on: `claude-code`, `codex` or `cursor` | `cursor` |
 | `TEAMMATES_STORE` | the SQLite file | `.fsdev/teammates.sqlite` here |
@@ -209,17 +209,17 @@ checkout that doesn't. The checkout's own branch and working tree are never chan
 
 ### Try it
 
-With a working folder whose README says the launch date, ask Chief of Staff *"Ask researcher for our
-launch date, and help me outline the post."* Chief of Staff answers and messages researcher, which
-reads the date from the README. Before researcher replies, send Chief of Staff a second line: the
-reply shows as pending, then lands after Chief of Staff's answer, and Chief of Staff uses it in its
+With a working folder whose README says the launch date, ask Lead *"Ask researcher for our
+launch date, and help me outline the post."* Lead answers and messages researcher, which
+reads the date from the README. Before researcher replies, send Lead a second line: the
+reply shows as pending, then lands after Lead's answer, and Lead uses it in its
 next line.
 
-Keep talking past 50 turns and the divider reads *summarized*: a fact you gave Chief of Staff a
-hundred lines ago is above it, and Chief of Staff still knows it.
+Keep talking past 50 turns and the divider reads *summarized*: a fact you gave Lead a
+hundred lines ago is above it, and Lead still knows it.
 
-Then ask Chief of Staff *"Fix the typo in the README's first line."* Chief of Staff starts a coding
-task, the run shows its steps, and the result lands in Chief of Staff's conversation.
+Then ask Lead *"Fix the typo in the README's first line."* Lead starts a coding
+task, the run shows its steps, and the result lands in Lead's conversation.
 
 The goal check drives all of this in a browser:
 [`goals/teammates-lab/a-worker-talks-to-another-while-you-talk`](../../goals/teammates-lab/a-worker-talks-to-another-while-you-talk/goal.md).

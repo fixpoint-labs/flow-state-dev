@@ -24,7 +24,7 @@ const conversation = () => screen.getByRole("main", { name: "Conversation" });
 const TASK = "Coding task: Fix the typo in the README's first line";
 
 async function fileCodingTask() {
-  const box = await screen.findByLabelText("Message Chief of Staff");
+  const box = await screen.findByLabelText("Message Lead");
   await act(async () => {
     fireEvent.change(box, { target: { value: "Fix the typo in the README's first line." } });
     fireEvent.keyDown(box, { key: "Enter" });

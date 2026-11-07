@@ -29,7 +29,7 @@ export function columnOf(task: TaskRow, pinned: boolean): Column {
   if (pinned) return "pinned";
   if (task.status === "completed" || task.status === "cancelled") return "resolved";
   if (task.status === "errored") return "waiting";
-  if (task.waitingOn?.kind === "review") return "review";
-  if (task.waitingOn) return "waiting";
+  if (task.openHold?.kind === "review") return "review";
+  if (task.openHold) return "waiting";
   return "working";
 }

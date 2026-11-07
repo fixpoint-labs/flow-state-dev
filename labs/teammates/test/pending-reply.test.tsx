@@ -14,13 +14,13 @@ import { createLabAdapter, type ConversationEntry, type TalkRow } from "../src/a
 import { pendingFor } from "../src/lib/talk";
 import { createFixtureLab } from "./fake-lab";
 
-const LEAD = "teammates.chief-of-staff";
+const LEAD = "teammates.lead";
 const RESEARCHER = "teammates.researcher";
 
 vi.mock("@flow-state-dev/workforce/browser", async (original) => ({
   ...(await original<typeof import("@flow-state-dev/workforce/browser")>()),
   createWorkforceClient: () => ({
-    roster: async () => [{ id: LEAD, flow: "teammates", standard: true, description: null, name: "Chief of Staff" }],
+    roster: async () => [{ id: LEAD, flow: "teammates", standard: true, description: null, name: "Lead" }],
     ensureWorkerSession: async () => ({ id: "wks_1", flowKind: "teammates" }),
   }),
 }));
@@ -31,8 +31,8 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-const ask: TalkRow = { id: "msg_ask", from: LEAD, to: RESEARCHER, text: "Launch date?", replyRequested: true, at: 1 };
-const reply: TalkRow = { id: "msg_reply", from: RESEARCHER, to: LEAD, text: "Nov 12.", inReplyTo: "msg_ask", at: 2 };
+const ask: TalkRow = { id: "msg_question", from: LEAD, to: RESEARCHER, text: "Launch date?", replyRequested: true, at: 1 };
+const reply: TalkRow = { id: "msg_reply", from: RESEARCHER, to: LEAD, text: "Nov 12.", inReplyTo: "msg_question", at: 2 };
 
 describe("which messages to a worker are still pending", () => {
   it("leaves out a waited send's answer: it was the tool's result, and no received line will ever land for it", () => {
@@ -52,7 +52,7 @@ describe("which messages to a worker are still pending", () => {
 describe("the message log the screen reads", () => {
   it("marks a message the log says was delivered", async () => {
     const row = (id: string, status: string) => ({
-      clientData: { ...reply, id, exchange: "msg_ask", fromSession: "wks_r", fromFlow: "teammates", toSession: "wks_1", toFlow: "teammates", hop: 1, status },
+      clientData: { ...reply, id, exchange: "msg_question", fromSession: "wks_r", fromFlow: "teammates", toSession: "wks_1", toFlow: "teammates", hop: 1, status },
     });
     const client = {
       resources: { listCollectionItems: async () => ({ items: [row("msg_landed", "delivered"), row("msg_on_its_way", "unconfirmed")] }) },
@@ -69,21 +69,21 @@ describe("the message log the screen reads", () => {
 });
 
 describe("a waited send's answer, on the screen", () => {
-  it("draws no pending line under your newer message, during or after Chief of Staff's turn", async () => {
+  it("draws no pending line under your newer message, during or after Lead's turn", async () => {
     const lab = createFixtureLab({ speed: 0.05 });
-    // What Jake saw: researcher's answers to Chief of Staff's waited sends, delivered as the sends' results.
+    // What Jake saw: researcher's answers to Lead's waited sends, delivered as the sends' results.
     const waited = [1, 2, 3, 4].map((n): TalkRow => ({ ...reply, id: `msg_waited_${n}`, inReplyTo: `msg_ask_${n}`, at: n, delivered: true }));
     const adapter = { ...lab, watchTalk: (worker: string, onChange: (rows: TalkRow[]) => void) => lab.watchTalk(worker, (rows) => onChange(worker === LEAD ? [...waited, ...rows] : rows)) };
     render(<App adapter={adapter} />);
     const conversation = () => screen.getByRole("main", { name: "Conversation" });
-    const box = await screen.findByLabelText("Message Chief of Staff");
+    const box = await screen.findByLabelText("Message Lead");
     await act(async () => {
       fireEvent.change(box, { target: { value: "Yes my name is Jake." } });
       fireEvent.keyDown(box, { key: "Enter" });
     });
     await within(conversation()).findByText("Yes my name is Jake.");
     expect(conversation().querySelectorAll("[data-pending^='msg_waited_']")).toHaveLength(0);
-    await waitFor(() => expect(within(conversation()).queryByText(/Chief of Staff is answering/)).toBeNull(), { timeout: 2000 });
+    await waitFor(() => expect(within(conversation()).queryByText(/Lead is answering/)).toBeNull(), { timeout: 2000 });
     expect(conversation().querySelectorAll("[data-pending^='msg_waited_']")).toHaveLength(0);
   });
 });

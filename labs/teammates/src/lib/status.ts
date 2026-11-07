@@ -10,7 +10,7 @@
  */
 import type { Activity, BoardTask, ConversationEntry, LabAdapter, TalkRow, WorkerRow } from "../adapter";
 import { taskRowPresentation } from "./task-presentation";
-import { waitingOn } from "./talk";
+import { owedRepliesFrom } from "./talk";
 import { age, useNow, useWatch } from "./use-watch";
 
 /** Everything the line is read from. */
@@ -99,7 +99,7 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
     const state = taskRowPresentation(ended);
     return { text: `Coding task ${ended.status === "failed" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false };
   }
-  const waiting = waitingOn(worker, [...talk]);
+  const waiting = owedRepliesFrom(worker, [...talk]);
   if (waiting.length > 0) return plain(`Messaging ${waiting.map(nameOf).join(", ")}`);
   if (activity === undefined) return plain("");
   return plain(activity.lastActiveAt > 0 ? `Idle · ${age(activity.lastActiveAt, now)}` : "Idle");

@@ -438,8 +438,9 @@ jobs:
       - name: One word per thing
         run: node goals/vocabulary/one-word-per-thing/sweep.mjs
 
-      # The planted parkOnAsk, messageWorker and replyTo must still be reported,
-      # or the sweep above could pass because it stopped reading a file.
+      # The planted parkOnAsk, messageWorker and replyTo, and isInProcessDispatcher in a
+      # contributor doc and a skill, must still be reported, or the sweep above could pass
+      # because it stopped reading a file.
       - name: The vocabulary sweep reports its plant
         run: node goals/vocabulary/one-word-per-thing/sweep.mjs --control
 

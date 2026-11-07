@@ -1,6 +1,6 @@
 /**
  * Goal check: the closure's seven asks in the Teammates lab (FIX-2541). A user
- * of the lab asks Chief of Staff the date, a one-line question, a task its
+ * of the lab asks Lead the date, a one-line question, a task its
  * skill fits, a code change, and (after a long conversation) a decision made
  * at its start; and asks researcher a multi-file question and a knowledge
  * question over the working folder. Each reply is graded on what the user
@@ -21,14 +21,14 @@ import { askAfterFold, askWorker, clientFor, gitRepository, heldSkills, runCheck
 import { claudeCodeSettings } from "../model.mts";
 
 const USER = "u_closure";
-const LEAD = "teammates.chief-of-staff";
+const LEAD = "teammates.lead";
 const RESEARCHER = "teammates.researcher";
 const lab = (root: string) => join(root, "labs", "teammates");
 const tree = (root: string) => join(lab(root), "workforce");
 
 const driver: AppDriver = {
   app: "teammates",
-  plant: (d, p) => skillFiles(join(tree(p.root), "teams", "teammates", "workers", "chief-of-staff"), d.skill, p.switches),
+  plant: (d, p) => skillFiles(join(tree(p.root), "teams", "teammates", "workers", "lead"), d.skill, p.switches),
   start: async (d, p, scratch) => {
     const store = join(scratch, "teammates.sqlite");
     // The working folder: a git checkout holding the draw's files, the coder ask's failing check, and on

@@ -95,7 +95,7 @@ export function statusLine(task: TaskRow): string {
   const column = statusColumn(task);
   const label =
     task.status === "errored" ? "Failed" : task.status === "cancelled" ? "Cancelled" : COLUMNS.find((c) => c.id === column)!.label;
-  const note = task.status === "errored" ? firstLine(task.error) : FINISHED.has(task.status) ? undefined : firstLine(task.waitingOn?.prompt ?? task.statusNote);
+  const note = task.status === "errored" ? firstLine(task.error) : FINISHED.has(task.status) ? undefined : firstLine(task.openHold?.prompt ?? task.statusNote);
   return note ? `${label} · ${note}` : label;
 }
 
@@ -104,7 +104,7 @@ export function rowNote(task: TaskRow): string {
   if (waitsOnPullRequest(task)) return pullRequestOpenLine(task);
   // `statusLine` already says how a failed or cancelled task ended, never its progress note.
   if (task.status === "errored" || task.status === "cancelled") return statusLine(task);
-  return FINISHED.has(task.status) ? "" : (task.waitingOn?.prompt ?? task.statusNote ?? "");
+  return FINISHED.has(task.status) ? "" : (task.openHold?.prompt ?? task.statusNote ?? "");
 }
 
 /**

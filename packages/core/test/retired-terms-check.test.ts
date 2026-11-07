@@ -138,6 +138,22 @@ describe("words with live meanings elsewhere count on Workforce's ground only", 
   });
 });
 
+describe("contributor docs and skills are read for retired names, not English meanings", () => {
+  // A skill author writing plain English shouldn't fight CI; a retired name in a skill misleads an agent.
+  it("counts a retired name in a skill and a contributor doc, and leaves the English 'room' alone there", () => {
+    const r = run({
+      ".agents/skills/zz/SKILL.md": "Each seat runs on its own branch.\nKeep the room tidy.\n",
+      "docs/contributing/zz.md": "Locality is decided by `isInProcessDispatcher`.\n", // retired-name-refusal: a planted name
+    });
+    expect(counted(r)).toEqual([".agents/skills/zz/SKILL.md:1:seat", "docs/contributing/zz.md:1:isInProcessDispatcher"]); // retired-name-refusal: the planted name
+  });
+
+  it("still counts the meaning in code, where the same line is refused", () => {
+    const r = run({ "packages/workforce/src/zz.ts": "// Keep the room tidy.\n" });
+    expect(counted(r)).toEqual(["packages/workforce/src/zz.ts:1:room"]);
+  });
+});
+
 describe("totality: every file has an area, every exception earns its place", () => {
   it("passes a fixture with nothing retired in it", () => {
     const r = run({ "packages/workforce/src/zz.ts": "// a coordinator hands each post to a delegate\n" });

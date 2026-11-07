@@ -23,7 +23,7 @@ const press = (key: string, init: KeyboardEventInit = {}, on: Element = document
 
 async function openApp() {
   render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
-  await screen.findByLabelText("Message Chief of Staff");
+  await screen.findByLabelText("Message Lead");
   // Start every step from the list, not a text field.
   within(workers()).getAllByRole("button")[0]!.focus();
 }
@@ -51,20 +51,20 @@ describe("keys", () => {
 
   it("Alt+↓ and Alt+↑ step through the teammates, from the composer too", async () => {
     await openApp();
-    fireEvent.click(within(workers()).getByRole("button", { name: /Chief of Staff/ }));
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Message Chief of Staff")));
+    fireEvent.click(within(workers()).getByRole("button", { name: /Lead/ }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Message Lead")));
     press("ArrowDown", { altKey: true });
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Message researcher")));
     press("ArrowUp", { altKey: true });
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Message Chief of Staff")));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Message Lead")));
     // The ends hold.
     press("ArrowUp", { altKey: true });
-    expect(screen.getByLabelText("Message Chief of Staff")).toBeTruthy();
+    expect(screen.getByLabelText("Message Lead")).toBeTruthy();
   });
 
   it("/ puts the cursor in the composer, and / ? [ typed there stay text", async () => {
     await openApp();
-    const box = screen.getByLabelText("Message Chief of Staff");
+    const box = screen.getByLabelText("Message Lead");
     press("/");
     await waitFor(() => expect(document.activeElement).toBe(box));
     for (const key of ["/", "?", "["]) {

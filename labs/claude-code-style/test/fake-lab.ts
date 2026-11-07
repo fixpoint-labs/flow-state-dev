@@ -11,11 +11,11 @@
  *
  * Threads mode: any ask starts three threads. One asks you a question and
  * waits under *Waiting on you* until you answer in its thread; one becomes
- * ready for review. An ask that names a code change or the CHANGELOG starts
+ * ready for review. A request that names a code change or the CHANGELOG starts
  * one thread through Claude Code instead, which becomes ready for review with
  * the judge's verdict.
  *
- * In either mode, an ask that says "stop" or "cancel" while a task runs makes
+ * In either mode, a request that says "stop" or "cancel" while a task runs makes
  * the main session cancel it. `failTurn` fails the running turn, as an
  * engine `error` item would; Retry runs that turn's line again. A line sent while a turn runs waits, and runs
  * when the turn ends.
@@ -265,7 +265,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
         return;
       }
       push(s, { kind: "tool", id: nextId("tool"), ...toolRun([{ id: "c", name: "updateTask", args: { taskId: task.id, status: "cancelled" }, status: "done", output: { ok: true } }]) });
-      setTask(s, task.id, { status: "cancelled", statusNote: undefined, waitingOn: undefined });
+      setTask(s, task.id, { status: "cancelled", statusNote: undefined, openHold: undefined });
       push(s, { kind: "assistant", id: nextId("a"), text: `Stopped "${task.title}". The summary covers what is done so far.` });
     }],
     [200, () => endTurn(s)],
@@ -295,8 +295,8 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   const advance = (s: FixtureSession, ref: Ref, patch: Partial<FixtureTask>, line?: string): Step[1] => () =>
     writeStep(s, s.tasks.find((t) => t.id === ref.id), patch, line);
 
-  const ask = (prompt: string): Partial<FixtureTask> => ({ status: "held", waitingOn: { kind: "question", prompt }, statusNote: prompt });
-  const review = (prompt: string): Partial<FixtureTask> => ({ status: "in_progress", waitingOn: { kind: "review", prompt }, statusNote: prompt });
+  const ask = (prompt: string): Partial<FixtureTask> => ({ status: "held", openHold: { kind: "question", prompt }, statusNote: prompt });
+  const review = (prompt: string): Partial<FixtureTask> => ({ status: "in_progress", openHold: { kind: "review", prompt }, statusNote: prompt });
 
   const threadsScript = (s: FixtureSession, origin: string): Step[] => {
     const [a, b, c]: Ref[] = [{}, {}, {}];
@@ -532,7 +532,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     watchTasks(sessionId, onChange) {
       return watch(() => {
         const s = sessions.get(sessionId);
-        // Each row with its view, as the adapter reads one from the board's row (no holds: a fixture's wait is its `waitingOn`).
+        // Each row with its view, as the adapter reads one from the board's row (no holds: a fixture's wait is its `openHold`).
         onChange(s ? s.tasks.map(({ work: _work, reviewDetail: _review, ...row }) => ({ ...row, view: taskRowView({ id: row.id, title: row.title, goal: row.goal, status: row.status, updatedAt: row.updatedAt, board: sessionId }) })) : []);
       });
     },
@@ -542,11 +542,11 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       const task = s.tasks.find((t) => t.id === taskId);
       if (!task) return;
       const work = [...task.work, { kind: "user" as const, id: nextId("w"), text: line }];
-      if (task.waitingOn?.kind !== "question") {
+      if (task.openHold?.kind !== "question") {
         setTask(s, taskId, { work: [...work, { kind: "assistant", id: nextId("w"), text: "Noted. I'll work that in." }] });
         return;
       }
-      setTask(s, taskId, { status: "in_progress", waitingOn: undefined, statusNote: "Working with your answer", work });
+      setTask(s, taskId, { status: "in_progress", openHold: undefined, statusNote: "Working with your answer", work });
       play(s, [[1200, advance(s, { id: taskId }, review(`Summary for ${line} ready`), `Done, going by your answer: ${line}.`), "background"]]);
     },
 
@@ -555,7 +555,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       return {
         async cancel(id) {
           openTask(session(sessionId), id);
-          setTask(session(sessionId), id, { status: "cancelled", statusNote: undefined, waitingOn: undefined });
+          setTask(session(sessionId), id, { status: "cancelled", statusNote: undefined, openHold: undefined });
           return [];
         },
         async steer(id, message) {
@@ -566,7 +566,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
         async release(id) {
           const s = session(sessionId);
           if (openTask(s, id).status !== "held") throw new Error(`Task "${id}" isn't held.`);
-          setTask(s, id, { status: "pending", waitingOn: undefined });
+          setTask(s, id, { status: "pending", openHold: undefined });
         },
         async retry(id) {
           const s = session(sessionId);
@@ -580,10 +580,10 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     async resolve(sessionId, taskId) {
       const s = session(sessionId);
       const task = s.tasks.find((t) => t.id === taskId);
-      if (task?.waitingOn?.kind !== "review") return;
+      if (task?.openHold?.kind !== "review") return;
       setTask(s, taskId, {
         status: "completed",
-        waitingOn: undefined,
+        openHold: undefined,
         statusNote: undefined,
         review: "accepted",
         work: [...task.work, { kind: "assistant", id: nextId("w"), text: "Resolved. Your review accepted the work." }],
@@ -593,10 +593,10 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     async requestChanges(sessionId, taskId, words) {
       const s = session(sessionId);
       const task = s.tasks.find((t) => t.id === taskId);
-      if (task?.waitingOn?.kind !== "review") return;
+      if (task?.openHold?.kind !== "review") return;
       setTask(s, taskId, {
         status: "in_progress",
-        waitingOn: undefined,
+        openHold: undefined,
         statusNote: "Revising",
         work: [...task.work, { kind: "user", id: nextId("w"), text: words }],
       });
