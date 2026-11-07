@@ -62,7 +62,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../src/components/Conversation";
-import { RECEIVED_MESSAGE_COMPONENT } from "@flow-state-dev/workforce/browser";
+import { RECEIVED_MESSAGE_COMPONENT, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 
 // The reviewer's conversation: the session at its derived address, where a worker's message lands too.
 const s1 = await deriveWorkerSessionId({ userId: "u_1", orgId: "org_1", flow: "agent", criteria: { worker: "eng.reviewer" } });
@@ -208,6 +208,18 @@ describe("what a view of its own draws", () => {
     expect(screen.getByTestId("received-message-answers")).toBeTruthy();
     expect(screen.getAllByTestId("received-message-messages")).toHaveLength(1);
     expect(screen.getAllByText("REVIEWER")).toHaveLength(1);
+  });
+
+  it("doesn't mark a task's brief as a line the user sent; a typed line still is", async () => {
+    const typed = { id: "u1", requestId: "r", type: "message", role: "user", ts: 1, text: "Keep the old flag name." };
+    const brief = { ...typed, id: "b1", text: "Fix the flaky test.", metadata: taskBriefMetadata({ taskId: "t1" }) };
+    read.mockResolvedValue({ items: [brief, typed], truncated: false });
+    drawn([session(s1)]);
+    await screen.findAllByTestId("mine");
+    const [briefRow, typedRow] = screen.getAllByTestId("rev-item");
+    // Jump-to-latest follows the user's own sends; the brief was handed to the session, not sent by them.
+    expect(briefRow!.hasAttribute("data-sent-line")).toBe(false);
+    expect(typedRow!.getAttribute("data-sent-line")).toBe("u1");
   });
 
   it("says the worker has the line while one from this page is in flight", () => {

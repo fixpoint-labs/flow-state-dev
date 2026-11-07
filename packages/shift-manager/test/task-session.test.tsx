@@ -186,7 +186,8 @@ describe("the task's brief", () => {
     fireEvent.click(within(line).getByRole("button"));
     expect(line.textContent).toContain("fix the flaky test");
 
-    // Words the user typed still read as theirs.
+    // Words the user typed still read as theirs, and are still the user's line for jump-to-latest.
     expect(within(typedRow!).getByTestId("message").getAttribute("data-message-role")).toBe("user");
+    expect(typedRow!.getAttribute("data-sent-line")).toBe("u1");
   });
 });
