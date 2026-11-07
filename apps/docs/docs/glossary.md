@@ -14,7 +14,7 @@ import ShiftManagerDrawing from "./glossary/shift-manager.svg";
 
 flow-state.dev is built in layers. A small set of primitives in Core (blocks, flows, sessions, resources) carries everything above it. Orchestration builds task boards out of those primitives, Workforce builds workers, coordinators and projects out of flows, sessions and resources, and Shift Manager is an app that reads what Workforce writes.
 
-Most terms higher up are a lower term with a name and a rule added. A worker is a resource one user owns, naming the flow that runs it. A coordinator is a worker. A project is one row of a resource collection. The Built from column tells you where each term's data lives.
+Most terms higher up are a lower term with a name and a rule added. A worker is a resource one user owns, naming the flow that runs it. A coordinator is a worker. A project is one resource in a resource collection. The Built from column tells you where each term's data lives.
 
 Most terms link to their full page.
 
