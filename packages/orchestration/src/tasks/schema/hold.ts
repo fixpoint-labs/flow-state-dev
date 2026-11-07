@@ -13,7 +13,12 @@
  *   while no steer carries its id (`TaskSteer.answers`), so "answered" is never
  *   stored twice. Released by its first releaser: in this epic only an answer,
  *   a steer from the user carrying its id, or the board's "no answer came"
- *   steer at a deadline a host set.
+ *   steer at a deadline a host set. Or an **`external`** wait (FIX-2578):
+ *   `actor: "system"`, the running turn waiting on something outside the
+ *   board, one `{ by: "event" }` releaser per thing it waits on. It is
+ *   released the same way, by any steer that answers it (a person's line, a
+ *   delivered message), and never by the Inbox, which lists only `"user"`
+ *   holds.
  *
  * Server-written only, through the collection's one hold write
  * (`../collection/holds`); no caller patch reaches it. `actor` and
@@ -25,10 +30,14 @@ import { z } from "zod";
 /** The most characters of a hold's prompt a row keeps: a list of tasks stays small (BP-042). */
 export const MAX_QUESTION_PROMPT = 1_000;
 
-/** Who a hold waits on: the Inbox lists `"user"` holds. */
+/** Who a hold waits on: the Inbox lists `"user"` holds; an `external` wait is the `"system"`'s. */
 const holdActorSchema = z.enum(["user", "system"]);
 
-/** What releases a row hold. `answer` is the only one in this epic; `event` is stored so one later needs no migration. */
+/**
+ * What releases a row hold: an `answer` (a question or a confirm), or an
+ * `event` naming one thing an `external` wait waits on, by its `key`. Either
+ * way the hold closes when a steer carries its id.
+ */
 const releaserSchema = z.union([
   z.object({ by: z.literal("answer") }),
   z.object({ by: z.literal("event"), event: z.string(), key: z.string() }),
@@ -60,12 +69,13 @@ export const suspensionHoldSchema = z.object({
   }),
 });
 
-/** A question or a confirm kept on the row itself. */
+/** A question, a confirm or an external wait, kept on the row itself. */
 export const rowHoldSchema = z.object({
   ...holdBase,
   source: z.object({ kind: z.literal("row"), closedBy: z.array(releaserSchema) }),
   ask: z.object({
-    kind: z.enum(["question", "confirm"]),
+    /** `question` and `confirm` wait on a person; `external` (FIX-2578, `actor: "system"`) on something outside the board. */
+    kind: z.enum(["question", "confirm", "external"]),
     prompt: z.string(),
     title: z.string().optional(),
     /**
@@ -94,6 +104,22 @@ export type TaskHold = z.infer<typeof taskHoldSchema>;
 
 /** What a confirm's No does: cancel the task (the default), or let the work go on. */
 export type ConfirmOnNo = "cancel" | "continue";
+
+/** One thing an external wait waits on: what kind of event (`"pull-request"`), and which one (`key`). */
+export interface ExternalWaitEvent {
+  readonly event: string;
+  readonly key: string;
+}
+
+/**
+ * What the turn holding a task's claim waits on outside the board (FIX-2578):
+ * a line a screen can show (`prompt`), and the events that end the wait.
+ */
+export interface ExternalWait {
+  readonly prompt: string;
+  readonly title?: string;
+  readonly events: readonly ExternalWaitEvent[];
+}
 
 /** What a filer or a worker asks: a question's words, or a `confirm` with what its No does. */
 export type QuestionInit = { readonly kind: "question" | "confirm"; readonly prompt: string; readonly title?: string; readonly onNo?: ConfirmOnNo };

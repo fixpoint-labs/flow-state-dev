@@ -183,6 +183,25 @@ describe("the completion reason over stored rows", () => {
     expect(await reasonOf(collection)).toBe("waiting-on-a-user");
   });
 
+  it("reports waiting-on-an-event for a running row waiting only on an external wait (FIX-2578), never on a user", async () => {
+    // A coding task waiting on its pull request: its lease is dropped and nobody is asked anything.
+    const external = {
+      id: "wait-1",
+      actor: "system",
+      openedAt: 1,
+      source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
+      ask: { kind: "external", prompt: "Waiting on pull request #7." },
+    };
+    const collection = await storedCollection([{ id: "awaiting-merge", status: "in_progress", leaseUntil: NOW - 1, holds: [external] }]);
+    expect(await reasonOf(collection)).toBe("waiting-on-an-event");
+    // A user's hold anywhere on the board still says the board waits on a user.
+    const both = await storedCollection([
+      { id: "awaiting-merge", status: "in_progress", leaseUntil: NOW - 1, holds: [external] },
+      { id: "held", status: "pending", attempts: 0, holds: [STORED_QUESTION] },
+    ]);
+    expect(await reasonOf(both)).toBe("waiting-on-a-user");
+  });
+
   it("reports blocked-by-failures for a running row with a lapsed lease and nothing open on it", async () => {
     // Abandoned: no hold, so nothing owes it a turn. The seed must not admit it.
     const collection = await storedCollection([{ id: "abandoned", status: "in_progress", leaseUntil: NOW - 1 }]);

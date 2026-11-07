@@ -100,7 +100,7 @@
     "shims.human-approval-throws": "pass",
     "shims.stored-human-approval": "pass",
     "types.typed-handler": "fail",
-    "types.fresh-session-default": "fail"
+    "types.fresh-session-default": "pass"
   },
   "ratchets": {
     "export-check": "scripts/check-root-exports.mjs",

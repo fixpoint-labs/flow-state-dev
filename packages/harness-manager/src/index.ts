@@ -111,6 +111,17 @@ export {
 } from "./manager";
 export { PROGRESS_NOTE_MS, progressNoteOf } from "./progress-note";
 
+// ── A task waiting on its pull requests (`awaitPullRequests`) ───────────────
+export { CLOSED_WITHOUT_MERGING } from "./await-pull-requests";
+export {
+  PULL_REQUEST_EVENT,
+  pullRequestWait,
+  type PullRequestRecordRow,
+  type PullRequestWait,
+  type PullRequestWaitRow,
+  type WaitedPullRequest,
+} from "./pull-request-wait";
+
 // ── Checks: the project's commands, before a run is done ────────────────────
 export {
   commandCheck,

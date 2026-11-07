@@ -1648,6 +1648,12 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     if (hold === undefined || !isRowHold(hold)) {
       return refuse(`no_such_question: task "${input.id}" holds no question "${input.answers}". Read its open questions with getTask.`);
     }
+    if (hold.ask.kind === "external") {
+      return refuse(
+        `wait_is_not_a_question: "${input.answers}" is the task waiting on something outside the board, not a question. ` +
+          "Send what you know as a message instead.",
+      );
+    }
     if (!claimless && (hold.midway !== true || row.target !== undefined || row.targetSessionId !== undefined)) {
       return refuse(
         `question_is_the_users: "${input.answers}" is the user's to answer` +
@@ -1940,7 +1946,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             .array(
               z.object({
                 message: z.string(),
-                from: z.enum(["filer", "user", "board"]),
+                from: z.enum(["filer", "user", "board", "service"]),
                 by: z.string().optional(),
                 at: z.number(),
                 /** The question it answers, by its hold's id (FIX-2133); absent on a steer that answers none. */

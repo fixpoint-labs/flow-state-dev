@@ -65,12 +65,12 @@ import {
   type TaskKeptOpenBy,
 } from "../tasks";
 import { DEFAULT_LEASE_DURATION_MS } from "../tasks/collection/internal";
-import { MAX_QUESTION_PROMPT } from "../tasks/schema/hold";
+import { MAX_QUESTION_PROMPT, type ExternalWait } from "../tasks/schema/hold";
 import { readCommittedTask } from "../tasks/collection/read-committed";
 import { untakenSteers } from "../tasks/steers";
 import { ticketClaimsRow } from "../tasks/collection/internal";
 import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
-import { advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
+import { advisoryCancel, advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
 import { startLeaseRenewal, startTicker, type LeaseRenewalDriver, type Ticker } from "../tasks/lease-renewal";
 import { stampLeaseRenewal, withLeaseRenewalScope } from "../tasks/lease-renewal-scope";
@@ -806,6 +806,13 @@ export async function afterTaskCheck(ctx: BlockContext, after: () => Promise<unk
   await after();
 }
 
+/** The claim this request holds on `ledger`, server-set (the gate's or an admission's), and its admission record. */
+function heldClaimOn(ctx: BlockContext, ledger: TaskCollectionRef) {
+  const record = admitted.get(requestKey(ctx));
+  const claim = record !== undefined && record.ref.collectionId === ledger.collectionId ? record.ticket : currentWorkerClaim(ctx);
+  return { record, claim: claim === undefined || claim.collectionId !== ledger.collectionId ? undefined : claim };
+}
+
 /** Why a midway ask was refused: the board's decline, or no claim to ask with. */
 type AskDeclineReason = Extract<Awaited<ReturnType<NonNullable<TaskCollectionRef["ask"]>>>, { outcome: "declined" }>["reason"];
 
@@ -844,9 +851,8 @@ export async function askMidway(
   ledger: TaskCollectionRef,
   questions: readonly { readonly kind?: "question" | "confirm"; readonly prompt: string; readonly title?: string; readonly onNo?: "cancel" | "continue" }[]
 ): Promise<MidwayAsk> {
-  const record = admitted.get(requestKey(ctx));
-  const claim = record !== undefined && record.ref.collectionId === ledger.collectionId ? record.ticket : currentWorkerClaim(ctx);
-  if (claim === undefined || claim.collectionId !== ledger.collectionId) return { ok: false, reason: "no-claim" };
+  const { record, claim } = heldClaimOn(ctx, ledger);
+  if (claim === undefined) return { ok: false, reason: "no-claim" };
   const ask = ledger.ask;
   if (ask === undefined) return { ok: false, reason: "not-supported" };
   const asks = questions.map((question) => ({
@@ -881,4 +887,60 @@ export async function askMidway(
     }
   }
   return asked;
+}
+
+/**
+ * Wait on something outside the board (FIX-2578), from the turn holding the
+ * task's claim: the collection's `awaitExternal` opens one external wait on
+ * the row (`actor: "system"`), drops its lease and ends the turn unsettled,
+ * and this request stops renewing that lease, as {@link askMidway} does for a
+ * question. A steer that answers the wait (a person's line, a delivered
+ * message) owes the same attempt one more turn.
+ *
+ * Nobody is told: an external wait is no question for the filer, and the
+ * Inbox lists only a person's holds.
+ *
+ * Once per request for the same turn and wait (`ctx.runOnce`), as a question is.
+ *
+ * @param ledger The board the task is on, as the request resolves it.
+ */
+export async function waitExternally(ctx: BlockContext, ledger: TaskCollectionRef, wait: ExternalWait): Promise<MidwayAsk> {
+  const { record, claim } = heldClaimOn(ctx, ledger);
+  if (claim === undefined) return { ok: false, reason: "no-claim" };
+  const awaitExternal = ledger.awaitExternal;
+  if (awaitExternal === undefined) return { ok: false, reason: "not-supported" };
+  const write = async (): Promise<MidwayAsk> => {
+    const outcome = await awaitExternal(claim.taskId, wait, { claim });
+    return outcome.outcome === "declined" ? { ok: false, reason: outcome.reason } : { ok: true, questions: outcome.questions ?? [] };
+  };
+  const key = `task-board:wait-externally:${claim.collectionId}:${claim.taskId}:${claim.attempt}:${claim.turn}:${JSON.stringify(wait)}`;
+  const waited = ctx.runOnce !== undefined ? await ctx.runOnce(key, write) : await write();
+  // The turn is over, as after a question: the gate's end-of-request check records nothing for it.
+  if (waited.ok && record !== undefined) {
+    record.askedQuestions = true;
+    record.renewal?.stop();
+  }
+  return waited;
+}
+
+/** What {@link cancelFromTurn} answers: the board's write, or that the request holds no claim to cancel with. */
+export type TurnCancel = Awaited<ReturnType<TaskCollectionRef["cancel"]>> | { readonly outcome: "declined"; readonly reason: "no-claim" };
+
+/**
+ * Cancel the task from the turn holding its claim, when what it worked toward
+ * was closed by a person and another attempt would end the same way (FIX-2578
+ * D2: its pull requests were closed without merging). The claim is the one
+ * this request holds, server-set, as {@link waitExternally}'s is, so only the
+ * turn holding the current ticket cancels; a later turn's claim declines it.
+ * Once the row ends this request stops renewing its lease, and the check at
+ * the request's end finds the row no longer its claim's and writes nothing.
+ *
+ * @param ledger The board the task is on, as the request resolves it.
+ */
+export async function cancelFromTurn(ctx: BlockContext, ledger: TaskCollectionRef, reason: string): Promise<TurnCancel> {
+  const { record, claim } = heldClaimOn(ctx, ledger);
+  if (claim === undefined) return { outcome: "declined", reason: "no-claim" };
+  const cancelled = await advisoryCancel(ledger, claim.taskId, reason, { claim });
+  if (cancelled.outcome !== "declined") record?.renewal?.stop();
+  return cancelled;
 }

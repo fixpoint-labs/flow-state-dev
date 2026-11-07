@@ -13,7 +13,7 @@ import type { Task, TaskRunLink, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import type { TaskSettingsPatch } from "./internal";
 import type { SteerInput } from "../steers";
-import type { QuestionInit, SuspensionHold } from "../schema/hold";
+import type { ExternalWait, QuestionInit, SuspensionHold } from "../schema/hold";
 import type { QuestionAnswer } from "./holds";
 import type { NoticeEnding as TaskNoticeEnding } from "../notice/task-notice";
 
@@ -900,6 +900,26 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   ask?(
     id: string,
     asks: readonly QuestionInit[],
+    options: { claim: TaskClaimTicket }
+  ): Promise<TaskWriteOutcome & { readonly questions?: readonly string[] }>;
+  /**
+   * Wait on something outside the board (FIX-2578): the turn holding the
+   * task's claim opens one external wait (`actor: "system"`, kind
+   * `external`) through the same write a question makes, so the row stays
+   * `in_progress` on its attempt with no lease, the claim skips it, and the
+   * turn ends unsettled. Any steer that answers it (a person's line, a
+   * delivered message) releases it and owes the same attempt one more turn
+   * (`turnOwed`). It is never midway: the filer is not told of it, and the
+   * Inbox does not list it.
+   *
+   * Fenced and refused as {@link ask} is. A recorded wait names its hold's id
+   * (`questions`). Publishes `asked`.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030).
+   */
+  awaitExternal?(
+    id: string,
+    wait: ExternalWait,
     options: { claim: TaskClaimTicket }
   ): Promise<TaskWriteOutcome & { readonly questions?: readonly string[] }>;
   /**

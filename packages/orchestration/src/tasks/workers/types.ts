@@ -73,9 +73,11 @@ export const taskWorkerInputSchema = z.object({
     .array(
       z.object({
         message: z.string(),
-        from: z.enum(["filer", "user", "board"]),
+        from: z.enum(["filer", "user", "board", "service"]),
         /** The question this steer answers (FIX-2133), as it was asked; absent on a steer that answers none. */
         question: z.string().optional(),
+        /** A `"service"` steer's sender (FIX-2578), whose words these are. */
+        by: z.string().optional(),
       })
     )
     .optional(),

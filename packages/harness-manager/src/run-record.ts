@@ -168,6 +168,29 @@ export const runRecordStateSchema = z.object({
   runKey: z.string().nullable().default(null),
   /** The board task this row describes. */
   taskId: z.string().nullable().default(null),
+  /**
+   * The requests that ran this task's turns, oldest first, kept across its
+   * attempts and turns (FIX-2578): a pull request on the session's record
+   * stamped with one of them is this task's. Written only by a manager that
+   * waits on pull requests (`awaitPullRequests`). `null` on a record written
+   * before it was kept, or by a manager that doesn't (BP-030).
+   */
+  requestIds: z.array(z.string()).nullable().default(null),
+  /**
+   * The output the turn that held the task on its pull requests would have
+   * settled with (FIX-2578), on that attempt: what a wake that finds them
+   * merged completes the task with, no harness run between. Never cleared by
+   * an attempt's opening write; a wake reads it only on the same attempt.
+   * `null` until a turn holds (BP-030).
+   */
+  waitOutput: z.object({ attempt: z.number(), output: z.unknown() }).nullable().default(null),
+  /**
+   * The external wait whose wake a turn last read the pull requests for
+   * (FIX-2578): a wait is woken once, so a later turn of the task (a retry,
+   * a question's answer) never reads it as its wake again. `null` until a
+   * wake (BP-030).
+   */
+  wokeFor: z.string().nullable().default(null),
 
   // ── Authoritative: nothing else holds these ────────────────────────────────
   /** Where the run's checkout is. A record of the derivation, never its source. */
@@ -619,7 +642,7 @@ export async function writeRunRow(
 export async function openRunRow(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
-  opened: { workspacePath: string; branch: string; childSessionId: string; run?: number; runKey?: string },
+  opened: { workspacePath: string; branch: string; childSessionId: string; run?: number; runKey?: string; requestIds?: string[] },
 ): Promise<RunRowWrite> {
   return writeRunRow(ctx, identity, {
     ...ATTEMPT_SCOPED_CLEAR,
@@ -627,6 +650,7 @@ export async function openRunRow(
     branch: opened.branch,
     childSessionId: opened.childSessionId,
     ...(opened.run !== undefined ? { runs: opened.run, runKey: opened.runKey ?? null } : {}),
+    ...(opened.requestIds !== undefined ? { requestIds: opened.requestIds } : {}),
     outcome: "running",
   });
 }
