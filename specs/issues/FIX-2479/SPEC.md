@@ -85,7 +85,8 @@ Read down the right column. Each name says what is stored; the bottom box didn't
 
 **Docs:** contributor and architecture docs say *resource* (or *task*, or *flow runner*) in the
 same PR. One changeset (minor, pre-1.0) lists every rename for `/release-docs`, and lists the
-four values above for client developers under their own heading, old beside new: code that
+four values above (the hold marker, the refusal code and three message texts) for client
+developers under their own heading, old beside new: code that
 branches on a value or matches a message changes when it upgrades. `/release-docs` updates the
 published glossary ("a project is one row"), the collections pages, the task-substrate page's
 hold kinds and the refusal tables (ER-7). Package READMEs are written at release.
@@ -99,7 +100,8 @@ already reads published pages. Measured on `main` (2026-11-07), it meets **14 pu
   `docs/fundamentals/state-and-scopes.md` (2), `docs/glossary.md` (1),
   `docs/orchestration/task-board.md` (1), `docs/resources/overview.md` (1), and the `client` (1)
   and `core` (1) READMEs.
-- **6 quote a released message word for word**: `docs/resources/collections.md` (3),
+- **6 quote one of three released messages word for word** (the owner-private refusal, the
+  owner-writes refusal, the overlap error): `docs/resources/collections.md` (3),
   `docs/workforce/projects.md` (1), and the `core` (1) and `workforce` (1) READMEs. Reworded,
   they would misquote the API users run today; left alone, they fail the rule. They are kept by
   one named exemption until `/release-docs` rewrites them from the changeset ([D4](DECISIONS.md#d4)).

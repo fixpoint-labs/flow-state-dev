@@ -75,7 +75,7 @@ breaking changeset. It replaces the open fork of the first draft, where `"row"` 
 
 | | |
 |---|---|
-| **Locks in** | Four breaking values in one minor changeset, listed old beside new for client developers. `"row"` is still read (D1); the other three get no dual read: a refusal and a message are produced per call, and no schema parses one back (the refusal is a type union, not a stored enum). The engine's constants holding the messages follow the type names (`OWNER_ROW_REFUSAL` is the implementer's to rename); tests that match the old text change with it. The Flow runner entry retires `external-dispatcher` in code only, so a published page keeps describing the released value until `/release-docs` |
+| **Locks in** | Four breaking values, three of them message texts, in one minor changeset, listed old beside new for client developers. `"row"` is still read (D1); the other three get no dual read: a refusal and a message are produced per call, and no schema parses one back (the refusal is a type union, not a stored enum). The engine's constants holding the messages follow the type names (`OWNER_ROW_REFUSAL` is the implementer's to rename); tests that match the old text change with it. The Flow runner entry retires `external-dispatcher` in code only, so a published page keeps describing the released value until `/release-docs` |
 
 **What would change my mind:** none to weigh; it is the owner's call. What it costs: every
 client that branches on the refusal or matches a message updates when it upgrades.
@@ -87,7 +87,7 @@ client that branches on the refusal or matches a message updates when it upgrade
 |---|---|
 | **Instead of** | Rewording the six quotes in the `docs-fix` PR with the other eight lines · leaving the whole-tree rule at added lines until the release |
 | **Because** | The six quote a message the released packages throw today. A `docs-fix` PR fixes a released page to match the released API, so rewording them there would misquote it. Waiting would leave the rule at added lines for a whole release, which ER-6 refuses |
-| **Locks in** | **The only widening of the anti-game rule:** "a published page may quote a released message until `/release-docs` rewrites it." It matches the two released messages' text, on published pages only, and strips that text, not the line: a second use of *row* on the same line still counts. `/release-docs` rewrites the six from the changeset and deletes the exemption in the same PR. FIX-2602's closure check confirms zero open after that pass, with the exemption gone |
+| **Locks in** | **The only widening of the anti-game rule:** "a published page may quote a released message until `/release-docs` rewrites it." It names the three released message texts the six quote, and matches each on published pages only: the owner-private refusal ("A row of an owner-private collection is readable only by the user it belongs to.", 1 line), the owner-writes refusal ("A row of an owner-writes collection is written only by the user it belongs to.", 4 lines), and the startup overlap error (`Collection pattern "…" can reach the rows of owner-<mode> collection`, 1 line). The overlap quote wraps in a code block, so the exemption matches its first line, the one that carries *rows*. It strips that text, not the line: a second use of *row* on the same line still counts. `/release-docs` rewrites the six from the changeset and deletes the exemption in the same PR. FIX-2602's closure check confirms zero open after that pass, with the exemption gone |
 
 **Why the only one:** every other exemption in the resource entry is permanent and says where
 *row* is the right word. This one keeps a word that is wrong, for a page that can't change yet,
@@ -156,8 +156,8 @@ would never exist. It ties this issue's check to a release date, which is why it
   and its exemptions are checked by the goal, not by a reviewer.
 - **Amended after merge (2026-11-07)** — the owner closed the open fork: rename all four values
   an app can see (D3). Measured on `main`, the whole-tree rule meets 14 published lines in 10
-  files, not 2: 8 plain, for the `docs-fix` PR, and 6 quotes of the two owner-collection
-  messages, kept by D4's exemption until `/release-docs`.
+  files, not 2: 8 plain, for the `docs-fix` PR, and 6 quotes of three released
+  messages (the owner-private and owner-writes refusals, and the overlap error), kept by D4's exemption until `/release-docs`.
 
 <a name="open"></a>
 **Open: none.** The wire-value fork was decided by the owner on 2026-11-07 (D3).
