@@ -56,7 +56,7 @@ const PENDING_NOTES = /^(\.changeset\/.*\.md|goals\/.*\.(md|mts|ts))$/;
 const CODE_PUBLISHED_OR_NOTES = new RegExp(`${CODE_OR_PUBLISHED.source}|${PENDING_NOTES.source}`);
 
 /** Where a retirement of each reach is read by the sweep, when it names no `files` of its own. */
-export const REACH_FILES = { name: CODE_PUBLISHED_OR_NOTES, meaning: CODE_OR_PUBLISHED };
+const REACH_FILES ={ name: CODE_PUBLISHED_OR_NOTES, meaning: CODE_OR_PUBLISHED };
 
 /** FIX-2248: the goal folders that named a seat or a mailbox (or a person for the user), exact names only. */
 const SEAT_MAILBOX_GOAL_NAMES = [
@@ -93,6 +93,7 @@ const COLLECTION_FILE = /(?:^|\/)collections?(?:\/|$)|(?:^|\/)[^/]*collection[^/
  * One entry per term: `term`, `means` (one sentence), `decision` (where it was decided),
  * `published` (the published glossary page defines it), and `retires` (the words it replaces).
  */
+// fallow-ignore-next-line unused-export -- loaded by path from a copy in packages/core/test/vocabulary-glossary.test.ts
 export const ENTRIES = [
   // Resource and status ----------------------------------------------------------------------
   {
@@ -665,7 +666,7 @@ const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workfo
  * - **side-chain** (`rules`, `files`): the tests whose subject is the retired spelling, closed by assertion.
  * - **added-lines** (`rules`): where a `…Row` is a rendered table row, not a resource.
  */
-export const EXEMPTIONS = [
+const EXEMPTIONS = [
   // ---- sweep ----
   {
     path: /^packages\/harness-manager\/README\.md$/,
@@ -1157,7 +1158,7 @@ export const AREAS = [
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Every retirement, with the term it belongs to. A bare `{ name }` becomes one sweep rule and one guard term. */
-export const RETIREMENTS = ENTRIES.flatMap((entry) =>
+const RETIREMENTS =ENTRIES.flatMap((entry) =>
   entry.retires.map((r) => ({ reach: "name", ...r, id: r.id ?? r.name, term: entry.term })),
 );
 

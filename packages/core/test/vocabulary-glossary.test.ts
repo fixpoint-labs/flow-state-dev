@@ -19,10 +19,8 @@ const ENTRIES_OPEN = "export const ENTRIES = [\n";
 type Rule = { id: string; term: string; files?: RegExp; pattern?: RegExp; re?: RegExp };
 type Glossary = {
   ENTRIES: Array<{ term: string; means: string; retires: object[] }>;
-  RETIREMENTS: Rule[];
   SWEEP_RULES: Rule[];
   GUARD_TERMS: Rule[];
-  EXEMPTIONS: object[];
   PUBLISHED_TERMS: string[];
 };
 
@@ -60,7 +58,7 @@ describe("the vocabulary glossary loads only when every entry is well formed", (
   });
 
   it("fails to load on an exemption that keeps a word nothing retires", async () => {
-    const edit = (text: string) => text.replace("export const EXEMPTIONS = [\n", 'export const EXEMPTIONS = [\n  { path: /x/, rules: ["zz-nothing-retires-this"], why: "planted" },\n');
+    const edit = (text: string) => text.replace("const EXEMPTIONS = [\n", 'const EXEMPTIONS = [\n  { path: /x/, rules: ["zz-nothing-retires-this"], why: "planted" },\n');
     await expect(load(edit)).rejects.toThrow(/nothing retires/);
   });
 
