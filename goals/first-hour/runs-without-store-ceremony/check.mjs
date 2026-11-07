@@ -25,7 +25,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
@@ -61,10 +61,12 @@ function must(cmd, argv, cwd, env) {
 
 // ── Pack the entry packages and their workspace closure ────────────────────
 /**
- * The entry packages and their workspace closure, each after its workspace
- * dependencies: a package's build reads its dependencies' emitted declarations,
- * so on a clean tree (and under `--control`) they must exist first. Post-order:
- * a package is appended once its dependencies are; `visiting` catches a cycle.
+ * The entry packages and every package their builds need, each after the
+ * packages it needs. The source is each package's tsconfig `references`, the
+ * graph `tsc` builds from: a build reads its references' emitted declarations,
+ * so on a clean tree (and under `--control`) they must exist first. That takes
+ * in build-only packages such as cli's `devtool`. Post-order: a package is
+ * appended once its references are; `visiting` catches a cycle.
  */
 function buildOrder(tree) {
   const order = [];
@@ -72,11 +74,10 @@ function buildOrder(tree) {
   const visiting = new Set();
   const visit = (dir) => {
     if (done.has(dir)) return;
-    if (visiting.has(dir)) throw new Error(`workspace dependency cycle through packages/${dir}`);
+    if (visiting.has(dir)) throw new Error(`tsconfig reference cycle through packages/${dir}`);
     visiting.add(dir);
-    const m = JSON.parse(readFileSync(join(tree, "packages", dir, "package.json"), "utf8"));
-    for (const [name, v] of Object.entries(m.dependencies ?? {}))
-      if (String(v).startsWith("workspace:")) visit(name.replace("@flow-state-dev/", ""));
+    const { references = [] } = JSON.parse(readFileSync(join(tree, "packages", dir, "tsconfig.json"), "utf8"));
+    for (const ref of references) visit(basename(ref.path));
     visiting.delete(dir);
     done.add(dir);
     order.push(dir);
