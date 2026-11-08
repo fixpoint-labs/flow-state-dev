@@ -29,3 +29,7 @@
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-08 | f9fb7f254 | n/a (model-free) | PASS | open: OPEN 0 over 8586 tracked files. reaches: the three generated names, committed to the copy's main, each reported. control: FooRow refused in orchestration and workforce, useFooCollectionItem in client, every plant refused. exemptions: store-adapter-rows, ui-list-rows, released-quotes. hold: question and confirm stored `"row"`, listed `["task"]`, answered through updateTask, 0 open after. |
+| 2026-11-08 | e4c37df54 (origin/main, control) | n/a (model-free) | FAIL (expected) | open: OPEN 475, the open names listed (`readCollectionItem`, the `…Row` types, the lifecycle `…State`s, the published pages' "row of a collection"). hold skipped at a ref other than HEAD. |
+| 2026-11-08 | f9fb7f254 + `GOAL_CONTROL=no-row-read` | n/a (model-free) | FAIL (expected) | hold:threw: with the dual read off, the board's `listTasks` refuses the stored `"row"` hold. |
+| 2026-11-08 | 900ddebe7 (before the turn, red) | n/a (model-free) | FAIL (expected) | open read OPEN 0 only because the rule read added lines; reaches failed for all three committed names, control found no FooRow or useFooCollectionItem plant, exemptions found no whole-tree rule. |
