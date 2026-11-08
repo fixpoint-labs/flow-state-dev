@@ -41,7 +41,8 @@ flowchart LR
   P2 --> S
   P3 --> S
   S -->|"equals the push oracle · fires ≥ 5 min apart · only due rows · 0 model calls · 0 cross-user"| OK["PASS"]
-  C["controls · mark-moves · walk-all · under-floor · no-screened · outage-screened · seed-every-boot · ignore-cadence"] -.-> P2
+  C["controls · mark-moves · walk-all · under-floor · no-screened · outage-screened"] -.-> P2
+  C4["controls · seed-every-boot · ignore-cadence"] -.-> P4
   S -.->|"under a control"| X["must FAIL"]
 ```
 

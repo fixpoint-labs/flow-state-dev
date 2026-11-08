@@ -59,10 +59,10 @@ cursor field, **not** FIX-2537 Q-A's verdict memo (epic D4).
 | | |
 |---|---|
 | **Instead of** | Only a model's `subscribe` call, all at one cadence |
-| **Because** | At startup each entry writes `subscribe`'s row, keyed `cfg_<hash of flow kind and entry id>`, only when missing or changed, so a restart adds no row. A `cfg_` row whose entry left config is ended (`config_removed`) by its next fire, unpolled. `sub_` rows are never touched |
+| **Because** | At startup each entry calls `subscribe`'s write, keyed `cfg_<hash of flow kind and entry id>`, only when missing or changed, so a restart adds no row. A `cfg_` row whose entry left config is ended by its next fire through `unsubscribe`'s write (reason `config_removed`), unpolled. `sub_` rows are never touched |
 | **The owner (EM call)** | The entry names `owner: { userId, orgId }` and a `worker`, as server config (BP-031). The row lands in that user's shared cell (`resolveSharedUserCellKey`), checked by `fireOwnerRunThrough` like any other, polling on their credentials (D1). The seed runs as the owner, so `canRead` is `subscribe`'s. It hears in the owner's session with that worker (`deriveWorkerSessionId`); no tenant |
 | **Cadence** | `everyMinutes` on `subscribe` or an entry: 5, 10, 15, 20, 30 or 60, else throws; `poll.everyMinutes` is the default |
-| **Locks in** | A `cfg_` row its thread or session ended stays ended while its entry is unchanged. ER-5's writers hold |
+| **Locks in** | A `cfg_` row its thread or session ended stays ended while its entry is unchanged. ER-5 holds: the seed and the fire call `subscribe`'s and `unsubscribe`'s writes, never the row directly |
 
 It comes down to a redeploy: a seed keyed by config id writes nothing new.
 
