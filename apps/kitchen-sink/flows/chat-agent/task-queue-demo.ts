@@ -12,7 +12,7 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 
 const COLLECTION_ID = "task-queue-demo";

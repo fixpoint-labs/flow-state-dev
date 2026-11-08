@@ -5,9 +5,9 @@ import type {
   RequestRecord,
   SessionRecord,
   UserRecord
-} from "@flow-state-dev/engine";
-import { createPostgresStores, initializeSchema, type PostgresStoreRegistry } from "../src";
-import type { QueryExecutor } from "../src";
+} from "@flow-state-dev/engine/host";
+import { createPostgresStores, initializeSchema, type PostgresStoreRegistry } from "../src/host";
+import type { QueryExecutor } from "../src/host";
 import { freshPglite } from "./shared-pglite";
 
 /** Wrap PGlite to match the QueryExecutor interface */

@@ -21,9 +21,11 @@ import { z } from "zod";
 import { defineFlow, handler, type DeclaredResources } from "@flow-state-dev/core";
 import {
   createFlowApiRouter,
-  createFlowRegistry,
-  createInMemoryStores,
+  createFlowRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { readDeclaredRoster } from "../src/loader/read-declared-roster";
 import { referencesFromDocs } from "../src/references-from-docs";
 import { resourcesFromDocs } from "../src/resources-from-docs";

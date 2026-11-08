@@ -23,6 +23,7 @@
  *   const board = taskBoard({ name: "todos", collection: todos, workers });
  */
 
+import type { JsonObject } from "@flow-state-dev/core";
 import {
   defineResourceCollection,
   type BlockContext,
@@ -35,8 +36,15 @@ import type { TaskEnding, TaskEndingRecorder } from "./ending";
 import type { TaskSettingsSupport } from "./filing";
 import type { TaskPartitionFn } from "./partition";
 import { assertSafeCollectionId } from "./safe-key";
-import { defineTaskIdIndex, taskIdIndexKey } from "./id-index";
 import type { DeclaredDelivery } from "../notice/delivery";
+
+/** The index a partitioned ledger declares on its rows' task id (`findTaskPartitions`). */
+export const TASK_ID_INDEX = "byTaskId";
+
+/** The `byTaskId` index function: a row's task id, or nothing for a row without one. */
+function taskIdOfRow(_key: string, state: JsonObject): string | undefined {
+  return typeof state.id === "string" ? state.id : undefined;
+}
 
 /**
  * Build the resource-instance schema for a durable task: the whole `Task`
@@ -58,20 +66,15 @@ export type DefinedTaskCollection = DefinedResourceCollection & {
     readonly id: string;
     /** Present when the ledger keeps one set of rows per partition. */
     readonly partitionBy?: TaskPartitionFn;
-    /**
-     * Present with `partitionBy`: the ledger's id index (FIX-2160), which
-     * partitions hold each task id. Installed beside the ledger under `key`
-     * (`taskLedgerResources`), and written by the ledger's own add.
-     */
-    readonly idIndex?: { readonly key: string; readonly collection: DefinedResourceCollection };
     /** Present when every ending written to the ledger goes through a recorder. */
     readonly recordEnding?: TaskEndingRecorder;
     /** Present when the ledger honours filing settings beyond the defaults. */
     readonly settings?: TaskSettingsSupport;
     /** Present when the ledger's tasks file work elsewhere that a cascade cancels. */
     readonly cascadeFiled?: DeclaredFiledCascade;
+    // FIX-2078.
     /**
-     * Present when a board hands the ledger's rows out (FIX-2078): each ending
+     * Present when a board hands the ledger's rows out: each ending
      * owes its filer a notice. Declared, or set by a board with a task
      * dispatcher (`markDelegating`).
      */
@@ -79,8 +82,9 @@ export type DefinedTaskCollection = DefinedResourceCollection & {
   };
 };
 
+// FIX-2080 D2.
 /**
- * A ledger's payer for the tasks its tasks filed (FIX-2080 D2), as declared:
+ * A ledger's payer for the tasks its tasks filed, as declared:
  * `pay` takes the running context, bound when the ledger is resolved.
  */
 export interface DeclaredFiledCascade {
@@ -109,9 +113,10 @@ export interface DefineTaskCollectionOptions<
   id: string;
   /** Intrinsic scope the collection lives in — `"session"`, `"user"`, or `"org"`. */
   scope: ResourceScope;
+  // FIX-1068.
   /**
-   * Give a `session`-scoped board ONE ledger across the session lineage
-   * (FIX-1068), so the child session a dispatched row runs in settles against the
+   * Give a `session`-scoped board ONE ledger across the session lineage,
+   * so the child session a dispatched row runs in settles against the
    * same rows the dispatching session holds. Without it a session-scoped board
    * hydrates empty inside a child session and the task cannot be settled.
    *
@@ -138,9 +143,9 @@ export interface DefineTaskCollectionOptions<
    * rows load a partition at a time, on that partition's first read in a
    * request, never the whole ledger when the request starts.
    *
-   * A partitioned ledger also keeps an id index, which partitions hold each
-   * task id (`findTaskPartitions`), so a bare id can find its row. Install the
-   * ledger with `taskLedgerResources(ledger)`, which carries both.
+   * A partitioned ledger also declares a `byTaskId` index on its rows, so a
+   * bare task id finds the partitions that hold it (`findTaskPartitions`)
+   * without reading any partition's rows.
    */
   partitionBy?: TaskPartitionFn;
   /**
@@ -157,23 +162,25 @@ export interface DefineTaskCollectionOptions<
    * taken from what it returns; the transition decides every other field.
    */
   recordEnding?: TaskEndingRecorder;
+  // FIX-2080.
   /**
-   * The filing settings this ledger honours beyond the defaults (FIX-2080):
+   * The filing settings this ledger honours beyond the defaults:
    * `session: ["new", "ongoing"]` when its hand-over can run a task in the
    * delegate's ongoing session, `resultTo: ["filer", "conversation"]` when it
    * can send a result to the conversation. A filing with a value it doesn't
    * list is refused, naming the setting.
    */
   settings?: TaskSettingsSupport;
+  // FIX-2080 D2.
   /**
-   * The ledger's payer for the tasks a task on it filed elsewhere (FIX-2080
-   * D2). A task that fails, retries or is cancelled owes a cascade, recorded
+   * The ledger's payer for the tasks a task on it filed elsewhere. A task that fails, retries or is cancelled owes a cascade, recorded
    * in its ending's write when `owes` says so, and paid by `pay`: at once by
    * the ending's own pass, and by a touch of the ledger once past due.
    */
   cascadeFiled?: DeclaredFiledCascade;
+  // FIX-2078.
   /**
-   * How the ledger's endings reach the sessions that filed them (FIX-2078):
+   * How the ledger's endings reach the sessions that filed them:
    * the pass a wake runs, the entry a notice arrives on, how a filer is
    * reached, and what a notice nobody can take does. A board with a task
    * dispatcher gives its ledger the defaults when it declares none.
@@ -201,7 +208,7 @@ export function defineTaskCollection<
   if (options.partitionBy !== undefined) assertPartitionable(options);
   if (options.recordEnding !== undefined && typeof options.recordEnding !== "function") {
     throw new Error(
-      `[tasks] defineTaskCollection "${options.id}": recordEnding must be a function of the row and its ending`
+      `[tasks] defineTaskCollection "${options.id}": recordEnding must be a function of the task and its ending`
     );
   }
 
@@ -232,18 +239,18 @@ export function defineTaskCollection<
     // sit in the user's own cell even on a flow that isolates its user state
     // (`isolateUserState`): the task entry that works them runs on another
     // flow, and reads that cell.
-    ...(options.partitionBy !== undefined ? { prefetchMode: "lazy" as const, flowIsolation: false } : {}),
+    //
+    // Its rows are found by task id across partitions through the declared
+    // `byTaskId` index, written with each row (FIX-2532).
+    ...(options.partitionBy !== undefined
+      ? { prefetchMode: "lazy" as const, flowIsolation: false, indexes: { [TASK_ID_INDEX]: taskIdOfRow } }
+      : {}),
   });
 
   return Object.assign(collection, {
     __taskCollection: {
       id: options.id,
-      ...(options.partitionBy !== undefined
-        ? {
-            partitionBy: options.partitionBy,
-            idIndex: { key: taskIdIndexKey(options.id), collection: defineTaskIdIndex(options.id, options.scope) },
-          }
-        : {}),
+      ...(options.partitionBy !== undefined ? { partitionBy: options.partitionBy } : {}),
       ...(options.recordEnding !== undefined ? { recordEnding: options.recordEnding } : {}),
       ...(options.settings !== undefined ? { settings: options.settings } : {}),
       ...(options.cascadeFiled !== undefined ? { cascadeFiled: options.cascadeFiled } : {}),
@@ -253,13 +260,12 @@ export function defineTaskCollection<
 }
 
 /**
- * The flow resources that install `ledger`: the ledger under its id, and, for
- * a partitioned ledger, its id index beside it. A flow that files to a
- * partitioned ledger without the index is refused at the add.
+ * The flow resources that install `ledger`: the ledger alone, under its id.
+ * A partitioned ledger's id lookup is an index the ledger itself declares, so
+ * nothing is installed beside it.
  */
 export function taskLedgerResources(ledger: DefinedTaskCollection): Record<string, DefinedResourceCollection> {
-  const { id, idIndex } = ledger.__taskCollection;
-  return { [id]: ledger, ...(idIndex !== undefined ? { [idIndex.key]: idIndex.collection } : {}) };
+  return { [ledger.__taskCollection.id]: ledger };
 }
 
 /**
@@ -277,21 +283,22 @@ function assertPartitionable(options: DefineTaskCollectionOptions): void {
   }
   if (options.scope !== "user") {
     throw new Error(
-      `${where}: partitionBy keeps one set of rows per partition at the owner's user scope, ` +
+      `${where}: partitionBy keeps one set of tasks per partition at the owner's user scope, ` +
         `so the collection must be scope: "user" (got "${options.scope}").`
     );
   }
   if (options.maxInstances !== undefined) {
     throw new Error(
       `${where}: partitionBy cannot be combined with maxInstances, which counts every ` +
-        `partition's rows, so one partition's add would be refused or evict a row by another's.`
+        `partition's tasks, so one partition's add would be refused or evict a task by another's.`
     );
   }
 }
 
+// FIX-982; narrowed by FIX-1780.
 /**
  * Ledgers whose assignee is frozen while an attempt holds a task, keyed by the
- * declaration itself (FIX-982; narrowed to `in_progress` by FIX-1780).
+ * declaration itself (frozen while `in_progress`).
  *
  * The policy belongs to the **ledger**, not to a ref. `getOrCreateTaskCollection`
  * builds a fresh wrapper per resolution, so an `immutableAssignee` passed as one

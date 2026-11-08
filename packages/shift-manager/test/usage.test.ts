@@ -130,13 +130,15 @@ function fakeLab(refused: string | null, listed: Array<{ id: string; flowKind: s
       send: async (_action: string, _input: unknown, options: { sessionId: string }) => {
         sent.push(options.sessionId);
         if (options.sessionId === refused) throw new ClientHttpError("unknown session", { status: 404, body: "" });
-        return { id: `r${sent.length}` };
+        return {
+          id: `r${sent.length}`,
+          wait: async () => ({ status: "completed" }),
+          result: async () => ({ status: "completed", output: { harnesses: [{ harness: "codex" }] } }),
+        };
       },
-      request: () => ({ status: async () => ({ status: "completed" }) }),
     }),
     sessions: {
       list: async () => listed.map((session) => ({ ...session, parentSessionId: null })),
-      requests: async () => [{ id: `r${sent.length}`, result: { output: { harnesses: [{ harness: "codex" }] } } }],
     },
   } as unknown as Client;
   return { client, sent };

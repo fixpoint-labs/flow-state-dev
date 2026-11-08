@@ -39,7 +39,12 @@ async function standingRules(worker: string, input: Input) {
 let roster: () => Promise<unknown[]>;
 
 // One client for the page, as the app's own hook keeps one: a new one per render would read the list again on every render.
-const workforce = { roster: () => roster(), standingRules };
+const workforce = {
+  roster: () => roster(),
+  // The roster watch, reporting one read.
+  watchRoster: (onRoster: (entries: never[]) => void, options?: { onError?: (error: unknown) => void }) => (void (roster() as Promise<never[]>).then(onRoster, options?.onError), () => {}),
+  standingRules,
+};
 vi.mock("../src/lib/workforce", () => ({
   useWorkforce: () => workforce,
 }));

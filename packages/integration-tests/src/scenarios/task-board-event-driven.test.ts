@@ -18,9 +18,9 @@ import { describe, expect, it } from "vitest";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import {
   taskBoard,
-  taskBoardStateSchema,
   taskWorkerInputSchema,
 } from "@flow-state-dev/orchestration/task-board";
+import { taskBoardStateSchema } from "@flow-state-dev/orchestration/internal";
 import { testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { itemsByType } from "../helpers/assertions";
@@ -53,7 +53,7 @@ describe("FIX-621: task-board event-driven worker idle-wait", () => {
       // drains. Explicit since the default backing is request.
       collection: { backing: "sequencer", collectionId: "ed-board" },
       concurrency: CONCURRENCY,
-      claimOrder: "topological",
+      claimOrder: "fifo",
       workers: worker,
       initialTasks: [
         { id: "discover", goal: "discover" },

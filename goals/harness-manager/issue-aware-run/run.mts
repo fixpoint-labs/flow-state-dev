@@ -23,8 +23,9 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { handler } from "@flow-state-dev/core";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "@flow-state-dev/engine";
+import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
+import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   HARNESS_FEATURE_KEY,
   harnessSessionFlow,

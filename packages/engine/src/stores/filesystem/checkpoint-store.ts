@@ -1,12 +1,13 @@
+// FIX-401; FIX-654.
 /**
- * Filesystem-backed sequencer checkpoint store (FIX-401).
+ * Filesystem-backed sequencer checkpoint store.
  *
  * Stores each checkpoint as a single JSON file under:
  *
  *   rootDir/checkpoints/{encodeURIComponent(requestId)}/{sha256(blockInstanceId)[:32]}.json
  *
  * The basename is derived from a truncated SHA-256 digest of the
- * `blockInstanceId` so deeply-nested compositions (pattern skills, FIX-654)
+ * `blockInstanceId` so deeply-nested compositions (pattern skills)
  * never overflow the 255-byte per-component filesystem limit. The canonical
  * `blockInstanceId` is preserved in the JSON body so DevTool, logs, and
  * operator inspection are unaffected. Latest-only: `write` overwrites the

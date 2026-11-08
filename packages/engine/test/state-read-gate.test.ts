@@ -13,7 +13,7 @@
  * mode cannot come back unnoticed.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { gateNextStateRead, StateReadGateTimeoutError } from "../src/testing";
 
 describe("gateNextStateRead", () => {

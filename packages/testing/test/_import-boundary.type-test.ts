@@ -1,5 +1,5 @@
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
-import { encodeStreamEvent } from "@flow-state-dev/engine";
+import { encodeStreamEvent } from "@flow-state-dev/engine/internal";
 
 const mockItem: OutputItem = {
   id: "item-1",

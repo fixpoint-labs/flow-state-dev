@@ -48,9 +48,10 @@ export function isTerminalRequestStreamEvent(
   }
 }
 
+// FIX-811.
 /**
  * Whether an event ends a `subscribeToEvents` iterator, honoring
- * `followThroughSuspend` (FIX-811). When set, `request.suspended` is a
+ * `followThroughSuspend`. When set, `request.suspended` is a
  * checkpoint rather than a terminal, so a same-request continuation can be
  * streamed through to its real terminal — the true terminals still end the
  * iterator. Every backend's subscription loop uses this instead of
@@ -70,6 +71,7 @@ export function endsRequestStream(
   return isTerminalRequestStreamEvent(event);
 }
 
+// FIX-2098.
 /**
  * Build an in-iterator `request.interrupted` event for liveness-timeout
  * surfacing. Not persisted — this represents the subscriber's view of an
@@ -89,7 +91,7 @@ export function endsRequestStream(
  * log's last sequence number plus one (the stream route's replay of a log left
  * without a terminal event). A liveness timeout can still be followed by a
  * live writer's events, so it keeps the last seen one. A client that already
- * saw that event drops this synthetic as a repeat (FIX-2098).
+ * saw that event drops this synthetic as a repeat.
  */
 export function synthesizeRequestInterrupted(
   requestId: string,

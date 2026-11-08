@@ -22,6 +22,8 @@ Parse $ARGUMENTS to determine:
 5. Does it use capabilities? (bundled resources + helpers from patterns or shared infra)
 6. Does it need client data? (derived views exposed to the frontend)
 
+Check the flow's kind, action names and exported names against [`docs/contributing/glossary.mjs`](../../../docs/contributing/glossary.mjs): use the word an entry gives, never one it retires. A flow that coins a public term adds its entry in the same change.
+
 ### Step 2: Read Reference Flows
 
 Before writing, read at least one existing flow:

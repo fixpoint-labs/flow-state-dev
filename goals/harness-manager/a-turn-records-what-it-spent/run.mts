@@ -23,9 +23,11 @@ import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_ORG_ID, harnessEnv } from "@flow-state-dev/core";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { harnessSessionFlow, type HarnessSessionState, type HarnessTurnRecord } from "@flow-state-dev/harness-manager";
 import { runGoal } from "../../lib/index.mts";
 

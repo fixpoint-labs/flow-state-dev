@@ -1,5 +1,6 @@
+// FIX-447.
 /**
- * Schemas for the supervisor pattern (post-FIX-447 migration onto taskBoard).
+ * Schemas for the supervisor pattern (on the taskBoard substrate).
  *
  * Outer state is minimal — task storage lives on the request-scoped
  * TaskCollection, not here. Per-task review verdicts conform to

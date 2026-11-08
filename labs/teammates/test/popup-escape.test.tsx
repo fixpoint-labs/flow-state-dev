@@ -8,7 +8,7 @@ import { useInterruptKeys } from "@flow-state-dev/react";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, expect, it } from "vitest";
-import { SessionPopup } from "../src/components/SessionPopup";
+import { SessionOverlay } from "../src/components/flow-state/session-overlay";
 
 afterEach(cleanup);
 
@@ -20,9 +20,9 @@ function Running({ onInterrupt }: { onInterrupt: () => void }) {
     <>
       <button onClick={() => setOpen(true)}>open</button>
       {open ? (
-        <SessionPopup label="Task" title="Task" onClose={() => setOpen(false)}>
+        <SessionOverlay variant="modal" label="Task" title="Task" onClose={() => setOpen(false)}>
           body
-        </SessionPopup>
+        </SessionOverlay>
       ) : null}
     </>
   );

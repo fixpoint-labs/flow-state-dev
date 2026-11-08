@@ -1,10 +1,11 @@
+// FIX-2173.
 /**
- * Consult another session's history (FIX-2173): answer a read-only question
+ * Consult another session's history: answer a read-only question
  * from what another of the principal's conversations already holds, without
  * waking it.
  *
  * `consultSessionHistoryTool()` is a tool a generator calls. It reads the other
- * session's settled turns through `ctx.requestHost.sessions.history` (the
+ * session's settled turns through `requestHostOf(ctx).sessions.history` (the
  * principal's own sessions only, by the rule of `sessions.read`), cuts them to
  * a hard token budget from the newest back (counted by the flow's
  * `ctx.tokenCounter` for the answering model), and runs one generator with no
@@ -25,12 +26,13 @@ import type { GeneratorConfig } from "../blocks/generator";
 import { handler } from "../blocks/handler";
 import { sequencer } from "../blocks/sequencer";
 import type { BlockContext } from "../types/block";
-import type { SessionHistory } from "../types/request-host";
+import { requestHostOf, type SessionHistory } from "../types/request-host";
 import type { LLMMessage } from "../types/scope";
 
 /** The default hard cap on the history tokens the consult's generator receives. */
 export const CONSULT_DEFAULT_BUDGET_TOKENS = 24_000;
-/** The longest reading the tool hands back (BP-042). */
+// BP-042.
+/** The longest reading the tool hands back. */
 const MAX_READING_CHARS = 8_000;
 
 /** Where a consult reads: the session, and how the result names it. */
@@ -212,7 +214,7 @@ export function consultSessionHistoryTool(options: ConsultSessionHistoryOptions 
         return { ok: false, error: "self: that is this conversation, and its history is already yours." };
       }
       const noSession = `no_session: no conversation "${target.sessionId}" of yours.`;
-      const sessions = ctx.requestHost?.sessions;
+      const sessions = requestHostOf(ctx)?.sessions;
       if (sessions?.history === undefined) return { ok: false, error: `${noSession} (This host can't read another conversation.)` };
       const history = await sessions.history(target.sessionId, { limit: { tokens: budgetTokens } });
       if (history === undefined) return { ok: false, error: noSession };

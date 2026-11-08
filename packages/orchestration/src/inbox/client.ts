@@ -1,19 +1,20 @@
+// the epic FIX-2058's ER-7; FIX-2129; FIX-2133 D1; FIX-2381.
 /**
  * The Inbox's browser client: its one answer call, routed by each hold's
- * source (the epic FIX-2058's ER-7). A suspension goes to the engine's answer
- * route (FIX-2129), with the answer its ask takes mapped to the engine's
- * resume action there; a row hold, a question or a confirm, goes to the
+ * source. A suspension goes to the engine's answer
+ * route, with the answer its ask takes mapped to the engine's
+ * resume action there; an own hold, a question or a confirm, goes to the
  * board's `updateTask` action on the session that holds the board, as the
- * signed-in user (FIX-2133 D1). The routing lives here and nowhere else.
+ * signed-in user. The routing lives here and nowhere else.
  *
- * The same client carries each board's task actions (FIX-2381): `board(at)`
+ * The same client carries each board's task actions: `board(at)`
  * binds one board, and cancel, steer, release, retry and re-file go to that
  * board's own actions through the routine a row answer goes through.
  */
-import { ClientHttpError, type Client } from "@flow-state-dev/client";
-import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
+import { ClientHttpError, type Client, type RequestResult } from "@flow-state-dev/client";
+import type { ResumeAction } from "@flow-state-dev/core/types";
 import { taskToolSuffix } from "../skills/task-tool-suffix";
-import type { InboxAnswer, InboxAskKind, InboxHold, InboxItem, RowHoldSource } from "./types";
+import type { InboxAnswer, InboxAskKind, InboxHold, InboxItem, OwnHoldSource } from "./types";
 
 /** The engine's resume action and data for a suspension hold's answer. */
 function resumeOf(kind: InboxAskKind, answer: InboxAnswer): { action: ResumeAction; data?: unknown } {
@@ -24,7 +25,7 @@ function resumeOf(kind: InboxAskKind, answer: InboxAnswer): { action: ResumeActi
   throw new Error(`An answer to ${kind === "approval" ? "an approval" : `a ${kind}`} question doesn't take ${JSON.stringify(answer)}`);
 }
 
-/** The board's `updateTask` input for a row hold's answer: a question's words, or a confirm's go with its note. */
+/** The board's `updateTask` input for an own hold's answer: a question's words, or a confirm's go with its note. */
 function updateOf(kind: InboxAskKind, answer: InboxAnswer): { message?: string; done?: boolean } {
   const a = answer as Record<string, unknown>;
   if (kind === "question" && typeof a.text === "string" && a.text.trim().length > 0) return { message: a.text };
@@ -37,10 +38,6 @@ function updateOf(kind: InboxAskKind, answer: InboxAnswer): { message?: string; 
 /** How long the board's answer is waited on, and how often the request's wait looks at it. */
 const ANSWER_TIMEOUT_MS = 30_000;
 const ANSWER_POLL_MS = 150;
-/** Requests listed per page while looking for the one that just ended, and how many pages. */
-const REQUEST_PAGE = 100;
-/** The listing is newest first, so the answer is almost always on page 0; the cap only bounds a miss in a long session (2,000 requests), which then rejects. */
-const REQUEST_PAGES = 20;
 
 /** The task tools a board takes from outside a run, each an action on the flow that holds the board. */
 export type TaskActionTool = "createTask" | "getTask" | "listTasks" | "updateTask" | "retryTask";
@@ -48,7 +45,7 @@ export type TaskActionTool = "createTask" | "getTask" | "listTasks" | "updateTas
 /**
  * The name of board `board`'s action for `tool`: `<tool>_<suffix>`, the one
  * place an app gets it. `board` is the collection id (Workforce's `"tasks"`),
- * not a row's board ref. For a reader that builds an `InboxRow.holder`, or a
+ * not a row's board ref. For a reader that builds an `InboxTaskInput.holder`, or a
  * test that acts on the board directly; an app that changes a task calls
  * {@link InboxClient.board}.
  */
@@ -80,34 +77,27 @@ async function sendBoardAction(client: Client, route: BoardRoute, input: Record<
     if (error instanceof ClientHttpError && error.status >= 400 && error.status < 500) throw new Error(error.message);
     throw error;
   }
-  let status: RequestStatus;
+  let settled: RequestResult;
   try {
-    status = (await flow.request(requestId).wait({ pollMs: ANSWER_POLL_MS, timeoutMs: ANSWER_TIMEOUT_MS })).status;
+    settled = await flow.request(requestId).result({ pollMs: ANSWER_POLL_MS, timeoutMs: ANSWER_TIMEOUT_MS });
   } catch (error) {
     if (error instanceof ClientHttpError && error.status === 0) throw new Error(`The ${what} was sent, and the board didn't say in time whether it took it.`);
     throw error;
   }
-  // The status carries no output: the session's listing does, a page at a time.
-  let found: Awaited<ReturnType<Client["sessions"]["requests"]>>[number] | undefined;
-  for (let page = 0; page < REQUEST_PAGES && found === undefined; page += 1) {
-    const listed = await client.sessions.requests(sessionId, { status, includeResultOutput: true, limit: REQUEST_PAGE, offset: page * REQUEST_PAGE });
-    found = listed.find((request) => request.id === requestId);
-    if (listed.length < REQUEST_PAGE) break;
-  }
-  if (status !== "completed") throw new Error(found?.result?.error?.message ?? `The board's ${what} ended ${status}.`);
-  if (found === undefined) throw new Error(`The board finished the ${what}, but its answer couldn't be read, so check the board before trying again.`);
-  const output = found.result?.output as BoardOutput | undefined;
+  if (settled.status !== "completed") throw new Error(settled.error?.message ?? `The board's ${what} ended ${settled.status}.`);
+  if (settled.outputNotRecorded === true) throw new Error(`The board finished the ${what}, but its answer couldn't be read, so check the board before trying again.`);
+  const output = settled.output as BoardOutput | undefined;
   if (output?.ok === false) throw new Error(output.error ?? `The board refused the ${what}.`);
   return output ?? {};
 }
 
 /**
- * Answer a row hold through the board's `updateTask` action, and read what it
+ * Answer an own hold through the board's `updateTask` action, and read what it
  * said back: the action answers `{ ok: false, error }` for a refusal (the
  * question already answered, the task finished), which rejects here with its
  * words.
  */
-async function answerRowQuestion(client: Client, source: RowHoldSource, questionId: string, update: { message?: string; done?: boolean }): Promise<void> {
+async function answerOwnHold(client: Client, source: OwnHoldSource, questionId: string, update: { message?: string; done?: boolean }): Promise<void> {
   const { flowId, sessionId, action } = source;
   if (flowId === null || sessionId === null || action === null) throw new Error(`Inbox question "${questionId}" names no board to answer through`);
   await sendBoardAction(client, { flowId, sessionId, action }, { id: source.taskId, answers: questionId, ...update }, "answer");
@@ -126,7 +116,7 @@ export type BoardAt = { flowId: string; sessionId: string; board: string };
  * (a browser's row doesn't carry the first two, and old `deps` may name
  * finished rows); an override sets any of them.
  */
-export type RefileRow = {
+export type RefiledTask = {
   goal: string;
   title?: string | null;
   context?: string | null;
@@ -136,7 +126,7 @@ export type RefileRow = {
 };
 
 /** What a re-file sets over the copied row: any copied field, and the ones a re-file doesn't copy. */
-export type RefileOverrides = Partial<RefileRow> & {
+export type RefileOverrides = Partial<RefiledTask> & {
   input?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
   deps?: readonly string[];
@@ -163,11 +153,11 @@ export type BoardActions = {
    * labels and priority, `overrides` winning. Resolves to the new task's id.
    * For a task that should run again changed; {@link retry} keeps the task.
    */
-  refile(row: RefileRow, overrides?: RefileOverrides): Promise<string>;
+  refile(row: RefiledTask, overrides?: RefileOverrides): Promise<string>;
 };
 
 /** `row`'s copied fields with `overrides` over them, as `createTask` takes them: unset and `null` fields left out. */
-function refileInput(row: RefileRow, overrides: RefileOverrides): Record<string, unknown> {
+function refileInput(row: RefiledTask, overrides: RefileOverrides): Record<string, unknown> {
   const copied = { goal: row.goal, title: row.title, context: row.context, assignee: row.assignee, labels: row.labels, priority: row.priority };
   return Object.fromEntries(Object.entries({ ...copied, ...overrides }).filter(([, value]) => value !== undefined && value !== null));
 }
@@ -193,8 +183,8 @@ export type InboxClient = {
 export function createInboxClient(client: Client): InboxClient {
   const answerOne: InboxClient["answerOne"] = async (hold, answer) => {
     if (hold.unanswerable !== null) throw new Error(hold.unanswerable);
-    if (hold.source.kind === "row") {
-      await answerRowQuestion(client, hold.source, hold.id, updateOf(hold.ask.kind, answer));
+    if (hold.source.kind === "task") {
+      await answerOwnHold(client, hold.source, hold.id, updateOf(hold.ask.kind, answer));
       return;
     }
     const { flowId, requestId, suspensionId } = hold.source;

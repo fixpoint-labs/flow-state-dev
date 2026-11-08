@@ -100,12 +100,13 @@ const BUILD_TIME_ONLY_KEYS = [
   "caching"
 ] as const satisfies readonly (keyof PresetDef)[];
 
+// FIX-1393; FIX-1613.
 /**
  * The surface keys the dynamic path DOES carry, as the framework resolves it.
  *
  * Kept only so the two lists can be checked against `PresetDef` together.
  *
- * `controlTools` (FIX-1393) is dynamic because core makes it so —
+ * `controlTools` is dynamic because core makes it so —
  * `resolveDynamicCapSurface` collects it alongside `tools` — not as a
  * preference. Build-time-only would refuse a worker naming a control-bearing
  * preset, which inverts what a control is for.
@@ -119,7 +120,7 @@ const BUILD_TIME_ONLY_KEYS = [
  * the worker's fence"* and *"lets a selected preset's CONTROL tool through the
  * same empty tools list"*, one key apart on the same worker.
  *
- * `history` (FIX-1613) is dynamic for the same reason: core collects a
+ * `history` is dynamic for the same reason: core collects a
  * dynamic entry's `history` query with its context.
  */
 const DYNAMIC_KEYS = ["context", "tools", "controlTools", "history"] as const satisfies readonly (keyof PresetDef)[];
@@ -523,9 +524,10 @@ export function resolveWorkerCapabilities(
   return refs;
 }
 
+// FIX-1459 D1.
 /**
  * The catalog tools of every preset a worker's own file picked — what a worker
- * with no `tools:` line can call (FIX-1459 D1).
+ * with no `tools:` line can call.
  *
  * **Read from the selection as written**, not from what
  * {@link resolveWorkerCapabilities} delivers. That function skips a preset the

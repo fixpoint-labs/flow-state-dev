@@ -217,7 +217,7 @@ describe("FilesystemRequestStore — abort marker is written under the record lo
  * silently undone by that writer's trailing `writeRecord`.
  */
 describe("FilesystemRecordStore — delete takes the per-id write lock", () => {
-  type Row = { id: string; updatedAt: number; version: number };
+  type Versioned = { id: string; updatedAt: number; version: number };
 
   let rootDir: string;
 
@@ -230,7 +230,7 @@ describe("FilesystemRecordStore — delete takes the per-id write lock", () => {
   });
 
   it("does not let a delete land inside another writer's read-modify-write", async () => {
-    const store = createFilesystemRecordStore<Row, Record<string, never>>({
+    const store = createFilesystemRecordStore<Versioned, Record<string, never>>({
       rootDir
     });
     await store.set("r1", { id: "r1", updatedAt: Date.now(), version: 0 }, "any");
@@ -270,7 +270,7 @@ describe("FilesystemRecordStore — delete takes the per-id write lock", () => {
    * abort marker write, and the migration hook beside it).
    */
   it("does not leak an unhandled rejection when a locked operation fails", async () => {
-    const store = createFilesystemRecordStore<Row, Record<string, never>>({
+    const store = createFilesystemRecordStore<Versioned, Record<string, never>>({
       rootDir
     });
     await store.set("r1", { id: "r1", updatedAt: Date.now(), version: 0 }, "any");

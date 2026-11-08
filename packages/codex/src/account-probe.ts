@@ -9,7 +9,7 @@
  * status`, the program the SDK starts, so the check and the run read one
  * sign-in. No model turn starts.
  *
- * The shape follows `probeClaudeAccount` in `@flow-state-dev/claude-code`: a
+ * The shape follows `probeClaudeCodeAccount` in `@flow-state-dev/claude-code`: a
  * discriminated result, a timeout, and no throw. It checks where a credential
  * would come from, not that it works: a key that is set but rejected reads as
  * `account`.
@@ -19,7 +19,10 @@
  */
 import { execFile } from "node:child_process";
 import { delimiter } from "node:path";
-import type { HarnessReadiness } from "@flow-state-dev/core/types";
+import type { HarnessReadiness } from "@flow-state-dev/core/harness";
+import { sdkVersionReadiness, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
+import { readInstalledCodexSdkVersion } from "./codex-client";
+import { TESTED_CODEX_SDK } from "./types";
 import { findCodexProgram, type CodexProgram } from "./usage";
 
 /** What {@link probeCodexAccount} found. */
@@ -114,14 +117,27 @@ function lastLine(stdout: string, stderr: string): string | null {
 /** What the user does when Codex has no credential. */
 export const CODEX_SIGN_IN_REMEDY = "Run `codex login`, or set CODEX_API_KEY";
 
+/** Options for {@link checkCodexReadiness}: the probe's, and how the installed SDK is read. */
+export interface CodexReadinessOptions extends ProbeCodexAccountOptions {
+  /**
+   * Which `@openai/codex-sdk` is installed. Default: the one beside this
+   * package. A seam for a host's own check and for tests; the block itself
+   * always reads the installed one.
+   */
+  readInstalledSdkVersion?: InstalledSdkVersionReader;
+}
+
 /**
- * Whether Codex can run on this machine, as core's neutral readiness: the
- * answer of {@link probeCodexAccount}, with what to do when there is no
- * credential. A key counts only when the SDK also loads, since a run needs
- * both. A host hands it to whatever keeps readiness (harness-manager's
+ * Whether Codex can run on this machine, as core's neutral readiness: an
+ * installed SDK in the range this package tested, then the answer of
+ * {@link probeCodexAccount}, with what to do when there is no credential. A
+ * key counts only when the SDK also loads, since a run needs both. A host
+ * hands it to whatever keeps readiness (harness-manager's
  * `harnessReadiness`). Never throws.
  */
-export async function checkCodexReadiness(options: ProbeCodexAccountOptions): Promise<HarnessReadiness> {
+export async function checkCodexReadiness(options: CodexReadinessOptions): Promise<HarnessReadiness> {
+  const version = sdkVersionReadiness(TESTED_CODEX_SDK, options.readInstalledSdkVersion ?? readInstalledCodexSdkVersion);
+  if (version !== null) return version;
   let account = await probeCodexAccount(options);
   if (account.status === "account" && account.source === "api-key" && options.program === undefined) {
     // A key answers the probe without loading the SDK, and a run still needs the SDK.

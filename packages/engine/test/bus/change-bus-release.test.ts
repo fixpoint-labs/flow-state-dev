@@ -15,14 +15,18 @@ import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import {
   createFlowApiRouter,
   createFlowRegistry,
+  disposeFlowApiRouter
+} from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
+import {
   createInMemoryBus,
-  createInMemoryStores,
-  disposeFlowApiRouter,
   withChangeBus,
   type ChangeBus,
   type ChangeNotice,
   type SessionRecord
-} from "../../src";
+} from "../../src/host";
 import { createFilesystemRequestStore } from "../../src/stores/filesystem/request-store";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));

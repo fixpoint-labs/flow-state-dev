@@ -1,5 +1,6 @@
+// FIX-745.
 /**
- * Graph-expanded recall candidate building (FIX-745 read-side).
+ * Graph-expanded recall candidate building (read side).
  *
  * Pure helper, strategy-agnostic. When the relations tier is enabled, a normal
  * recall query can surface facts/edges connected (within a small depth) to

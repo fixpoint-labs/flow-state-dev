@@ -15,12 +15,12 @@ import {
   type ActiveSkillEntry,
 } from "./active-skill-state";
 
-export const inlineActivateInputSchema = z.object({
+const inlineActivateInputSchema = z.object({
   skillName: z.string(),
   input: z.string().optional(),
 });
 
-export const inlineActivateOutputSchema = z.object({
+const inlineActivateOutputSchema = z.object({
   skill: z.string(),
   mode: z.literal("inline"),
   message: z.string(),

@@ -4,9 +4,9 @@ import { z } from "zod";
 import {
   createFlowState,
   inMemoryStores,
-  FlowStateDisposedError,
   type StoreAdapter
 } from "../../src";
+import { FlowStateDisposedError } from "../../src/errors/flow-error";
 
 const noopFlow = defineFlow({
   kind: "noop-flow",

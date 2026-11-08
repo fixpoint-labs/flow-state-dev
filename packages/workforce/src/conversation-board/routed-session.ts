@@ -1,5 +1,6 @@
+// FIX-2083.
 /**
- * Which routed task a session by id works now (FIX-2083): a workstream's
+ * Which routed task a session by id works now: a workstream's
  * session, the one session several of its user's conversations can route to.
  *
  * Rule 5 (one open task per session) is each board's own check, and a
@@ -15,7 +16,8 @@
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { isTerminalStatus, readCommittedTask, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import { readCommittedTask } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { conversationLedgerAt } from "./ledger";
 

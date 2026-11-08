@@ -25,7 +25,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import {
   committedLeaseSpan,
@@ -36,8 +37,8 @@ import {
 import {
   taskBoard,
   taskWorkerInputSchema,
-  type TaskSessionPolicy,
 } from "@flow-state-dev/orchestration/task-board";
+import type { TaskSessionPolicy } from "@flow-state-dev/core/types";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { heard } from "../helpers/heard";

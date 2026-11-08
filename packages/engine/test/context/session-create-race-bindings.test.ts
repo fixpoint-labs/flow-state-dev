@@ -16,7 +16,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { createExecutionContext, createInMemoryStores } from "../../src";
+import { createExecutionContext } from "../../src";
+import { createInMemoryStores } from "../../src/host";
 import { UserBindingMismatchError, TenantBindingMismatchError } from "../../src/context/binding-errors";
 import type { SessionRecord, StoreRegistry } from "../../src/stores/types";
 

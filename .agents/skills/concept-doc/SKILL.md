@@ -100,7 +100,7 @@ section 10 and "what this replaces", and every claim in its body cites the code 
 - **Target and today stay apart.** The body describes the model as if it had always existed. What
   the code does now goes in the gap table, or in a short "what this replaces" note under the part it
   changes. Never interleave the two in one paragraph.
-- **Code names stay out of the body.** Identifiers like `seatAuthored` or `sharedToLineage`
+- **Code names stay out of the body.** Identifiers like `workerAuthored` or `sharedToLineage`
   belong in "what this replaces" and the gap table. Where the body needs the idea, give it a
   plain term and define it the first time it's used.
 - **One cast, used everywhere.** Pick two users and three or four named things (Alice and Bob, a

@@ -27,16 +27,15 @@
  */
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { harnessEnv } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import {
   CURSOR_PASS,
-  TESTED_SDK_VERSION,
   checkCursorReadiness,
   cursorAgent,
-  readInstalledCursorSdkVersion,
+  listCursorModels,
   type CursorAgentOptions,
   type CursorModelSelection,
-  type InstalledSdkVersion,
+  type CursorModelVariant,
   type ResolveCursorClient,
 } from "@flow-state-dev/cursor";
 
@@ -44,12 +43,12 @@ import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessModelInfo, HarnessReadiness } from "@flow-state-dev/core/harness";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
 import { fromReadiness } from "./mode-readiness";
-import type { HarnessModel, ModelChoices } from "./harness-models";
+import type { ModelChoices } from "./harness-models";
 import { flowKindOf, modeById } from "./modes";
 import { scriptedCursor } from "./scripted-cursor";
 
@@ -84,7 +83,7 @@ export function cursorRepoLine(trust: HarnessTrust = harnessTrust()): RepoLine {
 }
 
 /** Whether this server runs the scripted Cursor instead of the SDK. */
-export function cursorIsScripted(env: Record<string, string | undefined> = process.env): boolean {
+function cursorIsScripted(env: Record<string, string | undefined> = process.env): boolean {
   return env.KITCHEN_SINK_TEST_MODE === "1" && env.KITCHEN_SINK_REAL_HARNESS !== "1";
 }
 
@@ -131,7 +130,7 @@ export function cursorBlockOptions(feeds: HarnessSessionFeeds, seams: CursorSeam
  * neutral `HarnessBlock` (core's own note on that type). Claude Code mode casts
  * the same way.
  */
-export function cursorBlock(feeds: HarnessSessionFeeds, seams: CursorSeams = {}): HarnessBlock {
+function cursorBlock(feeds: HarnessSessionFeeds, seams: CursorSeams = {}): HarnessBlock {
   return cursorAgent(cursorBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 
@@ -144,60 +143,85 @@ export function cursorSessionFlow(seams: CursorSeams = {}) {
   });
 }
 
-/** The efforts Grok 4.7 is offered at, as Cursor names them (`reasoning_effort`). */
-const GROK_EFFORTS = [
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "Extra High" },
-] as const;
-
-/** A Grok 4.7 entry's id in the picker: the model, then the effort. Stored on the session as the pick. */
-const grokPickerId = (effort: string) => `grok-4.7:${effort}`;
+/** The model the scripted Cursor offers. It runs no model; the id only travels. */
+const SCRIPTED_CURSOR_MODEL = { id: CURSOR_DEFAULT_MODEL, label: "Scripted Cursor", isDefault: true };
 
 /**
- * The models Cursor mode offers in New session. Kept by hand: each is a
- * model Cursor's catalog lists, which is a different set for each account
- * and moves faster than this list does. A model with settings runs on
- * Cursor's own defaults for them, except Grok 4.7, whose effort is part of
- * the pick. Availability still depends on the signed-in account; when Cursor
- * ships or retires a model, edit this list.
+ * A picker entry's id for one way Cursor runs a model: the model, then the
+ * variant's settings (`grok-4.7?reasoning_effort=high`). Stored on the session
+ * as the pick; {@link cursorModelSelection} reads it back.
  */
-const CURSOR_MODELS: readonly HarnessModel[] = [
-  ...GROK_EFFORTS.map(({ value, label }) => ({ id: grokPickerId(value), label: `Grok 4.7 · ${label}` })),
-  { id: CURSOR_DEFAULT_MODEL, label: "Composer 2.5" },
-  { id: "gemini-4-argon", label: "Gemini 4 Argon" },
-  { id: "muse-wonder-1.0", label: "Muse Wonder" },
-  { id: "kimi-k3", label: "Kimi K3" },
-  { id: "glm-5p3", label: "GLM 5.3" },
-  { id: "glm-5p3-flash", label: "GLM 5.3 Flash" },
-  { id: "default", label: "Auto (Cursor picks)" },
-];
+function variantPickerId(model: string, params: CursorModelVariant["params"]): string {
+  if (params.length === 0) return model;
+  return `${model}?${new URLSearchParams(params.map(({ id, value }) => [id, value])).toString()}`;
+}
 
 /**
- * What Cursor is handed for a pick: the model and its settings for a Grok 4.7
+ * What Cursor is handed for a pick: the model and its settings for a variant's
  * entry, and the pick itself otherwise (an id Cursor takes as it is, or one
  * Kitchen Sink doesn't know, which Cursor judges).
  */
 export function cursorModelSelection(picked: string | undefined): string | CursorModelSelection | undefined {
-  const grok = GROK_EFFORTS.find(({ value }) => grokPickerId(value) === picked);
-  return grok === undefined ? picked : { id: "grok-4.7", params: [{ id: "reasoning_effort", value: grok.value }] };
+  const at = picked?.indexOf("?") ?? -1;
+  if (picked === undefined || at < 0) return picked;
+  const params = [...new URLSearchParams(picked.slice(at + 1))].map(([id, value]) => ({ id, value }));
+  return { id: picked.slice(0, at), params };
 }
 
-/** What Cursor mode's New session offers: the list above, Composer 2.5 preselected. */
-export async function cursorModelChoices(): Promise<ModelChoices> {
-  return { models: CURSOR_MODELS, defaultId: CURSOR_DEFAULT_MODEL, reason: null, fallbackId: CURSOR_DEFAULT_MODEL };
+/**
+ * Cursor's list as New session's entries: a model Cursor runs one way is one
+ * entry, and a model it runs several ways (Grok 4.7's efforts) is one entry
+ * per way, since the way is part of the pick.
+ */
+function pickerEntries(found: Extract<Awaited<ReturnType<typeof listCursorModels>>, { status: "models" }>): HarnessModelInfo[] {
+  return found.models.flatMap(({ variants, ...model }) =>
+    variants.length < 2
+      ? [model]
+      : variants.map((variant) => ({
+          id: variantPickerId(model.id, variant.params),
+          label: `${model.label} · ${variant.label}`,
+          ...(variant.description === undefined ? {} : { description: variant.description }),
+          isDefault: false,
+        })),
+  );
+}
+
+/**
+ * What Cursor mode's New session offers: Cursor's own list for the account a
+ * run signs in as (the Cursor package's `listCursorModels`), Composer 2.5
+ * preselected when the account has it. Cursor's catalog marks no default
+ * model, and its SDK refuses a local agent with none, so a session with no
+ * saved model runs Composer 2.5. When the list can't be read, nothing is
+ * offered and New session can't start; the next load asks again. `list` is a
+ * seam for tests.
+ */
+export async function cursorModelChoices(
+  list: (env: Record<string, string>) => ReturnType<typeof listCursorModels> = (env) => listCursorModels({ env }),
+): Promise<ModelChoices> {
+  if (cursorIsScripted()) {
+    return { models: [SCRIPTED_CURSOR_MODEL], defaultId: SCRIPTED_CURSOR_MODEL.id, reason: null, fallbackId: CURSOR_DEFAULT_MODEL };
+  }
+  const found = await list(cursorEnv());
+  if (found.status === "failed") {
+    return {
+      models: [],
+      defaultId: null,
+      reason: `Cursor's model list can't be read (${found.reason}), so a new session can't name its model. Reload to try again.`,
+      fallbackId: CURSOR_DEFAULT_MODEL,
+    };
+  }
+  const models = pickerEntries(found);
+  const preselected = models.find((model) => model.id === CURSOR_DEFAULT_MODEL) ?? models[0]!;
+  return { models, defaultId: preselected.id, reason: null, fallbackId: CURSOR_DEFAULT_MODEL };
 }
 
 /** What the mode's check asks of the host. Each a seam for tests. */
 export interface CursorHostChecks {
-  /** Which `@cursor/sdk` is installed beside the Cursor package. */
-  readonly sdk: () => InstalledSdkVersion;
   /** Make the worktree root, or throw why it can't be made. */
   readonly makeRoot: (repository: string) => void;
   /** Why a process with exactly `env` can't start here, or `null` when it can. */
   readonly childStarts: (env: Record<string, string>) => string | null;
-  /** Whether Cursor can run over the run's own environment (its key or the SDK's stored login), from the Cursor package. No run. */
+  /** Whether Cursor can run over the run's own environment (its SDK, in the range the package tested, and its key or the SDK's stored login), from the Cursor package. No run. */
   readonly readiness: (env: Record<string, string>) => Promise<HarnessReadiness>;
 }
 
@@ -214,36 +238,25 @@ function childStarts(env: Record<string, string>): string | null {
 }
 
 /** The host's own answers. */
-export const HOST_CHECKS: CursorHostChecks = {
-  sdk: readInstalledCursorSdkVersion,
+export const CURSOR_HOST_CHECKS: CursorHostChecks = {
   makeRoot: (repository) => {
     mkdirSync(worktreeRoot(repository), { recursive: true });
   },
   childStarts,
-  readiness: checkCursorReadiness,
+  readiness: (env) => checkCursorReadiness(env),
 };
 
 /**
- * Cursor mode's own check, for the gate's mode-check slot: the pinned Cursor
- * SDK is installed, the worktree root can be made, a process with only the
- * run's environment can start (the Cursor package runs the runtime in one),
- * and Cursor is signed in over that environment. The first that fails is the
- * reason. Nothing is asked about a sandbox: Kitchen Sink runs Cursor with its
+ * Cursor mode's own check, for the gate's mode-check slot: the worktree root
+ * can be made, a process with only the run's environment can start (the
+ * Cursor package runs the runtime in one), and the Cursor package's readiness
+ * check passes over that environment (an SDK in the range the package
+ * tested, and a sign-in). The first that fails is the reason. Nothing is asked about a sandbox: Kitchen Sink runs Cursor with its
  * sandbox off (see the header).
  */
-export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeCheck {
+export function cursorModeCheck(checks: CursorHostChecks = CURSOR_HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
     if (cursorIsScripted()) return { available: true };
-    const sdk = checks.sdk();
-    if (sdk.kind === "absent") {
-      return { available: false, reason: `The Cursor SDK is not installed. Install @cursor/sdk ${TESTED_SDK_VERSION}, then restart.` };
-    }
-    if (sdk.kind === "unreadable") {
-      return { available: false, reason: `The Cursor SDK's version can't be read (${sdk.reason}). Cursor mode needs exactly ${TESTED_SDK_VERSION}.` };
-    }
-    if (sdk.version !== TESTED_SDK_VERSION) {
-      return { available: false, reason: `The Cursor SDK installed is ${sdk.version}. Cursor mode needs exactly ${TESTED_SDK_VERSION}.` };
-    }
     try {
       checks.makeRoot(repository);
     } catch (error) {

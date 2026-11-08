@@ -1,12 +1,10 @@
 export { handler } from "./handler";
 export { generator, providerTool } from "./generator";
-export { evaluator, choice, score, boolean, assertEvaluatorBlock } from "./evaluator";
-export type { EvaluatorConfig, EvaluatorDefinition, EvaluatorOutputSchema, EvaluatorQuestionsSlot, EvaluatorSlotNames } from "./evaluator";
+export { evaluator, choice, score, boolean } from "./evaluator";
+export type { EvaluatorConfig, EvaluatorDefinition, EvaluatorOutputSchema, EvaluatorQuestionsSlot } from "./evaluator";
 export { sequencer } from "./sequencer";
 export { router } from "./router";
 export { dispatcher, dispatchHandleSchema, dispatchWaitResultSchema } from "./dispatcher";
-export { waitOnRequest } from "./wait-on-request";
-export type { RequestWaitOutcome, WaitOnRequestInput } from "./wait-on-request";
 
 export type { HandlerConfig } from "./handler";
 export type {
@@ -28,7 +26,6 @@ export type {
   ContextObject,
   GeneratorSlot,
   GeneratorSlotEntry,
-  GeneratorSlotRefOptions,
   GeneratorSlotReference,
   GeneratorTool,
   GeneratorToolResult,

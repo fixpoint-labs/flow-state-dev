@@ -1,5 +1,6 @@
+// FIX-2345.
 /**
- * A task's ending as the filer's model reads it (FIX-2345): a `getTask` call
+ * A task's ending as the filer's model reads it: a `getTask` call
  * and its result for that task, never a user turn.
  *
  * A turn a notice wakes (`./task-settled`), and a user's turn answering again
@@ -33,7 +34,7 @@ import {
   toolResultOutputForModel
 } from "@flow-state-dev/core/models";
 import type { BlockContext, LLMMessage } from "@flow-state-dev/core/types";
-import { readTaskView } from "@flow-state-dev/orchestration";
+import { readTaskView } from "@flow-state-dev/orchestration/internal";
 import type { Task, TaskCollectionRef, TaskNotice } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 

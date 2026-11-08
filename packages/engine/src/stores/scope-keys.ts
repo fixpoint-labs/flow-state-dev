@@ -1,8 +1,9 @@
+// FIX-735; FIX-1323; FIX-1538; FIX-435; FIX-1790.
 /**
  * Storage key derivation for user- and org-scope records and their resources.
  *
- * Two storage concerns key off the user/org identity, and FIX-735 decouples
- * them because they answer different questions:
+ * Two storage concerns key off the user/org identity, and they are kept
+ * apart because they answer different questions:
  *
  *   - The **scope record** (`stores.user` / `stores.org`) holds scope-level
  *     `state` (`ctx.user.state`). It is a single blob per scope, so its key
@@ -13,16 +14,16 @@
  *     resource. Each user/org-scoped resource keys at the shared bucket
  *     when shared (effective `flowIsolation` false) or the bucket plus the
  *     flow id when isolated (effective `flowIsolation` true) — honoring the
- *     resource-level override the API advertises (FIX-435) rather than a
+ *     resource-level override the API advertises rather than a
  *     flow-wide OR. `resolveResourceIsolation` + `resolveResourceScopeId`
  *     answer this per resource; `resourceScopeIds` enumerates the distinct
  *     buckets a read path must consult.
  *
- * Before FIX-735 both concerns shared one key derived from a flow-wide OR, so
+ * They once shared one key derived from a flow-wide OR, so
  * a `flowIsolation: false` resource was silently isolated whenever any sibling
  * was isolated. The opt-out direction is now honored.
  *
- * FIX-1323: the isolation coordinate is the **instance** `id`, not the `kind`.
+ * The isolation coordinate is the **instance** `id`, not the `kind`.
  * Two registered copies of one collection definition are two flows for every
  * purpose except their shared schema, so private data that keyed off the kind
  * was private from other definitions and shared between copies of the same
@@ -39,13 +40,13 @@
  * two different (identity, instance) pairs could name one cell — which is the
  * opposite of what isolation promises.
  *
- * FIX-1790: every **user** key carries the organization. A user's shared data
+ * Every **user** key carries the organization. A user's shared data
  * lives in one cell per (user, org), `<user>:~org:<org>`, and flow-isolated
  * data adds the instance, `<user>:~org:<org>:<flow>`. The org is the admitted
  * run's or the stored session's, never a request field's, and it is a
  * required argument: a missing or malformed one throws `OrgRequiredError`
  * rather than build a key that every org would read. The shared form is the
- * cell FIX-1538 gave owner-pinned instances, so a hired worker's shared data
+ * cell owner-pinned instances once had, so a hired worker's shared data
  * did not move; it now shares that cell with every other flow in the org, as
  * any two flows share user data. The pin no longer chooses a key.
  *
@@ -70,15 +71,17 @@ export interface IsolationFlow {
   id: string;
   isolateUserState: boolean;
   isolateOrgState: boolean;
+  // FIX-435.
   /**
-   * Flat resource declarations (FIX-435). Consulted by `resourceScopeIds`
+   * Flat resource declarations. Consulted by `resourceScopeIds`
    * to enumerate the per-resource isolation buckets in play for a scope.
    */
   resources?: Record<string, { scope?: string; flowIsolation?: boolean }>;
+  // FIX-1798.
   /**
    * The owner pin of an owner-pinned instance. Accepted and ignored: no key
    * reads it, since every user key takes the org as an argument. Removed with
-   * owner pins (FIX-1798).
+   * owner pins.
    */
   ownerPin?: InstanceOwnerPin;
 }
@@ -93,11 +96,12 @@ export interface CellIdentity {
   orgId: string;
 }
 
+// FIX-1323.
 /**
  * Coerce a flow-ish object into {@link IsolationFlow}, defaulting the two
  * optional isolation flags. One copy, because a second coercion that dropped
  * `id` would silently route a read back into a kind-wide bucket — which is
- * how the two that existed before FIX-1323 drifted apart. Its one caller is
+ * how the two that once existed drifted apart. Its one caller is
  * `getPersistedData`, the single persisted-read function every read-side
  * projection (`/state`, the resource routes, the debug snapshot, sibling
  * transports) goes through.
@@ -123,6 +127,7 @@ export function toIsolationFlow(flow: {
   };
 }
 
+// FIX-1323.
 /**
  * Escape one component of an isolation storage key. `\` and the `:`
  * delimiter are backslash-escaped; every other character passes through, so a
@@ -145,7 +150,7 @@ export function toIsolationFlow(flow: {
  * distinctness a property rather than a hope.
  *
  * An id containing `:` or `\` therefore keys differently than it did before
- * FIX-1323 — such a deployment already had ambiguous keys, and re-keys through
+ * instance-keyed storage — such a deployment already had ambiguous keys, and re-keys through
  * the same offline cutover in `apps/docs/docs/persistence/overview.md`.
  */
 function encodeScopeKeyComponent(value: string): string {
@@ -195,6 +200,19 @@ export function resolveUserStorageKey(
 }
 
 /**
+ * The cell a user-scoped collection that is shared across flows (one with
+ * `flowIsolation: false`) keeps a user's rows in, for a request that starts
+ * from outside any run: `<userId>:~org:<orgId>`. The one derivation the
+ * scheduled-dispatch endpoint hands its resolver and the host's owner-run
+ * check reads, so the two can't drift apart.
+ *
+ * @param flowKind Named in the `OrgRequiredError` a malformed org throws.
+ */
+export function resolveSharedUserCellKey(userId: string, orgId: string, flowKind: string): string {
+  return resolveUserStorageKey(userId, orgId, { id: flowKind, isolateUserState: false });
+}
+
+/**
  * Bare `orgId` unless the flow isolates the org scope; then
  * `${orgId}:${flow.id}`. Governs the scope *record* (`ctx.org.state`)
  * only — resources route per-resource via `resolveResourceScopeId`.
@@ -208,8 +226,9 @@ export function resolveOrgStorageKey(
     : encodeScopeKeyComponent(orgId);
 }
 
+// FIX-682.
 /**
- * Tenant-namespaced session storage key (FIX-682). Bare `sessionId` for
+ * Tenant-namespaced session storage key. Bare `sessionId` for
  * single-tenant requests (no tenant header, or an empty one); when a tenant is
  * present, `${tenantId}:${sessionId}`. Used for the session record key and the
  * session-scoped content / resource-state `scopeId`, so two tenants sharing a
@@ -230,8 +249,9 @@ export function resolveSessionStorageKey(
     : sessionId;
 }
 
+// FIX-682.
 /**
- * Inverse of {@link resolveSessionStorageKey} (FIX-682): recover the bare
+ * Inverse of {@link resolveSessionStorageKey}: recover the bare
  * session id from a tenant-namespaced storage key. Used to shape HTTP
  * responses so clients receive the id they passed in (the namespaced key is an
  * internal storage detail; surfacing it would make clients double-namespace on
@@ -246,8 +266,9 @@ export function toBareSessionId(
   return storageKey.startsWith(prefix) ? storageKey.slice(prefix.length) : storageKey;
 }
 
+// FIX-682.
 /**
- * Whether a stored record's tenant matches a request's tenant (FIX-682),
+ * Whether a stored record's tenant matches a request's tenant,
  * treating `undefined` and absent identically (single-tenant). The canonical
  * tenant-binding predicate: the `${tenantId}:${sessionId}` key is ambiguous
  * when the caller controls `sessionId`, so a key collision must never be acted
@@ -262,6 +283,7 @@ export function tenantMatches(
   return scopeValueMatches(recordTenantId, requestTenantId);
 }
 
+// BP-030.
 /**
  * The NULL-safe equality **every** scope-identity comparison uses: a record
  * that encodes "unbound" as `null` and one that omits the key are the same
@@ -270,7 +292,7 @@ export function tenantMatches(
  * The parameters admit `null` deliberately, even though `SessionRecord.orgId`
  * and `tenantId` are declared `string | undefined`. Persisted records reach
  * these predicates carrying either shape — a JSON round-trip through the
- * filesystem store, or any custom store that nulls absent keys (BP-030) — so
+ * filesystem store, or any custom store that nulls absent keys — so
  * the coalescing is load-bearing, not defensive noise. A signature that hid
  * the `null` would invite a later reader to delete the `??` as dead code.
  *
@@ -287,8 +309,9 @@ function scopeValueMatches(
   return (recordValue ?? undefined) === (filterValue ?? undefined);
 }
 
+// FIX-682.
 /**
- * Tenant list-filter predicate (FIX-682) with present-vs-absent semantics:
+ * Tenant list-filter predicate with present-vs-absent semantics:
  * - When the `tenantId` key is **absent** from `options`, every record passes
  *   (admin/debug "list everything" callers stay unfiltered).
  * - When the key is **present** (including an explicit `undefined`), the record
@@ -306,8 +329,9 @@ export function matchesTenantFilter(
   return scopeValueMatches(recordTenantId, options.tenantId);
 }
 
+// FIX-1010.
 /**
- * Org list-filter predicate (FIX-1010), with exactly the present-vs-absent
+ * Org list-filter predicate, with exactly the present-vs-absent
  * semantics of {@link matchesTenantFilter} — deliberately, because `orgId` is
  * optional on both session and request records and a plain equality test would
  * silently drop every unbound one.
@@ -326,8 +350,9 @@ export function matchesOrgFilter(
   return scopeValueMatches(recordOrgId, options.orgId);
 }
 
+// FIX-1009; BP-030.
 /**
- * Parentage list-filter predicate (FIX-1009). The canonical definition of the
+ * Parentage list-filter predicate. The canonical definition of the
  * three modes; the memory and filesystem session stores call it directly, and
  * the SQLite / Postgres adapters mirror it in their `WHERE` builders because
  * the filter has to be a SQL clause there.
@@ -340,7 +365,7 @@ export function matchesOrgFilter(
  *
  * The top-level test is `== null` rather than `=== undefined` so a record
  * persisted before `parentSessionId` existed, and one round-tripped through a
- * store that nulls absent keys, both read as top-level (BP-030).
+ * store that nulls absent keys, both read as top-level.
  */
 export function matchesParentageFilter(
   options: { parentage?: SessionParentage } | undefined,
@@ -369,10 +394,11 @@ export function matchesStateFilter(
   return true;
 }
 
+// FIX-435.
 /**
  * Effective isolation for a single resource: its own `flowIsolation` when
  * set, otherwise the scope's flow-level default. Resource-level declarations
- * always win (FIX-435), in both the opt-in and opt-out directions.
+ * always win, in both the opt-in and opt-out directions.
  */
 export function resolveResourceIsolation(
   resourceFlowIsolation: boolean | undefined,
@@ -404,6 +430,32 @@ export function resolveResourceScopeId(
   return isolated
     ? joinIsolationKey(identity.orgId, flow.id)
     : encodeScopeKeyComponent(identity.orgId);
+}
+
+/**
+ * The instance a user- or org-scoped resource cell is isolated to, read back
+ * from the `scopeId` {@link resolveResourceScopeId} built: `null` for a shared
+ * cell, `undefined` for a `scopeId` of no shape it builds. The inverse of the
+ * escaping in `encodeScopeKeyComponent`.
+ */
+export function resourceCellInstance(scope: "user" | "org", scopeId: string): string | null | undefined {
+  const parts: string[] = [];
+  let part = "";
+  for (let i = 0; i < scopeId.length; i++) {
+    const char = scopeId[i]!;
+    if (char === "\\" && i + 1 < scopeId.length) part += scopeId[++i];
+    else if (char === ":") {
+      parts.push(part);
+      part = "";
+    } else part += char;
+  }
+  parts.push(part);
+  if (scope === "user") {
+    if (parts.length < 3 || parts.length > 4 || parts[1] !== "~org") return undefined;
+    return parts[3] ?? null;
+  }
+  if (parts.length > 2) return undefined;
+  return parts[1] ?? null;
 }
 
 /**
@@ -446,9 +498,10 @@ export async function mergeScopeReads<T>(
   return Object.assign({}, ...results) as Record<string, T>;
 }
 
+// FIX-1068.
 /**
  * The lineage address of a session, applying the fallback for records written
- * before `SessionRecord.lineageId` existed (FIX-1068).
+ * before `SessionRecord.lineageId` existed.
  *
  * **The prefix is load-bearing, not decoration.** The fallback must never equal
  * the session storage key: the resource layer decides a storage scope by
@@ -496,10 +549,10 @@ export function isSameSession(earlier: SessionRecord, current: SessionRecord): b
   );
 }
 
+// BP-030.
 /**
  * The incarnation a request record answers to: its stored token, or, for a
- * record written before tokens were stamped, one derived from its `createdAt`
- * (BP-030).
+ * record written before tokens were stamped, one derived from its `createdAt`.
  *
  * The derived form is stable across reads of one record, and its `legacy_`
  * prefix is one no minted token (`inc_…`) takes, so a legacy record never

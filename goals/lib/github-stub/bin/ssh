@@ -1,0 +1,29 @@
+#!/usr/bin/env node
+/*
+ * A stub `ssh` for goal checks, first on a server's PATH: a push or fetch to
+ * `git@github.com:<owner>/<name>.git` reaches the bare repository at
+ * `$GOAL_SSH_ROOT/<owner>/<name>.git` instead, with no network. git runs it as
+ * `ssh [options] <host> "<git-upload-pack|git-receive-pack> '<path>'"`; the
+ * stub runs that git command on the local path, its stdin and stdout git's
+ * own wire. Each call is logged to `$GOAL_SSH_LOG`, one JSON line. Anything
+ * else fails, naming the call.
+ */
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+const args = process.argv.slice(2);
+const command = args.at(-1) ?? "";
+const root = process.env.GOAL_SSH_ROOT;
+const parsed = /^(git-upload-pack|git-receive-pack|git-upload-archive) '?\/?([^']+?)'?$/.exec(command);
+const log = (code) => {
+  if (process.env.GOAL_SSH_LOG) fs.appendFileSync(process.env.GOAL_SSH_LOG, JSON.stringify({ at: Date.now(), args, code }) + "\n");
+};
+if (root === undefined || parsed === null) {
+  log(1);
+  process.stderr.write(`stub ssh: unexpected call ${args.join(" ")}\n`);
+  process.exit(1);
+}
+const repo = path.join(root, parsed[2].endsWith(".git") ? parsed[2] : `${parsed[2]}.git`);
+const ran = spawnSync(parsed[1], [repo], { stdio: "inherit" });
+log(ran.status ?? 1);
+process.exit(ran.status ?? 1);

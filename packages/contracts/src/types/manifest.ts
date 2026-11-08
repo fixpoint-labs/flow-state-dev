@@ -1,5 +1,6 @@
+// FIX-817.
 /**
- * Manifest entries (FIX-817) — the one record every discovery domain projects
+ * Manifest entries — the one record every discovery domain projects
  * into, and the type of a source that produces them for one domain.
  *
  * An orchestrator that has to decide *who does this* asks one door what is in

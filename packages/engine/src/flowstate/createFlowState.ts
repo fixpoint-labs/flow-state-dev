@@ -34,7 +34,9 @@ import { abortRequest } from "../execution/abort-registry";
 import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
 import { resolveDurabilityProvider } from "../durability/default-durability";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
+import { warnOnce } from "@flow-state-dev/core/internal";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
+import { inMemoryStores } from "../stores";
 import { resolveProfileStores } from "./resolve-slots";
 import type { FlowRunner } from "../transports/runner";
 import { refuseRetiredDispatcherOption } from "../transports/runner";
@@ -45,6 +47,7 @@ import {
 } from "../context/dispatch-operation";
 import type { InboundTransportHost } from "../transports/types";
 import type { StoreRegistry } from "../stores/types";
+import { withResourceIndexWriter } from "../resources/resource-indexes";
 import {
   createInboundTransportHost,
   resolveInProcessPrincipal,
@@ -217,6 +220,24 @@ function collectAdapters(stores: StoresConfig): StoreAdapter[] {
   return [...seen];
 }
 
+/**
+ * The one point `stores` is normalised: nothing becomes an in-memory primary
+ * and a bare adapter becomes the primary, each as the `default` profile, so
+ * every reader below sees one profile map. An adapter is told from a profile
+ * map by its `resolve` function and `capabilities` array; a slot map has
+ * neither.
+ */
+function normaliseStores(stores: StoreAdapter | StoresConfig | undefined): StoresConfig {
+  if (stores === undefined) return { default: { primary: inMemoryStores() } };
+  if (isStoreAdapter(stores)) return { default: { primary: stores } };
+  return stores;
+}
+
+function isStoreAdapter(value: StoreAdapter | StoresConfig): value is StoreAdapter {
+  const candidate = value as Partial<StoreAdapter>;
+  return typeof candidate.resolve === "function" && Array.isArray(candidate.capabilities);
+}
+
 function declaredSlots(stores: StoresConfig): Record<string, CapabilitySlot[]> {
   const out: Record<string, CapabilitySlot[]> = {};
   for (const [name, profile] of Object.entries(stores)) {
@@ -229,6 +250,10 @@ class InternalFlowState<TSettings extends object>
   implements FlowState<TSettings>
 {
   readonly #options: CreateFlowStateOptions<TSettings>;
+  /** `options.stores`, normalised to a profile map; the only `stores` anything reads. */
+  readonly #stores: StoresConfig;
+  /** No `stores` was given: the app runs in memory, and startup says so. */
+  readonly #inMemoryByOmission: boolean;
   readonly #registry: FlowRegistry;
   readonly #profileKeys: string[];
   readonly #allAdapters: StoreAdapter[];
@@ -236,9 +261,10 @@ class InternalFlowState<TSettings extends object>
   #runtimePromise: Promise<FlowStateRuntime> | null = null;
   #initPromise: Promise<FlowApiRouter> | null = null;
   #disposed = false;
+  // FIX-999.
   /**
    * Whether a router — and therefore a stale-request sweeper — has been asked
-   * for (FIX-999). Set by `#init()` BEFORE it awaits the runtime, so
+   * for. Set by `#init()` BEFORE it awaits the runtime, so
    * `#buildRuntime` can stamp the sweep cadence onto the shared config it is
    * about to hand `worker.startWorker`. A colocated worker starts consuming the
    * moment it is started, and the host a job builds is built once, so a job
@@ -278,8 +304,9 @@ class InternalFlowState<TSettings extends object>
    * sweep owns its own failure reporting.
    */
   #recoverySweep: Promise<void> | undefined;
+  // FIX-1077; FIX-1634.
   /**
-   * The one concurrency arbiter every host in this process shares (FIX-1077).
+   * The one concurrency arbiter every host in this process shares.
    *
    * Two hosts exist in a router deployment — the one the dispatch operation
    * is built over, and the router's. Each would otherwise own a private keyed
@@ -289,32 +316,11 @@ class InternalFlowState<TSettings extends object>
    * Policy is a property of the flow, not of whichever host took the dispatch.
    *
    * Built over the worker adapter's `leaseBackend` when it supplies one, so
-   * every process of the deployment lines up on the same keys (FIX-1634).
+   * every process of the deployment lines up on the same keys.
    */
   readonly #arbiter: ConcurrencyArbiter;
 
   constructor(options: CreateFlowStateOptions<TSettings>) {
-    if (Object.hasOwn(options, "middleware")) {
-      throw new FlowStateConfigError(
-        "createFlowState: the removed `middleware` option is not executed. " +
-          "Move policy checks to the HTTP authentication layer or block logic."
-      );
-    }
-
-    if (Object.hasOwn(options, "detachedDrainTimeoutMs")) {
-      throw new FlowStateConfigError(
-        "createFlowState: `detachedDrainTimeoutMs` is now `dispatchDrainTimeoutMs`. " +
-          "Accepting it silently would leave the shutdown drain on its default, so a host " +
-          "tuned for a long-running child would truncate one without saying why."
-      );
-    }
-    if (Object.hasOwn(options, "maxWorkstreamListLimit")) {
-      throw new FlowStateConfigError(
-        "createFlowState: `maxWorkstreamListLimit` is now `maxChildSessionListLimit`. " +
-          "Accepting it silently would leave the children listing on its default cap, so a " +
-          "host that raised the ceiling would truncate its reads without a named error."
-      );
-    }
 
     this.#options = options;
     this.#arbiter = createConcurrencyArbiter(
@@ -325,7 +331,9 @@ class InternalFlowState<TSettings extends object>
           }
         : {}
     );
-    this.#profileKeys = Object.keys(options.stores);
+    this.#stores = normaliseStores(options.stores);
+    this.#inMemoryByOmission = options.stores === undefined;
+    this.#profileKeys = Object.keys(this.#stores);
 
     if (this.#profileKeys.length === 0) {
       throw new FlowStateConfigError(
@@ -343,7 +351,7 @@ class InternalFlowState<TSettings extends object>
 
     if (
       options.defaultProfile !== undefined &&
-      !(options.defaultProfile in options.stores)
+      !(options.defaultProfile in this.#stores)
     ) {
       throw new FlowStateConfigError(
         `createFlowState: defaultProfile "${options.defaultProfile}" but no such profile is declared. ` +
@@ -358,7 +366,7 @@ class InternalFlowState<TSettings extends object>
       this.#registry.register(flow);
     }
 
-    this.#allAdapters = collectAdapters(options.stores);
+    this.#allAdapters = collectAdapters(this.#stores);
   }
 
   get activeProfile(): string {
@@ -391,7 +399,7 @@ class InternalFlowState<TSettings extends object>
       // keys its map by the instance it holds.
       flowKeys: this.#registry.list().map((flow) => flow.id),
       profileKeys: this.#profileKeys,
-      declaredSlots: declaredSlots(this.#options.stores),
+      declaredSlots: declaredSlots(this.#stores),
       devtool: this.#options.devtool
     };
   }
@@ -493,6 +501,7 @@ class InternalFlowState<TSettings extends object>
     }
   }
 
+  // FIX-1077.
   /**
    * Wait for in-process detached work before anything it writes to is closed.
    *
@@ -501,8 +510,8 @@ class InternalFlowState<TSettings extends object>
    * script, a test — outliving the request would mean outliving the process, and
    * that is not on offer. The only two options there are draining and silently
    * truncating, and truncating is how a `fsdev run` of a detached board left its
-   * task row stranded `in_progress` with the child failing on a closed store
-   * (FIX-1077). For the tool `AGENTS.md` names as the default way to verify a
+   * task row stranded `in_progress` with the child failing on a closed store.
+   * For the tool `AGENTS.md` names as the default way to verify a
    * flow change, that is the worse answer.
    *
    * A long-lived server is unaffected in practice: it disposes at shutdown, when
@@ -896,7 +905,7 @@ class InternalFlowState<TSettings extends object>
 
     const fromEnv = process.env.FSD_ENV;
     if (fromEnv !== undefined && fromEnv.length > 0) {
-      if (!(fromEnv in this.#options.stores)) {
+      if (!(fromEnv in this.#stores)) {
         throw new FlowStateConfigError(
           `FSD_ENV="${fromEnv}" but no profile "${fromEnv}" is declared. ` +
             `Declared profiles: ${this.#profileKeys.join(", ")}`
@@ -924,15 +933,35 @@ class InternalFlowState<TSettings extends object>
    */
   async #buildRuntime(): Promise<FlowStateRuntime> {
     const profileName = this.#resolveProfileName();
-    const profile = this.#options.stores[profileName]!;
-    const { stores } = await resolveProfileStores({ profileName, profile });
+    const profile = this.#stores[profileName]!;
+    const { stores: resolved } = await resolveProfileStores({ profileName, profile });
+    // Every resource write keeps the app's declared indexes in step (FIX-2532
+    // D2). Wrapped here, before the router, the worker or `runtime.stores`
+    // takes the registry, so every handle derived from it writes through the
+    // index writer, host code that writes the store directly included.
+    const stores = withResourceIndexWriter(resolved, () => this.#registry.indexedCollections());
 
     // Diagnostic on stderr (like the worker/dispose logs below): stdout is
     // reserved for data streams such as `fsdev run`'s NDJSON, which a config
     // load must not corrupt. Once per process per profile (see `firstInProcess`).
     if (firstInProcess(`engine/active-profile/${profileName}`)) {
       // eslint-disable-next-line no-console
-      console.error(`[flowstate] active profile: "${profileName}"`);
+      console.error(
+        this.#inMemoryByOmission
+          ? `[flowstate] active profile: "${profileName}" (no \`stores\` set: the app runs in memory, ` +
+              `and nothing persists across a restart)`
+          : `[flowstate] active profile: "${profileName}"`
+      );
+    }
+    // A deploy that forgot its store runs, and loses its data on restart:
+    // the one place that is worth a warning. Once per process.
+    if (this.#inMemoryByOmission && process.env.NODE_ENV === "production") {
+      warnOnce(
+        "engine/no-stores-in-production",
+        "createFlowState has no `stores`, so this production app runs in memory and loses its " +
+          "sessions and requests on every restart. Set `stores` to a persistent adapter, such as " +
+          "`stores: postgresStores({ connectionString })`."
+      );
     }
 
     const modelResolver =

@@ -31,8 +31,7 @@
  * live in `internal/write-skill-folder.ts`, which `seeding.ts` shares.
  */
 
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { ResourceCollectionRef, InitialSkill } from "@flow-state-dev/core/types";
 import { skillManifestKey } from "./collection";
 import { writeSkillFolder } from "./internal/write-skill-folder";
 import { validateSkillName } from "./skill-md";

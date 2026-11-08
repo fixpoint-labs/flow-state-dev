@@ -2,9 +2,9 @@ import { memo } from "react";
 import type { ConversationEntry } from "../adapter";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
-import type { AnswerState } from "./Popups";
+import type { AnswerStatus } from "./Popups";
 import { useSubmit } from "@flow-state-dev/react";
-import { AgentMarkdown } from "./flow-state/message-response";
+import { MarkdownText } from "./flow-state/message-response";
 import { RequestRecovery } from "./flow-state/request-recovery";
 import { ToolRun } from "./ToolRun";
 
@@ -19,9 +19,12 @@ import { ToolRun } from "./ToolRun";
  * yes (`suspendForUser` with an approval) is a card with Approve and Deny until
  * you answer. The tool calls a turn makes show inline as it makes them, a run
  * of them as one line that is open while it runs and folds once it is done.
- * A turn you stopped is the registry's `request-recovery` stopped line, with
- * the background work still running (`stillRunning`) when the conversation
- * passes it, and View (`onViewTasks`) to where the tasks are listed.
+ * A failed turn is the registry's `request-recovery` line under the worker's
+ * name, with its reason; `onRetry` draws its Retry, so pass it only for the
+ * newest turn while nothing runs. A reply its turn never finished is marked
+ * incomplete. A turn you stopped is its stopped line, with the background work
+ * still running (`stillRunning`) when the conversation passes it, and View
+ * (`onViewTasks`) to where the tasks are listed.
  * Memoized: a streamed chunk redraws only the entry that changed.
  */
 export const Entry = memo(function Entry({
@@ -34,6 +37,7 @@ export const Entry = memo(function Entry({
   onOpenMessage,
   onOpenTask,
   onAnswer,
+  onRetry,
   stillRunning,
   onViewTasks,
 }: {
@@ -45,12 +49,14 @@ export const Entry = memo(function Entry({
   /** The worker coding tasks run on: its results are the task's, not a teammate's. */
   isCoding?: (id: string) => boolean;
   /** For a sent message: how it stands. */
-  answer?: AnswerState;
+  answer?: AnswerStatus;
   /** Open the exchange a sent message started. */
   onOpenMessage?: (entry: Extract<ConversationEntry, { kind: "sent" }>) => void;
   /** Open the task a result came from. */
   onOpenTask?: (taskId: string) => void;
   onAnswer?: (approve: boolean) => Promise<void>;
+  /** Run a failed turn again. */
+  onRetry?: () => Promise<void>;
   /** For a stopped turn's line: the background work still running, when this line may say it. */
   stillRunning?: number;
   /** Show where the conversation's tasks are listed. */
@@ -74,8 +80,15 @@ export const Entry = memo(function Entry({
       );
     case "assistant":
       return (
-        <div className="py-1 text-sm leading-relaxed" data-entry="assistant">
-          <AgentMarkdown text={entry.text} />
+        <div className="py-1 text-sm leading-relaxed" data-entry="assistant" data-incomplete={entry.incomplete ? "true" : undefined}>
+          <MarkdownText text={entry.text} />
+          {entry.incomplete ? <span className="mt-1 block text-xs text-muted-foreground">Incomplete</span> : null}
+        </div>
+      );
+    case "failed":
+      return (
+        <div data-entry="failed">
+          <RequestRecovery who={workerName} reason={entry.reason} code={entry.code} details={entry.details} onRetry={onRetry} />
         </div>
       );
     case "sent":
@@ -91,7 +104,7 @@ export const Entry = memo(function Entry({
             <Avatar look={lookOf(entry.from)} size="sm" />← {nameOf(entry.from)}
             {entry.noAnswer ? " · no answer" : entry.inReplyTo ? " · reply" : ""}
           </div>
-          <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
+          <MarkdownText className="mt-0.5 text-sm" text={entry.text} />
         </section>
       );
     case "result": {
@@ -119,7 +132,7 @@ export const Entry = memo(function Entry({
               </button>
             ) : null}
           </div>
-          <AgentMarkdown className="mt-0.5 text-sm" text={entry.text} />
+          <MarkdownText className="mt-0.5 text-sm" text={entry.text} />
         </section>
       );
     }
@@ -197,7 +210,7 @@ function ResultLine({ who, look, entry, onOpen }: { who: string; look?: Look; en
 }
 
 /** A message to another worker: one line, "Messaged researcher", that opens the exchange. */
-function SentLine({ to, look, text, answer, onOpen }: { to: string; look: Look; text: string; answer: AnswerState; onOpen?: () => void }) {
+function SentLine({ to, look, text, answer, onOpen }: { to: string; look: Look; text: string; answer: AnswerStatus; onOpen?: () => void }) {
   return (
     <button
       type="button"

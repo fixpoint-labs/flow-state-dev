@@ -1,3 +1,4 @@
+// FIX-2426.
 /**
  * `GET /sessions/:sessionId/stream` — one live view of a whole session.
  *
@@ -11,7 +12,7 @@
  * ## How it finds what is new
  *
  * Every request and session write publishes a notice on its session's topic
- * (the change bus, FIX-2426), and a notice wakes the connection's read, at
+ * (the change bus), and a notice wakes the connection's read, at
  * most once a second. On a bus that crosses processes that is the only read:
  * a view of a session where nothing changes costs the store nothing. Where the
  * bus can't cross (the in-memory bus, or one that stopped crossing), each
@@ -81,7 +82,7 @@ import type {
 } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { isSameRequest, isSameSession, toBareSessionId } from "../stores/scope-keys";
-import type { ChangeKind } from "@flow-state-dev/core";
+import type { ChangeKind } from "@flow-state-dev/core/internal";
 import type { BusTopic, ChangeBus } from "../bus/types";
 import { serializeSSEFrame } from "../streaming/sse";
 import { createSSEStream, type SSEStreamHandle } from "../streaming/sse-stream";
@@ -403,8 +404,9 @@ async function followSession(opened: FollowOptions): Promise<void> {
 /** The notice kinds that wake the stream: what it sends, and a bus's resync. */
 const WAKING_KINDS: ReadonlySet<ChangeKind> = new Set<ChangeKind>(["items", "request", "run", "resync"]);
 
+// FIX-2426, epic D6.
 /**
- * When the stream reads next (FIX-2426, epic D6).
+ * When the stream reads next.
  *
  * On a bus that crosses processes, a read happens only after a notice for the
  * session, at most once per interval: a notice after a quiet interval reads

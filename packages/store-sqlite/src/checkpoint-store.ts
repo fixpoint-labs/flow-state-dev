@@ -1,5 +1,6 @@
+// FIX-401.
 /**
- * SQLite-backed sequencer checkpoint store (FIX-401).
+ * SQLite-backed sequencer checkpoint store.
  *
  * Latest-only persistence: identity is the composite key
  * `(request_id, block_instance_id)`. Writes use `INSERT ... ON CONFLICT DO
@@ -8,7 +9,7 @@
  * regardless of step count.
  */
 import type Database from "better-sqlite3";
-import type { CheckpointStore } from "@flow-state-dev/engine";
+import type { CheckpointStore } from "@flow-state-dev/engine/host";
 import type { SequencerCheckpoint } from "@flow-state-dev/core/types";
 
 type CheckpointRow = {

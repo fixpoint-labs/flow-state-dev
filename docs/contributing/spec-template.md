@@ -81,7 +81,7 @@ carries as input, and an open review PR in that shape is not re-drafted into thi
 | `PLAN.md` → guardrails, pinned names | A decision card's *Locks in*, or a line in `DECISIONS.md` → *Decided, not asked* — only the ones that hold the direction |
 | `PLAN.md` → notes from review, the POC line, follow-ups | `DECISIONS.md` → *Notes from review* and *Settled*; follow-ups are filed issues named in the debt table |
 | `BUSINESS-RULES.md` — the cases | A case a person sees is a row in the people table. The rest are the implementer's tests |
-| `DOCS.md` — proposed prose | One *docs* line in `SPEC.md` → *What changes*. The prose is written at implementation, against what shipped |
+| `DOCS.md` — proposed prose | One *docs* line in `SPEC.md` → *What changes*. The prose is written at release (`/release-docs`), against what shipped |
 | `EVOLUTION.md` — predecessor designs | `SPEC.md` → *What's already here*, one row per prior decision the change keeps, amends or supersedes |
 
 **How to read the rest of this file.** Every document below is its instruction followed by a

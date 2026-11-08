@@ -9,7 +9,8 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createFlowRegistry, FlowIdentityConflictError } from "../src";
+import { createFlowRegistry } from "../src";
+import { FlowIdentityConflictError } from "../src/registry/errors";
 
 function define(kind: string, cardinality?: "singleton" | "collection") {
   return defineFlow({

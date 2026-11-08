@@ -1,5 +1,6 @@
+// FIX-1506.
 /**
- * Resource and scope-state notices (FIX-1506): the one helper every writer of
+ * Resource and scope-state notices: the one helper every writer of
  * a scope's state or of a client-readable resource publishes through.
  *
  * | Writer | Where | Origin |
@@ -15,7 +16,7 @@
  * its own stream already carried the change. Request and block-instance
  * state publish nothing: no screen watches them.
  */
-import type { ChangeKind, TopicScope } from "@flow-state-dev/core";
+import type { ChangeKind, TopicScope } from "@flow-state-dev/core/internal";
 import { publishNotices } from "./publish-writes";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import type { ChangeBus } from "./types";

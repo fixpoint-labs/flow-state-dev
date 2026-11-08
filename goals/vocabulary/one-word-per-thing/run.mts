@@ -4,11 +4,12 @@
  *
  * Two legs over the same `sweep.mjs`, each in its own `node` child:
  *
- * - **The tree.** Every git-tracked file under the swept roots is scanned or
+ * - **The tree.** Every git-tracked file is scanned or
  *   excluded by a named rule, and every hit is kept for a stated reason or
  *   marked `retired-name-refusal` on its line. One open line fails the goal.
- * - **The control.** `--control` plants `parkOnAsk`, and FIX-2070's `messageWorker` and
- *   `replyTo`, in files the sweep reads, each to be reported by its own rule.
+ * - **The control.** `--control` plants `parkOnAsk`, FIX-2070's `messageWorker` and
+ *   `replyTo`, and `isInProcessDispatcher` in a contributor doc and a skill, in files the
+ *   sweep reads, each to be reported by its own rule.
  *   If the sweep doesn't report it, the first leg's PASS proves nothing.
  *
  * Model-free and network-free; CI's Process guards run `sweep.mjs` directly.

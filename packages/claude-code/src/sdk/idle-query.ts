@@ -7,7 +7,7 @@
  * (`./model-list`) are both this, with a different question and their own
  * words for each outcome.
  */
-import { defaultSdkImporter, type SdkImporter } from "./sdk-client";
+import { defaultSdkImporter, type ClaudeCodeSdkImporter } from "./sdk-client";
 
 /** What {@link runIdleQuery} got. Never a throw. */
 export type IdleQueryResult<T> =
@@ -29,7 +29,7 @@ export interface IdleQueryOptions {
   /** Stops waiting and closes the query when it aborts, read as `timeout`. */
   signal?: AbortSignal;
   /** How the SDK module is loaded. A seam for tests; the default imports the installed SDK. */
-  importSdk?: SdkImporter;
+  importSdk?: ClaudeCodeSdkImporter;
 }
 
 /**

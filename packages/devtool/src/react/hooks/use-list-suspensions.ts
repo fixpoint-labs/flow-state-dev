@@ -1,5 +1,6 @@
+// FIX-141.
 /**
- * Fetches the privileged debug suspensions list for a session (FIX-141).
+ * Fetches the privileged debug suspensions list for a session.
  *
  * Wraps `client.sessions.debug.listSuspensions`, the same client-method idiom
  * the resource-debug hooks use (transport lives in the client, never here).

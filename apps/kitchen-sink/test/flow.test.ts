@@ -6,8 +6,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   mockGenerator,
-  testBlock,
-  testRouter
+  testBlock
 } from "@flow-state-dev/testing";
 import { backgroundWorkSettled, backgroundWorkTasks, thinkingStyleRouter } from "../flows/chat-agent/run/thinking-styles";
 import { artifactsCollection } from "../flows/chat-agent/shared/artifacts";
@@ -94,7 +93,7 @@ describe("chat-agent flow", () => {
   it("routes to default-pipeline for default style", async () => {
     assistantFixture.reset();
     observeFixture.reset();
-    const routed = await testRouter(thinkingStyleRouter, {
+    const routed = await testBlock(thinkingStyleRouter, {
       input: { message: "Help me", mode: "ask", thinkingStyle: "default" },
       flow: testFlow,
       session: {
@@ -110,7 +109,7 @@ describe("chat-agent flow", () => {
   it("defaults to default-pipeline when thinkingStyle is not set", async () => {
     assistantFixture.reset();
     observeFixture.reset();
-    const routed = await testRouter(thinkingStyleRouter, {
+    const routed = await testBlock(thinkingStyleRouter, {
       input: { message: "Hello", mode: "ask", thinkingStyle: "default" },
       flow: testFlow,
       session: {
@@ -220,7 +219,7 @@ describe("chat-agent flow", () => {
   it("routes interview mode through default-pipeline", async () => {
     assistantFixture.reset();
     observeFixture.reset();
-    const routed = await testRouter(thinkingStyleRouter, {
+    const routed = await testBlock(thinkingStyleRouter, {
       input: { message: "Tell me about your project", mode: "interview", thinkingStyle: "default" },
       flow: testFlow,
       session: {
@@ -236,7 +235,7 @@ describe("chat-agent flow", () => {
   it("routes debate mode through default-pipeline", async () => {
     assistantFixture.reset();
     observeFixture.reset();
-    const routed = await testRouter(thinkingStyleRouter, {
+    const routed = await testBlock(thinkingStyleRouter, {
       input: { message: "I think React is better than Vue", mode: "debate", thinkingStyle: "default" },
       flow: testFlow,
       session: {

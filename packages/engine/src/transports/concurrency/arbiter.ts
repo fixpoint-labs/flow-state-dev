@@ -1,5 +1,6 @@
+// FIX-837; FIX-1634.
 /**
- * The concurrency arbiter (FIX-837) — the one owner of concurrency policy,
+ * The concurrency arbiter — the one owner of concurrency policy,
  * layered over an ordered-lease backend. One instance is shared by every host
  * in a process, so a session-scoped concurrency policy is enforced once at the
  * shared seam rather than re-implemented per transport adapter.
@@ -28,7 +29,7 @@
  *
  * Over the in-memory default backend `admit` is synchronous — a `reject`
  * refusal is thrown from it — and a queued run is woken when the run ahead of
- * it settles. Over an adapter-supplied backend (FIX-1634) admission is
+ * it settles. Over an adapter-supplied backend admission is
  * asynchronous, and a queued run re-checks its turn on the schedule
  * `planQueueWait` sets. An unreachable backend refuses the dispatch; nothing
  * runs unarbitrated.
@@ -170,8 +171,9 @@ export interface ConcurrencyArbiter {
   readonly arbitratesAcrossProcesses: boolean;
 }
 
+// FIX-682.
 /** Tenant-namespace a raw id so identical ids in different tenants never
- *  collide on the same key (mirrors FIX-682 store-key isolation). */
+ *  collide on the same key (mirrors the stores' tenant key isolation). */
 function namespaced(tenantId: string | undefined, id: string): string {
   return tenantId == null ? id : `${tenantId}:${id}`;
 }

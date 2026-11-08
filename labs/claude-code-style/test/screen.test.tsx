@@ -9,6 +9,7 @@ import { StrictMode } from "react";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { App } from "../src/App";
 import { createFakeLab } from "./fake-lab";
+import { layOutFeeds } from "./feed-layout";
 
 // The script runs at a hundredth of real time.
 const fast = () => createFakeLab({ speed: 0.01 });
@@ -40,45 +41,6 @@ async function pick(name = "vendor-notes") {
   await screen.findByLabelText("Message the main session");
 }
 
-
-/**
- * Lay the scrolling feeds out as a browser would (happy-dom lays nothing out): the main thread's
- * list and a sheet's body, each 5000px of content in a 500px view, or
- * `height(feed)` px for a test whose content must grow. Every scroll they are asked
- * for is recorded with how it moves, and lands at once. Undone by the returned function.
- */
-function layOutFeeds(height: (feed: HTMLElement) => number = () => 5000) {
-  const isFeed = (el: HTMLElement) =>
-    el.classList.contains("overflow-y-auto") &&
-    (el.parentElement?.getAttribute("aria-label") === "Main thread" || el.parentElement?.getAttribute("role") === "dialog");
-  const names = ["scrollHeight", "clientHeight", "scrollTop", "scrollTo"] as const;
-  const saved = names.map((name) => [name, Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)] as const);
-  const tops = new WeakMap<HTMLElement, number>();
-  const scrolls: { feed: HTMLElement; behavior: ScrollBehavior | undefined }[] = [];
-  Object.defineProperties(HTMLElement.prototype, {
-    scrollHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? height(this) : 0; } },
-    clientHeight: { configurable: true, get(this: HTMLElement) { return isFeed(this) ? 500 : 0; } },
-    scrollTop: {
-      configurable: true,
-      get(this: HTMLElement) { return tops.get(this) ?? 0; },
-      set(this: HTMLElement, value: number) { tops.set(this, isFeed(this) ? Math.max(0, Math.min(value, height(this) - 500)) : 0); },
-    },
-    scrollTo: {
-      configurable: true,
-      value(this: HTMLElement, options: ScrollToOptions) {
-        if (isFeed(this)) scrolls.push({ feed: this, behavior: options.behavior });
-        this.scrollTop = options.top ?? 0;
-      },
-    },
-  });
-  const restore = () => {
-    for (const [name, was] of saved) {
-      if (was === undefined) delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
-      else Object.defineProperty(HTMLElement.prototype, name, was);
-    }
-  };
-  return { scrolls, restore };
-}
 const threadFeed = () => thread().querySelector<HTMLElement>(":scope > .overflow-y-auto")!;
 
 describe("the session-mode screen", () => {
@@ -91,8 +53,10 @@ describe("the session-mode screen", () => {
     await pick("vendor-notes");
     expect(within(sessions).getByRole("button", { current: true }).textContent).toMatch(/New session/);
     expect(within(thread()).getByText("in project: vendor-notes")).toBeTruthy();
-    expect(within(thread()).getByText("Session")).toBeTruthy();
-    expect(within(pane()).getByText(/Background tasks · 0/)).toBeTruthy();
+    // The view switch names the mode once; the thread header carries no second, inert label for it.
+    expect(within(thread()).queryByText("Session")).toBeNull();
+    // No tasks: the heading counts nothing, never a 0.
+    expect(within(pane()).getByText(/^Background tasks$/)).toBeTruthy();
   });
 
   it("opens no session until a project is picked, even when StrictMode replays the mount", async () => {
@@ -130,7 +94,8 @@ describe("the session-mode screen", () => {
     expect(screen.queryByLabelText("Message the main session")).toBeNull();
     await pick("onboarding-app");
     expect(within(thread()).getByText("in project: onboarding-app")).toBeTruthy();
-    expect(within(thread()).getByText("Session")).toBeTruthy();
+    // The view switch names the mode once; the thread header carries no second, inert label for it.
+    expect(within(thread()).queryByText("Session")).toBeNull();
   });
 
   it("asks for a project instead of opening the composer on a session that has none", async () => {
@@ -373,7 +338,7 @@ describe("the session-mode screen", () => {
     await ask("Compare Acme and Globex for us.");
 
     // Steps 2 and 3: the main session writes, then two task rows appear.
-    await waitFor(() => expect(within(pane()).getByText(/Background tasks · 2/)).toBeTruthy());
+    await waitFor(() => expect(within(pane()).getByText(/^Background tasks · 2 running$/)).toBeTruthy());
     expect(within(thread()).getByText(/write the outline myself/)).toBeTruthy();
 
     // Step 4: the card lands while the working indicator is still on, and the turn goes on to use it.
@@ -418,32 +383,66 @@ describe("the session-mode screen", () => {
     await ask("Compare Acme and Globex for us.");
     await waitFor(() => expect(row("Research Globex")).toBeTruthy());
     const sheet = () => screen.queryByRole("dialog", { name: "Work: Research Globex" });
+    // Opened from the row, then worked in: focus is in the sheet when it closes, and goes back to the row.
+    const open = () => {
+      row("Research Globex").focus();
+      fireEvent.click(row("Research Globex"));
+      within(sheet()!).getByRole("button", { name: "Close" }).focus();
+    };
 
-    fireEvent.click(row("Research Globex"));
-    fireEvent.keyDown(document, { key: "Escape" });
+    open();
+    // The Esc that closes is spent, so it never also stops a turn.
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(false);
     expect(sheet()).toBeNull();
+    expect(document.activeElement).toBe(row("Research Globex"));
 
-    fireEvent.click(row("Research Globex"));
+    open();
     fireEvent.click(within(sheet()!).getByRole("button", { name: "Close" }));
     expect(sheet()).toBeNull();
+    expect(document.activeElement).toBe(row("Research Globex"));
 
-    fireEvent.click(row("Research Globex"));
+    open();
     // A click inside the sheet keeps it; one on the backdrop over the thread closes it.
     fireEvent.click(within(sheet()!).getByText(/Starting:/));
     expect(sheet()).not.toBeNull();
     fireEvent.click(sheet()!.parentElement!);
     expect(sheet()).toBeNull();
+    expect(document.activeElement).toBe(row("Research Globex"));
     expect(within(thread()).getByRole("textbox", { name: "Message the main session" })).toBeTruthy();
     expect(within(thread()).getAllByText("Compare Acme and Globex for us.").length).toBeGreaterThan(0);
   });
 
-  it("folds finished tasks into a collapsed Done group of one-line rows, and counts only the active ones", async () => {
+  it("keeps the pane live under the sheet: another task picked there shows in the same sheet, and focus goes back to that row", async () => {
     render(<App adapter={fast()} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
     await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"));
-    // Acme is done and Globex still runs: one card, one done row, and the count is the active one.
-    expect(within(pane()).getByText(/Background tasks · 1/)).toBeTruthy();
+    fireEvent.click(row("Research Globex"));
+    expect(screen.getByRole("dialog", { name: "Work: Research Globex" })).toBeTruthy();
+
+    // The sheet holds no focus: the pane's other row takes it, and a click there swaps what the sheet shows.
+    const done = within(pane()).getByText(/Done · 1/).closest("details")!;
+    done.open = true;
+    const acme = within(done).getByRole("button", { name: /Research Acme/ });
+    acme.focus();
+    fireEvent.click(acme);
+    expect(document.activeElement).toBe(acme);
+    const work = screen.getByRole("dialog", { name: "Work: Research Acme" });
+    expect(screen.queryByRole("dialog", { name: "Work: Research Globex" })).toBeNull();
+
+    within(work).getByRole("button", { name: "Close" }).focus();
+    fireEvent.click(within(work).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(acme);
+  });
+
+  it("folds finished tasks into a collapsed Done group of one-line rows, and counts each state", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"));
+    // Acme is done and Globex still runs: one card, one done row, and the heading counts each.
+    expect(within(pane()).getByText(/^Background tasks · 1 running · 1 done$/)).toBeTruthy();
     const done = within(pane()).getByText(/Done · 1/).closest("details")!;
     expect(done.open).toBe(false);
     expect(within(done).getByRole("button", { name: /Research Acme/, hidden: true })).toBeTruthy();
@@ -456,6 +455,58 @@ describe("the session-mode screen", () => {
     done.open = true;
     fireEvent.click(within(done).getByRole("button", { name: /Research Acme/ }));
     expect(screen.getByRole("dialog", { name: "Work: Research Acme" })).toBeTruthy();
+  });
+
+  it("opens a task from its result line in the pane's sheet, and opens Done to show its row marked", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    const result = await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    await waitFor(() => expect(row("Research Acme").dataset.taskStatus).toBe("completed"));
+    const done = within(pane()).getByText(/Done · 1/).closest("details")!;
+    expect(done.open).toBe(false);
+
+    fireEvent.click(within(result).getByRole("button", { name: "Open task" }));
+    expect(screen.getByRole("dialog", { name: "Work: Research Acme" })).toBeTruthy();
+    // One selection: the pane marks the same row, and its shut Done group opens to show it.
+    await waitFor(() => expect(done.open).toBe(true));
+    expect(within(done).getByRole("button", { name: /Research Acme/ }).getAttribute("aria-expanded")).toBe("true");
+    // The fold still opens to the reply.
+    fireEvent.click(within(result).getByRole("button", { name: /Research Acme/ }));
+    expect(within(result).getByRole("button", { name: /Research Acme/ }).getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("opens a task from the line where the main session started it, with the task's status on its dot", async () => {
+    render(<App adapter={fast()} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await waitFor(() => expect(row("Research Globex").dataset.taskStatus).toBe("in_progress"));
+    const start = within(thread())
+      .getAllByText(/Start a task: Research Globex/)
+      .map((el) => el.closest("[data-task-id]") as HTMLElement | null)
+      .find((el) => el !== null)!;
+    expect(start.querySelector("[data-task-dot]")!.getAttribute("aria-label")).toBe("running");
+    fireEvent.click(within(start).getByRole("button", { name: "Open task" }));
+    expect(screen.getByRole("dialog", { name: "Work: Research Globex" })).toBeTruthy();
+    expect(row("Research Globex").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("reads a session's task rows once, for the main thread and the pane together, in either mode", async () => {
+    const lab = fast();
+    const reads: string[] = [];
+    const counted = { ...lab, watchTasks: (sessionId: string, onChange: (rows: never[]) => void) => (reads.push(sessionId), lab.watchTasks(sessionId, onChange)) };
+    render(<App adapter={counted as typeof lab} />);
+    await pick();
+    await ask("Compare Acme and Globex for us.");
+    await within(thread()).findByRole("region", { name: "Background result: Research Acme" });
+    // Threads mode: its main thread draws cards from the rows its board lists.
+    fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ New session" }));
+    await pick();
+    await ask("Research three vendors for a status page, one thread each.");
+    await waitFor(() => expect(within(thread()).getAllByRole("region", { name: /^Task: / }).length).toBeGreaterThan(0));
+    expect(new Set(reads).size).toBe(2);
+    expect(reads).toHaveLength(2);
   });
 
   it("queues a line sent while a turn runs, and runs it after", async () => {
@@ -526,7 +577,7 @@ describe("the session-mode screen", () => {
     render(<App adapter={createFakeLab({ speed: 0.1 })} />);
     await pick();
     await ask("Compare Acme and Globex for us.");
-    await waitFor(() => expect(within(pane()).getByText(/Background tasks · 2/)).toBeTruthy());
+    await waitFor(() => expect(within(pane()).getByText(/^Background tasks · 2 running$/)).toBeTruthy());
     expect(row("Research Acme").dataset.taskStatus).toBe("in_progress");
     fireEvent.click(within(thread()).getByRole("button", { name: "Stop" }));
     await within(thread()).findByText(/Interrupted by you · 2 background tasks still running/);

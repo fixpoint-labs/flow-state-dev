@@ -17,7 +17,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler, markDispatcher } from "@flow-state-dev/core";
-import { dispatchThroughSeam, type BlockContext } from "@flow-state-dev/core/types";
+import { type BlockContext } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import { createReportProgress } from "@flow-state-dev/orchestration";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 import { runForTest } from "@flow-state-dev/testing";

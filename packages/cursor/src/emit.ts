@@ -1,5 +1,5 @@
 /**
- * Emission: drives `ctx.response.emit` from {@link TranslatedEvent}s.
+ * Emission: drives `ctx.response.emit` from {@link CursorTranslatedEvent}s.
  *
  * Each translated event becomes canonical FSD item lifecycle emissions, with
  * base fields derived from `_blockIdentity` and a fresh `itemIndex` per item —
@@ -19,7 +19,7 @@
  * for tool calls.
  */
 import { itemScope, type BlockContext } from "@flow-state-dev/core/types";
-import type { TranslatedEvent } from "./types";
+import type { CursorTranslatedEvent } from "./types";
 
 /** Provenance derived once per run and stamped on every emitted item. */
 interface EmitProvenance {
@@ -112,14 +112,14 @@ function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) 
 }
 
 /**
- * Apply one {@link TranslatedEvent} to the response stream, mutating `state`.
+ * Apply one {@link CursorTranslatedEvent} to the response stream, mutating `state`.
  *
  * The events that carry data to the HANDLE rather than to the stream —
  * `run_usage` and `model` — are no-ops here; the block reads them off the same
  * translated event.
  */
 export async function emitTranslatedEvent(
-  event: TranslatedEvent,
+  event: CursorTranslatedEvent,
   ctx: BlockContext,
   state: EmitState,
   blockName: string,
@@ -238,7 +238,7 @@ export async function closeOpenText(
 
 /** Open a `tool_output` item on a tool call. */
 async function emitToolCall(
-  event: Extract<TranslatedEvent, { kind: "tool_call" }>,
+  event: Extract<CursorTranslatedEvent, { kind: "tool_call" }>,
   ctx: BlockContext,
   state: EmitState,
   provenance: EmitProvenance,
@@ -276,7 +276,7 @@ async function emitToolCall(
  * consumer tracking added-then-done would reference an item it never saw.
  */
 async function emitToolResult(
-  event: Extract<TranslatedEvent, { kind: "tool_result" }>,
+  event: Extract<CursorTranslatedEvent, { kind: "tool_result" }>,
   ctx: BlockContext,
   state: EmitState,
   provenance: EmitProvenance,

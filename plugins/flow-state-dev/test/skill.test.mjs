@@ -120,16 +120,16 @@ describe("every fact the skill acts on appears in the report", () => {
 });
 
 describe("the instruction set names no file outside its host's allowlist", () => {
-  it("enumerates seven files for next and five for node", () => {
+  it("enumerates six files for next and five for node", () => {
     const text = skillText();
-    const nextList = /### next \(7\)\n([\s\S]*?)(?=\n### |\n## )/.exec(text);
+    const nextList = /### next \(6\)\n([\s\S]*?)(?=\n### |\n## )/.exec(text);
     const nodeList = /### node \(5\)\n([\s\S]*?)(?=\n### |\n## )/.exec(text);
-    expect(nextList, "next allowlist is headed '### next (7)'").not.toBeNull();
+    expect(nextList, "next allowlist is headed '### next (6)'").not.toBeNull();
     expect(nodeList, "node allowlist is headed '### node (5)'").not.toBeNull();
 
     const nextFiles = [...nextList[1].matchAll(/^[-*]\s+`([^`]+)`/gm)].map((m) => m[1]);
     const nodeFiles = [...nodeList[1].matchAll(/^[-*]\s+`([^`]+)`/gm)].map((m) => m[1]);
-    expect(nextFiles).toHaveLength(7);
+    expect(nextFiles).toHaveLength(6);
     expect(nodeFiles).toHaveLength(5);
 
     expect(nextFiles).toEqual(
@@ -141,8 +141,8 @@ describe("the instruction set names no file outside its host's allowlist", () =>
         "AGENTS.md",
       ]),
     );
-    expect(nextFiles.some((f) => f.includes("appRoot") && f.includes("api/flows/route"))).toBe(true);
-    expect(nextFiles.some((f) => f.includes("appRoot") && f.includes("[...path]"))).toBe(true);
+    expect(nextFiles.some((f) => f.includes("appRoot") && f.includes("api/flows/[[...path]]/route"))).toBe(true);
+    expect(nextFiles.some((f) => f.includes("appRoot") && f.includes("api/flows/route"))).toBe(false);
 
     expect(nodeFiles).toEqual([
       "fsdev.config.mts",
@@ -200,7 +200,7 @@ describe("the write barrier and the two phases", () => {
     const preflight = /4\. \*\*PREFLIGHT[\s\S]*?(?=\n5\. )/.exec(text);
     expect(preflight, "step 4 is the allowlist preflight").not.toBeNull();
     expect(preflight[0]).toMatch(/authored-whole/);
-    expect(preflight[0]).toMatch(/config, flow, and the mount pair/);
+    expect(preflight[0]).toMatch(/config, flow, and the mount\./);
     expect(preflight[0]).toMatch(/`\.gitignore`/);
     expect(preflight[0]).toMatch(/`\.env\.local`/);
     expect(preflight[0]).toMatch(/`AGENTS\.md`/);
@@ -507,13 +507,11 @@ describe("authored templates satisfy the contract", () => {
     expect(flow).not.toMatch(/Action request requires non-empty userId/);
   });
 
-  it("the mount pair uses createNextHandler and forwards the bare path", () => {
+  it("the mount is one createNextHandler file; no bare-path forwarder is shipped", () => {
     const catchAll = readFileSync(join(templates, "route-catchall.ts"), "utf8");
-    const bare = readFileSync(join(templates, "route-bare.ts"), "utf8");
     expect(catchAll).toMatch(/fsd:generated/);
-    expect(bare).toMatch(/fsd:generated/);
     expect(catchAll).toMatch(/createNextHandler/);
-    expect(bare).toMatch(/path:\s*\[\]/);
+    expect(existsSync(join(templates, "route-bare.ts"))).toBe(false);
   });
 
   it("the skill points the mount import at the CLI winner, not a hardcoded .mts", () => {

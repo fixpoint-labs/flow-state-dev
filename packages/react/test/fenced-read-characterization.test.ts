@@ -80,11 +80,11 @@ function sessionSource() {
 }
 function rowSource() {
   const { calls, fn } = heldMethod<ReturnType<typeof page>>();
-  return { calls, listCollectionItems: fn, resources: { listCollectionItems: fn } };
+  return { calls, listCollectionResources: fn, resources: { listCollectionResources: fn } };
 }
 function itemSource() {
   const { calls, fn } = heldMethod<{ topic: string; clientData?: unknown } | null>();
-  return { calls, getCollectionItemState: fn, resources: { getCollectionItemState: fn } };
+  return { calls, getCollectionResourceState: fn, resources: { getCollectionResourceState: fn } };
 }
 
 const kinds = (flows: readonly FlowListEntry[]) => flows.map((f) => f.kind);
@@ -369,7 +369,7 @@ describe("usePanelRows · what it shows and when it asks", () => {
     rerender({ tick: 1 });
     rerender({ tick: 2 });
     await settle();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -426,7 +426,7 @@ describe("usePanelItem · what it shows and when it asks", () => {
     const source = itemSource();
     renderHook(() => usePanelItem(source as never, "s1", "roster", "worker-a", "Worker failed"));
     await settle();
-    expect(source.getCollectionItemState).toHaveBeenCalledTimes(1);
+    expect(source.getCollectionResourceState).toHaveBeenCalledTimes(1);
     expect(source.calls[0]!.args).toEqual(["s1", "roster", "worker-a"]);
   });
 });

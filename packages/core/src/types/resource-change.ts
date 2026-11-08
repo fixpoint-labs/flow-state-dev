@@ -1,5 +1,6 @@
+// FIX-739; FIX-751, FIX-843.
 /**
- * Payload and binding types for reactive blocks (FIX-751, FIX-843).
+ * Payload and binding types for reactive blocks.
  *
  * A reactive block is one an author binds to a resource or collection mutation
  * via `reactTo` on `defineResource` / `defineResourceCollection`. When the bound
@@ -23,7 +24,7 @@
  *
  * Note the vocabulary split: these *reactive* kinds (`created` / `deleted` /
  * `stateUpdated` / `contentUpdated`) are author-facing. The internal mutation
- * seam and the FIX-739 client `resource_change` wire format keep the older
+ * seam and the client `resource_change` wire format keep the older
  * `"created" | "updated" | "deleted"`; the server dispatcher maps one to the
  * other (a content write fires the seam as `"updated"` and routes here to
  * `contentUpdated`).
@@ -34,9 +35,10 @@ import type { JsonObject } from "../schema/common";
 import type { BlockDefinition } from "./block";
 import { isBlockDefinition } from "../blocks/internal/utils";
 
+// FIX-751.
 /**
  * The kind of structured-state mutation that produced a {@link ResourceChange}.
- * `stateUpdated` (renamed from FIX-751's `updated`) names the axis that changed,
+ * `stateUpdated` (formerly `updated`) names the axis that changed,
  * keeping it parallel to the content axis's `contentUpdated`.
  */
 export type ResourceChangeKind = "created" | "stateUpdated" | "deleted";
@@ -86,12 +88,13 @@ export interface ResourceContentChange {
   kind: "contentUpdated";
 }
 
+// BP-016.
 /**
  * Build a Zod schema matching {@link ResourceChange}`<TState>`, suitable as a
  * reactive block's `inputSchema`. `stateSchema` is the resource's own state
  * schema; `state`/`prevState` are its nullable form.
  *
- * This is an INPUT schema — the BP-016 strict-output rules (which only apply to
+ * This is an INPUT schema — the OpenAI strict-output rules (which only apply to
  * generator OUTPUT schemas) do not apply, so the schema is returned as-is
  * without `makeSchemaStrict`.
  */
@@ -106,10 +109,11 @@ export function resourceChangeSchema(stateSchema: ZodTypeAny): ZodType<ResourceC
   }) as unknown as ZodType<ResourceChange>;
 }
 
+// BP-016.
 /**
  * Build a Zod schema matching {@link ResourceContentChange}, suitable as a
  * `reactTo.contentUpdated` block's `inputSchema`. Takes no state schema — a
- * content change carries only identity. An INPUT schema, so BP-016 does not apply.
+ * content change carries only identity. An INPUT schema, so the strict-output rules do not apply.
  */
 export function resourceContentChangeSchema(): ZodType<ResourceContentChange> {
   return z.object({

@@ -61,7 +61,7 @@ A few things to notice:
 The block is a value. Once you wrap it in a flow (step 4), you can run it from the CLI without a server or browser:
 
 ```bash
-fsdev run hello-chat chat -i '{"message": "Hello!"}'
+pnpm fsdev run hello-chat chat -i '{"message": "Hello!"}'
 ```
 
 Streaming text appears in your terminal as NDJSON. That's the first idea worth holding onto: **blocks are typed units, decoupled from how they run.** The same block runs over HTTP, in the CLI, and inside larger sequencers — composition is optional.

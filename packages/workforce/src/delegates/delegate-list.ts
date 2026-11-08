@@ -1,11 +1,12 @@
+// FIX-1793; FIX-1802 D1.
 /**
  * A session's delegates: the records in its server-written session state,
  * and the one way they change. Any worker whose file lists `delegates:` has
- * them, on any flow that carries this list (FIX-1802 D1); a coordinator routes
+ * them, on any flow that carries this list; a coordinator routes
  * its posts to them, and any worker files tasks for the ones that take one.
  *
  * A delegate record is a worker, an optional note on what it's good at, and an
- * optional target a caller resolves (FIX-1793's workstream address). Records
+ * optional target a caller resolves (the workstream address). Records
  * are told apart by worker and target together, so one worker with two
  * targets is two delegates; uniqueness and the cap go by the record.
  *
@@ -61,11 +62,12 @@ export const DELEGATE_SERVER_OWNED: readonly string[] = [DELEGATES_STATE, FALLBA
 
 export const delegateSessionStateSchema = z.object(delegateStateShape);
 
+// FIX-2081 D2.
 /**
  * A worker's defaults: the worker ids its configuration lists, and its
  * fallback; and the records the flow seeds this session with, beside them.
  *
- * `all` (FIX-2081 D2): the configuration says `delegates: all`, and
+ * `all`: the configuration says `delegates: all`, and
  * `delegates` holds the roster as it stands, read for this call. Such a list
  * is never copied into the session on a read, so it follows the roster; a
  * change writes it, and from then on it is a written list.
@@ -92,15 +94,14 @@ export function sameDelegate(a: DelegateRef, b: DelegateRef): boolean {
 
 /** The conversation's list as it stands, or the defaults when it was never set. */
 export function currentDelegates(state: Readonly<Record<string, unknown>>, defaults: DelegateDefaults): DelegateList {
-  const parsed = delegateSessionStateSchema.partial().safeParse(state);
-  const stored = parsed.success ? parsed.data : {};
-  if (stored[DELEGATES_STATE] === null || stored[DELEGATES_STATE] === undefined) {
+  const delegates = state[DELEGATES_STATE] as DelegateRecord[] | null;
+  if (delegates === null) {
     return {
       delegates: [...defaults.delegates.map((worker) => ({ worker })), ...(defaults.records ?? []).map((record) => ({ ...record }))],
       fallback: defaults.fallback === undefined ? null : { worker: defaults.fallback }
     };
   }
-  return { delegates: stored[DELEGATES_STATE], fallback: stored[FALLBACK_STATE] ?? null };
+  return { delegates, fallback: state[FALLBACK_STATE] as DelegateRef | null };
 }
 
 /** A change to a conversation's delegates. */

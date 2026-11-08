@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // The send's own dispatch of a worker message (`from: "sendMessage"`) can be
 // made to throw, so only the sending session's pass can land it (FIX-2271).
 const fault = vi.hoisted(() => ({ throwFastPath: false }));
-vi.mock("@flow-state-dev/core/types", async (original) => {
-  const actual = await original<typeof import("@flow-state-dev/core/types")>();
+vi.mock("@flow-state-dev/core/internal", async (original) => {
+  const actual = await original<typeof import("@flow-state-dev/core/internal")>();
   return {
     ...actual,
     dispatchThroughSeam: (ctx: never, spec: { action: string; from?: string }) =>
@@ -16,7 +16,8 @@ vi.mock("@flow-state-dev/core/types", async (original) => {
 });
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
-import { ensureSessionRecord, runAction } from "@flow-state-dev/engine";
+import { ensureSessionRecord } from "@flow-state-dev/engine/host";
+import { runAction } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { callerMetadata } from "../src/conversation-board/ledger";
@@ -31,7 +32,7 @@ import {
   type ErrorReporter,
   type ErrorReporterHost,
   type ErrorReporterOptions,
-  type ReportRow
+  type ReportResourceState
 } from "../src/error-reporter";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
@@ -121,7 +122,7 @@ type Lab = {
   host: BoardHost;
   reporter: ErrorReporter;
   prompts: Prompted[];
-  rows: () => Promise<ReportRow[]>;
+  rows: () => Promise<ReportResourceState[]>;
   asks: () => Promise<SuspensionRecord[]>;
   answer: (ask: SuspensionRecord, data: Record<string, unknown>) => Promise<void>;
   breaks: (message: string, userId?: string) => Promise<void>;
@@ -219,7 +220,7 @@ async function openLab(
 
   const rows = async () => {
     const result = await bound.run({ flowKind: ERROR_REPORTER_INTAKE_FLOW, action: "reports", input: { op: "all" }, userId: OPERATOR, orgId: ORG, sessionId: "error-report-intake", source: "internal" });
-    return ((result.output as { rows?: ReportRow[] }).rows ?? []).filter((row) => row.kind === "report" || row.kind === "storm");
+    return ((result.output as { rows?: ReportResourceState[] }).rows ?? []).filter((row) => row.kind === "report" || row.kind === "storm");
   };
   const asks = async () =>
     ((await runtime.stores.suspensions.list({ status: "pending" })) as SuspensionRecord[]).filter((s) =>

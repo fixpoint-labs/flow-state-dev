@@ -5,7 +5,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
+import { toBareStates } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { testFlow } from "@flow-state-dev/testing";
 import knowledgeHubFlow from "../src/flow";
 import type { InboxRecord } from "../src/inbox";

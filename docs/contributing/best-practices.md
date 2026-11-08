@@ -154,7 +154,7 @@ Update policy:
 - Scope: Universal — package moves, renames, and extractions.
 - Rule:
   - A move that compiles isn't done. Update what the move invalidated: file-header comments naming the old home, architecture/dependency diagrams, and doc examples / cross-link anchors.
-  - Re-export moved public types from every documented import path, including subpath barrels (`@flow-state-dev/core/types`), not just the package root.
+  - Re-export moved public types from every documented import path, including subpath barrels (`@flow-state-dev/core/types`), not just the package root. A moved *published* export breaks: the old path goes with no alias, and the changeset names the new home.
 - Why: The compiler verifies the code, not the prose, diagrams, or subpath barrels — those are the move's blind spots.
 
 ### BP-035: Walk the second-path checklist before declaring a change done
@@ -202,7 +202,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-002 | Spec-driven execution — every change maps to a Linear-linked spec with deliverables + verification; a decided surface survives a build constraint (a conflict to re-gate, never a fork to offer) |
 | BP-004 | Public boundary first — lock import/export shape before behavior depth |
 | BP-005 | *(Superseded by BP-022)* dual changelog requirement |
-| BP-006 | Keep planning/tracking labels (spec IDs, Linear refs) out of code and tests |
+| BP-006 | Keep planning/tracking labels (spec IDs, Linear refs) out of code and tests; a pointer lives in a `//` comment, never JSDoc, a string or a copied file |
 | BP-008 | Keep root README onboarding-first and current |
 | BP-009 | Maintain package-level READMEs for public packages |
 | BP-037 | Retain issue and epic specs as reviewed design history; repository canonical, Linear links/status; project exception unchanged |

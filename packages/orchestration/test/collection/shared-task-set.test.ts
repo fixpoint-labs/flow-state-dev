@@ -25,7 +25,7 @@
  * replace-wholesale fails the second.
  */
 import { describe, expect, it } from "vitest";
-import { createResourceBackedTaskCollection } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
 import { createFakeResourceCollection } from "../helpers";
 
 describe("resource-backed task set: two resolutions in one request", () => {

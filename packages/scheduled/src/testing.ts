@@ -61,8 +61,9 @@ export function createScheduleIndexConformanceTests(
       expect(due[0].cron).toBe("*/5 * * * *");
     });
 
+    // FIX-1442.
     /**
-     * The organization survives the round trip (FIX-1442).
+     * The organization survives the round trip.
      *
      * `orgId` is what a dispatched schedule fires into, and it is carried on
      * the row rather than recomputed at fire time — a schedule is a standing

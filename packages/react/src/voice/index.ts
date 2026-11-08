@@ -2,14 +2,14 @@ export {
   createAudioRecorder,
   type AudioRecorder,
   type AudioRecorderOptions,
-  type AudioRecorderState
+  type AudioRecorderStatus
 } from "./audio-recorder";
 
 export {
   createAudioPlayer,
   type AudioPlayer,
   type AudioPlayerCallbacks,
-  type AudioPlayerState
+  type AudioPlayerStatus
 } from "./audio-player";
 
 export {

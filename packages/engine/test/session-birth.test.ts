@@ -29,13 +29,14 @@ import { describe, expect, it } from "vitest";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  ReadonlySessionStateError,
   resolveUserStorageKey,
   runAction,
-  SessionCreateRefusedError,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import { ReadonlySessionStateError, SessionCreateRefusedError } from "../src/host";
 import { createRequestHost } from "../src/context/create-request-host";
 import { ensureSessionForWebhook } from "../src/transports/webhook/session-resolver";
 
@@ -63,7 +64,7 @@ function flows(): Harness {
   const createCheck = async (input: SessionCreateCheckInput): Promise<SessionCreateCheckResult> => {
     calls.push(input);
     const workerId = input.state.workerId as string;
-    const row = await input.readCollectionItem("workers", workerId);
+    const row = await input.readCollectionResource("workers", workerId);
     // A worker that isn't the caller's reads as one that doesn't exist.
     if (row === undefined) return { ok: false, status: 404, message: `No worker "${workerId}".` };
     if (row.flow !== input.flow.kind) {
@@ -607,7 +608,7 @@ describe("the session listing's state filter", () => {
   });
 });
 
-describe("readCollectionItem on a parameterized collection", () => {
+describe("readCollectionResource on a parameterized collection", () => {
   it("reads the item named by its parameters, and nothing when it is absent", async () => {
     const venues = defineResourceCollection({
       pattern: "[venue]/info",
@@ -622,8 +623,8 @@ describe("readCollectionItem on a parameterized collection", () => {
         resources: { venues },
         session: {
           stateSchema: z.object({ venue: z.string().readonly() }),
-          createCheck: async ({ state, readCollectionItem }) => {
-            const row = await readCollectionItem("venues", { venue: state.venue as string });
+          createCheck: async ({ state, readCollectionResource }) => {
+            const row = await readCollectionResource("venues", { venue: state.venue as string });
             return row?.open === true ? { ok: true } : { ok: false, status: 404, message: "No such venue." };
           }
         },

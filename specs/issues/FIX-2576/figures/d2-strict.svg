@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, what happens when two declarations of one field disagree. Chosen: refuse any difference in type or default when the flow is defined, naming the field and both declarers. Instead of: the last declaration wins silently, as the type-level merge does today. It comes down to the first row: two blocks that default mode to ask and plan make the flow refuse to define, instead of one value winning by import order. Second row: kitchen-sink&#x27;s chat-agent is refused until one line declares the same enum. Third row: identical declarations merge either way. Locks in: a flow that defines today can be refused after the upgrade, named in the changeset. Flips if: adopters often declare a wider read view of a field on purpose."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Two declarations of one field disagree. What happens?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Refused at defineFlow, both named</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">The last declaration wins</text>
+  </g>
+
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">TWO BLOCKS DEFAULT</text>
+    <text class="t-lbl" x="32" y="169">MODE ASK AND PLAN</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="163">+</text>
+    <text class="t-b" x="248" y="162">The flow does not define</text>
+    <text class="t-s" x="248" y="180">the error names the field and both blocks</text>
+    <text class="mark minus" x="592" y="163">−</text>
+    <text class="t-b" x="612" y="162">One value wins</text>
+    <text class="t-s" x="612" y="180">chosen by import order, no signal</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="220">A WIDER READ VIEW</text>
+    <text class="t-lbl" x="32" y="233">THINKINGSTYLE</text>
+    <text class="mark minus" x="228" y="227">−</text>
+    <text class="t-b" x="248" y="226">chat-agent refused</text>
+    <text class="t-s" x="248" y="244">fix one line to the same enum</text>
+    <text class="mark plus" x="592" y="227">+</text>
+    <text class="t-b" x="612" y="226">Passes</text>
+    <text class="t-s" x="612" y="244">the narrower type is lost</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="278">IDENTICAL</text>
+    <text class="t-lbl" x="32" y="291">DECLARATIONS</text>
+    <text class="mark tie" x="228" y="285">=</text>
+    <text class="t-b" x="248" y="284">Merge quietly</text>
+    <text class="t-s" x="248" y="302">the common case</text>
+    <text class="mark tie" x="592" y="285">=</text>
+    <text class="t-b" x="612" y="284">Merge quietly</text>
+    <text class="t-s" x="612" y="302">the common case</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="334" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="355">LOCKS IN</text>
+    <text class="t-b" x="32" y="375">Upgrading can refuse a flow that defines today</text>
+    <text class="t-s" x="32" y="393">the changeset names the error</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="334" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="355">FLIPS IF</text>
+    <text class="t-b" x="494" y="375">Wider read views turn out common</text>
+    <text class="t-s" x="494" y="393">then a narrower-wins-if-assignable rule</text>
+  </g>
+
+</svg>

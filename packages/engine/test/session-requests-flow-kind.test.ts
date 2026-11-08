@@ -26,10 +26,13 @@ import { z } from "zod";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter
 } from "../src";
-import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import type { RequestRecord, SessionRecord } from "../src/host";
+import type { StoreRegistry } from "../src";
 import { SESSION_STREAM_TIMINGS } from "../src/routes/session-stream-routes";
 
 function flow(kind: string, authenticated: boolean) {

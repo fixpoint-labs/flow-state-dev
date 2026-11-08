@@ -45,6 +45,6 @@ function hire(internal: (installation: any) => Record<string, unknown>): string 
 
 const deaf = hire(() => ({}));
 const heard = hire((installation) => ({
-  [workforce.MESSAGE_RECEIVED_ENTRY]: workforce.messageReceivedEntry({ installation, flowKind: "deaf" }),
+  onMessageReceived: workforce.messageReceivedEntry({ installation, flowKind: "deaf" }),
 }));
 console.log(JSON.stringify({ deaf, heard }));

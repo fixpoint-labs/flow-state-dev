@@ -1,5 +1,6 @@
+// FIX-2131, on FIX-2133's rule.
 /**
- * One wait on a person per task turn (FIX-2131, on FIX-2133's rule): a turn
+ * One wait on a person per task turn: a turn
  * that holds a task's claim either asks a question (`holdTaskForUser`, which holds
  * the task) or stops for the user (`suspendForUser`, which suspends its run),
  * never both. Within one model step the two tools run side by side, so the
@@ -12,7 +13,7 @@
  * says what waits on a person now; it says nothing about which turn opened it,
  * so it never decides this.
  */
-import { onRequestEnded } from "@flow-state-dev/core/types";
+import { onRequestEnded } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task, TaskClaimTicket } from "../tasks";
 import { askedOnTicket } from "../tasks/collection/holds";
@@ -48,7 +49,7 @@ export function takeTurnWait(
   const already = taken.get(key);
   if (already !== undefined) return already === by ? undefined : already;
   taken.set(key, by);
-  onRequestEnded(ctx as never, () => {
+  onRequestEnded(ctx, () => {
     taken.delete(key);
   });
   return undefined;

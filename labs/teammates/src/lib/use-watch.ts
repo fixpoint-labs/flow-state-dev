@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import type { Unsubscribe } from "../adapter";
+import type { LabAdapter, Unsubscribe } from "../adapter";
+import { isFeedStale } from "../components/flow-state/connection-banner";
 
 /**
  * The latest value a keyed `watch*` reports. `undefined` until the first
@@ -13,6 +14,12 @@ export function useWatch<T>(watch: (key: string, onChange: (value: T) => void) =
     return watch(key, setValue);
   }, [watch, key]);
   return value;
+}
+
+/** Whether a conversation's feed has lost the server, so what it last said may be out of date. */
+export function useStale(adapter: LabAdapter, sessionId: string | undefined): boolean {
+  const connection = useWatch(adapter.watchConnection, sessionId);
+  return connection !== undefined && isFeedStale(connection);
 }
 
 /**

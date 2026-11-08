@@ -10,11 +10,13 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowRegistry,
-  createInMemoryStores,
-  createResponseEmitter,
-  retryRequest,
   runAction
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import { createResponseEmitter } from "../src/host";
+import { retryRequest } from "../src/execution/request-recovery";
 import { resolveSessionStorageKey } from "../src/stores/scope-keys";
 
 /** Flow whose action bumps session `count` and records the identity it saw. */

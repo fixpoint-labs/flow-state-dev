@@ -1,5 +1,6 @@
+// FIX-2085.
 /**
- * The user's scheduled work (FIX-2085): Workforce's `listSchedules`, run on the
+ * The user's scheduled work: Workforce's `listSchedules`, run on the
  * user's roster session. Each schedule files a task on a worker's board when it
  * is due; its next run is worked out from its cron and time zone when the list
  * is read, so it shows on any host, with or without a schedule index.

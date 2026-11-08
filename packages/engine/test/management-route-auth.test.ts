@@ -29,10 +29,13 @@ import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowApiRouter,
-  createFlowRegistry,
-  createInMemoryStores
+  createFlowRegistry
 } from "../src";
-import type { SessionRecord, RequestRecord, StoreRegistry } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import type { SessionRecord, RequestRecord } from "../src/host";
+import type { StoreRegistry } from "../src";
 
 /**
  * A flow whose identity comes from a verified header — standing in for any real

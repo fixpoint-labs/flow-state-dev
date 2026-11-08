@@ -1,5 +1,6 @@
+// FIX-2241.
 /**
- * A task's midway question, told to its filer (FIX-2241): the conversation
+ * A task's midway question, told to its filer: the conversation
  * board's `onMidwayQuestion` delivery. Orchestration's `askMidway` calls it in
  * the asking request, in the task's session, with the row's open midway
  * questions read from the committed row, and again when a durable replay of
@@ -21,7 +22,7 @@
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { WorkerInstallation } from "../workers/installation";
-import type { RowHold, Task } from "@flow-state-dev/orchestration/tasks";
+import type { OwnHold, Task } from "@flow-state-dev/orchestration/tasks";
 import { FILING_WORKER_STATE_KEY } from "../workers/keys";
 import { MAX_MESSAGE_CHARS } from "./log-row";
 import type { MessageTarget } from "./message-target";
@@ -35,7 +36,8 @@ export function midwayQuestionMessageId(taskId: string, questionId: string): str
   return `q:${taskId}:${questionId}`;
 }
 
-/** Whether `row` was routed to a workstream: its questions are the user's to answer (FIX-2133 ER-4). */
+// FIX-2133 ER-4.
+/** Whether `row` was routed to a workstream: its questions are the user's to answer. */
 function isRouted(row: Task): boolean {
   return row.target !== undefined || row.targetSessionId !== undefined;
 }
@@ -53,7 +55,7 @@ function clip(text: string, max: number): string {
  * and how to answer it (a confirm's answer is `done`), or, for a routed task,
  * that the user answers it.
  */
-export function midwayQuestionText(row: Task, hold: RowHold): string {
+export function midwayQuestionText(row: Task, hold: OwnHold): string {
   const title = clip(row.title ?? row.goal, TASK_LABEL_CHARS);
   const how = isRouted(row)
     ? "The user answers it from their Inbox; it isn't yours to answer."
@@ -87,7 +89,7 @@ export async function sendQuestionToFiler(
   ctx: BlockContext,
   sender: { readonly installation: WorkerInstallation; readonly flowKind: string },
   row: Task,
-  questions: readonly RowHold[]
+  questions: readonly OwnHold[]
 ): Promise<void> {
   if (row.filer?.sessionId === ctx.session.identity.id) return;
   const filer = filerOf(ctx, row);

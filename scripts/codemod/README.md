@@ -70,3 +70,17 @@ names they ran under, and a goal retired before the move keeps its old path.
 ```bash
 node scripts/codemod/rename-seat-mailbox-goals.mjs
 ```
+
+## `move-tracker-ids-to-line-comments.mjs`
+
+Moves tracker and process ids (`FIX-`, `LAB-`, `BP-`, `BR-` …) out of JSDoc
+blocks into a `//` pointer line above each block, so the editor hover says what
+the code does and the provenance pointer stays (BP-006). It cuts only text that
+is nothing but a pointer: a parenthetical, a segment of one, an `@see` line, or
+a sentence. A block whose id sits inside prose ("stored before FIX-2078") is
+listed and left for a hand edit. `pnpm lint` (`fsd/no-tracker-ids`) is the
+check that nothing is left:
+
+```bash
+node scripts/codemod/move-tracker-ids-to-line-comments.mjs --write <file>...
+```

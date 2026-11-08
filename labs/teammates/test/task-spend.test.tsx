@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * A coding task shows what its runs spent, so you can pick a harness by what
- * it costs (FIX-2398): its line in the thread gives the tokens and, when the
+ * it costs: its line in the thread gives the tokens and, when the
  * vendor reported one, the charge; its popup gives input and output apart;
  * and the teammate's panel totals its coding tasks. A run billed by
  * subscription reports no charge and shows none, never `$0.00`. A row's stored
@@ -28,9 +28,9 @@ afterEach(() => {
 
 const TASK = "Coding task: Fix the typo in the README's first line";
 
-/** Ask Chief of Staff to have `agent` fix the typo; the task's line in the thread. */
+/** Ask Lead to have `agent` fix the typo; the task's line in the thread. */
 async function fileCodingTask(agent: string) {
-  const box = await screen.findByLabelText("Message Chief of Staff");
+  const box = await screen.findByLabelText("Message Lead");
   await act(async () => {
     fireEvent.change(box, { target: { value: `Have ${agent} fix the typo in the README's first line.` } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -69,7 +69,7 @@ describe("a coding task's spend", () => {
     render(<App adapter={createFixtureLab({ speed: 0.2 })} />);
     await fileCodingTask("Codex");
     await fileCodingTask("Claude Code");
-    const panel = screen.getByRole("complementary", { name: "Chief of Staff's panel" });
+    const panel = screen.getByRole("complementary", { name: "Lead's panel" });
     await waitFor(() => expect(panel.querySelector("[data-coding-spend]")?.textContent).toBe("Coding tasks: 23.9k tokens · $0.42"), { timeout: 4000 });
   });
 });

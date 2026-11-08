@@ -1,6 +1,7 @@
+// FIX-2145.
 /**
  * `worker-usage/**` — what each worker spent of a user's subscriptions and
- * keys, by UTC day, and the one query everything reads it through (FIX-2145).
+ * keys, by UTC day, and the one query everything reads it through.
  *
  * Every request a worker's session runs hands its spend to a request-end hook
  * {@link workerSpendHook} builds, which `installation.session()` puts on every
@@ -33,8 +34,9 @@
  */
 import { defineCapability, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import { addRequestSpendSource, requestSpendSources } from "@flow-state-dev/core/types";
-import type { BlockContext, RequestEndHook, RequestSpend, SessionRequestEndHook } from "@flow-state-dev/core/types";
+import { addRequestSpendSource, requestSpendSources } from "@flow-state-dev/core/internal";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { RequestEndHook, RequestSpend, SessionRequestEndHook } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { WORKER_ID_STATE_KEY } from "./keys";
 import type { WorkerInstallation, WorkerTurnContext } from "./installation";
@@ -71,7 +73,8 @@ const sourceSpendSchema = z.object({
 /** One source's spend, as a record and a query row carry it. */
 export type WorkerSourceSpend = z.infer<typeof sourceSpendSchema>;
 
-/** One worker's record for one UTC day. Every field defaults (BP-023/BP-030). */
+// BP-023/BP-030.
+/** One worker's record for one UTC day. Every field defaults. */
 export const workerUsageStateSchema = z.object({
   worker: z.string().default(""),
   day: z.string().default(""),
@@ -103,8 +106,8 @@ const workerUsageCapability = defineCapability({
   resources: { [WORKER_USAGE_RESOURCE]: workerUsageCollection }
 });
 
-/** One worker's row for a period, as {@link workerUsageAction} answers it. */
-export interface WorkerUsageRow {
+/** One worker's usage for a period, as {@link workerUsageAction} answers it. */
+export interface WorkerUsageView {
   /** The worker's id. */
   worker: string;
   /** `true` when the worker is no longer on the reader's roster. */
@@ -130,9 +133,10 @@ function keyOf(day: string, worker: string): string {
 /** Add one source's spend into a list of sources, matched on source, `kind` and billing. */
 const addSource = (sources: WorkerSourceSpend[], add: WorkerSourceSpend): WorkerSourceSpend[] => addRequestSpendSource(sources, add);
 
+// FIX-2288.
 /**
  * What a request spent, as the sources it adds: core's one conversion, which a
- * task's spend reads too (FIX-2288), so the two count alike. Empty when it
+ * task's spend reads too, so the two count alike. Empty when it
  * spent nothing.
  */
 const sourcesOf = (spend: RequestSpend): WorkerSourceSpend[] => requestSpendSources(spend);
@@ -226,7 +230,7 @@ export async function readWorkerUsage(
   days: number,
   onRoster: ReadonlySet<string>,
   now: number = Date.now()
-): Promise<WorkerUsageRow[]> {
+): Promise<WorkerUsageView[]> {
   const collection = collectionOn(ctx);
   if (collection === undefined) throw missingCollection();
   const byWorker = new Map<string, WorkerSourceSpend[]>();
@@ -259,7 +263,7 @@ export async function readWorkerUsage(
     });
 }
 
-const workerSourceSpendRowSchema = z.object({
+const workerSourceSpendSchema = z.object({
   source: z.string(),
   kind: z.enum(["model", "harness"]),
   billing: z.enum(["api-key", "subscription"]).nullable(),
@@ -270,12 +274,12 @@ const workerSourceSpendRowSchema = z.object({
   unreported: z.number()
 });
 
-const workerUsageRowSchema = z.object({
+const workerUsageViewSchema = z.object({
   worker: z.string(),
   gone: z.boolean(),
   tokens: z.object({ input: z.number(), output: z.number() }),
   costUsd: z.number().nullable(),
-  bySource: z.array(workerSourceSpendRowSchema)
+  bySource: z.array(workerSourceSpendSchema)
 });
 
 /**
@@ -284,7 +288,7 @@ const workerUsageRowSchema = z.object({
  *
  * Input `{ days?: number }`, 1 to {@link WORKER_USAGE_MAX_DAYS}, default
  * {@link WORKER_USAGE_DEFAULT_DAYS}: today and the days before it, in UTC.
- * Output `{ workers }`, one {@link WorkerUsageRow} per worker that spent in
+ * Output `{ workers }`, one {@link WorkerUsageView} per worker that spent in
  * the period, ordered by id. Zero-model.
  */
 export function workerUsageAction(installation: WorkerInstallation) {
@@ -295,7 +299,7 @@ export function workerUsageAction(installation: WorkerInstallation) {
     block: handler({
       name: "worker-usage",
       inputSchema: z.object({ days: z.number().int().min(1).max(WORKER_USAGE_MAX_DAYS).optional() }),
-      outputSchema: z.object({ workers: z.array(workerUsageRowSchema) }),
+      outputSchema: z.object({ workers: z.array(workerUsageViewSchema) }),
       uses: [workerUsageCapability],
       resources: { ...installation.resources },
       execute: async (input, ctx: BlockContext) => {

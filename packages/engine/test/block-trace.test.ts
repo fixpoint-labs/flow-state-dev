@@ -6,7 +6,7 @@
  * BlockValue tests.
  */
 import { describe, expect, it, afterEach } from "vitest";
-import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled } from "@flow-state-dev/core/internal";
 
 describe("isTraceObservabilityEnabled", () => {
   const originalEnv = { ...process.env };

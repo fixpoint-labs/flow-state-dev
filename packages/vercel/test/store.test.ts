@@ -6,9 +6,9 @@ afterEach(() => {
 });
 
 describe("vercelPostgresStores", () => {
-  it("declares the primary, bus and scheduler capabilities", () => {
+  it("declares the primary and bus capabilities; its schedule index is a property, not a slot", () => {
     const adapter = vercelPostgresStores();
-    expect(adapter.capabilities).toEqual(["primary", "bus", "scheduler"]);
+    expect(adapter.capabilities).toEqual(["primary", "bus"]);
   });
 
   it("exposes a schedule index that no-ops before the pool is resolved", async () => {

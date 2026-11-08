@@ -1,5 +1,6 @@
+// FIX-660.
 /**
- * Wake filters for callers waiting on a task collection (FIX-660).
+ * Wake filters for callers waiting on a task collection.
  *
  * Pair these with `.waitForCondition`'s `wakeOn` option so the predicate
  * is only re-evaluated when an item that could plausibly change its
@@ -11,7 +12,7 @@
  * visible multi-second idle gaps between actor invocations.
  */
 import type { ComponentItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { TaskChangeEvent } from "./change-event";
 import { TASK_CHANGE_COMPONENT_TYPE } from "./get-or-create";
 

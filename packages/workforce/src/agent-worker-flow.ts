@@ -1,3 +1,4 @@
+// FIX-1393; FIX-1459.
 /**
  * The `agent` worker flow — the built-in one, and the worker a team
  * gets without writing one. `agent` names the worker; this file is the
@@ -27,9 +28,9 @@
  * worker that WRITES a `tools:` line gets exactly that list: a hard runtime
  * fence, not a hint. An empty list means none, regardless of what else the
  * app's catalog carries or what a capability attached through `uses` would
- * otherwise contribute (FIX-1393). A worker that writes NO `tools:` line gets
+ * otherwise contribute. A worker that writes NO `tools:` line gets
  * the tools of every capability preset its own file picked under
- * `capabilities:` — picking is the choice (FIX-1459). Presets the flow switches
+ * `capabilities:` — picking is the choice. Presets the flow switches
  * on by default grant nothing a worker did not pick. The hire keeps an omitted
  * line omitted, never `[]`, so the two cases survive to the tools slot below;
  * either way the generator declares `tools:` and core's fence stays up. See
@@ -48,8 +49,8 @@
  * worker's own file is the one thing that decides what it can call, no matter
  * what `allowed-tools` a bound skill declares.
  *
- * {@link AgentWorkerFlowOptions.uses} is fenced by the framework too
- * (FIX-1393): core drops a capability's catalog-granted tools when the block
+ * {@link AgentWorkerFlowOptions.uses} is fenced by the framework too:
+ * core drops a capability's catalog-granted tools when the block
  * declares `tools:`, and this flow declares it on every worker. Catalog tools a
  * capability contributes are therefore copied onto this flow's catalog at
  * construction, so a worker can name them in `tools:` the same way it names an
@@ -67,17 +68,15 @@ import type {
   CapabilityRef,
   DeclaredResources,
   GeneratorTool,
-  InitialSkill,
-  ToolCatalog,
   UsesSlot
 } from "@flow-state-dev/core";
-import type { BlockContext, DeclaredResourceEntry, LLMMessage, ResourceVisibilityRule, SessionConfig } from "@flow-state-dev/core/types";
+import type { BlockContext, DeclaredResourceEntry, LLMMessage, ResourceVisibilityRule, SessionConfig, InitialSkill, ToolCatalog } from "@flow-state-dev/core/types";
 import {
   activeSkillsArraySchema,
   createSkillActivator,
   createSkillsLibrary,
-  pushActiveSkill
 } from "@flow-state-dev/orchestration";
+import { pushActiveSkill } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import { doorTask, RESPOND_ACTION } from "./worker-door";
@@ -88,7 +87,8 @@ import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
 import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
 import { finishedTasksAnswerAgain } from "./conversation-board/take-finished";
-import { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./projects/workstream-lead";
+import { workstreamOpenedEntry } from "./projects/workstream-lead";
+import { WORKSTREAM_OPENED_ENTRY } from "./projects/workstream-ref";
 import { WORKER_PACKAGES_KEY, WORKER_SKILLS_KEY, WORKER_TOOLS_KEY, oneNameMessage } from "./manifest";
 import {
   catalogWorkerCapabilities,
@@ -133,11 +133,8 @@ const DEFAULT_MODEL = "intent/chat";
 
 /**
  * How many model steps a worker's turn may take when the app sets no
- * `maxSteps`. Sized for real work rather than core's generator cap (8): a
- * question about a codebase spends a step per glob, read and grep, and a
- * knowledge question a step per lookup, so eight ran out before the worker had
- * seen enough to answer. Core's own default stays 8 for generators outside
- * workforce.
+ * `maxSteps`: above core's generator cap (8), since a worker spends a step per
+ * lookup (glob, read, grep) before it can answer.
  */
 const DEFAULT_MAX_STEPS = 50;
 
@@ -252,7 +249,7 @@ function afterAnswerStep(block: BlockDefinition<any, any>) {
     name: "agent-after-answer-rescue",
     inputSchema: z.unknown(),
     execute: async (error, ctx) => {
-      if (!(await worksConversationResultTask(ctx as never))) throw error;
+      if (!(await worksConversationResultTask(ctx))) throw error;
       // eslint-disable-next-line no-console
       console.error(
         `[agent] Background work "${block.name}" failed; the task's result goes to the conversation, so it keeps its answer:`,
@@ -305,6 +302,7 @@ export interface AgentWorkerFlowOptions {
   classifierModel?: string;
   /** Confidence the matcher's third tier must reach. Mirrors `createSkillActivator`. */
   confidenceThreshold?: number;
+  // FIX-1393.
   /**
    * Capabilities every worker on this flow carries, composed onto the answer
    * generator beside the skills library — which stays first and is never
@@ -330,7 +328,7 @@ export interface AgentWorkerFlowOptions {
    * refused at the mint. Selecting only ever ADDS to what the entry already
    * carries — see `./worker-capabilities`.
    *
-   * **Tool-carrying presets ARE fenced** (FIX-1393). Core drops a capability's
+   * **Tool-carrying presets ARE fenced**. Core drops a capability's
    * catalog-granted tools when the consuming block declares `tools:`, and this
    * flow declares it on every worker — so a preset that ships a tool reaches a
    * worker only when that worker's own file picks the preset and writes no
@@ -339,10 +337,11 @@ export interface AgentWorkerFlowOptions {
    * `controlTools` are exempt by design.
    */
   uses?: UsesSlot;
+  // BP-027.
   /**
    * Key this flow's user-scoped storage by the flow copy's id, instead of one
    * cell the user's other flows share. Default: false, matching the
-   * framework (BP-027).
+   * framework.
    *
    * Forwarded to the flow untouched. On an installation every worker runs on
    * the one `agent` copy, so its workers still share one cell per user;
@@ -356,12 +355,13 @@ export interface AgentWorkerFlowOptions {
    * both directions, so one worker flow can isolate some tiers and share others.
    */
   isolateUserState?: boolean;
+  // FIX-2088.
   /**
    * A block run after the worker answers, as a side-chain — it cannot change
    * the answer, and a failure in it never fails a conversation turn. In a
    * task it fails the attempt, as any background step's failure does, except
    * in a task whose result goes to the conversation, where it is logged and
-   * the task keeps its answer (FIX-2088).
+   * the task keeps its answer.
    *
    * **It receives the answer generator's output: the assistant's reply text,
    * as a string.** `.sideChain` with no connector passes the preceding step's
@@ -402,9 +402,10 @@ export interface AgentWorkerFlowOptions {
    * Omitted, the flow's sequence is exactly what it is today.
    */
   beforeAnswer?: BlockDefinition<any, any>;
+  // FIX-2159.
   /**
    * Answer again, in the same request, with the tasks that finished while the
-   * worker answered (FIX-2159). After the worker answers, this block runs; when
+   * worker answered. After the worker answers, this block runs; when
    * it returns `{ message }`, the worker answers again about that message, and
    * the block runs again after that answer. Its input is the worker's answer.
    *
@@ -439,9 +440,6 @@ export interface AgentWorkerFlowOptions {
    */
   installation?: WorkerInstallation;
 }
-
-/** The coordinator's tool that once handed a message on, refused by name at load. */
-const RETIRED_HAND_OFF = "handOff"; // retired-name-refusal
 
 /**
  * What one worker on this flow configures, in its file.
@@ -491,18 +489,6 @@ function settingsSchema(
         const known = Object.keys(catalog);
         for (const name of names ?? []) {
           if (Object.hasOwn(catalog, name)) continue;
-          // A coordinator hands a message on with `createTask` and the routing settings now.
-          if (name === RETIRED_HAND_OFF) { // retired-name-refusal: FIX-1872
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message:
-                `names tool "${RETIRED_HAND_OFF}", which no longer exists. A coordinator hands the message it is ` + // retired-name-refusal
-                `routing to a delegate with \`createTask\` and the routing settings (\`session: "ongoing"\`, ` +
-                `\`resultTo: "conversation"\`), which every coordinator turn carries: drop "${RETIRED_HAND_OFF}" ` + // retired-name-refusal
-                `from this worker's \`tools:\` line, and name \`createTask\` in its instructions instead.`
-            });
-            continue;
-          }
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message:
@@ -621,8 +607,9 @@ function settingsSchema(
         }
       }),
 
+    // FIX-817.
     /**
-     * Which discovery domains this worker sees (FIX-817).
+     * Which discovery domains this worker sees.
      *
      * ```yaml
      * discover: [workers, skills]
@@ -703,6 +690,7 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
  * Every mismatch is named in one message, for the reason `hireWorkforce`
  * collects: an author fixing a catalog should see the whole list in one run.
  */
+// FIX-1393.
 /**
  * Catalog tools a worker flow's `uses` already grants — capability tools fill the
  * flow's catalog so a worker can name them in `tools:`.
@@ -713,7 +701,7 @@ function assertHeldSkills(names: string[], held: InitialSkill[], appSkills: Init
  * on by default.
  *
  * Core drops a capability's catalog tools when the consuming block declares
- * `tools:` (FIX-1393). This flow always declares that slot, so a grant that
+ * `tools:`. This flow always declares that slot, so a grant that
  * stayed only on the capability would be a name no worker could call. Filling
  * the catalog is what makes "the flow installs via `uses`, worker names the tool"
  * one path rather than two.
@@ -892,8 +880,9 @@ export interface AgentTurnShare {
    * every worker on it.
    */
   readonly extraTools?: readonly GeneratorTool[];
+  // FIX-1802 S1.
   /**
-   * The session board the turn files through (FIX-1802 S1), when the sharing
+   * The session board the turn files through, when the sharing
    * flow builds its own: the coordinator does, to name the flows its routed
    * tasks reach. Omitted, a turn on an installation builds one for its flow. Its
    * task tools are composed once, here, so a turn carries one instance of

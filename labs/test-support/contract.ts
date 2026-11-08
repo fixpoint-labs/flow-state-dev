@@ -18,7 +18,7 @@ export type ScriptedStep = { text: string } | { output: unknown } | { call: { na
 /** One step of one block's turn. */
 export interface ScriptedCall {
   blockName: string | undefined;
-  /** The step's messages, serialized: what a script reads the ask, the worker and a tool's result from. */
+  /** The step's messages, serialized: what a script reads the request, the worker and a tool's result from. */
   said: string;
   /** How many tool results this turn holds so far: 0 on its first step. */
   step: number;

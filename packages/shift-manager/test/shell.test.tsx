@@ -774,7 +774,6 @@ describe("Shift Coordinator (FIX-1722)", () => {
     await client.flow(ASKER_FLOW).request(suspension!.requestId).resume({
       suspensionId: suspension!.suspensionId,
       action: "approve",
-      resumedBy: ASK_LAB_USER_ID,
     });
     await waitFor(async () => {
       const state = await client.sessions.state(SHIFT_COORDINATOR_CONVERSATION, { includeItems: true, itemTypes: ["suspension_resume"] });

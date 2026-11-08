@@ -10,7 +10,7 @@ import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
 import { isPublicReentryAllowed } from "./public-reentry";
-import { isWaitGate } from "@flow-state-dev/core/types";
+import { isWaitGate } from "@flow-state-dev/core/internal";
 import { expireUnderLease, resumeUnderLease } from "../durability/resume-under-lease";
 import {
   callerReachesRequest,
@@ -73,13 +73,15 @@ type ResumeRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
   durabilityProvider?: DurabilityProvider;
+  // FIX-999.
   /**
-   * The host's `publicReentrySources` (FIX-999), read straight off the runtime
+   * The host's `publicReentrySources`, read straight off the runtime
    * config like `durabilityProvider` above. Absent → only the built-in sources
    * are re-enterable.
    */
   publicReentrySources?: readonly string[];
-  /** Caller's tenant (FIX-682), extracted as every other request route does. */
+  // FIX-682.
+  /** Caller's tenant, extracted as every other request route does. */
   tenantId?: string;
   /** The authenticated caller, when route-level authentication is active. */
   principal?: ResolvedPrincipal;

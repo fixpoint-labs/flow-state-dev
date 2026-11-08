@@ -16,13 +16,14 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { createCheckpointDurabilityProvider, runAction } from "@flow-state-dev/engine";
-import type { DurabilityProvider, StoreRegistry } from "@flow-state-dev/engine";
+import type { DurabilityProvider } from "@flow-state-dev/engine/host";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createSQLiteStores } from "../src/index";
+import { createSQLiteStores } from "../src/host";
 
 function providerFor(stores: StoreRegistry): DurabilityProvider {
   return createCheckpointDurabilityProvider({

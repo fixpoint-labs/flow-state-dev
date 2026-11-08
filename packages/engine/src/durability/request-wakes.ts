@@ -1,5 +1,6 @@
+// FIX-2078 D1.
 /**
- * The request host's wake verb (FIX-2078 D1): how a running request owes, reads
+ * The request host's wake verb: how a running request owes, reads
  * and settles a debt's due time.
  *
  * A wake names a session, an internal entry, a due time and the owner the
@@ -18,11 +19,11 @@
  * Owing a wake in this process tells the sweeper listening on the same store
  * ({@link onWakeOwed}), so it comes forward rather than wait for its interval.
  */
-import type { RequestWakes, WakeSettleResult, WakeView } from "@flow-state-dev/core/types";
+import type { RequestWakes, WakeSettleResult, WakeView } from "@flow-state-dev/core/internal";
 import { logRuntimeEvent, type RuntimeLogger } from "../execution/logging";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { SessionStore, WakeRecord, WakeStore } from "../stores/types";
-import { INTERNAL_SOURCE } from "../execution/transport-sources";
+import { dispatchInternalAs } from "./dispatch-internal";
 import type { InboundTransportHost } from "../transports/types";
 
 type Listener = (dueAt: number) => void;
@@ -61,17 +62,13 @@ export async function fireWakeThrough(
   onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void
 ): Promise<void> {
   const controller = new AbortController();
-  const handle = host.dispatch({
-    source: INTERNAL_SOURCE,
+  const handle = dispatchInternalAs(host, {
     flowKind: wake.flowKind,
-    action: wake.entry,
+    entry: wake.entry,
     input: {},
     sessionId: wake.sessionId,
-    principal: { userId: wake.userId, orgId: wake.orgId },
-    orgId: wake.orgId,
-    ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}),
+    as: { userId: wake.userId, orgId: wake.orgId, ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}) },
     metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
-    responseEmitter: null,
     signal: controller.signal
   });
   onStarted?.({ finished: handle.finished, abort: () => controller.abort() });
@@ -221,9 +218,10 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
   };
 }
 
+// FIX-2166.
 /**
  * Bring a session's kept wakes forward to `now`, for a request in it the stale
- * sweep just marked interrupted (FIX-2166). What a pass held for that request
+ * sweep just marked interrupted. What a pass held for that request
  * while it ran is owed now that it never will end on its own, so the pass is
  * owed now rather than at its backoff. A wake's entry pays only what is due,
  * so a wake fired early costs one pass and moves itself on.

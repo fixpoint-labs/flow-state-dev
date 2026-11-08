@@ -1,6 +1,7 @@
+// FIX-963; FIX-989.
 /**
  * What a board says when it saved a task's result and then could not announce
- * it (FIX-963).
+ * it.
  *
  * ## The event this names
  *
@@ -16,7 +17,7 @@
  *
  * ## Three values, not two
  *
- * `didWriteLand` (FIX-989) answers `true`, `false`, or *cannot tell*, and the
+ * `didWriteLand` answers `true`, `false`, or *cannot tell*, and the
  * third is a first-class answer rather than a shrug. It is the permanent answer
  * for any caller-supplied task store — nothing there keeps the receipt the
  * question is answered from, and `stampWrite` stays package-internal by
@@ -246,17 +247,17 @@ function describeReports(reports: readonly RecorderFailureReport[]): string {
 
 /**
  * A plan drain failed after it handed `taskId` to a session of its own (see
- * `dispatch-row.ts`). The row is that session's, so this is never recorded on
+ * `dispatch-task.ts`). The row is that session's, so this is never recorded on
  * it: every recorder rethrows it, whatever `onError` says, and the drain's
  * request fails.
  */
-export class HandedOverRowError extends Error {
+export class HandedOverTaskError extends Error {
   constructor(boardId: string, taskId: string, cause: unknown) {
     super(
       `[task-board] "${boardId}" handed task "${taskId}" to a session of its own and then failed, so the plan ` +
         `fails: ${cause instanceof Error ? cause.message : String(cause)}`
     );
-    this.name = "HandedOverRowError";
+    this.name = "HandedOverTaskError";
     this.cause = cause;
   }
 }

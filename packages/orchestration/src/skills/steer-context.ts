@@ -1,5 +1,6 @@
+// FIX-2086.
 /**
- * How a running request takes a steer (FIX-2086): a context entry re-read
+ * How a running request takes a steer: a context entry re-read
  * before every model call. Nothing is stopped, no attempt is used, and
  * nothing settles.
  */
@@ -7,28 +8,29 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { currentWorkerClaim } from "../task-board/flow-policy-wiring";
 import { isTaskTurn } from "../task-board/task-turn";
 import {
-  readCommittedTask,
-  shownSteer,
-  steersTakenIn,
   ticketForClaim,
-  untakenSteers,
-  type ShownSteer,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "../tasks";
+import { readCommittedTask } from "../tasks/collection/read-committed";
+import { shownSteer, steersTakenIn, untakenSteers, type ShownSteer } from "../tasks/steers";
 
 export type { ShownSteer };
 
 /** Who sent a steer, in a worker's words. */
 function senderOf(from: ShownSteer["from"]): string {
   if (from === "board") return "the board";
+  if (from === "service") return "outside this app";
   return from === "user" ? "the user" : "whoever assigned you the task";
 }
 
-/** One steer's line: who sent it, and the question it answers when it answers one (FIX-2133). */
+// FIX-2133.
+/** One steer's line: who sent it, and the question it answers when it answers one. */
 function steerLine(steer: ShownSteer): string {
   const words = steer.message.split("\n").join("\n  ");
+  // Outside words (FIX-2578): quoted, with their sender's handle, never as the user's own.
+  if (steer.from === "service") return `- From ${steer.by ?? "a sender"} (${senderOf(steer.from)}), quoted: "${words}"`;
   if (steer.question === undefined) return `- From ${senderOf(steer.from)}: ${words}`;
   const question = steer.question.split("\n").join(" ");
   return steer.from === "board"
@@ -47,21 +49,39 @@ export function renderSteers(steers: readonly ShownSteer[], lead: string): strin
   return [lead, ...steers.map(steerLine)].join("\n");
 }
 
+// FIX-2086; FIX-2574.
 /**
  * Show steers a request just took as lines in its session, each from its
- * sender (FIX-2086): the filer's, or a person's sent from a screen. A line
- * typed in the session (`line:` keyed) is there already, as the person's own.
- * Call it once per take, with only the steers that take newly took.
+ * sender. A person's (sent from a screen, or a review's request for
+ * changes) is a `user` line with their words alone, as if typed there;
+ * the filer's or the board's says who sent it. A line typed in the
+ * session (`line:` keyed) is there already, as the person's own, and so is a
+ * delivered message's (`"service"`), as its sender's. Call it once
+ * per take, with only the steers that take newly took.
+ *
+ * A person's line goes through the context's stored emitter, the one that
+ * writes a `user` line; a hand-built context without one shows it through
+ * `emit.message`. Never rejects: a line that fails to land is a line not
+ * shown, never a steer lost.
  */
-export function showTakenSteers(
-  ctx: Pick<BlockContext, "emit">,
-  steers: ReadonlyArray<{ readonly id: string; readonly message: string; readonly from: "filer" | "user" | "board"; readonly by?: string }>
-): void {
+export async function showTakenSteers(
+  ctx: Pick<BlockContext, "emit" | "_emitMessageAwaited">,
+  steers: ReadonlyArray<{ readonly id: string; readonly message: string; readonly from: "filer" | "user" | "board" | "service"; readonly by?: string }>
+): Promise<void> {
   for (const steer of steers) {
     if (steer.id.startsWith("line:")) continue;
-    const sender = steer.from === "filer" ? "the task's filer" : steer.from === "board" ? "the board" : (steer.by ?? "the user");
-    const agentName = steer.from === "filer" ? "filer" : steer.from === "board" ? "board" : (steer.by ?? "user");
-    ctx.emit.message(`Message from ${sender}: ${steer.message}`, { agentName });
+    // A delivered message (FIX-2578) landed in the session as itself when it was delivered.
+    if (steer.from === "service") continue;
+    if (steer.from === "user") {
+      const agentName = steer.by ?? "user";
+      // Display only, like the plain emitter: a failed line never undoes the
+      // take that already wrote the row, or what the caller still does with it.
+      if (ctx._emitMessageAwaited !== undefined) await ctx._emitMessageAwaited(steer.message, { role: "user", agentName }).catch(() => undefined);
+      else ctx.emit.message(steer.message, { agentName });
+      continue;
+    }
+    const sender = steer.from === "filer" ? "the task's filer" : "the board";
+    ctx.emit.message(`Message from ${sender}: ${steer.message}`, { agentName: steer.from });
   }
 }
 
@@ -116,7 +136,7 @@ export async function runningTaskOf(
 export async function takeRunningSteers(
   running: RunningTask,
   takenIn: string,
-  show?: Pick<BlockContext, "emit">
+  show?: Pick<BlockContext, "emit" | "_emitMessageAwaited">
 ): Promise<ShownSteer[]> {
   const { ledger, claim, row } = running;
   if (ledger.takeSteers === undefined || row.status !== "in_progress") return [];
@@ -131,15 +151,16 @@ export async function takeRunningSteers(
   if (now === undefined) return [];
   // Shown once: only the steers this write took, as it says. A read under the
   // same name that ran beside it, or again, took none.
-  if (show !== undefined) showTakenSteers(show, (now.steers ?? []).filter((steer) => outcome.taken?.includes(steer.id) === true));
+  if (show !== undefined) await showTakenSteers(show, (now.steers ?? []).filter((steer) => outcome.taken?.includes(steer.id) === true));
   return steersTakenIn(now, takenIn).map((steer) => shownSteer(now, steer));
 }
 
 /** {@link createSteerContext}'s options: where it reads the row the request holds. */
 export interface SteerContextOptions {
+  // BP-031.
   /**
    * The ledger the running request's task is on, read from server-set state
-   * (the session's birth fields, say), never from input (BP-031).
+   * (the session's birth fields, say), never from input.
    */
   readonly resolve: (ctx: BlockContext) => Promise<TaskCollectionRef | undefined>;
 }

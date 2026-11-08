@@ -62,7 +62,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
 
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../src/components/Conversation";
-import { RECEIVED_MESSAGE_COMPONENT } from "@flow-state-dev/workforce/browser";
+import { RECEIVED_MESSAGE_COMPONENT, taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 
 // The reviewer's conversation: the session at its derived address, where a worker's message lands too.
 const s1 = await deriveWorkerSessionId({ userId: "u_1", orgId: "org_1", flow: "agent", criteria: { worker: "eng.reviewer" } });
@@ -116,6 +116,16 @@ describe("what a view of its own draws", () => {
     expect((await screen.findByTestId("rev-conversation-empty")).textContent).toBe("Nothing said to the reviewer yet.");
     expect(screen.getByTestId("rev-composer")).toBeTruthy();
     expect(screen.queryByTestId("shift-coordinator")).toBeNull();
+  });
+
+  it("offers its starter lines before a first line; a click fills the composer and sends nothing", async () => {
+    drawn([], { starters: ["What can the team do for me?", "Hand Triage something to look into"] });
+    expect((await screen.findByTestId("rev-conversation-empty")).textContent).toBe("Nothing said to the reviewer yet.");
+    fireEvent.click(screen.getByRole("button", { name: "Hand Triage something to look into" }));
+    const input = screen.getByTestId("rev-composer-input") as HTMLInputElement;
+    await waitFor(() => expect(input.value).toBe("Hand Triage something to look into"));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(sendTurn).not.toHaveBeenCalled();
   });
 
   it("says what it is in a session opened before a first line, rather than drawing nothing", async () => {
@@ -198,6 +208,18 @@ describe("what a view of its own draws", () => {
     expect(screen.getByTestId("received-message-answers")).toBeTruthy();
     expect(screen.getAllByTestId("received-message-messages")).toHaveLength(1);
     expect(screen.getAllByText("REVIEWER")).toHaveLength(1);
+  });
+
+  it("doesn't mark a task's brief as a line the user sent; a typed line still is", async () => {
+    const typed = { id: "u1", requestId: "r", type: "message", role: "user", ts: 1, text: "Keep the old flag name." };
+    const brief = { ...typed, id: "b1", text: "Fix the flaky test.", metadata: taskBriefMetadata({ taskId: "t1" }) };
+    read.mockResolvedValue({ items: [brief, typed], truncated: false });
+    drawn([session(s1)]);
+    await screen.findAllByTestId("mine");
+    const [briefRow, typedRow] = screen.getAllByTestId("rev-item");
+    // Jump-to-latest follows the user's own sends; the brief was handed to the session, not sent by them.
+    expect(briefRow!.hasAttribute("data-sent-line")).toBe(false);
+    expect(typedRow!.getAttribute("data-sent-line")).toBe("u1");
   });
 
   it("says the worker has the line while one from this page is in flight", () => {

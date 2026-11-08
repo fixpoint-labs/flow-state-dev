@@ -51,7 +51,7 @@ import { useLiveMode } from "./hooks/use-live-mode";
 import { usePoll } from "./hooks/use-poll";
 import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
 import { useDispatchRuns } from "./hooks/use-dispatch-runs";
-import { useReadFence } from "@flow-state-dev/react";
+import { useReadFence } from "@flow-state-dev/react/internal";
 import { flattenTaskItems } from "./lib/task-collection-state";
 import { isRequestOpen, mergeRawItems, pickFurthestStatus, snapshotSupersedesLive } from "./lib/request-status";
 
@@ -518,7 +518,7 @@ function PanelContent({ className }: { className?: string }) {
   // one report at a time:
   //
   // - `sendAction`          → `handleSendAction`   — refreshed.
-  // - `resumeSuspension`    → `handleResumed`      — refreshed.
+  // - `answerSuspension`    → `handleResumed`      — refreshed.
   // - `continueRequest`     → `handleContinue`     — refreshed.
   // - `resumeLatestRequest` → NO EQUIVALENT. The top-level Resume button was
   //   removed in FIX-865 as a strictly narrower case of the per-row Continue
@@ -687,7 +687,7 @@ function PanelContent({ className }: { className?: string }) {
       // the stream's connect effect won't re-run on the id alone.
       setStreamReconnectToken((t) => t + 1);
       void refreshRequests();
-      // `resumeSuspension` on the contract's list of work-starting calls: a
+      // `answerSuspension` on the contract's list of work-starting calls: a
       // resumed run can reach a board and file background work, so the axis has
       // to advance here too.
       //
@@ -917,7 +917,7 @@ function PanelContent({ className }: { className?: string }) {
           workspace visit and remounts with it, and that remount is the ONLY
           thing retiring the readers inside it. `use-session-state`,
           `use-debug-resources`, `use-debug-resource-content`,
-          `use-debug-collection-items` and `use-list-suspensions` carry no fence
+          `use-debug-collection-resources` and `use-list-suspensions` carry no fence
           of their own precisely because this key unmounts them, so a response
           from the copy just left writes to a component that no longer exists.
           Delete the key and every one of them silently starts committing the
@@ -930,7 +930,7 @@ function PanelContent({ className }: { className?: string }) {
           - THIS KEY retires everything mounted below it: the five readers above,
             and the trace/block/item selection, which names an item inside a
             particular request of a particular session.
-          - THE READ FENCE (`useReadFence`, from `@flow-state-dev/react`) retires
+          - THE READ FENCE (`useReadFence`, from `@flow-state-dev/react/internal`) retires
             the readers that STAY mounted across a switch — the panel's own
             request and dispatch-run lists, which live above here. The rail's
             session list is fenced inside `FlowNavigator`, not here.

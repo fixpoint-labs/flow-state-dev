@@ -1,15 +1,18 @@
+import { useMemo, useState } from "react";
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
-import { useState } from "react";
-import type { LabAdapter, ProjectRow, SessionRow, TaskRow, ThreadEntry } from "../adapter";
+import type { LabAdapter, LabProject, LabSession, LabTask, ThreadEntry } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
 import { cn } from "../lib/utils";
 import { Composer } from "./Composer";
+import { PaneHeader } from "./PaneHeader";
+import { WorkingDots } from "./WorkingLine";
 import { ConnectionBanner, isFeedStale, STALE_CLASS } from "./flow-state/connection-banner";
-import { JumpToLatestButton } from "./JumpToLatest";
+import { ConversationScrollButton } from "./flow-state/conversation";
 import { LoadEarlier } from "./LoadEarlier";
 import { Entry } from "./Entry";
 import { ThreadCard } from "./ThreadCard";
+import { STARTER_LINES } from "../lib/first-run";
 
 /**
  * The center: the open session's thread, its working indicator, and the
@@ -17,7 +20,9 @@ import { ThreadCard } from "./ThreadCard";
  * `connection-banner` and greys its working line, whose clock stops there.
  * The header names the session's project; a session with none gets
  * no composer, so nothing runs until it has one (spec D3). In threads mode a
- * thread the lead filed is a card here, read from its task row.
+ * thread the lead filed is a card here, read from its task row. A result
+ * line, and the line where the main session started a task, open that task
+ * through `onOpenThread`, as the pane does.
  *
  * Esc twice, or Cmd/Ctrl+., stops the turn from anywhere on the page. One Esc
  * never does: it closes a sheet, or belongs to the text box it was typed in.
@@ -29,25 +34,23 @@ export function Thread({
   adapter,
   session,
   project,
+  tasks,
   onOpenThread,
   onViewTasks,
 }: {
   adapter: LabAdapter;
-  session: SessionRow;
-  project: ProjectRow | undefined;
+  session: LabSession;
+  project: LabProject | undefined;
+  /** The session's task rows, as the app reads them for this thread and its pane; `undefined` until read. */
+  tasks: LabTask[] | undefined;
   onOpenThread: (taskId: string) => void;
   /** Show where this session's background tasks are listed. */
   onViewTasks?: () => void;
 }) {
   const view = useWatch((emit: Parameters<LabAdapter["watchThread"]>[1]) => adapter.watchThread(session.id, emit), [adapter, session.id]);
   const mode = modeOfWorker(session.worker);
-  // Only threads mode draws a card from a task row; session mode's rows are the tasks pane's own read.
-  const board = mode?.pane === "board";
-  const tasks =
-    useWatch(
-      (emit: (rows: TaskRow[]) => void) => (board ? adapter.watchTasks(session.id, emit) : () => undefined),
-      [adapter, session.id, board],
-    ) ?? [];
+  // What a line that names a task reads of it, and opens it with.
+  const feedTasks = useMemo(() => ({ rows: tasks, open: onOpenThread }), [tasks, onOpenThread]);
   const running = view?.running ?? false;
   // What the thread's feed last heard from the server; a stale one greys the working line and stops its clock.
   const connection = view?.connection ?? "connecting";
@@ -62,6 +65,9 @@ export function Thread({
     setStopRefused(undefined);
     adapter.interrupt(session.id).catch((error: unknown) => setStopRefused(error instanceof Error ? error.message : String(error)));
   };
+  const retryOf = (requestId: string) => () => adapter.retry(session.id, requestId);
+  // A starter line picked from the empty thread: the composer takes it as its text, and nothing is sent.
+  const [seed, setSeed] = useState<{ text: string; at: number }>();
   // On the document, so the keys work wherever focus is; a sheet's Esc arrives already spent.
   const keys = useInterruptKeys({
     enabled: running && !stopping && session.projectId !== null,
@@ -74,17 +80,14 @@ export function Thread({
 
   return (
     <main aria-label="Main thread" className="flex h-full min-h-0 min-w-0 flex-col">
-      <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-3">
+      <PaneHeader className="px-6">
         <div className="min-w-0">
           <h1 className="truncate text-sm font-semibold">{session.title}</h1>
           <div className="truncate font-mono text-xs text-muted-foreground">
             {session.projectId === null ? "no project" : `in project: ${project?.name ?? session.projectId}`}
           </div>
         </div>
-        <span className="border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-          {mode?.label ?? session.worker}
-        </span>
-      </header>
+      </PaneHeader>
       {/* A stopped feed comes back with the page: the thread's feed reopens on load. */}
       <ConnectionBanner feed={{ state: connection }} onRetry={() => window.location.reload()} />
       <div ref={feed.ref} className="flex-1 overflow-y-auto px-6 pt-4 pb-10">
@@ -93,9 +96,24 @@ export function Thread({
             {mode?.pane === "board"
               ? "Ask the main session for something. It hands each piece to a task of its own, and each comes back to you when it needs you."
               : "Ask the main session for something. It does what it can itself and starts background tasks for the long pieces."}
+            {mode === undefined || session.projectId === null ? null : (
+              <ul aria-label="Starter lines" className="mt-4 flex flex-col gap-2">
+                {STARTER_LINES[mode.id].map((line) => (
+                  <li key={line}>
+                    <button
+                      type="button"
+                      onClick={() => setSeed({ text: line, at: Date.now() })}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-left text-xs text-foreground hover:bg-accent"
+                    >
+                      {line}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ) : (
-          <div className="mx-auto flex max-w-2xl flex-col gap-3">
+          <div className="mx-auto flex max-w-2xl flex-col gap-3 [&>*]:shrink-0">
             <LoadEarlier load={view?.loadEarlier} />
             {view?.entries.map((entry) =>
               entry.kind === "thread" ? (
@@ -103,7 +121,7 @@ export function Thread({
                   key={entry.id}
                   adapter={adapter}
                   sessionId={session.id}
-                  task={tasks.find((t) => t.id === entry.taskId)}
+                  task={tasks?.find((t) => t.id === entry.taskId)}
                   onOpen={onOpenThread}
                 />
               ) : (
@@ -114,19 +132,22 @@ export function Thread({
                     mark={entry.kind === "user" ? feed.mine(entry.id) : undefined}
                     stillRunning={countFor(entry)}
                     onViewTasks={onViewTasks}
+                    tasks={feedTasks}
+                    // Retry only the newest turn, and not while one runs: the engine retries a failed request as a new one.
+                    onRetry={entry.kind === "failed" && entry.retryable && !running && entry.requestId !== undefined ? retryOf(entry.requestId) : undefined}
                   />
                 </div>
               ),
             )}
             {running && view?.turnStartedAt !== undefined ? (
-              <div role="status" className={cn("flex items-center gap-2 text-xs text-info", stale && STALE_CLASS)} data-request-id={view.requestId}>
-                <span className="size-2 animate-pulse rounded-full bg-info" />
+              <div role="status" className={cn("flex items-center gap-3 py-1 text-sm text-muted-foreground", stale && STALE_CLASS)} data-request-id={view.requestId}>
+                <WorkingDots />
                 working · {elapsed(view.turnStartedAt, now)}
               </div>
             ) : null}
           </div>
         )}
-        <JumpToLatestButton feed={feed} />
+        <ConversationScrollButton feed={feed} className="size-8" />
       </div>
       {session.projectId === null ? (
         <div role="note" className="border-t border-border px-6 py-4 text-sm">
@@ -140,6 +161,7 @@ export function Thread({
           stopping={stopping}
           stopRefused={stopRefused}
           armed={keys.armed}
+          seed={seed}
           onSend={(text) => {
             // Your own line brings you back to the end, wherever you had scrolled to.
             feed.sent();

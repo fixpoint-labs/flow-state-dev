@@ -1,5 +1,6 @@
+// FIX-2078; FIX-1794 S7, FIX-2078; FIX-2345; FIX-2083; FIX-2122; FIX-2115; FIX-1872 BR-9 as amended, FIX-2266; FIX-2080; FIX-2159; BR-27.
 /**
- * How a conversation hears a task it filed end (FIX-1794 S7, FIX-2078): the
+ * How a conversation hears a task it filed end: the
  * internal entries its notices arrive on.
  *
  * - **`onTaskSettled`** is orchestration's entry (`taskSettledEntry`), which
@@ -9,37 +10,35 @@
  *   lands as a line under the delegate's name and, when its coordinator has a
  *   turn of its own (judgment or best-fit routing), wakes that turn to read it
  *   and decide. The turn reads the ending as a `getTask` call and its result
- *   for the task, the row in full, never as a user's message (FIX-2345,
- *   `./task-ending-read`). A task that failed for good is reported to the Error Reporter
+ *   for the task, the row in full, never as a user's message (`./task-ending-read`). A task that failed for good is reported to the Error Reporter
  *   first, before the notice is acknowledged, so a report the intake didn't
- *   take goes again with the notice (epic decision (f)). A notice stored before
- *   FIX-2078 for a retry, or for a waited-on row, runs the board's pass, which
+ *   take goes again with the notice (epic decision (f)). A notice an older version
+ *   stored for a retry, or for a waited-on row, runs the board's pass, which
  *   starts the attempt or resumes the turn.
  * - **A task whose result goes to the conversation** (`resultTo:
- *   "conversation"`, a routed task among them, FIX-2083): its answer wakes no
+ *   "conversation"`, a routed task among them): its answer wakes no
  *   turn, and lands as a line under the delegate's name. A conversation that
  *   routes messages hands its completion to its own handling instead
  *   ({@link TaskSettledOptions.onRouted}: the line, and the rounds it feeds),
  *   and a routed round's failure or cancel too, and acknowledges the notice
  *   only once that has run, so a failure there leaves the answer owed. A
- *   failure or cancel of one with no routed brief (a routed task's follow-up,
- *   FIX-2122) is in no round: it is heard as any task's the conversation
+ *   failure or cancel of one with no routed brief (a routed task's follow-up) is in no round: it is heard as any task's the conversation
  *   filed, by the one decision above. A routed failure whose brief names
  *   the judgment turn's filing call ({@link filedByTurn}) is said after the
- *   routing's handling too, under the same decision (FIX-2115). A policy's
+ *   routing's handling too, under the same decision. A policy's
  *   routed failure is said after it as one line, naming the delegate and the
- *   error, and wakes no turn (FIX-1872 BR-9 as amended, FIX-2266).
+ *   error, and wakes no turn.
  *
- * An ending frees its session (FIX-2080), so each notice also runs the board's
+ * An ending frees its session, so each notice also runs the board's
  * pass when a row is startable: the pass, not this entry, starts it.
  *
  * A user's running turn may take a notice itself after it answers
- * (FIX-2159, `./take-finished`): it runs this same handling
+ * (`./take-finished`): it runs this same handling
  * ({@link settleTakenNotice}) in its own request and says the line there, and
  * the copy queued here then finds the notice cleared.
  *
  * A notice that arrives while the conversation is replying waits for the
- * reply to end, then runs (BR-27): the engine's `defer` patience. At most 32
+ * reply to end, then runs: the engine's `defer` patience. At most 32
  * notices wait on a conversation in a process; the engine refuses the next,
  * which stays owed on its row for the conversation's pass, once past due.
  *
@@ -48,20 +47,24 @@
  * notice stays owed on its row.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
+import { endTaskSubscriptions } from "../subscriptions/subscribe";
+import { subscriptionResources } from "../subscriptions/rows";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import { taskSettledEntry as orchestrationTaskSettledEntry } from "@flow-state-dev/orchestration";
 import {
-  clearNotice,
-  decideNotice,
   isTerminalStatus,
-  noticeKey,
   noticeMetadata,
   noticeText,
-  type NoticePolicy,
   type Task,
   type TaskCollectionRef,
   type TaskNotice
 } from "@flow-state-dev/orchestration/tasks";
+import {
+  clearNotice,
+  decideNotice,
+  noticeKey,
+  type NoticePolicy,
+} from "@flow-state-dev/orchestration/internal";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { filedByTurn, routedBriefOf, routedBriefSchema } from "../coordinator/routed-brief";
@@ -74,7 +77,7 @@ import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
 import { admitOwnTask, markAdmittedTask } from "./task-admission";
 import { anotherTurnWaitsOnItsPlan } from "./plan";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
-import { delegateAnswerMetadata } from "./delegate-answer";
+import { answerTextOf, delegateAnswerMetadata } from "./delegate-answer";
 
 /** A notice, as the entries take it. */
 export const taskNoticeSchema = z
@@ -128,27 +131,18 @@ export interface TaskSettledOptions {
   readonly turn: BlockDefinition<any, any>;
   /** Whether the running conversation's coordinator has a turn that reads a notice, or hears it as a line only. */
   readonly policy: (ctx: BlockContext) => NoticePolicy;
+  // FIX-2083; FIX-2122; FIX-2115.
   /**
    * A conversation-result task's completion, and a routed round's failure or
    * cancel, acted on once like any notice, and handed here instead of a line
    * ({@link RoutedEnding}): a coordinator's routing lands the answer and feeds
-   * its rounds (FIX-2083). A failure or cancel of a row with no routed brief
-   * (a routed task's follow-up, FIX-2122) is in no round, and is never handed
+   * its rounds. A failure or cancel of a row with no routed brief
+   * (a routed task's follow-up) is in no round, and is never handed
    * here: it is heard as any task's the conversation filed. A failure of a
    * task the coordinator's own turn filed ({@link filedByTurn}) is handed here
-   * too, and then also lands as a line and wakes that turn (FIX-2115).
+   * too, and then also lands as a line and wakes that turn.
    */
   readonly onRouted?: BlockDefinition<any, any>;
-}
-
-/**
- * A completed task's answer, as a line the user reads: its output when that
- * is text (an agent worker's answer), or its `answer` (a coder's run, whose
- * output also carries its branch and commits). `undefined` when blank or absent.
- */
-export function answerTextOf(output: unknown): string | undefined {
-  const text = typeof output === "string" ? output : (output as { answer?: unknown } | null | undefined)?.answer;
-  return typeof text === "string" && text.trim() !== "" ? text : undefined;
 }
 
 /** What a conversation-result task's ending hands {@link TaskSettledOptions.onRouted}. */
@@ -182,8 +176,9 @@ export const AFTER_REPLY_CONCURRENCY = { policy: "defer", key: replyLine } as co
 const passLine: ConcurrencyKey = (ctx) =>
   ctx.sessionId === undefined ? undefined : `${ctx.tenantId ?? ""}\u0000pass\u0000${ctx.sessionId}`;
 
+// FIX-2078.
 /**
- * Set on the board's run entry (FIX-2078): one pass at a time per session. A
+ * Set on the board's run entry: one pass at a time per session. A
  * second waits until the running one ends, then runs as a request of its own,
  * which reads what was written meanwhile: a pass reads its board once per
  * request, so a running pass can't see a retry or an ending another request
@@ -197,16 +192,17 @@ function noteSeen(ctx: BlockContext, key: string) {
     (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
       ctx.session.atomicState(mutator as never),
     (state: Readonly<Record<string, unknown>>) => {
-      const seen = (state[TASK_NOTICES_STATE] ?? []) as string[];
+      const seen = state[TASK_NOTICES_STATE] as string[];
       if (seen.includes(key)) return { state: {}, result: false };
       return { state: { [TASK_NOTICES_STATE]: [...seen, key].slice(-MAX_NOTICE_KEYS) }, result: true };
     }
   );
 }
 
+// FIX-1802 S5.
 /**
  * What every notice does first: free the session it ran in, and end the
- * chain count of a top task that ended (FIX-1802 S5).
+ * chain count of a top task that ended.
  */
 async function onEnding(ctx: BlockContext, notice: TaskNotice): Promise<void> {
   const ref = await ownConversationLedger(ctx);
@@ -249,6 +245,10 @@ async function reportFailure(ctx: BlockContext, notice: TaskNotice): Promise<voi
  */
 async function beforeAcknowledge(ctx: BlockContext, notice: TaskNotice): Promise<void> {
   await onEnding(ctx, notice);
+  // A task that failed or was cancelled has nobody left to hear its events:
+  // the subscriptions its session made end (FIX-2534, epic ER-7 as amended).
+  // A completed task's stay, so its session hears its PR until the PR closes.
+  if (notice.ending === "errored" || notice.ending === "cancelled") await endTaskSubscriptions(ctx, notice.taskId, notice.ending);
   await reportFailure(ctx, notice);
 }
 
@@ -264,8 +264,9 @@ async function acknowledgeOnce(ctx: BlockContext, ref: TaskCollectionRef, row: T
   return first === true;
 }
 
+// FIX-2159.
 /**
- * A notice a user's running turn took itself (FIX-2159), handled as
+ * A notice a user's running turn took itself, handled as
  * `onTaskSettled` handles one: the same steps, in the same order, so the
  * ending is heard once whichever request took it. Only what is said
  * differs: the caller says the line in its own request rather than waking a
@@ -279,10 +280,11 @@ export async function settleTakenNotice(ctx: BlockContext, ref: TaskCollectionRe
   return acknowledgeOnce(ctx, ref, row, notice);
 }
 
+// FIX-2077.
 /**
  * The turn a notice wakes. In a task session whose task waits on its pieces,
- * its answer is noted as the task's result for the check at the request's end
- * (FIX-2077); anywhere else the note is nothing.
+ * its answer is noted as the task's result for the check at the request's end;
+ * anywhere else the note is nothing.
  */
 function wokenTurnOf(options: TaskSettledOptions) {
   return sequencer({ name: "conversation-woken-turn", inputSchema: z.object({ message: z.string() }) })
@@ -310,7 +312,7 @@ const runPass = handler({
   inputSchema: z.unknown(),
   outputSchema: z.object({}),
   execute: async (_input, ctx) => {
-    await triggerPass(ctx as never);
+    await triggerPass(ctx);
     return {};
   }
 });
@@ -337,22 +339,23 @@ function resultLine(
  * on once by the dedupe, a versioned write.
  */
 export function taskSettledEntry(options: TaskSettledOptions) {
+  // FIX-2083; FIX-2115; FIX-1872 BR-9 as amended, FIX-2266.
   /**
-   * A conversation-result task's ending (FIX-2083). With a routing layer, a
+   * A conversation-result task's ending. With a routing layer, a
    * completion goes to it, and a routed round's failure or cancel too, and the
    * notice is acknowledged after; `act` is what is said then. A failure of a
    * task the coordinator's own turn filed ({@link filedByTurn}) is said, and
    * wakes that turn under the conversation's policy, as any task the turn
-   * filed does, so it can file the work again (FIX-2115). A cancel of one is
-   * not: whoever cancelled it knows, as FIX-2083's cancel rule has it. A
+   * filed does, so it can file the work again. A cancel of one is
+   * not: whoever cancelled it knows, as the cancel rule has it. A
    * policy's failure is said after its routing, as one line under the
    * delegate's name with its error, and wakes no turn; its cancel says
-   * nothing (FIX-1872 BR-9 as amended, FIX-2266). Anything else, and any
+   * nothing. Anything else, and any
    * ending with no routing layer, lands as a line now.
    */
   const settleConversationResult = async (ctx: BlockContext, ref: TaskCollectionRef, row: Task, notice: TaskNotice): Promise<Settled> => {
     const key = noticeKey(notice);
-    const acted = ((ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] ?? []) as string[];
+    const acted = (ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] as string[];
     // Acted on already, by a run that stopped before clearing the marker.
     if (acted.includes(key)) {
       await ref.patchMetadata(row.id, clearNotice(notice));
@@ -403,9 +406,8 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     outputSchema: settledSchema,
     sessionStateSchema: z.object(conversationBoardStateShape),
     requestStateSchema: taskEndingReadsStateSchema,
-    resources: { ...taskChainResources },
-    execute: async (notice: TaskNotice, rawCtx): Promise<Settled> => {
-      const ctx = rawCtx as unknown as BlockContext;
+    resources: { ...taskChainResources, ...subscriptionResources },
+    execute: async (notice: TaskNotice, ctx): Promise<Settled> => {
       if (notice.boardId !== CONVERSATION_LEDGER_ID) return { act: "none" };
       const ref = await ownConversationLedger(ctx);
       const row = ref?.get(notice.taskId);
@@ -441,8 +443,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     inputSchema: settledSchema,
     outputSchema: z.object({}),
     sessionStateSchema: z.object(conversationBoardStateShape),
-    execute: async (settled: Settled, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (settled: Settled, ctx) => {
       const notice = settled.notice as TaskNotice;
       const ref = await ownConversationLedger(ctx);
       await noteSeen(ctx, noticeKey(notice));

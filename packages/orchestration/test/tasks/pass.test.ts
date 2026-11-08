@@ -5,7 +5,7 @@
  * wake still records when its next debt falls due.
  */
 import { describe, expect, it } from "vitest";
-import { DISPATCH_SEAM } from "@flow-state-dev/core/types";
+import { DISPATCH_SEAM } from "@flow-state-dev/core/internal";
 import { payBoardDebts, settlePassWake } from "../../src/tasks/notice/pass";
 import { NOTICE_DUE_MS } from "../../src/tasks/notice/task-notice";
 import type { Task } from "../../src/tasks/schema/task";

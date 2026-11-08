@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root .",
     "test:watch": "vitest --root .",
-    "fsdev": "tsx ../../../packages/cli/bin/fsdev.ts"
+    "fsdev": "fsdev"
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
@@ -17,9 +17,11 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@flow-state-dev/fsdev": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "tsx": "^4.21.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^3.2.4"
   }
 }

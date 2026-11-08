@@ -24,10 +24,14 @@
  * admitted only when its id equals its kind, and is normalized to singleton.
  *
  * The registry also enforces cross-flow schema compatibility: at registration
- * time, a flow's `user.stateSchema`, `org.stateSchema`, and user/org resource
- * schemas are validated against every other already-registered flow's
- * declarations. Incompatible pairs throw a `CrossFlowSchemaConflictError` —
- * see `registry/errors.ts` and the `state-and-scopes` architecture doc.
+ * time, a flow's user and org state schemas, and user/org resource schemas,
+ * are validated against every other already-registered flow's declarations.
+ * The state schemas compared are the flow's merged ones (`scopeStateSchema`),
+ * so a field a block declares counts, and they are held to the same rule
+ * `defineFlow` holds one flow's declarations to: a field two flows type or
+ * default differently is refused. Incompatible pairs throw a
+ * `CrossFlowSchemaConflictError` — see `registry/errors.ts` and the
+ * `state-and-scopes` architecture doc.
  *
  * The two halves are gated at different granularities (see
  * {@link collectScopeDeclaration}): the scope record is a single blob per
@@ -41,6 +45,12 @@
  * and never disarms. A registry that never holds one refuses nothing on that
  * account. Every registry, armed or not, refuses a single resource whose
  * storage key has a segment beginning `~` (`refuseOwnerMarkedSingleResources`).
+ *
+ * The registry also holds every collection that declares `indexes`, for the
+ * index writer on the runtime's stores, and refuses one index name at two
+ * versions on overlapping patterns in one scope
+ * (`admitIndexedCollections` in `resources/resource-indexes.ts`). Like the
+ * owner-key declarations, these are kept across unregister.
  */
 import type {
   DeclaredResourceEntry,
@@ -50,6 +60,12 @@ import type {
 } from "@flow-state-dev/core/types";
 import { isProjectedResourceCollection } from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
+import {
+  isMergeableScopeStateSchema,
+  mergeScopeStateSchemas,
+  ScopeStateSchemaConflictError
+} from "@flow-state-dev/core/helpers";
+import { scopeStateSchema } from "../context/scope-state-defaults";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { resolveResourceIsolation } from "../stores/scope-keys";
@@ -64,6 +80,7 @@ import {
   refuseOwnerMarkedSingleResources,
   type OwnerPrivateDeclaration
 } from "../resources/owner-private";
+import { admitIndexedCollections, type IndexedCollection } from "../resources/resource-indexes";
 
 /**
  * Registry contract used by server routing/execution layers.
@@ -114,6 +131,12 @@ export interface FlowRegistry {
    * surfaces consume this.
    */
   describeSharedSchemas(): SharedSchemasDescription;
+  /**
+   * Every collection that declares `indexes`, across every flow this registry
+   * has admitted, unregistered ones included. The runtime's index writer
+   * computes each write's entries from it.
+   */
+  indexedCollections(): readonly IndexedCollection[];
 }
 
 export interface SharedSchemasDescription {
@@ -136,7 +159,7 @@ type ScopeParticipant = {
 /**
  * In-memory flow registry implementation for runtime and tests.
  */
-export class InMemoryFlowRegistry implements FlowRegistry {
+class InMemoryFlowRegistry implements FlowRegistry {
   /** The global address index — the one map `get`, `list`, and admission read. */
   private readonly flowsById = new Map<string, FlowInstance>();
 
@@ -164,6 +187,9 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    */
   private ownerPrivate: readonly OwnerPrivateDeclaration[] = [];
 
+  /** Every indexed collection admitted, kept across unregister for the reason above. */
+  private indexed: readonly IndexedCollection[] = [];
+
   /**
    * Registers a single flow instance. Identity is validated first (see the
    * file header), then cross-flow schemas; a failure of either leaves every
@@ -178,6 +204,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
       this.flowsById.values(),
       this.ownerPrivate
     );
+    const indexed = admitIndexedCollections(flow, this.indexed);
 
     // Validate both scopes before mutating any state. If the org-scope
     // check throws after the user-scope check passes, no participant entry
@@ -198,6 +225,12 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     this.indexParticipant("user", flow.kind, userDecl);
     this.indexParticipant("org", flow.kind, orgDecl);
     this.ownerPrivate = ownerPrivate;
+    this.indexed = indexed;
+  }
+
+  /** Every indexed collection admitted. See {@link FlowRegistry.indexedCollections}. */
+  indexedCollections(): readonly IndexedCollection[] {
+    return this.indexed;
   }
 
   /**
@@ -209,6 +242,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     }
   }
 
+  // FIX-1207.
   /**
    * Releases one address, and **deliberately leaves the participant entry for
    * that kind in place** — including when this was the kind's last instance.
@@ -239,7 +273,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    *
    * All three are a process restart away from fixed, and they are the side of
    * the trade that loses no data. Closing them means changing what identity
-   * the check keys on, which is FIX-1207's — see `validateScope`. Pinned by
+   * the check keys on, which is a separate change — see `validateScope`. Pinned by
    * the "known gap" case in `test/registry/runtime-registration.test.ts`.
    */
   unregister(id: string): boolean {
@@ -304,6 +338,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     });
   }
 
+  // FIX-1207; FIX-435.
   /**
    * Compares an incoming declaration against every other registered kind.
    *
@@ -328,10 +363,10 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    *      instances of one definition are therefore never compared, even when
    *      their overrides disagree over a shared cell.
    *
-   * Both are excluded **by design, not by oversight**, and both are FIX-1207's.
+   * Both are excluded **by design, not by oversight**, and both are a separate change.
    * They are one question — what identity the check keys on — and answering it
    * means extending the identity model, which is new capability. This check had
-   * not run at all since FIX-435; restoring it is the repair, and widening it
+   * not run at all since resources went flat; restoring it is the repair, and widening it
    * here would turn a one-file fix into a subsystem change.
    */
   private validateScope(
@@ -347,6 +382,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
 
       if (incoming.stateSchema !== undefined && existing.stateSchema !== undefined) {
         checkPair(scope, "stateSchema", existing.flowKind, flowKind, existing.stateSchema, incoming.stateSchema);
+        checkStatePairStrictly(scope, existing.flowKind, flowKind, existing.stateSchema, incoming.stateSchema);
       }
 
       // Exact-ref comparison — exclusion 1 above. Every incoming declaration
@@ -475,6 +511,7 @@ function storageRef(
   return storageKeys[accessor] ?? accessor;
 }
 
+// FIX-435.
 /**
  * What one flow contributes to a scope's shared-storage view.
  *
@@ -486,8 +523,8 @@ function storageRef(
  *     by the flow-level `isolateUserState` / `isolateOrgState` flag
  *     (`resolveUserStorageKey`). Flow-level isolation removes it from the
  *     shared view entirely.
- *   - **Resources** key per resource off the flat `flow.resources` map
- *     (FIX-435), each entry carrying its own intrinsic `scope` and its own
+ *   - **Resources** key per resource off the flat `flow.resources` map,
+ *     each entry carrying its own intrinsic `scope` and its own
  *     `flowIsolation` override — which wins over the flow-level flag in BOTH
  *     directions. So effective isolation is resolved per resource
  *     (`resolveResourceIsolation`, the same helper the storage-key path uses),
@@ -496,20 +533,17 @@ function storageRef(
  *     flow's, so it does not participate.
  *
  * Before this was fixed the resource half read `flow.user.resources` /
- * `flow.org.resources` — maps that stopped existing at FIX-435 — so it
+ * `flow.org.resources` — maps that no longer exist — so it
  * iterated `undefined` and collected nothing for either scope.
  */
 function collectScopeDeclaration(
   flow: FlowInstance,
   scope: ConflictScope
 ): ScopeDeclaration | undefined {
-  const scopeConfig = scope === "user" ? flow.user : flow.org;
   const flowIsolatesScope =
     scope === "user" ? flow.isolateUserState : flow.isolateOrgState;
 
-  const stateSchema = flowIsolatesScope
-    ? undefined
-    : (scopeConfig as { stateSchema?: ZodTypeAny } | undefined)?.stateSchema;
+  const stateSchema = flowIsolatesScope ? undefined : scopeStateSchema(flow, scope);
 
   const resourceSchemas = emptySchemaMap<ResourceDeclarations>();
   // Same-flow cell occupancy, keyed by `(effective isolation, ref)`. Separate
@@ -609,6 +643,43 @@ function checkResourcePair(
     detail: `one marks secret ${list(a.secret)}, the other ${list(b.secret)}; declare the same secret fields`,
     collection,
   });
+}
+
+/**
+ * Two flows' scope state schemas, held to the rule `defineFlow` holds one
+ * flow's declarations to (`mergeScopeStateSchemas`): a field the two type or
+ * default differently is refused, naming both flows. One user or org record is
+ * shared by both, so a value one writes is a value the other reads.
+ *
+ * Runs after {@link checkPair}, which already refuses what it can tell apart;
+ * this adds what it lets through (a different default, a nullable on one side).
+ * A root that is not a `z.object` can't be merged, so the pair is left to
+ * `checkPair` alone. Any other error is a bug and propagates.
+ */
+function checkStatePairStrictly(
+  scope: ConflictScope,
+  flowA: string,
+  flowB: string,
+  schemaA: ZodTypeAny,
+  schemaB: ZodTypeAny
+): void {
+  if (!isMergeableScopeStateSchema(schemaA) || !isMergeableScopeStateSchema(schemaB)) return;
+  try {
+    mergeScopeStateSchemas(`Flows "${flowA}" and "${flowB}"`, scope, [
+      { schema: schemaA, source: `flow "${flowA}"` },
+      { schema: schemaB, source: `flow "${flowB}"` }
+    ]);
+  } catch (error) {
+    if (!(error instanceof ScopeStateSchemaConflictError)) throw error;
+    throw new CrossFlowSchemaConflictError({
+      scope,
+      field: `stateSchema${error.path.slice(`${scope}.state`.length)}`,
+      flowA,
+      flowB,
+      reason: error.conflict === "default" ? "incompatible-default" : "incompatible-types",
+      detail: error.detail
+    });
+  }
 }
 
 function checkPair(

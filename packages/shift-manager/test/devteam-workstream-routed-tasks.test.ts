@@ -32,8 +32,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { GeneratorModel, HarnessBlock, ModelResolver } from "@flow-state-dev/core/types";
-import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
+import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import { handler } from "@flow-state-dev/core";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { runAction } from "../src/lib/action";
 import type { Client } from "@flow-state-dev/client";
@@ -57,7 +59,7 @@ const FIRST_ASK = "Add guest checkout.";
 const SECOND_ASK = "Add a wishlist too.";
 
 type ToolCall = { toolName: string; args: Record<string, unknown> };
-type Row = Record<string, any>;
+type StoredTask = Record<string, any>;
 
 /** One tool call per step, then a closing line. */
 function stepping(id: string, calls: ToolCall[], closing: string): GeneratorModel {
@@ -257,7 +259,7 @@ async function handOn(lead: Lead, coderRuns: ReturnType<typeof gate>, options: {
     .sessionId!;
   const pc = (await createWorkforceClient(client).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
   await runAction(client, "coordinator", pc, "respond", { message: FIRST_ASK });
-  const rows = async () => Object.values(await lab!.stored("user", "tasks/")) as Row[];
+  const rows = async () => Object.values(await lab!.stored("user", "tasks/")) as StoredTask[];
   const routedRow = async (body?: string) =>
     (await rows()).find((r) => r.sealed?.messageRequestId !== undefined && (body === undefined || r.sealed.body === body));
   const coderRow = async () => (await rows()).find((r) => r.sealed?.messageRequestId === undefined);

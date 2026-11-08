@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, Suspense, useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { memo, Suspense, useState, useCallback, useEffect, useMemo, useRef, type ComponentProps, type CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -28,7 +28,6 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-  ScrollOnNewRequest,
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
@@ -63,6 +62,8 @@ import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
 import { modeById } from "@/lib/modes";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ChatAgentMessage } from "@/components/chat-agent/message";
+import { ChatAgentFailedTurn, FailedTurnRetryProvider, useFailedTurnRetry } from "@/components/chat-agent/failed-turn";
+import { useSendingSession, useSendSignal, useSignalledFeed, type SendSignal } from "@/components/chat-feed";
 import { cn } from "@/lib/utils";
 import { railSessions } from "@/lib/rail-sessions";
 import { COORDINATOR_FLOWS, defaultConversation, isCoordinatorFlow, WORKER_FLOWS, SHELL_FLOW } from "@/lib/workforce-shell";
@@ -79,6 +80,9 @@ const chatAgentRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   message: ChatAgentMessage,
   block_trace: AgentResponseCard,
+  // A failed turn's reason with Retry; which request gets Retry is the chat
+  // panel's call, handed down through `FailedTurnRetryProvider`.
+  error: ChatAgentFailedTurn,
 };
 
 
@@ -283,7 +287,11 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     [sidebarWidth],
   );
 
-  const voice = useVoice(session, {
+  // The chat panel is drawn in both responsive trees, so what plays a reply lives here, once: one player
+  // speaks each reply once. Its voice line tells every drawing's feed the user sent (`chatSignal`).
+  const chatSignal = useSendSignal();
+  const chatSending = useSendingSession(session, chatSignal);
+  const voice = useVoice(chatSending, {
     action: "run",
     buildInput: (text) => ({ message: text, mode, thinkingStyle, features }),
     autoPlayTTS: ttsEnabled,
@@ -302,6 +310,10 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     autoResume: true,
     live: pickedLive,
   });
+  // A worker's composer and Retry each land a line of the user's in the picked conversation: they tell
+  // `pickedSignal`, which each drawing's feed hears.
+  const pickedSignal = useSendSignal();
+  const pickedRetry = useFailedTurnRetry(useSendingSession(pickedSession, pickedSignal));
   // A composer settles a send on that request's own status, read from the
   // picked flow, rather than on the session's stream closing.
   const pickedAddress = picked?.address;
@@ -418,13 +430,13 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   );
 
   const handleNewSession = useCallback(
-    async (leaf: FlowNavigatorLeafState) => {
+    async () => {
       // Set before the await: the new session can be drawn before it returns.
+      // The open leaf hears it on the user's change notices.
       how.current = "push";
       await flow.createSession();
       setResolving(null);
       setPicked(null);
-      leaf.refresh();
       setIsRailDrawerOpen(false);
       setMobilePanel("chat");
     },
@@ -461,14 +473,6 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     [flow]
   );
 
-  // The assistant's leaf, while it is open, so a session that gets its title
-  // after the first turn can be re-read into the rail.
-  const assistantLeafRefresh = useRef<(() => void) | null>(null);
-  const sessionTitle = session.detail?.title;
-  useEffect(() => {
-    if (sessionTitle !== undefined) assistantLeafRefresh.current?.();
-  }, [sessionTitle]);
-
   const railSlots = useMemo(
     () => ({
       // "New session" sits on the assistant's own row. Coordinators get none:
@@ -477,8 +481,6 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
         leaf.kind === SHELL_FLOW ? (
           <AssistantLeafToolbar
-            leaf={leaf}
-            refreshRef={assistantLeafRefresh}
             disabled={flow.isLoading}
             onNewSession={handleNewSession}
           />
@@ -539,6 +541,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
       isDisabled={isDisabled}
       conversationLoading={conversationLoading}
       session={session}
+      sendSignal={chatSignal}
       voice={voice}
       ttsEnabled={ttsEnabled}
       onToggleTTS={() => setTtsEnabled((v) => !v)}
@@ -561,21 +564,25 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
         user={KITCHEN_SINK_USER_ID}
         requestStatus={pickedRequestStatus}
         onBack={() => setPicked(null)}
+        onSent={pickedSignal.notify}
         conversation={
           isCoordinatorFlow(picked.kind) ? null : (
-          <Conversation className="min-h-0 flex-1" data-testid="conversation">
+          <FailedTurnRetryProvider value={pickedRetry.retryFor}>
+          {/* Stays mounted across picks: the feed's key opens each picked session at its end. */}
+          <SignalledConversation className="min-h-0 flex-1" data-testid="conversation" resetKey={picked.sessionId} signal={pickedSignal}>
             <ConversationBody
               items={pickedSession.items}
               isStreaming={pickedSession.isStreaming}
               isFinishing={pickedSession.isFinishing}
               statusMessage={pickedSession.statusMessage}
               isLoading={pickedSession.isLoading}
-              error={pickedSession.error}
+              error={pickedRetry.shownError}
               emptyTitle="Nothing here yet"
               emptyDescription={`This ${picked.kind} session has no turns yet.`}
             />
             <ConversationScrollButton />
-          </Conversation>
+          </SignalledConversation>
+          </FailedTurnRetryProvider>
           )
         }
       />
@@ -747,35 +754,21 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   );
 }
 
-/**
- * The assistant's open leaf's action, on its row: "New session", plus a
- * handle on the leaf's re-read for as long as the leaf is open.
- */
+/** The assistant's open leaf's action, on its row: "New session". */
 function AssistantLeafToolbar({
-  leaf,
-  refreshRef,
   disabled,
   onNewSession,
 }: {
-  leaf: FlowNavigatorLeafState;
-  refreshRef: React.MutableRefObject<(() => void) | null>;
   disabled: boolean;
-  onNewSession: (leaf: FlowNavigatorLeafState) => Promise<void>;
+  onNewSession: () => Promise<void>;
 }) {
-  const { refresh } = leaf;
-  useEffect(() => {
-    refreshRef.current = refresh;
-    return () => {
-      if (refreshRef.current === refresh) refreshRef.current = null;
-    };
-  }, [refresh, refreshRef]);
   return (
     <Button
       variant="ghost"
       size="icon-xs"
       aria-label="New session"
       title="New session"
-      onClick={() => void onNewSession(leaf)}
+      onClick={() => void onNewSession()}
       disabled={disabled}
     >
       <Plus className="size-3.5" />
@@ -836,6 +829,9 @@ interface ChatPanelProps {
   isDisabled: boolean;
   conversationLoading: boolean;
   session: ReturnType<typeof useSession>;
+  /** The assistant conversation's "the user sent", heard by every drawing's feed. */
+  sendSignal: SendSignal;
+  /** The page's one voice: recording sends through it, and it plays each reply once. */
   voice: ReturnType<typeof useVoice>;
   ttsEnabled: boolean;
   onToggleTTS: () => void;
@@ -846,6 +842,15 @@ interface ChatPanelProps {
   onThinkingEnabledChange: (value: boolean) => void;
   onSetFeatures: (value: Features) => void;
   onSubmit: (msg: PromptInputMessage) => Promise<void>;
+}
+
+/** A `Conversation` with a feed of its own, keyed by `resetKey` and told by `signal` when the user sends. */
+function SignalledConversation({
+  resetKey,
+  signal,
+  ...props
+}: Omit<ComponentProps<typeof Conversation>, "feed" | "resetKey"> & { resetKey: string | null; signal: SendSignal }) {
+  return <Conversation {...props} feed={useSignalledFeed(resetKey, signal)} />;
 }
 
 /** Memoized conversation body — only re-renders when items/streaming/error change, not on typing. */
@@ -876,7 +881,6 @@ const ConversationBody = memo(function ConversationBody({
             <SessionConversationLoading />
           ) : (
             <>
-              <ScrollOnNewRequest items={items} />
               {items.length === 0 && (
                 <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
               )}
@@ -958,6 +962,7 @@ function ChatPanel({
   isDisabled,
   conversationLoading,
   session,
+  sendSignal,
   voice,
   ttsEnabled,
   onToggleTTS,
@@ -969,27 +974,43 @@ function ChatPanel({
   onSetFeatures,
   onSubmit,
 }: ChatPanelProps) {
+  // The user's line rises when it lands. Each send that lands one tells `sendSignal`, which this drawing's
+  // feed and the other tree's hear: Retry through the session below, the composer through `send`, voice
+  // through the page's `useVoice`.
+  const feed = useSignalledFeed(session.snapshot?.sessionId ?? null, sendSignal);
+  const { retryFor, shownError } = useFailedTurnRetry(useSendingSession(session, sendSignal));
+  const { notify } = sendSignal;
+  const send = useCallback(
+    (msg: PromptInputMessage) => {
+      if (msg.text.trim().length > 0) notify();
+      return onSubmit(msg);
+    },
+    [notify, onSubmit],
+  );
   return (
     // Bridge the session's streaming resume to the inline approval cards
     // (the ui Approval renderer) so approving/rejecting a suspension streams the
     // continuation into the chat live, without a page refresh.
-    <SuspensionResolverProvider resolve={session.resumeSuspension}>
+    <SuspensionResolverProvider resolve={session.answerSuspension}>
+    <FailedTurnRetryProvider value={retryFor}>
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <Conversation className="min-h-0 flex-1" data-testid="conversation">
+      <Conversation className="min-h-0 flex-1" data-testid="conversation" feed={feed}>
         <ConversationBody
           items={session.items}
           isStreaming={session.isStreaming}
           isFinishing={session.isFinishing}
           statusMessage={session.statusMessage}
           isLoading={conversationLoading}
-          error={session.error}
+          // A failed turn shows as its own line in the stream; this box is for
+          // errors no item carries, such as a refused send.
+          error={shownError}
         />
         <ConversationScrollButton />
       </Conversation>
 
       <div className="border-t">
         {!conversationLoading && session.items.length === 0 && (
-          <SuggestionRow onSuggestionClick={onSetMessage} disabled={isDisabled} />
+          <SuggestionRow mode={mode} onSuggestionClick={onSetMessage} disabled={isDisabled} />
         )}
         <StuckRequestBanner session={session} />
         {/* Outside the conversation, deliberately: a child session's output is not
@@ -1008,7 +1029,7 @@ function ChatPanel({
             <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
-          <PromptInput onSubmit={onSubmit}>
+          <PromptInput onSubmit={send}>
             <PromptInputTextarea
               name="message"
               placeholder={
@@ -1031,6 +1052,7 @@ function ChatPanel({
         </div>
       </div>
     </section>
+    </FailedTurnRetryProvider>
     </SuspensionResolverProvider>
   );
 }

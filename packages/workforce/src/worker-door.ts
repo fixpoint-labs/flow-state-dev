@@ -1,6 +1,7 @@
+// FIX-1690.
 /**
  * A worker's door: `respond`, the public action every worker flow declares
- * for a user's message (FIX-1690).
+ * for a user's message.
  *
  * An app that wants to send a user's line into a worker's session sends it to
  * `respond`, on any worker, without knowing the worker's flow. The hire's

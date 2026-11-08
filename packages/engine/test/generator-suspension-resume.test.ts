@@ -21,10 +21,11 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { expandRequestToMessages } from "../src/context/history";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { DurabilityProvider } from "../src/durability/types";

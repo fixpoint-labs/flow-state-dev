@@ -9,7 +9,8 @@ import { z } from "zod";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { createExecutionContext, createInMemoryStores } from "@flow-state-dev/engine";
+import { createExecutionContext } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { conceptCollection, type ConceptState } from "../src/concepts";
 
 let callCounter = 0;

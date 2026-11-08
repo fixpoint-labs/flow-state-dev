@@ -52,7 +52,7 @@ const RUNNING = "in_progress";
 const onQuestion = (row: Record<string, any>) => {
   if (row.status !== RUNNING || !Array.isArray(row.holds)) return false;
   const answered = new Set(((row.steers ?? []) as Array<{ answers?: string }>).flatMap((s) => (typeof s.answers === "string" ? [s.answers] : [])));
-  return (row.holds as Array<{ id: string; source?: { kind?: string } }>).some((h) => h.source?.kind === "row" && !answered.has(h.id));
+  return (row.holds as Array<{ id: string; source?: { kind?: string } }>).some((h) => h.source?.kind === "task" && !answered.has(h.id));
 };
 /** Queued is every open row that isn't running: v2's QUEUED (v2:916). A row waiting on the person is running, held on its question. */
 const isQueued = (status: string) => !DONE.has(status) && status !== RUNNING && status !== "errored";

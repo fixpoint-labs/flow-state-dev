@@ -78,7 +78,7 @@ A config `tier` still applies as the default the model can override. Leave `agen
 
 ## Domain filters
 
-Restrict or exclude domains where the provider supports it:
+Restrict results to some domains, or exclude others:
 
 ```ts
 tools.search({
@@ -87,7 +87,7 @@ tools.search({
 });
 ```
 
-Exa, Tavily, Perplexity, and Parallel apply these natively. Serper emulates them with Google `site:` operators (multiple include domains are OR-grouped). Brave and Perplexity Sonar have no domain filter, so the values are ignored there. Sonar is the provider a `deep` request can auto-select, so if you depend on domain filtering, pin a provider that supports it.
+Every provider applies them. Exa, Tavily, Perplexity, Perplexity Sonar, and Parallel use their own filter fields. Serper and Brave write them into the query as `site:` and `-site:` operators, and OR-group multiple include domains. Perplexity and Perplexity Sonar take an include list or an exclude list, not both, so when you set both they apply only the include list, and an excluded subdomain of an included domain can still appear.
 
 ## Provider selection
 

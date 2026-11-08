@@ -88,7 +88,7 @@ async function open(page: Page, name: string): Promise<void> {
 const WORKER_FLOW = "agent";
 
 /** A worker's row on the roster panel, with its "Talk". */
-const rosterRow = (page: Page, worker: string): Locator =>
+const rosterWorker = (page: Page, worker: string): Locator =>
   page.locator(`[data-testid="roster"]:visible [data-worker-id="${worker}"]`);
 
 /** Open the worker flow's kind and its one copy in the rail, unless already open. */
@@ -260,7 +260,7 @@ test("a picked panel names its worker and kind, and Back returns to the assistan
   await expect(picked(page)).toHaveCount(0);
   await expect(page.locator('[data-testid="message-input"]:visible')).toBeEnabled();
 
-  await rosterRow(page, "support.devices").getByTestId("roster-talk").click();
+  await rosterWorker(page, "support.devices").getByTestId("roster-talk").click();
   const worker = picked(page);
   await expect(worker.getByTestId("picked-header-worker")).toHaveText("support.devices");
   await expect(worker.getByTestId("picked-header-flow")).toHaveText("agent worker");
@@ -285,7 +285,7 @@ test("a new support.devices conversation is still open across a reload, with the
 }) => {
   const message = `[scenario:talk-to-worker] where is order ${token()}?`;
   await openShell(page);
-  await rosterRow(page, "support.devices").getByTestId("roster-talk").click();
+  await rosterWorker(page, "support.devices").getByTestId("roster-talk").click();
 
   const panel = picked(page);
   await panel.getByLabel("Message this worker").fill(message);
@@ -326,7 +326,7 @@ test("a failed Talk shows in the worker's roster row, opens nothing, and can be 
     },
   );
   await openShell(page);
-  const worker = rosterRow(page, "support.accounts");
+  const worker = rosterWorker(page, "support.accounts");
   const button = worker.getByTestId("roster-talk");
   await button.click();
 

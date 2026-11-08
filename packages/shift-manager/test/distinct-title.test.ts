@@ -4,10 +4,10 @@
  * row has one of its own.
  */
 import { describe, expect, it } from "vitest";
-import { toBoardRow } from "../src/lib/reads";
+import { toBoardTaskView } from "../src/lib/reads";
 import { distinctTitle } from "../src/lib/tasks";
 
-const row = (data: Record<string, unknown>) => toBoardRow("s1.tasks", "s1", "t1", data);
+const row = (data: Record<string, unknown>) => toBoardTaskView("s1.tasks", "s1", "t1", data);
 
 describe("the Brief's title", () => {
   it("is nothing for a row filed with no title, whose title is its goal", () => {

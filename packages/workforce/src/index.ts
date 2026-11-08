@@ -51,7 +51,6 @@ export { type HireOptions, type WorkerFlowEntry } from "./hire";
 export { workerFlowProblems } from "./worker-flow-contract";
 export { WORKER_ROLES, type WorkerRole } from "./worker-roles";
 export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } from "./shared-resource";
-export { WORKER_TASK_ENTRY } from "./worker-task-entry";
 export {
   conversationLedgers,
   filingConversationBoard,
@@ -64,9 +63,9 @@ export { sessionIdOfFiling } from "./conversation-board/filing-session";
 // A routed task's recent lines (FIX-2083), for a flow of its own whose `work` turn is a generator.
 export { routedTaskHistory } from "./coordinator/routed-brief";
 // Steering a task a worker runs (FIX-2086): the turn a late steer is owed, on
-// every flow whose `work` entry is a `workerTaskEntry`, and how a write starts it.
+// every flow whose `work` entry is a `workerTaskEntry` (declared as the internal
+// entry `onTaskSteered`), and how a write starts it.
 export {
-  STEER_TURN_ENTRY,
   startOwedSteerTurn,
   steerTurnEntry,
   type SteerTurnEntryOptions
@@ -81,12 +80,15 @@ export {
   type FinishedTask,
   type FinishedTasksAnswerAgainOptions
 } from "./conversation-board/take-finished";
-// A delegate's answer, as its message item marks it (FIX-2378).
+// A delegate's answer, as its message item marks it (FIX-2378), and a completed task's answer text.
 export {
+  answerTextOf,
   delegateAnswerMetadata,
   delegateAnswerOf,
   type DelegateAnswer
 } from "./conversation-board/delegate-answer";
+// A task's brief, as its session's `user` line marks it: what the session was handed, not the user's words.
+export { taskBriefMetadata, taskBriefOf, type TaskBrief } from "./conversation-board/task-brief";
 export { MAX_ANSWERS_AGAIN } from "./conversation-board/plan";
 export {
   backfillBoardWakes,
@@ -158,6 +160,7 @@ export * from "./standing-rules";
 export * from "./messages";
 export * from "./error-reporter";
 export * from "./schedules";
+export * from "./subscriptions";
 export {
   defineSessionBoard,
   type SessionBoard,

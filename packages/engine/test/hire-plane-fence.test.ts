@@ -585,7 +585,7 @@ describe("FIX-1529 hire plane", () => {
         },
       })()
     );
-    const reaches = /can reach the rows of owner-private collection "workforce\/roster\/\[owner\]\/\[worker\]"/;
+    const reaches = /can reach the resources of owner-private collection "workforce\/roster\/\[owner\]\/\[worker\]"/;
     const leak = defineFlow({
       kind: "leak",
       actions: {

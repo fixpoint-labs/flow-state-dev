@@ -33,7 +33,7 @@ const fakeSubscribe: Client["subscribe"] = (topics, options) => {
 };
 
 /** A host client: the board read the case controls, and the faked subscribe. */
-function hostClient<T extends { listCollectionItems: unknown }>(resources: T) {
+function hostClient<T extends { listCollectionResources: unknown }>(resources: T) {
   return { resources, subscribe: fakeSubscribe } as unknown as {
     resources: T & import("@flow-state-dev/client").ResourcesApi;
     subscribe: Client["subscribe"];
@@ -46,9 +46,9 @@ import { FlowProvider } from "../src/context/FlowContext";
 const BOARD = "eng.feature.triage";
 const SESSION = "s1";
 
-type Row = { topic: string; clientData: unknown };
+type Listed = { topic: string; clientData: unknown };
 
-const card = (id: string, status: string, extra: Record<string, unknown> = {}): Row => ({
+const card = (id: string, status: string, extra: Record<string, unknown> = {}): Listed => ({
   topic: id,
   clientData: { id, status, ...extra }
 });
@@ -57,18 +57,18 @@ const card = (id: string, status: string, extra: Record<string, unknown> = {}): 
  * A board source whose every read stays open until the case releases it, and
  * which answers with whatever rows the board holds at that moment.
  */
-function heldSource(initial: Row[]) {
+function heldSource(initial: Listed[]) {
   let rows = initial;
   const open: Array<() => void> = [];
-  const listCollectionItems = vi.fn(
+  const listCollectionResources = vi.fn(
     () =>
-      new Promise<{ items: Row[] }>((resolve) => {
+      new Promise<{ items: Listed[] }>((resolve) => {
         open.push(() => resolve({ items: rows }));
       })
   );
   return {
-    listCollectionItems,
-    setRows: (next: Row[]) => {
+    listCollectionResources,
+    setRows: (next: Listed[]) => {
       rows = next;
     },
     /** Reads still open. */
@@ -86,8 +86,8 @@ function heldSource(initial: Row[]) {
 }
 
 /** A source that answers at once, and counts. */
-function fixedSource(items: Row[]) {
-  return { listCollectionItems: vi.fn(async () => ({ items })) };
+function fixedSource(items: Listed[]) {
+  return { listCollectionResources: vi.fn(async () => ({ items })) };
 }
 
 function openSubscription() {
@@ -146,7 +146,7 @@ describe("BoardList · the list (V1)", () => {
     expect(text("t-new")).toBe("New taskpendingada");
     expect(text("t-undated")).toBe("No date on this onecancelled");
     expect(text("t-mid")).toBe("t-midin_progress");
-    expect(source.listCollectionItems).toHaveBeenCalledWith(SESSION, BOARD, {});
+    expect(source.listCollectionResources).toHaveBeenCalledWith(SESSION, BOARD, {});
   });
 
   it("shows a status it does not know as its own word (BR-4)", async () => {
@@ -164,7 +164,7 @@ describe("BoardList · the list (V1)", () => {
   });
 
   it("keeps loading, empty and a failed read apart, and offers a retry on failure (BR-6, BR-7)", async () => {
-    const pending = { listCollectionItems: vi.fn(() => new Promise<never>(() => {})) };
+    const pending = { listCollectionResources: vi.fn(() => new Promise<never>(() => {})) };
     const { unmount } = render(createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, client: hostClient(pending) }));
     expect(document.querySelector('[data-state="loading"]')).not.toBeNull();
     expect(document.querySelector('[data-state="empty"]')).toBeNull();
@@ -179,7 +179,7 @@ describe("BoardList · the list (V1)", () => {
 
     let fail = true;
     const flaky = {
-      listCollectionItems: vi.fn(async () => {
+      listCollectionResources: vi.fn(async () => {
         if (fail) throw new Error("board unavailable");
         return { items: [card("t-1", "pending")] };
       })
@@ -189,7 +189,7 @@ describe("BoardList · the list (V1)", () => {
     expect(document.querySelector('[data-state="empty"]')).toBeNull();
     // Nothing retries by itself.
     await settle();
-    expect(flaky.listCollectionItems).toHaveBeenCalledTimes(1);
+    expect(flaky.listCollectionResources).toHaveBeenCalledTimes(1);
     fail = false;
     await act(async () => screen.getByRole("button", { name: "Retry" }).click());
     await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
@@ -199,7 +199,7 @@ describe("BoardList · the list (V1)", () => {
     // A transport that hands back a `nextCursor` forever, one row per page.
     let n = 0;
     const endless = {
-      listCollectionItems: vi.fn(async () => {
+      listCollectionResources: vi.fn(async () => {
         const row = card(`t-${n++}`, "pending");
         return { items: [row], nextCursor: row.topic };
       })
@@ -209,7 +209,7 @@ describe("BoardList · the list (V1)", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(rowIds()).toEqual([]);
     // Stops at the ceiling rather than reading forever.
-    expect(endless.listCollectionItems).toHaveBeenCalledTimes(1000);
+    expect(endless.listCollectionResources).toHaveBeenCalledTimes(1000);
   });
 
   it("wraps a host's row body in the list's own row, and says what a host's empty slot says", async () => {
@@ -255,12 +255,12 @@ describe("BoardList · live (V2)", () => {
   }
 
   /** Mount a live list and let its mount read land. Hands back the source at one read. */
-  async function mountLive(rows: Row[] = [card("t-1", "pending")]) {
+  async function mountLive(rows: Listed[] = [card("t-1", "pending")]) {
     const source = heldSource(rows);
     const view = renderLive(source);
     await source.release();
     await waitFor(() => expect(rowIds()).toHaveLength(rows.length));
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(1);
     return { source, view };
   }
 
@@ -270,7 +270,7 @@ describe("BoardList · live (V2)", () => {
     await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
     await settle();
     expect(subscriptions).toHaveLength(0);
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(1);
   });
 
   it("subscribes its session's topic narrowed to the board, with a timer for where push can miss a change, and reads on mount", async () => {
@@ -289,14 +289,14 @@ describe("BoardList · live (V2)", () => {
     hear(null);
     expect(source.pending()).toBe(1);
     await source.release();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(2);
   });
 
   it("reads nothing until something under its topic changes", async () => {
     const { source } = await mountLive();
     await settle();
     expect(source.pending()).toBe(0);
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(1);
   });
 
   it("reads the board again on a board notice, and draws the read, never anything the notice says (BR-8, BR-9)", async () => {
@@ -305,7 +305,7 @@ describe("BoardList · live (V2)", () => {
     hear(boardNotice());
     expect(source.pending()).toBe(1);
     await source.release();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(2);
     expect(document.querySelector('li[data-task-id="t-1"] [data-task-status]')?.textContent).toBe("completed");
   });
 
@@ -319,7 +319,7 @@ describe("BoardList · live (V2)", () => {
     await source.release();
     await settle();
     expect(source.pending()).toBe(0);
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(3);
   });
 
   it("reads a change that lands while the mount read pages in exactly one read after it", async () => {
@@ -336,7 +336,7 @@ describe("BoardList · live (V2)", () => {
     await source.release();
     await waitFor(() => expect(rowIds()).toHaveLength(2));
     await settle();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(2);
   });
 
   it("does not show loading over its rows while it reads them again", async () => {
@@ -373,7 +373,7 @@ describe("BoardList · live (V2)", () => {
 describe("BoardList · the subscription carries the read's credential, to the read's origin (V3, BR-16)", () => {
   // The real client, against a host `fetch`: one transport for the read and
   // the subscription is the client and the list together.
-  function hostFetchAnswering(rows: Row[]) {
+  function hostFetchAnswering(rows: Listed[]) {
     const sent: Array<{ url: string; authorization: string | null }> = [];
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(init?.headers);

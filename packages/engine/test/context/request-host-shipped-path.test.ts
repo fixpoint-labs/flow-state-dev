@@ -20,16 +20,19 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
-import { defineFlow, dispatchThroughSeam, handler, requireRequestHost } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { dispatchThroughSeam, requireRequestHost } from "@flow-state-dev/core/internal";
 import type { DispatchOutcome } from "@flow-state-dev/core/types";
 import {
   createFlowApiRouter,
   createFlowRegistry,
   createFlowState,
-  createInMemoryStores,
   inMemoryStores,
   runAction
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
 import type { StoreRegistry } from "../../src/stores/types";
 
 /** A registry that declares itself shared, as a real Postgres-backed one does. */

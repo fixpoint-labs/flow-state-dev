@@ -39,6 +39,7 @@ import {
 import { normalizeScopeResourceContent } from "../context/resource-registry";
 import { ValidationError } from "../errors/flow-error";
 import { ownerKeyAdmits, ownerKeyMaySeed, ownerWriteRefusal } from "../resources/owner-private";
+import { ownedWrite } from "../resources/resource-indexes";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {
@@ -61,8 +62,9 @@ import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 type ResourceRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
+  // FIX-682.
   /**
-   * Tenant id from the request header (FIX-682). Namespaces the session lookup
+   * Tenant id from the request header. Namespaces the session lookup
    * so resource reads/writes land in the calling tenant's session scope.
    */
   tenantId?: string;
@@ -78,13 +80,14 @@ type ResourceRouteContext = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// FIX-1506; FIX-2426.
 /**
  * A browser's write to a session collection item: publish the session's
- * topic, narrowed to the item, so the session's other live views read again
- * (FIX-1506). No request made it, so it names none, and every view hears it,
+ * topic, narrowed to the item, so the session's other live views read again.
+ * No request made it, so it names none, and every view hears it,
  * the writer's own included. A row only its owner may read is published on
  * the bare session topic instead (`noticePathFor`). Lineage-shared keys reach
- * only this session's topic, a stated limit (FIX-2426).
+ * only this session's topic, a stated limit.
  */
 function publishSessionResource(ctx: ResourceRouteContext, sessionId: string, storageKey: string, collection: object): void {
   const resource = noticePathFor(collection, storageKey);
@@ -178,7 +181,7 @@ export async function handleGetResourceContent(
  * GET /sessions/:sessionId/resources/:ref/:topic/content
  * Fetches rendered content for a collection item.
  */
-export async function handleGetCollectionItemContent(
+export async function handleGetCollectionResourceContent(
   _request: Request,
   route: Extract<ParsedFlowRoute, { kind: "get_collection_item_content" }>,
   ctx: ResourceRouteContext
@@ -258,7 +261,7 @@ export async function handleGetCollectionItemContent(
  * POST /sessions/:sessionId/resources/:ref
  * Creates a new item in a collection resource.
  */
-export async function handleCreateCollectionItem(
+export async function handleCreateCollectionResource(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "create_collection_item" }>,
   ctx: ResourceRouteContext
@@ -337,7 +340,8 @@ export async function handleCreateCollectionItem(
     scopeId,
     storageKey,
     initialState,
-    0
+    0,
+    ownedWrite(flow.id)
   );
   if (!inserted.ok) {
     return jsonResponse(409, { error: `Item "${topic}" already exists` });
@@ -468,6 +472,7 @@ function hasTruthyFlag(record: Record<string, unknown> | undefined): boolean {
   return false;
 }
 
+// FIX-858.
 /**
  * GET /sessions/:sessionId/resources/:ref?limit=&cursor=&topicPrefix=
  *
@@ -476,7 +481,7 @@ function hasTruthyFlag(record: Record<string, unknown> | undefined): boolean {
  * `client.state.read`; works for session, user, and org scope.
  *
  * Store-backed collections page by keyset over lexicographically-sorted storage
- * keys (`cursor` = the last key returned). Projected collections (FIX-858) push
+ * keys (`cursor` = the last key returned). Projected collections push
  * the page down to the app's `search` hook and pass its opaque cursor straight
  * through — the framework never enumerates the app store.
  */
@@ -604,7 +609,7 @@ export async function handleListCollectionState(
  * session, user, and org scope; for user/org a missing scope record (no item
  * written yet) reads as a not-present topic (200 + null), never an error.
  */
-export async function handleGetCollectionItemState(
+export async function handleGetCollectionResourceState(
   _request: Request,
   route: Extract<ParsedFlowRoute, { kind: "get_collection_item_state" }>,
   ctx: ResourceRouteContext
@@ -795,7 +800,7 @@ export async function handleGetResourceManifest(
  * DELETE /sessions/:sessionId/resources/:ref/:topic
  * Deletes a collection item.
  */
-export async function handleDeleteCollectionItem(
+export async function handleDeleteCollectionResource(
   _request: Request,
   route: Extract<ParsedFlowRoute, { kind: "delete_collection_item" }>,
   ctx: ResourceRouteContext

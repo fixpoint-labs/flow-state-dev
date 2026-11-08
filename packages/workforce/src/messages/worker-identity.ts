@@ -1,5 +1,6 @@
+// FIX-2334.
 /**
- * The default layer of a worker's prompt (FIX-2334): what every worker on the
+ * The default layer of a worker's prompt: what every worker on the
  * built-in worker flow is told first, before its team, its own file and its
  * packages (contract C1, `docs/architecture/workforce-default-worker-flow.md`).
  *
@@ -19,8 +20,9 @@ import { MAX_LISTED_RECIPIENTS, rosterDisplayName, rosterTeamName, workerRecipie
 /** The longest description the layer quotes for one worker. */
 const MAX_DESCRIPTION = 160;
 
+// FIX-2364.
 /**
- * The layer's second piece: work things out yourself first (FIX-2364). Names
+ * The layer's second piece: work things out yourself first. Names
  * no tool, so it holds for every worker whatever it was granted.
  */
 export const TOOL_USE_RULE = [

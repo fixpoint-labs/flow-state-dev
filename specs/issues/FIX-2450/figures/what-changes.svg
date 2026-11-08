@@ -1,0 +1,78 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="Three kinds of stop by two columns, today and after. A user's stop in a run the user started: today resume answers it; after, answer answers it. A user's stop in a task-board or webhook run: today resume refuses it with a 404; after, answer answers it. A developer's own ctx.suspend with a custom reason: resume answers it, before and after, unchanged. Underneath: resumedBy is optional and ignored by the server today; after, it is gone from the React and client types and still ignored on the wire."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F4E2E0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .bad   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; }
+    .same  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .row   { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-v   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; font-weight:600; }
+    .c-ok  { fill:var(--code); }
+    .c-bad { fill:var(--gone); }
+    .c-mut { fill:var(--ink-2); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="columns">
+    <rect class="head" x="16" y="14" width="908" height="34" rx="5"/>
+    <text class="t-lbl" x="32" y="35">THE STOP A REACT SCREEN ANSWERS</text>
+    <text class="t-lbl" x="348" y="35">TODAY · EVERY HOOK CALLS RESUME</text>
+    <text class="t-lbl" x="644" y="35">AFTER · REACT PICKS FROM THE STOP</text>
+  </g>
+
+  <g id="row-own-run">
+    <text class="t-b" x="32" y="78">A user's stop</text>
+    <text class="t-s" x="32" y="96">in a run the user started</text>
+    <rect class="same" x="340" y="62" width="280" height="44" rx="5"/>
+    <text class="t-v c-mut" x="356" y="81">resume</text>
+    <text class="t-s" x="356" y="98">answered</text>
+    <rect class="ok" x="636" y="62" width="288" height="44" rx="5"/>
+    <text class="t-v c-ok" x="652" y="81">answer</text>
+    <text class="t-s" x="652" y="98">answered</text>
+    <line class="row" x1="16" y1="120" x2="924" y2="120"/>
+  </g>
+
+  <g id="row-task-run">
+    <text class="t-b" x="32" y="150">A user's stop</text>
+    <text class="t-s" x="32" y="168">in a task-board or webhook run</text>
+    <rect class="bad" x="340" y="134" width="280" height="44" rx="5"/>
+    <text class="t-v c-bad" x="356" y="153">resume · 404</text>
+    <text class="t-s" x="356" y="170">refused: that source can't re-enter</text>
+    <rect class="ok" x="636" y="134" width="288" height="44" rx="5"/>
+    <text class="t-v c-ok" x="652" y="153">answer</text>
+    <text class="t-s" x="652" y="170">answered, the run carries on</text>
+    <line class="row" x1="16" y1="192" x2="924" y2="192"/>
+  </g>
+
+  <g id="row-own-suspend">
+    <text class="t-b" x="32" y="222">Your own ctx.suspend</text>
+    <text class="t-s" x="32" y="240">a custom reason, in your run</text>
+    <rect class="same" x="340" y="206" width="280" height="44" rx="5"/>
+    <text class="t-v c-mut" x="356" y="225">resume</text>
+    <text class="t-s" x="356" y="242">answered</text>
+    <rect class="same" x="636" y="206" width="288" height="44" rx="5"/>
+    <text class="t-v c-mut" x="652" y="225">resume</text>
+    <text class="t-s" x="652" y="242">answered, unchanged</text>
+  </g>
+
+  <g id="resumed-by">
+    <rect class="head" x="16" y="266" width="908" height="50" rx="5"/>
+    <text class="t-lbl" x="32" y="287">RESUMEDBY</text>
+    <text class="t-s" x="32" y="304">who answered is set by the server</text>
+    <text class="t-s" x="348" y="287">optional on every argument type</text>
+    <text class="t-s" x="348" y="304">ignored by both routes since 0.3.0</text>
+    <text class="t-s" x="644" y="287">gone from the React and client types</text>
+    <text class="t-s" x="644" y="304">still ignored on the wire</text>
+  </g>
+</svg>

@@ -44,13 +44,13 @@ import { resourceStorageKeys } from "./storage-keys";
  * The refusal a fenced key gets on a write or a by-name `get`. It does not say
  * whether the row exists.
  */
-export const OWNER_ROW_REFUSAL = "A row of an owner-private collection is readable only by the user it belongs to.";
+export const OWNER_RESOURCE_REFUSAL = "A resource in an owner-private collection is readable only by the user it belongs to.";
 
 /**
  * The refusal another user's write to an owner-writes row gets. The row is
  * readable, so naming the rule reveals nothing a read wouldn't.
  */
-export const OWNER_WRITE_REFUSAL = "A row of an owner-writes collection is written only by the user it belongs to.";
+export const OWNER_WRITE_REFUSAL = "A resource in an owner-writes collection is written only by the user it belongs to.";
 
 /** Which owner rule a collection declares. */
 type OwnerMode = "private" | "writes";
@@ -123,7 +123,7 @@ export function ownerKeyAdmits(collection: object, storageKey: string, userId: s
 /**
  * Why `userId` may not write the row at `storageKey` through `collection`, or
  * `undefined` when it may. A key the read predicate refuses gets
- * {@link OWNER_ROW_REFUSAL}, which does not say whether the row exists. A
+ * {@link OWNER_RESOURCE_REFUSAL}, which does not say whether the row exists. A
  * readable owner-writes row whose owner segment is not `ownerSegment(userId)`
  * gets {@link OWNER_WRITE_REFUSAL}.
  */
@@ -132,7 +132,7 @@ export function ownerWriteRefusal(
   storageKey: string,
   userId: string | undefined
 ): string | undefined {
-  if (!ownerKeyAdmits(collection, storageKey, userId)) return OWNER_ROW_REFUSAL;
+  if (!ownerKeyAdmits(collection, storageKey, userId)) return OWNER_RESOURCE_REFUSAL;
   if (ownerRuleOf(collection)?.mode !== "writes") return undefined;
   if (userId === undefined || userId.length === 0) return OWNER_WRITE_REFUSAL;
   return ownerSegmentOf(storageKey)!.segment === ownerSegment(userId) ? undefined : OWNER_WRITE_REFUSAL;
@@ -197,9 +197,10 @@ function segmentIsOpen(segment: string): boolean {
 /**
  * Whether two patterns can resolve onto one key, segment by segment: a
  * literal meets an equal literal, a parameter or `*` meets any segment, and a
- * `**` meets whatever is left, as long as something is.
+ * `**` meets whatever is left, as long as something is. The index-declaration
+ * check (`resource-indexes.ts`) reads overlap the same way.
  */
-function patternsReach(left: string, right: string): boolean {
+export function patternsReach(left: string, right: string): boolean {
   const a = left.split("/");
   const b = right.split("/");
   for (let i = 0; ; i++) {
@@ -239,7 +240,7 @@ function refuseReach(entry: CollectionEntry, declarations: readonly OwnerPrivate
     if (own !== undefined && sameDeclaration(own, declaration)) continue;
     if (!patternsReach(entry.pattern, declaration.pattern)) continue;
     throw new Error(
-      `Collection pattern "${entry.pattern}" can reach the rows of owner-${declaration.mode} collection "${declaration.pattern}". ` +
+      `Collection pattern "${entry.pattern}" can reach the resources of owner-${declaration.mode} collection "${declaration.pattern}". ` +
         (declaration.mode === "private"
           ? `Only that collection reads or writes them, each for the user it belongs to.`
           : `Only that collection reads or writes them.`) +
@@ -253,7 +254,7 @@ function refuseReach(entry: CollectionEntry, declarations: readonly OwnerPrivate
  * beginning `~`, in every registry, whether or not it holds an owner-private
  * collection.
  *
- * Such a segment names the user an owner-private collection's row belongs to.
+ * Such a segment names the user an owner-private collection's resource belongs to.
  * A single resource's key is the same for every user, so it cannot hold one
  * legitimately, and one that did would read and write that row for anyone.
  * The key is the one the runtime writes ({@link resourceStorageKeys}): the
@@ -268,7 +269,7 @@ export function refuseOwnerMarkedSingleResources(incoming: { resources?: Record<
     if (ownerSegmentOf(key) === undefined) continue;
     throw new Error(
       `Resource "${accessor}" has storage key "${key}", with a segment beginning "~". ` +
-        `That segment is reserved for the user an owner-private collection's row belongs to, ` +
+        `That segment is reserved for the user an owner-private collection's resource belongs to, ` +
         `and a single resource's key is the same for every user.`
     );
   }

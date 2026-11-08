@@ -1,7 +1,8 @@
+// LAB-154; BP-030.
 /**
  * The pure interpretation layer: one Codex wire event in, the framework's
  * vocabulary out. No side effects, no context, no vendor word past this
- * boundary — everything downstream reads {@link TranslatedEvent}.
+ * boundary — everything downstream reads {@link CodexTranslatedEvent}.
  *
  * **Stateless on purpose.** Codex's wire carries whole items: `item.started`
  * and `item.completed` each repeat the item in full, so nothing here needs to
@@ -10,20 +11,20 @@
  * result — is keyed by the item's own id and kept where the correlation
  * actually matters, in the emitter's open-item map.
  *
- * Two drift rules, and the difference between them is the point (BP-030):
+ * Two drift rules, and the difference between them is the point:
  *
  * - An unrecognised item kind, or an unrecognised top-level event, becomes a
  *   **status note**. The wire is experimental; a run should degrade before it
  *   breaks.
  * - An unrecognised member of the `turn.*` lifecycle becomes a **terminal
  *   failure**. `outcome: null` is what a manager reads as "no terminal result
- *   arrived" (LAB-154 settles runs on that field), so a future `turn.cancelled`
+ *   arrived" (a manager settles runs on that field), so a future `turn.cancelled`
  *   degrading to a note would report `null` for a run that demonstrably ended.
  *   The same hazard the Claude Code adapter guards for an unrecognised result
  *   subtype, in Codex's shape. If a later event in the same stream turns out to
  *   be a real terminal one, it wins — the block keeps the last terminal signal.
  */
-import type { CodexRunUsage, CodexThreadEvent, CodexThreadItem, TranslatedEvent } from "./types";
+import type { CodexRunUsage, CodexThreadEvent, CodexThreadItem, CodexTranslatedEvent } from "./types";
 
 /** Every wire event this version knows how to interpret, by `type`. */
 const KNOWN_EVENTS = new Set([
@@ -44,7 +45,7 @@ const KNOWN_EVENTS = new Set([
  * stream. Zero is a real answer: `item.updated` carries nothing the
  * started/completed pair does not already say.
  */
-export function translateCodexEvent(event: CodexThreadEvent): TranslatedEvent[] {
+export function translateCodexEvent(event: CodexThreadEvent): CodexTranslatedEvent[] {
   switch (event.type) {
     case "thread.started": {
       const id = (event as { thread_id?: unknown }).thread_id;
@@ -108,7 +109,7 @@ export function translateCodexEvent(event: CodexThreadEvent): TranslatedEvent[] 
  * A `turn.*` that is not `turn.started` ended the turn — see the module note
  * for why that is a failure rather than a note. Everything else degrades.
  */
-function translateUnknownEvent(type: string): TranslatedEvent[] {
+function translateUnknownEvent(type: string): CodexTranslatedEvent[] {
   if (KNOWN_EVENTS.has(type)) return [];
   if (type.startsWith("turn.")) {
     const message = `Codex reported an unrecognised terminal turn event: ${type}.`;
@@ -124,7 +125,7 @@ function translateUnknownEvent(type: string): TranslatedEvent[] {
 function translateItem(
   item: CodexThreadItem | undefined,
   phase: "started" | "completed",
-): TranslatedEvent[] {
+): CodexTranslatedEvent[] {
   if (item === undefined || typeof item.type !== "string") {
     return [{ kind: "status", message: "Codex emitted an item with no kind." }];
   }
@@ -232,7 +233,7 @@ function translateItem(
  * carrying the same payload, so the stream shows one complete `tool_output`
  * rather than a result with no call.
  */
-function settledPair(callId: string, name: string, payload: unknown): TranslatedEvent[] {
+function settledPair(callId: string, name: string, payload: unknown): CodexTranslatedEvent[] {
   const args = JSON.stringify(payload);
   return [
     { kind: "tool_call", callId, name, arguments: args },
@@ -242,7 +243,7 @@ function settledPair(callId: string, name: string, payload: unknown): Translated
 
 /** Mark a settled pair's result an error. */
 function withError(isError: boolean) {
-  return (event: TranslatedEvent): TranslatedEvent =>
+  return (event: CodexTranslatedEvent): CodexTranslatedEvent =>
     event.kind === "tool_result" ? { ...event, isError } : event;
 }
 

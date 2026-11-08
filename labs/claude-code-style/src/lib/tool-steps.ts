@@ -8,7 +8,7 @@
 import {
   composeToolCallsLabel,
   type ToolCallStatus,
-  type ToolStepState,
+  type ToolStepStatus,
   toolRunState,
   toolStepState,
   withToolState,
@@ -24,17 +24,18 @@ export interface ToolCallOf {
   output?: unknown;
 }
 
-/** One step of a run: its line and where it stands. */
+/** One step of a run: its line and where it stands, and the task it filed when it is a `createTask` that did. */
 export interface ToolStep {
   id: string;
   line: string;
-  state: ToolStepState;
+  state: ToolStepStatus;
+  taskId?: string;
 }
 
 /** A run of steps: the line that sums them, where the run stands, and each step. */
 export interface ToolRun {
   label: string;
-  state: ToolStepState;
+  state: ToolStepStatus;
   steps: ToolStep[];
 }
 
@@ -44,11 +45,19 @@ function said(call: ToolCallOf): string {
   return composeToolCallsLabel([{ name: call.name, intent }]);
 }
 
+/** The task a `createTask` call filed, from its output, or undefined for any other tool or a refused call. */
+export function filedTaskOf(call: ToolCallOf): string | undefined {
+  if (call.name !== "createTask") return undefined;
+  const output = call.output as { ok?: boolean; taskId?: unknown } | undefined;
+  return output?.ok === true && typeof output.taskId === "string" ? output.taskId : undefined;
+}
+
 /** A run of consecutive calls, as one line that opens to a line per call. */
 export function toolRun(calls: readonly ToolCallOf[]): ToolRun {
   const steps = calls.map((call) => {
     const state = toolStepState(call.status, call.name, call.output);
-    return { id: call.id, line: withToolState(said(call), state), state };
+    const taskId = filedTaskOf(call);
+    return { id: call.id, line: withToolState(said(call), state), state, ...(taskId === undefined ? {} : { taskId }) };
   });
   const state = toolRunState(steps.map((step) => step.state));
   if (steps.length === 1) return { label: steps[0]!.line, state, steps };

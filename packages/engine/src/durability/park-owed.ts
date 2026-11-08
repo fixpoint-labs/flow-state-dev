@@ -1,5 +1,6 @@
+// FIX-2269.
 /**
- * A park a request owes (FIX-2269): a wait that starts its own work (a
+ * A park a request owes: a wait that starts its own work (a
  * dispatch, a call's send) and dies before its gate is written leaves a
  * request `interrupted` behind no gate, which nothing continued. The wait owes
  * the park first, kept as a wake the engine owns (never a flow's entry), on

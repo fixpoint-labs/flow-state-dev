@@ -21,7 +21,7 @@ import {
   type HarnessSessionFeeds,
   type HarnessSessionWorkspace,
 } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 
 import { goalControl } from "./goal-control";
 import { readHarnessCommands, readHarnessWorkspace } from "./harness-workspace";

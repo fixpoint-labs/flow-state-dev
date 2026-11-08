@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  clientPackageMarker,
   createClient,
   createSSEClientFromResponse,
   createRequestStreamStore,
@@ -10,10 +9,6 @@ import {
 } from "../src";
 
 describe("@flow-state-dev/client", () => {
-  it("exports scaffold marker", () => {
-    expect(clientPackageMarker).toBe("@flow-state-dev/client");
-  });
-
   it("exports client runtime primitives", () => {
     expect(typeof createClient).toBe("function");
     expect(typeof createSSEClientFromResponse).toBe("function");

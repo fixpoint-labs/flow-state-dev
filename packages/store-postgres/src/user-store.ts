@@ -7,7 +7,7 @@ import type {
   UserListOptions,
   UserRecord,
   UserStore
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
 import type { QueryExecutor } from "./types";
 import { createPgRecordStore } from "./pg-store";
 

@@ -1,9 +1,10 @@
+// BP-011.
 /**
  * `llm-filter` retrieval strategy — V1 default for the recall tool.
  *
  * Two stages, each a separate block so the recall tool can compose them in a
  * sequencer without any handler reaching into `asRuntime` to invoke a
- * generator (BP-011):
+ * generator:
  *
  *   1. `prepareBlock` (handler) — query-blind intrinsic pre-rank. Episodes are
  *      scored by their source-specific formula and capped at

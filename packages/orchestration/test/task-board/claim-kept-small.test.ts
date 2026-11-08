@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core";
 import { asRuntime, type BlockContext, type ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { defineTaskCollection, getOrCreateTaskCollection, type Task, type TaskCollectionRef } from "../../src/tasks";
-import { createClaimTask } from "../../src/task-board";
+import { createClaimTask } from "../../src/task-board/blocks/claim-task";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 function ctxWith(memo: Map<string, unknown>): BlockContext {

@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { createStateBackedTaskCollection, type Task, type TaskCollectionRef, type TaskInit, type TaskWorker } from "../../src/tasks";
+import type { Task, TaskCollectionRef, TaskInit, TaskWorker } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { askMidway, taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 import { createBoardMetaCompleted } from "../../src/task-board/blocks/board-meta";
 import { createFakeSequencerState } from "../helpers";
@@ -68,7 +69,7 @@ const STORED_QUESTION = {
   id: "q-1",
   actor: "user",
   openedAt: 1,
-  source: { kind: "row", closedBy: [{ by: "answer" }] },
+  source: { kind: "task", closedBy: [{ by: "answer" }] },
   ask: QUESTION,
 };
 
@@ -168,7 +169,7 @@ describe("the completion reason over stored rows", () => {
         id: "reviewing",
         status: "in_progress",
         leaseUntil: NOW - 1,
-        questions: [
+        holds: [
           {
             id: "susp-1",
             actor: "user",
@@ -180,6 +181,25 @@ describe("the completion reason over stored rows", () => {
       },
     ]);
     expect(await reasonOf(collection)).toBe("waiting-on-a-user");
+  });
+
+  it("reports waiting-on-an-event for a running row waiting only on an external wait (FIX-2578), never on a user", async () => {
+    // A coding task waiting on its pull request: its lease is dropped and nobody is asked anything.
+    const external = {
+      id: "wait-1",
+      actor: "system",
+      openedAt: 1,
+      source: { kind: "task", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
+      ask: { kind: "external", prompt: "Waiting on pull request #7." },
+    };
+    const collection = await storedCollection([{ id: "awaiting-merge", status: "in_progress", leaseUntil: NOW - 1, holds: [external] }]);
+    expect(await reasonOf(collection)).toBe("waiting-on-an-event");
+    // A user's hold anywhere on the board still says the board waits on a user.
+    const both = await storedCollection([
+      { id: "awaiting-merge", status: "in_progress", leaseUntil: NOW - 1, holds: [external] },
+      { id: "held", status: "pending", attempts: 0, holds: [STORED_QUESTION] },
+    ]);
+    expect(await reasonOf(both)).toBe("waiting-on-a-user");
   });
 
   it("reports blocked-by-failures for a running row with a lapsed lease and nothing open on it", async () => {
@@ -197,7 +217,7 @@ describe("the completion reason over stored rows", () => {
         status: "pending",
         attempts: 0,
         deps: ["missing"],
-        questions: [STORED_QUESTION],
+        holds: [STORED_QUESTION],
       },
     ]);
     expect(await reasonOf(collection)).toBe("blocked-by-failures");
@@ -209,7 +229,7 @@ describe("the completion reason over stored rows", () => {
         id: "held-status",
         status: "held",
         attempts: 0,
-        questions: [STORED_QUESTION],
+        holds: [STORED_QUESTION],
       },
     ]);
     expect(await reasonOf(collection)).toBe("blocked-by-failures");
@@ -220,7 +240,7 @@ describe("the completion reason over stored rows", () => {
     id,
     status: "pending",
     attempts: 0,
-    questions: [STORED_QUESTION],
+    holds: [STORED_QUESTION],
   });
 
   it("reports waiting-on-a-user, not blocked-by-failures, with a dispatched row beside the question row", async () => {

@@ -4,11 +4,13 @@ import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { handler } from "@flow-state-dev/core";
-import type { FlowInstance, GeneratorModel, HarnessBlock, ModelResolver } from "@flow-state-dev/core/types";
-import { createModelResolver, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import { createModelResolver } from "@flow-state-dev/core";
+import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { deriveWorkerSessionId, ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_SESSION_ID, projectWorkspaceCapability, type ReportRow } from "@flow-state-dev/workforce";
+import { deriveWorkerSessionId, ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_SESSION_ID, projectWorkspaceCapability, type ReportResourceState } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import {
   assertPatched,
@@ -224,7 +226,7 @@ interface Opened {
   baseUrl: string;
   close(): Promise<void>;
   /** Every report row. */
-  rows(): Promise<ReportRow[]>;
+  rows(): Promise<ReportResourceState[]>;
   /** Inbox's asks, as Shift Manager reads them, on report sessions. */
   reportAsks(): Promise<Ask[]>;
   /** Answer an ask the way Inbox's card does. */
@@ -334,7 +336,7 @@ async function open(options: {
     rows: async () => {
       const result = await act(intake, INTAKE_SESSION_ID, "reports", { op: "all" }, "internal");
       if (result.error !== undefined) throw new Error(`reading the report rows failed: ${JSON.stringify(result.error)}`);
-      return (result.output?.rows ?? []) as ReportRow[];
+      return (result.output?.rows ?? []) as ReportResourceState[];
     },
     reportAsks: async () => {
       const snapshot = await reader.read();
@@ -415,8 +417,8 @@ await runGoal(async (failures) => {
   let lab: Opened | undefined;
   try {
     const needsLabA = ["1", "2", "4", "5", "6", "7"].some(runs);
-    let leg1: { row: ReportRow; requestId: string } | undefined;
-    let leg2Row: ReportRow | undefined;
+    let leg1: { row: ReportResourceState; requestId: string } | undefined;
+    let leg2Row: ReportResourceState | undefined;
     if (needsLabA) {
       // A control that grades no draft (legs 2 and 4) drafts with the stub, not a paid Claude Code run.
       const drafts = control === undefined || control.legs.some((leg) => leg === "1" || leg === "5");
@@ -656,7 +658,7 @@ await runGoal(async (failures) => {
     // ---- leg C: the Shift Coordinator, in a fresh Lab ------------------------------
     if (runs("C")) {
       lab = await open({ store: "memory", tracker: undefined, harness: draftingStub });
-      const inInbox = async (row: ReportRow | undefined) =>
+      const inInbox = async (row: ReportResourceState | undefined) =>
         row !== undefined && (await lab!.reportAsks()).some((a) => a.sessionId === row.sessionId);
 
       const crashed = await lab.tellShiftCoordinator("What's the status of the Sandbox project?");

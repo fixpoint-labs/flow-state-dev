@@ -758,9 +758,9 @@ describe("defineResourceCollection · ownerWrites", () => {
     );
   });
 
-  it("refuses an eviction policy, which would delete another user's row on a create", () => {
+  it("refuses an eviction policy, which would delete another user's resource on a create", () => {
     expect(() => entries({ maxInstances: 5, eviction: "lru" })).toThrow(
-      'Owner-writes collection "entries/[project]/[owner]/[entry]" must not evict: an eviction would delete another user\'s row.'
+      'Owner-writes collection "entries/[project]/[owner]/[entry]" must not evict: an eviction would delete another user\'s resource.'
     );
     expect(() => entries({ maxInstances: 5, eviction: "none" })).not.toThrow();
   });

@@ -32,9 +32,10 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
-import { defineFlow, dispatchThroughSeam, handler, markDispatcher } from "@flow-state-dev/core";
+import { defineFlow, handler, markDispatcher } from "@flow-state-dev/core";
+import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import type { DispatchOutcome, ModelResolver } from "@flow-state-dev/core/types";
-import { createFlowState, FlowStateConfigError, inMemoryStores, runAction } from "../../src";
+import { createFlowState, inMemoryStores, runAction } from "../../src";
 import type { FlowStateRuntime, WorkerAdapter } from "../../src/flowstate/types";
 import type { StoreAdapter } from "../../src/stores/store-adapter";
 
@@ -1401,43 +1402,5 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
     // `dispose()` abandons the rest of the drain — the child is never
     // cancelled, and this report never printed.
     expect(errors.some((line) => line.includes("shutdown cancelled"))).toBe(true);
-  });
-
-  it("refuses the removed `detachedDrainTimeoutMs` key BY NAME rather than ignoring it", () => {
-    // Accepting the old key silently would leave the drain on its default, so
-    // a host tuned for a long-running child would truncate one without saying
-    // why. The refusal names the replacement.
-    let thrown: unknown;
-    try {
-      createFlowState({
-        flows: { detaching: detachingFlow("old-drain-key", { children: [] }) },
-        stores: { default: { primary: inMemoryStores() } },
-        ...({ detachedDrainTimeoutMs: 250 } as object)
-      });
-    } catch (err) {
-      thrown = err;
-    }
-    expect(thrown).toBeInstanceOf(FlowStateConfigError);
-    expect((thrown as Error).name).toBe("FlowStateConfigError");
-    expect((thrown as Error).message).toMatch(/dispatchDrainTimeoutMs/);
-  });
-
-  it("refuses the removed `maxWorkstreamListLimit` key BY NAME rather than ignoring it", () => {
-    // Same rule as the drain key: a host that raised the listing ceiling under
-    // the old name would keep the default cap and truncate its reads without a
-    // named error. The refusal names the replacement.
-    let thrown: unknown;
-    try {
-      createFlowState({
-        flows: { detaching: detachingFlow("old-list-key", { children: [] }) },
-        stores: { default: { primary: inMemoryStores() } },
-        ...({ maxWorkstreamListLimit: 500 } as object)
-      });
-    } catch (err) {
-      thrown = err;
-    }
-    expect(thrown).toBeInstanceOf(FlowStateConfigError);
-    expect((thrown as Error).name).toBe("FlowStateConfigError");
-    expect((thrown as Error).message).toMatch(/maxChildSessionListLimit/);
   });
 });

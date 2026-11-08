@@ -19,17 +19,20 @@ import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowApiRouter,
-  createFlowRegistry,
-  createInMemoryStores,
-  parseFlowRoute
+  createFlowRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import { parseFlowRoute } from "../src/host";
 
-import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
+import type { RequestRecord, SessionRecord } from "../src/host";
+import type { StoreRegistry } from "../src";
 import { dispatchChild, dispatchableFlow } from "./context/seam-harness";
 import { TERMINAL_WIRE_STATUS } from "../src/routes/child-session-routes";
 
 type Router = ReturnType<typeof createFlowApiRouter>;
-type ChildRow = {
+type ChildListing = {
   id: string;
   parentSessionId: string;
   createdAt: number;
@@ -111,10 +114,10 @@ async function children(
   router: Router,
   parentId: string,
   opts: { query?: string; headers?: Record<string, string> } = {}
-): Promise<ChildRow[]> {
+): Promise<ChildListing[]> {
   const res = await call(router, ["sessions", parentId, "children"], opts);
   expect(res.status).toBe(200);
-  return ((await res.json()) as { children: ChildRow[] }).children;
+  return ((await res.json()) as { children: ChildListing[] }).children;
 }
 
 function sessionRecord(

@@ -68,8 +68,9 @@ const REQUESTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at)"
 ];
 
+// FIX-1010.
 /**
- * FIX-1010 — the two composite indexes the parent-to-child read adds, built
+ * The two composite indexes the parent-to-child read adds, built
  * **concurrently**.
  *
  * They are the only indexes in this file that can land on an already-populated
@@ -218,8 +219,9 @@ CREATE TABLE IF NOT EXISTS active_requests (
 );
 `;
 
+// FIX-438.
 /**
- * Add `source` column to pre-FIX-438 `active_requests` tables.
+ * Add `source` column to older `active_requests` tables.
  * Idempotent — wrapped in a DO block so absence of the column on a fresh
  * database is a no-op.
  */
@@ -238,14 +240,15 @@ BEGIN
 END $$;
 `;
 
+// FIX-999; BP-030.
 /**
- * Add the `queued_at` column to pre-FIX-999 `active_requests` tables.
+ * Add the `queued_at` column to older `active_requests` tables.
  *
  * Nullable with no default, and **no backfill is possible or wanted**: the
  * column marks a request registered at enqueue time and not yet claimed by a
  * worker, which cannot be reconstructed after the fact. NULL reads back as
  * "claimed", which is how every existing row already behaves — swept on
- * `last_heartbeat_at` exactly as before (BP-030). Idempotent.
+ * `last_heartbeat_at` exactly as before. Idempotent.
  */
 const ADD_ACTIVE_REQUESTS_QUEUED_AT_MIGRATION = `
 DO $$
@@ -262,8 +265,9 @@ BEGIN
 END $$;
 `;
 
+// FIX-682.
 /**
- * Add the `tenant_id` column to pre-FIX-682 `sessions`, `requests`, and
+ * Add the `tenant_id` column to older `sessions`, `requests`, and
  * `active_requests` tables. Idempotent — wrapped in a DO block so absence of
  * the column adds it and presence is a no-op. Must run BEFORE the index DDL so
  * `idx_sessions_user_tenant` / `idx_requests_session_tenant` find the column.
@@ -288,6 +292,7 @@ BEGIN
 END $$;
 `;
 
+// BP-030.
 /**
  * Add the nullable `flow_id` column — the owning flow instance — to
  * `sessions`, `requests` and `active_requests` tables created before instance
@@ -299,10 +304,11 @@ END $$;
  * registered instance. A blanket `flow_id = flow_kind` would silently assign a
  * collection's history to whichever member happens to share the kind's name.
  * Known singleton rows need no backfill to keep working — the runtime reads a
- * NULL owner on a singleton kind compatibly (BP-030).
+ * NULL owner on a singleton kind compatibly.
  */
+// FIX-1442.
 /**
- * FIX-1442: add the nullable `org_id` column to a `schedule_index` created
+ * Add the nullable `org_id` column to a `schedule_index` created
  * before schedules carried an organization.
  *
  * Nullable with **no backfill**: the organization a standing instruction fires
@@ -314,13 +320,14 @@ const ADD_SCHEDULE_INDEX_ORG_ID_MIGRATION = `
 ALTER TABLE IF EXISTS schedule_index ADD COLUMN IF NOT EXISTS org_id TEXT;
 `;
 
+// FIX-1546; BP-030.
 /**
- * FIX-1546: re-key a `schedule_index` created before rows carried their
+ * Re-key a `schedule_index` created before rows carried their
  * storage cell from `(user_id, key)` to `(cell, key)`.
  *
  * Every existing row is adopted as the person's own app-wide cell: every
  * released version wrote index rows only from that cell, so the value is known,
- * not guessed (BP-030). The cell is the engine's storage key for it — the user
+ * not guessed. The cell is the engine's storage key for it — the user
  * id with `\` and `:` escaped — so the next write from that cell updates the
  * same row rather than adding a second one.
  *
@@ -378,8 +385,9 @@ BEGIN
 END $$;
 `;
 
+// FIX-1009.
 /**
- * Add the `parent_session_id` column to a pre-FIX-1009 `sessions` table.
+ * Add the `parent_session_id` column to an older `sessions` table.
  * Idempotent — wrapped in a DO block so absence of the column adds it and
  * presence is a no-op. Must run BEFORE the index DDL so
  * `idx_sessions_parent_session_id` finds the column.
@@ -437,6 +445,51 @@ CREATE TABLE IF NOT EXISTS resource_state (
 
 const RESOURCE_STATE_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type, scope_id)"
+];
+
+// Index entries for resource collections: one row per (row, index, value), so
+// a collection can be looked up by a declared field without reading its rows.
+// Generic on purpose: a new index needs no DDL. The built-marker table records
+// which (scope, collection, index) has finished its first build, and `build_id`
+// the token of the build that set it; `key_regex`
+// is the collection pattern as a regular expression, so a write can clear the
+// markers covering its key inside its own statement. Both are kept in step
+// with resource_state by createPostgresResourceStateStore.
+//
+// The six columns are the entry's identity, as on SQLite, but the unique
+// index keys `md5(value)`, not `value`: a B-tree entry is capped near 2.7 KB,
+// so keying the raw value would refuse a long one. `findKeys` matches the
+// digest and then the full value, so a digest collision cannot return a key
+// whose value differs. Two values sharing a digest within one row's entries
+// would keep one entry, for a row whose writer chose both values.
+const RESOURCE_INDEX_TABLES = [
+  `
+CREATE TABLE IF NOT EXISTS resource_index (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  collection    TEXT NOT NULL,
+  index_name    TEXT NOT NULL,
+  value         TEXT NOT NULL,
+  resource_key  TEXT NOT NULL
+);
+`,
+  `
+CREATE TABLE IF NOT EXISTS resource_index_built (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  collection    TEXT NOT NULL,
+  index_name    TEXT NOT NULL,
+  status        TEXT NOT NULL,
+  build_id      TEXT NOT NULL,
+  key_regex     TEXT,
+  PRIMARY KEY (scope_type, scope_id, collection, index_name)
+);
+`
+];
+
+const RESOURCE_INDEX_INDEXES = [
+  "CREATE UNIQUE INDEX IF NOT EXISTS idx_resource_index_entry ON resource_index(scope_type, scope_id, collection, index_name, md5(value), resource_key)",
+  "CREATE INDEX IF NOT EXISTS idx_resource_index_key ON resource_index(scope_type, scope_id, resource_key)"
 ];
 
 const REQUEST_EVENTS_TABLE = `
@@ -639,8 +692,9 @@ CREATE TABLE IF NOT EXISTS wakes (
 
 const WAKES_INDEXES = ["CREATE INDEX IF NOT EXISTS idx_wakes_due_at ON wakes(due_at)"];
 
+// FIX-428.
 /**
- * One-shot rename migrations for deployments that ran the pre-FIX-428 schema
+ * One-shot rename migrations for deployments that ran the older schema
  * (project scope). Idempotent: each statement no-ops once the new name is in
  * place, so subsequent boots are cheap. Must run BEFORE the CREATE TABLE / INDEX
  * DDL so the create steps see the renamed columns and don't try to add an
@@ -753,6 +807,7 @@ function getSchemaDDL(): {
       ACTIVE_REQUESTS_TABLE,
       RESOURCE_CONTENT_TABLE,
       RESOURCE_STATE_TABLE,
+      ...RESOURCE_INDEX_TABLES,
       REQUEST_EVENTS_TABLE,
       REQUEST_ITEMS_TABLE,
       REQUEST_RUNONCE_TABLE,
@@ -770,6 +825,7 @@ function getSchemaDDL(): {
       ...ACTIVE_REQUESTS_INDEXES,
       ...RESOURCE_CONTENT_INDEXES,
       ...RESOURCE_STATE_INDEXES,
+      ...RESOURCE_INDEX_INDEXES,
       ...REQUEST_EVENTS_INDEXES,
       ...REQUEST_ITEMS_INDEXES,
       ...REQUEST_RUNONCE_INDEXES,

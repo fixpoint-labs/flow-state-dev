@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { defaultMcpFilterTools, mcpRequestStateSchema } from "../../src/mcp/filter";
 import { MCP_TOOL_META, type MCPToolMeta } from "../../src/mcp/types";
 import type { CapabilityPresetCtx, GeneratorTool } from "@flow-state-dev/core";
+import { createTestContext } from "@flow-state-dev/testing";
 
 function makeTool(namespacedName: string, server?: string, originalName?: string): GeneratorTool {
   const tool: any = { name: namespacedName, kind: "handler", description: "" };
@@ -12,8 +13,9 @@ function makeTool(namespacedName: string, server?: string, originalName?: string
   return tool as GeneratorTool;
 }
 
-function ctx(state: unknown): CapabilityPresetCtx {
-  return { request: { state }, session: { state: {}, identity: { id: "s1" } }, resources: {} };
+/** A preset callback's ctx is a full block context, with `state` as the request's. */
+async function ctx(state: Record<string, unknown>): Promise<CapabilityPresetCtx> {
+  return (await createTestContext({ request: { state } })).ctx;
 }
 
 describe("defaultMcpFilterTools", () => {
@@ -24,14 +26,14 @@ describe("defaultMcpFilterTools", () => {
 
   it("returns tools unchanged when state has no mcp overrides", async () => {
     const tools = [linearList, linearCreate, notionSearch, nonMcp];
-    expect(await defaultMcpFilterTools(ctx({}), tools)).toEqual(tools);
-    expect(await defaultMcpFilterTools(ctx({ mcp: {} }), tools)).toEqual(tools);
+    expect(await defaultMcpFilterTools(await ctx({}), tools)).toEqual(tools);
+    expect(await defaultMcpFilterTools(await ctx({ mcp: {} }), tools)).toEqual(tools);
   });
 
   it("filters out tools listed in disabledTools", async () => {
     const tools = [linearList, linearCreate, notionSearch];
     const result = await defaultMcpFilterTools(
-      ctx({ mcp: { disabledTools: ["mcp__linear__list_issues"] } }),
+      await ctx({ mcp: { disabledTools: ["mcp__linear__list_issues"] } }),
       tools,
     );
     expect(result).toEqual([linearCreate, notionSearch]);
@@ -40,7 +42,7 @@ describe("defaultMcpFilterTools", () => {
   it("filters all tools from disabledServers", async () => {
     const tools = [linearList, linearCreate, notionSearch];
     const result = await defaultMcpFilterTools(
-      ctx({ mcp: { disabledServers: ["linear"] } }),
+      await ctx({ mcp: { disabledServers: ["linear"] } }),
       tools,
     );
     expect(result).toEqual([notionSearch]);
@@ -49,7 +51,7 @@ describe("defaultMcpFilterTools", () => {
   it("non-mcp tools pass through unchanged", async () => {
     const tools = [linearList, nonMcp];
     const result = await defaultMcpFilterTools(
-      ctx({ mcp: { disabledServers: ["linear"] } }),
+      await ctx({ mcp: { disabledServers: ["linear"] } }),
       tools,
     );
     expect(result).toEqual([nonMcp]);
@@ -57,7 +59,7 @@ describe("defaultMcpFilterTools", () => {
 
   it("applies both disabledTools and disabledServers simultaneously", async () => {
     const result = await defaultMcpFilterTools(
-      ctx({
+      await ctx({
         mcp: {
           disabledTools: ["mcp__linear__list_issues"],
           disabledServers: ["notion"],

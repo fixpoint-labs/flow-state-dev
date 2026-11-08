@@ -11,7 +11,7 @@ import { ReviewSuspension, takesReviewVerdict } from "./review-hold";
 import { useSuspensionResolution } from "./suspension-resolution";
 
 /**
- * Polished dispatcher for `type === "suspension"` items (FIX-849). Registered as
+ * Polished dispatcher for `type === "suspension"` items. Registered as
  * the single `suspension` renderer; it picks the right card by `reason` and
  * `resumeSchema` shape — the binary approval card, a clarifying-question card, a
  * selection card, or a flat-form card. Mirrors the built-in `ItemRenderer`

@@ -11,6 +11,7 @@ At the start of a new conversation in this repo, read:
 - `docs/contributing/best-practices.md` — implementation standards (the active BPs at the top of that file)
 - `docs/contributing/architecture-reference.md` — quick reference for locked contracts
 - Relevant docs in `docs/architecture/` for the task at hand
+- `docs/contributing/glossary.mjs` before naming a public thing: one word per concept, and the words it retires. A change that coins or retires a public term edits its entry in the same PR; the vocabulary checks read nothing else
 
 **Authority order**: `docs/philosophy.md` > `docs/architecture/*` > `docs/contributing/best-practices.md` > this file. When two in-repo docs disagree, the more specific one wins; when code and grounding disagree with no doc to settle it, that is a philosophy gap to surface, not to route around.
 
@@ -139,7 +140,7 @@ Three tiers, picked by what kind of regression you want to catch:
 
 | Layer | Where | Use when |
 |---|---|---|
-| Block / router / sequencer unit | `packages/<pkg>/test/*.test.ts` via `testBlock`, `testRouter`, `testSequencer` | A single block's logic — state changes, output shape, error paths. Default tier for new code. |
+| Block / router / sequencer unit | `packages/<pkg>/test/*.test.ts` via `testBlock` (a sequencer's result carries its `steps`, a router's its `selectedRoute`) | A single block's logic — state changes, output shape, error paths. Default tier for new code. |
 | Flow integration | `packages/integration-tests/src/scenarios/*.test.ts` via `testFlow` | A regression that only emerges from full `runAction` composition: pattern factory wiring, claim systems, dispatcher loops, multi-pattern interactions, session resume across runs. |
 | UI e2e (Playwright) | `apps/kitchen-sink/e2e/*.spec.ts` — CI, LLMs mocked | Browser-only regressions the lower tiers can't catch (see `apps/docs/docs/testing/end-to-end-tests.md`). Out of scope for most changes. |
 
@@ -188,13 +189,13 @@ Three tiers, picked by what kind of regression you want to catch:
 
 ## Documentation maintenance protocol
 
-When making changes that affect the framework's behavior or API, update documentation in the same change set as the code change.
+Contributor docs change in the same change set as the code. **User docs don't**: they are written once per release by `/release-docs`, and CI fails a normal PR that edits them ([`release-docs.md`](docs/contributing/release-docs.md)).
 
 **Architecture docs** (`docs/architecture/`):
 Update when a change affects a core concept — block execution, state ops, streaming behavior, scope semantics, server routes, or client contract. These are the authoritative in-repo reference for framework developers; keep them in sync with the code.
 
 **Package READMEs** (`packages/*/README.md`):
-Update when a package's exported surface, behavior, or setup commands materially change. Keep the structure consistent: Purpose → Quick Start → API Surface → Scripts.
+User docs: updated at release by `/release-docs`, not in the PR that changes the package. Keep the structure consistent: Purpose → Quick Start → API Surface → Scripts.
 
 **Contributing docs** (`docs/contributing/`):
 - Update `best-practices.md` when a new implementation standard is adopted.
@@ -202,9 +203,7 @@ Update when a package's exported surface, behavior, or setup commands materially
 - Update `development-setup.md` when monorepo tooling, build order, or development workflow changes.
 
 **User-facing docs** (`apps/docs/`):
-Update when integration patterns change — server setup, React hooks usage, testing approach, or new concepts are introduced. These docs are for developers building apps WITH the framework.
-
-**Route this prose through the `docs-writer` agent, then `docs-editor`.** Don't write it inline while you're holding the spec and the diff: implementation rationale leaks into published pages in a predictable way (design defense, defect narrative, before/after framing), and knowing the rules doesn't prevent it. The writer runs in a fresh context on a surface brief — the symbols a user touches, what a caller sees including failures, and the limits — and derives the rest from the public API. The standard both agents work to is [`docs/contributing/user-docs.md`](docs/contributing/user-docs.md). The same applies to the API sections of `packages/*/README.md`.
+For developers building apps WITH the framework, describing what they can install. **Written at release, not per PR.** In a PR, record what a user needs to know in the changeset and keep the spec's docs line accurate; `/release-docs` plans the release's pages together, writes them through `docs-writer` then `docs-editor`, and opens one PR for review. Fixing docs for something already released: a separate PR with the `docs-fix` label. The prose standard is [`docs/contributing/user-docs.md`](docs/contributing/user-docs.md).
 
 **Artifacts a human reads** (PR descriptions, Linear issues, review comments, specs): lead with the **problem** in plain language, then the solution, then what's asked of the reader. The rule and budgets are [`writing-for-humans.md`](docs/contributing/writing-for-humans.md) (BP-039), the PR layout is [`pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md), and the ask is [`asking-for-decisions.md`](docs/contributing/asking-for-decisions.md). Don't re-derive any of them in a skill or template.
 

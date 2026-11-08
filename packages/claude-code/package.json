@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/claude-code",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Claude Code integration for flow-state-dev: run a Claude Code agent in-process as a block.",
   "keywords": [
     "ai",
@@ -24,11 +24,7 @@
   "author": "Fixpoint Labs",
   "type": "module",
   "exports": {
-    "./cli": {
-      "types": "./dist/cli/index.d.ts",
-      "default": "./src/cli/index.ts"
-    },
-    "./sdk": {
+    ".": {
       "types": "./dist/sdk/index.d.ts",
       "default": "./src/sdk/index.ts"
     }
@@ -41,18 +37,14 @@
   "publishConfig": {
     "access": "public",
     "exports": {
-      "./cli": {
-        "types": "./dist/cli/index.d.ts",
-        "default": "./dist/cli/index.js"
-      },
-      "./sdk": {
+      ".": {
         "types": "./dist/sdk/index.d.ts",
         "default": "./dist/sdk/index.js"
       }
     }
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.3.0"
   },
   "sideEffects": false,
   "dependencies": {
@@ -61,7 +53,7 @@
     "zod": "^3.24.1"
   },
   "peerDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "*"
+    "@anthropic-ai/claude-agent-sdk": ">=0.3.316 <0.4.0"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/claude-agent-sdk": {

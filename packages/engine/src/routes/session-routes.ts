@@ -4,13 +4,20 @@
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { RequestActionResult, RequestRecord, SessionParentage, SessionRecord, StoreRegistry } from "../stores/types";
+import type {
+  RequestRecord,
+  SessionParentage,
+  SessionRecord,
+  StoreRegistry,
+  SuspensionStore
+} from "../stores/types";
+import type { DurabilityProvider } from "../durability/types";
 import type { SessionRecordSeed } from "../context/session-birth";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
 import { birthSession, SessionCreateRefusedError } from "../context/session-birth";
-import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
+import { getReadonlyStateKeys, mapLimit } from "@flow-state-dev/core/helpers";
 import { resolveRecordOwner } from "../context/record-owner";
 import { pinRejectsCaller, unknownFlowMessage } from "../context/instance-pin";
 import { isOrgAttributed } from "../context/org-attribution";
@@ -27,6 +34,8 @@ import {
   loadTenantSession,
   unknownSessionResponse,
   parseJsonBody,
+  projectRequestResult,
+  type ProjectedRequestResult,
   refuseUnattributedRecord,
   sessionCreateRefusedResponse
 } from "./route-utils";
@@ -38,6 +47,7 @@ import {
 } from "../stores/scope-keys";
 import { sessionRequestScope } from "../context/session-request-scope";
 import { toClientSession } from "./client-session";
+import { latestRequestStatus } from "./session-request-status";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
   flowAuthenticates,
@@ -45,11 +55,15 @@ import {
   type InstanceCallerResolver
 } from "./instance-caller";
 
+/** How many sessions' status reads `include=status` runs at once. */
+const STATUS_READS_IN_FLIGHT = 8;
+
 type SessionRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
+  // FIX-682.
   /**
-   * Tenant id from the request header (FIX-682). Namespaces every session
+   * Tenant id from the request header. Namespaces every session
    * storage key so a route resolves only the calling tenant's session.
    * Undefined for single-tenant requests.
    */
@@ -73,9 +87,10 @@ type SessionRouteContext = {
   checkedSession?: SessionRecord | null;
 };
 
+// FIX-1440.
 /**
  * The one include this listing accepts, spelled for callers rather than for
- * the store (FIX-1440).
+ * the store.
  *
  * `parentage` is a storage concept with three modes; a caller has one question
  * — *do I also want the sessions a dispatcher ran work in?* — so that is what
@@ -84,13 +99,17 @@ type SessionRouteContext = {
  */
 const DISPATCH_RUNS_INCLUDE = "dispatch-runs";
 
+/** The include that adds each row's latest request status. */
+const STATUS_INCLUDE = "status";
+
+// FIX-1009.
 /**
  * Map the `include` query parameter onto a store parentage.
  *
  * `undefined` — no include — leaves the option **off**, so the listing narrows
  * to top-level sessions exactly as it always has. That is the rule, not an
  * implementation detail: a caller that did not ask gets today's result set,
- * unchanged (FIX-1009, and `SessionListOptions.parentage`).
+ * unchanged (and `SessionListOptions.parentage`).
  *
  * An unrecognised token is a **400 naming what is accepted**, never a silent
  * ignore: a caller that misspells the include would otherwise be told nothing
@@ -98,25 +117,34 @@ const DISPATCH_RUNS_INCLUDE = "dispatch-runs";
  */
 function resolveSessionInclude(
   raw: string | null
-): { parentage?: SessionParentage } | { error: string } {
+): { parentage?: SessionParentage; status?: true } | { error: string } {
   if (raw === null) return {};
   const tokens = raw
     .split(",")
     .map((token) => token.trim())
     .filter((token) => token.length > 0);
-  const unknown = tokens.filter((token) => token !== DISPATCH_RUNS_INCLUDE);
+  const unknown = tokens.filter((token) => token !== DISPATCH_RUNS_INCLUDE && token !== STATUS_INCLUDE);
   if (unknown.length > 0) {
     return {
-      error: `include accepts "${DISPATCH_RUNS_INCLUDE}"; received ${unknown
+      error: `include accepts "${DISPATCH_RUNS_INCLUDE}" and "${STATUS_INCLUDE}"; received ${unknown
         .map((token) => `"${token}"`)
         .join(", ")}`
     };
   }
-  return tokens.length === 0 ? {} : { parentage: "all" };
+  return {
+    ...(tokens.includes(DISPATCH_RUNS_INCLUDE) ? { parentage: "all" as const } : {}),
+    ...(tokens.includes(STATUS_INCLUDE) ? { status: true as const } : {})
+  };
 }
 
 /** What the session listing needs beyond an addressed route's context. */
 type ListingRouteContext = SessionRouteContext & {
+  /**
+   * The host's durability provider, where a run's stops are written. The
+   * status include reads a stopped row's stops through it, so a host with its
+   * own suspension storage is read where it writes.
+   */
+  durabilityProvider?: DurabilityProvider;
   /**
    * The caller as each instance's own doors resolve it. A row owned by an
    * instance with a resolver of its own is judged by that resolver, not by
@@ -170,6 +198,9 @@ function resolveStateFilter(
         "the flowKind of a registered flow."
     };
   }
+  // The flow's own schema, not the merged one: the store filters the state it
+  // holds, and a field only a block declares is filled at read time, never
+  // stored at birth, so filtering on it would answer an empty list.
   const readonly = new Set(getReadonlyStateKeys(flow.session?.stateSchema));
   const state: Record<string, string> = {};
   for (const [name, value] of entries) {
@@ -303,10 +334,39 @@ export async function handleListSessions(
     if (own ?? hostRuleAdmits(s)) visible.push(s);
   }
 
+  // Each visible row's latest request status, only when asked:
+  // read on the server, under each session's own request scope, so a list
+  // shows which session needs its user without a read per row from the
+  // browser. A few sessions at a time, so a long listing costs
+  // time rather than a burst of store reads.
+  const provider = ctx.durabilityProvider;
+  const listSuspended: SuspensionStore["list"] =
+    provider !== undefined ? (filter) => provider.listSuspended(filter) : (filter) => ctx.stores.suspensions.list(filter);
+  const statuses =
+    include.status === true
+      ? await mapLimit(visible, STATUS_READS_IN_FLIGHT, (s) =>
+          latestRequestStatus(
+            { request: ctx.stores.request, listSuspended },
+            toBareSessionId(s.id, ctx.tenantId),
+            s,
+            ctx.tenantId
+          )
+        )
+      : undefined;
+
   return jsonResponse(200, {
     // Surface bare session ids — the stored `id` is the namespaced storage key —
     // and only the state each row's flow exposes (FIX-1588).
-    sessions: visible.map((s) => toClientSession(ctx.registry, s, toBareSessionId(s.id, ctx.tenantId)))
+    sessions: visible.map((s, index) => {
+      const row = toClientSession(ctx.registry, s, toBareSessionId(s.id, ctx.tenantId));
+      const latest = statuses?.[index];
+      if (latest === undefined) return row;
+      return {
+        ...row,
+        requestStatus: latest.status,
+        ...(latest.waitsForUser === undefined ? {} : { requestWaitsForUser: latest.waitsForUser })
+      };
+    })
   });
 }
 
@@ -605,21 +665,15 @@ export async function handleListSessionRequests(
 }
 
 /**
- * A request as the session list sends it: its stored `result` plus
- * `hasOutput`, with `result.output` only when the caller asked for it. A
- * record with no `result` (unfinished, or written before results were
- * stored) is sent as it is.
+ * A request as the session list sends it: its stored `result` through
+ * `projectRequestResult`. A record with no `result` (unfinished, or written
+ * before results were stored) is sent as it is.
  */
 function withListedResult(
   record: RequestRecord,
   includeOutput: boolean
-): RequestRecord | (Omit<RequestRecord, "result"> & { result: ListedRequestActionResult }) {
+): RequestRecord | (Omit<RequestRecord, "result"> & { result: ProjectedRequestResult }) {
   const result = record.result;
   if (result == null) return record;
-  const hasOutput = Object.prototype.hasOwnProperty.call(result, "output");
-  const { output: _output, ...summary } = result;
-  return { ...record, result: { ...(includeOutput ? result : summary), hasOutput } };
+  return { ...record, result: projectRequestResult(result, includeOutput) };
 }
-
-/** A stored action result as the session list sends it. */
-type ListedRequestActionResult = RequestActionResult & { hasOutput: boolean };

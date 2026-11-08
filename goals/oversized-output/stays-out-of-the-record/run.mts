@@ -31,7 +31,7 @@ import {
   createFlowRegistry,
   type StoreRegistry
 } from "@flow-state-dev/engine";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { z } from "zod";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 

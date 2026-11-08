@@ -38,15 +38,18 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter,
-  runAction,
+  runAction
 } from "@flow-state-dev/engine";
-import type { RequestRecord, StoreRegistry } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
+import type { RequestRecord } from "@flow-state-dev/engine/host";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import {
   committedLeaseSpan,
   defineTaskCollection,
@@ -56,9 +59,9 @@ import {
 import {
   taskBoard,
   taskWorkerInputSchema,
-  TASK_BOARD_META_COMPONENT_TYPE,
-  type TaskSessionPolicy,
 } from "@flow-state-dev/orchestration/task-board";
+import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
+import type { TaskSessionPolicy } from "@flow-state-dev/core/types";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { heard } from "../helpers/heard";

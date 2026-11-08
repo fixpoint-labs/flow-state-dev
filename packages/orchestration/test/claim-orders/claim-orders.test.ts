@@ -6,13 +6,13 @@
  */
 import { describe, expect, it, beforeEach } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
+import * as tasksEntry from "../../src/tasks/index";
 import {
-  createStateBackedTaskCollection,
   fifoClaimOrder,
   priorityClaimOrder,
-  topologicalClaimOrder,
   type TaskCollectionRef,
 } from "../../src/tasks/index";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import {
   createCapturedChanges,
   createFakeSequencerState,
@@ -54,19 +54,21 @@ describe("fifoClaimOrder", () => {
   });
 });
 
-describe("topologicalClaimOrder", () => {
+// The dep gating is the substrate's admission rule, so fifo carries it with no
+// eligibility of its own. These cases pin that, since fifo is the board default.
+describe("fifoClaimOrder - deps, races and cancels", () => {
   it("waits for deps to complete before claiming a downstream task", async () => {
     const c = buildCollection();
     await c.createTask({ id: "upstream", goal: "u" });
     await c.createTask({ id: "downstream", goal: "d", deps: ["upstream"] });
 
     // Downstream is not eligible yet.
-    const first = await topologicalClaimOrder.claim(c, "w", fakeCtx);
+    const first = await fifoClaimOrder.claim(c, "w", fakeCtx);
     expect(first?.id).toBe("upstream");
 
     // Mark upstream completed; downstream should now be eligible.
     await c.complete("upstream", "ok");
-    const second = await topologicalClaimOrder.claim(c, "w2", fakeCtx);
+    const second = await fifoClaimOrder.claim(c, "w2", fakeCtx);
     expect(second?.id).toBe("downstream");
   });
 
@@ -75,12 +77,12 @@ describe("topologicalClaimOrder", () => {
     await c.createTask({ id: "u", goal: "u" });
     await c.createTask({ id: "d", goal: "d", deps: ["u"] });
     // Claim the upstream so only the dep-locked downstream is left.
-    await topologicalClaimOrder.claim(c, "w", fakeCtx);
-    const second = await topologicalClaimOrder.claim(c, "w2", fakeCtx);
+    await fifoClaimOrder.claim(c, "w", fakeCtx);
+    const second = await fifoClaimOrder.claim(c, "w2", fakeCtx);
     expect(second).toBeNull();
   });
 
-  it("re-checks deps at claim time, not at list time", async () => {
+  it("re-checks deps at claim time, not at list time: two racing claims, one winner", async () => {
     const c = buildCollection();
     await c.createTask({ id: "u", goal: "u" });
     await c.createTask({ id: "d", goal: "d", deps: ["u"] });
@@ -88,21 +90,31 @@ describe("topologicalClaimOrder", () => {
     await c.claim("w");
     await c.complete("u", "ok");
     const [r1, r2] = await Promise.all([
-      topologicalClaimOrder.claim(c, "w1", fakeCtx),
-      topologicalClaimOrder.claim(c, "w2", fakeCtx),
+      fifoClaimOrder.claim(c, "w1", fakeCtx),
+      fifoClaimOrder.claim(c, "w2", fakeCtx),
     ]);
     const winners = [r1, r2].filter((x) => x !== null);
     expect(winners).toHaveLength(1);
     expect(winners[0]?.id).toBe("d");
   });
 
-  it("skips a task another worker is running", async () => {
+  it("never claims a downstream task whose upstream was cancelled", async () => {
     const c = buildCollection();
-    await c.createTask({ id: "a", goal: "a" });
-    await c.claim("w");
-    await c.createTask({ id: "b", goal: "b" });
-    const claimed = await topologicalClaimOrder.claim(c, "w2", fakeCtx);
-    expect(claimed?.id).toBe("b");
+    await c.createTask({ id: "u", goal: "u" });
+    await c.createTask({ id: "d", goal: "d", deps: ["u"] });
+    await c.cancel("u", "not needed");
+    const claimed = await fifoClaimOrder.claim(c, "w", fakeCtx);
+    expect(claimed).toBeNull();
+  });
+});
+
+describe("standard claim orders", () => {
+  it("are fifo and priority; the ./tasks entry exports no topologicalClaimOrder", () => {
+    // `topological` had fifo's body. One name per body, so it is not exported.
+    expect(Object.keys(tasksEntry).filter((k) => k.endsWith("ClaimOrder")).sort()).toEqual([
+      "fifoClaimOrder",
+      "priorityClaimOrder",
+    ]);
   });
 });
 

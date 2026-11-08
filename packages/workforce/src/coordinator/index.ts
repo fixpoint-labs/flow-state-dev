@@ -1,6 +1,7 @@
+// FIX-2083.
 /**
  * The coordinator: a worker flow that hands each of its user's messages to
- * delegates from their own roster, by its routing policy, as tasks (FIX-2083).
+ * delegates from their own roster, by its routing policy, as tasks.
  * A delegate is a worker whose flow takes a conversation's tasks
  * (`workerTaskEntry`); nothing else makes it one.
  *

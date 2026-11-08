@@ -10,16 +10,17 @@
  */
 import { describe, expect, it } from "vitest";
 import { createTestContext } from "@flow-state-dev/testing";
-import { REQUEST_SPEND_SEAM, type HarnessRunSpend } from "@flow-state-dev/core/types";
+import { REQUEST_SPEND_SEAM } from "@flow-state-dev/core/internal";
+import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { claudeCodeAgent } from "../../src/sdk/agent";
-import type { ResolveClaudeAgent, SdkMessageLike } from "../../src/sdk/types";
+import type { ResolveClaudeCodeAgent, ClaudeCodeSdkMessage } from "../../src/sdk/types";
 
 /** A scripted query that also answers `accountInfo()`, as the SDK's handle does. */
 function scripted(
-  messages: SdkMessageLike[],
+  messages: ClaudeCodeSdkMessage[],
   account: Record<string, unknown> | (() => Promise<Record<string, unknown>>),
   opts: { throwAfter?: boolean } = {},
-): ResolveClaudeAgent {
+): ResolveClaudeCodeAgent {
   return () => ({
     query: () => {
       const iterate = async function* () {
@@ -60,7 +61,7 @@ function settledOf(reported: HarnessRunSpend[]) {
   return [rest];
 }
 
-const RESULT: SdkMessageLike = {
+const RESULT: ClaudeCodeSdkMessage = {
   type: "result",
   subtype: "success",
   result: "done",
@@ -93,7 +94,7 @@ describe("claudeCodeAgent reports its run's spend", () => {
   it("reports a failed result's spend even when its error notice could not be written", async () => {
     // Claude Code emits an error item before the result: losing that item must
     // not lose the tokens and cost the result already carried.
-    const failed: SdkMessageLike = { ...RESULT, subtype: "error_max_turns", is_error: true, result: undefined };
+    const failed: ClaudeCodeSdkMessage = { ...RESULT, subtype: "error_max_turns", is_error: true, result: undefined };
     const block = claudeCodeAgent({ resolveClaudeAgent: scripted([failed], { apiKeySource: "ANTHROPIC_API_KEY" }), detached: true });
 
     const { settled: reported } = await runReporting(block, { failErrorItem: true });
@@ -125,7 +126,7 @@ describe("claudeCodeAgent reports its run's spend", () => {
   it("counts the whole query's tokens, cached input and sub-agents included, from modelUsage", async () => {
     // `usage` is the main agent loop only and leaves cache tokens out; a
     // worker's total read from it would miss most of a cached run's input.
-    const result: SdkMessageLike = {
+    const result: ClaudeCodeSdkMessage = {
       ...RESULT,
       usage: { input_tokens: 10, output_tokens: 200, cache_read_input_tokens: 5000, cache_creation_input_tokens: 300 },
       modelUsage: {
@@ -141,7 +142,7 @@ describe("claudeCodeAgent reports its run's spend", () => {
   });
 
   it("counts cached input from usage when the result carries no modelUsage", async () => {
-    const result: SdkMessageLike = { ...RESULT, usage: { input_tokens: 10, output_tokens: 200, cache_read_input_tokens: 5000, cache_creation_input_tokens: 300 } };
+    const result: ClaudeCodeSdkMessage = { ...RESULT, usage: { input_tokens: 10, output_tokens: 200, cache_read_input_tokens: 5000, cache_creation_input_tokens: 300 } };
     const block = claudeCodeAgent({ resolveClaudeAgent: scripted([result], { apiKeySource: "ANTHROPIC_API_KEY" }), detached: true });
 
     const { settled: reported } = await runReporting(block);
@@ -159,7 +160,7 @@ describe("claudeCodeAgent reports its run's spend", () => {
       if (asked === 1) throw new Error("not ready");
       return { apiKeySource: "none", email: "me@example.test", subscriptionType: "max" };
     };
-    const window: SdkMessageLike = {
+    const window: ClaudeCodeSdkMessage = {
       type: "rate_limit_event",
       session_id: "sess_1",
       rate_limit_info: { status: "allowed", rateLimitType: "five_hour", resetsAt: 1_900_000_000 },
@@ -180,15 +181,15 @@ describe("claudeCodeAgent reports its run's spend", () => {
  * total added on top of the running sum.
  */
 describe("claudeCodeAgent reports its spend as the run goes", () => {
-  const INIT: SdkMessageLike = { type: "system", subtype: "init", session_id: "sess_1", model: "claude-sonnet-4-5" };
-  const assistant = (id: string, input: number, output: number, cacheRead = 0): SdkMessageLike => ({
+  const INIT: ClaudeCodeSdkMessage = { type: "system", subtype: "init", session_id: "sess_1", model: "claude-sonnet-4-5" };
+  const assistant = (id: string, input: number, output: number, cacheRead = 0): ClaudeCodeSdkMessage => ({
     type: "assistant",
     session_id: "sess_1",
     message: { id, content: [{ type: "text", text: "working" }], usage: { input_tokens: input, output_tokens: output, cache_read_input_tokens: cacheRead } },
   });
 
   it("names the init message's model before any tokens, then rises per assistant message, then ends at the result's whole-query total", async () => {
-    const result: SdkMessageLike = {
+    const result: ClaudeCodeSdkMessage = {
       ...RESULT,
       modelUsage: { "claude-sonnet-4-5": { inputTokens: 1000, outputTokens: 200, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 } },
     };

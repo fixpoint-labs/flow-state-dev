@@ -125,6 +125,7 @@ The write is a `create`, never an overwrite. If the same owner sends the same id
 | `invalid-project-id` | The id is empty, `unassigned`, or not one path segment |
 | `private-has-members` | A private project names anyone besides its owner |
 | `invalid-repository` | The repository isn't a remote. See [A project's code and files](#a-projects-code-and-files) |
+| `repository-unusable` | Your server checks repositories, and says a coding run couldn't check this one out on its machine: no such folder, not a git repository, a remote it doesn't reach, or a repository that doesn't ignore the folder runs write to. The message says what to fix |
 | `invalid-check` | One of the `checks` isn't a single command. See [Checks a project's coding work runs](#checks-a-projects-coding-work-runs) |
 
 ### Changing the brief

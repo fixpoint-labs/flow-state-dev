@@ -13,7 +13,7 @@
 import { useMemo, type ReactNode } from "react";
 import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft } from "lucide-react";
 import { useResourceCollectionList, useResourceManifest, type SessionView } from "@flow-state-dev/react";
-import { OBSERVED_PULL_REQUESTS, type ObservedPullRequestState } from "@flow-state-dev/core/types";
+import { OBSERVED_PULL_REQUESTS, type ObservedPullRequestState } from "@flow-state-dev/core/harness";
 
 /** The pattern the record is declared under. */
 const PATTERN = `${OBSERVED_PULL_REQUESTS}/**`;

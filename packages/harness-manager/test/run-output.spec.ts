@@ -87,6 +87,10 @@ describe("a completed run's output", () => {
       judged: false,
       // No review was asked: a manager built without `reviewChanges`.
       review: null,
+      // So nothing was landed (FIX-2543).
+      landed: null,
+      // And no pull request was waited on: a manager built without `awaitPullRequests` (FIX-2578).
+      pullRequests: null,
     });
   }, 60_000);
 });

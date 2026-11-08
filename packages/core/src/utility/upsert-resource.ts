@@ -8,7 +8,8 @@ export interface UpsertResourceConfig<TInputSchema extends ZodTypeAny> {
   name: string;
   description?: string;
   inputSchema: TInputSchema;
-  /** Flat resource declarations the block needs registered (FIX-435). */
+  // FIX-435.
+  /** Flat resource declarations the block needs registered. */
   resources?: Record<string, DeclaredResourceEntry>;
   /** State schema of the outer sequencer, if the block needs to read/write sequencer state. */
   sequencerStateSchema?: ZodTypeAny;

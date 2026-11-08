@@ -1,3 +1,4 @@
+// BP-015.
 /**
  * Each user's own keys for the MCP servers a host offers.
  *
@@ -8,7 +9,7 @@
  * host's store: anyone who can read that store can read it.
  *
  * **Write-only from outside.** A browser read of the collection exposes
- * `setAt` alone (BP-015), so no client field, page or response carries a value.
+ * `setAt` alone, so no client field, page or response carries a value.
  * The value is also declared `secret`, which keeps it out of the engine's
  * debug reads, the one path that ignores `expose`.
  * The writes go around the action pipeline, since an action's input is kept

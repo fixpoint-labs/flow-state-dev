@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll } from "vitest";
-import { createFilesystemStores, createInMemoryStores } from "../src";
+import { createFilesystemStores, createInMemoryStores } from "../src/host";
 import { createSessionStreamConformanceTests } from "../src/testing";
 
 createSessionStreamConformanceTests({

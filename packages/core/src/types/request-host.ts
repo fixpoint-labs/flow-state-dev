@@ -1,6 +1,7 @@
+// FIX-2129; FIX-2078 D1; FIX-2082; FIX-2160 D2; FIX-999.
 /**
  * The request host — the single declared seam through which a capability reaches
- * facilities only the runtime can provide (FIX-999).
+ * facilities only the runtime can provide.
  *
  * A capability's helper functions are typed against the context `core` declares,
  * and `core` must not depend on `engine`. Some helpers need to start a child
@@ -33,18 +34,19 @@
  * The seam is **closed at eight verbs**. The fifth, `resumeWait`, was added by
  * a reviewed decision (a wait: a dispatched task the caller waits on), with one
  * fact beside it, `hasWaitSweeper`, which says whether a wait can be bounded
- * here; FIX-2129 widened it to cancel a wait for a user, rather than add a
- * verb. The sixth, `wakes`, by another (FIX-2078 D1: a debt's due time is a
- * wake the engine keeps). The seventh, `waits`, by FIX-2082 (one wait gate:
- * its deadline bounds and the depth the engine counts). The eighth,
- * `sessions`, by FIX-2160 D2: a message's server checks a target session of the
+ * here; a later decision widened it to cancel a wait for a user, rather than
+ * add a verb. The sixth, `wakes`, by another (a debt's due time is a wake the
+ * engine keeps). The seventh, `waits`, by another (one wait gate: its deadline
+ * bounds and the depth the engine counts). The eighth, `sessions`, by another:
+ * a message's server checks a target session of the
  * principal's before anything is written. Adding a ninth verb is a decision
  * someone reviews, not a surface that grows by transitivity; a later lookup of
  * the principal's sessions extends `sessions` instead.
  */
 
-import type { WaitGateBinding, WaitOutcome, WaitRow } from "./wait-gate";
+import type { WaitGateBinding, WaitOutcome, TaskAddress } from "./wait-gate";
 import type { HistoryTurn, MessageLimit } from "./scope";
+import type { InternalBlockContext } from "./block";
 
 /** How a parent-board row is being settled. */
 export type ParentTaskOutcome = "complete" | "fail";
@@ -86,9 +88,10 @@ export type SuspensionAddress = {
   readonly suspensionId: string;
 };
 
+// FIX-2129.
 /**
  * Arguments to {@link RequestHost.resumeWait}: a wait gate in this session
- * and its outcome, or a wait for a user to cancel (FIX-2129).
+ * and its outcome, or a wait for a user to cancel.
  */
 export type ResumeWaitInput =
   | {
@@ -160,8 +163,9 @@ export type WakeView = {
 /** What {@link RequestWakes.settle} did. */
 export type WakeSettleResult = "moved" | "cleared" | "stale";
 
+// FIX-2078 D1.
 /**
- * A debt's due time, kept by the engine (FIX-2078 D1): one wake per session
+ * A debt's due time, kept by the engine: one wake per session
  * and internal entry, fired by the durability sweeper as its owner until a pass
  * in that session clears it. A writer owes the wake BEFORE the write that owes
  * the debt, so a crash between them leaves a wake that pays nothing, never a
@@ -199,7 +203,8 @@ export interface RequestWakes {
   readonly maxDebtAgeMs: number;
 }
 
-/** A wait's deadline, as the host bounds it (FIX-2082): milliseconds from the call. */
+// FIX-2082.
+/** A wait's deadline, as the host bounds it: milliseconds from the call. */
 export type WaitDeadlines = {
   /** A wait that names none waits this long: five minutes unless the host sets it. */
   readonly defaultMs: number;
@@ -209,8 +214,9 @@ export type WaitDeadlines = {
   readonly maxMs: number;
 };
 
+// FIX-2082.
 /**
- * Waits on this host (FIX-2082): every wait parks on the one wait gate, and
+ * Waits on this host: every wait parks on the one wait gate, and
  * each passes the same two checks before it does.
  */
 export interface RequestWaits {
@@ -230,7 +236,7 @@ export interface RequestWaits {
    * @param input.own The row the running request works, when it works one:
    *   server-derived by the caller (its claim), never input.
    */
-  depth(input: { readonly binding?: WaitGateBinding; readonly own?: WaitRow }): Promise<number>;
+  depth(input: { readonly binding?: WaitGateBinding; readonly own?: TaskAddress }): Promise<number>;
   /**
    * Whether each request has stopped running its own work: it ended, or its
    * process died while it ran (`interrupted`). `false` for one running or
@@ -239,6 +245,7 @@ export interface RequestWaits {
    * for a request that ended without reading the task.
    */
   ended?(requestIds: readonly string[]): Promise<Readonly<Record<string, boolean>>>;
+  // FIX-2166; FIX-2123.
   /**
    * Whether each request is running its own work now (`in_progress`): neither
    * parked (`suspended`) nor ended. `false` for one parked
@@ -246,23 +253,25 @@ export interface RequestWaits {
    * request of another session, and for one with no record. Also `false` for
    * one still recorded `in_progress` whose registry heartbeat has been silent
    * past the host's stale-request threshold: its process died before the sweep
-   * marked it interrupted (FIX-2166). Where heartbeats can't tell (off, or
+   * marked it interrupted. Where heartbeats can't tell (off, or
    * slower than half the threshold), the record alone answers. A board reads it
-   * to hold a task's notice while the request that filed the task still runs
-   * (FIX-2123), and not while that request is parked.
+   * to hold a task's notice while the request that filed the task still runs,
+   * and not while that request is parked.
    */
   running?(requestIds: readonly string[]): Promise<Readonly<Record<string, boolean>>>;
+  // FIX-2239.
   /**
-   * The running session's open stop for the user (FIX-2239): a request of
+   * The running session's open stop for the user: a request of
    * this session, other than the running one, parked on a user's suspension
    * (`isUserSuspension`). `undefined` when none is. Read from the suspensions
    * pending now. A message to a session stopped for the user queues behind
    * that request until it ends.
    */
   userStop?(): Promise<{ readonly requestId: string } | undefined>;
+  // FIX-2269.
   /**
    * Run `work`, which starts what the running request will then park on, and
-   * parks on it (FIX-2269): a call's send and its wait. If the process dies
+   * parks on it: a call's send and its wait. If the process dies
    * after `work` starts and before the park is written, the engine continues
    * the request, as the continue route does, with no one asking, and its
    * replay parks on what it already started.
@@ -282,7 +291,7 @@ export interface RequestWaits {
  * A session of the running principal as {@link RequestSessions.read} answers it:
  * which flow it runs and its readonly state, and nothing else of its record.
  */
-export type SessionView = {
+export type PeerSessionView = {
   /** The definition kind of the session's flow. */
   readonly flowKind: string;
   /** The flow instance the session belongs to; absent on a record written before instances had ids. */
@@ -312,7 +321,10 @@ export type SessionHistoryQuery = {
  * them: what a model may read of that conversation, and how fresh it is.
  */
 export type SessionHistory = {
-  /** The settled turns read, oldest first. Each carries its messages. */
+  /**
+   * The settled turns read, oldest first, and any turn waiting on a call, as
+   * far as it got (`settled: false`). Each carries its messages.
+   */
   readonly turns: readonly HistoryTurn[];
   /** The first turn read, when earlier settled turns were left out. */
   readonly startRequestId?: string;
@@ -323,14 +335,16 @@ export type SessionHistory = {
   readonly asOf?: { readonly requestId: string; readonly atMs: number };
   /**
    * Whether a turn of that session is open now: running, suspended, or
-   * interrupted and parked to run again. What it says is not read.
+   * interrupted and parked to run again. What it says is not read, except a
+   * turn waiting on a call, which `turns` holds as far as it got.
    */
   readonly running: boolean;
 };
 
+// FIX-2160 D2; FIX-2173.
 /**
- * Sessions of the running principal (FIX-2160 D2): a check on a target session
- * before anything is written to it, and a read of what it has said (FIX-2173).
+ * Sessions of the running principal: a check on a target session
+ * before anything is written to it, and a read of what it has said.
  */
 export interface RequestSessions {
   /**
@@ -340,7 +354,7 @@ export interface RequestSessions {
    * not an existence oracle. Any flow's session answers; the caller checks the
    * flow it needs.
    */
-  read(sessionId: string): Promise<SessionView | undefined>;
+  read(sessionId: string): Promise<PeerSessionView | undefined>;
 
   /**
    * The settled turns of the session `sessionId`, when it is the running
@@ -406,6 +420,7 @@ export interface RequestHost {
    */
   livenessOf?(requestIds: readonly string[]): Promise<LivenessAnswers>;
 
+  // FIX-2129.
   /**
    * Resume a turn parked on a wait gate **in this session**, with the answer or
    * an error. The parked request continues under its own id, as a same-request
@@ -416,7 +431,7 @@ export interface RequestHost {
    * running session is closed over, so one conversation cannot resume another's
    * turn. A gate resolves once; every later call is refused `already-resolved`.
    *
-   * **Or cancel a wait for a user** (FIX-2129): `{ suspension, outcome: {
+   * **Or cancel a wait for a user**: `{ suspension, outcome: {
    * cancelled: true } }` resolves a pending user's suspension `cancelled`
    * through the same fence every answer takes, and continues its request, so
    * the block reads `{ cancelled: true }` and runs to its end. A suspension
@@ -433,9 +448,10 @@ export interface RequestHost {
    */
   resumeWait?(input: ResumeWaitInput): Promise<ResumeWaitResult>;
 
+  // FIX-2129, epic D3.
   /**
    * The deadline a wait for a user gets when its call names none, in
-   * milliseconds: the host's setting for a user's stop (FIX-2129, epic D3),
+   * milliseconds: the host's setting for a user's stop,
    * which a held question reads too. Absent when the host sets none: such a
    * stop waits until it is answered, stopped or cancelled. A fact read when
    * the request starts, not a verb.
@@ -463,23 +479,26 @@ export interface RequestHost {
    */
   readonly dispatchRunsHere?: boolean;
 
+  // FIX-2078 D1.
   /**
-   * Debts' due times (FIX-2078 D1). **Absent when the host keeps no wakes**:
+   * Debts' due times. **Absent when the host keeps no wakes**:
    * its stores have none, or it has no durable execution. A debt is then paid
    * on its fast paths only, and a consumer that needs a due time either keeps a
    * fast path or is refused when its flow is built.
    */
   readonly wakes?: RequestWakes;
 
+  // FIX-2082.
   /**
-   * Waits (FIX-2082): their deadline bounds and the depth count. **Absent when
+   * Waits: their deadline bounds and the depth count. **Absent when
    * the host can't hold a wait**: no durable execution, or stores that keep no
    * wakes, since a wait's deadline is a wake.
    */
   readonly waits?: RequestWaits;
 
+  // FIX-2160 D2.
   /**
-   * Sessions of the running principal (FIX-2160 D2). Absent on a host that
+   * Sessions of the running principal. Absent on a host that
    * can't read its session records, such as a hand-built test context.
    */
   readonly sessions?: RequestSessions;
@@ -505,15 +524,28 @@ export class NoRequestHostError extends Error {
 }
 
 /**
+ * Read the request host off a context, or `undefined` when none is wired: a
+ * hand-built test context, or a block run outside a request.
+ *
+ * `requestHost` is a member of the engine's {@link InternalBlockContext}, not
+ * of the public `BlockContext`, so a framework package holding a public `ctx`
+ * reads it here. Takes any context.
+ */
+export function requestHostOf(ctx: object): RequestHost | undefined {
+  return (ctx as Pick<InternalBlockContext, "requestHost">).requestHost;
+}
+
+/**
  * Read the request host off a context, throwing by name when it is absent.
  *
  * The member is optional in the *type* so a hand-built test context still
  * type-checks; it is not optional in *deployment* — a host that executes requests
  * without one fails at construction. This accessor is what turns the residual
- * absence into a named error instead of `undefined is not a function`.
+ * absence into a named error instead of `undefined is not a function`. The
+ * non-throwing form is {@link requestHostOf}.
  */
-export function requireRequestHost(ctx: { requestHost?: RequestHost }): RequestHost {
-  const host = ctx.requestHost;
+export function requireRequestHost(ctx: object): RequestHost {
+  const host = requestHostOf(ctx);
   if (host == null) throw new NoRequestHostError();
   return host;
 }

@@ -1,5 +1,6 @@
+// S3, BR-5 to BR-10; FIX-2009.
 /**
- * A task's Session tab (S3, BR-5 to BR-10): the items of the run the task's
+ * A task's Session tab: the items of the run the task's
  * row names, in stored order, live while the tab is open.
  *
  * The run session's feed: its newest items, then each item its stream brings,
@@ -8,27 +9,30 @@
  * is open, so a user reading Brief pays for no stream. A session shared with
  * other tasks shows only the items stamped with this task's id (a line its
  * composer sent, and the reply, carry the stamp when the door takes the task),
- * and the lines it sent to a door that keeps no task id, with their replies
- * (FIX-2009), and says so.
+ * and the lines it sent to a door that keeps no task id, with their replies,
+ * and says so.
  *
  * Each item is drawn by Shift Manager's copy of the registry's item components
  * (`chatAssistantRenderers`: message, reasoning, tool, status, error, task
- * plan), the same copies the design system skins. An ask the run raised and
+ * plan), the same copies the design system skins; a task's brief is one folded
+ * line (`TaskBrief`), never the user's line. An ask the run raised and
  * that still waits is drawn inline, with the one ask card Inbox uses.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { SessionConnectionState } from "@flow-state-dev/client";
+import type { SessionConnectionStatus } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext, useJumpToLatest } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
 import { shiftManagerRenderers } from "../components/ToolLine";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
-import { EmptyState, JumpToLatestButton, LoadEarlierButton, SectionFailure } from "../components/ui";
+import { ConversationScrollButton } from "../components/flow-state/conversation";
+import { EmptyState, LoadEarlierButton, SectionFailure } from "../components/ui";
 import { asksOfTask, waitsOnYou } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { useReportFeedState } from "../lib/feed-health";
 import { collectionOfBoard, describeFailure, type Ask, type Failure } from "../lib/reads";
 import { RouteLink } from "../components/RouteLink";
+import { isTaskBrief } from "../components/TaskBrief";
 import { followRequest, followSessionItems, readRunRecord, readTaskClaims, taskItems, type OpenRun, type SessionItems } from "../lib/run";
 import { useTask } from "../lib/task";
 
@@ -113,7 +117,7 @@ function RunItems({ run }: { run: OpenRun }) {
   const feed = useJumpToLatest();
   const { reportStatus } = task;
   // The feed's connection, for the page's bar and stale styling.
-  const [feedState, setFeedState] = useState<SessionConnectionState | undefined>(undefined);
+  const [feedState, setFeedState] = useState<SessionConnectionStatus | undefined>(undefined);
   useReportFeedState(feedState);
 
   useEffect(() => {
@@ -248,7 +252,7 @@ function RunItems({ run }: { run: OpenRun }) {
               data-testid="session-item"
               data-item-id={item.id}
               data-item-type={item.type}
-              {...(item.type === "message" && item.role === "user" ? feed.mine(item.id) : {})}
+              {...(item.type === "message" && item.role === "user" && !isTaskBrief(item) ? feed.mine(item.id) : {})}
             >
               {item.type === "suspension" ? (
                 <PendingAsk ask={asks.find((ask) => ask.item.suspensionId === item.suspensionId)} />
@@ -272,7 +276,7 @@ function RunItems({ run }: { run: OpenRun }) {
           The run hasn't recorded a step yet.
         </p>
       ) : null}
-      <JumpToLatestButton feed={feed} />
+      <ConversationScrollButton feed={feed} className="size-8 rounded-none" />
     </div>
   );
 }

@@ -1,8 +1,9 @@
+// FIX-2238; FIX-2310, FIX-2318.
 /**
- * A message another worker sent this one (`workforce:received`, FIX-2238):
+ * A message another worker sent this one (`workforce:received`):
  * drawn as a line under its sender's name, with the time it landed and a link
  * to Messages, a note when it answers a message of this worker's, and a mark
- * when its sender asked for a reply (FIX-2310, FIX-2318). The
+ * when its sender asked for a reply. The
  * item is the message's own: the line the worker's model reads is history
  * only and never reaches the page.
  */

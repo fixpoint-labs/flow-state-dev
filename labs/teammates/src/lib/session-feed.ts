@@ -5,7 +5,7 @@
  * kept as it is written ({@link SessionFeed.followResponse}). A session
  * longer than the first read reaches back through {@link SessionFeed.loadEarlier}.
  */
-import { sessionFeed, type Client, type SessionConnectionState } from "@flow-state-dev/client";
+import { sessionFeed, type Client, type SessionConnectionStatus } from "@flow-state-dev/client";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
 export interface SessionFeed {
@@ -14,7 +14,7 @@ export interface SessionFeed {
   /** Called on every change, and at once when the history is already read. Returns the stop. */
   watch(onChange: (items: readonly OutputItem[]) => void): () => void;
   /** Called with the connection's state now and on each change of it. Returns the stop. */
-  watchState(onChange: (state: SessionConnectionState) => void): () => void;
+  watchState(onChange: (state: SessionConnectionStatus) => void): () => void;
   /**
    * Called with how many unfinished runs the session stream names, once it has named them and on
    * each change: its background work. Never called while they are unknown. Returns the stop.
@@ -81,8 +81,8 @@ function shared(client: Client, sessionId: string, onClosed: () => void): Sessio
       return hold(stop);
     },
     watchState(onChange) {
-      let last: SessionConnectionState | undefined;
-      const tell = (state: SessionConnectionState) => {
+      let last: SessionConnectionStatus | undefined;
+      const tell = (state: SessionConnectionStatus) => {
         if (state === last) return;
         last = state;
         onChange(state);

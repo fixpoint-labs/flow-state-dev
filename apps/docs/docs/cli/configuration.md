@@ -65,7 +65,7 @@ The auto walk-up only climbs. It finds `.env.local` in cwd and above, never in a
 
 ```bash
 # from the repo root, load the app's env explicitly:
-fsdev run my-flow action -i '{}' --dotenv apps/my-app/.env.local
+pnpm fsdev run my-flow action -i '{}' --dotenv apps/my-app/.env.local
 ```
 
 `--dotenv` is repeatable and resolved relative to cwd, and absolute paths work. A file you name that doesn't exist is an error, which is the opposite of the silent walk-up: naming a file is a claim it's there, so a typo stops the run instead of vanishing.
@@ -152,7 +152,7 @@ The CLI carries no credential, so a resolver that checks one refuses it. Pass --
 Pass `--org` to say which organization to run in yourself:
 
 ```bash
-fsdev run billing refund -i '{"id":"r_1"}' --org acme --user support-bot
+pnpm fsdev run billing refund -i '{"id":"r_1"}' --org acme --user support-bot
 ```
 
 `--org` skips your resolver entirely and runs as `--user`, or `devuser` without it. It can't be

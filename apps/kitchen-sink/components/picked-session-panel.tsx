@@ -95,6 +95,9 @@ function coordinatorLines(items: Session["items"], user: string): CoordinatorLin
  * @param conversation The session's item stream, drawn for a worker. A
  *   coordinator draws its lines instead, so the page need not build one for it.
  * @param onBack Closes the panel, back onto the assistant's open session.
+ * @param onSent Told as a worker's composer sends, before the send: the
+ *   worker's action echoes the user's line into `conversation`, and the page's
+ *   feed raises it when it lands. A coordinator draws its own lines and never calls it.
  */
 export function PickedSessionPanel({
   session,
@@ -103,6 +106,7 @@ export function PickedSessionPanel({
   requestStatus,
   conversation,
   onBack,
+  onSent,
 }: {
   session: Session;
   flow: string;
@@ -110,6 +114,7 @@ export function PickedSessionPanel({
   requestStatus: RequestStatusLookup;
   conversation?: ReactNode;
   onBack: () => void;
+  onSent?: () => void;
 }) {
   // Each composer is keyed by the session it talks to, so a draft, a pending
   // send or a failure never carries over to the next pick.
@@ -149,7 +154,10 @@ export function PickedSessionPanel({
           requestStatus={requestStatus}
           label="Message this worker"
           placeholder="Write to this worker…"
-          send={(text) => session.sendAction(ask.action, { [ask.field]: text })}
+          send={(text) => {
+            onSent?.();
+            return session.sendAction(ask.action, { [ask.field]: text });
+          }}
         />
       )}
     </section>

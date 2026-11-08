@@ -9,7 +9,7 @@
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findNodeBuiltinsFromEntry } from "@flow-state-dev/testing";
+import { findNodeBuiltinsFromEntry } from "@flow-state-dev/testing/bundle";
 import { describe, expect, it } from "vitest";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

@@ -1,5 +1,6 @@
+// FIX-724.
 /**
- * Error-capture seam (FIX-724): provider-neutral types and helpers that let
+ * Error-capture seam: provider-neutral types and helpers that let
  * operators route runtime block failures to an external observability service
  * (Sentry, Datadog, Bugsnag) without the framework depending on any provider
  * SDK. The framework defines the event shape; the operator writes the adapter.
@@ -43,8 +44,9 @@ export interface ErrorCaptureEvent {
   scope?: FlowErrorScope;
   /** True for high-frequency transient blocks (poll loops); lets adapters down-sample. */
   transient?: boolean;
+  // FIX-1983.
   /**
-   * Set on the one event a request sends when it settles `failed` (FIX-1983),
+   * Set on the one event a request sends when it settles `failed`,
    * after its failed record is written. Its `scope` is `"request"`, and it
    * names the leaf that threw when one did. A failure a retry or a rescue
    * healed never gets one, so a sink that files bugs keys on it; a sink that

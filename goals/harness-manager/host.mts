@@ -10,15 +10,15 @@
  * any of those should say so here rather than copy this host as if it had them.
  */
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { z } from "zod";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowHolds,
   resolveResourceCollection,
 } from "@flow-state-dev/orchestration/tasks";
-import { taskBoard, taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration/task-board";
+import { openOwnHolds, taskToolSuffix } from "@flow-state-dev/orchestration/internal";
+import { taskBoard, taskToolActions } from "@flow-state-dev/orchestration/task-board";
 import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import {
   assertBaseRefExists,
@@ -28,7 +28,7 @@ import {
   harnessDrainBudgetMs,
   harnessManager,
   harnessTaskInputSchema,
-  readRunRow,
+  readRunRecord,
   resolveOwnership,
   runRecordCollection,
   runRecordStateSchema,
@@ -38,7 +38,7 @@ import {
   type PhaseSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import {
   assertSafeSegment,
   canonicalSegment,
@@ -251,7 +251,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
         }
         const record =
           issue !== null && phaseName !== null && rowOwnsItsIdentity(task)
-            ? await readRunRow(ctx, runTopic(collectionId, issue, phaseName))
+            ? await readRunRecord(ctx, runTopic(collectionId, issue, phaseName))
             : undefined;
         rows.push({
           taskId: task.id,
@@ -262,7 +262,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
           feedback: task.feedback ?? null,
           run: record ?? null,
           output: task.output ?? null,
-          questions: openRowHolds(task).map((hold) => ({
+          questions: openOwnHolds(task).map((hold) => ({
             question: hold.id,
             text: hold.ask.prompt,
             askedAt: hold.openedAt,

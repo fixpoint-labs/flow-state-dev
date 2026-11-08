@@ -1,5 +1,6 @@
+// FIX-858.
 /**
- * Shared builder for a read-only projected-collection instance ref (FIX-858).
+ * Shared builder for a read-only projected-collection instance ref.
  *
  * Both the execution-context registry (`createExternalCollectionHandle`) and the
  * client-route scope handle (`createScopeResources`) resolve an app record and

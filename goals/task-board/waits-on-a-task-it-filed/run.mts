@@ -96,7 +96,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   // A drain that takes its deadline as an ending: it stops waiting on the row.
   "drain-moves-on": [
     {
-      module: "packages/orchestration/src/task-board/blocks/dispatch-row.ts",
+      module: "packages/orchestration/src/task-board/blocks/dispatch-task.ts",
       from: String.raw`      waitAgain: true,`,
       to: "      waitAgain: false,"
     }

@@ -13,25 +13,22 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  taskClaimTicketSchema,
   ticketForClaim,
   type DefinedTaskCollection,
   type Task,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { taskClaimTicketSchema } from "../../src/tasks/claim-ticket";
 import { resolveTaskPartition } from "../../src/tasks/collection/partition";
 import { createFakeResourceCollection } from "../helpers";
 
 const LEDGER = "convo-tasks";
 
-/** The ledger's id index, installed beside it as a flow's resources would. */
-const idIndex = createFakeResourceCollection<JsonObject>(`${LEDGER}__ids/**`);
-
-/** Minimal block context: the factory reads only `emit`, identity, and the id index. */
+/** Minimal block context: the factory reads only `emit` and identity. */
 function ctxFor(userId = "alice"): BlockContext {
   return {
     emit: { component: () => undefined },
-    resources: { [`${LEDGER}__ids`]: idIndex },
+    resources: {},
     session: { identity: { type: "session", id: "s_1", userId } },
     request: { identity: { type: "request", id: "r_1" } },
   } as unknown as BlockContext;
@@ -91,7 +88,7 @@ describe("resolving a partitioned ledger", () => {
         collectionId: LEDGER,
         collection: storeFor(partitioned()),
       })
-    ).rejects.toThrow(/keeps its rows per partition .* never read whole/);
+    ).rejects.toThrow(/keeps its tasks per partition .* never read whole/);
   });
 
   it("refuses a partition on a ledger declared without one", async () => {

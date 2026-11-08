@@ -1,3 +1,4 @@
+// FIX-1790.
 /**
  * A user's own worker, as it is stored: one row per worker in the user's
  * scope, at `workforce/workers/<id>`.
@@ -8,7 +9,7 @@
  * is written. So a hire, a fork, an edit and a fire are writes to the user's
  * data, and the next turn on any process reads them.
  *
- * User scope is per (user, organization) for every flow (FIX-1790), so the
+ * User scope is per (user, organization) for every flow, so the
  * same user has a separate roster in each organization, and no other user's
  * read reaches the row.
  */
@@ -17,14 +18,15 @@ import { z } from "zod";
 import { WORKERS_PATTERN } from "./keys";
 import { shownSettingsOf, type ShownSettingsOf } from "./shown-settings";
 
+// BP-030.
 /**
  * One stored worker.
  *
  * `settings` passes keys through: it belongs to the worker's flow, whose own
  * `configSchema` checks it, and it is free to grow keys this package has never
- * heard of (BP-030). The envelope is this package's.
+ * heard of. The envelope is this package's.
  */
-export const workerRowSchema = z.object({
+export const workerResourceStateSchema = z.object({
   /** The flow the worker runs on: a registered worker flow's name. */
   flow: z.string().min(1),
   /** One line saying what the worker is for. */
@@ -51,8 +53,8 @@ export const workerRowSchema = z.object({
   forkedFrom: z.string().nullable().default(null)
 });
 
-/** One stored worker. @see workerRowSchema */
-export type WorkerRow = z.infer<typeof workerRowSchema>;
+/** One stored worker. @see workerResourceStateSchema */
+export type WorkerResourceState = z.infer<typeof workerResourceStateSchema>;
 
 /**
  * The user's worker collection: one row per worker, at user scope.
@@ -75,7 +77,7 @@ export function defineWorkerCollection(shown: ShownSettingsOf = () => []) {
     pattern: WORKERS_PATTERN,
     scope: "user",
     flowIsolation: false,
-    stateSchema: workerRowSchema.passthrough(),
+    stateSchema: workerResourceStateSchema.passthrough(),
     client: {
       state: { read: true },
       // A computed field, so `data` rather than `expose` (BP-015).
@@ -90,12 +92,12 @@ export function defineWorkerCollection(shown: ShownSettingsOf = () => []) {
 }
 
 /**
- * Parse one stored value as a worker row, or say why it can't be read.
+ * Parse one stored value as a worker, or say why it can't be read.
  * Never throws and never writes.
  */
-export function parseWorkerRow(value: unknown): { row: WorkerRow } | { problem: string } {
-  const parsed = workerRowSchema.safeParse(value);
-  if (parsed.success) return { row: parsed.data };
+export function parseWorkerResourceState(value: unknown): { worker: WorkerResourceState } | { problem: string } {
+  const parsed = workerResourceStateSchema.safeParse(value);
+  if (parsed.success) return { worker: parsed.data };
   const issues = parsed.error.issues
     .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
     .join("; ");

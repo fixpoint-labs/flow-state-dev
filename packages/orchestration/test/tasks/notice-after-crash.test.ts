@@ -31,7 +31,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, disposeFlowApiRouter, inMemoryStores, runAction, type StoreAdapter } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { TaskSettledInput } from "../../src";
-import { act, fileCall, type Row, SESSION, stepModel, USER, waitFlow } from "./wait-fixture";
+import { act, fileCall, type StoredTask, SESSION, stepModel, USER, waitFlow } from "./wait-fixture";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -129,7 +129,7 @@ async function crashAndRestart(open: () => Promise<StoreAdapter>, sweepMs: numbe
   const filing = await eventually(
     async () => {
       // Read without a router: the first server runs no sweeps, as a server about to die runs none we can count on.
-      const listed = (await act(first, flow, "list", {}, { sweeper: false })).output as Row[];
+      const listed = (await act(first, flow, "list", {}, { sweeper: false })).output as StoredTask[];
       const meta = listed[0]?.metadata ?? {};
       const deferred = Object.entries(meta).find(([key]) => key.startsWith("noticeDeferred:"))?.[1] as { whileRunning?: string } | undefined;
       return deferred?.whileRunning;

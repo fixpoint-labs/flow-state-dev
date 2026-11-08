@@ -1,3 +1,4 @@
+// FIX-723.
 /**
  * Error classification and shaping for the fetch tool. Turns the two failure
  * modes of `globalThis.fetch` — a non-2xx HTTP response (which does NOT throw)
@@ -5,7 +6,7 @@
  * reason buried in `error.cause`) — into a `FlowError` carrying structured,
  * devtool-renderable detail: an `errorType` classification, the HTTP status and
  * a truncated response body when available, and the original `cause` so the
- * chain survives to the transcript (FIX-723).
+ * chain survives to the transcript.
  */
 import { FlowError } from "@flow-state-dev/core";
 

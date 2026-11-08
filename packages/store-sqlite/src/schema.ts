@@ -9,6 +9,7 @@ PRAGMA foreign_keys = ON;
 PRAGMA temp_store = MEMORY;
 `;
 
+// FIX-1009, FIX-1010: the parent indexes below.
 const SESSIONS_TABLE = `
 CREATE TABLE IF NOT EXISTS sessions (
   id          TEXT PRIMARY KEY,
@@ -32,12 +33,12 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_flow_user   ON sessions(flow_kind, user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_tenant ON sessions(user_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at);
--- FIX-1009: serves one access path — \`{ parentOf: id }\` equality lookups
+-- Serves one access path — \`{ parentOf: id }\` equality lookups
 -- (enumerating one session's children). The default \`IS NULL\` scan is
 -- low-selectivity and is deliberately not the justification, so a plain btree
 -- is enough and no composite is warranted yet.
 CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_session_id);
--- FIX-1010: the child listing reads one parent's children ordered by
+-- The child listing reads one parent's children ordered by
 -- \`created_at DESC, id DESC\` (immutable keys, so a run starting mid-walk
 -- cannot reorder a caller's pages). The single-column parent index above
 -- serves the equality but not the order, so a page limit would apply after
@@ -73,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_parent_tenant_owner_updated
   ON sessions(parent_session_id, tenant_id, user_id, org_id, updated_at);
 `;
 
+// FIX-1010: the most-recent-run index below.
 const REQUESTS_TABLE = `
 CREATE TABLE IF NOT EXISTS requests (
   id          TEXT PRIMARY KEY,
@@ -98,7 +100,7 @@ CREATE INDEX IF NOT EXISTS idx_requests_session_status  ON requests(session_id, 
 CREATE INDEX IF NOT EXISTS idx_requests_session_tenant  ON requests(session_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_requests_flow_user       ON requests(flow_kind, user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at);
--- FIX-1010: the most-recent-run read orders one session's requests by
+-- The most-recent-run read orders one session's requests by
 -- \`created_at DESC, id DESC\` and takes one row. \`idx_requests_session_status\`
 -- stops at \`status\` and \`idx_requests_session_tenant\` at \`tenant_id\`, so
 -- neither carries the ordering and the database would sort the session's whole
@@ -162,8 +164,9 @@ CREATE INDEX IF NOT EXISTS idx_active_requests_user_id    ON active_requests(use
 CREATE INDEX IF NOT EXISTS idx_active_requests_session_id ON active_requests(session_id);
 `;
 
+// FIX-438.
 /**
- * Add `source` column to pre-FIX-438 `active_requests` tables. SQLite has
+ * Add `source` column to older `active_requests` tables. SQLite has
  * no `ADD COLUMN IF NOT EXISTS`, so we probe `pragma_table_info` first.
  * The new column carries a `NOT NULL DEFAULT 'http'` so existing rows
  * read back as the HTTP transport without needing a data backfill.
@@ -183,14 +186,15 @@ function migrateAddActiveRequestsSource(db: Database.Database): void {
   }
 }
 
+// FIX-999; BP-030.
 /**
- * Add the `queued_at` column to pre-FIX-999 `active_requests` tables.
+ * Add the `queued_at` column to older `active_requests` tables.
  *
  * Nullable with no default, and **no backfill is possible or wanted**: the
  * column marks a request that was registered at enqueue time and not yet
  * claimed by a worker, and nothing can reconstruct that after the fact. NULL
  * reads back as "claimed", which is the pre-existing behaviour for every row —
- * they are swept on `last_heartbeat_at` exactly as before (BP-030).
+ * they are swept on `last_heartbeat_at` exactly as before.
  */
 function migrateAddActiveRequestsQueuedAt(db: Database.Database): void {
   const tableExists = db
@@ -206,16 +210,18 @@ function migrateAddActiveRequestsQueuedAt(db: Database.Database): void {
   }
 }
 
+// FIX-682.
 /**
- * Add the `tenant_id` column to pre-FIX-682 `sessions`, `requests`, and
+ * Add the `tenant_id` column to older `sessions`, `requests`, and
  * `active_requests` tables. SQLite has no `ADD COLUMN IF NOT EXISTS`, so we
  * probe `pragma_table_info` first. The column is nullable with no default, so
  * existing rows read back as no-tenant (single-tenant), which is the correct
  * pre-isolation semantics. Idempotent on subsequent boots.
  */
+// FIX-1442.
 /**
  * Add the nullable `org_id` column to a `schedule_index` created before
- * schedules carried an organization (FIX-1442).
+ * schedules carried an organization.
  *
  * Nullable with **no backfill**: the organization a standing instruction fires
  * into is not recoverable from the row, and defaulting it would point somebody's
@@ -237,13 +243,14 @@ function migrateAddScheduleIndexOrgId(db: Database.Database): void {
   }
 }
 
+// FIX-1546; BP-030.
 /**
  * Re-key a `schedule_index` created before rows carried their storage cell
- * (FIX-1546) from `(user_id, key)` to `(cell, key)`.
+ * from `(user_id, key)` to `(cell, key)`.
  *
  * Every existing row is adopted as the person's own app-wide cell: every
  * released version wrote index rows only from that cell, so the value is known,
- * not guessed (BP-030). The cell is the engine's storage key for it — the user
+ * not guessed. The cell is the engine's storage key for it — the user
  * id with `\` and `:` escaped — so the next write from that cell updates the
  * same row rather than adding a second one.
  *
@@ -303,6 +310,7 @@ function migrateAddTenantId(db: Database.Database): void {
   }
 }
 
+// BP-030.
 /**
  * Add the nullable `flow_id` column — the owning flow instance — to
  * `sessions`, `requests` and `active_requests` tables created before instance
@@ -314,7 +322,7 @@ function migrateAddTenantId(db: Database.Database): void {
  * registered instance. A blanket `flow_id = flow_kind` would silently assign a
  * collection's history to whichever member happens to share the kind's name.
  * Known singleton rows need no backfill to keep working — the runtime reads a
- * NULL owner on a singleton kind compatibly (BP-030).
+ * NULL owner on a singleton kind compatibly.
  */
 function migrateAddFlowId(db: Database.Database): void {
   for (const tableName of ["sessions", "requests", "active_requests"]) {
@@ -332,8 +340,9 @@ function migrateAddFlowId(db: Database.Database): void {
   }
 }
 
+// FIX-1009.
 /**
- * Add the `parent_session_id` column to a pre-FIX-1009 `sessions` table.
+ * Add the `parent_session_id` column to an older `sessions` table.
  * SQLite has no `ADD COLUMN IF NOT EXISTS`, so we probe `pragma_table_info`
  * first, which also makes a second boot a no-op. Must run BEFORE the index DDL
  * so `idx_sessions_parent_session_id` finds the column.
@@ -420,6 +429,35 @@ CREATE TABLE IF NOT EXISTS resource_state (
   PRIMARY KEY (scope_type, scope_id, resource_key)
 );
 CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type, scope_id);
+`;
+
+// Index entries for resource collections: one row per (row, index, value), so
+// a collection can be looked up by a declared field without reading its rows.
+// Generic on purpose: a new index needs no DDL. The built-marker table records
+// which (scope, collection, index) has finished its first build, and `build_id`
+// the token of the build that set it. Both are kept
+// in step with resource_state by createSQLiteResourceStateStore, inside the
+// row's own transaction.
+const RESOURCE_INDEX_TABLES = `
+CREATE TABLE IF NOT EXISTS resource_index (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  collection    TEXT NOT NULL,
+  index_name    TEXT NOT NULL,
+  value         TEXT NOT NULL,
+  resource_key  TEXT NOT NULL,
+  PRIMARY KEY (scope_type, scope_id, collection, index_name, value, resource_key)
+);
+CREATE INDEX IF NOT EXISTS idx_resource_index_key ON resource_index(scope_type, scope_id, resource_key);
+CREATE TABLE IF NOT EXISTS resource_index_built (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  collection    TEXT NOT NULL,
+  index_name    TEXT NOT NULL,
+  status        TEXT NOT NULL,
+  build_id      TEXT NOT NULL,
+  PRIMARY KEY (scope_type, scope_id, collection, index_name)
+);
 `;
 
 // FIX-401: durable sequencer checkpoints. Identity is
@@ -559,8 +597,9 @@ CREATE TABLE IF NOT EXISTS wakes (
 CREATE INDEX IF NOT EXISTS idx_wakes_due_at ON wakes(due_at);
 `;
 
+// FIX-428.
 /**
- * One-shot rename migrations for databases initialised under the pre-FIX-428
+ * One-shot rename migrations for databases initialised under the older
  * `project` scope. SQLite (3.25+) supports `ALTER TABLE ... RENAME COLUMN`
  * and `ALTER TABLE ... RENAME TO`, but neither has an `IF EXISTS` form on the
  * column case — so we probe pragma_table_info / sqlite_master first and only
@@ -606,9 +645,10 @@ function migrateProjectToOrg(db: Database.Database): void {
   }
 }
 
+// FIX-141.
 /**
- * FIX-141: add the denormalized `status` / `resolved_at` columns to a
- * pre-FIX-141 `suspension_records` table so `pruneTerminalBefore` has an
+ * Add the denormalized `status` / `resolved_at` columns to a
+ * older `suspension_records` table so `pruneTerminalBefore` has an
  * indexed access path. SQLite has no `ADD COLUMN IF NOT EXISTS`, so we probe
  * `pragma_table_info` first. After adding the columns we backfill them from the
  * JSON `data` blob: terminal records resolved before the upgrade are never
@@ -722,6 +762,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   db.exec(REQUEST_EVENTS_TABLE);
   db.exec(RESOURCE_CONTENT_TABLE);
   db.exec(RESOURCE_STATE_TABLE);
+  db.exec(RESOURCE_INDEX_TABLES);
   db.exec(REQUEST_RUNONCE_TABLE);
   db.exec(SEQUENCER_CHECKPOINTS_TABLE);
   db.exec(TRACE_REQUEST_ROSTER_TABLE);

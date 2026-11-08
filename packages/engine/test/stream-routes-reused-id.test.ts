@@ -7,7 +7,7 @@
  */
 import type { MessageItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import { handleRequestStream } from "../src/routes/stream-routes";
 import type { ParsedFlowRoute } from "../src/routes/parseFlowRoute";

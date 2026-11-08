@@ -4,7 +4,7 @@
  *
  * Opening a workstream starts its lead's workstream session, a lasting session
  * of the lead, owned by the workstream's owner. A session is brought into
- * being by a dispatch into it, so the open dispatches {@link WORKSTREAM_OPENED_ENTRY}
+ * being by a dispatch into it, so the open dispatches `onWorkstreamOpened`
  * into a session created naming the lead as its worker and the workstream as
  * its `workstreamId`. The worker flow's create check links both at create. The
  * entry itself runs nothing: the session existing, linked, is the whole of it.
@@ -15,9 +15,8 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-
-/** The internal entry a workstream's open dispatches to on the lead's flow. **Pinned**: an app's flow declares it. */
-export const WORKSTREAM_OPENED_ENTRY = "onWorkstreamOpened";
+import { markEntryPiece } from "../worker-roles";
+import { WORKSTREAM_OPENED_ENTRY } from "./workstream-ref";
 
 const openedInputSchema = z.object({}).strict();
 
@@ -29,11 +28,12 @@ const opened = handler({
 });
 
 /**
- * The internal entry that lets a flow's workers lead workstreams: spread it as
- * `internal.actions[WORKSTREAM_OPENED_ENTRY]`.
+ * The internal entry that lets a flow's workers lead workstreams: declare it
+ * as `internal: { actions: { onWorkstreamOpened: workstreamOpenedEntry() } }`.
+ * The hire refuses it under any other name.
  */
 export function workstreamOpenedEntry() {
-  return { inputSchema: openedInputSchema, block: opened };
+  return markEntryPiece({ inputSchema: openedInputSchema, block: opened }, "workstreamOpenedEntry");
 }
 
 /** Whether a worker flow declares {@link WORKSTREAM_OPENED_ENTRY}, so its workers can lead a workstream. */

@@ -6,17 +6,19 @@
 import type { Command } from "commander";
 import {
   createFlowRegistry,
-  createModelResolver,
-  ownsRecord,
   resolveDurabilityProvider,
+  type StoreRegistry
+} from "@flow-state-dev/engine";
+import { createModelResolver } from "@flow-state-dev/core";
+import {
+  ownsRecord,
   resolveInProcessPrincipal,
   withChangeBus,
   type FlowRegistry,
   type RequestRecord,
   type RuntimeConfig,
-  type RuntimeLoggerLevel,
-  type StoreRegistry,
-} from "@flow-state-dev/engine";
+  type RuntimeLoggerLevel
+} from "@flow-state-dev/engine/host";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { resolveRuntimeSource, assertNoFlowDirWithConfig, createCliLogger, resolveLogLevel } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";

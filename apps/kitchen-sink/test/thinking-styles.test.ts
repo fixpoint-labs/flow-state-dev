@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
 import { z } from "zod";
-import { mockGenerator, testRouter, testSequencer } from "@flow-state-dev/testing";
+import { mockGenerator, testBlock } from "@flow-state-dev/testing";
 import chatAgentFlow from "../flows/chat-agent/flow";
 import { thinkingStyleRouter, backgroundWorkTasks, backgroundWorkSettled } from "../flows/chat-agent/run/thinking-styles";
 import { resolveThinkingStyle } from "../flows/chat-agent/run/steps";
@@ -30,6 +30,7 @@ import {
   RESOLVED_THINKING_STYLES,
   coalesceThinkingStyle,
   inputSchema,
+  sessionStateSchema,
   userStateSchema,
 } from "../flows/chat-agent/shared/schemas";
 import { STYLE_OPTIONS, getStyleOption } from "../components/thinking-style-selector";
@@ -133,9 +134,9 @@ describe("a style stored on a session written before the shed", () => {
    * The real projection off the real flow, not a copy of it.
    *
    * `modeStatus` is the one surface that reads `session.state.thinkingStyle`
-   * raw: the engine adopts stored session state with a bare cast and never
-   * applies `stateSchema` to it, and `resolveThinkingStyle` overwrites the
-   * value every turn before the router reads it. So a check aimed at a turn
+   * raw: the engine fills in `stateSchema`'s defaults on load but keeps a
+   * stored value as stored, and `resolveThinkingStyle` overwrites the value
+   * every turn before the router reads it. So a check aimed at a turn
    * would pass whether or not the fold exists. This one is aimed at the
    * projection, which is where the stored value actually escapes to a
    * browser.
@@ -146,6 +147,9 @@ describe("a style stored on a session written before the shed", () => {
     }
   ).session?.client?.derived?.modeStatus;
 
+  /** A stored session as the projection reads it: the schema's defaults, then what was stored. */
+  const loaded = (stored: Record<string, unknown>) => ({ state: { ...sessionStateSchema.parse({}), ...stored } });
+
   it("is wired to the flow at all", () => {
     // Guards the rest of this block: if `modeStatus` is ever renamed or
     // dropped, the checks below would silently stop reading anything.
@@ -155,7 +159,7 @@ describe("a style stored on a session written before the shed", () => {
   it.each(REMOVED_STYLES.filter((s) => s !== "auto"))(
     "reports default rather than %s",
     async (style) => {
-      const out = (await modeStatus!({ state: { mode: "ask", thinkingStyle: style } })) as {
+      const out = (await modeStatus!(loaded({ mode: "ask", thinkingStyle: style }))) as {
         thinkingStyle: string | null;
       };
 
@@ -167,13 +171,13 @@ describe("a style stored on a session written before the shed", () => {
 
   it("passes a surviving style through untouched, and reports null for none", async () => {
     for (const style of RESOLVED_THINKING_STYLES) {
-      const out = (await modeStatus!({ state: { mode: "ask", thinkingStyle: style } })) as {
+      const out = (await modeStatus!(loaded({ mode: "ask", thinkingStyle: style }))) as {
         thinkingStyle: string | null;
       };
       expect(out.thinkingStyle).toBe(style);
     }
 
-    const fresh = (await modeStatus!({ state: { mode: "ask" } })) as {
+    const fresh = (await modeStatus!(loaded({ mode: "ask" }))) as {
       thinkingStyle: string | null;
     };
     expect(fresh.thinkingStyle).toBeNull();
@@ -230,7 +234,7 @@ describe("a message carrying the words that used to steer it", () => {
     "shared workspace, then break it down step by step and argue the pros and cons.";
 
   it("is answered directly, with no classifier call to pay for", async () => {
-    const result = await testSequencer(resolveThinkingStyle, {
+    const result = await testBlock(resolveThinkingStyle, {
       input: runInput(steering),
       flow: testFlow,
       // Nothing on this path may reach a model. A reintroduced classifier is
@@ -254,7 +258,7 @@ describe("a message carrying the words that used to steer it", () => {
       script: [{ structuredOutput: { items: [] } }],
     });
 
-    const routed = await testRouter(thinkingStyleRouter, {
+    const routed = await testBlock(thinkingStyleRouter, {
       input: runInput(steering),
       flow: testFlow,
       session: {
@@ -272,7 +276,7 @@ describe("a message carrying the words that used to steer it", () => {
   });
 
   it("still routes the durable dispatch, which is the one that stayed", async () => {
-    const routed = await testRouter(thinkingStyleRouter, {
+    const routed = await testBlock(thinkingStyleRouter, {
       input: runInput("Write me a briefing on this", "background-work"),
       flow: testFlow,
       session: {

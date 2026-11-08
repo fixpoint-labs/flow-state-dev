@@ -1,12 +1,13 @@
+// FIX-817; BP-031.
 /**
- * The manifest-source registry (FIX-817) — what a scope carries, and the one
+ * The manifest-source registry — what a scope carries, and the one
  * place a source is registered.
  *
  * A registry is built once from the sources a scope declares. That declaration
  * IS the fence: the door is built over a registry and can only ever answer for
  * a domain the registry holds, so a caller naming something out of scope
  * cannot reach it. The gate lives here rather than in the tool, because the
- * tool's `domain` argument is model-supplied (BP-031) — a tool that filtered a
+ * tool's `domain` argument is model-supplied — a tool that filtered a
  * wider list would be one bug away from answering with it.
  *
  * Registration is construction. Two sources claiming one domain are refused

@@ -15,8 +15,7 @@
  * (delete + re-create the manifest first).
  */
 
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { InitialSkill, SkillsCollectionMeta } from "@flow-state-dev/core";
+import type { ResourceCollectionRef, InitialSkill, SkillsCollectionMeta } from "@flow-state-dev/core/types";
 import { META_KEY, skillManifestKey } from "./collection";
 import { writeSkillFolder } from "./internal/write-skill-folder";
 import { parseSkillMd, validateSkillName } from "./skill-md";

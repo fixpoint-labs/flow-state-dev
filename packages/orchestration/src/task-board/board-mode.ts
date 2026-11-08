@@ -1,5 +1,6 @@
+// FIX-2076; FIX-2082.
 /**
- * A board's mode (FIX-2076): whether its drain waits on its rows.
+ * A board's mode: whether its drain waits on its rows.
  *
  * The author declares it on `taskBoard({ mode })`, and the board is refused at
  * construction when its assignees contradict it. Nothing infers it from the
@@ -8,7 +9,7 @@
  *
  * | mode            | rows run                                | the drain waits on |
  * |-----------------|-----------------------------------------|--------------------|
- * | `"plan"`        | in the drain, or handed to a session and waited on (FIX-2082) | every row |
+ * | `"plan"`        | in the drain, or handed to a session and waited on | every row |
  * | `"delegation"`  | in another session                      | no row             |
  *
  * The one test the drain's readers share ({@link runsElsewhereFor}) is the
@@ -34,13 +35,14 @@ export function runsElsewhereFor(mode: TaskBoardMode): ((task: Task) => boolean)
   return mode === "delegation" ? () => true : undefined;
 }
 
+// FIX-2082.
 /**
  * The mode's construction-time refusals, by name and loud.
  *
  * - A plan board holding a dispatcher that says `wait: false`: its drain waits
- *   on every row, the ones it hands over included (FIX-2082).
+ *   on every row, the ones it hands over included.
  * - A delegation board holding a dispatcher that says `wait: true`: its drain
- *   waits on none (FIX-2082).
+ *   waits on none.
  * - A delegation board with an assignee that runs in the drain (named, uniform
  *   or floor): the drain would not wait on work running in it.
  * - A delegation board with no dispatcher: nothing on it is dispatched.
@@ -66,12 +68,12 @@ export function assertBoardModeSupported(options: {
     throw new Error(
       mode === "plan"
         ? `[task-board] "${name}" is a plan board, the default, and its dispatcher at ${declared} says ` +
-            `\`wait: false\`: a plan board's drain waits on every row, the ones it hands to another ` +
+            `\`wait: false\`: a plan board's drain waits on every task, the ones it hands to another ` +
             `session included. Drop \`wait\`, or declare \`mode: "delegation"\` for a board that ` +
-            `hands rows off and waits on none.`
+            `hands tasks off and waits on none.`
         : `[task-board] "${name}" is a delegation board, and its dispatcher at ${declared} says ` +
-            `\`wait: true\`: a delegation board's drain waits on no row. Drop \`wait\`, or drop ` +
-            `\`mode\` for a plan board, whose drain waits on every row it hands over.`
+            `\`wait: true\`: a delegation board's drain waits on no task. Drop \`wait\`, or drop ` +
+            `\`mode\` for a plan board, whose drain waits on every task it hands over.`
     );
   }
   if (mode === "plan") return;
@@ -83,7 +85,7 @@ export function assertBoardModeSupported(options: {
   if (inlineAt.length > 0) {
     throw new Error(
       `[task-board] "${name}" is a delegation board, and ${inlineAt.join(", ")} runs in the drain: ` +
-        `a delegation board hands every row to another session and its drain waits on none, so ` +
+        `a delegation board hands every task to another session and its drain waits on none, so ` +
         `work running in it would be left behind. Put a \`dispatcher({ action, session })\` there, ` +
         `or move the inline work to a plan board (drop \`mode\`).`
     );
@@ -92,7 +94,7 @@ export function assertBoardModeSupported(options: {
     throw new Error(
       `[task-board] "${name}" is a delegation board with no dispatcher, so it hands nothing to ` +
         `another session. Give an assignee a \`dispatcher({ action, session })\`, or drop \`mode\` ` +
-        `for a plan board, whose drain runs and waits on its rows.`
+        `for a plan board, whose drain runs and waits on its tasks.`
     );
   }
 }

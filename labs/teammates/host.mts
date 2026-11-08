@@ -4,7 +4,7 @@
  * coding flow, and a store. `fsdev.config.mts` calls
  * {@link openTeammates} and default-exports the `FlowState` it returns.
  *
- * - **Chief of Staff, researcher and writer** run on the built-in `agent` flow, so each
+ * - **Lead, researcher and writer** run on the built-in `agent` flow, so each
  *   has `sendMessage` and one conversation where messages land. Memory is
  *   composed in through `uses` (read) and `afterAnswer` (record each turn).
  *   A history summary keeps what was said before the history window: its
@@ -21,7 +21,7 @@
  *   with a sentence that names it and says what to run.
  * - **Readiness** (harness-manager's `harnessReadiness`, one check per
  *   harness from its integration): read once at start and logged as a table,
- *   put in the workers' context so Chief of Staff files coding work only on a
+ *   put in the workers' context so Lead files coding work only on a
  *   ready harness, and served as the `harness-readiness` flow's `read` action,
  *   which `{ refresh: true }` reads again.
  * - **The working folder** is one git checkout the operator names. It is the
@@ -31,6 +31,11 @@
  *   operator also names its checks (`checks`), the commands a coding run's
  *   worktree must pass before its task is done, and a `setup` command each
  *   fresh worktree runs first so the checks find what they need.
+ * - **The lab's context** (the `lab-context` flow's `read` action): the
+ *   working folder, the model, the default harness, which workers each worker
+ *   hands work to, and, when the folder doesn't ignore `.fsdev/`, the same
+ *   problem a coding run's checkout would be refused with (checked at start,
+ *   never fatal). The page draws its context strip and first-run lines from it.
  * - **Teammates** you hire from the page are rows of your own roster, written
  *   through the roster flow `hireWorkforce` registers; nothing restarts.
  *
@@ -41,11 +46,14 @@ import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkCodexReadiness, CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
-import { defineFlow, harnessEnv } from "@flow-state-dev/core";
-import type { HarnessBlock, ModelResolver } from "@flow-state-dev/core/types";
-import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import type { ModelResolver } from "@flow-state-dev/core/types";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { checkCursorReadiness, CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
+  ASK_MARKER_IGNORED,
   assertPositiveInt,
   formatHarnessReadiness,
   harnessDrainBudgetMs,
@@ -83,7 +91,7 @@ const UTILITY_MODEL = "openai/gpt-6-luna";
 export interface TeammatesOptions {
   /** The SQLite file the lab keeps everything in. */
   store: string;
-  /** The model Chief of Staff, researcher and writer answer on, and memory records with. */
+  /** The model Lead, researcher and writer answer on, and memory records with. */
   model: string;
   /** The user the page acts as. */
   userId: string;
@@ -115,6 +123,13 @@ export interface TeammatesOptions {
    * apart and finishes, with no model and no sign-in. Absent: the real harnesses.
    */
   scriptedHarnessStepMs?: number;
+  /**
+   * For goal checks only: how long a request's heartbeat may be silent before
+   * the server takes it as interrupted (the engine's `staleSweepThresholdMs`),
+   * which is what lets the board take a dead run's row back. Absent: the
+   * engine's default, one minute.
+   */
+  staleThresholdMs?: number;
   /** Resolves every model the host calls, in place of the gateway: the contract tests pass a scripted one. Absent: the gateway. */
   modelResolver?: ModelResolver;
 }
@@ -165,6 +180,22 @@ const HARNESSES: Record<string, Harness> = {
 
 /** The flow whose `read` action returns the harnesses' readiness rows. */
 const READINESS_FLOW = "harness-readiness";
+/** The flow whose `read` action returns what the lab works on and with (`labContextSchema`). */
+const LAB_CONTEXT_FLOW = "lab-context";
+
+/** What the page's context strip and first run read: the lab's settings and the declared delegates. */
+const labContextSchema = z.object({
+  /** The working folder, as an absolute path. */
+  folder: z.string(),
+  /** Why a coding run's checkout of the folder would be refused, or `null` when it wouldn't. */
+  folderProblem: z.string().nullable(),
+  /** The model the teammates answer on. */
+  model: z.string(),
+  /** The harness a coding worker whose file names none runs on. */
+  harness: z.string(),
+  /** Each worker's declared delegates, by worker id: ids, or `"all"`. A worker with none is absent. */
+  delegates: z.record(z.string(), z.union([z.literal("all"), z.array(z.string())])),
+});
 
 /** Each harness's readiness check, over the environment its runs get. */
 function teammatesReadiness(): HarnessReadinessRead {
@@ -294,7 +325,20 @@ export async function openTeammates(options: TeammatesOptions) {
   const scripted =
     options.scriptedHarnessStepMs === undefined ? undefined : scriptedHarness({ stepEveryMs: options.scriptedHarnessStepMs }).slot;
   const harnesses = scripted === undefined ? HARNESSES : Object.fromEntries(Object.keys(HARNESSES).map((name) => [name, scripted as Harness]));
+  const defaultHarness = options.harness ?? "cursor";
   const readiness = teammatesReadiness();
+  // The folder's ignore rule, read once at start with the check a run's checkout gets; never fatal.
+  const folderProblem = workspace.checkRepository!(workdir, { ignored: ASK_MARKER_IGNORED }).then(
+    (answer) => (answer.usable ? null : answer.problem),
+    (error: unknown) => `couldn't check the folder: ${error instanceof Error ? error.message : String(error)}`,
+  );
+  void folderProblem.then((problem) => problem !== null && console.warn(`teammates: ${problem}`));
+  const delegates = Object.fromEntries(
+    roster.workers.flatMap((w) => {
+      const declared = w.declared.delegates;
+      return declared === "all" || Array.isArray(declared) ? [[w.id, declared as "all" | string[]]] : [];
+    }),
+  );
   // At start, never awaited: a missing sign-in never stops the server.
   void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
   let flows: Record<string, unknown> = {};
@@ -314,7 +358,7 @@ export async function openTeammates(options: TeammatesOptions) {
         uses: [
           mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }),
           earlier.capability,
-          // Offered to a worker whose file picks `consultSessions: [consult]` (Chief of Staff).
+          // Offered to a worker whose file picks `consultSessions: [consult]` (Lead).
           consultSessionsCapability(installation),
           // Which harnesses can run here, so a coding task is filed only on a ready one.
           harnessReadinessCapability(readiness),
@@ -328,7 +372,7 @@ export async function openTeammates(options: TeammatesOptions) {
     },
     [CODER_FLOW]: coderFlow({
       harnesses,
-      defaultHarness: options.harness ?? "cursor",
+      defaultHarness,
       ...(scripted === undefined ? { ready: readiness.refusal } : {}),
       workspace,
       runTimeoutMs,
@@ -341,11 +385,33 @@ export async function openTeammates(options: TeammatesOptions) {
     actions: { read: harnessReadinessAction(readiness) },
   } as never)({ id: READINESS_FLOW } as never) as { id: string };
 
+  const contextFlow = defineFlow({
+    kind: LAB_CONTEXT_FLOW,
+    actions: {
+      read: {
+        description: "What the lab works on and with: the working folder and its problem if any, the model, the default harness, and each worker's delegates.",
+        block: handler({
+          name: "lab-context",
+          inputSchema: z.object({}),
+          outputSchema: labContextSchema,
+          execute: async () => ({
+            folder: workdir,
+            folderProblem: await folderProblem,
+            model: options.model,
+            harness: defaultHarness,
+            delegates,
+          }),
+        }),
+      },
+    },
+  } as never)({ id: LAB_CONTEXT_FLOW } as never) as { id: string };
+
   const state = createFlowState({
-    flows: Object.fromEntries([...copies, readinessFlow].map((copy) => [copy.id, copy])),
+    flows: Object.fromEntries([...copies, readinessFlow, contextFlow].map((copy) => [copy.id, copy])),
     stores: { default: { primary: sqliteStores({ filename: options.store }) } },
     durable: true,
     dispatchDrainTimeoutMs,
+    ...(options.staleThresholdMs === undefined ? {} : { staleSweepThresholdMs: options.staleThresholdMs }),
     devtool: { userId: options.userId },
     // A consult reads on `intent/utility`: a smaller model than the workers answer on.
     models: { default: options.model, intents: { utility: [UTILITY_MODEL] } },

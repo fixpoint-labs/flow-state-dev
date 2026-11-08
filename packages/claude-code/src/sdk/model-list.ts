@@ -7,40 +7,22 @@
  * `sonnet` and the "default" row name whatever they point at today, and a host
  * that stores the id keeps that model after the alias moves on.
  */
+import type { HarnessModelInfo, HarnessModelList } from "@flow-state-dev/core/harness";
 import { runIdleQuery } from "./idle-query";
-import type { SdkImporter } from "./sdk-client";
+import type { ClaudeCodeSdkImporter } from "./sdk-client";
 
-/** One model Claude Code offers. */
-export interface ClaudeModelInfo {
-  /** The concrete model id, resolved from any alias. Pass it as the block's `model`. */
-  id: string;
-  /** Claude Code's name for it. */
-  label: string;
-  /** Claude Code's description of it, when it gave one. */
-  description?: string;
-  /** Whether this is the model Claude Code runs when none is named. */
-  isDefault: boolean;
-}
-
-/** What {@link listClaudeModels} found. */
-export type ClaudeModelList =
-  /** Claude Code's list, de-duplicated by id, its default first. */
-  | { status: "models"; models: ClaudeModelInfo[] }
-  /** No list: the SDK missing, an error, no answer in time, or an empty list. `reason` is for a person. */
-  | { status: "failed"; reason: string };
-
-/** Options for {@link listClaudeModels}. */
-export interface ListClaudeModelsOptions {
+/** Options for {@link listClaudeCodeModels}. */
+export interface ListClaudeCodeModelsOptions {
   /** The environment Claude Code is started with. Pass the one the run gets. */
   env: Record<string, string>;
   /** How long to wait for Claude Code's answer. Default 10 000 ms. */
   timeoutMs?: number;
   /** How the SDK module is loaded. A seam for tests; the default imports the installed SDK. */
-  importSdk?: SdkImporter;
+  importSdk?: ClaudeCodeSdkImporter;
 }
 
 /** A row of the SDK's `supportedModels()`, as far as this reads it. */
-interface SdkModelRow {
+interface SdkModelEntry {
   value?: unknown;
   resolvedModel?: unknown;
   displayName?: unknown;
@@ -49,7 +31,7 @@ interface SdkModelRow {
 
 /** The part of the SDK's query handle the list uses. */
 interface ModelQuery {
-  supportedModels(): Promise<SdkModelRow[]>;
+  supportedModels(): Promise<SdkModelEntry[]>;
   close?: () => void;
 }
 
@@ -62,9 +44,9 @@ const DEFAULT_ROW = "default";
  * @param options The environment to start Claude Code with, and how long to wait.
  * @returns `models`, or `failed` with a reason. Never throws.
  */
-export async function listClaudeModels(options: ListClaudeModelsOptions): Promise<ClaudeModelList> {
+export async function listClaudeCodeModels(options: ListClaudeCodeModelsOptions): Promise<HarnessModelList> {
   const timeoutMs = options.timeoutMs ?? 10_000;
-  const asked = await runIdleQuery<ModelQuery, SdkModelRow[]>(
+  const asked = await runIdleQuery<ModelQuery, SdkModelEntry[]>(
     { env: options.env, timeoutMs, importSdk: options.importSdk },
     (handle) => handle.supportedModels(),
   );
@@ -83,9 +65,9 @@ export async function listClaudeModels(options: ListClaudeModelsOptions): Promis
  * SDK doesn't resolve whose value is an alias (the default row included), since
  * a stored alias would follow Claude Code to another model.
  */
-function toModels(rows: readonly SdkModelRow[]): ClaudeModelInfo[] {
+function toModels(rows: readonly SdkModelEntry[]): HarnessModelInfo[] {
   const text = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
-  const byId = new Map<string, ClaudeModelInfo>();
+  const byId = new Map<string, HarnessModelInfo>();
   let defaultId: string | undefined;
   for (const row of rows) {
     const value = text(row.value);
@@ -104,7 +86,7 @@ function toModels(rows: readonly SdkModelRow[]): ClaudeModelInfo[] {
     const named = byId.get(defaultId);
     byId.delete(defaultId);
     const description = text(row?.description);
-    const first: ClaudeModelInfo = named
+    const first: HarnessModelInfo = named
       ? { ...named, isDefault: true }
       : { id: defaultId, label: defaultId, ...(description === undefined ? {} : { description }), isDefault: true };
     return [first, ...byId.values()];

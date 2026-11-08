@@ -32,12 +32,14 @@ import { describe, expect, it } from "vitest";
 import {
   createExecutionContext,
   createFlowRegistry,
-  createInMemoryStores,
   toBareStates
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { getPersistedData } from "../src/resources/internal";
 import {
-  handleCreateCollectionItem,
+  handleCreateCollectionResource,
   handleListCollectionState
 } from "../src/routes/resource-routes";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
@@ -348,7 +350,7 @@ describe("FIX-1068: sharedToLineage resources across a session lineage", () => {
     await seedSession(stores, "s_child", "s_root", lineageAddr("s_root"));
     const routeCtx = { registry, stores };
 
-    const created = await handleCreateCollectionItem(
+    const created = await handleCreateCollectionResource(
       new Request("http://x/sessions/s_child/resources/tasks", {
         method: "POST",
         body: JSON.stringify({ topic: "t1", content: "the body" })

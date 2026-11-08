@@ -36,14 +36,12 @@ import {
   projectWorkspaceCapability,
   SET_WORK_PROJECT_ACTION,
   setWorkProjectAction,
-  WORKER_TASK_ENTRY,
   workerConfigSchema,
-  WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry
 } from "../src/index";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerManifest } from "../src/manifest";
-import { PROJECT_ROW_RESOURCES, projectRowsAt } from "../src/projects/project-address";
+import { PROJECT_ROW_RESOURCES, projectResourcesAt } from "../src/projects/project-address";
 import { projectSourceTools, readProjectSourceFor } from "../src/projects/project-source";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { bootProjectsHost } from "./projects-harness";
@@ -85,7 +83,7 @@ const takeOffProject = handler({
   outputSchema: z.object({}),
   resources: { ...PROJECT_ROW_RESOURCES },
   execute: async (input, ctx) => {
-    const row = await projectRowsAt(ctx, "shared").get(input.id);
+    const row = await projectResourcesAt(ctx, "shared").get(input.id);
     await row.updateState((state) => ({ ...state, members: state.members.filter((member) => member !== input.user) }));
     return {};
   }
@@ -149,11 +147,11 @@ async function boot() {
       session: installation.session(),
       resources: { ...installation.resources },
       actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
-      task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "taker-task", turn }) } }
+      task: { actions: { work: workerTaskEntry({ name: "taker-task", turn }) } }
     } as never);
   };
   const projects = defineProjectBlocks();
-  const leadRef = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+  const leadRef = { kind: "lead", internal: { actions: { onWorkstreamOpened: {} } } };
   const h = await bootProjectsHost({
     standardWorkers,
     projectCoordinator: "pc",
@@ -164,7 +162,7 @@ async function boot() {
       seedFile: { block: seedFile }
     }),
     lead: () => toolActions,
-    leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
+    leadInternal: () => ({ onWorkstreamOpened: workstreamOpenedEntry() }),
     flows: (installation) => ({
       reader: { flow: readerFlow(installation), roles: [] },
       taker: { flow: takerFlow(installation), roles: ["contributor"] },

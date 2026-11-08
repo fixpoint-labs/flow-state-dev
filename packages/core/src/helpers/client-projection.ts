@@ -30,8 +30,9 @@ type ProjectionClient =
   | (Pick<ResourceClientConfig, "expose" | "exclude" | "data"> & Record<string, unknown>)
   | undefined;
 
+// FIX-741.
 /**
- * Type-level mirror of `resolveClientProjection`'s runtime branches (FIX-741).
+ * Type-level mirror of `resolveClientProjection`'s runtime branches.
  * Derives the client-visible shape from a resource/collection `client` config:
  *
  *   - `data`    → the (awaited) return type of the projection fn

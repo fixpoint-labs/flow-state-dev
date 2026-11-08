@@ -32,12 +32,12 @@ import {
   WORKSTREAM_STATE_KEY
 } from "./keys";
 
+// FIX-1788; FIX-1791; FIX-1793; FIX-1794.
 /**
- * What a worker session is looked up and created by. FIX-1788 defines
- * `worker`; later issues add their own keys (a task, a workstream, a
- * coordinator's conversation), each pinned by its issue and each a readonly
- * session-state field. FIX-1791 defines `filingSessionId`; FIX-1793
- * `workstreamId` and `projectId`; FIX-1794 `taskId`.
+ * What a worker session is looked up and created by: `worker`, plus a
+ * key for each later reader (a task, a workstream, a coordinator's
+ * conversation), each a readonly session-state field: `filingSessionId`,
+ * `workstreamId` and `projectId`, and `taskId`.
  */
 export type WorkerSessionCriteria = {
   /** The worker the session runs: a worker id on the user's roster, or a standard one. */

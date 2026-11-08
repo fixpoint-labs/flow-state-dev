@@ -1,5 +1,7 @@
-import type { RuntimeItem as TestItem } from "@flow-state-dev/core/items/internal";
-import type { BlockInput, BlockOutput, FlowInstance, FlowStateSettings, ModelResolver } from "@flow-state-dev/core/types";
+import type { RuntimeItem as TestItem } from "@flow-state-dev/core/internal";
+import type { SequencerDefinition } from "@flow-state-dev/core";
+import type { SuspensionItem } from "@flow-state-dev/core/items";
+import type { BlockDefinition, BlockInput, BlockOutput, FlowInstance, FlowStateSettings, ModelResolver, ResumeAction } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import type {
   MockGeneratorInstance,
@@ -58,6 +60,12 @@ export type TestBlockOptions<TInput> = {
   modelResolver?: ModelResolver;
   /** Fallback script for unmocked generators when policy is "default". */
   unmockedDefault?: UnmockedDefault;
+  /**
+   * The signal the block runs under, as `ctx.signal`. Abort it to stop the
+   * run the way a host does (a deadline, a user's stop). Omit it and the
+   * block runs under a signal that never fires.
+   */
+  signal?: AbortSignal;
 };
 
 export type StateChange = {
@@ -76,7 +84,13 @@ export type StateChange = {
   targetInstanceId?: string;
 };
 
-export type TestBlockResult<TOutput> = {
+/**
+ * What `testBlock` returns. The fields depend on the block's kind: a
+ * sequencer's result also carries its `steps`, `sideChainResults` and
+ * `loopIterations`, read from the items it emitted, and a router's names the
+ * route it chose in `selectedRoute`.
+ */
+export type TestBlockResult<TOutput, TBlock = BlockDefinition<any, any>> = {
   output: TOutput;
   error: Error | null;
   items: TestItem[];
@@ -108,7 +122,14 @@ export type TestBlockResult<TOutput> = {
     blockName: string;
     retryAttempts: number;
   };
-};
+  /**
+   * The route a router chose, by the chosen block's name. Absent for every
+   * other kind, and for a router that chose none.
+   */
+  selectedRoute?: string;
+} & ([TBlock] extends [SequencerDefinition<any, any, any, any>]
+  ? { steps: StepTrace[]; sideChainResults: SideChainTrace[]; loopIterations: number }
+  : unknown);
 
 export type StepTrace = {
   stepName: string;
@@ -127,16 +148,6 @@ export type SideChainTrace = {
   output: unknown;
   error: Error | null;
   items: TestItem[];
-};
-
-export type TestSequencerResult<TOutput> = TestBlockResult<TOutput> & {
-  steps: StepTrace[];
-  sideChainResults: SideChainTrace[];
-  loopIterations: number;
-};
-
-export type TestRouterResult<TOutput> = TestBlockResult<TOutput> & {
-  selectedRoute: string;
 };
 
 export type TestFlowOptions<TInput = unknown> = {
@@ -168,6 +179,13 @@ export type TestFlowOptions<TInput = unknown> = {
    * journal entries and resource state from prior calls.
    */
   stores?: StoreRegistry;
+  /**
+   * Run with durable execution, as a host whose stores persist does. Default
+   * `true`: a step that calls `ctx.suspendForUser` or `ctx.suspend` stops the
+   * run with status `suspended`. `false` runs without it, where such a step
+   * fails the run.
+   */
+  durable?: boolean;
 };
 
 export type TestFlowResult = {
@@ -176,6 +194,35 @@ export type TestFlowResult = {
   output?: unknown;
   error?: Error;
   items: TestItem[];
+  /** The stop the run is waiting on, as a screen sees it. Absent when nothing waits. */
+  suspension?: SuspensionItem;
+  /**
+   * Answers a user's stop (`ctx.suspendForUser`) through the engine's answer
+   * route, as a screen does, and returns the run that followed: its status
+   * and the items emitted after the stop. A refusal the route gives a screen
+   * (an action the stop doesn't allow, a second answer, data that fails its
+   * schema) throws a `StopRefusedError` with the route's status and message.
+   */
+  answer(answer: TestFlowAnswer): Promise<TestFlowResult>;
+  /**
+   * Continues a run stopped by a developer's own `ctx.suspend` through the
+   * engine's resume route, and returns the run that followed.
+   */
+  resume(answer: TestFlowAnswer): Promise<TestFlowResult>;
+};
+
+/** An answer to a stop, as `run.answer` and `run.resume` take it. */
+export type TestFlowAnswer = {
+  action: ResumeAction;
+  data?: unknown;
+  /** The stop to answer. Defaults to the run's one pending stop; required when it has several. */
+  suspensionId?: string;
+  /**
+   * Headers for the route call, for a flow with its own sign-in: what its
+   * `authentication.resolvePrincipal` reads, so it resolves the test's user
+   * and the org the run ran in.
+   */
+  headers?: Record<string, string>;
 };
 
 export type { BlockInput, BlockOutput };

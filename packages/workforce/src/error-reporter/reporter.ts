@@ -1,5 +1,6 @@
+// FIX-1983.
 /**
- * The Error Reporter (FIX-1983): what a Lab creates once, hands the engine as
+ * The Error Reporter: what a Lab creates once, hands the engine as
  * its `errorCapture` handler, and binds to its runtime. Workforce never
  * imports the engine, so {@link ErrorReporter.bind} takes the runtime
  * operations; one process binds one reporter. A final event and an errored
@@ -17,7 +18,7 @@
 import { PROJECT_STATE_KEY, WORKER_ID_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { COMMENT_ENTRY, LINE_ENTRY, REPORT_ENTRY, REPORTS_ENTRY, REPORT_SESSION_PREFIX } from "./flow";
 import { ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY, INTAKE_SESSION_ID } from "./keys";
-import type { IntakeDecision, Occurrence, OccurrenceIds, ReportLimits, ReportRow } from "./reports";
+import type { IntakeDecision, Occurrence, OccurrenceIds, ReportLimits, ReportResourceState } from "./reports";
 
 export { INTAKE_SESSION_ID };
 
@@ -153,7 +154,7 @@ export interface ErrorReporter {
   /** A line in the reporter's conversation. */
   say(text: string): Promise<void>;
   /** The dossier a report is drafted from, gathered by code. */
-  dossierOf(row: ReportRow): Promise<Record<string, unknown>>;
+  dossierOf(row: ReportResourceState): Promise<Record<string, unknown>>;
 }
 
 /** The newest requests and sessions a dossier reads. */
@@ -331,7 +332,7 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
       for (const event of early.splice(0)) take(event);
       // The rows are the outbox: what a stopped process left owed runs again.
       const result = await operatorRun(INTAKE_SESSION_ID, REPORTS_ENTRY, { op: "all" }, "internal", ERROR_REPORTER_INTAKE_FLOW);
-      const rows = ((result.output as { rows?: ReportRow[] } | undefined)?.rows ?? []) as ReportRow[];
+      const rows = ((result.output as { rows?: ReportResourceState[] } | undefined)?.rows ?? []) as ReportResourceState[];
       const now = Date.now();
       for (const row of rows) {
         if (row.status === "owed" || row.status === "drafting" || row.status === "filing") {

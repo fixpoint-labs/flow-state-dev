@@ -17,8 +17,8 @@ import type { Queue } from "bullmq";
 import type {
   FlowStateRuntime,
   WorkerAdapter,
-  WorkerMode,
-} from "@flow-state-dev/engine";
+  WorkerMode
+} from "@flow-state-dev/engine/host";
 import { createBullmqRuntime, type BullmqRuntime } from "./runtime";
 import { createRedisStreamBridge } from "./stream-bridge";
 import { createWorkerRunner } from "./runner";

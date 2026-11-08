@@ -26,6 +26,10 @@ export {
   type CreateResourceStateStoreConformanceTestsOptions
 } from "./stores/testing/resource-store-conformance";
 export {
+  createFindByConformanceTests,
+  type CreateFindByConformanceTestsOptions
+} from "./stores/testing/find-by-conformance";
+export {
   createScopeStoreConformanceTests,
   type CreateScopeStoreConformanceTestsOptions,
   type ScopeStoreUnderTest

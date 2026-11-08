@@ -39,7 +39,7 @@
  */
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ClaudeAgentQueryOptions, ResolveClaudeAgent, SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
+import type { ClaudeCodeQueryOptions, ResolveClaudeCodeAgent, ClaudeCodeSdkMessage } from "@flow-state-dev/claude-code";
 
 import { scriptedReceived } from "./scripted-received";
 
@@ -72,20 +72,20 @@ async function pause(ms: number, signal: AbortSignal | undefined): Promise<void>
   if (signal?.aborted) throw signal.reason ?? new Error("The run was stopped.");
 }
 
-function textDelta(text: string): SdkMessageLike {
-  return { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text } } } as SdkMessageLike;
+function textDelta(text: string): ClaudeCodeSdkMessage {
+  return { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text } } } as ClaudeCodeSdkMessage;
 }
 
-function toolUse(id: string, name: string, input: Record<string, unknown>): SdkMessageLike {
-  return { type: "assistant", message: { content: [{ type: "tool_use", id, name, input }] } } as SdkMessageLike;
+function toolUse(id: string, name: string, input: Record<string, unknown>): ClaudeCodeSdkMessage {
+  return { type: "assistant", message: { content: [{ type: "tool_use", id, name, input }] } } as ClaudeCodeSdkMessage;
 }
 
-function toolResult(id: string, result: Record<string, unknown>, content: string): SdkMessageLike {
+function toolResult(id: string, result: Record<string, unknown>, content: string): ClaudeCodeSdkMessage {
   return {
     type: "user",
     tool_use_result: result,
     message: { content: [{ type: "tool_result", tool_use_id: id, content }] },
-  } as SdkMessageLike;
+  } as ClaudeCodeSdkMessage;
 }
 
 /** The file an `[ask:<file>]` turn touches, or the one a resumed turn was told a person allowed. */
@@ -99,9 +99,9 @@ function touchedFile(prompt: string): string | null {
  */
 async function* guardedCall(
   file: string,
-  options: ClaudeAgentQueryOptions | undefined,
+  options: ClaudeCodeQueryOptions | undefined,
   signal: AbortSignal | undefined,
-): AsyncGenerator<SdkMessageLike> {
+): AsyncGenerator<ClaudeCodeSdkMessage> {
   const id = "toolu_touch_1";
   const input = { command: `touch ${file}`, description: `Touch ${file}` };
   yield toolUse(id, "Bash", input);
@@ -127,8 +127,8 @@ async function* guardedCall(
 async function* scriptedTurn(
   conversations: Conversations,
   prompt: string,
-  options: ClaudeAgentQueryOptions | undefined,
-): AsyncGenerator<SdkMessageLike> {
+  options: ClaudeCodeQueryOptions | undefined,
+): AsyncGenerator<ClaudeCodeSdkMessage> {
   const signal = options?.abortController?.signal;
   const has = (directive: string) => prompt.includes(`[${directive}]`);
   const asked = options?.resume;
@@ -140,14 +140,14 @@ async function* scriptedTurn(
 
   if (has("refuse") && asked !== undefined) {
     const refusal = `No conversation found with session ID: ${asked}`;
-    yield { type: "result", subtype: "error_during_execution", is_error: true, session_id: asked, errors: [refusal] } as SdkMessageLike;
+    yield { type: "result", subtype: "error_during_execution", is_error: true, session_id: asked, errors: [refusal] } as ClaudeCodeSdkMessage;
     throw new Error(`Claude Code returned an error result: ${refusal}`);
   }
 
   const sessionId = asked !== undefined && !has("new") ? asked : `scripted-${Date.now().toString(36)}-${(conversations.minted += 1)}`;
   const turn = (conversations.turns.get(sessionId) ?? 0) + 1;
   conversations.turns.set(sessionId, turn);
-  yield { type: "system", subtype: "init", session_id: sessionId } as SdkMessageLike;
+  yield { type: "system", subtype: "init", session_id: sessionId } as ClaudeCodeSdkMessage;
   await pause(step, signal);
 
   if (has("fail")) throw new Error("scripted failure after Claude Code named the conversation");
@@ -191,7 +191,7 @@ async function* scriptedTurn(
   for (const word of reply.split(/(?<= )/)) {
     yield textDelta(word);
   }
-  yield { type: "assistant", message: { content: [{ type: "text", text: reply }] } } as SdkMessageLike;
+  yield { type: "assistant", message: { content: [{ type: "text", text: reply }] } } as ClaudeCodeSdkMessage;
   // A slow turn holds here, after its reply and plan have shown and its conversation is confirmed.
   await pause(has("slow") ? scriptedPauses.slowMs : step, signal);
   yield {
@@ -202,14 +202,14 @@ async function* scriptedTurn(
     session_id: sessionId,
     usage: { input_tokens: 1, output_tokens: 1 },
     total_cost_usd: 0,
-  } as SdkMessageLike;
+  } as ClaudeCodeSdkMessage;
 }
 
 /**
  * A scripted Claude Code, for `claudeCodeAgent`'s `resolveClaudeAgent`. Each
  * one keeps its own conversations, for as long as the block holding it.
  */
-export function scriptedClaudeCode(): ResolveClaudeAgent {
+export function scriptedClaudeCode(): ResolveClaudeCodeAgent {
   const conversations: Conversations = { turns: new Map(), minted: 0 };
   return () => ({
     query: (args) => scriptedTurn(conversations, typeof args.prompt === "string" ? args.prompt : "", args.options),

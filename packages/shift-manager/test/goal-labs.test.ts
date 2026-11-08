@@ -15,7 +15,7 @@ import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
-import { collectionOfBoard, createLabReader, GENERAL_TEAM, type Ask, type BoardRow } from "../src/lib/reads";
+import { collectionOfBoard, createLabReader, GENERAL_TEAM, type Ask, type BoardTaskView } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
@@ -181,7 +181,7 @@ describe("devteam: an approved task's run", () => {
 
     // Live: the run's request stream (what the Session tab follows) delivers
     // its steps, stamped with this task, before anything is stored.
-    const running = await eventually<BoardRow>(async () => {
+    const running = await eventually<BoardTaskView>(async () => {
       const next = await reader.read();
       if (next.refused !== undefined) throw new Error(next.refused.message);
       if (next.unreachable !== undefined) throw new Error(next.unreachable.message);
@@ -208,8 +208,8 @@ describe("devteam: an approved task's run", () => {
     }, "the run's review to wait in Inbox", 45_000);
     await reader.resume(review, { action: "submit", data: { verdict: "accepted" } });
 
-    let last: BoardRow | undefined;
-    const settled = await eventually<BoardRow>(async () => {
+    let last: BoardTaskView | undefined;
+    const settled = await eventually<BoardTaskView>(async () => {
       last = (await reader.readBoard(running.ownerSessionId)).find((r) => r.id === running.id);
       return last !== undefined && last.status !== "pending" && last.status !== "in_progress" ? last : undefined;
     }, "the approved row to settle", 45_000).catch((error: Error) => {

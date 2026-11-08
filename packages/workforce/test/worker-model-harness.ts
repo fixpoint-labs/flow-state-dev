@@ -15,10 +15,9 @@ import {
   defineResource,
   dispatcher,
   handler,
-  taskDispatchInputSchema,
-  type InitialSkill
+  taskDispatchInputSchema
 } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { FlowInstance, InitialSkill } from "@flow-state-dev/core/types";
 import {
   createFlowApiRouter,
   createFlowRegistry,

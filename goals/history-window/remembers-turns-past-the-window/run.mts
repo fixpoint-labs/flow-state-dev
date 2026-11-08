@@ -19,7 +19,8 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, generator, sequencer, utility } from "@flow-state-dev/core";
-import { createFlowState, createModelResolver } from "@flow-state-dev/engine";
+import { createFlowState } from "@flow-state-dev/engine";
+import { createModelResolver } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
   REPO_ROOT,
@@ -35,6 +36,7 @@ import {
   modulePatchEnv,
   runGoal,
   silentLogger,
+  summaryAsSeen,
   type ModulePatch
 } from "../../lib/index.mts";
 
@@ -198,12 +200,8 @@ async function turn(host: Host, sessionId: string, message: string): Promise<voi
   if (status !== "completed") throw new Error(`turn "${message.slice(0, 40)}" ended ${status}`);
 }
 
-/** The summary's public face, as a screen reads it. */
-async function summaryAsSeen(host: Host, sessionId: string): Promise<{ complete?: boolean; folds?: number; throughRequestId?: string } | undefined> {
-  const { client } = actingAs(host as never, USER_ID);
-  const snapshot = await client.sessions.state(sessionId);
-  return (snapshot.resources?.session?.historySummary as { clientData?: any } | undefined)?.clientData;
-}
+/** The summary's public face, as a screen reads it (`goals/lib/history.mts`). */
+const summaryOf = (host: Host, sessionId: string) => summaryAsSeen(actingAs(host as never, USER_ID).client, sessionId);
 
 /** The stored summary itself, read off the store: its length is graded, never its wording. */
 async function storedSummary(host: Host, sessionId: string): Promise<string | null | undefined> {
@@ -237,7 +235,7 @@ await runGoal(async (failures, tell) => {
     try {
       for (let t = 1; t <= TURNS; t += 1) {
         if (t === restartBefore) {
-          foldsBeforeRestart = (await summaryAsSeen(host, sessionId))?.folds ?? 0;
+          foldsBeforeRestart = (await summaryOf(host, sessionId))?.folds ?? 0;
           await host.dispose();
           host = startHost(db, calls);
           say(`run ${run}: restarted on ${db} before turn ${t} (${foldsBeforeRestart} folds so far)`);
@@ -268,7 +266,7 @@ await runGoal(async (failures, tell) => {
       if (leaked.length > 0) failures.push(`w:out-of-window — run ${run}: turn 1's words reached the answer model as conversation: ${show(leaked.map((m) => [m.role, textOf(m.content).slice(0, 80)]))}`);
 
       // w:mark — the screen's divider and the summary's public state.
-      const seen = await summaryAsSeen(host, sessionId);
+      const seen = await summaryOf(host, sessionId);
       const ids = new Set(requests.map((r: any) => r.id));
       if (last?.historyStart?.requestId === undefined || !ids.has(last.historyStart.requestId)) {
         failures.push(`w:mark — run ${run}: the last request carries no historyStart naming a turn of this session: ${show(last?.historyStart)}`);

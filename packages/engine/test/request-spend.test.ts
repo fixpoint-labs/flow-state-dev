@@ -13,22 +13,25 @@
 import { DEFAULT_ORG_ID, boolean, defineFlow, evaluator, generator, handler, sequencer } from "@flow-state-dev/core";
 import { mockEvaluationModel } from "@flow-state-dev/testing";
 import {
-  SESSION_REQUEST_END_HOOK,
-  onRequestEnded,
-  readRequestSpend,
-  readRequestTotalSpend,
-  reportHarnessSpend,
   type FlowInstance,
   type GeneratorModel,
   type GeneratorModelCallOptions,
   type GeneratorModelResult,
   type GeneratorModelResultPayload,
-  type RequestEnding,
   type SuspensionRecord
 } from "@flow-state-dev/core/types";
+import {
+  SESSION_REQUEST_END_HOOK,
+  onRequestEnded,
+  readRequestSpend,
+  readRequestTotalSpend,
+  type RequestEnding
+} from "@flow-state-dev/core/internal";
+import { reportHarnessSpend } from "@flow-state-dev/core/harness";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import { createRequestSpendLedger } from "../src/execution/request-spend-ledger";

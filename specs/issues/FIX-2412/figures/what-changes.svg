@@ -1,0 +1,97 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Four rows, one per roster view. Kitchen Sink's Workers panel reads once with Retry after a failure; after, it follows the watch. Kitchen Sink's rail lists coordinators from a hand-kept list; after, from roster rows on the coordinator flow. Shift Manager's Roster, TEAMS and DELEGATES read with each snapshot, DELEGATES once; after, one watch per connection. The Teammates list reads at boot and after its own hire or fire; after, it follows the watch. Under the after column, the workforce client's watchRoster hears the user's resource notices for the two worker collections and reads again, one read in flight, on a timer only where push can miss a change."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .watch { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .plain { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .wire  { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-app { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .c-gone { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="heads">
+    <text class="t-lbl" x="16" y="24">ROSTER VIEW</text>
+    <text class="t-lbl c-gone" x="232" y="24">TODAY</text>
+    <text class="t-lbl c-code" x="588" y="24">AFTER</text>
+  </g>
+
+  <g id="row-ks-panel">
+    <text class="t-app" x="16" y="56">Kitchen Sink</text>
+    <text class="t-s" x="16" y="72">Workers panel</text>
+    <rect class="old" x="232" y="38" width="340" height="44" rx="5"/>
+    <text class="t-b" x="246" y="57">Reads once</text>
+    <text class="t-s" x="246" y="73">Retry only after a failure; a reload otherwise</text>
+    <rect class="new" x="588" y="38" width="336" height="44" rx="5"/>
+    <text class="t-b" x="602" y="57">Follows the watch</text>
+    <text class="t-s" x="602" y="73">no Retry for a stale list</text>
+  </g>
+
+  <g id="row-ks-rail">
+    <text class="t-app" x="16" y="114">Kitchen Sink</text>
+    <text class="t-s" x="16" y="130">rail coordinators</text>
+    <rect class="old" x="232" y="96" width="340" height="44" rx="5"/>
+    <text class="t-b" x="246" y="115">A hand-kept list: support.help</text>
+    <text class="t-s" x="246" y="131">a test holds it to the tree</text>
+    <rect class="new" x="588" y="96" width="336" height="44" rx="5"/>
+    <text class="t-b" x="602" y="115">Roster rows on the coordinator flow</text>
+    <text class="t-s" x="602" y="131">read at each listing; nothing to edit</text>
+  </g>
+
+  <g id="row-sm">
+    <text class="t-app" x="16" y="172">Shift Manager</text>
+    <text class="t-s" x="16" y="188">Roster · TEAMS · DELEGATES</text>
+    <rect class="old" x="232" y="154" width="340" height="44" rx="5"/>
+    <text class="t-b" x="246" y="173">Read with each snapshot</text>
+    <text class="t-s" x="246" y="189">DELEGATES' picker reads once, on mount</text>
+    <rect class="new" x="588" y="154" width="336" height="44" rx="5"/>
+    <text class="t-b" x="602" y="173">One watch per connection</text>
+    <text class="t-s" x="602" y="189">every roster surface shares it</text>
+  </g>
+
+  <g id="row-teammates">
+    <text class="t-app" x="16" y="230">Teammates lab</text>
+    <text class="t-s" x="16" y="246">worker list</text>
+    <rect class="old" x="232" y="212" width="340" height="44" rx="5"/>
+    <text class="t-b" x="246" y="231">Read at boot</text>
+    <text class="t-s" x="246" y="247">and again after a hire or fire made here</text>
+    <rect class="new" x="588" y="212" width="336" height="44" rx="5"/>
+    <text class="t-b" x="602" y="231">Follows the watch</text>
+    <text class="t-s" x="602" y="247">a change from anywhere shows</text>
+  </g>
+
+  <g id="wires">
+    <path class="wire" d="M 756 300 V 266"/>
+    <path class="wire" d="M 750 272 L 756 264 L 762 272"/>
+  </g>
+
+  <g id="today-client">
+    <rect class="plain" x="232" y="300" width="340" height="80" rx="5"/>
+    <text class="t-lbl" x="246" y="320">WORKFORCE CLIENT</text>
+    <text class="t-b" x="246" y="340">roster() only</text>
+    <text class="t-s" x="246" y="357">each app decides when to read again,</text>
+    <text class="t-s" x="246" y="371">and none does</text>
+  </g>
+
+  <g id="after-client">
+    <rect class="watch" x="588" y="300" width="336" height="80" rx="5"/>
+    <text class="t-lbl c-acc" x="602" y="320">WORKFORCE CLIENT · watchRoster</text>
+    <text class="t-b" x="602" y="340">Hears the user's notices for its two collections</text>
+    <text class="t-s" x="602" y="357">through client.subscribe · one read in flight</text>
+    <text class="t-s" x="602" y="371">a timer only where push can miss a change</text>
+  </g>
+</svg>

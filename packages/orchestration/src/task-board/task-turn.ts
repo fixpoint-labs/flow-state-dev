@@ -1,12 +1,13 @@
+// FIX-1817; BP-031; FIX-1816 BR-5a, FIX-1817 S1.
 /**
  * The one test of whether a turn is a task turn: a turn the receiving gate
- * serves, working the row a dispatch claimed (FIX-1816 BR-5a, FIX-1817 S1).
+ * serves, working the row a dispatch claimed.
  *
  * Defined here once, and imported wherever a rule depends on it: a task
- * turn's own waits (`getTask({ wait })`) are bounded in depth, and FIX-1817's
+ * turn's own waits (`getTask({ wait })`) are bounded in depth, and the
  * question park is offered only on one.
  *
- * Read from server-set state only, never from input (BP-031):
+ * Read from server-set state only, never from input:
  *
  * - **The claim.** The gate (and an inline drain's worker body) stamps the
  *   claim it holds into the turn's async scope before the turn runs

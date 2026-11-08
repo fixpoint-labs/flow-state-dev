@@ -1,3 +1,4 @@
+// BP-015.
 /**
  * The inventory's org-scoped worker collection — what was registered in this
  * organization, as opposed to what the tree declares. A row means *was
@@ -33,8 +34,8 @@
  * `cross-org-collection-read.test.ts` fails if another org's rows come back
  * for either.
  *
- * The read names its fields with `expose` rather than the identity default
- * (BP-015), so a key added to a row later stays server-side until someone adds
+ * The read names its fields with `expose` rather than the identity default,
+ * so a key added to a row later stays server-side until someone adds
  * it to the list. A row means *was registered in this organization*, not *is
  * open now*: nothing deletes one for going missing, so a reader must label it
  * that way. Firing a hired worker removes its row; a row an earlier version's
@@ -61,32 +62,35 @@ import { z } from "zod";
  * nothing. Required means the framework's read path surfaces such a row as
  * empty instead, which is visible.
  */
-export const workerInventoryRowSchema = z.object({
+export const workerInventoryResourceStateSchema = z.object({
   /** The worker's id — the same id the declared record carries. The join key. */
   id: z.string().min(1),
   /** The worker flow this worker was hired into, e.g. the built-in `"agent"`. */
   kind: z.string().min(1),
+  // BP-030.
   /**
    * The worker's door: the one public action its worker flow declares that takes a
    * user's message (`userMessage`, `{ message }` input). `null` when the
    * flow has none, or declares two (a hire problem). Defaulted so a row
-   * written before doors were published reads as no door (BP-030); the next
+   * written before doors were published reads as no door; the next
    * boot rewrites it.
    */
   door: z.string().nullable().default(null),
+  // BP-030.
   /**
    * Whether the door takes an optional `taskId`, the task a line is sent
    * from, and stamps it on the line and the reply (its `respond` declares
    * `taskOf`, through `doorTask`). An app sends the key only when this is
    * `true`: a strict door refuses a key it doesn't declare. Defaulted so a row
-   * written before the field reads as not taking one (BP-030); the next boot
+   * written before the field reads as not taking one; the next boot
    * rewrites it.
    */
   doorTakesTask: z.boolean().default(false),
+  // BP-023, BP-030.
   /**
    * The worker's display name (its `WORKER.md` `name:`), for people only; ids
    * stay the wiring. `null` when it names none, and on a row written before
-   * the field (BP-023, BP-030): a view shows the id instead.
+   * the field: a view shows the id instead.
    */
   name: z.string().nullable().default(null),
   /**
@@ -94,36 +98,39 @@ export const workerInventoryRowSchema = z.object({
    * team names none, on an org worker, and on a row written before the field.
    */
   teamName: z.string().nullable().default(null),
+  // BP-030.
   /**
    * Whether the worker keeps standing rules: its worker flow declares the
    * standing rules action. Read off the flow's actions rather than its name, so
    * an app's own `agent` that leaves the action out says so. Defaulted so a row
-   * written before the field reads as keeping none (BP-030); the next boot
+   * written before the field reads as keeping none; the next boot
    * rewrites it.
    */
   rules: z.boolean().default(false),
+  // BP-023, BP-030.
   /**
    * Where the worker came from: `true` for a worker hired at runtime (its id is
    * its address, `<org>.<workerId>`), `false` for a declared one. A team list
    * reads this rather than the id's shape, because a declared team can share
-   * the organization's name. `null` on a row written before the field existed
-   * (BP-023, BP-030), or by a caller that couldn't say; the next boot rewrites
+   * the organization's name. `null` on a row written before the field existed,
+   * or by a caller that couldn't say; the next boot rewrites
    * a worker that is still registered.
    */
   hired: z.boolean().nullable().default(null),
+  // BP-023, BP-030.
   /**
    * The incarnation of the hire or repair that published this row (see
    * `roster/incarnation.ts`). Fire deletes a hired worker's row only when it
    * carries the incarnation fired (`null` only for a roster row from before
    * incarnations), so a worker hired again at the same address keeps its row,
    * and never deletes a declared worker's. `null` on a declared worker's row and
-   * on a row written before the field (BP-023, BP-030).
+   * on a row written before the field.
    */
   incarnation: z.string().nullable().default(null),
 });
 
-/** One row of the worker inventory. @see workerInventoryRowSchema */
-export type WorkerInventoryRow = z.infer<typeof workerInventoryRowSchema>;
+/** One worker in the worker inventory. @see workerInventoryResourceStateSchema */
+export type WorkerInventoryResourceState = z.infer<typeof workerInventoryResourceStateSchema>;
 
 /**
  * `flowIsolation: false`, spelled out here rather than omitted.
@@ -143,9 +150,10 @@ export type WorkerInventoryRow = z.infer<typeof workerInventoryRowSchema>;
  */
 const SHARED_ACROSS_FLOWS = false;
 
+// BP-015.
 /**
  * The fields the collection's browser read publishes — every field its row
- * schema declares today, named rather than defaulted (BP-015). A key a later
+ * schema declares today, named rather than defaulted. A key a later
  * change adds to a row stays server-side until it is added here too.
  */
 const WORKER_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "rules", "doorTakesTask", "name", "teamName", "hired", "incarnation"] as const;
@@ -168,7 +176,7 @@ export function defineWorkerInventoryCollection() {
     pattern: "inventory/workers/*",
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
-    stateSchema: workerInventoryRowSchema,
+    stateSchema: workerInventoryResourceStateSchema,
     client: { state: { read: true }, expose: WORKER_INVENTORY_CLIENT_FIELDS },
   });
 }

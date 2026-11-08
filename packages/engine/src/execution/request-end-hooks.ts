@@ -1,5 +1,6 @@
+// FIX-2077.
 /**
- * The request-end registry (FIX-2077): the engine side of core's request-end
+ * The request-end registry: the engine side of core's request-end
  * seam (`@flow-state-dev/core/types` → `onRequestEnded`).
  *
  * One registry per request, built beside the side-chain pool and attached to
@@ -16,7 +17,7 @@ import {
   type RequestEndSeam,
   type RequestEnding,
   type RequestSpend
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/internal";
 import type { RuntimeLogger } from "./logging";
 import { logRuntimeEvent } from "./logging";
 
@@ -26,6 +27,7 @@ const REQUEST_END_REGISTRY: unique symbol = Symbol("@flow-state-dev/engine/reque
 /** A request's registry: the seam blocks add to, and the run the engine calls once. */
 export interface RequestEndRegistry {
   readonly seam: RequestEndSeam;
+  // FIX-2145.
   /**
    * Run every hook added so far, in order, then forget them. A hook added while
    * the list runs runs too. A rejection is logged and the next hook still runs.
@@ -35,7 +37,7 @@ export interface RequestEndRegistry {
    * request's held terminal status to write.
    *
    * The ending's `spend` is filled in here, from the request's spend ledger:
-   * what it counted since the last run (FIX-2145).
+   * what it counted since the last run.
    *
    * @returns the first failure a hook handed back, for the caller to record as the request's own.
    */
@@ -130,9 +132,10 @@ async function runHooks(
   return failure;
 }
 
+// FIX-2145.
 /**
  * Where a request's context keeps the function that runs a request-end hook
- * with its resource writes not stopped by an explicit abort (FIX-2145). Only
+ * with its resource writes not stopped by an explicit abort. Only
  * the session config's hook runs through it: it records what the request
  * spent, which an abort doesn't undo. Engine-internal.
  */

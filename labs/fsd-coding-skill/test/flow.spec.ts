@@ -6,18 +6,18 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/engine";
+import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/engine/host";
 import { testFlow } from "@flow-state-dev/testing";
-import { INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../../../packages/cursor/src/agent";
-import { TESTED_SDK_VERSION } from "@flow-state-dev/cursor";
-import type { ResolveClaudeAgent } from "@flow-state-dev/claude-code/sdk";
+import { INTERNAL_CURSOR_SDK_VERSION_READER, type CursorAgentOptions } from "../../../packages/cursor/src/agent";
+import { TESTED_CURSOR_SDK } from "../../../packages/cursor/src/types";
+import type { ResolveClaudeCodeAgent } from "@flow-state-dev/claude-code";
 import { createFsdCodingFlow } from "../src/flow";
 import { DOOR_PREFIX, DOORS, FLOW_KIND } from "../src/schemas";
 import { scriptedClaude } from "./scripted-claude";
 import { scriptedCursor } from "./scripted-cursor";
 
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_CURSOR_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CURSOR_SDK.range }),
 } as CursorAgentOptions;
 
 const USER = "lab-user";
@@ -206,7 +206,7 @@ describe("fsd-coding flow wiring — Claude", () => {
   });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  function flowWithClaude(resolve: ResolveClaudeAgent) {
+  function flowWithClaude(resolve: ResolveClaudeCodeAgent) {
     return createFsdCodingFlow({
       cwd: claudeCwd,
       harness: "claude",

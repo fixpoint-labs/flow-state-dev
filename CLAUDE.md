@@ -107,6 +107,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 
 **Read when relevant:**
 
+- `docs/contributing/glossary.mjs` — **Read before naming a public thing.** The vocabulary glossary: each framework term, what it means, the words it retires and what is exempt. The vocabulary checks read it; a change that coins or retires a public term edits its entry in the same PR.
 - `docs/architecture/items.md` — **Read before touching items, rendering, or the stream.** Complete item type registry, classification, and rendering contracts.
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.
 - `docs/contributing/asking-for-decisions.md` — **Read before putting any fork, gate, or sign-off to the user.** The engineer/product-owner contract, the six-part shape, and a worked example.
@@ -209,7 +210,8 @@ Development task skills live in `.agents/skills/` — the harness-neutral home, 
 | `reuse-review` | Each Adds item of a spec, epic or change against existing pieces: reuse X, extend X, or genuinely new |
 | `analysis` | Whether this is the right work (seven objectives), on a drafted spec before the gate and at epic wrap |
 | `adhd` | Parallel divergent ideation under cognitive frames, to generate alternative shapes; 8 sub-agent calls, a decision-point instrument. Adapted from the MIT-licensed [UditAkhourii/adhd](https://github.com/UditAkhourii/adhd) |
-| `polish-docs` | Corpus-level docs editing pass; standalone, and as a draft PR at epic wrap |
+| `release-docs` | Write the user docs for a release in one pass from the pending changesets; the only route user docs change outside a `docs-fix` |
+| `polish-docs` | Corpus-level docs editing pass; standalone, and as part of `release-docs` |
 | `concept-doc` | Plain-language doc on how one part of the framework works or should work, checked by a cold read |
 | `issue-lifecycle` | Drive ONE issue end-to-end, stopping before merge; a **bug skips the spec** |
 | `epic-lifecycle` | Drive ONE epic: epic-spec, objective gate, child issue lifecycles in parallel worktrees, wrap. Parallel issue work always runs under an epic |
@@ -295,7 +297,7 @@ pnpm --filter @thought-fabric/core typecheck  # Typecheck thought-fabric
 
 The full standard is [`docs/contributing/user-docs.md`](docs/contributing/user-docs.md) — read it before writing any user-facing prose. It carries the **outsider rule** (docs describe what the thing does, never how it was built, what it used to do, or what bug prompted it), the two sentence tests, and the tells table. The summary below is the voice half of it.
 
-**Don't write user-facing prose yourself while holding a spec or a diff.** Dispatch the `docs-writer` agent, then `docs-editor`. Context leaks even when you know the rules — that's what the isolation is for.
+**Don't write user-facing prose yourself while holding a spec or a diff.** User docs are written at release by `/release-docs`, which dispatches the `docs-writer` agent, then `docs-editor`. Context leaks even when you know the rules — that's what the isolation is for.
 
 When writing blog posts, landing copy, or any prose for `apps/docs`, use this voice:
 
@@ -342,7 +344,7 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **BP-022** Release notes via Changesets — **not required by default.** Add a `.changeset/*.md` only when a downstream consumer of a published package needs to know; private packages (labs, examples, apps, plugin, goals) never get one. Skipping needs no empty fragment, just a line in the PR. Pre-1.0: `patch`/`minor` only.
 - **BP-030** Tolerate the old shape when you change a persisted/in-flight field — dual-read legacy records; reject removed keys loudly; `== null`-guard new nullable fields.
 - **BP-031** Never make auth/routing decisions from caller-controllable input — derive them from a trusted source (server-set identity, verified token, the framework's transport `source`), not `body`/`metadata`/query/headers.
-- **BP-034** Finish move/rename refactors — update provenance (headers, diagrams, doc anchors) and subpath re-exports, not just imports.
+- **BP-034** Finish move/rename refactors — update provenance (headers, diagrams, doc anchors) and subpath re-exports, not just imports; a moved published export's old path goes, with no alias.
 - **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state / event-read-off-state paths; test the off/new state of any new flag.
 
 **Situational — open the category file when working in that area:**
@@ -352,11 +354,12 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **Resources & state** (`docs/contributing/best-practices/resources.md`): BP-015 `expose`/`exclude` over `data` projections · BP-019 resource refs in leaf modules · BP-020 live mode never falls back to fixtures · BP-021 `cacheable` declared deliberately · BP-023 state schemas `.nullable().default(null)` · BP-027 user-scoped resources default to shared · BP-033 filter at the source before you load (don't list-then-discard).
 - **React** (`docs/contributing/best-practices/react.md`): BP-010 `useMemo` over `useEffect`; derive flags from the complete input set; signal only on real change.
 - **Engine & transport** (`docs/contributing/best-practices/engine.md`): BP-026 bundle forwarded options into `RuntimeConfig`.
-- **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a tracked unit of intent — a spec for a feature, the issue itself for a bug; a surface it decided survives a build constraint — move the mechanism, or raise a conflict to re-gate, never a fork to offer) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 retain issue and epic specs as reviewed design history; repository canonical, Linear links/status; project exception unchanged · BP-039 lead with the problem in plain language and fold the derivation below it (grok before diving deep) · BP-040 spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds · BP-041 frame every ask as a business decision.
+- **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a tracked unit of intent — a spec for a feature, the issue itself for a bug; a surface it decided survives a build constraint — move the mechanism, or raise a conflict to re-gate, never a fork to offer) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests; a pointer lives in a `//` comment, never JSDoc, a string or a copied file (`fsd/no-tracker-ids`) · BP-008 root README onboarding-first · BP-009 package READMEs current as of each release · BP-037 retain issue and epic specs as reviewed design history; repository canonical, Linear links/status; project exception unchanged · BP-039 lead with the problem in plain language and fold the derivation below it (grok before diving deep) · BP-040 spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds · BP-041 frame every ask as a business decision.
 
-**Document new and changed user-facing functionality** (always)
+**User docs are written at release, not per PR** (always)
 
-- New/changed end-user functionality is documented in the same change set: relevant `packages/*/README.md` for public API changes, and `apps/docs` (Docusaurus) pages for concepts/guides/APIs end users reference.
+- Don't edit `apps/docs/{docs,guides,blog}`, `apps/docs/sidebars*.ts` or `packages/*/README.md` in a normal PR; CI fails it. Record what a user needs to know in the changeset, and keep the spec's docs line accurate. `/release-docs` writes the pages for the whole release in one reviewed PR. Fixing docs for something already released: `docs-fix` label. Process: [`docs/contributing/release-docs.md`](docs/contributing/release-docs.md).
+- Contributor docs (`docs/architecture/`, `docs/contributing/`, `AGENTS.md`, this file) still change in the same PR as the code.
 
 ## Using Bash
 

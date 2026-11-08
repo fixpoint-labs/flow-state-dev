@@ -76,6 +76,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: The one-compiler rule admits only examples at the root's version
+        run: node --test scripts/compiler-declarations.test.mjs
+
       - name: OMP mailbox regressions
         run: node --test .omp/test/mailbox.test.mjs
 
@@ -83,14 +86,10 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      # The lint-gate test runs the pre-push hook, and the hook's retired-term
-      # guard diffs against `origin/<base>` to find added lines. This job's
-      # checkout fetches only the merge commit, so fetch the base tip. Depth 1
-      # is enough: the guard diffs the tree against that commit, not a merge base.
-      - name: Fetch the base branch for the retired-term guard
-        env:
-          BASE: ${{ github.base_ref || 'main' }}
-        run: git fetch --no-tags --depth=1 origin "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
+      # The rule must report each planted leak and keep `//` pointers, or the
+      # Lint step above could pass because the rule stopped reading something.
+      - name: The tracker-id rule reports its plants
+        run: node --test scripts/eslint-rules/no-tracker-ids.test.mjs scripts/check-tracker-ids.test.mjs scripts/scan-tracker-ids-in-tarballs.test.mjs
 
       - name: The lint gate can fail
         run: node --test scripts/lint-gate.test.mjs
@@ -164,6 +163,39 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+  # The export check (FIX-2448): no published package root gains a name that no
+  # app, example, lab or docs page uses, and no adopter code gains an import of
+  # an `/internal` path. A ratchet against the base, read in place, so names
+  # that already fail don't fail this run; the script's header owns the rules.
+  # Its own job because it needs the base commit: depth 2, and on a PR the base
+  # is the merge's first parent (`HEAD^1`), as in the mechanisms job.
+  export-check:
+    name: Export check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Package roots gain no name nobody outside the framework uses
+        run: node scripts/check-root-exports.mjs HEAD^1
+
+      # Every plant must be named, or the check above could pass because it
+      # stopped reading a rule. It runs even when the check is red.
+      - name: The export check refuses its plants
+        if: ${{ !cancelled() }}
+        run: node --test scripts/root-exports.test.mjs
+
   # The package tests, split across runners by scripts/test-shards.mjs. Each
   # shard runs its packages one at a time, as `pnpm test` does: two at once on
   # one runner oversubscribe it and tests start timing out.
@@ -190,9 +222,27 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # A real Postgres for store-postgres's multi-connection cases (PGlite is
+      # one connection, so it cannot overlap two statements). Like the Redis
+      # cases, they fail rather than skip when `CI` is set and
+      # `FSD_TEST_POSTGRES_URL` is not. Pinned by tag and digest; see
+      # "Postgres in CI" in docs/contributing/development-setup.md.
+      postgres:
+        image: postgres:16.12@sha256:23af655ba1ddf74eaa002e3deaf5fce022ab8791672336a7c1fb0ef2d57efb7f
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fsd_test
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
 
     env:
       REDIS_URL: redis://127.0.0.1:6379
+      FSD_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/fsd_test
 
     steps:
       - uses: actions/checkout@v4
@@ -371,7 +421,7 @@ jobs:
         run: node scripts/check-isolation-coordinate.mjs
 
       # Unconditional for the same reason: a retired Workforce word is as
-      # wrong on main as on a PR. The script header owns the terms, the
+      # wrong on main as on a PR. docs/contributing/glossary.mjs owns the terms, the
       # areas and the exceptions.
       - name: No retired Workforce term
         run: node scripts/check-retired-terms.mjs
@@ -382,13 +432,14 @@ jobs:
         run: node scripts/check-retired-terms.mjs --control
 
       # One word per thing (FIX-1876): dispatch, wait, ask and hand-off each
-      # name one mechanism. The goal's rules own the words, the keep list and
+      # name one mechanism. docs/contributing/glossary.mjs owns the words, the exemptions and
       # the exclusions; goals/vocabulary/one-word-per-thing/goal.md says why.
       - name: One word per thing
         run: node goals/vocabulary/one-word-per-thing/sweep.mjs
 
-      # The planted parkOnAsk, messageWorker and replyTo must still be reported,
-      # or the sweep above could pass because it stopped reading a file.
+      # The planted parkOnAsk, messageWorker and replyTo, and isInProcessDispatcher in a
+      # contributor doc and a skill, must still be reported, or the sweep above could pass
+      # because it stopped reading a file.
       - name: The vocabulary sweep reports its plant
         run: node goals/vocabulary/one-word-per-thing/sweep.mjs --control
 

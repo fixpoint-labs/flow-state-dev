@@ -13,7 +13,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, sequencer } from "@flow-state-dev/core";
-import { openRowHolds } from "@flow-state-dev/orchestration/tasks";
+import { openOwnHolds } from "@flow-state-dev/orchestration/internal";
 import { harnessJudgeInputSchema, type HarnessJudgeInput } from "../src";
 import { CONVERSATIONS, FIXED_BOARD, PHASE, claimHost, cleanUpHosts, messageOf } from "./claim-host";
 
@@ -52,7 +52,50 @@ describe("a judged run on a board read from the claim", () => {
     const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
     expect(row.status).toBe("completed");
     expect(row.output).toMatchObject({ answer: "two packages", commits: 1, judged: true });
-    expect(read).toEqual([{ goal: "how many packages?", answer: "two packages", commits: { count: 1, subjects: ["call1 commit 0"] } }]);
+    expect(read).toEqual([
+      {
+        goal: "how many packages?",
+        answer: "two packages",
+        commits: { count: 1, subjects: ["call1 commit 0"] },
+        diff: { files: [{ path: "call1-0.txt", added: 1, removed: 0 }], fileCount: 1, added: 1, removed: 0, verified: true },
+      },
+    ]);
+  }, 60_000);
+
+  it("completes a run whose change is on its branch, because the judge is shown the files its commits changed", async () => {
+    // A commit's subject says little about what changed. A judge that can't
+    // see the change reads a task that asked for one as not done, and fails
+    // work that is on the branch. This judge, like a careful model, calls the
+    // change done only when it can see the file the goal names was changed.
+    const read: HarnessJudgeInput[] = [];
+    const block = handler({
+      name: "evidence-judge",
+      inputSchema: harnessJudgeInputSchema,
+      outputSchema: z.unknown(),
+      execute: (input) => {
+        read.push(input);
+        return input.diff?.files.some((file) => file.path === "call1-0.txt")
+          ? verdict("done", 0.9, "the change is on the branch")
+          : verdict("not-done", 0.9, "the run's commits do not make it");
+      },
+    });
+    const lab = claimHost({ mode: "claim", script: [{ answer: "changed it", commits: 1 }], manager: { judge: { block, floor: FLOOR } } });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "change call1-0.txt", input: {} });
+
+    const { result } = await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(result.error, messageOf(result.error)).toBeUndefined();
+
+    expect(read).toHaveLength(1);
+    expect(await lab.row(CONVERSATIONS, "t1", "conv-a")).toMatchObject({ status: "completed", attempts: 1, output: { commits: 1, judged: true } });
+  }, 60_000);
+
+  it("shows the judge an empty change for a run that committed nothing", async () => {
+    const { judge, read } = scriptedJudge([verdict("done", 0.9, "it answers the goal")]);
+    const lab = claimHost({ mode: "claim", script: [{ answer: "two packages" }], manager: { judge } });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "how many packages?", input: {} });
+
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+    expect(read[0]!.diff).toEqual({ files: [], fileCount: 0, added: 0, removed: 0, verified: true });
   }, 60_000);
 
   it("fails the attempt on not done, tells the next attempt why, and ends errored on the second miss", async () => {
@@ -82,7 +125,7 @@ describe("a judged run on a board read from the claim", () => {
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
     const held = await lab.row(CONVERSATIONS, "t1", "conv-a");
     expect(held).toMatchObject({ status: "in_progress", attempts: 1 });
-    expect(openRowHolds(held).map((hold) => hold.ask.prompt)).toEqual(["which repository did you mean?"]);
+    expect(openOwnHolds(held).map((hold) => hold.ask.prompt)).toEqual(["which repository did you mean?"]);
 
     await lab.act("answer", { ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", answer: "storefront" });
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");

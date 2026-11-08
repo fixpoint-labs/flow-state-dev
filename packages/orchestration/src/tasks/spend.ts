@@ -1,5 +1,6 @@
+// FIX-2288.
 /**
- * A task's spend (FIX-2288): the write a task's run makes onto its row, and
+ * A task's spend: the write a task's run makes onto its row, and
  * the fold a reader shows.
  *
  * The run's request writes what it has spent so far (its live part) every few
@@ -9,7 +10,7 @@
  * Both are core's one conversion of a request's spend into tokens per source,
  * so a task's tokens and its worker's Usage count alike.
  */
-import { addRequestSpendSource, requestSpendSources, type RequestSpend } from "@flow-state-dev/core/types";
+import { addRequestSpendSource, requestSpendSources, type RequestSpend } from "@flow-state-dev/core/internal";
 import { taskSpendSchema, type TaskSpend, type TaskSpendRequest, type TaskSpendSource, type TaskSpendView } from "./schema/spend";
 
 export type { TaskSpendView };
@@ -83,8 +84,9 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
   return { requests };
 }
 
+// FIX-2288; FIX-2398.
 /**
- * A task's spend, folded for a reader (FIX-2288), or `null` when the task
+ * A task's spend, folded for a reader, or `null` when the task
  * never ran in a request of its own. Every request counts, every attempt's
  * included; a request's live part counts until its ending settles it.
  *
@@ -97,7 +99,7 @@ export function spendAfterWrite(task: Pick<Task, "spend">, write: TaskSpendWrite
  * its harness runs whole. A predecessor's ending that is only late replaces its live part
  * with what it settles, so nothing counts twice. `live` is never true on a
  * terminal row either. `costUsd` sums the charges vendors reported, over
- * the same parts, and is `null` when none did (FIX-2398).
+ * the same parts, and is `null` when none did.
  */
 export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "status">>): TaskSpendView | null {
   if (task.spend == null) return null;
@@ -138,8 +140,9 @@ export function taskSpendView(task: Pick<Task, "spend"> & Partial<Pick<Task, "st
   };
 }
 
+// FIX-2398.
 /**
- * One request's spend, read as a task's spend reads (FIX-2398): the row
+ * One request's spend, read as a task's spend reads: the row
  * {@link spendAfterWrite} settles from it, folded by {@link taskSpendView}.
  * `null` when it spent nothing. For a reader with a request and no task row,
  * such as a harness session's turn.

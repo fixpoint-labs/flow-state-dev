@@ -6,9 +6,12 @@ import type {
   ModelResolver,
   RequestStatus,
   ResponseEmitterHandle,
-  ResumeContext,
-  WaitDeadlines
+  ResumeContext
 } from "@flow-state-dev/core/types";
+import type {
+  InternalBlockContext,
+  WaitDeadlines
+} from "@flow-state-dev/core/internal";
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
@@ -35,21 +38,25 @@ export type ExecutionContext<
   TSessionState extends JsonObject = JsonObject,
   TUserState extends JsonObject = JsonObject,
   TOrgState extends JsonObject = JsonObject
-> = BlockContext<TRequestState, TSessionState, TUserState, TOrgState> & {
+> = BlockContext<TRequestState, TSessionState, TUserState, TOrgState> &
+  // The runtime's wiring the engine attaches: `requestHost` and the seam slots.
+  Omit<InternalBlockContext, keyof BlockContext> & {
   flow: FlowInstance;
   actionName: string;
   requestRuntime: RequestRuntime;
   stores: StoreRegistry;
+  // FIX-724.
   /**
    * @internal Route a (possibly already-normalized) error to the configured
-   * `errorCapture` sink (FIX-724). Deduped per request against block-level
+   * `errorCapture` sink. Deduped per request against block-level
    * captures keyed on the raw error instance. Undefined when no `errorCapture`
    * handler is configured. Called from `executeBlock`'s catch for the root
    * action block; nested block failures are captured via `_runtimeHooks.onBlockError`.
    */
   _captureError?: (error: unknown, block?: ErrorCaptureBlockInfo) => void;
+  // FIX-1983.
   /**
-   * @internal Send the request's one final-failure event (FIX-1983), once its
+   * @internal Send the request's one final-failure event, once its
    * failed record is written. Not deduped against the block captures: it is a
    * second, request-scope event naming the leaf that threw `error` when a
    * block capture saw it. Undefined when no `errorCapture` handler is configured.
@@ -68,17 +75,20 @@ export type CreateExecutionContextOptions<
   requestId: string;
   userId?: string;
   sessionId?: string;
+  // FIX-1442.
   /**
-   * The organization this execution runs under. **Required** (FIX-1442) —
+   * The organization this execution runs under. **Required** —
    * `runAction` validates it before building a context, so every context is
    * built from an identity that already names one.
    */
   orgId: string;
-  /** Optional tenant the request runs under (FIX-406 6D). */
+  // FIX-406 6D.
+  /** Optional tenant the request runs under. */
   tenantId?: string;
+  // FIX-438.
   /**
    * Inbound transport provenance written to the initial `RequestRecord`.
-   * Defaults to `"http"` for callers that don't supply one (FIX-438).
+   * Defaults to `"http"` for callers that don't supply one.
    */
   source?: string;
   requestState?: TRequestState;
@@ -86,10 +96,11 @@ export type CreateExecutionContextOptions<
   userState?: TUserState;
   orgState?: TOrgState;
   metadata?: Record<string, unknown>;
+  // FIX-1707.
   /**
    * The suspension resolution `ctx.suspend()` returns at the gate named by its
    * `pendingBlockLogicalId`. Set by `runAction` on a same-request continuation
-   * only; never read from `metadata`, which callers control (FIX-1707).
+   * only; never read from `metadata`, which callers control.
    */
   resumeContext?: ResumeContext;
   input?: unknown;
@@ -101,8 +112,9 @@ export type CreateExecutionContextOptions<
    */
   requestTaskId?: string;
   signal?: AbortSignal;
+  // FIX-663.
   /**
-   * Background-work abort signal (FIX-663). Attached to every context as
+   * Background-work abort signal. Attached to every context as
    * `_requestSideChainSignal` and substituted for `ctx.signal` inside
    * `.sideChain()` task trees. Fires only on explicit user-requested abort, not
    * on transport-level teardown. Absent for non-server callers.
@@ -114,21 +126,24 @@ export type CreateExecutionContextOptions<
   settings?: FlowStateSettings;
   stores: StoreRegistry;
   logger?: RuntimeLogger;
+  // FIX-406 6H.
   /**
-   * Tracing verbosity for observability snapshots (FIX-406 6H). Threaded onto
+   * Tracing verbosity for observability snapshots. Threaded onto
    * every block context as `_tracingLevel`. Unset → the runtime falls back to
    * `resolveTracingLevel()` (env / observability default).
    */
   tracingLevel?: TracingLevel;
   /** Whether a DurabilityProvider is configured. Guards ctx.suspend(). */
   durabilityEnabled?: boolean;
+  // FIX-724.
   /**
-   * Opt-in error-capture sink (FIX-724). When set, runtime block failures are
+   * Opt-in error-capture sink. When set, runtime block failures are
    * delivered to it with provider-neutral context. Absent → no capture.
    */
   errorCapture?: ErrorCaptureHandler;
+  // FIX-999.
   /**
-   * Construction inputs for the request-host seam (FIX-999). Hosts supply the
+   * Construction inputs for the request-host seam. Hosts supply the
    * inputs; `createExecutionContext` builds the bundle once and every nested
    * scope inherits the same reference.
    *
@@ -137,8 +152,9 @@ export type CreateExecutionContextOptions<
    * through a host (a unit test, a hand-built context).
    */
   requestHost?: RequestHostConstructionInputs;
+  // FIX-1077.
   /**
-   * The runtime config THIS request is actually running under (FIX-1077).
+   * The runtime config THIS request is actually running under.
    *
    * Deliberately not folded into `requestHost` above: that bag rides the shared
    * `runtimeConfig.requestHost` object, which is process-wide, and this value is
@@ -155,9 +171,10 @@ export type CreateExecutionContextOptions<
   effectiveRuntimeConfig?: RuntimeConfig;
 };
 
+// FIX-999.
 /**
  * What a host has to travel to `createExecutionContext` for the seam to be
- * built (FIX-999).
+ * built.
  *
  * The sweeper facts are here rather than read from a global because the sweeper
  * is built by the router while the gate runs in the context factory, so the fact
@@ -207,14 +224,16 @@ export type RequestHostConstructionInputs = {
    * execution. Absent → a parked request answers `"already-finished"`.
    */
   parkedStop?: SuspendedStopDeps;
+  // FIX-2078 D1.
   /**
-   * Debts' due times (FIX-2078 D1, `RequestHost.wakes`). Installed beside
+   * Debts' due times (`RequestHost.wakes`). Installed beside
    * `waitResume`, only when the host has durable execution and its stores keep
    * wakes. Absent → the verb is absent, and debts are paid on fast paths only.
    */
   wakes?: { readonly maxDebtAgeMs: number };
+  // FIX-2082.
   /**
-   * Waits (FIX-2082, `RequestHost.waits`): the provider the depth of a chain of
+   * Waits (`RequestHost.waits`): the provider the depth of a chain of
    * waits is read from, and the deadline bounds. Installed beside `wakes`, only
    * when the host keeps them, since a wait's deadline is a wake. Absent → the
    * verb is absent, and no wait is offered.

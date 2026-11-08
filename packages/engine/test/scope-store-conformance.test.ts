@@ -18,7 +18,7 @@ import { afterAll } from "vitest";
 import {
   createFilesystemSessionStore,
   createInMemorySessionStore
-} from "../src";
+} from "../src/host";
 import { createScopeStoreConformanceTests } from "../src/testing";
 
 const tempDirs: string[] = [];

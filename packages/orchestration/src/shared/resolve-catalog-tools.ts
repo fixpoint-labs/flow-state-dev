@@ -1,8 +1,9 @@
+// FIX-965.
 /**
  * Shared catalog-key resolution for agent `tools:` lists.
  *
  * Workforce and the skills layer used to each own a copy of this loop. One
- * implementation keeps the own-property miss path (FIX-965) from drifting
+ * implementation keeps the own-property miss path from drifting
  * between packages.
  */
 import type { GeneratorTool } from "@flow-state-dev/core";

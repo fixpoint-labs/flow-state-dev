@@ -16,7 +16,11 @@ needs is a gap filed against the package.
   so a question about the code is answered in the same turn, and a code change goes to `desk.coder`.
   A background result shows as one line, its title and status, at the point the main session took
   it, even while its turn is still running. Click it to read the task's reply; the main session
-  adds only what's new rather than repeating it. Tool calls read as plain words ("Waiting for your
+  adds only what's new rather than repeating it. *Open task* on the line opens the task's sheet,
+  the same one its row in the pane opens, and so does *Open task* on the line where the main
+  session started the task. The dot on either line shows the task's status now: a task retried
+  after it failed reads "failed · now running", since the line's words keep what it reported.
+  A line from a task the board doesn't list has no *Open task*. Tool calls read as plain words ("Waiting for your
   answer", "Sent for review"). Enter sends; Cmd+Enter (Ctrl+Enter) sends from every box in the lab.
 - **The *Coder* chip** beside Send picks who makes a code change you ask for, in either mode:
   *Auto* (Claude Code, as above), *Plan first* (Claude Code in plan mode, which reads, changes
@@ -27,7 +31,8 @@ needs is a gap filed against the package.
   by its status: *Cancel* (it asks once, since tasks waiting on it go too) and a *Steer* box while
   it runs or waits, *Release* when it is held, *Retry* once it failed or was cancelled. A failed
   task shows its error. Each action is the board's own, and a refusal shows in the board's words.
-  You can still ask the main session to stop or steer a task.
+  You can still ask the main session to stop or steer a task. The open task's row is marked,
+  whether you opened it here or from the main thread; *Done* opens to show it when it is finished.
 - **Keys:** ⌘K (Ctrl+K) finds any session by its title, in either view, or starts a new one.
   Alt+↑ and Alt+↓ move to the previous or next session in the view. `/` puts the cursor in the
   composer, and `?` lists every key. Opening a session puts the cursor in its composer. The view
@@ -40,7 +45,8 @@ threads, each a task in a session of its own, and the right pane is the status b
 
 - **Center:** your line is marked *Sent to a task*, and each thread is a compact card where the
   lead filed it, with *View task*, *Answer* when it asks you something, and *Resolve* and
-  *Request changes* when it is ready for review.
+  *Request changes* when it is ready for review. A result line's *Open task* opens the thread's
+  view, as *View task* does.
 - **Right:** the board groups threads by what you owe them: *Pinned*, *Working*, *Waiting on you*,
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
   status and what it waits on, never a mark the lab keeps. A failed thread waits on you; its view
@@ -50,7 +56,7 @@ threads, each a task in a session of its own, and the right pane is the status b
 - **The page's address** names the view, the open session and the task open in its pane
   (`?session=<id>&task=<id>`), so a reload or a link reopens them, and Back returns to what you
   had open before. A link to a session or task that is gone opens *New session* instead.
-- **A thread's view** replaces the board, with a back arrow. You can talk in it: your line steers
+- **A thread's view** opens as a sheet over the main thread, the same flyout a session's background task opens in, and the board stays in the pane beside it. You can talk in it: your line steers
   the thread's task and answers its open question. Cmd+Enter (Ctrl+Enter) answers, or requests
   changes when it is ready for review; plain Enter is a new line. You can pin it there. Under its
   header, the same actions as a sheet's, without the *Steer* box, since the composer steers.
@@ -114,7 +120,11 @@ are read from the environment, all optional:
 
 *New session* lists your projects and has a *New project* form: a name and the repository its
 coding runs work on. The host allows `file://` repositories only, and the repository must ignore
-`.fsdev/` (a run refuses one that doesn't). A run works in a git worktree of the repository under
+`.fsdev/`. The form checks the repository as you leave its field, with the same check a run's
+checkout gets, and keeps Create off with the problem shown when it fails; the server refuses the
+same project (`repository-unusable`). The picker also says what its view does and shows which
+coding harnesses can run here, with Re-check, and an empty session offers starter lines that fill
+the composer. A run works in a git worktree of the repository under
 the data folder, on a branch of its own that you'll find in the repository, so your checked-out
 branch and files don't change. A repository not in `CLAUDE_CODE_STYLE_REPOSITORIES` gets a clone
 under the data folder instead. Before a run settles, a judge (harness-manager's `goalJudge`) reads
@@ -130,6 +140,16 @@ and the harness tag names the harness the run reported. Finished rows keep the f
 task's sheet or thread view splits it into input and output. A count no run has reported reads
 "no tokens reported yet", never 0, and one still missing a source is marked partial. All of it comes from the `spend` the
 board's `listTasks` rows carry; the lab sums nothing itself.
+
+Every task also shows its time. A running card reads *working · 4m 12s*, counted from when this
+attempt's run started, so a retried task starts again from zero. A running task whose run has
+stopped answering reads *quiet for 40m* in amber: the run stopped renewing its claim on the task
+(the board's lease lapsed), as when the server running it died, and it stays quiet until the
+board hands the task to a new run. A run that is alive but slow keeps renewing, so it never reads
+quiet; a long clock is the sign there. While the page can't read the tasks (its connection
+dropped), it keeps the last rows and never calls a task quiet from them. A finished row says how long ago it ended, the threads
+board's rows carry the same time, and the pane's heading counts the tasks running, waiting, failed
+and done.
 
 Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
 never imports. The contract tests in `test/contract/` keep the two honest: five scenarios (a result
@@ -147,11 +167,13 @@ a package call:
 |---|---|
 | The sessions list | `listWorkerSessions("desk.main")` from `@flow-state-dev/workforce/browser` |
 | *New session* and a session's project | a session of `desk.main`'s flow, then `setWorkProject` |
-| The project picker and *New project* | `listProjects` and `createProject`, from `defineProjectBlocks` (`workforce/flows/projects.mts`) |
+| The project picker and *New project* | `listProjects`, `createProject` and `checkRepository`, from `defineProjectBlocks` with the workspace host's check (`workforce/flows/projects.mts`) |
+| The picker's harness chips | the `harness-readiness` flow's `read` action |
 | Sending and the thread | the `respond` action, and the session's message and tool items |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
 | Interrupting | aborting the turns running when you press Stop; the thread then shows the registry's `request-recovery` stopped line after that turn, read from its `aborted` request, with the count of background work still running from the session stream's runs |
+| A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery` (installed in `src/components/flow-state/`); Retry is the client's `request(id).retry()`, on the newest turn only |
 | The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
 | A thread card, and *Sent to a task* | the lead's `createTask` call in the session's items |
@@ -159,7 +181,7 @@ a package call:
 | A coding thread's tag | the `harness` action of the coding flow, asked in the thread's run session |
 | A coding thread's review card | the `data` of the review stop (`suspension` item) in the thread's run session: branch, commits, subjects and the judge's verdict |
 | *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
-| Answering in a thread | the Inbox client's `answerHold` on its open question; with none, `updateTask_tasks` with your line as a steer |
+| Answering in a thread | the Inbox client's `answerOne` on its open question; with none, `updateTask_tasks` with your line as a steer |
 | Pins | the `pins` flow's `listPins` read, so reading them stores nothing |
 
 The thread and a task's work follow their session's stream. The rest reads when something changes,
@@ -168,7 +190,7 @@ change, a resource), the thread's running turn on a request notice, and pins on 
 user state. A session you open in another tab joins the list at the next reload. On a host whose
 push can miss a change, such as the SQLite store the lab runs on, each also reads at its old pace:
 the list and pins every 3 seconds, the running turn every 1.5.
-| *Resolve* and *Request changes* | the Inbox client's `answerHold` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
+| *Resolve* and *Request changes* | the Inbox client's `answerOne` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
 | *Pin* and *Unpin* | the lab's `pins` flow (`workforce/flows/pins.mts`), your own user state |
 
 `desk.coder` and `desk.thread-coder`, and their plan, Codex and Cursor siblings, are on the lab's one coding flow,

@@ -33,10 +33,12 @@ import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { defineFlow, dispatcher, handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { defineTaskCollection, openRowHolds, type Task } from "@flow-state-dev/orchestration/tasks";
+import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
+import { openOwnHolds } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "@flow-state-dev/harness-manager";
 import { defineProjectBlocks, projectWorkspace, projectWorkspaceCapability, type ProjectCheckout } from "@flow-state-dev/workforce";
@@ -253,7 +255,7 @@ await runGoal(async (failures) => {
       const id = `${input.issue}--${PHASE}`;
       const row = tasks.get(id) as Task | undefined;
       let answered = 0;
-      for (const hold of row === undefined ? [] : openRowHolds(row)) {
+      for (const hold of row === undefined ? [] : openOwnHolds(row)) {
         await tasks.answer(id, { questionId: hold.id, message: "Yes, carry on.", from: "user", by: OWNER });
         answered += 1;
       }
@@ -311,7 +313,7 @@ await runGoal(async (failures) => {
     return row;
   };
   /** A row's status, with a running row held on a question read as `held`. */
-  const stateOf = (row: Task): string => (row.status === "in_progress" && openRowHolds(row).length > 0 ? "held" : row.status);
+  const stateOf = (row: Task): string => (row.status === "in_progress" && openOwnHolds(row).length > 0 ? "held" : row.status);
   const SETTLED = ["held", "completed", "errored", "failed", "cancelled"] as const;
   /** File `issue` for `assignee` in `orgId`, drain, and wait until it settles. */
   const runRow = async (orgId: string, issue: string, assignee: "shared" | "private") => {

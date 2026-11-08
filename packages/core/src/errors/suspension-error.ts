@@ -13,6 +13,7 @@
 import type { ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { ResumeAction, SuspensionReason, SuspendForUserKind } from "../types/suspension";
+import { resolveAllowedActions } from "./resolve-allowed-actions";
 
 export interface SuspendOptions {
   reason: SuspensionReason;
@@ -58,19 +59,6 @@ export interface SuspendOptions {
 }
 
 /**
- * Resolve the permitted resolution actions for a suspension, applying the
- * reason-based default when the author did not pass `allow` explicitly. Shared
- * by the suspension-record builder and any caller that needs the concrete set.
- */
-export function resolveAllowedActions(
-  reason: SuspensionReason,
-  allow: ResumeAction[] | undefined
-): ResumeAction[] {
-  if (allow !== undefined) return allow;
-  return reason === "user_input" ? ["submit"] : ["approve", "reject"];
-}
-
-/**
  * Normalize a `resumeSchema` to a plain JSON Schema. Detects a Zod schema by
  * its `safeParse` method and converts it; a value that is already a plain
  * object (or undefined) passes through unchanged.
@@ -105,17 +93,19 @@ export class SuspensionError extends Error {
   _currentValue?: unknown;
   /** @internal Snapshot of sequencer state at the point of suspension. */
   _sequencerState?: Record<string, unknown>;
+  // FIX-811.
   /**
    * @internal `blockInstanceId` of the block that suspended, stamped at the
    * innermost execution scope (where the identity is known) as the error
-   * propagates up (FIX-811). The outer request ctx usually has no
+   * propagates up. The outer request ctx usually has no
    * `_blockIdentity` for a nested suspension, so this is the reliable source for
    * the SuspensionRecord / `suspension` item identity and the resume logical path.
    */
   _blockInstanceId?: string;
+  // FIX-811.
   /**
    * @internal `blockInstanceId` of the nearest enclosing durable sequencer —
-   * the checkpoint key under which its accumulator state was saved (FIX-811).
+   * the checkpoint key under which its accumulator state was saved.
    * Stamped by that sequencer's suspension catch, where its identity is known.
    * runAction uses this as the SuspensionRecord's `blockInstanceId` so resume
    * loads the right checkpoint. Distinct from `_blockInstanceId` (the leaf that
@@ -147,9 +137,10 @@ export class SuspensionRejectedError extends Error {
    * unanswered, and the run continues as if it were no longer valid.
    */
   readonly expired: boolean;
+  // FIX-2129.
   /**
    * True when nobody answered: the task the suspension's request works was
-   * cancelled while it waited, or the board cancelled this stop (FIX-2129).
+   * cancelled while it waited, or the board cancelled this stop.
    * `ctx.suspendForUser` returns `{ cancelled: true }` for it instead.
    */
   readonly cancelled: boolean;
@@ -178,9 +169,10 @@ export class SuspensionRejectedError extends Error {
   }
 }
 
+// FIX-2129, D1.
 /**
  * Thrown where a suspension that is not an approval resumes at its deadline
- * with no answer (FIX-2129, D1): a review's or an input's `ctx.suspendForUser`,
+ * with no answer: a review's or an input's `ctx.suspendForUser`,
  * or a raw `ctx.suspend` that allows no `reject`. Catch it to go ahead, end,
  * or ask again; left uncaught it fails the try. An approval at its deadline
  * reads as a no instead.

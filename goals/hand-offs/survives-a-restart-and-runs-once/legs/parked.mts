@@ -155,7 +155,7 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
     const held = t as (StoredTask & { holds?: Array<{ id: string; source: { kind: string } }>; steers?: Array<{ answers?: string }> }) | undefined;
     if (held?.status !== "in_progress") return undefined;
     const answered = new Set((held.steers ?? []).flatMap((s) => (s.answers === undefined ? [] : [s.answers])));
-    return held.holds?.find((h) => h.source.kind === "row" && !answered.has(h.id));
+    return held.holds?.find((h) => h.source.kind === "task" && !answered.has(h.id));
   };
   const waitFor = async (check: () => boolean, ms: number, every = 300) => {
     for (const until = Date.now() + ms; Date.now() < until; await sleep(every)) if (check()) return true;

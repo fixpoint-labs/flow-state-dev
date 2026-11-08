@@ -16,7 +16,8 @@
  */
 import { join } from "node:path";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createFlowState, ensureSessionRecord, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { ensureSessionRecord } from "@flow-state-dev/engine/host";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import { createWorkerInstallation, hireWorkforce } from "@flow-state-dev/workforce";

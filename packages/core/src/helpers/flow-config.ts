@@ -1,6 +1,6 @@
+// FIX-1331.
 /**
- * Checking a block's declared flow-config requirement against a concrete bag
- * (FIX-1331).
+ * Checking a block's declared flow-config requirement against a concrete bag.
  *
  * Lives here rather than in `flow/defineFlow.ts` for one reason: the check has
  * two callers on opposite sides of an existing import edge. `defineFlow` runs

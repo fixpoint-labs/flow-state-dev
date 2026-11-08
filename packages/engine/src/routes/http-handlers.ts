@@ -9,6 +9,7 @@ import { toError } from "@flow-state-dev/core/helpers";
 import { serializeActionSchema } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
+import { withResourceIndexWriter } from "../resources/resource-indexes";
 import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
@@ -50,12 +51,12 @@ import { handleGetSessionState } from "./state-routes";
 import { handleSessionStream } from "./session-stream-routes";
 import {
   handleGetResourceContent,
-  handleGetCollectionItemContent,
-  handleCreateCollectionItem,
+  handleGetCollectionResourceContent,
+  handleCreateCollectionResource,
   handleUpdateResourceContent,
-  handleDeleteCollectionItem,
+  handleDeleteCollectionResource,
   handleListCollectionState,
-  handleGetCollectionItemState,
+  handleGetCollectionResourceState,
   handleGetResourceManifest
 } from "./resource-routes";
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
@@ -63,9 +64,9 @@ import { authorizeManagementRoute } from "./route-auth";
 import {
   handleDebugListResources,
   handleDebugListSuspensions,
-  handleDebugListCollectionItems,
+  handleDebugListCollectionResources,
   handleDebugGetResourceContent,
-  handleDebugGetCollectionItemContent,
+  handleDebugGetCollectionResourceContent,
   assertDebugAllowed,
   resolveDebugConfig,
   type ResolvedDebugConfig
@@ -171,8 +172,9 @@ export type CreateFlowRouteHandlersOptions = {
    * Default: true.
    */
   detectInterruptedOnStartup?: boolean;
+  // FIX-406 6D.
   /**
-   * HTTP header carrying the tenant id (FIX-406 6D). Default `x-tenant-id`.
+   * HTTP header carrying the tenant id. Default `x-tenant-id`.
    * The extracted value is threaded onto request/session context identities.
    */
   tenantIdHeader?: string;
@@ -187,12 +189,13 @@ export type CreateFlowRouteHandlersOptions = {
   debugCountLimit?: number;
   /** Pluggable flow runner. Default: in-process via runAction. */
   runner?: FlowRunner;
+  // FIX-1077.
   /**
    * Concurrency arbiter for this router's host. Defaults to a fresh one.
    *
    * Supplied by `createFlowState` when it also built a host of its own for
    * detached dispatch, so one declared `queue`/`reject` policy is enforced once
-   * across both rather than once per host (FIX-1077).
+   * across both rather than once per host.
    */
   arbiter?: ConcurrencyArbiter;
 };
@@ -241,11 +244,16 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
 export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions): {
   handle: (request: Request, context: FlowRouteContext) => Promise<Response>;
   host: InboundTransportHost;
-  /** Push delivery's state (FIX-2428): empty until a host turns push on. */
+  // FIX-2428.
+  /** Push delivery's state: empty until a host turns push on. */
   push: PushState;
 } {
   refuseRetiredDispatcherOption(options, "createFlowRouteHandlers");
-  const stores = resolveStores(options.stores);
+  // A router built straight over its stores keeps declared indexes in step
+  // too. Stores `createFlowState` already wrapped are left as they are.
+  const stores = withResourceIndexWriter(resolveStores(options.stores), () =>
+    options.registry.indexedCollections()
+  );
   const debugConfig: ResolvedDebugConfig = resolveDebugConfig({
     debugEndpointsEnabled: options.debugEndpointsEnabled,
     debugAllowedOrigins: options.debugAllowedOrigins,
@@ -534,6 +542,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListSessions(request, route, {
           registry: options.registry,
           stores,
+          durabilityProvider: runtimeConfig.durabilityProvider,
           tenantId,
           principal,
           anonymousFlowIds,
@@ -750,7 +759,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "get_collection_item_content") {
-        return await handleGetCollectionItemContent(request, route, {
+        return await handleGetCollectionResourceContent(request, route, {
           registry: options.registry,
           stores,
           tenantId,
@@ -759,7 +768,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "create_collection_item") {
-        return await handleCreateCollectionItem(request, route, {
+        return await handleCreateCollectionResource(request, route, {
           registry: options.registry,
           stores,
           tenantId,
@@ -777,7 +786,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "delete_collection_item") {
-        return await handleDeleteCollectionItem(request, route, {
+        return await handleDeleteCollectionResource(request, route, {
           registry: options.registry,
           stores,
           tenantId,
@@ -795,7 +804,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "get_collection_item_state") {
-        return await handleGetCollectionItemState(request, route, {
+        return await handleGetCollectionResourceState(request, route, {
           registry: options.registry,
           stores,
           tenantId,
@@ -833,7 +842,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "debug_list_collection_items") {
-        return await handleDebugListCollectionItems(request, route, {
+        return await handleDebugListCollectionResources(request, route, {
           registry: options.registry,
           stores,
           debug: debugConfig,
@@ -853,7 +862,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "debug_get_collection_item_content") {
-        return await handleDebugGetCollectionItemContent(request, route, {
+        return await handleDebugGetCollectionResourceContent(request, route, {
           registry: options.registry,
           stores,
           debug: debugConfig,

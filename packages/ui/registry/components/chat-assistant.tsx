@@ -49,7 +49,7 @@ export const chatAssistantRenderers: RendererRegistry = {
   error: ErrorDisplay,
   source: false,
   // Dispatches by reason/schema shape to the approval, question, selection, or
-  // form card (FIX-849).
+  // form card.
   suspension: SuspensionCard,
   container: {
     "evented-actors": EventedActors,

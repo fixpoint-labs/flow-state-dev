@@ -14,10 +14,12 @@ import type { ConcurrencyConfig } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowRegistry,
-  createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
+import { createInboundTransportHost } from "../../src/host";
 import { abortRequest } from "../../src/execution/abort-registry";
 import {
   createConcurrencyArbiter,

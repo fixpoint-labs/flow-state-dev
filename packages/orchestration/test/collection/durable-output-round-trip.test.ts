@@ -16,7 +16,7 @@
 import { describe, expect, it } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { createResourceBackedTaskCollection } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
 
 /**
  * A resource collection that persists rows as JSON text, keyed by a `rows` map

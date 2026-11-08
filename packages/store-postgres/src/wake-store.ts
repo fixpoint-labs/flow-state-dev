@@ -1,5 +1,6 @@
+// FIX-2078 D1.
 /**
- * PostgreSQL-backed wake store (FIX-2078 D1): a debt's due time, kept until a
+ * PostgreSQL-backed wake store: a debt's due time, kept until a
  * pass in its session clears it.
  *
  * One row per (tenant, session, entry). `owe` is one upsert that keeps the
@@ -10,7 +11,7 @@
  * conditional on the version a pass read. `due_at` is indexed for the
  * sweeper's due read.
  */
-import type { WakeInput, WakeKey, WakeRecord, WakeStore } from "@flow-state-dev/engine";
+import type { WakeInput, WakeKey, WakeRecord, WakeStore } from "@flow-state-dev/engine/host";
 import type { QueryExecutor } from "./types";
 
 /** The tenant column: `""` for no tenant, so the primary key has no NULL in it. */

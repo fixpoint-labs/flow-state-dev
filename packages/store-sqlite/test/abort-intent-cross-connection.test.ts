@@ -21,7 +21,7 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSQLiteRequestStore } from "../src/request-store";
 import { initializeSchemaDDL, applyConnectionPragmas } from "../src/schema";
-import type { RequestRecord, RequestStore } from "@flow-state-dev/engine";
+import type { RequestRecord, RequestStore } from "@flow-state-dev/engine/host";
 
 function makeRecord(requestId: string, status: RequestRecord["status"]): RequestRecord {
   const now = Date.now();

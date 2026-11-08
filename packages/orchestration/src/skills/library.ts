@@ -1,5 +1,6 @@
+// FIX-911; FIX-914 PR2.
 /**
- * `createSkillsLibrary()` — the Skills v2 surface (FIX-911).
+ * `createSkillsLibrary()` — the Skills v2 surface.
  *
  * A **library** is a shared catalog of skills (the resource collection plus its
  * bundled defaults, installed once). A generator then **binds** to it per
@@ -17,7 +18,7 @@
  *   - `with({ allowed, dynamicActivation: true })` — install the model-facing
  *     load tool, letting the agent pull any `allowed` skill into context
  *     mid-turn. Storage defaults to the generator's own block state, which the
- *     binding installs for you (FIX-914 PR2 — no hand-declared `stateSchema`
+ *     binding installs for you (no hand-declared `stateSchema`
  *     needed); set `with({ activeState: { scope, field } })` to store it at a
  *     named, shareable, or durable scope instead.
  *
@@ -35,15 +36,15 @@ import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type {
   DeclaredResourceEntry,
   ResourceScope,
+  InitialSkill,
+  SkillContextMode,
+  ToolCatalog,
 } from "@flow-state-dev/core/types";
 import type { CapabilityConfigResolveCtx } from "@flow-state-dev/core/capability";
 import type {
   GeneratorTool,
-  InitialSkill,
   ItemVisibility,
   PresetDef,
-  SkillContextMode,
-  ToolCatalog,
 } from "@flow-state-dev/core";
 import { activeSkillsArraySchema } from "./active-skill-state";
 import type { ActivationLocation } from "./activation-store";
@@ -58,7 +59,7 @@ import {
   type InitialSkillsSource,
 } from "./initial-skills";
 import { buildLoadCatalogContext, createLoadSkillTool } from "./load-tool";
-import { parseSkillMd, SkillAgentsRemovedError, validateSkillName } from "./skill-md";
+import { parseSkillMd, validateSkillName } from "./skill-md";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -180,16 +181,8 @@ function indexInitialSkills(
         contextMode: parsed.state.contextMode ?? "inline",
         disableModelInvocation: parsed.state.disableModelInvocation,
       });
-    } catch (err) {
-      // A skill that declares `agents:` is refused here, at construction: the
-      // seeder would only warn and retry on every hydrate, and a skill that
-      // never seeds reads to its author as one that silently vanished.
-      if (err instanceof SkillAgentsRemovedError) {
-        throw new Error(`createSkillsLibrary(): bundled skill "${skill.name}": ${err.message}`, {
-          cause: err,
-        });
-      }
-      // Any other malformed or invalidly-named bundled skill is a seeding-time
+    } catch {
+      // A malformed or invalidly-named bundled skill is a seeding-time
       // concern; skip it here so config resolution fails loud on a binding to
       // it (via the "unknown skill" path) rather than silently accepting it.
     }
@@ -480,8 +473,9 @@ export function createSkillsLibrary(
     presets: {
       // Flag-only preset; the resolver reads `ctx.presets` to install the tool.
       dynamicActivation: {},
+      // FIX-817.
       /**
-       * The ambient catalog listing in the prompt (FIX-817). Flag-only, and
+       * The ambient catalog listing in the prompt. Flag-only, and
        * **on by default** — an app that upgrades sees turn 1 unchanged.
        *
        * Turn it off (`library.presets({ catalogContext: false })`) once the

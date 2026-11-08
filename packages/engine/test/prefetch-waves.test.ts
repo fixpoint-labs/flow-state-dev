@@ -17,7 +17,8 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
-import { createExecutionContext, createInMemoryStores, runAction } from "../src";
+import { createExecutionContext, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 function createStubModelResolver(): ModelResolver {
   const resolver = ((modelId: string): GeneratorModel => ({

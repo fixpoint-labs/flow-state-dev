@@ -16,7 +16,7 @@
 // processes them until a drain runs over it.
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { processor } from "./workers";

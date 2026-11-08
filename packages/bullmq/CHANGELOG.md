@@ -1,5 +1,27 @@
 # @flow-state-dev/bullmq
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [531bf32]
+- Updated dependencies [05a7022]
+- Updated dependencies [c67aa49]
+- Updated dependencies [4d3f49e]
+- Updated dependencies [a1386ea]
+- Updated dependencies [46e4297]
+- Updated dependencies [d3eaa00]
+- Updated dependencies [f1e6315]
+- Updated dependencies [45c158b]
+- Updated dependencies [bc65135]
+- Updated dependencies [65ee4c5]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/engine@0.5.0
+  - @flow-state-dev/core@0.5.0
+  - @flow-state-dev/scheduled@0.3.2
+
 ## 0.3.1
 
 ### Patch Changes

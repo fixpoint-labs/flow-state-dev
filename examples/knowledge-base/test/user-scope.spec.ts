@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createKnowledgeBaseCapability } from "../src/capability";
 import { makeConceptCollection } from "./helpers";
 

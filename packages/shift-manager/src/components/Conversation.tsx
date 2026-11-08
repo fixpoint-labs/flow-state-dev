@@ -18,14 +18,16 @@
  * under it. It is exported for a screen that shows a named state in the same
  * column; split the feed or the composer out when a second view needs them apart.
  */
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { RECEIVED_MESSAGE_COMPONENT } from "@flow-state-dev/workforce/browser";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
 import { callRuns, shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
-import { JumpToLatestButton, LoadEarlierButton, SectionFailure } from "./ui";
+import { isTaskBrief } from "./TaskBrief";
+import { ConversationScrollButton } from "./flow-state/conversation";
+import { LoadEarlierButton, SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { knownWorkers, senderOf, useWorkerConversation } from "../lib/conversation";
 import { workerLabel } from "../lib/derive";
@@ -63,7 +65,7 @@ export function ConversationFrame({
         <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6" data-look="conversation-column">
           {children}
         </div>
-        {feed === undefined ? null : <JumpToLatestButton feed={feed} />}
+        {feed === undefined ? null : <ConversationScrollButton feed={feed} className="size-8 rounded-none" />}
       </div>
       {composer === undefined ? null : (
         <div className="px-8 pt-2.5 pb-[22px]">
@@ -83,6 +85,7 @@ export function Conversation({
   name,
   lead,
   emptyText,
+  starters,
   working = false,
   startWork,
   autoSend,
@@ -104,6 +107,8 @@ export function Conversation({
   lead?: ReactNode;
   /** Shown before a first line. */
   emptyText?: string;
+  /** Lines offered before a first line; a click puts one in the composer's draft, and nothing is sent. */
+  starters?: readonly string[];
   /** A line from this page is in flight: say the worker has it. */
   working?: boolean;
   /** Called as a line goes out; returns the call that says it settled. */
@@ -133,6 +138,8 @@ export function Conversation({
   // conversation it is shown. What arrives after stays below the arrow, except the user's own line.
   const feed = useJumpToLatest({ startAtEnd, resetKey: conversation.sessionId });
   const { sessionId, opened, read, failure, reread } = conversation;
+  // A starter line picked before a first line: the composer's draft takes it.
+  const [seed, setSeed] = useState<{ text: string; at: number }>();
 
   // An ask in this conversation answered in Inbox or the summary: read the conversation back.
   const answeredHere = answered !== undefined && answered.sessionId === sessionId ? answered.count : undefined;
@@ -180,6 +187,7 @@ export function Conversation({
       blocked={blocked}
       autoSend={autoSend}
       onAutoSend={onAutoSend}
+      seed={seed}
       send={async (message, held) => {
         const settled = startWork?.();
         feed.sent();
@@ -221,9 +229,26 @@ export function Conversation({
           // No conversation at its worked-out address, a session the view opened before a first line (a project's
           // Stream), or one whose whole read holds nothing the feed draws, reads empty: say so, never draw nothing.
           // A cut-short read may hold more, and while the address is still being worked out it isn't known yet.
-          <p className="text-sm text-muted-foreground" data-testid={`${testId}-conversation-empty`}>
-            {emptyText ?? `You haven't talked with ${name} yet. Your first line starts the conversation.`}
-          </p>
+          <>
+            <p className="text-sm text-muted-foreground" data-testid={`${testId}-conversation-empty`}>
+              {emptyText ?? `You haven't talked with ${name} yet. Your first line starts the conversation.`}
+            </p>
+            {starters === undefined || starters.length === 0 ? null : (
+              <ul aria-label="Starter lines" className="flex flex-wrap gap-1.5" data-testid={`${testId}-starters`}>
+                {starters.map((line) => (
+                  <li key={line}>
+                    <button
+                      type="button"
+                      onClick={() => setSeed({ text: line, at: Date.now() })}
+                      className="rounded-full border border-border px-3 py-1 text-xs text-foreground hover:bg-muted"
+                    >
+                      {line}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         ) : sessionId === null || read === undefined ? (
           <p className="text-sm text-muted-foreground" data-testid={`${testId}-conversation-reading`}>
             Reading the conversation…
@@ -263,7 +288,7 @@ export function Conversation({
                       data-request-id={item.requestId}
                       data-item-type={item.type}
                       data-role={role}
-                      {...(item.type === "message" && role === "user" ? feed.mine(item.id) : {})}
+                      {...(item.type === "message" && role === "user" && !isTaskBrief(item) ? feed.mine(item.id) : {})}
                     >
                       {item.type === "message" && role === "assistant" ? (
                         // v2's label over each of the worker's messages: its name and the time it was written (v2:135).

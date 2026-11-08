@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/shift-manager",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "The app a Workforce Lab is worked through: point it at a Lab's fsdev config and work its Inbox, tasks, workstreams and teams in one browser tab.",
   "keywords": [
     "ai",
@@ -65,7 +65,7 @@
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ui:add": "fsdev ui add chat-assistant spend connection-banner connection-screen task-actions"
+    "ui:add": "fsdev ui add chat-assistant spend connection-banner connection-screen task-actions conversation"
   },
   "dependencies": {
     "@flow-state-dev/devtool": "workspace:*",
@@ -86,6 +86,7 @@
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
+    "@flow-state-dev/tools": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
     "@radix-ui/react-use-controllable-state": "^1.2.2",

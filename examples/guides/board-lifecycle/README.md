@@ -15,15 +15,16 @@ the board's drain runs.
 
 ## Run it with fsdev
 
-Run from this directory (`fsdev` config discovery is cwd-only). No API key —
+Run from this directory (`fsdev` config discovery is cwd-only), after
+`pnpm install` in the repository. To run it outside this repository, copy it out with [the recipe](https://github.com/fixpoint-labs/flow-state-dev/blob/main/examples/README.md#copy-an-example-out) first. No API key —
 the workers are deterministic:
 
 ```bash
 # Seed the collection, then read it WITHOUT draining → tasks are "pending".
-pnpm fsdev run board-lifecycle seedAndInspect -i '{"items":["alpha","beta"]}'
+npx fsdev run board-lifecycle seedAndInspect -i '{"items":["alpha","beta"]}'
 
 # Seed, run board.drain (the drain), then read → tasks are "completed".
-pnpm fsdev run board-lifecycle seedDrainRead -i '{"items":["alpha","beta"]}'
+npx fsdev run board-lifecycle seedDrainRead -i '{"items":["alpha","beta"]}'
 ```
 
 The two outputs differ only in `status` (`pending` vs `completed`) and
@@ -32,6 +33,6 @@ The two outputs differ only in `status` (`pending` vs `completed`) and
 ## Test it
 
 ```bash
-pnpm --filter @flow-state-dev/example-guide-board-lifecycle test
-pnpm --filter @flow-state-dev/example-guide-board-lifecycle typecheck
+npm test
+npm run typecheck
 ```

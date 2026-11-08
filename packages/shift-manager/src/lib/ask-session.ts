@@ -1,7 +1,8 @@
+// BR-18.
 /**
  * What Inbox's detail draws from the session an ask waits in, besides the ask
  * itself: *From the session*, the last tool calls the worker made before it
- * asked (BR-18), and the user's own lines sent into that session after it.
+ * asked, and the user's own lines sent into that session after it.
  *
  * Both are read off the session's stored items, ordered the way the store
  * orders them, never the order a read happened to return.

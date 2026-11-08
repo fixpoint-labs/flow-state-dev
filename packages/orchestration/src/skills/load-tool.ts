@@ -1,3 +1,4 @@
+// FIX-914.
 /**
  * The model-facing **load tool** for a per-generator skill binding.
  *
@@ -6,7 +7,7 @@
  * {@link ActivationLocation} so the reader injects the skill's body on the next
  * step of the *same* execution. It runs as a child block of the generator, so
  * for the block-state default it writes the generator's own state via
- * `ctx.parent` (FIX-914's child→ancestor handle).
+ * `ctx.parent` (the child→ancestor handle).
  *
  * It is named `loadSkill` (distinct from the v1 dispatch router `runSkill` in
  * `run-skill-tool.ts`) because it does one thing — load an inline skill's body.
@@ -17,8 +18,7 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
-import type { SkillState } from "@flow-state-dev/core";
+import type { BlockContext, SkillState } from "@flow-state-dev/core/types";
 import { activeSkillsArraySchema } from "./active-skill-state";
 import {
   appendActivation,
@@ -71,9 +71,10 @@ export interface LoadSkillToolOptions {
    * generator, so it sees the same flow config the binding reader does.
    */
   initialSkills?: InitialSkillsSource;
+  // FIX-817.
   /**
    * Whether the ambient catalog listing reaches this generator's prompt —
-   * the binding's `catalogContext` preset (FIX-817), which ships on.
+   * the binding's `catalogContext` preset, which ships on.
    *
    * It changes one sentence of the tool's description, and that sentence is
    * the only thing telling the model where the names come from. With the

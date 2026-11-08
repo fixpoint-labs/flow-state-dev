@@ -84,6 +84,7 @@ export type OutputItemBase = {
   agentName?: string;
 };
 
+// FIX-413: the design rationale and the full per-method kind table.
 /**
  * Discriminated union describing how a block's `output` item carries its content.
  *
@@ -102,7 +103,6 @@ export type OutputItemBase = {
  *   not by runtime equality. Consumers can reason about composition intent from
  *   the shape: `inline` on a sequencer means a transform happened at that node.
  *
- * See FIX-413 for the design rationale and the full per-method kind table.
  */
 export type BlockValue<T = unknown> =
   | { kind: "inline"; value: T }
@@ -150,6 +150,7 @@ export type StructureShape =
   | { container: "array"; entries: BlockValueInternal<unknown>[] }
   | { container: "object"; entries: Record<string, BlockValueInternal<unknown>> };
 
+// FIX-478, restored by FIX-586.
 /**
  * Unified block trace item — the single record describing one block's execution
  * across its lifecycle (added → input → generator → output). Replaces the prior
@@ -176,8 +177,7 @@ export type StructureShape =
  * - `output` is set on completion. Carries the BlockValue (inline / ref /
  *   structure) so pass-through composers don't duplicate content at every
  *   level.
- * - `transient` inherits the originating block's `transient` flag (FIX-478,
- *   restored by FIX-586). A `transient: true` block streams its trace
+ * - `transient` inherits the originating block's `transient` flag. A `transient: true` block streams its trace
  *   lifecycle live to active SSE consumers but the trace is not retained in
  *   the persisted items log. Non-transient blocks (the default) keep the
  *   canonical retained-trace behavior.
@@ -271,9 +271,10 @@ export type BlockTraceItem = OutputItemBase & {
     cacheReadTokens?: number;
     cacheCreationTokens?: number;
   };
+  // FIX-2145.
   /**
-   * The harness runs this block settled, each as its harness reported it
-   * (FIX-2145). Present only on a completed block that settled one: a
+   * The harness runs this block settled, each as its harness reported it.
+   * Present only on a completed block that settled one: a
    * continuation replays the block without running it again, so this is how
    * that run's spend still reaches the request's ending after its process died.
    */
@@ -339,9 +340,10 @@ export type ToolOutputItem = OutputItemBase & {
   type: "tool_output";
   blockName: string;
   output: unknown;
+  // FIX-814.
   /**
    * The model-facing tool result, computed ONCE when the tool settles during
-   * the live run via the tool's `mapModelOutput` mapper (FIX-814). Present
+   * the live run via the tool's `mapModelOutput` mapper. Present
    * ONLY when the tool declares a mapper — its presence means "a mapper
    * produced this value," which lets resume reproduce the live content-envelope
    * shape exactly (`toolResultOutputForModel(output, modelOutput)`) rather than
@@ -382,9 +384,10 @@ export type ToolOutputItem = OutputItemBase & {
     alias?: string;
     arguments: string;
     generatorBlock: string;
+    // FIX-814.
     /**
      * Model step index this call belongs to within the generator's owned tool
-     * loop (FIX-814). Resume replay and canonical collapse key by generator
+     * loop. Resume replay and canonical collapse key by generator
      * path + `stepNumber` + `callId`, so a provider call id reused across two
      * steps of one generator run stays distinct. Absent on items persisted
      * before this field existed and on the legacy (non-owned-loop) `.asTool()`
@@ -396,11 +399,12 @@ export type ToolOutputItem = OutputItemBase & {
   /** Present when the tool execution failed (status will be "failed"). */
   error?: {
     message: string;
+    // FIX-814.
     /**
      * Failure discriminator. Set to `"SUSPENSION"` when the failed
      * `tool_output` was produced by a tool that called `ctx.suspend()` (a
      * winning-but-arbitrated-away or losing concurrent suspension) rather than
-     * by an ordinary thrown error (FIX-814). Resume reconstruction uses this to
+     * by an ordinary thrown error. Resume reconstruction uses this to
      * tell a still-pending/losing suspension apart from a genuine tool failure:
      * a `"SUSPENSION"`-coded failure re-enters its gate on resume; any other
      * failure stays a model-visible error. Otherwise carries the thrown error's
@@ -413,9 +417,10 @@ export type ToolOutputItem = OutputItemBase & {
      */
     details?: Record<string, unknown>;
   };
+  // FIX-610.
   /**
    * True when this `tool_output` was served from the per-tool memoization
-   * cache (FIX-610) rather than executed against the upstream. The cached
+   * cache rather than executed against the upstream. The cached
    * value flows through the same envelope so transcripts, replay, and
    * downstream consumers see one shape regardless of source.
    */
@@ -425,10 +430,11 @@ export type ToolOutputItem = OutputItemBase & {
    * hit served it. Set only when `cached === true`.
    */
   cacheAgeMs?: number;
+  // FIX-610 Wave 2.
   /**
    * Attribution back to the task whose original tool call populated this
    * cache entry, when the cache hit crossed a task boundary inside a
-   * Task Board run (FIX-610 Wave 2). Absent for same-task cache hits and
+   * Task Board run. Absent for same-task cache hits and
    * for non-board contexts.
    */
   sourceTask?: { collectionId: string; taskId: string };
@@ -449,6 +455,7 @@ export type MessageItem = OutputItemBase & {
    * messages (via `ctx.emit.message`) leave this field absent.
    */
   model?: ModelIdentity;
+  // see FIX-479.
   /**
    * Message content parts. `output_text` parts accumulate `text` in-place
    * during streaming: each `content.delta` event mutates the current
@@ -457,12 +464,13 @@ export type MessageItem = OutputItemBase & {
    * `item.done` payload supersedes any mid-stream accumulation, so the
    * authoritative final text always comes from the generator's terminal
    * emission. Aborted streams may leave a partial-token tail in the
-   * persisted snapshot — this is a deliberate trade-off (see FIX-479).
+   * persisted snapshot — this is a deliberate trade-off.
    */
   content: Content[];
   /**
    * Structured data a handler attached to the message with
-   * `ctx.emit.message(text, { metadata })`, for a client to read instead of
+   * `ctx.emit.message(text, { metadata })`, or an action's `userMessage`
+   * returned with its echo's text, for a client to read instead of
    * parsing `content`. Opaque to the engine and never sent to a model: the
    * package that emits the message owns the keys it writes, and exports the
    * reader for them. Absent when nothing was attached, and on every
@@ -590,9 +598,10 @@ export type SourceItem = OutputItemBase & {
   model?: ModelIdentity;
 };
 
+// FIX-401; FIX-141.
 /**
  * Full state snapshot emitted at a step boundary for devtool inspection
- * and durable checkpointing (FIX-401).
+ * and durable checkpointing.
  *
  * Sequencers emit one logical snapshot per instance, keyed by `key`
  * (the sequencer's `blockInstanceId`). Subsequent emissions for the same
@@ -600,7 +609,7 @@ export type SourceItem = OutputItemBase & {
  * writer dedupe on `key`.
  *
  * - `durable: true` — also written to `stores.checkpoints` so the Phase 2
- *   resume runtime (FIX-141) can pick up after an interrupted request.
+ *   resume runtime can pick up after an interrupted request.
  * - `durable: false` — stream-only, observability for the devtool.
  * - `terminal: true` — final emission for this sequencer's run (success,
  *   error, or cancellation). The durability provider treats terminal frames
@@ -631,8 +640,9 @@ export type StateSnapshotItem = OutputItemBase & {
   suspensionId?: string;
 };
 
+// FIX-814.
 /**
- * Replay-only per-step record of a generator's owned tool loop (FIX-814).
+ * Replay-only per-step record of a generator's owned tool loop.
  *
  * Written by the framework-owned generator loop BEFORE it dispatches a
  * tool-calling step's tools, one per tool-calling step, keyed by the
@@ -681,8 +691,9 @@ export type GeneratorStepItem = OutputItemBase & {
    * the step-0 artifact; resume reads it instead of recomputing the prelude.
    */
   prelude?: unknown[];
+  // FIX-814.
   /**
-   * The number of leading system-prefix messages in `prelude` (FIX-814).
+   * The number of leading system-prefix messages in `prelude`.
    * Present ONLY on the step-0 artifact. On resume the loop seeds `messages`
    * from the persisted prelude, so `prepareStep` must slice off THIS prefix
    * length — not a freshly-assembled one, which can differ if a dynamic
@@ -703,9 +714,10 @@ export type SuspensionItem = OutputItemBase & {
   suspensionId: string;
   suspensionStatus: SuspensionStatus;
   reason: SuspensionReason;
+  // FIX-2129.
   /**
-   * What a user's suspension asks for, when `ctx.suspendForUser` set it
-   * (FIX-2129). Absent on a raw `ctx.suspend`, and on items written before
+   * What a user's suspension asks for, when `ctx.suspendForUser` set it.
+   * Absent on a raw `ctx.suspend`, and on items written before
    * it: read it with `suspendForUserKindOf`, which falls back to the reason.
    */
   kind?: SuspendForUserKind;
@@ -729,8 +741,9 @@ export type SuspensionItem = OutputItemBase & {
    * existed, which renderers treat as binary `["approve", "reject"]`.
    */
   allow?: ResumeAction[];
+  // FIX-811.
   /**
-   * `blockInstanceId` of the block that suspended (FIX-811). The item itself is
+   * `blockInstanceId` of the block that suspended. The item itself is
    * emitted with runtime provenance, so this carries the suspending block's
    * identity into the log — the resume runtime recovers the logical path from
    * here (log-as-source-of-truth) to match the resolving `ctx.suspend()` call.
@@ -738,9 +751,10 @@ export type SuspensionItem = OutputItemBase & {
   blockInstanceId?: string;
 };
 
+// FIX-811.
 /**
  * Emitted into the resumed request's log when a suspension is resolved and the
- * same request continues (FIX-811). The durable audit counterpart to
+ * same request continues. The durable audit counterpart to
  * {@link SuspensionItem}: where `suspension` records the pause, this records the
  * continuation. Positioned immediately after the `suspension` item it resolves.
  *
@@ -766,9 +780,10 @@ export type SuspensionResumeItem = OutputItemBase & {
   resolvedAt: number;
 };
 
+// FIX-865.
 /**
  * Emitted when a durable action re-enters after a crash mid-execution (DevTool
- * continuation, FIX-865). Marks the seam between the prior durable log and the
+ * continuation). Marks the seam between the prior durable log and the
  * live re-run that followed. Not a HITL item — no suspension is involved.
  *
  * Visibility: client=true, history=false — structural, falling through to

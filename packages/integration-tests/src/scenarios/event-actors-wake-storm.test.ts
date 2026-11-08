@@ -29,7 +29,7 @@ import {
   actor,
   createEventActorsWorkspace,
   eventActors,
-} from "@flow-state-dev/patterns/eventActors";
+} from "@flow-state-dev/patterns/event-actors";
 import { testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { itemsByType } from "../helpers/assertions";

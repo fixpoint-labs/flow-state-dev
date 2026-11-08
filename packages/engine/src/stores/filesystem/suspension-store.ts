@@ -1,5 +1,6 @@
+// FIX-140.
 /**
- * Filesystem-backed suspension record store for durable execution (FIX-140).
+ * Filesystem-backed suspension record store for durable execution.
  *
  * Stores each suspension as a JSON file under:
  *   rootDir/{encodeURIComponent(requestId)}/{encodeURIComponent(suspensionId)}.json

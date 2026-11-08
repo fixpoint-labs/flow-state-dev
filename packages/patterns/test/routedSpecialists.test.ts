@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import {
   routedSpecialists,

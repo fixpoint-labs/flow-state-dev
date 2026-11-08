@@ -42,22 +42,20 @@ type MaybePromise<T> = T | Promise<T>;
  * a runtime backstop in the block factories.
  */
 /**
- * Lightweight context shape for preset callbacks. Inferred from the
- * capability's sessionStateSchema so `(ctx) =>` is typed automatically.
- * Defaults to `any` for backwards compatibility.
+ * The `ctx` a preset callback receives: the consuming block's `BlockContext`,
+ * which is what the runtime passes it (`collectOwnPresets`). Session state is
+ * typed from the capability's `sessionStateSchema`; a capability that declares
+ * none reads it as `any`, since the block supplies the shape.
  *
- * Resources live at `ctx.resources` (FIX-435); they're a flat namespace
- * routed by each resource's intrinsic `scope`.
+ * Being a `BlockContext`, it passes to any helper that takes one, and a key
+ * `BlockContext` does not declare is a compile error rather than `any`.
  */
-export type CapabilityPresetCtx<TSessionState = any> = {
-  session: {
-    state: Readonly<TSessionState>;
-    identity: { id: string; userId?: string; orgId?: string };
-    [key: string]: any;
-  };
-  resources: Record<string, any>;
-  [key: string]: any;
-};
+export type CapabilityPresetCtx<TSessionState = any> = BlockContext<
+  Record<string, unknown>,
+  // `any` passes through on purpose (`[any] extends [object]` holds): it is the
+  // no-schema case above. The type test pins it.
+  [TSessionState] extends [object] ? TSessionState : Record<string, unknown>
+>;
 
 /**
  * A preset definition — a partial block config. TSessionState flows from
@@ -77,8 +75,9 @@ export type PresetDef<TSessionState = any> = {
   // Sequencer-only
   sequencerStateSchema?: ZodTypeAny;
 
+  // FIX-914 PR2.
   /**
-   * Own-state — this block's `ctx.self` container (FIX-914 PR2). Valid on
+   * Own-state — this block's `ctx.self` container. Valid on
    * any block kind, since any block can hold its own request-scoped state.
    * Merged with the block's own `stateSchema` (and any sibling capability's
    * own-state contribution) with explicit duplicate-field collision
@@ -97,8 +96,9 @@ export type PresetDef<TSessionState = any> = {
     | GeneratorTool[]
     | ((ctx: CapabilityPresetCtx<TSessionState>) => GeneratorTool[] | Promise<GeneratorTool[]>);
 
+  // FIX-1393.
   /**
-   * Tools that are NOT subject to a consuming block's `tools:` fence (FIX-1393).
+   * Tools that are NOT subject to a consuming block's `tools:` fence.
    *
    * A block's declared `tools:` is the complete and exclusive set of **catalog**
    * tools the model may call. Anything a capability contributes through `tools`
@@ -123,9 +123,10 @@ export type PresetDef<TSessionState = any> = {
     | GeneratorTool[]
     | ((ctx: CapabilityPresetCtx<TSessionState>) => GeneratorTool[] | Promise<GeneratorTool[]>);
 
+  // FIX-1613.
   /**
    * A query added to every `ctx.session.items.history()` read of the generator
-   * that installs the capability (FIX-1613), whether through the `history`
+   * that installs the capability, whether through the `history`
    * option's default or a history function of its own. The read's own keys win
    * over it; among capabilities, later keys win. Generator only.
    *
@@ -237,7 +238,8 @@ export interface CapabilityConfig<
   name: TName;
 
   // Required surface — always installed when the capability is used
-  /** Flat resource map — accessor key → resource definition (FIX-435). */
+  // FIX-435.
+  /** Flat resource map — accessor key → resource definition. */
   resources?: TResources extends Record<string, DeclaredResourceEntry>
     ? TResources
     : Record<string, DeclaredResourceEntry>;
@@ -248,7 +250,8 @@ export interface CapabilityConfig<
   sequencerStateSchema?: TSequencerStateSchema extends ZodTypeAny
     ? TSequencerStateSchema
     : ZodTypeAny;
-  /** Own-state contribution — see `PresetDef.stateSchema` (FIX-914 PR2). */
+  // FIX-914 PR2.
+  /** Own-state contribution — see `PresetDef.stateSchema`. */
   stateSchema?: TOwnStateSchema extends ZodTypeAny ? TOwnStateSchema : ZodTypeAny;
   targetStateSchemas?: TTargetSchemas extends Record<string, ZodTypeAny>
     ? TTargetSchemas
@@ -379,7 +382,8 @@ export interface DefinedCapability<
   sequencerStateSchema?: TSequencerStateSchema extends ZodTypeAny
     ? TSequencerStateSchema
     : ZodTypeAny;
-  /** Own-state contribution — see `PresetDef.stateSchema` (FIX-914 PR2). */
+  // FIX-914 PR2.
+  /** Own-state contribution — see `PresetDef.stateSchema`. */
   stateSchema?: TOwnStateSchema extends ZodTypeAny ? TOwnStateSchema : ZodTypeAny;
   targetStateSchemas?: TTargetSchemas extends Record<string, ZodTypeAny>
     ? TTargetSchemas
@@ -647,10 +651,18 @@ type InferCapabilitySessionStateEntry<T> =
   T extends DefinedCapability<any, any, any, any, infer S, any, any, any, any>
     ? T extends { sessionStateType?: infer O }
       ? unknown extends O
-        ? S extends ZodTypeAny ? import("zod").infer<S> : {}
+        ? InferDeclaredSessionState<S>
         : NonNullable<O>
-      : S extends ZodTypeAny ? import("zod").infer<S> : {}
+      : InferDeclaredSessionState<S>
     : {};
+
+/**
+ * A capability's declared session state. One that declares no schema carries
+ * the open `ZodTypeAny` default, which contributes no fields: the runtime
+ * merge (`mergeScopeStateSchemas`) fills none from it, so the type adds none.
+ */
+type InferDeclaredSessionState<S> =
+  S extends ZodTypeAny ? (ZodTypeAny extends S ? {} : import("zod").infer<S>) : {};
 
 /**
  * Infer the merged `ctx.resources` shape contributed by static capabilities.
@@ -707,7 +719,10 @@ export type InferCapabilityTargetSchemas<TUses extends readonly UsesEntry[]> =
 
 type InferCapabilityTargetSchemasEntry<T> =
   T extends DefinedCapability<any, any, any, any, any, any, infer S, any, any>
-    ? S extends Record<string, ZodTypeAny> ? S : {}
+    // A capability that declares no targets carries the open default map;
+    // read that as "no targets", or every block using it gets an open
+    // `ctx.targets` that no `BlockContext` helper accepts.
+    ? S extends Record<string, ZodTypeAny> ? (string extends keyof S ? {} : S) : {}
     : {};
 
 /**
@@ -747,9 +762,10 @@ type InferCapabilitySequencerStateEntry<T> =
       : S extends ZodTypeAny ? import("zod").infer<S> : {}
     : {};
 
+// FIX-914 PR2.
 /**
  * Infer the merged own-state shape (`ctx.self`) contributed by static
- * capabilities (FIX-914 PR2). Same shape as session state — `z.infer` of
+ * capabilities. Same shape as session state — `z.infer` of
  * `stateSchema` per capability, with `stateSchemaType` as an override.
  * Consuming block factories intersect this with their own declared
  * `stateSchema` (block-own on the LEFT — see e.g. `HandlerConfig.TSelfState`).

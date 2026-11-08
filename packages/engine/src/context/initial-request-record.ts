@@ -1,3 +1,4 @@
+// FIX-828.
 /**
  * Shared builder for the initial `in_progress` `RequestRecord` written when a
  * request first enters the system.
@@ -6,7 +7,7 @@
  * `createExecutionContext` writes it when a worker starts an action with no
  * pre-existing record, and `createInboundTransportHost` writes it at enqueue
  * time for externally-dispatched requests so a `GET …/stream` arriving before
- * the worker starts finds a live record to tail (FIX-828). The worker adopts an
+ * the worker starts finds a live record to tail. The worker adopts an
  * existing record as-is and skips its own write, so this stub is the record
  * used for the entire execution — it must be complete, not a placeholder.
  *
@@ -35,7 +36,8 @@ export type InitialRequestRecordInput<TState extends JsonObject = JsonObject> = 
   flowId?: string;
   actionName: string;
   userId: string;
-  /** Bare session id (FIX-682) — not the namespaced storage key. */
+  // FIX-682.
+  /** Bare session id — not the namespaced storage key. */
   sessionId?: string;
   tenantId?: string;
   orgId?: string;

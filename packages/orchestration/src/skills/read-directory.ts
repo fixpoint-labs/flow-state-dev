@@ -23,7 +23,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { InitialSkill, SkillFile } from "@flow-state-dev/core";
+import type { InitialSkill, SkillFile } from "@flow-state-dev/core/types";
 import { parseSkillMd, validateSkillName } from "./skill-md";
 
 export interface ReadSkillsDirectoryOptions {

@@ -1,5 +1,6 @@
+// FIX-1989 D2; FIX-2106.
 /**
- * The hop count (FIX-1989 D2): how many worker messages a turn is from the
+ * The hop count: how many worker messages a turn is from the
  * last user's turn, so a ring of workers passing messages on stops however
  * many workers it goes through.
  *
@@ -12,7 +13,7 @@
  * - a task session is born with its filer's current count, beside the task
  *   chain fields the hand-over sets;
  * - a task's turn is at its filing turn's count, which the filing records on
- *   the row (FIX-2106), so a task run in an existing session (an ongoing one,
+ *   the row, so a task run in an existing session (an ongoing one,
  *   or a follow-up's) counts on from its filer too. The record stands until
  *   a user's line in the filer's conversation: the record keeps how many user
  *   lines that session had seen at the filing, and a claim that finds more
@@ -41,10 +42,11 @@ export const MESSAGE_HOP_STATE = "workforceMessageHop";
 /** The session-state field the chain id a session's count belongs to is kept in. Server-owned. */
 export const MESSAGE_CHAIN_STATE = "workforceMessageChain";
 
+// FIX-2106.
 /**
  * The session-state field counting the user's lines a session has taken, one
  * per user's turn (`markUserTurn`), so a filed task's record can tell whether
- * the user wrote there since (FIX-2106). Server-owned. Absent reads 0.
+ * the user wrote there since. Server-owned. Absent reads 0.
  */
 export const USER_LINES_STATE = "workforceUserLines";
 
@@ -54,7 +56,8 @@ export const TURN_CHAIN_STATE = "workforceTurnChain";
 /** The request-state field a turn's hop count is copied to, and the per-turn send count beside it. */
 export const TURN_HOP_STATE = "workforceTurnHop";
 export const TURN_SENT_STATE = "workforceMessagesSent";
-/** The request-state field naming the ids the per-turn count already holds, so a send repeated after a crash pays once (FIX-2269). */
+// FIX-2269.
+/** The request-state field naming the ids the per-turn count already holds, so a send repeated after a crash pays once. */
 export const TURN_PAID_STATE = "workforceMessagesPaid";
 
 /** The session state a flow that takes messages declares. */
@@ -67,7 +70,8 @@ export const messageHopStateShape = {
 /** The request-state field saying an `onMessageReceived` request landed its message, so its reply step reads it by construction. */
 export const RECEIVED_LANDED_STATE = "workforceReceivedLanded";
 
-/** The request-state field naming the reply-requested message an `onMessageReceived` request landed (FIX-2310), so its turn's end answers it. */
+// FIX-2310.
+/** The request-state field naming the reply-requested message an `onMessageReceived` request landed, so its turn's end answers it. */
 export const RECEIVED_REPLY_OWED_STATE = "workforceReplyOwed";
 
 /** The request state the hop and the per-turn count are kept in. */
@@ -135,13 +139,15 @@ export interface HopMark {
   readonly lines: number;
 }
 
-/** The running turn's count and chain, and its session's user lines, for a filing to record on its row (FIX-2106). */
+// FIX-2106.
+/** The running turn's count and chain, and its session's user lines, for a filing to record on its row. */
 export function turnHopMark(ctx: Pick<BlockContext, "request" | "session">): HopMark {
   return { hop: turnHopOf(ctx), chain: turnChainOf(ctx) ?? null, lines: sessionUserLinesOf(ctx.session.state) };
 }
 
+// FIX-2238.
 /**
- * The mark for a task filed held (FIX-2238): released, it starts a fresh
+ * The mark for a task filed held: released, it starts a fresh
  * chain at 0, since no exchange waits on it. The chain is minted here, once,
  * so every request the task runs counts in the same budget. The filer's user
  * lines are kept, so a user's line since still clears it.

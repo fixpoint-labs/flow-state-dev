@@ -14,8 +14,8 @@ import type { SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/cl
 import { TASKS_POLL_MS, TasksPanel } from "../src/components/TasksPanel";
 import { toWorker } from "../src/lib/reads";
 
-type Row = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
-let rows: Row[] = [];
+type StoredTask = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
+let rows: StoredTask[] = [];
 let refusal: string | null = null;
 const calls: string[] = [];
 
@@ -49,7 +49,7 @@ async function hear(notice: WireNotice | null) {
   });
 }
 vi.mock("../src/lib/conversation-tasks", async (importOriginal) => ({
-  conversationBoardTopics: (await importOriginal<typeof import("../src/lib/conversation-tasks")>()).conversationBoardTopics,
+  ...(await importOriginal<typeof import("../src/lib/conversation-tasks")>()),
   readConversationTasks: async (_c: unknown, flow: string, sessionId: string) => {
     calls.push(`list ${flow} ${sessionId}`);
     if (refusal !== null) throw new Error(refusal);
@@ -158,7 +158,7 @@ describe("the tasks panel (S11)", () => {
   });
 
   describe("at the Shift Coordinator, whose conversation never ends (activeOnly)", () => {
-    const mixed: Row[] = [
+    const mixed: StoredTask[] = [
       { id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 },
       { id: "t2", goal: "Write the release notes", status: "in_progress", assignee: "notes", attempts: 1 },
       { id: "t3", goal: "Rotate the keys", status: "errored", assignee: "keys", attempts: 2 },
@@ -209,7 +209,7 @@ describe("the tasks panel (S11)", () => {
       ]);
     });
 
-    it("reads again on a board notice, and reloads the Lab when a task moved, so the coordinator's turn on it shows", async () => {
+    it("reads again on a board notice, and leaves reloading the Lab to the snapshot's own subscription when a task moved", async () => {
       rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
       render(<TasksPanel worker={shiftCoordinator} sessionId="s1" readAt={1} />);
       await settle();
@@ -218,7 +218,8 @@ describe("the tasks panel (S11)", () => {
       await hear({ topic: { scope: "session", id: "s1", resource: "tasks" }, kind: "board" });
       expect(calls).toHaveLength(2);
       expect(shown()).toEqual([{ id: "t1", status: "completed", text: expect.stringContaining("Audit the licenses") }]);
-      expect(refreshes).toHaveLength(1);
+      // The snapshot hears the same move itself (FIX-2409): a second read here would be a second way.
+      expect(refreshes).toHaveLength(0);
     });
 
     it("keeps a timer for where push can miss a change only while a task is open or just moved", async () => {

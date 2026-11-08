@@ -4,7 +4,7 @@
 
 **Outcome:** A coding task in the Teammates lab whose run committed doesn't complete on its own. It waits for your review, and its stop names the branch, the commits and the judge's verdict. **Ask for changes** sends your words to the same coding session for one more run on the same attempt, and that run is reviewed again. **Accept** completes the task, its output saying a person accepted it.
 
-**Input:** `fixtures/input.json`: one coding task (add a line to the README and commit it), filed on the Cursor worker from Chief of Staff's conversation through the board's `createTask`, and the words a revision asks for. **Held out**: nothing in the lab's workers or flows names the task or the revision.
+**Input:** `fixtures/input.json`: one coding task (add a line to the README and commit it), filed on the Cursor worker from Lead's conversation through the board's `createTask`, and the words a revision asks for. **Held out**: nothing in the lab's workers or flows names the task or the revision.
 
 **Signal:** `fsdev dev --app @flow-state-dev/teammates` on a fresh store over a git checkout holding one commit (a README, and a `.gitignore` for `.fsdev/`), driven over HTTP. The run is a real Cursor run; the judge is the real `goalJudge`.
 

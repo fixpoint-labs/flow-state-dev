@@ -13,14 +13,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { createFilesystemStores, createInMemoryStores } from "../src/host";
 import {
-  createFilesystemStores,
-  createInMemoryStores,
   type RequestRecord,
   type RequestStore,
   type SessionRecord,
   type SessionStore
-} from "../src";
+} from "../src/host";
 
 const tempDirs: string[] = [];
 

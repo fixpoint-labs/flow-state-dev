@@ -1,5 +1,6 @@
+// FIX-1629.
 /**
- * Which of the viewed flow's actions a Tasks-tab row offers (FIX-1629).
+ * Which of the viewed flow's actions a Tasks-tab row offers.
  *
  * The DevTool changes a task only through the flow's own actions, so a row
  * offers exactly what the flow exposes. The signal is the input: an action
@@ -27,7 +28,8 @@ export function taskToolSuffix(collectionId: string): string {
   return collectionId.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
-/** The generated task tools that name their task `id` (FIX-2081): `getTask_<board>`, `updateTask_<board>`. */
+// FIX-2081.
+/** The generated task tools that name their task `id`: `getTask_<board>`, `updateTask_<board>`. */
 const ID_TOOLS = ["getTask", "updateTask"] as const;
 
 /**
@@ -65,9 +67,10 @@ export function taskIdField(
   return undefined;
 }
 
+// FIX-2081.
 /**
  * The filer's four task tools `taskToolActions` generates for a board, always
- * together (FIX-2081): enough to find a board's family.
+ * together: enough to find a board's family.
  */
 const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask"] as const;
 
@@ -88,9 +91,9 @@ function generatedSuffixes(actions: readonly string[]): string[] {
     .filter((suffix) => TASK_TOOLS.every((tool) => names.has(`${tool}_${suffix}`)));
 }
 
+// BR-9, BR-10.
 /**
- * The actions a row on `collectionId` offers, in the flow's order (BR-9,
- * BR-10).
+ * The actions a row on `collectionId` offers, in the flow's order.
  *
  * The boards an action can belong to are the ones the tab lists, plus every
  * board the flow's generated task tools name (see `generatedSuffixes`). An
@@ -154,7 +157,7 @@ export type RequestOutcomeSource = {
  *   (`output-not-recorded`). Never read as success: a refusal can hide in
  *   either.
  */
-export type RowActionOutcome =
+export type TaskActionOutcome =
   | { state: "pending" }
   | { state: "ok"; output: unknown }
   | { state: "refused"; message: string }
@@ -179,7 +182,7 @@ export const NO_RESULT_RECORDED = "No result recorded for this request.";
 export function outcomeOf(
   requests: readonly RequestOutcomeSource[],
   requestId: string
-): RowActionOutcome {
+): TaskActionOutcome {
   const request = requests.find((candidate) => candidate.requestId === requestId);
   if (request === undefined || isRequestOpen(request.status)) return { state: "pending" };
   const result = request.result ?? undefined;
@@ -201,7 +204,7 @@ export function outcomeOf(
 }
 
 /** What a completed action answered: a refusal, or success. */
-function classify(value: unknown): RowActionOutcome {
+function classify(value: unknown): TaskActionOutcome {
   if (isRefusal(value)) return { state: "refused", message: refusalMessage(value.error) };
   if (isDeclined(value)) return { state: "refused", message: declinedMessage(value) };
   return { state: "ok", output: value };

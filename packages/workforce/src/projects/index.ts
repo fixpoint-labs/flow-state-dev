@@ -30,18 +30,19 @@ export {
   projectFileSchema,
   projectFilesPrefix,
   PROJECTS_RESOURCE,
-  projectRowSchema,
+  projectResourceStateSchema,
   projectVisibilitySchema,
   type ProjectAddress,
   type ProjectVisibility,
   type ProjectFile,
-  type ProjectRow
+  type ProjectResourceState
 } from "./collections";
 
 export {
   createProjectInputSchema,
   createProjectOutputSchema,
   defineProjectBlocks,
+  repositoryCheckAnswerSchema,
   setBriefInputSchema,
   setBriefOutputSchema,
   setChecksInputSchema,
@@ -54,6 +55,8 @@ export {
   type CreateProjectOutput,
   type ProjectBlocks,
   type ProjectBlocksOptions,
+  type RepositoryCheck,
+  type RepositoryCheckAnswer,
   type SetBriefInput,
   type SetChecksInput,
   type SetMcpServersInput,
@@ -150,7 +153,7 @@ export {
 
 export { parseProjectRef, parseWorkstreamRef, projectRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
 
-export { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./workstream-lead";
+export { workstreamOpenedEntry } from "./workstream-lead";
 
 export {
   defineWorkstreamBlocks,

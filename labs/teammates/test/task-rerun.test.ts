@@ -21,14 +21,16 @@ function boardClient(answer: Record<string, unknown>, held?: Record<string, unkn
   const client = {
     sessions: {
       get: async (id: string) => ({ id, flowKind: "agent" }),
-      requests: async () => sent.map((s, i) => ({ id: `req_${i}`, result: { output: outputOf(s.action) } })),
     },
     flow: (flow: string) => ({
       send: async (action: string, input: Record<string, unknown>, { sessionId }: { sessionId: string }) => {
         sent.push({ flow, action, input, sessionId });
         return { id: `req_${sent.length - 1}` };
       },
-      request: () => ({ wait: async () => ({ status: "completed" }) }),
+      // Each action's answer is read by its request id, never by listing the session.
+      request: (id: string) => ({
+        result: async () => ({ status: "completed", output: outputOf(sent[Number(id.slice("req_".length))]!.action) }),
+      }),
     }),
   } as unknown as Client;
   return { client, sent };

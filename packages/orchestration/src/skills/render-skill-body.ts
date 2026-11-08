@@ -1,3 +1,4 @@
+// FIX-1451.
 /**
  * Shared renderer for an active-skill body block.
  *
@@ -9,7 +10,7 @@
  * `allowed-tools`. Keeping one renderer avoids two copies drifting apart
  * (per the repo's no-duplicate-helpers convention).
  *
- * **What that note may say, and why it is narrow (FIX-1451).** The note is
+ * **What that note may say, and why it is narrow.** The note is
  * about one thing only: what the consuming generator can CALL. On that path
  * `allowed-tools` decides nothing. `createSkillsLibrary` validates the names
  * against the catalog and then contributes the whole catalog, or — under
@@ -34,15 +35,15 @@
  */
 
 import path from "node:path";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { SkillState } from "@flow-state-dev/core";
+import type { ResourceCollectionRef, SkillState } from "@flow-state-dev/core/types";
 import { skillManifestKey } from "./collection";
 import { substitute } from "./skill-md";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 
+// FIX-1451.
 /**
  * The `allowed-tools` note, in one place so a test can assert the exact text
- * rather than approximate it with patterns (FIX-1451). Two files were each
+ * rather than approximate it with patterns. Two files were each
  * carrying their own regex inventory of phrasings this note must not use,
  * which is a weaker check than it looks: "only these tools are usable" would
  * have satisfied every one of them.

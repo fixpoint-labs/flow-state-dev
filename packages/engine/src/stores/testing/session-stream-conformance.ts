@@ -421,7 +421,8 @@ export function createSessionStreamConformanceTests(
       // so one failure does not surface as a hook timeout in the next case.
     }, 30_000);
 
-    it("sends a line another request keeps, within two seconds of it finishing (BR-1)", async () => {
+    // BR-1.
+    it("sends a line another request keeps, within two seconds of it finishing", async () => {
       Object.assign(SESSION_STREAM_TIMINGS, SHIPPED_TIMINGS);
       const stores = await createStores();
       const r = router(stores);
@@ -435,8 +436,9 @@ export function createSessionStreamConformanceTests(
       expect(Date.now() - sentAt).toBeLessThan(2_000);
     });
 
+    // BR-1.
     it.runIf(itemsReadableWhileRunning)(
-      "sends a line a still-running request kept, within two seconds (BR-1)",
+      "sends a line a still-running request kept, within two seconds",
       async () => {
         Object.assign(SESSION_STREAM_TIMINGS, SHIPPED_TIMINGS);
         const stores = await createStores();
@@ -455,8 +457,9 @@ export function createSessionStreamConformanceTests(
       }
     );
 
+    // BR-1.
     it.runIf(itemsReadableWhileRunning)(
-      "sends a line kept late in a long run, after the run's own start has aged out of the read (BR-1)",
+      "sends a line kept late in a long run, after the run's own start has aged out of the read",
       async () => {
         SESSION_STREAM_TIMINGS.marginMs = 200;
         const stores = await createStores();
@@ -482,7 +485,8 @@ export function createSessionStreamConformanceTests(
       }
     );
 
-    it("covers the gap before it opened: a line kept seconds before is sent (BR-12)", async () => {
+    // BR-12.
+    it("covers the gap before it opened: a line kept seconds before is sent", async () => {
       // Older than the margin every later read reaches back, so only the
       // first read's window can find it: the gap between a view's snapshot
       // and its stream opening.
@@ -529,7 +533,8 @@ export function createSessionStreamConformanceTests(
       expect(live.events.some(isItemWithText("ten minutes ago"))).toBe(false);
     });
 
-    it("sends each line once per connection, however many reads see it (BR-13)", async () => {
+    // BR-13.
+    it("sends each line once per connection, however many reads see it", async () => {
       const stores = await createStores();
       const r = router(stores);
       await finished(stores, await say(r, "s1", { text: "once" }));
@@ -540,7 +545,8 @@ export function createSessionStreamConformanceTests(
       expect(live.events.filter(isItemWithText("once"))).toHaveLength(1);
     });
 
-    it("tells apart two requests' items that share an id (BR-22)", async () => {
+    // BR-22.
+    it("tells apart two requests' items that share an id", async () => {
       const stores = await createStores();
       const r = router(stores);
       await seedSession(stores, "s1");
@@ -563,7 +569,8 @@ export function createSessionStreamConformanceTests(
       expect(b.type === "session.item" && b.requestId).toBe("req_b");
     });
 
-    it("sends every line to every open view of the session (BR-4)", async () => {
+    // BR-4.
+    it("sends every line to every open view of the session", async () => {
       const stores = await createStores();
       const r = router(stores);
       await finished(stores, await say(r, "s1", { text: "opening" }));
@@ -577,7 +584,8 @@ export function createSessionStreamConformanceTests(
       await tabB.waitFor(isItemWithText("seen by both"));
     });
 
-    it("hears a line written by another server on the same store, on a bus that doesn't cross (BR-17)", async () => {
+    // BR-17.
+    it("hears a line written by another server on the same store, on a bus that doesn't cross", async () => {
       let a: StoreRegistry;
       let b: StoreRegistry;
       let pairCleanup: (() => Promise<void> | void) | undefined;
@@ -611,7 +619,8 @@ export function createSessionStreamConformanceTests(
       }
     });
 
-    it("stops reading the store when the connection ends (BR-14)", async () => {
+    // BR-14.
+    it("stops reading the store when the connection ends", async () => {
       const stores = await createStores();
       let reads = 0;
       const counted: StoreRegistry = {
@@ -647,7 +656,8 @@ export function createSessionStreamConformanceTests(
     // when a run's history holds an interrupted record, the last to tell
     // whether that record is the most recent. A connection that ends midway
     // through it makes no further store read for nobody.
-    it("stops reading the store when the connection ends midway through a read (BR-14)", async () => {
+    // BR-14.
+    it("stops reading the store when the connection ends midway through a read", async () => {
       const stores = await createStores();
       const runs = 20;
       const readMs = 50;
@@ -698,7 +708,8 @@ export function createSessionStreamConformanceTests(
       expect(reads).toBe(atClose);
     });
 
-    it("closes the connection itself once it reaches its age limit (BR-24)", async () => {
+    // BR-24.
+    it("closes the connection itself once it reaches its age limit", async () => {
       SESSION_STREAM_TIMINGS.maxAgeMs = 300;
       const stores = await createStores();
       const r = router(stores);
@@ -710,7 +721,8 @@ export function createSessionStreamConformanceTests(
       expect(live.ended).toBe(true);
     });
 
-    it("picks up from `since` after a reconnect (BR-13)", async () => {
+    // BR-13.
+    it("picks up from `since` after a reconnect", async () => {
       // A first read and a margin that each reach back only a moment, so a
       // line kept while disconnected is found through `since` or not at all.
       SESSION_STREAM_TIMINGS.firstReadWindowMs = 100;
@@ -728,7 +740,8 @@ export function createSessionStreamConformanceTests(
       await again.waitFor(isItemWithText("while disconnected"));
     });
 
-    it("refuses exactly as the session snapshot refuses, streaming nothing (BR-15)", async () => {
+    // BR-15.
+    it("refuses exactly as the session snapshot refuses, streaming nothing", async () => {
       const stores = await createStores();
       const r = router(stores);
       await seedSession(stores, "owned", { flowKind: "secure", orgId: "org_test" });
@@ -917,7 +930,8 @@ export function createSessionStreamConformanceTests(
       expect(streamed).toEqual(replaced ? [] : ["mine"]);
     });
 
-    it("writes nothing: the session and its latest request stay as they were (BR-19)", async () => {
+    // BR-19.
+    it("writes nothing: the session and its latest request stay as they were", async () => {
       const stores = await createStores();
       const r = router(stores);
       await finished(stores, await say(r, "s1", { text: "opening" }));
@@ -928,7 +942,8 @@ export function createSessionStreamConformanceTests(
       expect(await stores.session.get("s1")).toEqual(before);
     });
 
-    it("nudges when a run under the session starts and again when it ends (BR-7)", async () => {
+    // BR-7.
+    it("nudges when a run under the session starts and again when it ends", async () => {
       // Written through the bus wrapper, as the engine writes: each write's
       // notice is what wakes the stream.
       const stores = withChangeBus(await createStores());
@@ -1006,15 +1021,18 @@ export function createSessionStreamConformanceTests(
       );
     }
 
-    it("nudges when a run starts again in a child whose last run finished (BR-7)", async () => {
+    // BR-7.
+    it("nudges when a run starts again in a child whose last run finished", async () => {
       await runStartsAgain("spawn");
     });
 
-    it("nudges when a run is delivered into an existing child by its id (BR-7)", async () => {
+    // BR-7.
+    it("nudges when a run is delivered into an existing child by its id", async () => {
       await runStartsAgain("deliver");
     });
 
-    it("keeps an unfinished run older than a page of runs listed (BR-23)", async () => {
+    // BR-23.
+    it("keeps an unfinished run older than a page of runs listed", async () => {
       const stores = await createStores();
       const r = router(stores);
       const longAgo = Date.now() - 60 * 60_000;
@@ -1048,7 +1066,8 @@ export function createSessionStreamConformanceTests(
     // A read per run is a read of every request record per run on an adapter
     // with no index, so the open grew with the square of the runs: seconds at
     // a hundred. However many runs, the open costs the same reads.
-    it("opens on a session's runs in the same number of reads however many it has (BR-23)", async () => {
+    // BR-23.
+    it("opens on a session's runs in the same number of reads however many it has", async () => {
       const openingReads = async (runs: number): Promise<number> => {
         const stores = await createStores();
         let reads = 0;
@@ -1111,7 +1130,8 @@ export function createSessionStreamConformanceTests(
       expect(counted.reads()).toBe(settled);
     });
 
-    it("keeps reading each interval on a bus that doesn't cross processes (FIX-2426 D1)", async () => {
+    // FIX-2426 D1.
+    it("keeps reading each interval on a bus that doesn't cross processes", async () => {
       const bus = crossingBus();
       bus.setCrossing(false);
       const stores = await createStores();
@@ -1141,7 +1161,8 @@ export function createSessionStreamConformanceTests(
       expect(counted.reads() - atOpen).toBeGreaterThanOrEqual(3);
     });
 
-    it("reads nothing while the session is idle, on a bus that crosses processes (FIX-2426)", async () => {
+    // FIX-2426.
+    it("reads nothing while the session is idle, on a bus that crosses processes", async () => {
       const stores = await createStores();
       const counted = countSessionReads({ ...stores, bus: crossingBus() }, "s1");
       const r = router(counted.stores);
@@ -1157,7 +1178,8 @@ export function createSessionStreamConformanceTests(
     // A reply is several writes a few milliseconds apart (accepted, items,
     // settled). The read its first notice wakes waits `settleMs` for the rest,
     // so it is not left to the read an interval later.
-    it("sends another request's reply within a second, on the notice alone (FIX-2426)", async () => {
+    // FIX-2426.
+    it("sends another request's reply within a second, on the notice alone", async () => {
       Object.assign(SESSION_STREAM_TIMINGS, SHIPPED_TIMINGS);
       const stores = { ...(await createStores()), bus: crossingBus() };
       const r = router(stores);
@@ -1178,7 +1200,8 @@ export function createSessionStreamConformanceTests(
     // and its last. A read taken a fixed time after the first notice finds it
     // unfinished, and the reply waits a whole interval for the next read; the
     // read must wait for its notices to go quiet instead.
-    it("sends a reply whose writes spread out in one read, not an interval later (FIX-2426)", async () => {
+    // FIX-2426.
+    it("sends a reply whose writes spread out in one read, not an interval later", async () => {
       Object.assign(SESSION_STREAM_TIMINGS, SHIPPED_TIMINGS);
       const stores = { ...(await createStores()), bus: crossingBus() };
       const r = router(stores);
@@ -1198,7 +1221,8 @@ export function createSessionStreamConformanceTests(
       expect(Date.now() - sentAt).toBeLessThan(WOKEN_WITHIN_MS);
     });
 
-    it("hears a reply written by another server through a shared bus that crosses (FIX-2426)", async () => {
+    // FIX-2426.
+    it("hears a reply written by another server through a shared bus that crosses", async () => {
       let a: StoreRegistry;
       let b: StoreRegistry;
       let pairCleanup: (() => Promise<void> | void) | undefined;
@@ -1229,7 +1253,8 @@ export function createSessionStreamConformanceTests(
       }
     });
 
-    it("reads at most once an interval however many notices arrive (FIX-2426)", async () => {
+    // FIX-2426.
+    it("reads at most once an interval however many notices arrive", async () => {
       SESSION_STREAM_TIMINGS.intervalMs = 200;
       const stores = await createStores();
       const bus = crossingBus();
@@ -1253,7 +1278,8 @@ export function createSessionStreamConformanceTests(
       expect(reads).toBeLessThanOrEqual(Math.ceil(1_250 / 200) + 1);
     });
 
-    it("is not woken by a notice of a kind it doesn't send (FIX-2426)", async () => {
+    // FIX-2426.
+    it("is not woken by a notice of a kind it doesn't send", async () => {
       const stores = await createStores();
       const bus = crossingBus();
       const counted = countSessionReads({ ...stores, bus }, "s1");
@@ -1274,7 +1300,8 @@ export function createSessionStreamConformanceTests(
       expect(counted.reads()).toBeGreaterThan(settled);
     });
 
-    it("goes back to the timed read once its bus stops crossing processes (FIX-2426)", async () => {
+    // FIX-2426.
+    it("goes back to the timed read once its bus stops crossing processes", async () => {
       const stores = await createStores();
       const bus = crossingBus();
       const counted = countSessionReads({ ...stores, bus }, "s1");
@@ -1292,7 +1319,8 @@ export function createSessionStreamConformanceTests(
       expect(counted.reads() - crossing).toBeGreaterThanOrEqual(3);
     });
 
-    it("still pings and still closes at its age limit while idle on a crossing bus (FIX-2426)", async () => {
+    // FIX-2426.
+    it("still pings and still closes at its age limit while idle on a crossing bus", async () => {
       SESSION_STREAM_TIMINGS.pingMs = 100;
       SESSION_STREAM_TIMINGS.maxAgeMs = 600;
       const stores = { ...(await createStores()), bus: crossingBus() };

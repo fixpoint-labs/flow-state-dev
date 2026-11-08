@@ -21,7 +21,8 @@
  * page still shows where the work was.
  */
 import { createHash } from "node:crypto";
-import { defineResourceCollection, planKeySegment } from "@flow-state-dev/core";
+import { defineResourceCollection } from "@flow-state-dev/core";
+import { planKeySegment } from "@flow-state-dev/core/harness";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
@@ -29,10 +30,10 @@ import { z } from "zod";
 export const WORKTREES = "worktrees" as const;
 
 /** Where a worktree is in its life. */
-export const worktreeStateSchema = z.enum(["provisioning", "ready", "removed", "lost"]);
+export const worktreeStatusSchema = z.enum(["provisioning", "ready", "removed", "lost"]);
 
 /** Where a worktree is in its life: being made, ready, removed by its owner, or gone from disk. */
-export type WorktreeState = z.infer<typeof worktreeStateSchema>;
+export type WorktreeStatus = z.infer<typeof worktreeStatusSchema>;
 
 /** Who owns a worktree: the session or the board run it was made for. */
 export const worktreeOwnerSchema = z.object({
@@ -71,11 +72,12 @@ export const worktreePullRequestSchema = z.object({
 /** A pull request on a worktree's branch. */
 export type WorktreePullRequest = z.infer<typeof worktreePullRequestSchema>;
 
+// BP-023, BP-030.
 /**
  * One worktree. Every field is nullable or defaulted, so a row written by an
- * older or newer shape still parses (BP-023, BP-030).
+ * older or newer shape still parses.
  */
-export const worktreeRowSchema = z.object({
+export const worktreeResourceStateSchema = z.object({
   /** The row's own key, as {@link worktreeKey} made it. */
   key: z.string().nullable().default(null),
   /** A name a person reads: `<slug>-<6 hex>`. Written on the first write, never recomputed. */
@@ -93,7 +95,7 @@ export const worktreeRowSchema = z.object({
   /** The sessions and runs working in it beside the owner (`start: { worktreeOf }`), each once, with its last turn's end. */
   attached: z.array(worktreeAttachedSchema).default([]),
   /** Where it is in its life. */
-  state: worktreeStateSchema.nullable().default(null),
+  state: worktreeStatusSchema.nullable().default(null),
   /** Commits on `branch` past `baseCommit`, as last read. `null` is unknown, never 0. */
   commits: z.number().int().nullable().default(null),
   /** Epoch millis of the last turn-end read. */
@@ -102,8 +104,8 @@ export const worktreeRowSchema = z.object({
   pullRequests: z.array(worktreePullRequestSchema).default([]),
 });
 
-/** One row of {@link worktreesCollection}. */
-export type WorktreeRow = z.infer<typeof worktreeRowSchema>;
+/** The state of one resource of {@link worktreesCollection}: one worktree. */
+export type WorktreeResourceState = z.infer<typeof worktreeResourceStateSchema>;
 
 /** Every field of a row, which a page and an agent may both read. */
 const WORKTREE_FIELDS = [
@@ -121,10 +123,11 @@ const WORKTREE_FIELDS = [
   "pullRequests",
 ] as const;
 
+// BP-027.
 /**
  * The user's worktree rows.
  *
- * User-scoped and shared across flows (BP-027), so a board run's worktree and
+ * User-scoped and shared across flows, so a board run's worktree and
  * a session's are in one list. Lazy: a writer upserts by exact key and never
  * lists. `llmReadable`, so an agent reads the list with core's resource tools;
  * `live`, so an open page sees a row change mid-turn. No client write, and no
@@ -134,7 +137,7 @@ export const worktreesCollection = defineResourceCollection({
   pattern: `${WORKTREES}/**`,
   scope: "user",
   prefetchMode: "lazy",
-  stateSchema: worktreeRowSchema,
+  stateSchema: worktreeResourceStateSchema,
   llmReadable: true,
   client: {
     state: { read: true },
@@ -144,7 +147,7 @@ export const worktreesCollection = defineResourceCollection({
 });
 
 /** The collection as a block reads it off `ctx.resources`. */
-export type WorktreeCollection = ResourceCollectionRef<WorktreeRow>;
+export type WorktreeCollection = ResourceCollectionRef<WorktreeResourceState>;
 
 /**
  * A row's key: the host's id, then the place's segments, each escaped. The
@@ -186,10 +189,10 @@ export interface WorktreeRecording {
  * which re-runs it when another write landed first, so every guard below
  * reads the row it writes. `false` when the key has no row.
  */
-async function change(collection: WorktreeCollection, key: string, fn: (row: WorktreeRow) => WorktreeRow): Promise<boolean> {
+async function change(collection: WorktreeCollection, key: string, fn: (row: WorktreeResourceState) => WorktreeResourceState): Promise<boolean> {
   const ref = await collection.getOptional(key);
   if (ref === undefined) return false;
-  await ref.updateState((row) => fn(row as WorktreeRow));
+  await ref.updateState((row) => fn(row as WorktreeResourceState));
   return true;
 }
 
@@ -239,7 +242,7 @@ export async function markWorktreeReady(
   place: readonly string[],
   made: MadeWorktree,
 ): Promise<void> {
-  const fields = (prior: WorktreeRow | undefined): Partial<WorktreeRow> => ({
+  const fields = (prior: WorktreeResourceState | undefined): Partial<WorktreeResourceState> => ({
     key,
     state: "ready",
     path: made.path,
@@ -251,7 +254,7 @@ export async function markWorktreeReady(
   });
   // The host calls this under the place's lock, the one removal takes, so no
   // removal lands between this and the provisioning write.
-  const found = await change(recording.collection, key, (row) => ({ ...row, ...fields(row) }) as WorktreeRow);
+  const found = await change(recording.collection, key, (row) => ({ ...row, ...fields(row) }) as WorktreeResourceState);
   if (!found) await recording.collection.upsert(key, fields(undefined));
 }
 

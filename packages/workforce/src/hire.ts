@@ -616,7 +616,7 @@ export function mintWorkers(
     throw new Error(
       `hireWorkforce was given ${bothFlows.map((ref) => `"${ref}"`).join(", ")} as both a ` +
         `document and a reference. One ref is one accessor, and the two behave differently — a ` +
-        `reference is read from its file and sealed, a document seeds a row and then evolves — ` +
+        `reference is read from its file and sealed, a document seeds a resource and then evolves — ` +
         `so whichever won would be a coin flip. Keep one: leave the file in \`resources/\`, or ` +
         `move it to \`references/\`.`
     );

@@ -1,5 +1,6 @@
+// FIX-2063 D1.
 /**
- * The local store a no-config `fsdev run` and `fsdev dev` share (FIX-2063 D1).
+ * The local store a no-config `fsdev run` and `fsdev dev` share.
  *
  * By default both open `.fsdev/data/fsdev.db` (SQLite), so a stop a terminal run
  * makes is listed and answered by the `fsdev dev` that reads the same file.
@@ -12,8 +13,9 @@
  * the flag.
  */
 import { mkdir } from "node:fs/promises";
-import { createFilesystemStores, type StoreRegistry } from "@flow-state-dev/engine";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { type StoreRegistry } from "@flow-state-dev/engine";
+import { createFilesystemStores } from "@flow-state-dev/engine/host";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { CliError } from "./resolve-block";
 import { EXIT_INVALID_ARGS } from "./exit-codes";
 

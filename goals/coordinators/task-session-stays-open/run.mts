@@ -86,8 +86,8 @@ const CONTROLS: Record<string, Control> = {
       },
       {
         module: "packages/orchestration/src/skills/steer-context.ts",
-        from: String.raw`ctx\.emit\.message\(\`Message from \$\{sender\}: \$\{steer\.message\}\``,
-        to: `ctx.emit.message(\`Message from \${sender}: \${steer.answers === undefined ? steer.message : "Use ${DECOY_REGION}."}\``,
+        from: String.raw`await ctx\._emitMessageAwaited\(steer\.message, `,
+        to: `await ctx._emitMessageAwaited((steer as { answers?: string }).answers === undefined ? steer.message : "Use ${DECOY_REGION}.", `,
       },
     ],
     does: `the answer owes the task its next turn in its session, but that turn reads an answer naming ${DECOY_REGION}, a region the run never picks, in place of the one the app sent`,
@@ -196,7 +196,7 @@ function openQuestionOf(t: StoredTask | undefined): { id: string; ask: { kind: s
   const row = t as (StoredTask & { holds?: Array<{ id: string; source: { kind: string }; ask: { kind: string; prompt: string } }>; steers?: Array<{ answers?: string }> }) | undefined;
   if (row?.status !== "in_progress") return undefined;
   const answered = new Set((row.steers ?? []).flatMap((s) => (s.answers === undefined ? [] : [s.answers])));
-  return row.holds?.find((h) => h.source.kind === "row" && !answered.has(h.id));
+  return row.holds?.find((h) => h.source.kind === "task" && !answered.has(h.id));
 }
 
 // ---- grading ----------------------------------------------------------------------------

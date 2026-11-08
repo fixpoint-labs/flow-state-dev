@@ -32,11 +32,9 @@ import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-s
 import {
   defineProjectBlocks,
   defineWorkerInventoryCollection,
-  WORKER_TASK_ENTRY,
   workerConfigSchema,
   workerTaskEntry,
   type WorkerInstallation,
-  MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   workerMessagesResources,
 } from "@flow-state-dev/workforce";
@@ -179,10 +177,10 @@ export function defineAskerFlow(
         description: "A user's line into this worker's session.",
       },
     },
-    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: ASKER_FLOW }) } },
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: ASKER_FLOW }) } },
     task: {
       actions: {
-        [WORKER_TASK_ENTRY]: { ...workerTaskEntry({ name: "asker-task", turn: onPost }), durable: true },
+        work: { ...workerTaskEntry({ name: "asker-task", turn: onPost }), durable: true },
       },
     },
   } as never);

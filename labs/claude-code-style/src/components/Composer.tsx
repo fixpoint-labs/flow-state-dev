@@ -1,5 +1,5 @@
 import { interruptChordLabel, isSendKey } from "@flow-state-dev/react";
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useDraftSend } from "../lib/use-draft-send";
 
 /**
@@ -39,9 +39,12 @@ export function Composer({
   stopping = false,
   stopRefused,
   armed = false,
+  seed,
   onSend,
   onStop,
 }: {
+  /** A line to put in the box, as a starter line's click hands it; `at` makes a second click of the same line count. Never sent by itself. */
+  seed?: { text: string; at: number };
   /** The session it types to; `/` and a session switch find its composer by it. */
   sessionId: string;
   running: boolean;
@@ -58,6 +61,13 @@ export function Composer({
   const [coder, setCoder] = useState<CoderChoice>("Auto");
   const { text, setText, sending, failure, submit } = useDraftSend("claude-code-style:draft", sessionId);
   const send = () => submit((line) => onSend(withCoder(line, coder)));
+  const box = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (seed === undefined) return;
+    setText(seed.text);
+    box.current?.focus();
+    // Only a new seed puts its line in the box; setText is the draft's own setter.
+  }, [seed]);
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     void send();
@@ -72,8 +82,11 @@ export function Composer({
   };
   return (
     <form onSubmit={onSubmit} className="px-6 pb-4">
-      <div className="border border-border bg-card focus-within:border-ring">
+      {/* The feed's own column, so the box and the lines above it share their edges. */}
+      <div className="mx-auto max-w-2xl">
+      <div className="rounded-xl border border-border/60 bg-card transition-colors focus-within:border-ring">
         <textarea
+          ref={box}
           aria-label="Message the main session"
           data-composer
           data-session-id={sessionId}
@@ -85,7 +98,7 @@ export function Composer({
           className="block w-full resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
         />
         <div className="flex items-center justify-end gap-2 px-2 pb-2">
-          <label className="mr-auto flex items-center gap-1 border border-border px-2 py-0.5 text-xs text-muted-foreground">
+          <label className="mr-auto flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
             Coder
             <select
               aria-label="Coder"
@@ -110,7 +123,7 @@ export function Composer({
               type="button"
               onClick={onStop}
               disabled={stopping}
-              className="border border-border px-3 py-1 text-sm font-semibold text-destructive hover:bg-accent disabled:opacity-60"
+              className="rounded-md border border-border px-3 py-1 text-sm font-semibold text-destructive hover:bg-accent disabled:opacity-60"
             >
               {stopping ? "Stopping…" : "Stop"}
             </button>
@@ -118,7 +131,7 @@ export function Composer({
           <button
             type="submit"
             disabled={!text.trim() || sending}
-            className="bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
+            className="rounded-md bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground disabled:opacity-40"
           >
             {sending ? "Sending…" : "Send"}
           </button>
@@ -132,7 +145,8 @@ export function Composer({
           </button>
         </p>
       ) : null}
-      <p className="mt-1 text-xs text-muted-foreground">You talk only to the main session{running ? (armed ? " · press Esc again to stop the turn" : ` · Esc Esc or ${interruptChordLabel()} to stop the turn`) : ""}</p>
+      <p className="mt-1.5 text-xs text-muted-foreground">You talk only to the main session{running ? (armed ? " · press Esc again to stop the turn" : ` · Esc Esc or ${interruptChordLabel()} to stop the turn`) : ""}</p>
+      </div>
     </form>
   );
 }

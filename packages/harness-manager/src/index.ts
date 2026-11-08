@@ -1,3 +1,4 @@
+// FIX-2086.
 /**
  * `@flow-state-dev/harness-manager` — a task-board row becomes a supervised
  * coding run.
@@ -30,7 +31,7 @@
  *   runs. `harnessStub`, a scripted harness for the slot, for checks that run
  *   no model.
  * - `upgradeKeptTurns`, the upgrade's one-off step that writes a line the
- *   coding door kept before FIX-2086 onto its task as a steer.
+ *   coding door kept before lines became steers onto its task as a steer.
  * - `runOwnerClaimOrder`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
  * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
@@ -110,6 +111,19 @@ export {
   type RequestIdentityContext,
 } from "./manager";
 export { PROGRESS_NOTE_MS, progressNoteOf } from "./progress-note";
+
+// ── A task waiting on its pull requests (`awaitPullRequests`) ───────────────
+export { CLOSED_WITHOUT_MERGING } from "./await-pull-requests";
+export {
+  PULL_REQUEST_EVENT,
+  pullRequestWait,
+  readSessionPullRequests,
+  type PullRequestRecordResourceState,
+  type PullRequestWait,
+  type PullRequestWaitInput,
+  type SessionPullRequest,
+  type WaitedPullRequest,
+} from "./pull-request-wait";
 
 // ── Checks: the project's commands, before a run is done ────────────────────
 export {
@@ -249,22 +263,22 @@ export {
 
 // ── The run record ──────────────────────────────────────────────────────────
 //
-// **Read, not write.** `openRunRow`, `writeRunRow` and `collectionRef` are the
+// **Read, not write.** `openRunRecord`, `writeRunRecord` and `collectionRef` are the
 // manager's own — every one of them writes through the attempt fence, and a
 // caller outside a claimed attempt either gets refused or corrupts a ledger the
 // board is the authority on. A host builds its status surface from
-// `readRunRow` and the collection; the writes stay internal.
+// `readRunRecord` and the collection; the writes stay internal.
 export {
-  readRunRow,
+  readRunRecord,
   runRecordCollection,
   runRecordStateSchema,
   heldSchema,
-  placeStateSchema,
+  placeStatusSchema,
   runTopic,
   runTopicPrefix,
   type RunRecordState,
   type HeldRecord,
-  type PlaceState,
+  type PlaceStatus,
   type CollectionHoldingContext,
 } from "./run-record";
 /**
@@ -278,6 +292,13 @@ export { runBoardSegment } from "./workspace";
  * session door's `runOf` keys a row's run with it, as the manager did.
  */
 export { taskIssueSegment } from "./workspace";
+/**
+ * The directory a run writes its question into, which no repository may
+ * commit: what every provision hands the workspace host. A host asks the same
+ * rule of a repository before any run, through `checkRepository`:
+ * `workspace.checkRepository(repository, { ignored: ASK_MARKER_IGNORED })`.
+ */
+export { ASK_MARKER_IGNORED } from "./workspace";
 
 // ── Subscription usage left, per person and harness ─────────────────────────
 //
@@ -294,9 +315,9 @@ export {
   readHarnessUsage,
   recordHarnessUsage,
   type HarnessUsageActionOptions,
-  type HarnessUsageRow,
+  type HarnessUsageView,
   type HarnessUsageState,
-  type HarnessUsageWindowRow,
+  type HarnessUsageWindowView,
   type UsageWrite,
 } from "./harness-usage";
 
@@ -305,13 +326,13 @@ export {
   harnessReadiness,
   harnessReadinessAction,
   harnessReadinessCapability,
-  harnessReadinessRowSchema,
+  harnessReadinessViewSchema,
   formatHarnessReadiness,
   READINESS_CHECK_TIMEOUT_MS,
   READINESS_GUIDANCE,
   type HarnessReadinessOptions,
   type HarnessReadinessRead,
-  type HarnessReadinessRow,
+  type HarnessReadinessView,
   type HarnessReadinessSlot,
   type ReadReadinessOptions,
 } from "./readiness";

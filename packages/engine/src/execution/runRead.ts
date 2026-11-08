@@ -1,5 +1,6 @@
+// FIX-2286.
 /**
- * Run a flow's read (FIX-2286): a block an app runs on a session to watch a
+ * Run a flow's read: a block an app runs on a session to watch a
  * view the flow computes, answered to the caller and stored nowhere.
  *
  * A read runs through the same context an action does, so it sees the
@@ -45,7 +46,7 @@ export class UnknownReadError extends Error {
 }
 
 /** The refusal every write inside a read throws. */
-export function readOnlyRefusal(what: string): FlowError {
+function readOnlyRefusal(what: string): FlowError {
   return new FlowError(`A read can't ${what}: it changes nothing`, { code: "read_only", retryable: false });
 }
 
@@ -144,7 +145,7 @@ function seedingInScratch<T extends { get(id: string): Promise<unknown>; set(id:
  * org record go to a fresh in-memory registry dropped when the read ends; any
  * other write throws `read_only`.
  */
-export function readOnlyStores(stores: StoreRegistry, requestId: string): StoreRegistry {
+function readOnlyStores(stores: StoreRegistry, requestId: string): StoreRegistry {
   const scratch = createInMemoryStores();
   return {
     ...stores,

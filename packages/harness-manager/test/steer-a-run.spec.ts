@@ -10,8 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
-import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { BlockContext, HarnessBlock } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
@@ -29,7 +30,7 @@ import {
   STEER_POLL_MS,
   type HarnessFeeds,
 } from "../src";
-import { MAX_STEERS } from "@flow-state-dev/orchestration/tasks";
+import { MAX_STEERS } from "@flow-state-dev/orchestration/internal";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 

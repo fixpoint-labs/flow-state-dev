@@ -1,14 +1,15 @@
+// FIX-1722; BR-4 to BR-8; BR-10 to BR-18.
 /**
- * Shift Coordinator (FIX-1722): where Shift Manager opens. The shift summary,
+ * Shift Coordinator: where Shift Manager opens. The shift summary,
  * then the user's conversation with the Lab's shift-coordinator worker; the right
  * panel lists its delegates and tasks.
  *
  * **The summary is Shift Manager's, not the worker's (D1).** It is drawn from
  * the one snapshot, with the helpers Inbox and Tasks use, so its numbers are
  * theirs. Each ask is drawn by Inbox's card and answered through Inbox's path,
- * so answering it in either place clears both (BR-4 to BR-8).
+ * so answering it in either place clears both.
  *
- * **The conversation is the worker's session (BR-10 to BR-18).** Which worker is
+ * **The conversation is the worker's session.** Which worker is
  * the Shift Coordinator is one rule, `shiftCoordinatorOf`. A line goes in through the
  * worker's door by the one send path, and shows *delivered* only once the
  * session holds it. What is drawn below it is what the session stores, read
@@ -22,7 +23,7 @@
  * registry's cards (the ask's Approve and Reject, the messages) are drawn as
  * the registry draws them.
  */
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Settings } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { AskCard } from "../components/AskCard";
@@ -32,8 +33,12 @@ import { TasksPanel } from "../components/TasksPanel";
 import { COORDINATOR_FLOW, useConversationSession } from "../lib/conversation";
 import { useSessionItems } from "../components/flow-state/session-items-context";
 import { ItemRenderer } from "@flow-state-dev/react";
-import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
+import { AsOf, ASKING_CLASS, Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
+import { cn } from "../lib/utils";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
+import { readDelegates } from "../lib/delegates";
+import { starterLines, type StarterDelegate } from "../lib/first-run";
+import { useWorkforce } from "../lib/workforce";
 import { shiftCoordinatorOf, inboxItemIdOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
@@ -44,7 +49,8 @@ import type { Gaps } from "../gaps";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** What Shift Manager calls the `shift-coordinator` worker (FIX-1747). */
+// FIX-1747.
+/** What Shift Manager calls the `shift-coordinator` worker. */
 const NAME = "Shift Coordinator";
 
 export function ShiftCoordinatorView({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
@@ -131,7 +137,7 @@ function NeedsYouTag() {
  * label says whose summary it is: Shift Manager's, not the worker's.
  */
 function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
-  const { refresh } = useLab();
+  const { refresh, asking } = useLab();
   const retry = () => void refresh();
   const { inbox, asks, running } = shiftSummary(snapshot);
   // What needs the user is what Inbox lists: one item per task held on a
@@ -142,7 +148,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
       <p className="font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
         SHIFT SUMMARY · FROM SHIFT MANAGER
       </p>
-      <div className="text-base leading-[1.55]" data-look="summary-prose">
+      <div className={cn("text-base leading-[1.55]", asking && ASKING_CLASS)} data-look="summary-prose" data-asking={asking ? "true" : undefined}>
         {inbox.ok ? (
           <p data-testid="shift-coordinator-summary-asks">
             {needsYou === 0 ? (
@@ -164,6 +170,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
           <SectionFailure what="What is running" failure={running.failure} onRetry={retry} testId="shift-coordinator-summary-running-failure" />
         )}
       </div>
+      <AsOf readAt={snapshot.readAt} onRefresh={retry} testId="shift-coordinator-as-of" />
       {asks.ok && asks.value.length > 0 ? (
         <ol className="flex flex-col border border-foreground bg-card" data-testid="shift-coordinator-asks">
           {asks.value.map((ask, i) => (
@@ -195,7 +202,8 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   );
 }
 
-/** The conversation, or the named state in its place (BR-10 to BR-12), under `lead`. */
+// BR-10 to BR-12.
+/** The conversation, or the named state in its place, under `lead`. */
 function ShiftCoordinatorConversation({ snapshot, gaps, lead }: { snapshot: LoadedSnapshot; gaps: Gaps; lead: ReactNode }) {
   const { refresh } = useLab();
   if (!snapshot.inventory.ok) {
@@ -288,6 +296,7 @@ function Talk({
   // A line the palette handed over is sent by this screen's composer, and is dropped if it is never taken.
   const handed = useHandedLine();
   useEffect(() => clearHandedLine, []);
+  const starters = useStarterLines(worker, sessions);
   return (
     <Conversation
       testId="shift-coordinator"
@@ -300,11 +309,39 @@ function Talk({
       startWork={startShiftCoordinatorWork}
       autoSend={handed}
       onAutoSend={clearHandedLine}
+      starters={starters}
       renderItem={renderAsk}
       scale="shift-coordinator"
       startAtEnd
     />
   );
+}
+
+/**
+ * The lines the empty conversation offers, from the delegates the coordinator
+ * answers for it (the DELEGATES panel's read), by their roster names. Before
+ * there is a conversation there are no delegates to read, so the lines name
+ * nobody; a read that fails does the same.
+ */
+function useStarterLines(worker: Worker, sessions: readonly SessionSummary[]): string[] {
+  const { client } = useLab();
+  const workforce = useWorkforce();
+  const sessionId = useConversationSession(worker, sessions);
+  const [delegates, setDelegates] = useState<readonly StarterDelegate[]>([]);
+  useEffect(() => {
+    if (sessionId === null || worker.kind !== COORDINATOR_FLOW) return setDelegates([]);
+    let closed = false;
+    Promise.all([readDelegates(client, worker.kind, sessionId), workforce.roster()])
+      .then(([list, roster]) => {
+        const names = new Map(roster.map((entry) => [entry.id, entry.name ?? workerLabel(entry.id)]));
+        if (!closed) setDelegates(list.delegates.map((d) => ({ worker: d.worker, name: names.get(d.worker) ?? workerLabel(d.worker) })));
+      })
+      .catch(() => !closed && setDelegates([]));
+    return () => {
+      closed = true;
+    };
+  }, [client, workforce, worker.kind, sessionId]);
+  return starterLines(delegates);
 }
 
 /**

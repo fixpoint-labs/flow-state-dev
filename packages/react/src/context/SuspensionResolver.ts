@@ -4,12 +4,12 @@
  *
  * The default `<ApprovalRenderer>` is rendered deep inside the item stream and
  * has no reference to the `useSession` instance that owns the live SSE stream.
- * Without a bridge it can only fire a non-streaming resume (fire-and-forget),
- * so the resumed continuation streams to nobody and the chat view only updates
+ * Without a bridge it can only fire a non-streaming answer (fire-and-forget),
+ * so the continuation streams to nobody and the chat view only updates
  * on a page refresh.
  *
  * An app wraps its item list with `<SuspensionResolverProvider resolve={...}>`,
- * passing `useSession(...).resumeSuspension`. The default card then resolves
+ * passing `useSession(...).answerSuspension`. The default card then resolves
  * through the session, so the continuation streams straight into `session.items`
  * and renders live. When no provider is present the card falls back to its
  * self-contained (non-streaming) recovery client.
@@ -24,7 +24,7 @@ import type { ResumeAction } from "@flow-state-dev/core/types";
 
 /**
  * Streaming suspension resolver. Matches the shape of
- * `SessionView.resumeSuspension` so an app can pass it through verbatim. The
+ * `SessionView.answerSuspension` so an app can pass it through verbatim. The
  * `action` spans the full resolution vocabulary — `submit`/`skip` resolve the
  * non-binary shapes (a question answer, a form, a selection, an optional step).
  */
@@ -33,7 +33,6 @@ export type SuspensionResolver = (args: {
   requestId: string;
   action: ResumeAction;
   data?: unknown;
-  resumedBy?: string;
 }) => Promise<void>;
 
 const SuspensionResolverContext = createContext<SuspensionResolver | null>(null);
@@ -42,7 +41,7 @@ const SuspensionResolverContext = createContext<SuspensionResolver | null>(null)
  * Props for {@link SuspensionResolverProvider}.
  */
 export type SuspensionResolverProviderProps = {
-  /** The session-bound streaming resolver, typically `session.resumeSuspension`. */
+  /** The session-bound streaming resolver, typically `session.answerSuspension`. */
   resolve: SuspensionResolver;
   children: ReactNode;
 };

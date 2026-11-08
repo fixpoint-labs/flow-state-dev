@@ -14,12 +14,15 @@
  * again) and its record written `interrupted`, as the stale-request sweep
  * writes it.
  */
-import { SuspensionError, defineFlow, handler, parkOnWait, sequencer } from "@flow-state-dev/core";
+import { SuspensionError, defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { requestHostOf, parkOnWait } from "@flow-state-dev/core/internal";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import type { FlowInstance, WaitOutcome } from "@flow-state-dev/core/types";
+import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { WaitOutcome } from "@flow-state-dev/core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createWaitResumeOperation } from "../src/context/wait-resume-operation";
 import { resumeWaitGate } from "../src/durability/resume-wait-gate";
@@ -70,7 +73,7 @@ function waitingFlow(script: Script) {
         });
         return outcome;
       };
-      const waits = ctx.requestHost?.waits;
+      const waits = requestHostOf(ctx)?.waits;
       const outcome = script.owe && waits?.owingPark !== undefined ? await waits.owingPark(run) : await run();
       await freezeAt("after-wait");
       return { outcome };

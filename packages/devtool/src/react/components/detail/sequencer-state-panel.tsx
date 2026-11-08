@@ -1,8 +1,9 @@
+// FIX-401.
 /**
  * Sequencer state inspector panel.
  *
- * Shows the current state of a sequencer block. Under the keyed-update model
- * (FIX-401), the trace tree retains a single snapshot per sequencer instance,
+ * Shows the current state of a sequencer block. Under the keyed-update model,
+ * the trace tree retains a single snapshot per sequencer instance,
  * so the panel renders that snapshot directly. The timeline / diff /
  * step-name UI only appears when a feed produces multiple snapshots
  * (a future opt-in `persistFullHistory` mode would reintroduce that).

@@ -13,7 +13,7 @@
 // handler so the tests need no key; swap it for a generator for real work.)
 import { handler, sequencer, type BlockDefinition } from "@flow-state-dev/core";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z, type ZodTypeAny } from "zod";
 

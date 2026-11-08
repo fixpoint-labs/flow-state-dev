@@ -1,5 +1,6 @@
+// FIX-2334.
 /**
- * Who a worker can reach (FIX-2334): the one list `sendMessage`'s description
+ * Who a worker can reach: the one list `sendMessage`'s description
  * and the worker's identity prompt both read, so the two can't disagree.
  *
  * It is the roster minus what a send by name refuses (`recipientRefusal`),
@@ -41,7 +42,7 @@ async function readRecipients(ctx: BlockContext, installation: WorkerInstallatio
   const messageable: RosterWorker[] = [];
   const taskOnly: RosterWorker[] = [];
   let me: RosterWorker | undefined;
-  for (const worker of await installation.roster(ctx as never)) {
+  for (const worker of await installation.roster(ctx)) {
     if (worker.id === self) {
       me = worker;
       continue;

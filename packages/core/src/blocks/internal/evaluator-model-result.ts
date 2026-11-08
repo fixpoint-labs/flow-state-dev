@@ -37,13 +37,14 @@ export function stashEvaluatorModelResult(
   }
 }
 
+// FIX-2145.
 /**
  * Run an evaluator with its model result captured onto `scopedCtx`, on
  * success and failure. The payload is forwarded to the enclosing hook marked
  * `countsIn: "ledger"`: inside a generator's tool call that hook is the
  * generator's own capture, and the evaluator's model must not overwrite the
  * generator's on its row, but the call still counts in the request's spend
- * ledger, which every capture forwards to (FIX-2145).
+ * ledger, which every capture forwards to.
  */
 export async function runEvaluatorCapturingModelResult<T>(
   scopedCtx: BlockContext,

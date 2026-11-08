@@ -18,7 +18,7 @@ type ActionCore<TBlock extends BlockDefinition = BlockDefinition> = {
   inputSchema?: TBlock["inputSchema"];
   onCompleted?: BlockDefinition;
   onErrored?: BlockDefinition;
-  userMessage?: (input) => string;
+  userMessage?: (input) => string | { text: string; metadata?: Record<string, unknown> };
   tokenBudget?: { maxTotalTokens: number; warnAt?: number; onExceeded?: ... };
   durable?: boolean;
 };
@@ -187,7 +187,7 @@ flow's `createCheck` with `via: "dispatch"` (`create-refused` otherwise), and
 delivers into an existing one. Either form addressed at another flow's session
 or a mismatched org is `session-not-addressable`, and either is refused under an external runner whose
 adapter supplies no shared lease backend (`usesExternalRunner` without
-`arbitratesExternalDispatch`, refusal `external-dispatcher`), because the run
+`arbitratesExternalDispatch`, refusal `external-flow-runner`), because the run
 would start on another process against a session this one cannot fence. With a
 lease backend the delivery takes its place on the session's key before it is
 enqueued, and the worker runs it in that place's turn.
@@ -196,7 +196,7 @@ seam-stamped sender (`readDispatchStamp` → `from.sessionId`). The author names
 no session. A request the runtime did not dispatch — including a public action
 whose HTTP body carries a perfectly shaped `metadata.dispatch.from` — refuses
 `no-sender`. Nested `{ from: true }` replies to the immediate stamped sender,
-not an oldest ancestor. `settleParentTask` stays the board-row close and is
+not an oldest ancestor. `settleParentTask` stays the board task's close and is
 not this path.
 
 Acceptance happens at enqueue time; when the run starts, `runAction` re-reads
@@ -255,7 +255,7 @@ host-owned data, and the framework can't persist a block. If you need a durable
 scheduled action to survive a crash, make it static — its handler is reachable
 from a stable coordinate.
 
-Persisted dynamic-schedule rows store a `kind` discriminator string (not a
+Persisted dynamic schedules store a `kind` discriminator string (not a
 block, which isn't serializable). The resolver maps `kind → block` through its
 `blocks` map. The discriminator is enough to re-dispatch a fresh run on the
 next tick; it is not enough to resume an in-flight durable run, which needs the

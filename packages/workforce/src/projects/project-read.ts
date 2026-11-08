@@ -26,9 +26,9 @@
 
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { projectAddressSchema, projectRowSchema, projectVisibilitySchema, type ProjectAddress, type ProjectVisibility } from "./collections";
+import { projectAddressSchema, projectResourceStateSchema, projectVisibilitySchema, type ProjectAddress, type ProjectVisibility } from "./collections";
 import { isMember } from "./membership-gate";
-import { projectAt, projectRowsAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
+import { projectAt, projectResourcesAt, PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { projectProgress } from "./project-progress";
 import {
   WORKSTREAM_RESOURCES,
@@ -56,7 +56,7 @@ export const projectProgressSchema = z.object({
 
 /** What reading a project returns. */
 export const readProjectOutputSchema = z.object({
-  project: projectRowSchema,
+  project: projectResourceStateSchema,
   visibility: projectVisibilitySchema,
   /** Every workstream's entry, oldest first. */
   workstreams: z.array(workstreamViewSchema),
@@ -91,7 +91,7 @@ export async function readProjectAt(ctx: ResourcesContext, project: ProjectAddre
   const row = await projectAt(ctx, project);
   const workstreams = await projectEntries(ctx, project);
   return {
-    project: projectRowSchema.parse(row.state),
+    project: projectResourceStateSchema.parse(row.state),
     visibility: project.visibility,
     workstreams,
     progress: projectProgress(workstreams, Date.now())
@@ -136,10 +136,10 @@ export async function listProjectsOf(ctx: ResourcesContext, userId: string | und
   const projects: ListProjectsOutput["projects"] = [];
   for (const visibility of ["shared", "private"] as const satisfies readonly ProjectVisibility[]) {
     const listed: ListProjectsOutput["projects"] = [];
-    for (const ref of await projectRowsAt(ctx, visibility).list()) {
+    for (const ref of await projectResourcesAt(ctx, visibility).list()) {
       // A row that lost its id, title or owner is no project anyone can address: left
       // out of the list, where `readProjectAt` refuses the one address loudly.
-      const parsed = projectRowSchema.safeParse(ref.state);
+      const parsed = projectResourceStateSchema.safeParse(ref.state);
       if (!parsed.success) continue;
       const row = parsed.data;
       if (visibility === "shared" && !isMember(row, userId)) continue;

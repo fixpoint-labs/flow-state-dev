@@ -1,12 +1,13 @@
+// FIX-1989, FIX-2238; FIX-2240; FIX-2310; FIX-2318; FIX-2578.
 /**
- * How a worker hears a message (FIX-1989, FIX-2238): the `onMessageReceived`
+ * How a worker hears a message: the `onMessageReceived`
  * internal entry, on every worker flow. The hire refuses a worker flow
  * without it ({@link messageReceivedProblem}).
  *
  * The payload names a message id and nothing else: the row in the user's
  * message log is read here, so the sender, the text and the budget are what
  * the sending turn's server code wrote. The entry takes the message on its
- * row before anything lands (`delivery.ts`, FIX-2240), so a copy sent again,
+ * row before anything lands (`delivery.ts`), so a copy sent again,
  * at any distance, wakes the recipient once, and a copy that finds the taker
  * ended without delivering takes over. Then the message lands as two items: a line the model reads
  * in its history, and a client-only `workforce:received` component carrying
@@ -20,11 +21,11 @@
  * Nothing is relayed: a woken worker that wants to answer sends one with
  * `sendMessage` and `inReplyTo`, and one that ends in plain text answers no one.
  *
- * Except a message that asks for a reply (FIX-2310, `./owed-replies`): the turn
+ * Except a message that asks for a reply (`./owed-replies`): the turn
  * owes one answer. When the turn ends without one, the framework sends its
  * final text back through that same `sendMessage`, as this worker, or a "no
  * answer" when the turn said nothing, threw, or runs no turn. A sender that
- * waits for it (`wait: true`, FIX-2318) parks on this request, and reads that
+ * waits for it (`wait: true`) parks on this request, and reads that
  * answer off the log once the request ends; the turn reads the same prompt
  * either way.
  *
@@ -32,7 +33,9 @@
  * a message; one that acted on nothing (a copy) outputs no reply, and an
  * entry with no turn outputs `{ turnless: true }`. Between the take and the
  * items, a message to a session stopped for the user, or to a task held on
- * one, queues until nothing holds it (`./queue`).
+ * one, queues until nothing holds it (`./queue`). A message to a task session
+ * whose task waits on something outside the board (an `external` hold) answers that wait instead, and runs no turn here: the task's owed
+ * turn reads it.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
@@ -46,7 +49,7 @@ import { carriesPass, markDelivered, storedEmitters, takeMessage } from "./deliv
 import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "./keys";
 import { messageLimitsOf } from "./message-limits";
 import { MAX_MESSAGE_CHARS, messageChainsOf, workerMessagesResources } from "./message-log";
-import { queueBehindUser } from "./queue";
+import { answerExternalWait, queueBehindUser } from "./queue";
 import { messageHearingOf, RECEIVED_MARK, type MessageHearing, type ReceivedMark } from "./received-mark";
 import { sendQuestionToFiler } from "./midway-question";
 import { wakeHeldWait } from "./wait-for-reply";
@@ -61,8 +64,9 @@ export const messageReceivedSchema = z.object({
   /** The worker that sent it, as the server recorded it. */
   from: z.string(),
   text: z.string(),
+  // FIX-2310.
   /**
-   * Whether the sender asked for a reply (FIX-2310), waiting for it or not:
+   * Whether the sender asked for a reply, waiting for it or not:
    * the turn's final text goes back to it as this worker's answer, unless the
    * turn answers with `sendMessage` itself. Absent reads as no.
    */
@@ -147,7 +151,7 @@ const messageReceivedOutputSchema = z.object({ reply: z.string().optional(), tur
 
 /**
  * Build the `onMessageReceived` entry for a flow: spread it under
- * `internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ ... }) } }`.
+ * `internal: { actions: { onMessageReceived: messageReceivedEntry({ ... }) } }`.
  * The session factory's `entries(turn)` spreads it already.
  *
  * @param options.turn The flow's turn for a message ({@link MessageReceived}
@@ -170,25 +174,39 @@ export function messageReceivedEntry(options: {
     execute: async (input, ctx): Promise<Heard> => {
       // Delivered here, and only here (the row says which session it is
       // for), and only by the request that took it.
-      const row = await takeMessage(ctx as never, input.messageId);
+      const row = await takeMessage(ctx, input.messageId);
       if (row === undefined) return { act: "none" };
       // The answer a wait in this session still holds (FIX-2318): it wakes that wait, as the
       // wait's result, and lands as nothing here. Not woken yet: left taken by this request,
       // which ends, so the answer's sender's pass sends it again.
-      const wake = await wakeHeldWait(ctx as never, row);
+      const wake = await wakeHeldWait(ctx, row);
       if (wake === "retry") return { act: "none" };
       if (wake === "woken") {
-        await markDelivered(ctx as never, row.id);
+        await markDelivered(ctx, row.id);
+        return { act: "none" };
+      }
+      // News for a task waiting on something outside the board (FIX-2578): it answers that
+      // wait, as the sender's words, and the task's owed turn reads it. Only the item an app
+      // draws lands here: no turn of this session runs on it.
+      if (await answerExternalWait(ctx, row)) {
+        const emit = storedEmitters(ctx);
+        await emit.component(
+          RECEIVED_MESSAGE_COMPONENT,
+          { id: row.id, from: row.from, text: row.text, ...(row.inReplyTo === undefined ? {} : { inReplyTo: row.inReplyTo }), budget: 0 },
+          { agentName: row.from, itemVisibility: { client: true, history: false } }
+        );
+        await emit.stored();
+        await markDelivered(ctx, row.id);
         return { act: "none" };
       }
       // Queued behind the user's stop, before anything lands. Not admitted:
       // this request ends with the take, and a resend takes it over.
-      if ((await queueBehindUser(ctx as never, row)) === "not_admitted") return { act: "none" };
-      await startTurnAtHop(ctx as never, row.hop, row.chain ?? null);
+      if ((await queueBehindUser(ctx, row)) === "not_admitted") return { act: "none" };
+      await startTurnAtHop(ctx, row.hop, row.chain ?? null);
       const { budget } = messageLimitsOf(options.installation);
       // What is left is the chain's, not the row's: sends since this one (a
       // branch, or a queue behind a busy recipient) have spent it too.
-      const chainSent = row.chain == null ? 0 : ((await messageChainsOf(ctx as never).getOptional(row.chain))?.state.sent.length ?? 0);
+      const chainSent = row.chain == null ? 0 : ((await messageChainsOf(ctx).getOptional(row.chain))?.state.sent.length ?? 0);
       const received: MessageReceived = {
         id: row.id,
         from: row.from,
@@ -199,7 +217,7 @@ export function messageReceivedEntry(options: {
       };
       // The two items, in one place, after the take: the line the model
       // reads, and the item an app draws.
-      const emit = storedEmitters(ctx as never);
+      const emit = storedEmitters(ctx);
       // A `user` line: the sender's words, which the recipient's model must
       // not read as something it already said.
       await emit.message(`From ${row.from}: ${row.text}`, { role: "user", agentName: row.from, itemVisibility: { client: false, history: true } });
@@ -222,8 +240,8 @@ export function messageReceivedEntry(options: {
       // A reply-requested message owes an answer from here (FIX-2310), owed
       // before it reads delivered: the pass answers it if this request dies
       // before its end does, even right after the delivery.
-      if (wantsReply(row) && carriesPass(options.installation, options.flowKind)) await oweReply(ctx as never, row.id);
-      await markDelivered(ctx as never, row.id);
+      if (wantsReply(row) && carriesPass(options.installation, options.flowKind)) await oweReply(ctx, row.id);
+      await markDelivered(ctx, row.id);
       await ctx.request.atomicState(() => ({
         [RECEIVED_LANDED_STATE]: true,
         ...(wantsReply(row) ? { [RECEIVED_REPLY_OWED_STATE]: row.id } : {})
@@ -232,8 +250,9 @@ export function messageReceivedEntry(options: {
     }
   });
 
+  // FIX-2310.
   /**
-   * Send the reply owed to the message this request landed, if it owes one (FIX-2310): `text`,
+   * Send the reply owed to the message this request landed, if it owes one: `text`,
    * or "no answer" for `reason` when it is blank. A turn that ran and gave
    * none is logged: the sender hears only that nothing came back.
    */
@@ -261,7 +280,7 @@ export function messageReceivedEntry(options: {
       if (state?.[RECEIVED_LANDED_STATE] !== true) return {};
       // A turnless landing answers blank: "no answer".
       const reply = options.turn === undefined ? "" : replyTextOf(input);
-      await replyOwedHere(ctx as never, reply, options.turn === undefined ? "turnless" : "silent");
+      await replyOwedHere(ctx, reply, options.turn === undefined ? "turnless" : "silent");
       // Landed, and nothing ran on it: no reply, not an empty one.
       if (options.turn === undefined) return { turnless: true as const };
       return { reply: reply.slice(0, MAX_MESSAGE_CHARS) };
@@ -289,7 +308,7 @@ export function messageReceivedEntry(options: {
     requestStateSchema: messageTurnStateSchema,
     resources: { ...workerMessagesResources },
     execute: async (error, ctx) => {
-      await replyOwedHere(ctx as never, "", "failed");
+      await replyOwedHere(ctx, "", "failed");
       throw error;
     }
   });

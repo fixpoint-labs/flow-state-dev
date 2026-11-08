@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * The worker reference wall — which references a worker can reach, derived from
  * where it and they sit in the tree, and narrowed by a `WORKER.md`'s
@@ -26,7 +27,7 @@
  * override: one would make the wall optional again, which is the hole this
  * exists to close. A document that should reach more people moves up the tree.
  *
- * **A worker file selects, it never defines** (BP-031). Both inputs the wall is
+ * **A worker file selects, it never defines**. Both inputs the wall is
  * computed from — the worker's id and each reference's ref — are minted by the
  * loader from the path on disk, never taken from anything a worker wrote. A
  * `references:` entry naming something outside the wall is refused, not
@@ -125,6 +126,7 @@ export function placeOfReference(ref: string): TreePlace | undefined {
   return undefined;
 }
 
+// BP-031.
 /**
  * Where the reference behind one of a worker flow's accessor keys actually sits.
  *
@@ -134,7 +136,7 @@ export function placeOfReference(ref: string): TreePlace | undefined {
  * read a single-segment alias as an org document and hand it to every worker in
  * the company, which is the exact widening the wall exists to stop. So the
  * place comes from the definition's own minted `ref`, which the loader derived
- * from the path on disk, and never from the key an app chose (BP-031).
+ * from the path on disk, and never from the key an app chose.
  *
  * `undefined` when no minted ref can be read, which the wall treats as
  * unreachable. That is the safer reading of a definition this module cannot

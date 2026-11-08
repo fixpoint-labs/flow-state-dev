@@ -1,5 +1,5 @@
 /**
- * Emission: drives `ctx.response.emit` from {@link TranslatedEvent}s.
+ * Emission: drives `ctx.response.emit` from {@link CodexTranslatedEvent}s.
  *
  * Each translated event becomes canonical FSD item lifecycle emissions, with
  * base fields derived from `_blockIdentity` and a fresh `itemIndex` per item —
@@ -14,7 +14,7 @@
  * pair for tool calls, which is the only correlation Codex's stream has.
  */
 import { itemScope, type BlockContext } from "@flow-state-dev/core/types";
-import type { TranslatedEvent } from "./types";
+import type { CodexTranslatedEvent } from "./types";
 
 /** Provenance derived once per run and stamped on every emitted item. */
 interface EmitProvenance {
@@ -100,14 +100,14 @@ function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) 
 }
 
 /**
- * Apply one {@link TranslatedEvent} to the response stream, mutating `state`.
+ * Apply one {@link CodexTranslatedEvent} to the response stream, mutating `state`.
  *
  * The events that carry data to the HANDLE rather than to the stream —
  * `thread_started`, `turn_completed`, `turn_failed` — are no-ops here; the
  * block reads them off the same translated event.
  */
 export async function emitTranslatedEvent(
-  event: TranslatedEvent,
+  event: CodexTranslatedEvent,
   ctx: BlockContext,
   state: EmitState,
   blockName: string,
@@ -186,7 +186,7 @@ async function emitText(
 
 /** Open a `tool_output` item on a tool call. */
 async function emitToolCall(
-  event: Extract<TranslatedEvent, { kind: "tool_call" }>,
+  event: Extract<CodexTranslatedEvent, { kind: "tool_call" }>,
   ctx: BlockContext,
   state: EmitState,
   provenance: EmitProvenance,
@@ -224,7 +224,7 @@ async function emitToolCall(
  * consumer tracking added-then-done would reference an item it never saw.
  */
 async function emitToolResult(
-  event: Extract<TranslatedEvent, { kind: "tool_result" }>,
+  event: Extract<CodexTranslatedEvent, { kind: "tool_result" }>,
   ctx: BlockContext,
   state: EmitState,
   provenance: EmitProvenance,

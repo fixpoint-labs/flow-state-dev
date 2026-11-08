@@ -1,5 +1,6 @@
+// FIX-1983.
 /**
- * The Error Reporter's report rows and its one intake (FIX-1983).
+ * The Error Reporter's report rows and its one intake.
  *
  * Keys, all under one collection:
  * - `fp-<fingerprint>`: one report per fingerprint;
@@ -115,8 +116,8 @@ const stormEntrySchema = z.object({
   occurrence: occurrenceIdsSchema
 });
 
-/** A report row. */
-const reportRowSchema = z.object({
+/** A report, as stored. */
+const reportResourceStateSchema = z.object({
   id: z.string(),
   kind: z.enum(["report", "storm"]),
   /** What made it: a failed request, a task, a user's report, or a burst. */
@@ -176,7 +177,7 @@ const reportRowSchema = z.object({
   sessionId: z.string().optional(),
   storm: z.object({ windowStart: z.number(), entries: z.array(stormEntrySchema) }).optional()
 });
-export type ReportRow = z.infer<typeof reportRowSchema>;
+export type ReportResourceState = z.infer<typeof reportResourceStateSchema>;
 
 const capSchema = z.object({ windowStart: z.number(), fingerprints: z.array(z.string()) });
 const heldSchema = z.object({ taskId: z.string(), requests: z.array(occurrenceIdsSchema.extend({ parts: z.unknown() })) });
@@ -242,23 +243,23 @@ const taskKey = (taskId: string) => `task-${encodeUserSegment(taskId)}`;
 const CAP_KEY = "cap";
 
 /** A stored row, parsed; `undefined` for an empty or malformed one. */
-function parseRow(state: unknown): ReportRow | undefined {
-  const parsed = reportRowSchema.safeParse(state);
+function parseRow(state: unknown): ReportResourceState | undefined {
+  const parsed = reportResourceStateSchema.safeParse(state);
   return parsed.success ? parsed.data : undefined;
 }
 
 /** Read one report row by its key. */
-export async function readReport(reports: ResourceCollectionRef, reportId: string): Promise<ReportRow | undefined> {
+export async function readReport(reports: ResourceCollectionRef, reportId: string): Promise<ReportResourceState | undefined> {
   const ref = await reports.getOptional(reportId);
   return ref === undefined ? undefined : parseRow(ref.state);
 }
 
 /** Every report row (storms included), newest seen first. */
-export async function listReports(reports: ResourceCollectionRef): Promise<ReportRow[]> {
+export async function listReports(reports: ResourceCollectionRef): Promise<ReportResourceState[]> {
   const refs = await reports.list();
   return refs
     .map((ref) => parseRow(ref.state))
-    .filter((row): row is ReportRow => row !== undefined)
+    .filter((row): row is ReportResourceState => row !== undefined)
     .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
 }
 
@@ -270,8 +271,8 @@ export async function listReports(reports: ResourceCollectionRef): Promise<Repor
 export async function updateReport(
   reports: ResourceCollectionRef,
   reportId: string,
-  change: (row: ReportRow) => ReportRow | undefined
-): Promise<ReportRow | undefined> {
+  change: (row: ReportResourceState) => ReportResourceState | undefined
+): Promise<ReportResourceState | undefined> {
   const ref = await reports.getOptional(reportId);
   if (ref === undefined) return undefined;
   return updateStateWith(ref as never, (current: unknown) => {
@@ -282,7 +283,7 @@ export async function updateReport(
 }
 
 /** Whether a row still takes repeats, or a repeat now starts a new report. */
-function isLive(row: ReportRow, now: number): boolean {
+function isLive(row: ReportResourceState, now: number): boolean {
   if (row.status === "closed") return false;
   if (row.status === "dismissed") return row.dismissedUntil !== undefined && now < row.dismissedUntil;
   return true;
@@ -365,10 +366,10 @@ export async function intakeOccurrence(
 
   // What this occurrence is fingerprinted by, and what its new report would carry.
   let parts: FingerprintParts;
-  let source: ReportRow["source"];
-  let task: ReportRow["task"];
+  let source: ReportResourceState["source"];
+  let task: ReportResourceState["task"];
   let description: string | undefined;
-  let named: ReportRow["named"];
+  let named: ReportResourceState["named"];
   switch (occurrence.kind) {
     case "request":
       parts = requestParts(occurrence);
@@ -411,7 +412,7 @@ export async function intakeOccurrence(
         const existing = parseRow(current);
         // Another intake made it first: this is a repeat after all.
         if (existing !== undefined && isLive(existing, now)) return { state: current as never, result: false };
-        const row: ReportRow = {
+        const row: ReportResourceState = {
           id: key,
           kind: "report",
           source,
@@ -498,7 +499,7 @@ async function listOnStorm(
         ? { ...entries[at]!, count: entries[at]!.count + 1, lastAt: o.now, occurrence: o.ids }
         : { fingerprint: o.fingerprint, count: 1, flowKind: o.parts.flowKind, actionName: o.parts.actionName, message: o.parts.message, lastAt: o.now, occurrence: o.ids };
     const nextEntries = at >= 0 ? entries.map((e, i) => (i === at ? entry : e)) : [...entries, entry];
-    const row: ReportRow = existing ?? {
+    const row: ReportResourceState = existing ?? {
       id: sKey,
       kind: "storm",
       source: "storm",
@@ -513,7 +514,7 @@ async function listOnStorm(
       runs: 0
     };
     const commentOwed = commentOwedOn(row, o.now, o.limits);
-    const next: ReportRow = {
+    const next: ReportResourceState = {
       ...row,
       count: row.count + 1,
       lastSeenAt: o.now,
@@ -529,7 +530,7 @@ async function listOnStorm(
 }
 
 /** Whether a repeat now owes a filed report's issue a counted comment. */
-function commentOwedOn(row: ReportRow, now: number, limits: ReportLimits): boolean {
+function commentOwedOn(row: ReportResourceState, now: number, limits: ReportLimits): boolean {
   const since = row.lastCommentAt ?? row.filedAt ?? 0;
   return row.status === "filed" && (row.commentOwed === true || now - since >= limits.commentEveryMs);
 }
@@ -570,7 +571,7 @@ async function countOn(
     if (row === undefined || !isLive(row, now)) return { state: current as never, result: undefined };
     if (seenKey !== undefined && row.seen?.includes(seenKey)) return { state: current as never, result: { commentOwed: false } };
     const commentOwed = commentOwedOn(row, now, limits);
-    const next: ReportRow = {
+    const next: ReportResourceState = {
       ...row,
       count: row.count + 1,
       lastSeenAt: now,

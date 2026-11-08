@@ -18,13 +18,13 @@
  * `tsconfig.test-d.json` compiles every `.test-d.ts` file here, and the
  * `typecheck` script runs it after the `src` pass.
  */
-import type { HarnessBlock } from "@flow-state-dev/core/types";
-import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import { codexAgent, INTERNAL_CODEX_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 
 const agent = codexAgent({
   // Never called: this file is compiled, not run. The version gate is stubbed
   // out for the same reason — a compile must not depend on what is on disk.
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "absent" }),
+  [INTERNAL_CODEX_SDK_VERSION_READER]: () => ({ kind: "absent" }),
   resolveCodexClient: () => ({
     startThread: () => {
       throw new Error("unused");

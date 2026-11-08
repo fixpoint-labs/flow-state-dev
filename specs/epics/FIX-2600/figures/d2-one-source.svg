@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D2, where the one glossary of rules lives. Chosen: in docs/contributing, with the published page reading it. Instead of: the published glossary as the source. It comes down to the first row: a contributor doc changes in the PR that coins the word, and a normal PR cannot edit apps/docs, which waits for release. Second row: the contributor glossary lists retired words and decision links, which user docs may not carry. The price: two pages named glossary, where the other option has one that the guard already counts. Locks in: GLOSSARY_TERMS moves into the contributor glossary and the published page is checked against it. Flips if user docs could change in the same PR as the code."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where does the one glossary of rules live?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">docs/contributing; the published page reads it</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">The published glossary as the source</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">CHANGES IN THE</text>
+    <text class="t-lbl" x="32" y="169">PR THAT COINS IT</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="163">+</text>
+    <text class="t-b" x="248" y="162">Yes</text>
+    <text class="t-s" x="248" y="180">a contributor doc edits with the code</text>
+    <text class="mark minus" x="592" y="163">−</text>
+    <text class="t-b" x="612" y="162">No</text>
+    <text class="t-s" x="612" y="180">a normal PR can't edit apps/docs; it waits for release</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="224">RETIRED WORDS</text>
+    <text class="t-lbl" x="32" y="237">AND DECISIONS</text>
+    <text class="mark plus" x="228" y="225">+</text>
+    <text class="t-b" x="248" y="224">Listed, with links</text>
+    <text class="t-s" x="248" y="242">what a check and an agent need</text>
+    <text class="mark minus" x="592" y="225">−</text>
+    <text class="t-b" x="612" y="224">Not allowed there</text>
+    <text class="t-s" x="612" y="242">user docs follow the outsider rule</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="282">PAGES NAMED</text>
+    <text class="t-lbl" x="32" y="295">GLOSSARY</text>
+    <text class="mark minus" x="228" y="283">−</text>
+    <text class="t-b" x="248" y="282">Two</text>
+    <text class="t-s" x="248" y="300">one for contributors, one for users</text>
+    <text class="mark plus" x="592" y="283">+</text>
+    <text class="t-b" x="612" y="282">One</text>
+    <text class="t-s" x="612" y="300">and the guard already counts its rows</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">GLOSSARY_TERMS moves into the contributor glossary</text>
+    <text class="t-s" x="32" y="387">the published page is checked against it, never read for rules</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">User docs that change in the same PR as code</text>
+    <text class="t-s" x="494" y="387">then one page could serve both readers</text>
+  </g>
+
+</svg>

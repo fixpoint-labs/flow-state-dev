@@ -6,7 +6,7 @@
  * facet write, legacy rows, reindex) are tested once, where
  * `defineFacetedCollection` lives. This file checks the example wires it up.
  */
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { describe, expect, it } from "vitest";
 import { ticketsFlow } from "../src/flow";
 import { BILLING_OPEN, OUTAGE_CLOSED, scriptedModel, storedTicket, triageOn, turn } from "./helpers";

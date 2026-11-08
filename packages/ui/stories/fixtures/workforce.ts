@@ -8,11 +8,8 @@
  * because the components fence their reads on the client's identity and a
  * fresh object every render would read as a rebuilt client.
  */
-import type {
-  FlowNavigatorProps,
-  PanelItemSource,
-  PanelRowSource,
-} from "@flow-state-dev/react";
+import type { FlowNavigatorProps } from "@flow-state-dev/react";
+import type { PanelItemSource, PanelRowSource } from "@flow-state-dev/react/workforce";
 
 type NavigatorClient = NonNullable<FlowNavigatorProps["client"]>;
 type FlowSource = Pick<NavigatorClient, "flows">;
@@ -24,18 +21,18 @@ type SessionEntry = Awaited<ReturnType<SessionSource["list"]>>[number];
 const pending = <T>(): Promise<T> => new Promise<T>(() => {});
 
 /** A collection that answers with these rows, one page. */
-export function rowsSource(rows: readonly { topic: string; clientData: unknown }[]): PanelRowSource {
-  return { resources: { listCollectionItems: async () => ({ items: [...rows] }) } };
+export function resourcesSource(rows: readonly { topic: string; clientData: unknown }[]): PanelRowSource {
+  return { resources: { listCollectionResources: async () => ({ items: [...rows] }) } };
 }
 
 /** A collection read that never answers. */
-export const loadingRowsSource: PanelRowSource = { resources: { listCollectionItems: () => pending() } };
+export const loadingResourcesSource: PanelRowSource = { resources: { listCollectionResources: () => pending() } };
 
 /** A collection read that fails with this message. */
-export function failingRowsSource(message: string): PanelRowSource {
+export function failingResourcesSource(message: string): PanelRowSource {
   return {
     resources: {
-      listCollectionItems: async () => {
+      listCollectionResources: async () => {
         throw new Error(message);
       },
     },
@@ -46,20 +43,20 @@ export function failingRowsSource(message: string): PanelRowSource {
 export function itemSource(clientData: unknown): PanelItemSource {
   return {
     resources: {
-      getCollectionItemState: async (_sessionId, _ref, topic) =>
+      getCollectionResourceState: async (_sessionId, _ref, topic) =>
         clientData === null ? null : { topic, clientData },
     },
   };
 }
 
 /** A single-item read that never answers. */
-export const loadingItemSource: PanelItemSource = { resources: { getCollectionItemState: () => pending() } };
+export const loadingItemSource: PanelItemSource = { resources: { getCollectionResourceState: () => pending() } };
 
 /** A single-item read that fails with this message. */
 export function failingItemSource(message: string): PanelItemSource {
   return {
     resources: {
-      getCollectionItemState: async () => {
+      getCollectionResourceState: async () => {
         throw new Error(message);
       },
     },
@@ -67,12 +64,12 @@ export function failingItemSource(message: string): PanelItemSource {
 }
 
 /** One roster row, as the roster collection publishes it. */
-export function rosterRow(workerId: string, flow: string, instructions: string | null = null) {
+export function rosterWorker(workerId: string, flow: string, instructions: string | null = null) {
   return { topic: workerId, clientData: { workerId, flow, instructions } };
 }
 
 /** One board row, as a board publishes it. */
-export function boardRow(
+export function boardTask(
   id: string,
   status: string,
   card: { title?: string; goal?: string; assignee?: string; error?: string } = {}

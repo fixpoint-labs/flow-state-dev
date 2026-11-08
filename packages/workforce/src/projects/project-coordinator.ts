@@ -1,5 +1,6 @@
+// FIX-1793 S5.
 /**
- * A user's project coordinator (FIX-1793 S5): a session of the standard
+ * A user's project coordinator: a session of the standard
  * coordinator worker the installation names, linked to one project when it is
  * created (its readonly `projectId`), one per user per project.
  *
@@ -195,12 +196,12 @@ export function workstreamDelegateEntry(options: {
     execute: async (input: WorkstreamDelegateChange, ctx) => {
       const record: DelegateRecord = { worker: input.worker, target: input.target };
       if (input.change === "add") {
-        const found = await workstreamOf(ctx as never, record as { worker: string; target: string });
+        const found = await workstreamOf(ctx, record as { worker: string; target: string });
         if ("problem" in found) throw new ProjectRefusedError("no-such-workstream", `${found.problem}.`);
-        const checked = await options.check(ctx as never, record.worker, "add");
+        const checked = await options.check(ctx, record.worker, "add");
         if (!checked.ok) throw new Error(checked.message);
       }
-      return { changed: await applyWorkstreamRecord(ctx.session, await options.defaults(ctx as never), input.change, record) };
+      return { changed: await applyWorkstreamRecord(ctx.session, await options.defaults(ctx), input.change, record) };
     }
   });
   return { inputSchema: workstreamDelegateChangeSchema, block };
@@ -227,9 +228,10 @@ async function applyWorkstreamRecord(
   throw new Error(outcome.message);
 }
 
+// BR-38.
 /**
  * Change one workstream's record on this session, the owner's project
- * coordinator, in this turn (BR-38): an open made from the coordinator's own
+ * coordinator, in this turn: an open made from the coordinator's own
  * turn hands the request to the workstream next, in the same turn, and a dispatch
  * into this session would land only after the turn ends. The same mutation
  * the internal entry runs, with the defaults of the worker this turn loaded;
@@ -240,7 +242,7 @@ async function applyWorkstreamRecord(
  *   reads its roster, as the coordinator's own defaults do.
  */
 export async function changeWorkstreamRecordHere(
-  ctx: CoordinatorContext & { readonly session: Parameters<typeof changeDelegates>[0] },
+  ctx: BlockContext,
   change: WorkstreamDelegateChange,
   installation: WorkerInstallation
 ): Promise<void> {
@@ -248,7 +250,7 @@ export async function changeWorkstreamRecordHere(
   const state = ctx.session.state as Readonly<Record<string, unknown>>;
   const records = state[DELEGATES_STATE] == null ? await workstreamDelegateSeed(ctx) : undefined;
   const defaults: DelegateDefaults = {
-    ...(await withRoster(installation, ctx as never, delegateDefaultsOf(config))),
+    ...(await withRoster(installation, ctx, delegateDefaultsOf(config))),
     ...(records === undefined ? {} : { records })
   };
   await applyWorkstreamRecord(

@@ -1,5 +1,6 @@
+// FIX-999.
 /**
- * The liveness enablement gate (FIX-999).
+ * The liveness enablement gate.
  *
  * The liveness verb answers "is this request still running?" by reading the
  * active request registry. Three supported configurations make that answer a
@@ -65,9 +66,10 @@ export type LivenessGateVerdict =
 const DEFAULT_HEARTBEAT_MS = 10_000;
 const DEFAULT_STALE_THRESHOLD_MS = 60_000;
 
+// FIX-2166.
 /**
  * The stale threshold a request's heartbeat can be read against, or
- * `undefined` where heartbeats can't say a request stopped (FIX-2166): they
+ * `undefined` where heartbeats can't say a request stopped: they
  * are off (`0`), or beat slower than half the threshold, so a healthy request
  * can look stale between beats. The same rule as the gate's second arm, and
  * the same defaults. Unlike the gate it reads one process's own registry

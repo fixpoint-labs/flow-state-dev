@@ -15,26 +15,26 @@ import {
   claudeCodeAgent,
   forwardSignalToController,
   runNamespace,
-  SDK_SESSION_ID_KEY,
-  SDK_AGENT_RUNS_KEY,
+  CLAUDE_CODE_SESSION_ID_KEY,
+  CLAUDE_CODE_AGENT_RUNS_KEY,
 } from "../../src/sdk/agent";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
-import { createDefaultResolveClaudeAgent } from "../../src/sdk/sdk-client";
-import { ClaudeAgentSdkNotInstalledError, ClaudeAgentRunError } from "../../src/sdk/errors";
+import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import { createDefaultResolveClaudeCodeAgent } from "../../src/sdk/sdk-client";
+import { ClaudeCodeSdkNotInstalledError, ClaudeCodeAgentRunError, ClaudeCodeAgentAbortedError } from "../../src/sdk/errors";
 import {
-  CLAUDE_SDK_SOURCE,
-  sdkAgentHandleSchema,
-  type SdkAgentHandle,
-  type SdkMessageLike,
-  type ResolveClaudeAgent,
-  type ClaudeAgentQueryOptions,
+  CLAUDE_CODE_SOURCE,
+  claudeCodeAgentHandleSchema,
+  type ClaudeCodeAgentHandle,
+  type ClaudeCodeSdkMessage,
+  type ResolveClaudeCodeAgent,
+  type ClaudeCodeQueryOptions,
 } from "../../src/sdk/types";
 
 /** Build an async-iterable scripted `query` from a fixed message list. */
 function scriptedQuery(
-  messages: SdkMessageLike[],
-  spy?: (args: { prompt: unknown; options?: ClaudeAgentQueryOptions }) => void,
-): ResolveClaudeAgent {
+  messages: ClaudeCodeSdkMessage[],
+  spy?: (args: { prompt: unknown; options?: ClaudeCodeQueryOptions }) => void,
+): ResolveClaudeCodeAgent {
   return () => ({
     query: async function* (args) {
       spy?.(args);
@@ -43,7 +43,7 @@ function scriptedQuery(
   });
 }
 
-const RESULT_OK: SdkMessageLike = {
+const RESULT_OK: ClaudeCodeSdkMessage = {
   type: "result",
   subtype: "success",
   result: "final answer",
@@ -54,7 +54,7 @@ const RESULT_OK: SdkMessageLike = {
 
 describe("claudeCodeAgent", () => {
   it("emits message, reasoning, tool_output, and container items in stream order", async () => {
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       { type: "system", subtype: "init", session_id: "sess_new" },
       {
         type: "assistant",
@@ -120,7 +120,7 @@ describe("claudeCodeAgent", () => {
   });
 
   it("coalesces partial token deltas into the final message text", async () => {
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       {
         type: "stream_event",
         event: { type: "content_block_delta", delta: { type: "text_delta", text: "Hel" } },
@@ -140,7 +140,7 @@ describe("claudeCodeAgent", () => {
       | undefined;
     expect(message?.status).toBe("completed");
     expect(message?.content[0].text).toBe("Hello");
-    expect((output as SdkAgentHandle).finalMessage).toBe("Hello");
+    expect((output as ClaudeCodeAgentHandle).finalMessage).toBe("Hello");
   });
 
   it("emits exactly ONE message item when partials precede the whole assistant message", async () => {
@@ -148,7 +148,7 @@ describe("claudeCodeAgent", () => {
     // SDK streams text deltas AND then the whole `assistant` message for the
     // same turn. The whole message must NOT produce a second item — the partial
     // stream is the single source of truth; the whole message only closes it.
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       {
         type: "stream_event",
         event: { type: "content_block_delta", delta: { type: "text_delta", text: "Hel" } },
@@ -175,7 +175,7 @@ describe("claudeCodeAgent", () => {
     // Two text turns, each as [delta, whole assistant message]. The whole
     // message of turn 1 must close turn 1's streaming item before turn 2's
     // delta opens a new one — otherwise both turns coalesce into a single item.
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       {
         type: "stream_event",
         event: { type: "content_block_delta", delta: { type: "text_delta", text: "one" } },
@@ -200,7 +200,7 @@ describe("claudeCodeAgent", () => {
   });
 
   it("emits exactly ONE message item on the partials-OFF whole-message path", async () => {
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       { type: "assistant", message: { content: [{ type: "text", text: "just one" }] } },
       RESULT_OK,
     ];
@@ -221,13 +221,13 @@ describe("claudeCodeAgent", () => {
     const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK]) });
     const { state, output } = await testBlock(block, { input: { prompt: "go" } });
 
-    expect(state.session[SDK_SESSION_ID_KEY]).toBe("sess_new");
-    const runs = state.session[SDK_AGENT_RUNS_KEY] as SdkAgentHandle[];
+    expect(state.session[CLAUDE_CODE_SESSION_ID_KEY]).toBe("sess_new");
+    const runs = state.session[CLAUDE_CODE_AGENT_RUNS_KEY] as ClaudeCodeAgentHandle[];
     expect(runs).toHaveLength(1);
     expect(runs[0].sessionId).toBe("sess_new");
 
-    const handle = output as SdkAgentHandle;
-    expect(handle.source).toBe(CLAUDE_SDK_SOURCE);
+    const handle = output as ClaudeCodeAgentHandle;
+    expect(handle.source).toBe(CLAUDE_CODE_SOURCE);
     expect(handle.status).toBe("completed");
     expect(handle.resultSubtype).toBe("success");
     expect(handle.usage).toEqual({ inputTokens: 50, outputTokens: 10 });
@@ -239,7 +239,7 @@ describe("claudeCodeAgent", () => {
     const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy) });
     await testBlock(block, {
       input: { prompt: "again" },
-      session: { state: { [SDK_SESSION_ID_KEY]: "sess_prior" } },
+      session: { state: { [CLAUDE_CODE_SESSION_ID_KEY]: "sess_prior" } },
     });
 
     expect(spy).toHaveBeenCalledTimes(1);
@@ -369,7 +369,7 @@ describe("claudeCodeAgent", () => {
         await promptHandedToSdk({ detached: true, resume: () => "sess_prev" }),
       ).toEqual(CLAUDE_CODE_PROMPT);
       expect(
-        await promptHandedToSdk({}, { [SDK_SESSION_ID_KEY]: "sess_prior" }),
+        await promptHandedToSdk({}, { [CLAUDE_CODE_SESSION_ID_KEY]: "sess_prior" }),
       ).toEqual(CLAUDE_CODE_PROMPT);
       expect(await promptHandedToSdk({ recordWork: false })).toEqual(CLAUDE_CODE_PROMPT);
       expect(await promptHandedToSdk({ recordWork: true })).toEqual(CLAUDE_CODE_PROMPT);
@@ -378,7 +378,7 @@ describe("claudeCodeAgent", () => {
         await promptHandedToSdk({ detached: true, resume: () => "sess_prev", systemPrompt: "" }),
       ).toBe("");
       expect(
-        await promptHandedToSdk({ systemPrompt: "Be terse." }, { [SDK_SESSION_ID_KEY]: "sess_prior" }),
+        await promptHandedToSdk({ systemPrompt: "Be terse." }, { [CLAUDE_CODE_SESSION_ID_KEY]: "sess_prior" }),
       ).toBe("Be terse.");
     });
   });
@@ -585,14 +585,14 @@ describe("claudeCodeAgent", () => {
 
     /** A `query` whose generator never advances past its first message, abort
      * or no abort — the fake vendor stream that never closes. */
-    function hangingQueryAfterFirstMessage(onFirstMessage: () => void): ResolveClaudeAgent {
+    function hangingQueryAfterFirstMessage(onFirstMessage: () => void): ResolveClaudeCodeAgent {
       return () => ({
         query: async function* () {
           yield {
             type: "system",
             subtype: "init",
             session_id: "sess_seen_before_abort",
-          } as SdkMessageLike;
+          } as ClaudeCodeSdkMessage;
           onFirstMessage();
           await new Promise(() => {}); // never resolves, abort or not
         },
@@ -641,6 +641,41 @@ describe("claudeCodeAgent", () => {
       expect(isAbortLike(caught)).toBe(true);
     });
 
+    // A host tells a stop from a failure with core's `isAbortLike`, whatever
+    // stopped it: harness-manager stops runs with a deadline (a TimeoutError),
+    // a plain Error for a steer, and no reason at all. The signal's own reason
+    // failed that reader for the first two, so a stopped run read as a broken
+    // one, and a harness used as a generator's tool handed the model a failed
+    // call instead of stopping it.
+    it.each([
+      ["no reason", undefined],
+      ["a timeout", new DOMException("The deadline passed.", "TimeoutError")],
+      ["a plain Error", new Error("[harness-manager] stopped for a steer")],
+    ])("throws a stop that is abort-like by core's reader for a stop with %s, naming the session to resume", async (_label, reason) => {
+      let sawFirstMessage: () => void = () => {};
+      const firstMessageSeen = new Promise<void>((resolve) => {
+        sawFirstMessage = resolve;
+      });
+      const block = claudeCodeAgent({
+        resolveClaudeAgent: hangingQueryAfterFirstMessage(() => sawFirstMessage()),
+      });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      const controller = new AbortController();
+      (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
+      await firstMessageSeen;
+      controller.abort(reason);
+      const caught = await withRaceTimeout(runPromise.then(() => null, (err: unknown) => err), 500);
+
+      expect(isAbortLike(caught)).toBe(true);
+      expect(caught).toBeInstanceOf(ClaudeCodeAgentAbortedError);
+      expect((caught as ClaudeCodeAgentAbortedError).sessionId).toBe("sess_seen_before_abort");
+      expect((caught as ClaudeCodeAgentAbortedError).reason).toBe(controller.signal.reason);
+      // The stable code a host that must branch without the class reads.
+      expect((caught as ClaudeCodeAgentAbortedError).code).toBe("CLAUDE_CODE_AGENT_ABORTED");
+    });
+
     it("still writes the session id observed before the abort into session state", async () => {
       let sawFirstMessage: () => void = () => {};
       const firstMessageSeen = new Promise<void>((resolve) => {
@@ -659,7 +694,7 @@ describe("claudeCodeAgent", () => {
       await withRaceTimeout(runPromise.catch(() => {}), 500);
 
       expect(
-        (runtime.ctx.session.state as Record<string, unknown>)[SDK_SESSION_ID_KEY],
+        (runtime.ctx.session.state as Record<string, unknown>)[CLAUDE_CODE_SESSION_ID_KEY],
       ).toBe("sess_seen_before_abort");
     });
 
@@ -674,7 +709,7 @@ describe("claudeCodeAgent", () => {
         const block = claudeCodeAgent({
           resolveClaudeAgent: () => ({
             query: async function* (args) {
-              yield { type: "system", subtype: "init", session_id: "sess_held" } as SdkMessageLike;
+              yield { type: "system", subtype: "init", session_id: "sess_held" } as ClaudeCodeSdkMessage;
               await args.options?.canUseTool?.("Bash", { command: "touch marker" }, {});
               await new Promise(() => {}); // the vendor stream never closes on its own
             },
@@ -696,10 +731,13 @@ describe("claudeCodeAgent", () => {
         return { caught, errors: runtime.getItems().filter((i) => i.type === "error") };
       }
 
-      it("leaves no error item, and still throws the stop's reason for the host to read", async () => {
+      it("leaves no error item, and still throws the stop with its reason for the host to read", async () => {
         const { caught, errors } = await runStoppedFromTheFeed("held");
         expect(errors).toEqual([]);
-        expect((caught as Error | null)?.message).toBe("[harness-session] stopped for a tool approval");
+        expect(isAbortLike(caught)).toBe(true);
+        expect(((caught as ClaudeCodeAgentAbortedError | null)?.reason as Error | undefined)?.message).toBe(
+          "[harness-session] stopped for a tool approval",
+        );
       });
 
       it("still shows the error item when the call stopped on was not held", async () => {
@@ -725,10 +763,10 @@ describe("claudeCodeAgent", () => {
         state.sawFirstMessage = new Promise<void>((resolve) => {
           sawFirst = resolve;
         });
-        const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+        const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
           query: async function* (args) {
             const signal = args.options!.abortController!.signal;
-            yield { type: "system", subtype: "init", session_id: "sess_early" } as SdkMessageLike;
+            yield { type: "system", subtype: "init", session_id: "sess_early" } as ClaudeCodeSdkMessage;
             sawFirst();
             await new Promise<void>((resolve) => {
               const exitLater = () =>
@@ -768,7 +806,7 @@ describe("claudeCodeAgent", () => {
         // The id the host will resume from is persisted, and by the time the
         // block hands control back the vendor has finished writing it.
         expect(
-          (runtime.ctx.session.state as Record<string, unknown>)[SDK_SESSION_ID_KEY],
+          (runtime.ctx.session.state as Record<string, unknown>)[CLAUDE_CODE_SESSION_ID_KEY],
         ).toBe("sess_early");
         expect(vendor.state.transcriptComplete).toBe(true);
       });
@@ -785,7 +823,7 @@ describe("claudeCodeAgent", () => {
         const sawFirstMessage = new Promise<void>((resolve) => {
           sawFirst = resolve;
         });
-        const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+        const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
           query: async function* (args) {
             const opts = args.options!;
             const spawnOptions = {
@@ -809,7 +847,7 @@ describe("claudeCodeAgent", () => {
               if (signal.aborted) resolve();
               else signal.addEventListener("abort", () => resolve(), { once: true });
             });
-            yield { type: "system", subtype: "init", session_id: "sess_early" } as SdkMessageLike;
+            yield { type: "system", subtype: "init", session_id: "sess_early" } as ClaudeCodeSdkMessage;
             sawFirst();
             await aborted;
             child.stdin!.end(); // what the SDK's close() does first
@@ -862,7 +900,7 @@ describe("claudeCodeAgent", () => {
 
     it("rejects immediately when ctx.signal is already aborted before the first message", async () => {
       let neverCalled = true;
-      const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+      const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
         query: async function* () {
           neverCalled = false;
           await new Promise(() => {}); // never resolves
@@ -898,7 +936,7 @@ describe("claudeCodeAgent", () => {
       const handle = (await block.config.execute?.(
         { prompt: "go" },
         runtime.ctx as never,
-      )) as SdkAgentHandle;
+      )) as ClaudeCodeAgentHandle;
       expect(handle.status).toBe("completed");
 
       const onUnhandledRejection = vi.fn();
@@ -925,19 +963,19 @@ describe("claudeCodeAgent", () => {
       const canYieldSecondMessage = new Promise<void>((resolve) => {
         releaseSecondMessage = resolve;
       });
-      const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+      const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
         query: async function* () {
           yield {
             type: "system",
             subtype: "init",
             session_id: "sess_seen_before_abort",
-          } as SdkMessageLike;
+          } as ClaudeCodeSdkMessage;
           sawFirstMessage();
           await canYieldSecondMessage;
           yield {
             type: "assistant",
             message: { content: [{ type: "text", text: "should never surface" }] },
-          } as SdkMessageLike;
+          } as ClaudeCodeSdkMessage;
           await new Promise(() => {}); // then hangs forever
         },
       });
@@ -976,7 +1014,7 @@ describe("claudeCodeAgent", () => {
       // `ctx.response.emit` calls (`item.added` → `content.added` →
       // `content.delta`) inside ONE `emitTranslatedEvent` call — held open
       // here by intercepting the FIRST `emit` so the abort fires mid-write.
-      const messages: SdkMessageLike[] = [
+      const messages: ClaudeCodeSdkMessage[] = [
         {
           type: "stream_event",
           event: { type: "content_block_delta", delta: { type: "text_delta", text: "Hel" } },
@@ -1053,16 +1091,16 @@ describe("claudeCodeAgent", () => {
       expect(events.slice(doneIndex + 1).some((e) => e.type === "content.delta")).toBe(false);
     });
 
-    it("classifies the abort branch by which racer won, not by the reason's error shape — a TimeoutError reason still gets the in-flight-write wait and an unwrapped rethrow", async () => {
+    it("classifies the abort branch by which racer won, not by the reason's error shape — a TimeoutError reason still gets the in-flight-write wait and a stop error", async () => {
       // A caller-supplied `AbortSignal.timeout(...)` rejects with a
       // `TimeoutError` DOMException, which `isAbortLike` does not recognize
       // (it only matches `AbortError`-shaped reasons). Deciding the abort
       // branch from `isAbortLike(err)` therefore misses this signal
       // entirely — skipping the in-flight-write wait and wrapping the
-      // reason as `ClaudeAgentRunError` instead of handing it back
-      // unwrapped. The branch must be decided by which racer won
+      // reason as `ClaudeCodeAgentRunError` instead of throwing a stop. The
+      // branch must be decided by which racer won
       // (`ctx.signal.aborted`), never by the reason's shape.
-      const messages: SdkMessageLike[] = [
+      const messages: ClaudeCodeSdkMessage[] = [
         {
           type: "stream_event",
           event: { type: "content_block_delta", delta: { type: "text_delta", text: "Hel" } },
@@ -1111,12 +1149,12 @@ describe("claudeCodeAgent", () => {
         500,
       );
 
-      // Rethrown unwrapped: the caller gets its own TimeoutError back,
-      // never a ClaudeAgentRunError — and never mind that isAbortLike
-      // doesn't recognize it.
-      expect(caught).toBe(timeoutReason);
-      expect(caught).not.toBeInstanceOf(ClaudeAgentRunError);
-      expect(isAbortLike(caught)).toBe(false);
+      // A stop, never a ClaudeCodeAgentRunError: abort-like to core's reader
+      // though the reason is a TimeoutError, with the caller's own reason on it.
+      expect(caught).toBeInstanceOf(ClaudeCodeAgentAbortedError);
+      expect(caught).not.toBeInstanceOf(ClaudeCodeAgentRunError);
+      expect((caught as ClaudeCodeAgentAbortedError).reason).toBe(timeoutReason);
+      expect(isAbortLike(caught)).toBe(true);
 
       const messageItems = runtime.getItems().filter((i) => i.type === "message") as Array<{
         status: string;
@@ -1129,7 +1167,7 @@ describe("claudeCodeAgent", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(0);
-      const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+      const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
         query: async function* () {
           vi.setSystemTime((5 * 60 + 24) * 1000);
           yield RESULT_OK;
@@ -1144,7 +1182,7 @@ describe("claudeCodeAgent", () => {
   });
 
   it("says Claude Code is starting before the SDK has said anything", async () => {
-    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+    const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
       query: async function* () {
         yield RESULT_OK;
       },
@@ -1155,9 +1193,9 @@ describe("claudeCodeAgent", () => {
   });
 
   it("clears the starting line once the SDK speaks, so it does not sit beside the answer", async () => {
-    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+    const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
       query: async function* () {
-        yield { type: "assistant", message: { content: [{ type: "text", text: "hi" }] } } as SdkMessageLike;
+        yield { type: "assistant", message: { content: [{ type: "text", text: "hi" }] } } as ClaudeCodeSdkMessage;
         yield RESULT_OK;
       },
     });
@@ -1170,8 +1208,8 @@ describe("claudeCodeAgent", () => {
 
   it("routes onToolApproval deny onto canUseTool and emits a status item", async () => {
     let decision: { behavior: string; message?: string } | undefined;
-    const messages: SdkMessageLike[] = [RESULT_OK];
-    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+    const messages: ClaudeCodeSdkMessage[] = [RESULT_OK];
+    const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
       query: async function* (args) {
         // Exercise the canUseTool adapter the block built.
         decision = await args.options?.canUseTool?.("Bash", { command: "rm -rf /" }, {});
@@ -1197,7 +1235,7 @@ describe("claudeCodeAgent", () => {
     // stops the run and resumes its session after the answer). The SDK must
     // not run it, and the turn must stop rather than go on without it.
     let decision: { behavior: string; message?: string; interrupt?: boolean } | undefined;
-    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+    const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
       query: async function* (args) {
         decision = await args.options?.canUseTool?.("Bash", { command: "touch marker" }, {});
         yield RESULT_OK;
@@ -1223,7 +1261,7 @@ describe("claudeCodeAgent", () => {
     // twice must yield TWO durable (non-transient) decision items — the audit
     // trail must replay, and emit.status's same-string dedupe must not swallow
     // the second identical approval.
-    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+    const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
       query: async function* (args) {
         const extra = { signal: new AbortController().signal };
         await args.options?.canUseTool?.("Bash", { command: "ls" }, extra);
@@ -1252,7 +1290,7 @@ describe("claudeCodeAgent", () => {
     // A Task/Agent spawn opens a container; the sub-agent's own assistant/tool
     // messages carry parent_tool_use_id = the task's tool_use id. Those inner
     // items must be owned by (nested under) the container, not top-level peers.
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       {
         type: "assistant",
         message: {
@@ -1315,30 +1353,30 @@ describe("claudeCodeAgent", () => {
   });
 
   it("returns an errored handle and an error item (no throw) on error_max_turns", async () => {
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       { type: "result", subtype: "error_max_turns", result: "too many turns", session_id: "sess_e" },
     ];
     const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) });
     const { output, error, items } = await testBlock(block, { input: { prompt: "loop" } });
 
     expect(error).toBeNull();
-    const handle = output as SdkAgentHandle;
+    const handle = output as ClaudeCodeAgentHandle;
     expect(handle.status).toBe("errored");
     expect(handle.resultSubtype).toBe("error_max_turns");
     expect(items.some((i) => i.type === "error")).toBe(true);
   });
 
-  it("wraps a mid-stream SDK throw in ClaudeAgentRunError and rethrows", async () => {
-    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+  it("wraps a mid-stream SDK throw in ClaudeCodeAgentRunError and rethrows", async () => {
+    const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
       query: async function* () {
-        yield { type: "system", subtype: "init" } as SdkMessageLike;
+        yield { type: "system", subtype: "init" } as ClaudeCodeSdkMessage;
         throw new Error("stream exploded");
       },
     });
     const block = claudeCodeAgent({ resolveClaudeAgent });
     const { error, items } = await testBlock(block, { input: { prompt: "boom" } });
 
-    expect(error?.cause).toBeInstanceOf(ClaudeAgentRunError);
+    expect(error?.cause).toBeInstanceOf(ClaudeCodeAgentRunError);
     expect(items.some((i) => i.type === "error")).toBe(true);
   });
 
@@ -1347,12 +1385,12 @@ describe("claudeCodeAgent", () => {
     const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy) });
     const { error } = await testBlock(block, { input: { prompt: "   " } });
 
-    expect(error?.cause).toBeInstanceOf(ClaudeAgentRunError);
+    expect(error?.cause).toBeInstanceOf(ClaudeCodeAgentRunError);
     expect(spy).not.toHaveBeenCalled();
   });
 
   it("marks a tool left open at stream end as incomplete", async () => {
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       {
         type: "assistant",
         message: { content: [{ type: "tool_use", id: "toolu_open", name: "Bash", input: {} }] },
@@ -1366,21 +1404,21 @@ describe("claudeCodeAgent", () => {
     expect(tool?.status).toBe("incomplete");
   });
 
-  it("the default resolver throws ClaudeAgentSdkNotInstalledError when the SDK import fails", async () => {
+  it("the default resolver throws ClaudeCodeSdkNotInstalledError when the SDK import fails", async () => {
     // Simulate an absent peer dependency by injecting a rejecting importer —
     // the resolver must surface the typed error regardless of what's installed.
-    const resolve = createDefaultResolveClaudeAgent(() =>
+    const resolve = createDefaultResolveClaudeCodeAgent(() =>
       Promise.reject(new Error("Cannot find package '@anthropic-ai/claude-agent-sdk'")),
     );
     const fakeCtx = {} as Parameters<typeof resolve>[0];
-    await expect(resolve(fakeCtx)).rejects.toBeInstanceOf(ClaudeAgentSdkNotInstalledError);
+    await expect(resolve(fakeCtx)).rejects.toBeInstanceOf(ClaudeCodeSdkNotInstalledError);
   });
 
   it("nests a sub-agent's streamed (partials) inner text under its container via ownedBy", async () => {
     // With partials ON, sub-agent inner text arrives as stream_event deltas
     // carrying parent_tool_use_id — the streamed item must still nest, not float
     // up as a top-level peer.
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       {
         type: "assistant",
         message: {
@@ -1420,19 +1458,19 @@ describe("claudeCodeAgent", () => {
   });
 
   it("reports an errored handle for an unrecognized result subtype", async () => {
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       {
         type: "result",
         subtype: "error_some_future_mode",
         errors: ["nope"],
         session_id: "s",
-      } as SdkMessageLike,
+      } as ClaudeCodeSdkMessage,
     ];
     const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) });
     const { output, error, items } = await testBlock(block, { input: { prompt: "x" } });
 
     expect(error).toBeNull();
-    expect((output as SdkAgentHandle).status).toBe("errored");
+    expect((output as ClaudeCodeAgentHandle).status).toBe("errored");
     expect(items.some((i) => i.type === "error")).toBe(true);
   });
 
@@ -1442,7 +1480,7 @@ describe("claudeCodeAgent", () => {
     // subtype alone records that run as a success: a flow downstream sees a
     // completed handle and no error item, and the failure surfaces later as
     // missing output with nothing to trace it back to.
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       {
         type: "result",
         subtype: "success",
@@ -1456,7 +1494,7 @@ describe("claudeCodeAgent", () => {
 
     // Still a return, not a throw — the same contract as every errored result.
     expect(error).toBeNull();
-    const handle = output as SdkAgentHandle;
+    const handle = output as ClaudeCodeAgentHandle;
     expect(handle.status).toBe("errored");
     expect(handle.outcome).toBe("failed");
     // The vendor's own word is kept as reported, beside the verdict.
@@ -1469,19 +1507,19 @@ describe("claudeCodeAgent", () => {
     expect(errorItem?.code).toBe("is_error");
 
     // What the session records is the failure, not a success.
-    const runs = state.session[SDK_AGENT_RUNS_KEY] as SdkAgentHandle[];
+    const runs = state.session[CLAUDE_CODE_AGENT_RUNS_KEY] as ClaudeCodeAgentHandle[];
     expect(runs.at(-1)).toMatchObject({ status: "errored", outcome: "failed" });
   });
 
   it("keeps a success result with is_error: false a completed run", async () => {
     // The other side of the line above: the flag, not its presence, decides.
     const block = claudeCodeAgent({
-      resolveClaudeAgent: scriptedQuery([{ ...RESULT_OK, is_error: false } as SdkMessageLike]),
+      resolveClaudeAgent: scriptedQuery([{ ...RESULT_OK, is_error: false } as ClaudeCodeSdkMessage]),
     });
     const { output, items } = await testBlock(block, { input: { prompt: "x" } });
 
-    expect((output as SdkAgentHandle).status).toBe("completed");
-    expect((output as SdkAgentHandle).outcome).toBe("finished");
+    expect((output as ClaudeCodeAgentHandle).status).toBe("completed");
+    expect((output as ClaudeCodeAgentHandle).outcome).toBe("finished");
     expect(items.some((i) => i.type === "error")).toBe(false);
   });
 
@@ -1512,7 +1550,7 @@ describe("claudeCodeAgent — task attribution", () => {
   // scripted SDK stream, so every emit site the stream reaches is covered, not
   // just the ones a per-site test happens to name.
   it("stamps the task's id on every item of a run, in the state each item settles in", async () => {
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       { type: "system", subtype: "init", session_id: "sess_task" },
       { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "plan" } } },
       { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "work" } } },
@@ -1576,7 +1614,7 @@ describe("claudeCodeAgent — inside an owned container", () => {
   // Driven through the real block inside a real sequencer that declares a
   // container, so the owner comes from the runtime, not a hand-built identity.
   it("stamps the container's owner on every top-level item and sub-agent box, and the sub-agent's on its own items", async () => {
-    const messages: SdkMessageLike[] = [
+    const messages: ClaudeCodeSdkMessage[] = [
       { type: "system", subtype: "init", session_id: "sess_owned" },
       {
         type: "assistant",
@@ -1682,7 +1720,7 @@ describe("claudeCodeAgent — detached", () => {
     });
     await testBlock(block, {
       input: { prompt: "go" },
-      session: { state: { [SDK_SESSION_ID_KEY]: "sess_prior" } },
+      session: { state: { [CLAUDE_CODE_SESSION_ID_KEY]: "sess_prior" } },
     });
     return spy.mock.calls[0][0].options?.resume;
   }
@@ -1720,11 +1758,11 @@ describe("claudeCodeAgent — detached", () => {
     const { state, output, error } = await testBlock(block, { input: { prompt: "go" } });
 
     expect(error).toBeNull();
-    expect(state.session[SDK_SESSION_ID_KEY]).toBeUndefined();
-    expect(state.session[SDK_AGENT_RUNS_KEY]).toBeUndefined();
+    expect(state.session[CLAUDE_CODE_SESSION_ID_KEY]).toBeUndefined();
+    expect(state.session[CLAUDE_CODE_AGENT_RUNS_KEY]).toBeUndefined();
     // The run still happened and still reports what it observed — the handle is
     // the return value, which is a different thing from persisted state.
-    expect((output as SdkAgentHandle).sessionId).toBe("sess_new");
+    expect((output as ClaudeCodeAgentHandle).sessionId).toBe("sess_new");
   });
 
   it("writes session state when `detached: false`", async () => {
@@ -1737,8 +1775,8 @@ describe("claudeCodeAgent — detached", () => {
     const { state, error } = await testBlock(block, { input: { prompt: "go" } });
 
     expect(error).toBeNull();
-    expect(state.session[SDK_SESSION_ID_KEY]).toBe("sess_new");
-    expect(state.session[SDK_AGENT_RUNS_KEY]).toHaveLength(1);
+    expect(state.session[CLAUDE_CODE_SESSION_ID_KEY]).toBe("sess_new");
+    expect(state.session[CLAUDE_CODE_AGENT_RUNS_KEY]).toHaveLength(1);
   });
 });
 
@@ -1758,7 +1796,7 @@ describe("claudeCodeAgent — detached", () => {
  */
 describe("claudeCodeAgent — resume and onSession", () => {
   /** A run that names ONE session on the init message and keeps naming it. */
-  const NAMES_THEN_FINISHES: SdkMessageLike[] = [
+  const NAMES_THEN_FINISHES: ClaudeCodeSdkMessage[] = [
     { type: "system", subtype: "init", session_id: "sess_named" },
     { ...RESULT_OK, session_id: "sess_named" },
   ];
@@ -1812,7 +1850,7 @@ describe("claudeCodeAgent — resume and onSession", () => {
     });
     await testBlock(block, {
       input: { prompt: "go" },
-      session: { state: { [SDK_SESSION_ID_KEY]: "sess_prior" } },
+      session: { state: { [CLAUDE_CODE_SESSION_ID_KEY]: "sess_prior" } },
     });
 
     expect(resolve).not.toHaveBeenCalled();
@@ -1868,15 +1906,11 @@ describe("claudeCodeAgent — resume and onSession", () => {
 
     const { error } = await testBlock(block, {
       input: { prompt: "go" },
-      // @ts-expect-error — source bug FIX-1317: testBlock takes no signal, so this one never reaches the block.
       signal: controller.signal,
     });
 
-    // The executor wraps a block's throw, so the class is asserted through the
-    // message the block produced rather than through `instanceof`.
-    expect((error as Error | null)?.message).toMatch(
-      /Claude Code agent run failed/,
-    );
+    // The run was stopped, not broken: the signal reaches the block now.
+    expect(isAbortLike(error)).toBe(true);
     expect(onSession).toHaveBeenCalledWith("sess_named", expect.anything());
   });
 
@@ -2019,7 +2053,7 @@ describe("claudeCodeAgent — resume and onSession", () => {
     const { output, error } = await testBlock(block, { input: { prompt: "go" } });
 
     expect(error).toBeNull();
-    expect((output as SdkAgentHandle).status).toBe("errored");
+    expect((output as ClaudeCodeAgentHandle).status).toBe("errored");
     expect(onSession).toHaveBeenCalledWith("sess_named", expect.anything());
   });
 
@@ -2135,7 +2169,7 @@ describe("claudeCodeAgent — resume and onSession", () => {
  */
 describe("claudeCodeAgent — recordWork", () => {
   /** A real run's shapes, trimmed to what the recorder consumes. */
-  const RECORDING_SCRIPT: SdkMessageLike[] = [
+  const RECORDING_SCRIPT: ClaudeCodeSdkMessage[] = [
     { type: "system", subtype: "init", session_id: "sess_new" },
     {
       type: "assistant",
@@ -2217,7 +2251,7 @@ describe("claudeCodeAgent — recordWork", () => {
    * ends with a row owed to all THREE collections (a file op, a plan item, and
    * a gap for the create that was lost).
    */
-  const RECORDING_SCRIPT_WITH_GAP: SdkMessageLike[] = [
+  const RECORDING_SCRIPT_WITH_GAP: ClaudeCodeSdkMessage[] = [
     ...RECORDING_SCRIPT.slice(0, -1),
     {
       type: "assistant",
@@ -2520,7 +2554,7 @@ describe("claudeCodeAgent — recordWork", () => {
     // the harness answers, so an interrupt leaves nothing to key a row under —
     // and without this an interrupted plan attempt is indistinguishable from a
     // run that never planned.
-    const interrupted: SdkMessageLike[] = [
+    const interrupted: ClaudeCodeSdkMessage[] = [
       {
         type: "assistant",
         message: {
@@ -2567,7 +2601,7 @@ describe("claudeCodeAgent — recordWork", () => {
     //
     // The script puts a settled create SECOND in one message, and emission of
     // the first event rejects.
-    const batched: SdkMessageLike[] = [
+    const batched: ClaudeCodeSdkMessage[] = [
       {
         type: "assistant",
         message: {
@@ -2631,7 +2665,7 @@ describe("claudeCodeAgent — recordWork", () => {
     // The translation layer's `inputsMayBeRevised` is only as good as the wire
     // that sets it, and the flag is invisible from outside — so the WIRING gets
     // its own guard, at the level where the option lives.
-    const rewording: SdkMessageLike[] = [
+    const rewording: ClaudeCodeSdkMessage[] = [
       {
         type: "assistant",
         message: {
@@ -2688,7 +2722,7 @@ describe("claudeCodeAgent — recordWork", () => {
     // A settled Write (so there is something to record), then a tool call whose
     // result never arrives — so stream end leaves an open tool and
     // `finalizeOpenItems` has an `incomplete` item to persist.
-    const openAtEnd: SdkMessageLike[] = [
+    const openAtEnd: ClaudeCodeSdkMessage[] = [
       ...RECORDING_SCRIPT.slice(0, -1),
       {
         type: "assistant",
@@ -2733,7 +2767,7 @@ describe("claudeCodeAgent — recordWork", () => {
     // compose: the attempt is keyed at call time and the settlement arrived
     // under the resolved path, so a single write produced a permanent `pending`
     // row beside an `applied` one.
-    const divergent: SdkMessageLike[] = [
+    const divergent: ClaudeCodeSdkMessage[] = [
       {
         type: "assistant",
         message: {
@@ -2790,7 +2824,7 @@ describe("claudeCodeAgent — recordWork", () => {
     });
     const { output, error } = await testBlock(block, { input: { prompt: "go" } });
     expect(error).toBeNull();
-    expect((output as SdkAgentHandle).status).toBe("completed");
+    expect((output as ClaudeCodeAgentHandle).status).toBe("completed");
     expect(block.declaredResources).toBeUndefined();
   });
 
@@ -2807,7 +2841,7 @@ describe("claudeCodeAgent — recordWork", () => {
     const runtime = await createTestContext({});
     const handle = await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
 
-    expect((handle as SdkAgentHandle).status).toBe("completed");
+    expect((handle as ClaudeCodeAgentHandle).status).toBe("completed");
     const notes = runtime
       .getItems()
       .filter((i) => i.type === "status")
@@ -2944,7 +2978,7 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     // belongs to a different one.
     await testBlock(claudeCodeAgent(throwaway), {
       input: { prompt: "go" },
-      session: { state: { [SDK_SESSION_ID_KEY]: "sess_prior" } },
+      session: { state: { [CLAUDE_CODE_SESSION_ID_KEY]: "sess_prior" } },
     });
     expect(spy.mock.calls[0][0].options?.resume).toBe("sess_prior");
 
@@ -2953,7 +2987,7 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     spy.mockClear();
     await testBlock(claudeCodeAgent({ ...throwaway, detached: true }), {
       input: { prompt: "go" },
-      session: { state: { [SDK_SESSION_ID_KEY]: "sess_prior" } },
+      session: { state: { [CLAUDE_CODE_SESSION_ID_KEY]: "sess_prior" } },
     });
     expect(spy.mock.calls[0][0].options).not.toHaveProperty("resume");
 
@@ -3226,13 +3260,13 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
   // what a manager driving any harness would actually read off the handle.
   describe("the neutral harness contract", () => {
     /** Run the block on a scripted result and return its handle. */
-    async function runFor(result: SdkMessageLike | null): Promise<SdkAgentHandle> {
+    async function runFor(result: ClaudeCodeSdkMessage | null): Promise<ClaudeCodeAgentHandle> {
       const block = claudeCodeAgent({
         resolveClaudeAgent: scriptedQuery(result === null ? [] : [result]),
       });
       const { output, error } = await testBlock(block, { input: { prompt: "go" } });
       expect(error).toBeNull();
-      return output as SdkAgentHandle;
+      return output as ClaudeCodeAgentHandle;
     }
 
     it("returns a handle that parses against the neutral schema", async () => {
@@ -3242,7 +3276,7 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       // neutral handle as its own input would put the value through.
       const neutral = harnessRunHandleSchema.parse(handle);
       expect(neutral).toEqual({
-        source: CLAUDE_SDK_SOURCE,
+        source: CLAUDE_CODE_SOURCE,
         status: "completed",
         sessionId: "sess_new",
         url: null,
@@ -3347,8 +3381,8 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       // a run recorded while it existed is still in session state. Stripped
       // rather than rejected — it was only ever a copy of `cost.usd`, which is
       // still there.
-      const parsed = sdkAgentHandleSchema.parse({
-        source: CLAUDE_SDK_SOURCE,
+      const parsed = claudeCodeAgentHandleSchema.parse({
+        source: CLAUDE_CODE_SOURCE,
         status: "completed",
         sessionId: "sess_old",
         url: null,
@@ -3408,12 +3442,12 @@ describe("claudeCodeAgent — the model, per run", () => {
 });
 
 describe("claudeCodeAgent — onActivity", () => {
-  const messages: SdkMessageLike[] = [
+  const messages: ClaudeCodeSdkMessage[] = [
     { type: "system", subtype: "init", session_id: "sess_new" },
     {
       type: "stream_event",
       event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Tests pass;" } },
-    } as SdkMessageLike,
+    } as ClaudeCodeSdkMessage,
     {
       type: "assistant",
       message: {

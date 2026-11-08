@@ -1,5 +1,6 @@
+// FIX-443 §5.
 /**
- * Worker contract types (FIX-443 §5).
+ * Worker contract types.
  *
  * Workers are plain `BlockDefinition<TaskWorkerInput<TIn>, TOut>` — there
  * is no parallel "worker" abstraction. This preserves capability
@@ -18,6 +19,7 @@
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
+// FIX-1288.
 /**
  * Input contract handed to every worker. The board's
  * `packWorkerInput` (or any pattern) packs the claimed
@@ -29,9 +31,9 @@ import { z } from "zod";
  * `@flow-state-dev/orchestration/task-board`) — a declared schema is a
  * FILTER, so a field the substrate packs but this object omits reaches
  * no worker that declares it. `TaskWorkerInput` below is inferred from
- * this object, so the two cannot drift apart the way they did for
- * FIX-1288 (`priorWork` packed by the board, stripped before any
- * schema-declaring worker could read it).
+ * this object, so the two cannot drift apart the way they once did
+ * (`priorWork` packed by the board, stripped before any schema-declaring
+ * worker could read it).
  */
 export const taskWorkerInputSchema = z.object({
   taskId: z.string(),
@@ -46,6 +48,7 @@ export const taskWorkerInputSchema = z.object({
    */
   context: z.string().optional(),
   input: z.unknown().optional(),
+  // FIX-447.
   /**
    * Dep outputs keyed by dep task id, materialized from the collection
    * at claim time. Always populated when the task declares
@@ -53,7 +56,7 @@ export const taskWorkerInputSchema = z.object({
    * status). Workers read upstream results from `input.deps[depId]`
    * without re-querying the collection.
    *
-   * Substrate-supplied as of FIX-447 follow-up. The substrate's
+   * Substrate-supplied. The substrate's
    * `packWorkerInput` reads each `task.deps[]` entry, fetches the
    * dep's `output` from the live collection, and populates this map
    * before invoking the worker. Patterns no longer need to plumb dep
@@ -63,8 +66,9 @@ export const taskWorkerInputSchema = z.object({
   deps: z.record(z.unknown()).optional(),
   attempts: z.number().int().nonnegative(),
   feedback: z.string().optional(),
+  // FIX-2086.
   /**
-   * Every steer on the task (`Task.steers`, FIX-2086), oldest first: words sent
+   * Every steer on the task (`Task.steers`), oldest first: words sent
    * into it while it was open, with who sent each. Part of the brief, taken or
    * not, so a retry is never run as first filed. Absent on a task never
    * steered.
@@ -73,9 +77,13 @@ export const taskWorkerInputSchema = z.object({
     .array(
       z.object({
         message: z.string(),
-        from: z.enum(["filer", "user", "board"]),
-        /** The question this steer answers (FIX-2133), as it was asked; absent on a steer that answers none. */
+        from: z.enum(["filer", "user", "board", "service"]),
+        // FIX-2133.
+        /** The question this steer answers, as it was asked; absent on a steer that answers none. */
         question: z.string().optional(),
+        // FIX-2578.
+        /** A `"service"` steer's sender, whose words these are. */
+        by: z.string().optional(),
       })
     )
     .optional(),
@@ -124,11 +132,11 @@ export type TaskWorkerInput<TIn = unknown> = Omit<
   "input"
 > & { input?: TIn };
 
+// FIX-454.
 /**
  * Worker block alias. Any `BlockDefinition` whose input matches
  * `TaskWorkerInput<TIn>` is a valid worker. Forward-compat: agents and
- * skills register under the same alias once those systems land
- * (FIX-454).
+ * skills register under the same alias once those systems land.
  */
 export type TaskWorker<TIn = unknown, TOut = unknown> = BlockDefinition<any, any, TaskWorkerInput<TIn>, TOut>;
 

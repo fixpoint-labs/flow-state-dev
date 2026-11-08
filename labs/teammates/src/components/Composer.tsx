@@ -1,5 +1,5 @@
 import { clearDraft, interruptChordLabel, isSendKey, useDraft, useSubmit } from "@flow-state-dev/react";
-import { useRef, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 
 /**
  * Where you type to the open worker. Enter or Cmd+Enter (Ctrl+Enter) sends,
@@ -25,8 +25,11 @@ export function Composer({
   stopRefused,
   armed = false,
   onStop,
+  seed,
   onSend,
 }: {
+  /** A line to put in the box, as a starter line's click hands it; `at` makes a second click of the same line count. Never sent by itself. */
+  seed?: { text: string; at: number };
   /** The conversation it types to; `/` and a switch find its composer by it. */
   sessionId: string;
   workerName: string;
@@ -45,6 +48,12 @@ export function Composer({
   const [text, setText] = useDraft("teammates:draft", sessionId);
   const current = useRef(text);
   current.current = text;
+  const box = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (seed === undefined) return;
+    setText(seed.text);
+    box.current?.focus();
+  }, [seed]);
   const { error, busy, submit } = useSubmit(async (typed: string) => {
     await onSend(typed.trim());
     // The box may have closed and reopened while it ran: the stored draft goes only if it is still this line.
@@ -70,6 +79,7 @@ export function Composer({
       <div data-column className="mx-auto max-w-(--thread-width)">
         <div className="flex items-end gap-2 rounded-3xl border border-border bg-card px-3 py-2 focus-within:border-ring">
           <textarea
+            ref={box}
             aria-label={`Message ${workerName}`}
             data-composer
             data-session-id={sessionId}

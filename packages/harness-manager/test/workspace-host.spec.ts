@@ -19,16 +19,16 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
-import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  openRowHolds,
   resolveResourceCollection,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
+import { openOwnHolds } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { localWorkspaceHost, type LocalWorkspaceHostOptions, type RunSourceAnswer } from "@flow-state-dev/workspace";
 import { harnessManager, harnessTaskInputSchema, runOwnerClaimOrder, type HarnessFeeds } from "../src";
@@ -329,7 +329,7 @@ function lab(options: {
       const row = (await rt.stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`))?.state as
         | Task
         | undefined;
-      if (row !== undefined && row.status === "in_progress" && row.leaseUntil == null && openRowHolds(row).length > 0) return row;
+      if (row !== undefined && row.status === "in_progress" && row.leaseUntil == null && openOwnHolds(row).length > 0) return row;
       if (Date.now() > deadline) throw new Error(`timed out waiting for a held task; row is ${JSON.stringify(row)}`);
       await new Promise((resolve) => setTimeout(resolve, 25));
     }

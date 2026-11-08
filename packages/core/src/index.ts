@@ -1,5 +1,4 @@
 export type {
-  BlockCacheableConfig,
   BlockContext,
   BlockDefinition,
   BlockInput,
@@ -14,7 +13,6 @@ export type {
 } from "./types/block";
 export type {
   HistoryTurn,
-  HistoryTurnQuery,
   OrgScopeHandle,
   RequestScopeHandle,
   SessionHistoryWindow,
@@ -24,7 +22,6 @@ export type {
 } from "./types/scope";
 export type { ScopeStateOps } from "./types/state";
 export type { ItemVisibility } from "./items/types";
-export type { RuntimeItem } from "./items";
 export {
   whenAnyItem,
   whenResourceChanged,
@@ -41,16 +38,19 @@ export type {
   ResourceCollectionRef,
 } from "./types/resource-collection";
 export type {
+  ResourceIndexDeclaration,
+  ResourceIndexFunction,
+  ResourceIndexValue,
+} from "./types/resource-index";
+export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
-  MaybePromise,
-  SchemaInput,
-  SchemaOutput
+  MaybePromise
 } from "./schema/common";
 
-export { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID, isValidOrgId } from "./types/auth";
-export { applyGetOrPatchState, defineResource, resource } from "./types/resource";
+export { DEFAULT_ORG_ID, isValidOrgId } from "./types/auth";
+export { defineResource } from "./types/resource";
 export { canonicalize as canonicalizeToolArgs } from "./blocks/internal/cache-tool-call";
 export {
   bindToolCacheStore,
@@ -82,24 +82,17 @@ export type {
 } from "./types/faceted-collection";
 export {
   defineProjectedResourceCollection,
-  isProjectedResourceCollection,
-  readProjectedRecord,
-  searchProjectedRecords,
 } from "./types/projected-resource-collection";
 export type {
   DefinedProjectedResourceCollection,
   ProjectedRecordHit,
   ProjectedReactiveBindings,
   ProjectedResourceCollectionConfig,
-  ProjectedResourceCollectionRef,
   ProjectedResourceContext,
-  ProjectedResourceRef,
   ResourceQuery,
   ResourceSearchResult,
-  ValidatedProjectedHit,
 } from "./types/projected-resource-collection";
 export {
-  normalizeReactiveBinding,
   resourceChangeSchema,
   resourceContentChangeSchema,
 } from "./types/resource-change";
@@ -107,96 +100,24 @@ export type {
   ReactiveBinding,
   ReactiveContentBinding,
   ReactiveBindings,
-  ReactiveBindingKind,
   ResourceChange,
   ResourceContentChange,
   ResourceChangeKind,
 } from "./types/resource-change";
-export type {
-  InitialSkill,
-  MatchedSkill,
-  RunSkillInput,
-  RunSkillOutput,
-  Skill,
-  SkillActivationSource,
-  SkillContextMode,
-  SkillFile,
-  SkillState,
-  SkillsCollectionMeta,
-  ToolCatalog,
-} from "./types/skill";
 
-export { defineCapability, getBaseCapability } from "./capability";
+export { defineCapability } from "./capability";
 
 /**
- * The request-host seam (FIX-999) — how a capability's helpers reach facilities
- * only the runtime can provide, without casting the context.
- */
-export { NoRequestHostError, requireRequestHost } from "./types/request-host";
-export type {
-  LivenessAnswers,
-  ParentTaskOutcome,
-  RequestHost,
-  ResumeWaitInput,
-  ResumeWaitResult,
-  RequestWaits,
-  RequestSessions,
-  SessionHistory,
-  SessionHistoryQuery,
-  SessionView,
-  RequestWakes,
-  SettleParentTaskInput,
-  SettleParentTaskResult,
-  WaitDeadlines,
-  WakeSettleResult,
-  WakeView
-} from "./types/request-host";
-
-/**
- * The wait gate — what a request parks on while work it started runs
- * elsewhere, and how the wait ends: the work's ending, its deadline, or a stop.
+ * One dispatch protocol — typed entries addressed `(type, name)`, and the
+ * `dispatcher()` block that sends to one.
  */
 export {
-  MAX_WAIT_DEPTH,
-  WAIT_DEADLINE_ENTRY,
-  WAIT_DEADLINE_OUTCOME,
-  WAIT_GATE_REASON,
-  isWaitGate,
-  parkOnWait,
-  canHoldWait,
-  parseWaitOutcome,
-  recordedWaitOutcome,
-  waitGateDataOf
-} from "./types/wait-gate";
-export type {
-  WaitEndingErrorCode,
-  WaitGateBinding,
-  WaitGateData,
-  WaitOutcome,
-  WaitRow,
-  ParkOnWaitInput
-} from "./types/wait-gate";
-
-/**
- * One dispatch protocol — typed entries addressed `(type, name)`, the
- * `dispatcher()` block that sends to one, and the seam the runtime attaches.
- */
-export {
-  DISPATCH_SEAM,
   DISPATCH_TYPES,
   DispatchRefusedError,
-  NoDispatchSeamError,
   bindTaskDispatcher,
-  dispatchThroughSeam,
   markDispatcher,
   taskBindingOf,
-  framed,
-  readFramed,
-  addressEntries,
-  describeAction,
-  resolveTaskAction,
   resolveTaskFlowKind,
-  resolveTaskSessionTarget,
   resolveTaskState,
   taskDispatchInputSchema,
   taskSessionKeyFor
@@ -206,7 +127,6 @@ export type {
   DispatchAddress,
   DispatchOutcome,
   DispatchRefusal,
-  DispatchSeam,
   DispatchSpec,
   DispatchType,
   InternalEntry,
@@ -239,40 +159,15 @@ export type {
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
 export { mapLimit } from "./helpers/concurrency";
-export { SLASH_COMMAND_PATTERN } from "./helpers/slash-command";
 export { lifecycleSchema } from "./helpers/lifecycle-schema";
-export { isTraceObservabilityEnabled } from "./helpers/trace-observability";
-export { cacheTokensOf } from "./helpers/cache-tokens";
-export { resolveTracingLevel } from "./helpers/tracing-level";
 export type { TracingLevel } from "./helpers/tracing-level";
 export { transientSlot } from "./helpers/transient-slot";
 export { firstInProcess } from "./helpers/once-per-process";
 export { FlowConfigRefusalError } from "./helpers/flow-config";
 export type { FlowConfigIssue, FlowConfigPath } from "./helpers/flow-config";
 export {
-  warnOnceDev,
   __resetDeprecationWarningsForTests,
 } from "./helpers/deprecation";
-export {
-  buildBlockInstanceId,
-  blockPathBranch,
-  blockPathIteration,
-  blockPathLoop,
-  blockPathObserver,
-  blockPathRescue,
-  blockPathSegment,
-  blockPathTool,
-  extendBlockPath,
-  parseBlockInstanceId,
-  logicalBlockIdOf,
-  ROOT_BLOCK_PATH
-} from "./blocks/internal/block-instance-id";
-export { resolveActiveStatusMessage } from "./blocks/internal/resolve-active-status-message";
-// Log-as-source-of-truth resume read model (FIX-811). Exported so the server
-// can build a ReplayLog from a request's persisted items at re-entry and assign
-// it to `ctx._replayLog`; the core `executeBlock` seam consumes the interface.
-export { buildReplayLog } from "./blocks/internal/replay-log";
-export type { ReplayLog } from "./blocks/internal/replay-log";
 // Canonical item-log view (FIX-811): collapse a resumed request's superseded
 // re-emissions for the read paths (GET history, useSession, SSE replay seed).
 export { collapseToCanonicalLog } from "./items/canonical-log";
@@ -280,7 +175,6 @@ export {
   dispatcher,
   dispatchHandleSchema,
   dispatchWaitResultSchema,
-  assertEvaluatorBlock,
   boolean,
   choice,
   evaluator,
@@ -290,25 +184,17 @@ export {
   type EvaluatorDefinition,
   type EvaluatorOutputSchema,
   type EvaluatorQuestionsSlot,
-  type EvaluatorSlotNames,
   handler,
   providerTool,
   router,
   sequencer,
   type DispatchHandle,
   type DispatchWaitResult,
-  waitOnRequest,
-  type RequestWaitOutcome,
-  type WaitOnRequestInput,
   type DispatcherConfig,
   type DispatcherSession,
   type InternalDispatcherConfig,
   type TaskDispatcherConfig
 } from "./blocks";
-// Block-level rescue resolution (FIX-742). Exported so the server's top-level
-// `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow
-// children are rescued by the core `executeBlock` seam.
-export { runRescue } from "./blocks/sequencer";
 // Exported for a seam that dispatches a worker WITHOUT going through the
 // sequencer kernel, so it composes a subtree's background signal by the same
 // rule the kernel uses rather than a second copy of it.
@@ -325,24 +211,12 @@ export { resourceTools } from "./tools/resource-tools";
 export { resourceSearchTools } from "./tools/resource-search-tools";
 // Agent discovery (FIX-817): the manifest-entry shape, the per-scope source
 // registry, the door over it, and the resources domain's projection.
-export { MANIFEST_DOMAINS, isManifestDomain } from "@flow-state-dev/contracts";
+export { MANIFEST_DOMAINS } from "@flow-state-dev/contracts";
 export type { ManifestDomain, ManifestEntry, ManifestSource } from "@flow-state-dev/contracts";
 export { createManifestRegistry } from "./manifest/registry";
-// Change notices (FIX-2426): the kinds a notice names and the wire topics a
-// client watches.
+// Change notices (FIX-2426): the wire topics a client watches.
 export { topic } from "@flow-state-dev/contracts";
-export type { ChangeKind, TopicOptions, TopicScope, WireTopic } from "@flow-state-dev/contracts";
-// Push delivery (FIX-2428): the mint's answer, the socket's frames and the
-// push a server advertises.
-export { PUSH_CLOSE_CODES, PUSH_MINT_MAX_TOPICS, wireTopicKey } from "@flow-state-dev/contracts";
-export type {
-  PushCapability,
-  PushClientFrame,
-  PushMintAnswer,
-  PushMintRequest,
-  PushServerFrame,
-  WireNotice
-} from "@flow-state-dev/contracts";
+export type { TopicOptions, WireTopic } from "@flow-state-dev/contracts";
 export type { BlockManifestSource, ManifestRegistry } from "./manifest/registry";
 export { discoveryTools } from "./manifest/discovery-tools";
 export { resourcesManifestSource } from "./manifest/resources-source";
@@ -368,7 +242,6 @@ export type {
   GeneratorRepairMode,
   GeneratorSlot,
   GeneratorSlotEntry,
-  GeneratorSlotRefOptions,
   GeneratorSlotReference,
   ContextObject,
   GeneratorTool,
@@ -394,10 +267,8 @@ export type {
   ActionConfig,
   ReadConfig,
   ActionCore,
+  UserMessageEcho,
   ActionMcpConfig,
-  ClientDataComputeFn,
-  ClientDataContext,
-  ScopeClientConfig,
   FlowConfigInput,
   FlowConfigValue,
   FlowDefinition,
@@ -422,13 +293,7 @@ export type {
   SchedulesConfig
 } from "./types/schedules";
 
-export {
-  defineScheduleBinding,
-  isFiveFieldCron,
-  isKnownTimeZone,
-  validateScheduleConfig,
-  validateSchedulesConfig
-} from "./types/schedules";
+export { defineScheduleBinding } from "./types/schedules";
 
 export type {
   ConcurrencyConfig,
@@ -445,7 +310,7 @@ export type {
   WebhookInboundEvent,
   WebhookSubscriptionConfig
 } from "./types/webhooks";
-export { defineWebhookBinding, validateWebhookConfig } from "./types/webhooks";
+export { defineWebhookBinding } from "./types/webhooks";
 export type {
   TokenCounter,
 } from "./types/tokens";
@@ -486,16 +351,6 @@ export type {
   ScoreQuestion
 } from "./types/evaluation";
 
-// Cross-pattern benchmark contract types (shared by patterns + testing engine)
-export type {
-  BenchmarkCategory,
-  BenchmarkTask,
-  BenchmarkSubject,
-  BenchmarkAdapterOptions,
-  BenchmarkAdapter,
-  BenchmarkRegistry
-} from "./benchmark/types";
-
 export type { TTSConfig, VoiceConfig } from "./types/speech";
 
 export type {
@@ -525,38 +380,16 @@ export {
 export type { VoiceErrorKind, VoiceErrorOptions } from "./types/voice-error";
 export { VoiceError } from "./types/voice-error";
 
-export type { BindingCacheOptions, BindingProvider } from "./types/binding";
-export { createBindingCache } from "./bindings";
-export type { CachedBindingProvider } from "./bindings";
-
 // Model infrastructure (AI SDK adapters, provider detection, fallback)
 export {
-  createAiSdkModelResolver,
-  wrapAiSdkModel,
   createModelResolver,
-  createFallbackModel,
-  isRetryableError,
-  detectAvailableProviders,
-  parseModelString,
-  extractProviderName,
   selectModel,
-  isModelSelection,
-  applyCaching,
-  DEFAULT_CACHING_CONFIG,
   makeSchemaStrict,
   assertStrictCompatible
 } from "./models";
 export type {
-  ResolveAiSdkLanguageModel,
   CreateModelResolverOptions,
   IntentDefaults,
-  ModelGroupDefaults,
-  GatewayConfig,
-  GatewayType,
-  ProviderName,
-  ProviderAvailability,
-  ParsedModelString,
-  FallbackModelEntry,
   ModelRule,
   PreferProviderRule,
   WhenRule,
@@ -565,15 +398,6 @@ export type {
   MakeSchemaStrictOptions,
   StrictViolation
 } from "./models";
-export type {
-  RequestSideChainPool,
-  RequestSideChainPoolResult,
-  RequestSideChainPoolDrainOptions,
-  RequestSideChainPoolDrainAllOptions,
-  RequestSideChainPoolDrainToQuiescenceOptions,
-  RequestSideChainTaskMeta
-} from "./execution/request-side-chain-pool";
-export { getRequestSideChainPool } from "./execution/request-side-chain-pool";
 
 export {
   FlowError,
@@ -584,14 +408,10 @@ export {
   SuspensionError,
   SuspensionRejectedError,
   SuspensionTimeoutError,
-  resolveAllowedActions,
   RouteUnavailableError,
   RecordedValueOmittedError,
   RECORDED_VALUE_OMITTED,
-  rootCause,
-  isAbortLike,
-  serializeError,
-  errorDetailsWithCause
+  isAbortLike
 } from "./errors";
 export type {
   FlowErrorOptions,
@@ -601,92 +421,9 @@ export type {
   RecordedValueOmittedDetails,
   SequencerOutputSchemaErrorDetails,
   SequencerSchemaMismatchErrorDetails,
-  SuspendOptions,
-  SerializedError
+  SuspendOptions
 } from "./errors";
 // The skip sentinel returned by ctx.suspend() lives alongside SuspensionError on
 // the top-level surface so flow authors import both from one place.
 export { SUSPENSION_SKIPPED } from "./types/suspension";
-export type { ResumeAction, SuspensionSkipped, SuspendForUserKind } from "./types/suspension";
-export type { ApprovalAnswer, UserAnswer, SuspendForUserOptions } from "./types/suspend-for-user";
-
-/**
- * The coding-harness contract's runtime schemas (LAB-152). A harness block
- * declares these as its input and output schemas; the types they validate are
- * exported from `@flow-state-dev/core/types`.
- */
-export {
-  harnessFailureKind,
-  harnessRunEnvelopeSchema,
-  harnessRunHandleSchema,
-  harnessRunInputSchema,
-  harnessUsageWindowSchema,
-} from "./types/harness";
-
-/**
- * The run's plan record: the shape every harness writes its to-do list into,
- * the per-run list marker, and the writer for whole-list plans.
- */
-export {
-  OBSERVED_PLAN,
-  OBSERVED_PLAN_LIST,
-  harnessRunNamespace,
-  observedOutcomeSchema,
-  observedPlanCollection,
-  observedPlanItemStateSchema,
-  observedPlanListCollection,
-  observedPlanListStateSchema,
-  harnessConversationNamespace,
-  planConversationPrefix,
-  planKeySegment,
-  planRowsPrefix,
-  readPlanTarget,
-  replacePlanList,
-} from "./types/harness-plan";
-export type {
-  ObservedOutcome,
-  ObservedPlanListStatus,
-  PlanListCollection,
-  PlanListItem,
-  PlanListMarkerCollection,
-  PlanMarkerRead,
-  ReplacePlanListResult,
-} from "./types/harness-plan";
-
-/**
- * The session's pull-request record: the rows, the rules that read a create
- * call, the one writer, and the recorder (a function harness blocks call, and
- * a block a flow adds as a step).
- */
-export {
-  DEFAULT_PULL_REQUEST_RULES,
-  OBSERVED_PULL_REQUESTS,
-  findOpenedPullRequests,
-  githubPullRequestRule,
-  observedPullRequestStateSchema,
-  observedPullRequestsCollection,
-  pullRequestKey,
-  pullRequestRefFromUrl,
-  writePullRequests,
-} from "./types/pull-requests";
-export type {
-  ObservedPullRequestState,
-  PullRequestCollection,
-  PullRequestLink,
-  PullRequestRef,
-  PullRequestRule,
-  PullRequestSource,
-  PullRequestToolCall,
-  WritePullRequestsOptions,
-} from "./types/pull-requests";
-export { pullRequestRecorder, pullRequestWritesSettled, recordPullRequests } from "./helpers/pull-request-recorder";
-export type { PullRequestRecorderContext, RecordPullRequestsOptions } from "./helpers/pull-request-recorder";
-
-/** The allowlisted environment for a harness's child process. */
-export { harnessEnv } from "./helpers/harness-env";
-export type { HarnessEnvOptions } from "./helpers/harness-env";
-/** One flow's live steering: the hook its harness is handed, and the action that hands a line in. */
-export { harnessSteering } from "./helpers/harness-steering";
-export { harnessActivityOf, reportHarnessActivity } from "./helpers/harness-activity";
-export type { HarnessSteerActionOptions, HarnessSteerAnswer, HarnessSteering } from "./helpers/harness-steering";
-export { formatRunDuration } from "./helpers/run-duration";
+export type { ResumeAction, SuspendForUserKind } from "./types/suspension";

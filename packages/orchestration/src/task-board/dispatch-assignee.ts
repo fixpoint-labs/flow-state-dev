@@ -11,12 +11,12 @@
  * This module owns two things and nothing else:
  *
  * 1. reading a board's assignees — a bare block means inline, a dispatcher
- *    dispatches, and the removed assignee shapes are refused by name;
+ *    dispatches, and anything else is refused;
  * 2. the construction-time refusals — `assertDispatchBoardSupported` for the
  *    board, `assertDispatchEntrySupported` for the entry block the gate is
  *    given.
  *
- * **No execution lives here.** The drain-side dispatch is `blocks/dispatch-row.ts`
+ * **No execution lives here.** The drain-side dispatch is `blocks/dispatch-task.ts`
  * and the child-side gate is `task-entry.ts`; this module only decides what a
  * declaration *means* and refuses the ones that cannot work.
  *
@@ -41,9 +41,11 @@
  * policy on the entry wins), so two rows dispatched into one child do not
  * interleave their writes.
  */
-import { getBaseCapability, type DispatchHandle } from "@flow-state-dev/core";
+import { type DispatchHandle } from "@flow-state-dev/core";
+import { getBaseCapability } from "@flow-state-dev/core/capability";
 import type { BlockDefinition, DispatchAddress, TaskDispatchInput } from "@flow-state-dev/core/types";
-import type { DefinedTaskCollection, TaskWorker, TaskWorkerRegistry } from "../tasks";
+import type { DefinedTaskCollection, TaskWorker } from "../tasks";
+import type { TaskWorkerRegistry } from "../tasks/workers/types";
 import type { TaskBoardBacking } from "./index";
 
 /** The address a `dispatcher({ type: "task" })` assignee carries: its entry and session policy. */
@@ -82,9 +84,10 @@ export interface DispatchingAssignee {
    * addressed by. Empty when the dispatcher sat at a uniform or floor assignee.
    */
   name: string;
+  // FIX-2082.
   /**
    * Where the dispatcher sat: a named assignee, the uniform `workers` block,
-   * the `defaultWorker` fallback, or a plan board's `newSession` (FIX-2082),
+   * the `defaultWorker` fallback, or a plan board's `newSession`,
    * which takes the rows filed `session: "new"`. What every reader branches on.
    */
   kind: "named" | "uniform" | "floor" | "newSession";
@@ -97,12 +100,9 @@ export interface DispatchingAssignee {
  * Read one assignee's value: the block that runs there and, when the block is a
  * task dispatcher, where it dispatches to.
  *
- * The removed assignee shapes are refused by name rather than silently read as
- * inline (BP-030): a board that still says `{ block, session }`,
- * `{ worker, dispatch }` or `dispatch: { mode: "detached" }` would otherwise
- * run its worker in the drain and never dispatch.
+ * Anything else is refused, with what an assignee is.
  */
-export function resolveWorkerSlot(
+function resolveWorkerSlot(
   slot: unknown,
   where: string
 ): { block: TaskWorker; dispatch?: TaskAssigneeAddress } {
@@ -114,19 +114,6 @@ export function resolveWorkerSlot(
     `An assignee is a block. To run it inline, put the block there; to dispatch it, put a ` +
     `\`dispatcher({ action, session })\` there and declare the block on the flow ` +
     `as \`tasks: { [target]: { block } }\`.`;
-  if (typeof slot === "object" && slot !== null) {
-    const keys = Object.keys(slot);
-    if (keys.includes("dispatch")) {
-      throw new Error(
-        `[task-board] ${where} uses the removed \`dispatch: { mode }\` option. ${fix}`
-      );
-    }
-    if (keys.includes("block") || keys.includes("worker") || keys.includes("session")) {
-      throw new Error(
-        `[task-board] ${where} uses the removed \`{ ${keys.join(", ")} }\` assignee shape. ${fix}`
-      );
-    }
-  }
   throw new Error(`[task-board] ${where} is not a block (got ${describe(slot)}). ${fix}`);
 }
 
@@ -289,9 +276,9 @@ export function assertDispatchBoardSupported(options: {
   if (unnamed.length > 0) {
     throw new Error(
       `[task-board] "${name}" holds a task dispatcher at ${unnamed.map((s) => s.label).join(", ")}, ` +
-        `but a uniform worker cannot dispatch — a dispatch is addressed by the row's assignee. ` +
+        `but a uniform worker cannot dispatch — a dispatch is addressed by the task's assignee. ` +
         `Declare it under \`workers: { <name>: dispatcher({ action, session }) }\`, or as the ` +
-        `\`defaultWorker\`, which hands each row over under the assignee it names.`
+        `\`defaultWorker\`, which hands each task over under the assignee it names.`
     );
   }
 
@@ -333,9 +320,9 @@ export function assertDispatchBoardSupported(options: {
   if (collection?.scope === "session" && collection.sharedToLineage !== true) {
     throw new Error(
       `[task-board] "${name}" dispatches assignees (${declared}) on a session-scoped ` +
-        `collection — a child session would resolve an empty ledger and never find the row ` +
+        `collection — a child session would resolve an empty ledger and never find the task ` +
         `it was dispatched for. Add \`sharedToLineage: true\` so the ledger resolves to the ` +
-        `lineage root and the child addresses the same rows the board claimed, or declare ` +
+        `lineage root and the child addresses the same tasks the board claimed, or declare ` +
         `the collection \`scope: "user"\` or \`scope: "org"\`.`
     );
   }
@@ -374,7 +361,7 @@ export function assertDispatchEntrySupported(options: {
   throw new Error(
     `[task-board] "${name}" dispatches to task entry "${target}" ${where}, which declares ` +
       `sessionStateSchema — a dispatched block runs in a child session it may share with ` +
-      `other rows, where two blocks choosing the same key with different shapes corrupt ` +
+      `other tasks, where two blocks choosing the same key with different shapes corrupt ` +
       `each other with no error. Keep the block's state on the task instead.`
   );
 }

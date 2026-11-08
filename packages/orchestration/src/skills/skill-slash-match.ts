@@ -13,8 +13,9 @@
  */
 
 import { z } from "zod";
-import { handler, SLASH_COMMAND_PATTERN } from "@flow-state-dev/core";
-import type { SkillState } from "@flow-state-dev/core";
+import { handler } from "@flow-state-dev/core";
+import { SLASH_COMMAND_PATTERN } from "@flow-state-dev/core/internal";
+import type { SkillState } from "@flow-state-dev/core/types";
 import { skillManifestKey } from "./collection";
 import { resolveSkillsCollection } from "./partition";
 import { skillActivatorStateSchema } from "./skill-activation-types";

@@ -1,3 +1,4 @@
+// FIX-1793 BR-11.
 /**
  * Workstream entries: one per workstream, keyed by its project, its owner and
  * its id, at both visibilities.
@@ -12,7 +13,7 @@
  *
  * **One writer.** The collections declare `ownerWrites` on the owner segment,
  * so the engine refuses a create, update or delete from anyone but the user
- * the key names, whichever flow writes (FIX-1793 BR-11). Who wrote last is
+ * the key names, whichever flow writes. Who wrote last is
  * `writtenBy`, stamped from the session (`shared-resource.ts`), for display
  * only: it never decides a write. The owner is read off the key, never the
  * state.
@@ -63,10 +64,12 @@ export {
   type WorkstreamStatus
 };
 
-/** The entries' key pattern. **Pinned**: persisted, and FIX-1792 and FIX-1794 read it. */
+// FIX-1792 and FIX-1794.
+/** The entries' key pattern. **Pinned**: persisted, and read by other packages. */
 export const WORKSTREAMS_PATTERN = "workstreams/[project]/[owner]/[workstream]";
 
-/** Every field a browser reads, named (BP-015). The session id grants nothing to anyone but the owner. */
+// BP-015.
+/** Every field a browser reads, named. The session id grants nothing to anyone but the owner. */
 const ENTRY_CLIENT_FIELDS = [
   "title",
   "lead",

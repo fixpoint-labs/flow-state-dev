@@ -71,21 +71,25 @@ export {
 export { COORDINATOR_JUDGMENT, COORDINATOR_FLOW, COORDINATOR_ROUTE } from "./coordinator/coordinator-keys";
 /** The Error Reporter's flow: an app finds the worker a user tells about a problem by it. */
 export { ERROR_REPORTER_FLOW } from "./error-reporter/keys";
-export { SEND_MESSAGE_TOOL, MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT } from "./messages/keys";
+export { SEND_MESSAGE_TOOL, RECEIVED_MESSAGE_COMPONENT } from "./messages/keys";
 export { LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN } from "./schedules/keys";
 export { listedScheduleSchema, type ListedSchedule } from "./schedules/listed-schedule";
 export {
   WORKER_MESSAGES_PATTERN,
   WORKER_MESSAGES_RESOURCE,
-  workerMessageRowSchema,
-  type WorkerMessageRow
+  workerMessageResourceStateSchema,
+  type WorkerMessageResourceState
 } from "./messages/log-row";
 export { MAX_RULES, MAX_RULE_CHARS, type StandingRule } from "./standing-rules/rules-list";
 export { RULE_TOOLS, STANDING_RULES_ACTION, STANDING_RULES_LINE } from "./standing-rules/keys";
 export type { StandingRulesActionInput, StandingRulesActionOutput } from "./standing-rules/rules-action";
 // A delegate's answer, as its message item marks it (FIX-2378): tell it from the conversation's own words.
+// And a completed task's answer, read off its output by the rule the server lands it by.
 export {
+  answerTextOf,
   delegateAnswerMetadata,
   delegateAnswerOf,
   type DelegateAnswer
 } from "./conversation-board/delegate-answer";
+// A task's brief, as its session's `user` line marks it: what the session was handed, not the user's words.
+export { taskBriefMetadata, taskBriefOf, type TaskBrief } from "./conversation-board/task-brief";

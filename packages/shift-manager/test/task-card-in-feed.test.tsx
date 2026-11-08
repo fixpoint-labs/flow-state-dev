@@ -10,8 +10,8 @@ import { SessionScope, TaskBoardMeta } from "../src/components/TaskBoardMeta";
 import type { SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
 import { TASKS_POLL_MS } from "../src/components/TasksPanel";
 
-type Row = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
-let rows: Row[] = [];
+type StoredTask = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
+let rows: StoredTask[] = [];
 let failing = false;
 const calls: string[] = [];
 let refreshes = 0;
@@ -164,8 +164,9 @@ describe("a delegated post's task in the feed", () => {
     rows = [{ ...rows[0]!, status: "completed" }];
     await hear(boardNotice);
     expect(cards()[0]).toMatchObject({ status: "completed", text: expect.stringContaining("completed") });
-    // The task moved: the Lab is read again, so what it counts agrees with the card.
-    expect(refreshes).toBe(1);
+    // The task moved, and the card reloads nothing: the snapshot hears the same
+    // move on its own subscription, one way to keep it fresh (FIX-2409).
+    expect(refreshes).toBe(0);
     expect(open().options.pollIntervalMs).toBeUndefined();
     const read = calls.length;
     await tick(TASKS_POLL_MS * 20);

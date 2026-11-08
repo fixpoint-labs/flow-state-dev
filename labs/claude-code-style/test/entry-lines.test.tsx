@@ -10,7 +10,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { delegateAnswerMetadata } from "@flow-state-dev/workforce/browser";
+import type { LabTask } from "../src/adapter";
 import { Entry } from "../src/components/Entry";
+import { filedTaskOf, toolRun } from "../src/lib/tool-steps";
 
 afterEach(cleanup);
 
@@ -135,5 +137,77 @@ describe("a delegate's answer that landed in the conversation as written", () =>
     ]);
     expect(entries.map((e) => e.kind)).toEqual(["user", "assistant", "result"]);
     expect(entries[2]).toMatchObject({ kind: "result", title: "Answer from thread", status: "completed", summary: reply });
+  });
+});
+
+describe("a line that names a task", () => {
+  // Only what the lines read of a row: its id, title and status.
+  const row = (id: string, status: LabTask["status"]): LabTask => ({ id, title: "Fix the login copy", goal: "…", status });
+  const result = (status: LabTask["status"]) =>
+    ({ kind: "result", id: "r1", taskId: "task_1", title: "Fix the login copy", status, summary: REPLY, duringTurn: false }) as const;
+  const startLine = toolRun([{ id: "c1", name: "createTask", args: { title: "Fix the login copy", goal: "…" }, status: "done", output: { ok: true, taskId: "task_1" } }]);
+  const dotOf = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-task-dot]");
+
+  it("opens its task from the result line, beside the fold, which still opens to the reply", () => {
+    const opened: string[] = [];
+    const { container } = render(<Entry entry={result("completed")} tasks={{ rows: [row("task_1", "completed")], open: (id) => opened.push(id) }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open task" }));
+    expect(opened).toEqual(["task_1"]);
+    fireEvent.click(screen.getByRole("button", { name: /Fix the login copy/ }));
+    expect(container.textContent).toMatch(/toggle flips the page/);
+  });
+
+  it("shows the task as it is now on the dot, and keeps the ending the line reported in its words, adding what it is now", () => {
+    // A failed task that was retried: the board's row runs again.
+    const { container } = render(<Entry entry={result("errored")} tasks={{ rows: [row("task_1", "in_progress")], open: () => {} }} />);
+    const dot = dotOf(container)!;
+    expect(dot.getAttribute("aria-label")).toBe("running");
+    expect(dot.className).toMatch(/bg-info/);
+    expect(dot.className).toMatch(/animate-pulse/);
+    expect(screen.getByRole("button", { name: /Fix the login copy/ }).textContent).toMatch(/failed · now running$/);
+  });
+
+  it("says nothing more than the line reported while the task still stands there", () => {
+    const { container } = render(<Entry entry={result("completed")} tasks={{ rows: [row("task_1", "completed")], open: () => {} }} />);
+    expect(dotOf(container)!.getAttribute("aria-label")).toBe("done");
+    expect(container.textContent).not.toMatch(/now/);
+  });
+
+  it("offers no Open task for a line whose task the board doesn't list, or in a task's own sheet", () => {
+    render(<Entry entry={result("completed")} tasks={{ rows: [row("task_other", "completed")], open: () => {} }} />);
+    expect(screen.queryByRole("button", { name: "Open task" })).toBeNull();
+    cleanup();
+    render(<Entry entry={result("completed")} />);
+    expect(screen.queryByRole("button", { name: "Open task" })).toBeNull();
+    cleanup();
+    render(<Entry entry={{ kind: "tool", id: "t1", ...startLine }} />);
+    expect(screen.queryByRole("button", { name: "Open task" })).toBeNull();
+  });
+
+  it("gives the line that started a task its live dot and Open task, alone or in an opened run", () => {
+    const opened: string[] = [];
+    const tasks = { rows: [row("task_1", "in_progress")], open: (id: string) => opened.push(id) };
+    const { container } = render(<Entry entry={{ kind: "tool", id: "t1", ...startLine }} tasks={tasks} />);
+    expect(container.textContent).toMatch(/Start a task: Fix the login copy/);
+    expect(dotOf(container)!.getAttribute("aria-label")).toBe("running");
+    fireEvent.click(screen.getByRole("button", { name: "Open task" }));
+    expect(opened).toEqual(["task_1"]);
+    cleanup();
+
+    const run = toolRun([
+      { id: "c0", name: "readProjectSource", args: { path: "README.md" }, status: "done", output: { kind: "read", status: "ok" } },
+      { id: "c1", name: "createTask", args: { title: "Fix the login copy", goal: "…" }, status: "done", output: { ok: true, taskId: "task_1" } },
+    ]);
+    render(<Entry entry={{ kind: "tool", id: "t2", ...run }} tasks={tasks} />);
+    fireEvent.click(screen.getByRole("button", { name: /Read/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Open task" }));
+    expect(opened).toEqual(["task_1", "task_1"]);
+  });
+
+  it("reads the task a start line filed by one rule: an ok createTask result with its id", () => {
+    expect(filedTaskOf({ id: "c", name: "createTask", args: {}, status: "done", output: { ok: true, taskId: "task_1" } })).toBe("task_1");
+    expect(filedTaskOf({ id: "c", name: "createTask", args: {}, status: "done", output: { ok: false, error: "refused" } })).toBeUndefined();
+    expect(filedTaskOf({ id: "c", name: "updateTask", args: {}, status: "done", output: { ok: true, taskId: "task_1" } })).toBeUndefined();
+    expect(startLine.steps[0]!.taskId).toBe("task_1");
   });
 });

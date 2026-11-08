@@ -7,11 +7,9 @@
  * (refused).
  */
 import { describe, expect, it } from "vitest";
-import type { BlockContext, ResumeWaitInput, ResumeWaitResult } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { ResumeWaitInput, ResumeWaitResult } from "@flow-state-dev/core/internal";
 import {
-  cancelAndResume,
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
   openHolds,
   ticketForClaim,
   TaskFilingRefusedError,
@@ -19,6 +17,9 @@ import {
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { cancelAndResume } from "../../src/tasks/helpers/user-stop";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { payOwedResumes } from "../../src/tasks/helpers/wait-on-task";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
@@ -90,7 +91,7 @@ describe.each([
     expect((await collection.ask!("t", [{ kind: "question", prompt: "Which date column?" }], { claim })).outcome).toBe("recorded");
     const refused = await collection.setKeptOpenBy!("t", "suspended", { claim, hold: STOP });
     expect(refused).toMatchObject({ outcome: "declined", reason: "open-question" });
-    expect(openHolds(collection.get("t")!).map((hold) => hold.source.kind)).toEqual(["row"]);
+    expect(openHolds(collection.get("t")!).map((hold) => hold.source.kind)).toEqual(["task"]);
   });
 
   it("a cancel owes the parked run its resume in the same write, keeping the stop it is owed to; the clear drops both", async () => {

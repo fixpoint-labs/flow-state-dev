@@ -7,7 +7,7 @@
  * `fsdev dev --app <pages>` on a fresh store over a git checkout, the coding
  * workers on the lab's scripted harness (`GOAL_HARNESS=stub`), and the pages
  * built from a scratch copy of the lab's source (a control's patch lands only
- * in that copy, and is printed). Chief of Staff answers on the lab's own model
+ * in that copy, and is printed). Lead answers on the lab's own model
  * when a task's notice wakes it; nothing in the legs waits on what it says.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/teammates-lab/stops-and-re-runs-a-task-from-its-popup/run.mts
@@ -19,7 +19,7 @@ import { join } from "node:path";
 import type { Page } from "playwright";
 import { createClient } from "@flow-state-dev/client";
 import { STEER_POLL_MS } from "@flow-state-dev/harness-manager";
-import { createInboxClient, inboxItems, taskActionName, type InboxHold, type InboxRow } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskActionName, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice } from "@flow-state-dev/orchestration/tasks";
 import { createWorkforceClient, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { goalTmpDir, loadFixture, REPO_ROOT, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";
@@ -65,7 +65,7 @@ const CONTROLS: Record<string, Patch[]> = {
       to:
         `const other = (await workforce.listWorkerSessions(${JSON.stringify(fixture.filer)})).find((s) => !s.isDefault)!.session; ` +
         "return inbox.board({ flowId: other.flowId ?? other.flowKind, sessionId: other.id, board: TASK_BOARD }).refile(refileRowOf(whole), rerunOverrides(whole, worker));",
-      why: "Re-run is bound to a second conversation with Chief of Staff, not the one that filed the task",
+      why: "Re-run is bound to a second conversation with Lead, not the one that filed the task",
     },
   ],
 };
@@ -101,7 +101,7 @@ function buildPages(scratch: string, patches: readonly Patch[]): string {
   return pages;
 }
 
-type Row = InboxRow & { goal: string; title?: string; assignee?: string; attempts?: number; error?: string };
+type Row = InboxTaskInput & { goal: string; title?: string; assignee?: string; attempts?: number; error?: string };
 /** A row as `getTask` answers it: its brief and its steers too. */
 type WholeRow = { status?: string; goal?: string; title?: string; context?: string; assignee?: string; attempts?: number; error?: string; steers?: { message: string }[] };
 type Board = { flow: string; sessionId: string };
@@ -186,7 +186,7 @@ async function reviewHold(fsd: Fsd, board: Board, row: Row): Promise<InboxHold |
 }
 
 await runGoal(async (failures, tell) => {
-  if (process.env.AI_GATEWAY_API_KEY === undefined) throw new Error("setup: needs AI_GATEWAY_API_KEY (Chief of Staff's woken turns and the run's judge)");
+  if (process.env.AI_GATEWAY_API_KEY === undefined) throw new Error("setup: needs AI_GATEWAY_API_KEY (Lead's woken turns and the run's judge)");
   const scratch = goalTmpDir(`tm-task-buttons${CONTROL === "" ? "" : `-${CONTROL}`}`);
   const pages = buildPages(scratch, CONTROLS[CONTROL]!);
   // A checkout with one commit, so a run has a HEAD to cut its branch from, that ignores `.fsdev/`.
@@ -209,16 +209,16 @@ await runGoal(async (failures, tell) => {
       return { flow: session.flowId ?? session.flowKind, sessionId: session.id };
     };
     const cos = await boardOf(fixture.filer);
-    // A second conversation with Chief of Staff, which files too: where a control's re-run is sent.
+    // A second conversation with Lead, which files too: where a control's re-run is sent.
     // Opened in every run, so the boards read are the same with or without a control.
     const second = await fsd.flow(cos.flow).createSession({ title: "Another conversation", state: { [WORKER_ID_STATE_KEY]: fixture.filer } });
     const other: Board = { flow: cos.flow, sessionId: second.id };
     if ((await workforce.listWorkerSessions(fixture.filer)).filter((s) => !s.isDefault).map((s) => s.session.id).join() !== second.id) {
-      throw new Error("setup: the second conversation with Chief of Staff isn't listed as its one other session");
+      throw new Error("setup: the second conversation with Lead isn't listed as its one other session");
     }
     const everyRow = async () => [...(await rowsOf(fsd, cos)).map((row) => ({ row, board: cos })), ...(await rowsOf(fsd, other)).map((row) => ({ row, board: other }))];
 
-    // The coding task, filed as a screen files one, on Chief of Staff's board.
+    // The coding task, filed as a screen files one, on Lead's board.
     const filed = await act(fsd, cos, CREATE_TASK, { assignee: fixture.coder, ...fixture.task });
     const taskId: string | undefined = filed?.taskId;
     if (taskId === undefined) throw new Error(`setup: ${CREATE_TASK} filed nothing: ${JSON.stringify(filed)}`);
@@ -239,8 +239,8 @@ await runGoal(async (failures, tell) => {
     const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
     page.setDefaultTimeout(30_000);
     await page.goto(lab.origin);
-    await page.locator(`nav[aria-label="Workers"] button[data-worker="Chief of Staff"]`).click();
-    const panel = page.locator(`aside[aria-label="Chief of Staff's panel"]`);
+    await page.locator(`nav[aria-label="Workers"] button[data-worker="Lead"]`).click();
+    const panel = page.locator(`aside[aria-label="Lead's panel"]`);
     await panel.locator(`button[aria-label^="Coding task: ${fixture.task.title}, on Cursor"]`).click();
     await page.locator('[role="dialog"] [data-testid="task-action-row"]').waitFor();
 
@@ -321,10 +321,10 @@ await runGoal(async (failures, tell) => {
       if (idsAfterAgain !== idsBeforeAgain) failures.push(`re-run again — the boards went from ${idsBeforeAgain} to ${idsAfterAgain} rows`);
     }
 
-    // ---- the re-run's result reaches Chief of Staff's conversation ----------------------------------
+    // ---- the re-run's result reaches Lead's conversation ----------------------------------
     // The scripted run commits, so its task waits for a review: accepted here, as the popup's Accept would.
     if (rerun === undefined) {
-      failures.push("result — no re-run was filed, so no result can reach Chief of Staff");
+      failures.push("result — no re-run was filed, so no result can reach Lead");
     } else {
       const { board } = rerun;
       const held = await until(async () => (await rowsOf(fsd, board)).find((r) => r.id === rerun!.row.id), (r) => r !== undefined && (r.holds ?? []).some((h) => h.ask.kind === "review"), 300_000, 3_000);
@@ -340,24 +340,24 @@ await runGoal(async (failures, tell) => {
           90_000,
           2_000,
         );
-        if (!notice.held) failures.push(`result — Chief of Staff's conversation holds no notice of the re-run's ending (${rerun.row.id}, filed on ${board.sessionId === cos.sessionId ? "its board" : "another conversation's board"})`);
+        if (!notice.held) failures.push(`result — Lead's conversation holds no notice of the re-run's ending (${rerun.row.id}, filed on ${board.sessionId === cos.sessionId ? "its board" : "another conversation's board"})`);
       }
     }
 
-    // ---- Chief of Staff files nothing of its own beside the pressed re-run --------------------------
+    // ---- Lead files nothing of its own beside the pressed re-run --------------------------
     // Its woken turns (the cancel's notice, the re-run's) end first; then its board holds the old task and the re-run, and nothing else.
     await until(() => inProgress(fsd, cos.sessionId), (live) => live.length === 0, 240_000, 3_000);
     await sleep(5_000);
     await until(() => inProgress(fsd, cos.sessionId), (live) => live.length === 0, 120_000, 3_000);
-    const cosRows = tell.over("Chief of Staff's board rows", await rowsOf(fsd, cos));
+    const cosRows = tell.over("Lead's board rows", await rowsOf(fsd, cos));
     const expected = [taskId, ...(rerun?.board === cos ? [rerun.row.id] : [])];
     const extra = cosRows.filter((r) => !expected.includes(r.id));
-    if (extra.length > 0) failures.push(`cos-files-nothing — Chief of Staff's board holds ${extra.length} row(s) beside the old task and the re-run: ${extra.map((r) => `${r.title ?? r.goal} → ${r.assignee}`).join("; ")}`);
-    if (!cosRows.some((r) => r.id === rerun?.row.id)) failures.push("cos-files-nothing — Chief of Staff's board doesn't hold the pressed re-run");
+    if (extra.length > 0) failures.push(`cos-files-nothing — Lead's board holds ${extra.length} row(s) beside the old task and the re-run: ${extra.map((r) => `${r.title ?? r.goal} → ${r.assignee}`).join("; ")}`);
+    if (!cosRows.some((r) => r.id === rerun?.row.id)) failures.push("cos-files-nothing — Lead's board doesn't hold the pressed re-run");
 
     return {
       failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-      evidence: `steered, cancelled and re-ran ${taskId} from its popup; re-run ${rerun?.row.id} on ${fixture.rerunOn.worker}, refused again as already_open, its result noticed in Chief of Staff's conversation; the board holds ${cosRows.length} rows`,
+      evidence: `steered, cancelled and re-ran ${taskId} from its popup; re-run ${rerun?.row.id} on ${fixture.rerunOn.worker}, refused again as already_open, its result noticed in Lead's conversation; the board holds ${cosRows.length} rows`,
     };
   } finally {
     await browser.close().catch(() => {});
