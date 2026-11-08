@@ -244,17 +244,19 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
     if (!isStreaming) followWaiting();
   }, [isStreaming, followWaiting]);
 
-  // A view opened while turns wait follows the session's newest request, which
-  // is a waiting one: follow the oldest running turn instead, and the rest after it.
-  const checkedOpen = useRef<string | null>(null);
+  // The session the queue holds lines for. When the view moves to another
+  // session, the queue moves with it at once, before the new session loads, so
+  // a line sent for the new one never joins the old one's.
+  const queueSession = useRef(sessionId);
   useEffect(() => {
-    if (sessionId === undefined || isLoading || checkedOpen.current === sessionId) return;
-    const left = checkedOpen.current;
+    const left = queueSession.current;
+    if (left === sessionId) return;
+    queueSession.current = sessionId;
     // Lines still held for the session being left go to its server now, oldest
     // first, so leaving the session doesn't drop them. Each waits there under
     // `defer`, which may start them in another order.
     const held = queue.current.filter((line) => line.requestId === undefined && line.sending !== true);
-    if (left !== null && held.length > 0) {
+    if (left !== undefined && held.length > 0) {
       void (async () => {
         for (const line of held) {
           try {
@@ -265,11 +267,18 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
         }
       })();
     }
-    checkedOpen.current = sessionId;
     queue.current = [];
     starting.current = null;
     publish();
     reattached.current.clear();
+  }, [sessionId, client, flowKind, turnAction, publish]);
+
+  // A view opened while turns wait follows the session's newest request, which
+  // is a waiting one: follow the oldest running turn instead, and the rest after it.
+  const checkedOpen = useRef<string | null>(null);
+  useEffect(() => {
+    if (sessionId === undefined || isLoading || checkedOpen.current === sessionId) return;
+    checkedOpen.current = sessionId;
     runningTurns(sessionId).then(
       (turns) => {
         const oldest = turns[0];
@@ -286,7 +295,7 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
       // Unread, the view stays on the request it follows.
       () => undefined
     );
-  }, [sessionId, isLoading, runningTurns, followRequest, publish, client, flowKind, turnAction]);
+  }, [sessionId, isLoading, runningTurns, followRequest, publish]);
 
   const send = useCallback(
     (prompt: string): Promise<TOutcome> => {
