@@ -76,6 +76,8 @@ export interface FixtureLab extends LabAdapter {
   readonly retries: { sessionId: string; requestId: string }[];
   /** With `held`, every coding run waiting to start goes on to its first step. */
   startRuns(): void;
+  /** The next line's turn fails at its model call with `reason`, before any reply: the contract tests' failed turn. */
+  failNextTurn(reason: string): void;
 }
 
 /**
@@ -185,6 +187,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   const notSetUp = new Set(options.notSetUp ?? []);
   let unreachable = options.unreachableReads ?? 0;
   let connection: SessionConnectionStatus = "live";
+  let failNext: string | undefined;
   /** What each run waiting on you is waiting for: the answer it goes on with. */
   const waits = new Map<string, (answer: TaskAnswer) => void>();
   /** With `held`, the coding runs waiting on `startRuns()`. */
@@ -428,7 +431,11 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     }
     notify();
     let at = 0;
-    for (const [delay, run] of [...script(w, job), [200, () => endTurn(w)] as Step]) {
+    // The next line's turn fails before any reply: its failed line, then the turn ends.
+    const failed = failNext !== undefined && job.kind === "user" ? failNext : undefined;
+    if (failed !== undefined) failNext = undefined;
+    const steps: Step[] = failed !== undefined ? [[0, () => fake.failTurn(w.sessionId, failed)]] : script(w, job);
+    for (const [delay, run] of [...steps, [200, () => endTurn(w)] as Step]) {
       at += delay;
       setTimeout(run, at * speed);
     }
@@ -505,7 +512,10 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
 
   const retries: { sessionId: string; requestId: string }[] = [];
 
-  return {
+  const fake: FixtureLab = {
+    failNextTurn(reason) {
+      failNext = reason;
+    },
     setConnection(state) {
       connection = state;
       notify();
@@ -765,4 +775,5 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       });
     },
   };
+  return fake;
 }

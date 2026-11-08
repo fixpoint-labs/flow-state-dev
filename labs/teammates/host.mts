@@ -49,6 +49,7 @@ import { checkCodexReadiness, CODEX_PASS, codexAgent } from "@flow-state-dev/cod
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { harnessEnv } from "@flow-state-dev/core/harness";
 import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import type { ModelResolver } from "@flow-state-dev/core/types";
 import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { checkCursorReadiness, CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
@@ -129,6 +130,8 @@ export interface TeammatesOptions {
    * engine's default, one minute.
    */
   staleThresholdMs?: number;
+  /** Resolves every model the host calls, in place of the gateway: the contract tests pass a scripted one. Absent: the gateway. */
+  modelResolver?: ModelResolver;
 }
 
 /** How long a coding run's checks may take together. */
@@ -412,6 +415,7 @@ export async function openTeammates(options: TeammatesOptions) {
     devtool: { userId: options.userId },
     // A consult reads on `intent/utility`: a smaller model than the workers answer on.
     models: { default: options.model, intents: { utility: [UTILITY_MODEL] } },
+    ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
   } as never);
 
   return state;

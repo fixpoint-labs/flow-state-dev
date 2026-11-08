@@ -4,26 +4,9 @@
  *
  *     fsdev dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style
  *
- * - `desk.main`, the session-mode main worker, is on the built-in `agent`
- *   flow with `answerAgain: true`: a background result that settles while its
- *   turn runs is taken into that turn (epic D2). The lab writes no block for it.
- * - `desk.researcher` and `desk.thread` are on `agent` too; `desk.lead` is on
- *   the built-in `coordinator` flow.
- * - The `agent` flow carries `projectSourceCapability` over the same host the
- *   coding runs use, so a worker whose file names its `read` preset
- *   (`desk.main`, `desk.researcher`) reads the session's project itself, from
- *   the host's clone at the default branch, with no coding run.
- * - `desk.coder` and `desk.thread-coder` are on the lab's one coding flow,
- *   `harness-thread`; only `desk.thread-coder` waits for your review.
- * - `projects` lists and creates the projects a session works in, and `pins`
- *   keeps the threads you pinned. A project's repository is checked when it is
- *   made, by the workspace host's `checkRepository`: one no coding run could
- *   use here (no such folder, not a git repository, `.fsdev/` not ignored) is
- *   refused, and the picker asks the same check before Create.
- * - `harness-readiness` reads which coding harnesses can run on this machine
- *   (harness-manager's `harnessReadiness`, one check per harness from its
- *   integration): logged as a table at start, and returned by its `read`
- *   action, which `{ refresh: true }` reads again.
+ * The server itself (the workers, their flows, the lab's small flows and the
+ * store) is built by `openLab` in `host.mts`; this file reads the settings
+ * below and calls it. The contract tests call `openLab` too, with a scripted model.
  *
  * The host is durable: a thread's review or question waits on you, and a
  * coding run's review needs durable execution.
@@ -56,36 +39,12 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
-import { delimiter, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS } from "@flow-state-dev/claude-code";
-import { checkCodexReadiness, CODEX_PASS } from "@flow-state-dev/codex";
-import { defineFlow, utility } from "@flow-state-dev/core";
-import { harnessEnv } from "@flow-state-dev/core/harness";
-import { checkCursorReadiness, CURSOR_PASS } from "@flow-state-dev/cursor";
-import { createFlowState } from "@flow-state-dev/engine";
-import { ASK_MARKER_IGNORED, formatHarnessReadiness, harnessReadiness, harnessReadinessAction } from "@flow-state-dev/harness-manager";
-import { sqliteStores } from "@flow-state-dev/store-sqlite";
-import { consultSessionsCapability, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce, projectSourceCapability, projectWorkspace } from "@flow-state-dev/workforce";
-import { readWorkforce } from "@flow-state-dev/workforce/loader";
-import { checkoutCommandProblem, localWorkspaceHost, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
-import { defineHarnessThreadFlow, HARNESS_THREAD_DRAIN_MS, HARNESS_THREAD_FLOW } from "./workforce/flows/harness-thread.mts";
-import { definePinsFlow, PINS_FLOW } from "./workforce/flows/pins.mts";
-import { defineProjectsFlow, PROJECTS_FLOW } from "./workforce/flows/projects.mts";
+import { delimiter, resolve } from "node:path";
+import { formatHarnessReadiness } from "@flow-state-dev/harness-manager";
+import { checkoutCommandProblem, splitCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
+import { openLab } from "./host.mts";
 
-const model = process.env.CLAUDE_CODE_STYLE_MODEL ?? "openai/gpt-5.4";
 const data = resolve(process.env.CLAUDE_CODE_STYLE_DATA ?? ".fsdev/claude-code-style");
-const userId = process.env.CLAUDE_CODE_STYLE_USER ?? "u_lab";
-/** The small model for background work: session titles, and a consult of another conversation (`intent/utility`). */
-const utilityModel = process.env.CLAUDE_CODE_STYLE_UTILITY_MODEL ?? "openai/gpt-6-luna";
-const answerAgain = process.env.CLAUDE_CODE_STYLE_ANSWER_AGAIN === "off" ? {} : { answerAgain: true as const };
-const scripted =
-  process.env.CLAUDE_CODE_STYLE_HARNESS === "stub" ? { scriptedStepMs: Number(process.env.CLAUDE_CODE_STYLE_HARNESS_STEP_MS ?? 2_000) } : {};
-/** A goal's wait before a silent request is taken as interrupted: only beside the scripted coder. */
-const stale =
-  process.env.CLAUDE_CODE_STYLE_HARNESS === "stub" && process.env.CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS !== undefined
-    ? { staleSweepThresholdMs: Number(process.env.CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS) }
-    : {};
 mkdirSync(data, { recursive: true });
 
 /** The repository the lab is started in, or none outside one. */
@@ -96,14 +55,6 @@ const startedIn = () => {
     return "";
   }
 };
-/** The repositories a run works in a worktree of, by their real paths. */
-const repositories = (process.env.CLAUDE_CODE_STYLE_REPOSITORIES ?? startedIn()).split(delimiter).filter((path) => path !== "" && existsSync(path)).map((path) => realpathSync(path));
-/** A project's repository as one of those, when it is one: a `file://` remote or a path. */
-const listed = (repository: string) => {
-  const path = repository.startsWith("file://") ? fileURLToPath(repository) : repository;
-  const real = isAbsolute(path) && existsSync(path) ? realpathSync(path) : undefined;
-  return real !== undefined && repositories.includes(real) ? real : undefined;
-};
 /** The command `CLAUDE_CODE_STYLE_SETUP` names, split like a project check. */
 const setup = ((value: string | undefined): WorkspaceSetup | undefined => {
   if (value === undefined || value.trim() === "") return undefined;
@@ -111,79 +62,24 @@ const setup = ((value: string | undefined): WorkspaceSetup | undefined => {
   if (problem !== undefined) throw new Error(`CLAUDE_CODE_STYLE_SETUP: ${problem}`);
   return { command: splitCheckoutCommand(value.trim()) as [string, ...string[]] };
 })(process.env.CLAUDE_CODE_STYLE_SETUP);
-const source = projectWorkspace();
-const workspace = localWorkspaceHost({
-  root: join(data, "runs"),
-  remotes: { allow: ["file"] },
-  localRepositories: repositories,
-  source: async (ctx) => {
-    const answer = await source(ctx);
-    const local = answer.kind === "repo" ? listed(answer.repo) : undefined;
-    return answer.kind === "repo" && local !== undefined ? { ...answer, repo: local } : answer;
-  },
+
+const { flowState, readiness } = await openLab({
+  data,
+  userId: process.env.CLAUDE_CODE_STYLE_USER ?? "u_lab",
+  model: process.env.CLAUDE_CODE_STYLE_MODEL ?? "openai/gpt-5.4",
+  utilityModel: process.env.CLAUDE_CODE_STYLE_UTILITY_MODEL ?? "openai/gpt-6-luna",
+  answerAgain: process.env.CLAUDE_CODE_STYLE_ANSWER_AGAIN !== "off",
+  ...(process.env.CLAUDE_CODE_STYLE_HARNESS === "stub" ? { scriptedStepMs: Number(process.env.CLAUDE_CODE_STYLE_HARNESS_STEP_MS ?? 2_000) } : {}),
+  // The repositories a run works in a worktree of, by their real paths.
+  repositories: (process.env.CLAUDE_CODE_STYLE_REPOSITORIES ?? startedIn()).split(delimiter).filter((path) => path !== "" && existsSync(path)).map((path) => realpathSync(path)),
   ...(setup === undefined ? {} : { setup }),
-});
-
-const tree = await readWorkforce(fileURLToPath(new URL("./workforce", import.meta.url)));
-if (tree.errors.length > 0) throw new Error(`workforce/ did not load: ${tree.errors.map((e) => e.error.message).join("; ")}`);
-
-/** Core's session title generator, one per flow that runs it. */
-const titler = () => utility.sessionTitleGenerator({ name: "auto-title", model: utilityModel });
-
-let flows = {};
-const installation = createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
-flows = {
-  // Titles each session after its turn (core's sessionTitleGenerator, a background step): the sessions list reads the title it writes.
-  agent: defineAgentWorkerFlow({
-    installation,
-    model,
-    ...answerAgain,
-    afterAnswer: titler(),
-    uses: [projectSourceCapability({ workspace }), consultSessionsCapability(installation)],
-  }),
-  // Threads mode's main session is titled the same way, so its row names what the session is about.
-  coordinator: defineCoordinatorFlow({ installation, routeModel: model, agent: { model, afterAnswer: titler() } }),
-  // Its runs work in the session's project: a task filed with none is refused at filing (FIX-2333).
-  [HARNESS_THREAD_FLOW]: { flow: defineHarnessThreadFlow({ installation, workspace, ...scripted }), roles: ["contributor"], needsProject: true },
-};
-const workers = hireWorkforce(installation) as { id: string }[];
-// A project is checked when it's made, by the same rule a run's checkout passes:
-// a repository no run could use here is refused before its first task (FIX-2403).
-// It is asked about the repository a run will get: a listed one by its real path, as
-// `source` hands it over, so the picker says worktree where the run makes one.
-// `GOAL_CONTROL=no-repository-check` leaves the check off, for the goal check's control.
-const checkRepository =
-  process.env.GOAL_CONTROL === "no-repository-check"
-    ? undefined
-    : (repository: string) => workspace.checkRepository!(listed(repository) ?? repository, { ignored: ASK_MARKER_IGNORED });
-const projects = defineProjectsFlow({ checkRepository })({ id: PROJECTS_FLOW }) as { id: string };
-const pins = definePinsFlow()({ id: PINS_FLOW }) as { id: string };
-
-/** Which harnesses a coding thread can run on here, over the environment each run gets. */
-const readiness = harnessReadiness({
-  "claude-code": { label: "Claude Code", check: (o) => checkClaudeCodeReadiness({ env: harnessEnv({ pass: CLAUDE_CODE_PASS }), signal: o?.signal }) },
-  codex: { label: "Codex", check: (o) => checkCodexReadiness({ env: harnessEnv({ pass: CODEX_PASS }), timeoutMs: 30_000, signal: o?.signal }) },
-  cursor: { label: "Cursor", check: () => checkCursorReadiness(harnessEnv({ pass: CURSOR_PASS })) },
+  ...(process.env.CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS === undefined ? {} : { staleThresholdMs: Number(process.env.CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS) }),
+  // `GOAL_CONTROL=no-repository-check` leaves the project repository check off, for the goal check's control.
+  checkRepository: process.env.GOAL_CONTROL !== "no-repository-check",
+  // `GOAL_FLOWS` names a module of a goal check's own flows (a goal's delivered message). Never set otherwise.
+  ...(process.env.GOAL_FLOWS ? { goalFlows: process.env.GOAL_FLOWS } : {}),
 });
 // At start, never awaited: a missing sign-in never stops the server.
 void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));
-const readinessFlow = defineFlow({ kind: "harness-readiness", actions: { read: harnessReadinessAction(readiness) } } as never)({
-  id: "harness-readiness",
-} as never) as { id: string };
 
-// A goal check's own flows beside the lab's: `GOAL_FLOWS` names a module whose default export lists
-// them, as a stand-in for a service the lab doesn't run (a goal's delivered message). Never set otherwise.
-const goalFlows = process.env.GOAL_FLOWS ? ((await import(pathToFileURL(process.env.GOAL_FLOWS).href)).default as { id: string }[]) : [];
-
-export default createFlowState({
-  flows: Object.fromEntries([...workers, projects, pins, readinessFlow, ...goalFlows].map((copy) => [copy.id, copy])),
-  stores: { default: { primary: sqliteStores({ filename: join(data, "lab.db") }) } },
-  // A coding run's review and a thread's question wait on you across a restart.
-  durable: true,
-  // A shutdown waits for a coding run still going, its checks and judge too (FIX-2484).
-  dispatchDrainTimeoutMs: HARNESS_THREAD_DRAIN_MS,
-  ...stale,
-  devtool: { userId },
-  // A consult of another conversation reads on `intent/utility`, a smaller model.
-  models: { default: model, intents: { utility: [utilityModel] } },
-} as never);
+export default flowState;

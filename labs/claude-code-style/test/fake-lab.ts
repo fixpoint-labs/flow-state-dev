@@ -55,6 +55,8 @@ export interface FakeLab extends LabAdapter {
   failTurn(sessionId: string, reason: string): void;
   /** Each `retry` the screen made, in order. */
   readonly retries: { sessionId: string; requestId: string }[];
+  /** The next turn's model call fails with `reason`, before any reply: the contract tests' failed turn. */
+  failNextTurn(reason: string): void;
 }
 
 interface FixtureTask extends LabTask {
@@ -125,6 +127,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   const listeners = new Set<() => void>();
   let seq = 0;
   let connection: ConnectionState = "live";
+  let failNext: string | undefined;
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
   const notify = () => {
@@ -326,6 +329,12 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
 
   const turn = (s: FixtureSession, text: string, origin: string) => {
     startTurn(s);
+    if (failNext !== undefined) {
+      const reason = failNext;
+      failNext = undefined;
+      play(s, [[300, () => fake.failTurn(s.row.id, reason)]]);
+      return;
+    }
     const threads = modeOfWorker(s.row.worker)?.id === "threads";
     // The task the line names (by a word of its title), finished or not, else the first one running.
     // The stop script re-reads its status, so a finished one is reported, not swapped for another.
@@ -425,7 +434,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
 
   const retries: { sessionId: string; requestId: string }[] = [];
 
-  return {
+  const fake: FakeLab = {
     retries,
     failTurn(sessionId, reason) {
       const s = session(sessionId);
@@ -443,6 +452,9 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     setConnection(state) {
       connection = state;
       notify();
+    },
+    failNextTurn(reason) {
+      failNext = reason;
     },
     fail(title, error) {
       for (const s of sessions.values()) {
@@ -625,4 +637,5 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       });
     },
   };
+  return fake;
 }
