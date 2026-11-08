@@ -960,6 +960,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const feeds = sessionFeeds(client);
   /** Each conversation's answering turns its open view last read as running: what Stop stops. */
   const runningNow = new Map<string, string[]>();
+  /** Each conversation's turns this page sent, by request id, in order: a Stop leaves the ones sent after its press. */
+  const sent = new Map<string, string[]>();
   /**
    * Each conversation's stop under way: the turns an `interrupt` aborted, until the view's request
    * read shows every one ended. `wake` tells the conversation's open views to draw again.
@@ -1007,8 +1009,11 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     async send(sessionId, text) {
       const flow = flowOfSession.get(sessionId);
       if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
+      // The id is the page's own, so a Stop pressed before this send can tell this turn came after it.
+      const requestId = `req_${crypto.randomUUID()}`;
+      sent.set(sessionId, [...(sent.get(sessionId) ?? []), requestId]);
       // Streamed, so the answer shows as it is written (the session stream sends it once finished).
-      const response = await client.flow(flow).send("respond", { message: text }, { sessionId, stream: true });
+      const response = await client.flow(flow).send("respond", { message: text }, { sessionId, requestId, stream: true });
       if (!response.ok) throw new Error(`teammates: the send was refused (${response.status})`);
       if (response.headers.get("content-type")?.includes("text/event-stream")) feeds(sessionId).followResponse(response);
     },
@@ -1018,8 +1023,11 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       // The turns running at the press: what the view showed, plus what the server reads now, since the
       // view's read can lag a line sent just before the press. A line sent after it is its own turn.
       const shown = runningNow.get(sessionId) ?? [];
+      const sentBefore = new Set(sent.get(sessionId) ?? []);
       const read = (await client.sessions.requests(sessionId, { status: "in_progress", limit: 20 })).filter((r) => !QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
-      const ids = [...new Set([...shown, ...read])];
+      // The read answers after the press: a turn this page sent meanwhile is not one Stop stops.
+      const sentAfter = new Set((sent.get(sessionId) ?? []).filter((id) => !sentBefore.has(id)));
+      const ids = [...new Set([...shown, ...read])].filter((id) => !sentAfter.has(id));
       const stop = { ids: new Set(ids) };
       stops.set(sessionId, stop);
       wake(sessionId);

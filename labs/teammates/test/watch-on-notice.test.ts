@@ -31,12 +31,16 @@ function host() {
   let summary: unknown;
   let holdRequests: Promise<void> | undefined;
   let requestsFailing = 0;
+  const sentIds: string[] = [];
   let items: unknown[] = [{ id: "u1", type: "message", status: "completed", requestId: "r1", itemIndex: 0, ts: 1, role: "user", content: [{ type: "output_text", text: "hi" }] }];
   const fetcher = (async (url: string, init?: RequestInit) => {
     const path = new URL(url, "http://x").pathname;
     calls.push(`${init?.method ?? "GET"} ${path}`);
-    // A turn long over: the abort route refuses it as finished.
-    if (path.endsWith("/abort")) return json({ error: "finished" }, 409);
+    if (path.endsWith("/abort")) return json({});
+    if (path.includes("/actions/")) {
+      sentIds.push(JSON.parse(String(init?.body)).requestId);
+      return json({});
+    }
     if (path.endsWith("/requests")) {
       await holdRequests;
       if (requestsFailing > 0) {
@@ -84,6 +88,8 @@ function host() {
       for (const s of subscriptions) if (!s.closed) s.options.onChange(notice);
     },
     requests: (next: unknown[]) => void (requests = next),
+    sentIds,
+    aborted: () => calls.filter((call) => call.endsWith("/abort")),
     items: (next: unknown[]) => void (items = next),
     failRequestReads: (n: number) => void (requestsFailing = n),
     summary: (next: unknown) => void (summary = next),
@@ -149,6 +155,29 @@ describe("a Stop after a turn that crashed mid-answer, long ago", () => {
     await settle();
     expect(h.count("/abort")).toBe(0);
     expect(views.at(-1)!.stopping).toBe(false);
+  });
+});
+
+describe("a Stop whose read of running turns answers late", () => {
+  it("leaves a line sent after the press to run on", async () => {
+    const h = host();
+    const lab = createLabAdapter(h.client);
+    const id = await lab.openConversation("eng");
+    h.requests([{ id: "r1", actionName: "respond", status: "in_progress", startedAtMs: 1 }]);
+    const views: ConversationView[] = [];
+    stops.push(lab.watchConversation(id, (view) => views.push(view)));
+    await until(() => views.at(-1)?.running === true);
+    const release = h.holdRequestReads();
+    const pressed = lab.interrupt(id);
+    await lab.send(id, "one more thing");
+    // The held read answers after that send, and names its turn running too.
+    h.requests([
+      { id: "r1", actionName: "respond", status: "in_progress", startedAtMs: 1 },
+      { id: h.sentIds[0], actionName: "respond", status: "in_progress", startedAtMs: 2 },
+    ]);
+    release();
+    await pressed;
+    expect(h.aborted()).toEqual([expect.stringContaining("/r1/abort")]);
   });
 });
 
