@@ -1,7 +1,8 @@
 name: Adopter goal
 
-# The epic's adopter goal: how many of its six "Not done if" rows hold for
-# someone who installs FSD from npm, read off every push to main. It is not a
+# The epic's adopter goal: how many of its six "Not done if" rows, and the
+# closure's upgrade journey, hold for someone who installs FSD from npm, read
+# off every push to main. It is not a
 # gate. Most assertions are expected to fail until the child that owns them
 # lands, so it never runs on a pull request (an expected fail would block
 # unrelated work) and never on release. A child dispatches it on its own branch
@@ -69,3 +70,9 @@ jobs:
       - name: Control fails against the pinned published tarballs
         if: ${{ !cancelled() }}
         run: node scripts/packed-install/run.mjs --control=adopter-goal
+
+      # The upgrade journey walks no dropped name under the control above, so
+      # it gets a planted one: one dropped name's changelog lines removed.
+      - name: Control fails with one moved name's changelog line removed
+        if: ${{ !cancelled() }}
+        run: node scripts/packed-install/run.mjs --control=moved-name

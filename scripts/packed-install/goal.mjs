@@ -1,6 +1,7 @@
 /**
- * The adopter-goal judge: how many of the epic's six "Not done if" rows hold
- * for someone who installs FSD from npm, read off one run of `run.mjs --goal`.
+ * The adopter-goal judge: how many of the epic's six "Not done if" rows, and
+ * the closure's row, hold for someone who installs FSD from npm, read off one
+ * run of `run.mjs --goal`.
  *
  * `goal-manifest.json`, beside this file, lists the rows, the assertion ids
  * under each, and one expectation per assertion (`pass` or `fail`). `run.mjs`
@@ -325,6 +326,101 @@ export function probeNeverPublished(nodeModules, entries = NEVER_PUBLISHED) {
     if (hit) failures.push(`${entry.id}: ${hit}`);
   }
   return failures;
+}
+
+// ── closure.j5:moved-name-named ─────────────────────────────────────────────
+
+/**
+ * What an adopter upgrading package `pkg` from version `since` reads as its
+ * changelog: the bullet and paragraph lines of every pending changeset whose
+ * frontmatter names `pkg`, and of every `## x.y.z` section of its
+ * `CHANGELOG.md` newer than `since`. Headings and blank lines are dropped.
+ *
+ * @param {string} pkg — `@flow-state-dev/<name>`
+ * @param {{ changesets: string[], changelog: string | null, since: string }} sources
+ * @returns {string[]}
+ */
+export function changelogLines(pkg, { changesets, changelog, since }) {
+  const body = (text) => text.split("\n").filter((l) => l.trim() !== "" && !/^#/.test(l.trim()));
+  const lines = [];
+  for (const text of changesets) {
+    const front = /^---\n([\s\S]*?)\n---\n?/.exec(text);
+    if (!front) continue;
+    const names = front[1].split("\n").map((l) => /^\s*["']?([^"':]+)["']?\s*:/.exec(l)?.[1]);
+    if (names.includes(pkg)) lines.push(...body(text.slice(front[0].length)));
+  }
+  if (changelog) {
+    let newer = false;
+    for (const line of changelog.split("\n")) {
+      const heading = /^##\s+(\d+\.\d+\.\d+)\s*$/.exec(line);
+      if (heading) newer = compareVersions(heading[1], since) > 0;
+      else if (newer) lines.push(...body(line));
+    }
+  }
+  return lines;
+}
+
+function compareVersions(a, b) {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i += 1) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  return 0;
+}
+
+/** A line names `name` when it carries it in backticks, whole. */
+const namesIt = (line, name) => line.includes(`\`${name}\``);
+
+/**
+ * A line of the package's own changelog names a home when it carries the full
+ * specifier, its short `<package>/<subpath>` form, or its `./<subpath>` form
+ * in backticks, or the full specifier as a bare whole token: ended by
+ * whitespace, a backtick, a quote, a comma, `;`, `:`, `)`, `]` or the line's
+ * end, never by `.`, so `…/engine/host.js` is not `…/engine/host`.
+ */
+const namesHome = (line, home) => {
+  const short = home.replace(/^@flow-state-dev\//, "");
+  const sub = short.slice(short.indexOf("/") + 1);
+  if ([home, short, `./${sub}`].some((form) => line.includes(`\`${form}\``))) return true;
+  const escaped = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\w/@.-])${escaped}(?=[\\s\`'",;:)\\]]|$)`).test(line);
+};
+
+/**
+ * Grade the names a package root dropped between the version an adopter is
+ * on and the tarballs under test. Each must fail to compile from the root,
+ * and a line of its package's changelog must name it: with one of its `homes`
+ * (the package's other entries where it now resolves) when it has any. A name
+ * with no home in its package (retired, renamed, or now another package's)
+ * needs only the line, since what replaces it is prose. No dropped name at all
+ * is a fail: a journey that walked nothing proves nothing.
+ *
+ * @param {{ pkg: string, name: string, homes: string[], failsOnNew: boolean }[]} names
+ * @param {Map<string, string[]>} linesByPackage — from {@link changelogLines}
+ * @returns {string[]} failures
+ */
+export function gradeMovedNames(names, linesByPackage) {
+  if (names.length === 0) return ["no package root dropped a name between the version upgraded from and these tarballs: the journey walked no name"];
+  const failures = [];
+  for (const { pkg, name, homes, failsOnNew } of names) {
+    if (!failsOnNew) failures.push(`${pkg} ${name}: still compiles from the root on these tarballs`);
+    const lines = (linesByPackage.get(pkg) ?? []).filter((l) => namesIt(l, name));
+    if (lines.length === 0) failures.push(`${pkg} ${name}: no changelog line names it`);
+    else if (homes.length > 0 && !lines.some((l) => homes.some((h) => namesHome(l, h))))
+      failures.push(`${pkg} ${name}: no changelog line names it with its new home (${homes.join(", ")})`);
+  }
+  return failures;
+}
+
+/**
+ * The planted control's input: a copy of the changelog lines with every line
+ * of `pkg` that names `name` removed.
+ *
+ * @returns {Map<string, string[]>}
+ */
+export function plantLineRemoval(linesByPackage, { pkg, name }) {
+  const planted = new Map(linesByPackage);
+  planted.set(pkg, (linesByPackage.get(pkg) ?? []).filter((l) => !namesIt(l, name)));
+  return planted;
 }
 
 function walk(dir) {
