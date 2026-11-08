@@ -40,7 +40,7 @@ import {
   routeOnAfterAnswer,
   routeOnAfterClose
 } from "../src/coordinator/coordinator-rounds";
-import type { RoundTask, RoundRows } from "../src/coordinator/coordinator-rounds";
+import type { RoundTask, RoundTasks } from "../src/coordinator/coordinator-rounds";
 import type { OpenRound } from "../src/coordinator/coordinator-state";
 import { bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
 
@@ -198,7 +198,7 @@ describe("a round, on its own (V5)", () => {
   const posted: RoundTask = { messageRequestId: "p1", round: 0, delegate };
   /** The round's one post row, `t1`, as the board reads it, with the round's routing counts read just before. */
   const rowsOf =
-    (row: { running?: boolean; replied?: boolean }, at: { begun: number; opening: number } = { begun: 1, opening: 0 }): RoundRows =>
+    (row: { running?: boolean; replied?: boolean }, at: { begun: number; opening: number } = { begun: 1, opening: 0 }): RoundTasks =>
     () => ({ ids: ["t1"], running: row.running ?? false, replied: row.replied === true ? [delegate] : [], ...at });
 
   it("waits while a routing still adds to it, and shares one deadline across its deliveries (BR-24b)", () => {
@@ -270,7 +270,7 @@ describe("a round, on its own (V5)", () => {
   it("keeps an answer heard again once, and sends it on once", () => {
     // Two rows out, so the first answer doesn't close the round.
     const open = endRound(beginRound([], "p1", 0).rounds, "p1", 0);
-    const two: RoundRows = () => ({ ids: ["t1", "t2"], running: true, replied: [delegate], begun: 1, opening: 0 });
+    const two: RoundTasks = () => ({ ids: ["t1", "t2"], running: true, replied: [delegate], begun: 1, opening: 0 });
     const first = landAnswer(open, two, posted, "on time", 1_200);
     expect(first).toMatchObject({ kept: true });
     const again = landAnswer(first.rounds, two, posted, "on time", 1_300);

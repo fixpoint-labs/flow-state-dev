@@ -36,7 +36,7 @@ import {
   updateReport,
   type IntakeDecision,
   type Occurrence,
-  type ReportRow
+  type ReportResourceState
 } from "./reports";
 import type { ErrorReporter, FinalFailureEvent } from "./reporter";
 import { doorTask, RESPOND_ACTION } from "../worker-door";
@@ -134,7 +134,7 @@ function lastJson(text: string | null | undefined): unknown {
 }
 
 /** The ids and links of one occurrence, as the issue's Context section lists them. */
-function contextLines(row: ReportRow): string[] {
+function contextLines(row: ReportResourceState): string[] {
   const lines: string[] = [];
   const add = (label: string, value: unknown) => {
     if (value !== undefined && value !== null && value !== "") lines.push(`- **${label}:** \`${String(value)}\``);
@@ -171,7 +171,7 @@ const CONTEXT_HEADING = "## Context";
 const STORM_HEADING = "### Failures in this storm";
 
 /** The issue's body: the harness's draft, then the Context section written by code from the row, so its ids are exact. */
-function composeIssueBody(draft: Draft, row: ReportRow): string {
+function composeIssueBody(draft: Draft, row: ReportResourceState): string {
   const section = (title: string, text: string | undefined) => (text === undefined || text.trim() === "" ? [] : [`## ${title}`, "", text.trim(), ""]);
   const steps = draft.stepsToReproduce ?? [];
   return [
@@ -188,7 +188,7 @@ function composeIssueBody(draft: Draft, row: ReportRow): string {
 }
 
 /** `body` with its Context section written again from `row`: a storm's list as it is now, not as it was drafted. */
-function refreshContext(body: string, row: ReportRow): string {
+function refreshContext(body: string, row: ReportResourceState): string {
   const at = body.lastIndexOf(CONTEXT_HEADING);
   return at < 0 ? body : `${body.slice(0, at)}${[CONTEXT_HEADING, "", ...contextLines(row)].join("\n")}`;
 }

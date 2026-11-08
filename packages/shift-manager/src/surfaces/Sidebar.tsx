@@ -32,7 +32,7 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import type { Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
-import { openRows, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openTasks, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { projectReaderOf, useProjectRead, type WorkstreamEntry } from "../lib/projects";
 import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
@@ -419,7 +419,7 @@ export function Sidebar({
   const dim = asking ? ` ${ASKING_CLASS}` : "";
 
   const inboxCount = loaded === undefined ? "…" : loaded.inbox.ok ? loaded.inbox.value.length : "!";
-  const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
+  const tasksCount = loaded === undefined ? "…" : openTasks(loaded).length;
   const waiting = loaded !== undefined && loaded.inbox.ok && loaded.inbox.value.length > 0;
   // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
   const roster = useRoster();

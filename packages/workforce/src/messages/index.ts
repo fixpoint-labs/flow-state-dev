@@ -21,11 +21,11 @@ export {
   MESSAGE_STATUSES,
   WORKER_MESSAGES_PATTERN,
   WORKER_MESSAGES_RESOURCE,
-  workerMessageRowSchema,
+  workerMessageResourceStateSchema,
   workerMessagesCollection,
   workerMessagesResources,
   type MessageAddress,
-  type WorkerMessageRow
+  type WorkerMessageResourceState
 } from "./message-log";
 export { DEFAULT_MESSAGE_BUDGET, DEFAULT_MESSAGES_PER_TURN, type MessageLimits } from "./message-limits";
 export { sendMessageInputSchema } from "./message-tool";

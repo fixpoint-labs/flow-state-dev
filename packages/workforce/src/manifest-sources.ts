@@ -49,7 +49,7 @@ import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { resolveResourceCollection } from "@flow-state-dev/orchestration/tasks";
 import type { WorkerManifest } from "./manifest";
-import type { WorkerInventoryRow } from "./inventory/collections";
+import type { WorkerInventoryResourceState } from "./inventory/collections";
 
 /**
  * The declared half, as the sources need it — a structural subset of
@@ -165,7 +165,7 @@ function workersSource(
     entries: async (ctx: BlockContext): Promise<ManifestEntry[]> => {
       const declared = files;
       const entries: ManifestEntry[] = [];
-      for (const row of await listRows<WorkerInventoryRow>(ctx, key, "workers")) {
+      for (const row of await listRows<WorkerInventoryResourceState>(ctx, key, "workers")) {
         // A row that lost its required fields reads back empty rather than
         // throwing (the collection's schema is closed and required) — guard it
         // the same way a row written before an optional field is guarded.

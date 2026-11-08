@@ -22,7 +22,7 @@ import type { Client } from "@flow-state-dev/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { allRows, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { allTasks, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { handToShiftCoordinator } from "../lib/outbox";
 import { projectReaderOf, readProject, type WorkstreamEntry } from "../lib/projects";
 import { navigate, type Route } from "../lib/routes";
@@ -157,7 +157,7 @@ export function JumpTo({
         to: { level: "roster", team: w.team },
         focus: `[data-testid="roster-worker"][data-worker-id="${w.id.replace(/"/g, '\\"')}"]`,
       })),
-      ...allRows(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, keywords: [r.id], to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
+      ...allTasks(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, keywords: [r.id], to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
       ...(snapshot.resources.ok ? snapshot.resources.value : []).map((d): Entry => ({ group: "Resources", label: d.ref, hint: "read-only", keywords: [d.sessionId], to: { level: "resource", sessionId: d.sessionId, ref: d.ref } })),
     ];
   }, [snapshot, workstreams]);

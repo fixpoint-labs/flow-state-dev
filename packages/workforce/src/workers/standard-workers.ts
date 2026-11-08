@@ -22,7 +22,7 @@ import { shownSettingsOf, type ShownSettingsOf } from "./shown-settings";
  * team's `TEAM.md` `name:`, each `null` when unset), and the settings its flow
  * shows.
  */
-export const standardWorkerRowSchema = z.object({
+export const standardWorkerResourceStateSchema = z.object({
   flow: z.string().min(1),
   description: z.string().nullable(),
   name: z.string().nullable(),
@@ -31,7 +31,7 @@ export const standardWorkerRowSchema = z.object({
 });
 
 /** One standard worker as the projection shows it. */
-export type StandardWorkerRow = z.infer<typeof standardWorkerRowSchema>;
+export type StandardWorkerResourceState = z.infer<typeof standardWorkerResourceStateSchema>;
 
 /**
  * The flow a standard worker runs on: its `flow:`, or `defaultFlow` when its
@@ -50,11 +50,11 @@ export function workerDisplayName(manifest: WorkerManifest): string | null {
 }
 
 /**
- * A standard worker's projected row.
+ * A standard worker's projected resource state.
  *
  * @param shown Which settings each flow shows.
  */
-export function standardWorkerRow(manifest: WorkerManifest, defaultFlow: string, shown: ShownSettingsOf): StandardWorkerRow {
+export function standardWorkerResourceState(manifest: WorkerManifest, defaultFlow: string, shown: ShownSettingsOf): StandardWorkerResourceState {
   const description = manifest.declared.description;
   const flow = standardWorkerFlow(manifest, defaultFlow) ?? defaultFlow;
   return {
@@ -81,17 +81,17 @@ export function defineStandardWorkerCollection(
   return defineProjectedResourceCollection({
     pattern: STANDARD_WORKERS_PATTERN,
     scope: "user",
-    stateSchema: standardWorkerRowSchema,
+    stateSchema: standardWorkerResourceStateSchema,
     read: async ({ key }) => {
       const manifest = standard().get(key);
-      return manifest === undefined ? null : standardWorkerRow(manifest, defaultFlow, shown);
+      return manifest === undefined ? null : standardWorkerResourceState(manifest, defaultFlow, shown);
     },
     search: async ({ query }) => {
       const prefix = query.prefix ?? "";
       const hits = [...standard().values()]
         .filter((manifest) => manifest.id.startsWith(prefix))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-        .map((manifest) => ({ key: manifest.id, state: standardWorkerRow(manifest, defaultFlow, shown) }));
+        .map((manifest) => ({ key: manifest.id, state: standardWorkerResourceState(manifest, defaultFlow, shown) }));
       return { hits };
     },
     client: { state: { read: true } }

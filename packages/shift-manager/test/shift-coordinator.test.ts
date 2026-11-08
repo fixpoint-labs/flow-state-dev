@@ -9,7 +9,7 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { shiftCoordinatorOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
 import { conversationAt } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
-import { GENERAL_TEAM, inboxSection, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
+import { GENERAL_TEAM, inboxSection, toWorker, type Ask, type BoardTaskView, type Worker } from "../src/lib/reads";
 
 const ORG = "org_1";
 const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWorker({ id, kind: "agent", door })! });
@@ -80,7 +80,7 @@ describe("which worker is the Shift Coordinator (V2, D2)", () => {
 
 // ---- the summary -----------------------------------------------------------------
 
-const row = (ownerSessionId: string, id: string, status: string): BoardRow => ({
+const row = (ownerSessionId: string, id: string, status: string): BoardTaskView => ({
   boardRef: `${ownerSessionId}.tasks`,
   ownerSessionId,
   id,
@@ -166,7 +166,7 @@ describe("the shift summary (V3; D1, BR-4, BR-7, BR-8)", () => {
 // Inbox lists, one item per task, so the summary counts the Inbox, never the
 // tasks and the asks side by side (FIX-1972, FIX-2131).
 describe("what needs the user, in the shift summary (FIX-2131)", () => {
-  const heldOnQuestion = (holder: string, id: string, extra: Partial<BoardRow> = {}): BoardRow => ({
+  const heldOnQuestion = (holder: string, id: string, extra: Partial<BoardTaskView> = {}): BoardTaskView => ({
     ...row(holder, id, "in_progress"),
     assignee: "eng.coder",
     holds: [
@@ -177,7 +177,7 @@ describe("what needs the user, in the shift summary (FIX-2131)", () => {
         source: { kind: "task", closedBy: [{ by: "answer" }] },
         ask: { kind: "question", prompt: "Approve the plan to merge the rounding copies?" },
       },
-    ] as BoardRow["holds"],
+    ] as BoardTaskView["holds"],
     ...extra,
   });
 

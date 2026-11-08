@@ -77,8 +77,8 @@ export { listedScheduleSchema, type ListedSchedule } from "./schedules/listed-sc
 export {
   WORKER_MESSAGES_PATTERN,
   WORKER_MESSAGES_RESOURCE,
-  workerMessageRowSchema,
-  type WorkerMessageRow
+  workerMessageResourceStateSchema,
+  type WorkerMessageResourceState
 } from "./messages/log-row";
 export { MAX_RULES, MAX_RULE_CHARS, type StandingRule } from "./standing-rules/rules-list";
 export { RULE_TOOLS, STANDING_RULES_ACTION, STANDING_RULES_LINE } from "./standing-rules/keys";

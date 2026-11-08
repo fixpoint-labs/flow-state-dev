@@ -8,7 +8,7 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
-import { MESSAGE_RECEIVED_ENTRY, WORKER_MESSAGES_RESOURCE, workerMessagesResources, type WorkerMessageRow } from "@flow-state-dev/workforce";
+import { MESSAGE_RECEIVED_ENTRY, WORKER_MESSAGES_RESOURCE, workerMessagesResources, type WorkerMessageResourceState } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /** The flow's kind and id. */
@@ -23,7 +23,7 @@ const deliver = handler({
   resources: workerMessagesResources,
   execute: async (input, ctx) => {
     const id = `msg_goal_${Date.now().toString(36)}`;
-    const row: WorkerMessageRow = {
+    const row: WorkerMessageResourceState = {
       id,
       from: input.from,
       to: "desk.coder",
@@ -36,7 +36,7 @@ const deliver = handler({
       hop: 1,
       status: "unconfirmed",
       at: Date.now(),
-    } as WorkerMessageRow;
+    } as WorkerMessageResourceState;
     const log = (ctx.resources as Record<string, any>)[WORKER_MESSAGES_RESOURCE];
     await log.getOrCreate(id, row);
     const outcome = await dispatchThroughSeam(ctx as never, {

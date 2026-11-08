@@ -72,7 +72,7 @@ import {
   RECEIVED_MESSAGE_COMPONENT,
   SEND_MESSAGE_TOOL,
   WORKER_MESSAGES_RESOURCE,
-  workerMessageRowSchema,
+  workerMessageResourceStateSchema,
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
@@ -1096,7 +1096,7 @@ export function runSteps(items: readonly Item[]): SessionStep[] {
 /** The session a message was delivered to, from the message log; undefined while the log doesn't hold it. */
 export function destinationOf(rows: readonly unknown[], messageId: string): string | undefined {
   for (const row of rows) {
-    const parsed = workerMessageRowSchema.safeParse(row);
+    const parsed = workerMessageResourceStateSchema.safeParse(row);
     if (parsed.success && parsed.data.id === messageId) return parsed.data.toSession;
   }
   return undefined;
@@ -1297,7 +1297,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           const { sessionId } = await anyConversation();
           const rows = await readEveryCollectionPage(client.resources, sessionId, WORKER_MESSAGES_RESOURCE);
           return rows
-            .map((row) => workerMessageRowSchema.safeParse(row.clientData))
+            .map((row) => workerMessageResourceStateSchema.safeParse(row.clientData))
             .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
             .filter((m) => m.from === worker || m.to === worker)
             .sort((a, b) => a.at - b.at)

@@ -89,7 +89,7 @@ import { conversationLedgerResources } from "../conversation-board/ledger";
 import {
   defineProjectFilesCollection,
   definePrivateProjectFilesCollection,
-  type ProjectRow,
+  type ProjectResourceState,
   type ProjectVisibility
 } from "./collections";
 import { repositoryProblem } from "./repository-value";
@@ -185,7 +185,7 @@ export function projectWorkspace(options: ProjectWorkspaceOptions = {}): RunSour
 function answerFor(
   ctx: LooseBlockContext,
   visibility: ProjectVisibility,
-  project: ProjectRow,
+  project: ProjectResourceState,
   checkouts: readonly ProjectCheckout[]
 ): RunSourceAnswer {
   const declaration = visibility === "private" ? definePrivateProjectFilesCollection() : defineProjectFilesCollection();
@@ -218,7 +218,7 @@ function answerFor(
 export function checkoutFor(
   checkouts: readonly ProjectCheckout[],
   visibility: ProjectVisibility,
-  project: Pick<ProjectRow, "id" | "repository">,
+  project: Pick<ProjectResourceState, "id" | "repository">,
   principal: Pick<ScopePrincipal, "orgId" | "tenantId">
 ): ProjectCheckout | undefined {
   const { orgId, tenantId } = principal;

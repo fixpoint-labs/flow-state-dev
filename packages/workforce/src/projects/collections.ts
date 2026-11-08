@@ -83,7 +83,7 @@ export type ProjectAddress = z.infer<typeof projectAddressSchema>;
  * only by trusted code — the creator's own
  * grant at create — and nothing a member does adds to it.
  */
-export const projectRowSchema = z.object({
+export const projectResourceStateSchema = z.object({
   /** The project's id, also its key under `projects/`. One path segment; never `unassigned`. */
   id: z.string().min(1),
   title: z.string().min(1),
@@ -132,8 +132,8 @@ export const projectRowSchema = z.object({
   checks: z.array(z.string()).default([])
 });
 
-/** One stored project. @see projectRowSchema */
-export type ProjectRow = z.infer<typeof projectRowSchema>;
+/** One stored project. @see projectResourceStateSchema */
+export type ProjectResourceState = z.infer<typeof projectResourceStateSchema>;
 
 // BP-015.
 /**
@@ -187,7 +187,7 @@ const PROJECTS_COLLECTION = defineResourceCollection({
   pattern: "projects/*",
   scope: "org",
   flowIsolation: SHARED_ACROSS_FLOWS,
-  stateSchema: projectRowSchema,
+  stateSchema: projectResourceStateSchema,
   client: { state: { read: true }, expose: PROJECT_CLIENT_FIELDS }
 });
 
@@ -209,7 +209,7 @@ const PRIVATE_PROJECTS_COLLECTION = defineResourceCollection({
   pattern: "projects/*",
   scope: "user",
   flowIsolation: SHARED_ACROSS_FLOWS,
-  stateSchema: projectRowSchema,
+  stateSchema: projectResourceStateSchema,
   client: { state: { read: true }, expose: PROJECT_CLIENT_FIELDS }
 });
 

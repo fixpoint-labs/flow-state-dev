@@ -27,7 +27,7 @@ import {
   defineProjectBlocks,
   defineProjectFilesCollection,
   defineProjectsCollection,
-  projectRowSchema,
+  projectResourceStateSchema,
 } from "../src/index";
 
 vi.mock("../src/projects/membership-gate", async (original) =>
@@ -376,7 +376,7 @@ describe("a project's repository", () => {
     // Stored state is not re-parsed on read, so a reader parses the row (or
     // guards with `== null`, as a browser reader does), and either way it is a
     // project with no repository.
-    expect(projectRowSchema.parse((await h.inspectRow("old")).row).repository).toBeNull();
+    expect(projectResourceStateSchema.parse((await h.inspectRow("old")).row).repository).toBeNull();
     const malloryLab = await h.openSession("mallory", "lab");
     const listed = await h.call("GET", "mallory", ["sessions", malloryLab, "resources", "projects"]);
     expect(listed.json.items.find((i: any) => i.clientData.id === "old").clientData.repository ?? null).toBeNull();

@@ -25,9 +25,9 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { RequestStatus } from "@flow-state-dev/core/types";
-import { allRows, type LoadedSnapshot } from "./derive";
+import { allTasks, type LoadedSnapshot } from "./derive";
 import { useLab } from "./lab-data";
-import { conversationBoardRef, describeFailure, type BoardRow, type Failure } from "./reads";
+import { conversationBoardRef, describeFailure, type BoardTaskView, type Failure } from "./reads";
 import { interruptRun, readRunRecord, resolveRunFlow, RunReadError, type OpenRun } from "./run";
 
 /** How often, and how many times, a task screen re-reads its row. */
@@ -59,9 +59,9 @@ export type InterruptState = { kind: "idle" } | { kind: "pending" } | { kind: "r
 export type TaskView = {
   boardRef: string;
   taskId: string;
-  row: BoardRow | undefined;
+  row: BoardTaskView | undefined;
   /** Every row on this task's board, from the same read as `row`. */
-  boardRows: BoardRow[];
+  boardRows: BoardTaskView[];
   rowFailure: Failure | undefined;
   /** The row is being re-read while its link is awaited. */
   waiting: boolean;
@@ -103,12 +103,12 @@ export function useTask(): TaskView {
 
 // BR-3.
 /** Whether the row should be re-read while the screen waits. */
-function awaitingLink(row: BoardRow | undefined): boolean {
+function awaitingLink(row: BoardTaskView | undefined): boolean {
   return row === undefined || (row.status === "in_progress" && row.run === null);
 }
 
 /** A row the board may still hand to a run: queued or running, not finished or failed. */
-function isOpen(row: BoardRow): boolean {
+function isOpen(row: BoardTaskView): boolean {
   return row.status === "pending" || row.status === "in_progress";
 }
 
@@ -127,8 +127,8 @@ export function TaskProvider({
   children: ReactNode;
 }) {
   const { client, reader } = useLab();
-  const fromSnapshot = useMemo(() => allRows(snapshot).filter((r) => r.boardRef === boardRef), [snapshot, boardRef]);
-  const [boardRows, setBoardRows] = useState<BoardRow[]>(fromSnapshot);
+  const fromSnapshot = useMemo(() => allTasks(snapshot).filter((r) => r.boardRef === boardRef), [snapshot, boardRef]);
+  const [boardRows, setBoardRows] = useState<BoardTaskView[]>(fromSnapshot);
   const [rowFailure, setRowFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
   // Set by a re-read someone asked for (a board action in the frame, or Retry):

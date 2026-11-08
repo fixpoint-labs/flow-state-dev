@@ -20,7 +20,7 @@ import { runAction } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { defineWorkerInventoryCollection, workerInventoryRowSchema } from "../src/index";
+import { defineWorkerInventoryCollection, workerInventoryResourceStateSchema } from "../src/index";
 
 const ORG = "org_acme";
 const OTHER_ORG = "org_other";
@@ -47,7 +47,7 @@ type Rows = {
 
 const writeBlock = handler({
   name: "inventory-write",
-  inputSchema: z.object({ workers: z.array(workerInventoryRowSchema) }),
+  inputSchema: z.object({ workers: z.array(workerInventoryResourceStateSchema) }),
   outputSchema: z.object({ written: z.number() }),
   resources: { workers, control: inheritsIsolation },
   execute: async (input: any, ctx: any) => {
@@ -224,7 +224,7 @@ describe("a flow that did not write the rows", () => {
 
 describe("the row schemas", () => {
   it("drops a key the schema does not declare", () => {
-    const parsed = workerInventoryRowSchema.parse({
+    const parsed = workerInventoryResourceStateSchema.parse({
       id: "eng.lead",
       kind: "agent",
       postCount: 7
@@ -237,7 +237,7 @@ describe("the row schemas", () => {
     // than defaulted, the framework's read path would fail the parse and hand
     // back the collection's default — so an older row would lose its `id` too,
     // not merely its new fields.
-    expect(workerInventoryRowSchema.parse({ id: "eng.lead", kind: "agent" })).toEqual({
+    expect(workerInventoryResourceStateSchema.parse({ id: "eng.lead", kind: "agent" })).toEqual({
       id: "eng.lead",
       kind: "agent",
       door: null,
