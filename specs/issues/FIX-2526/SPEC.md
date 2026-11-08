@@ -29,7 +29,8 @@ turn uses the new name and instructions.**
 - **The real need:** Jake edits the team he works with every day, starting with Chief of Staff.
 - **Smaller, and rejected:** renaming hired teammates only. Chief of Staff is the one Jake talks to.
 - **Bigger, and not this issue's:** showing a teammate's current instructions in the panel (they
-  stay on the server; the form still sets them whole), editing a standard worker's tools or skills.
+  stay on the server; the form still sets them whole). The lab's form edits name and instructions
+  only, though `edit` on a standard worker's copy takes any field, like any row of your own.
 - **Not done if:** a rename changes an id or loses a conversation; a name shows in one place and
   not another; an edit reaches a turn already running; one user's edit reaches another user;
   Reset leaves the copy behind; the roster lists Chief of Staff twice.
@@ -52,7 +53,7 @@ The check reads the prompt the scripted model received and the roster, never the
 - **Workforce tests:** `hire`/`edit` with `name` round-trip through `roster()`; the id is unchanged
   after a rename; a row stored before `name` existed still reads (BP-030); `edit` on a standard id
   writes the user's own copy under that id, and `resolveWorker` and both rosters use it, listing
-  the worker once; `reset` deletes the copy; another user's roster is untouched.
+  the worker once; a later `edit` of the copy's skills or settings round-trips like any own row; `reset` deletes the copy; another user's roster is untouched.
 - **Goal, `goals/teammates-lab/a-standard-teammate-takes-your-edits/`**, model-free, run with
   `pnpm tsx goals/teammates-lab/a-standard-teammate-takes-your-edits/run.mts`. Legs as in the
   figure, plus a hired teammate's rename leg. **Control** `GOAL_CONTROL=ignore-edits` builds the
