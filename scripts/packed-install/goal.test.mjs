@@ -48,12 +48,25 @@ test("the committed manifest is well formed and pins the 28 control tarballs", (
 });
 
 // The closure adds rows and never edits one: its journey is the seventh row,
-// expected to pass, after the epic's six.
-test("the closure row is last and carries the upgrade journey, expected to pass", () => {
+// after the epic's six. It is expected to fail until the changelogs name every
+// removed export, which waits on how the release notes list them; the change
+// that makes it pass flips it.
+test("the closure row is last and carries the upgrade journey, expected to fail for now", () => {
   const m = readManifest();
   assert.deepEqual(m.rows.slice(0, 6).map((r) => r.id), ["surface", "onepath", "first-hour", "leakage", "shims", "types"]);
   assert.deepEqual(m.rows[6], { id: "closure", title: "Closure", assertions: ["closure.j5:moved-name-named"] });
-  assert.equal(m.expect["closure.j5:moved-name-named"], "pass");
+  assert.equal(m.expect["closure.j5:moved-name-named"], "fail");
+});
+
+// The journey's fail, every other cell as the manifest expects: green. The same
+// journey unable to run is still red, expected fail or not.
+test("the committed manifest takes the journey's fail as green and its error as red", () => {
+  const m = readManifest();
+  const asExpected = (j5) => outcomes({ ...m.expect, "closure.j5:moved-name-named": j5 });
+  assert.equal(judge(m, asExpected("fail")).ok, true);
+  const errored = judge(m, asExpected("error"));
+  assert.equal(errored.ok, false);
+  assert.deepEqual(errored.errors.map((e) => e.id), ["closure.j5:moved-name-named"]);
 });
 
 test("the all-fail starting state is green with 0 rows, and the control accepts it", () => {
