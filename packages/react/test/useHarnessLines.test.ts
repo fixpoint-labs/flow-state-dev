@@ -42,6 +42,9 @@
  *     "coming back" case fails: its waiting turns are never read again.
  *   - let a failed send's retry for a session left run, and the "fails later"
  *     case fails: the new session's held line is sent to the old one.
+ *   - let a line whose steer answers late join the queue after the view
+ *     moved, and the "steer answers after" case fails: s1's line waits in
+ *     s2's queue, to be sent to s2.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -412,6 +415,34 @@ describe("useHarnessLines", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
     expect(flowMock.send).not.toHaveBeenCalledWith("run", { message: "b3", mode: "ask" }, { sessionId: "s1" });
+  });
+
+  it("a line whose steer answers after the view moved still goes to its own session", async () => {
+    const { result, rerender } = mount();
+    await waitFor(() => expect(sessionsMock.requests).toHaveBeenCalled());
+    let answer: (outcome: { taken: boolean; live: boolean }) => void = () => undefined;
+    steerRunningTurn.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    let sent: Promise<string> | undefined;
+    act(() => {
+      sent = result.current.send("for s1");
+    });
+    await waitFor(() => expect(steerRunningTurn).toHaveBeenCalled());
+
+    // The view moves to s2, which opens with a turn running and one waiting.
+    running = [
+      { id: "turn-b", actionName: "turn", startedAtMs: 1 },
+      { id: "wait-b", actionName: "turn", startedAtMs: 2 }
+    ];
+    rerender({ session: view(true, false, "s2") });
+    await waitFor(() => expect(followRequest).toHaveBeenCalledWith("turn-b"));
+
+    // s1's run refuses the line now: it is sent to s1, and s2's queue never holds it.
+    await act(async () => {
+      answer({ taken: false, live: true });
+      await sent;
+    });
+    expect(flowMock.send).toHaveBeenCalledWith("turn", { prompt: "for s1" }, { sessionId: "s1" });
+    expect(result.current.waiting.map((line) => line.key)).toEqual(["wait-b"]);
   });
 
   it("a waiting line whose turn can't be sent leaves the list, and its send rejects", async () => {

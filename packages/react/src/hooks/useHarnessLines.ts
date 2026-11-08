@@ -313,6 +313,13 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
         },
         turn: async (text) => {
           const input = inputOf(text);
+          // The view moved to another session while this line's steer was out:
+          // the queue holds that session's lines now, so the line goes straight
+          // to its own session's server, where it waits under `defer`.
+          if (queueSession.current !== sessionId) {
+            await client.flow(flowKind).send(turnAction, input, { sessionId });
+            return;
+          }
           if (!streaming.current && queue.current.length === 0) {
             await sendAction(turnAction, input, { userMessage: text });
             return;
