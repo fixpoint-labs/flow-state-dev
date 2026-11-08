@@ -23,9 +23,9 @@ Dashed edges lost, for the reason on the label.
 
 | | |
 |---|---|
-| **Instead of** | Subscribing on GitHub's PR-opened event · at the turn's end · by the agent calling `subscribe` |
+| **Instead of** | Subscribing on GitHub's PR-opened event · at the turn's end · by the agent calling `saveRoutine` |
 | **Because** | Only the session knows it opened the PR. The event names a branch and a login, so the service would guess a session and write a user's row (ER-5, FIX-2534 D2), and a model's memory is no guarantee (D5). The record's one write path, `writePullRequests` (`core/src/types/pull-requests.ts:412`), has two writers: the tool recorder, mid-turn (`pull-request-recorder.ts:118`), and harness-manager's turn-end `branch-pull-requests` step (`session-flow.ts:868`, after `pullRequestWritesSettled`, `branch-pull-requests.ts:196`). A new row calls back into harness-manager's session flow, which owns the record, to `subscribe` as the session's user. Turn end would lose CI landing mid-turn; GitHub does not redeliver (owner second look, 2026-11-05) |
-| **Locks in** | Every coding session that opens a GitHub PR hears its reviews, comments and CI from the moment it is recorded until it closes. Workforce workers have no PR record; they follow a PR through the tool |
+| **Locks in** | Every coding session that opens a GitHub PR hears its reviews, comments and CI from the moment it is recorded until it closes. Workforce workers have no PR record; they use `saveRoutine` with an event trigger |
 
 **What would change my mind:** coding tasks that should not hear their PR's reviews; then opt-in.
 

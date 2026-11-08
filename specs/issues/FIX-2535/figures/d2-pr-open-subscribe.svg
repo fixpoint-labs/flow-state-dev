@@ -78,7 +78,7 @@
     <text class="t-lbl" x="32" y="293">ELSEWHERE</text>
     <text class="mark minus" x="228" y="282">−</text>
     <text class="t-b" x="248" y="281">Not followed by default</text>
-    <text class="t-s" x="248" y="299">the subscribe tool still can</text>
+    <text class="t-s" x="248" y="299">saveRoutine with an event trigger still can</text>
     <text class="mark plus" x="592" y="282">+</text>
     <text class="t-b" x="612" y="281">Followed, if a match is found</text>
     <text class="t-s" x="612" y="299">by guessing a session</text>

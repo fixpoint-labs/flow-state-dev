@@ -25,7 +25,7 @@ through a signed webhook, with no `sessionId` on the path, and each event is nam
 | **The real need** | The epic's first row, *"the task follows its PR; a screened review lands in its session"*; its *Not done if*, *"GitHub routes by `sessionId`"* |
 | **Smaller, and rejected** | "Normalize GitHub payloads": the task still subscribes by hand |
 | **Bigger, and not this issue's** | Polling, screens, unmatched forwards, the closure (FIX-2536 to FIX-2539); Stripe and Slack (Q4, Q5) |
-| **Not done if** | The task must call `subscribe` itself · CI during the opening turn is lost · a review lands in a session made from the event · a redelivery, or a restarted fan-out, lands twice · a closed PR still delivers · an outsider passes by default · a webhook event and its API form differ in id or version |
+| **Not done if** | The task must call `saveRoutine` itself · CI during the opening turn is lost · a review lands in a session made from the event · a redelivery, or a restarted fan-out, lands twice · a closed PR still delivers · an outsider passes by default · a webhook event and its API form differ in id or version |
 
 ```mermaid
 flowchart LR
