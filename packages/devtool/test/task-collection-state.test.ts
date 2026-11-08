@@ -282,26 +282,25 @@ describe("the two folds composed — a tie across requests", () => {
   });
 });
 
+// FIX-2479 D1: the task's own hold is written `"task"`, and one stored before the rename reads
+// `"row"`. Either way an answered question no longer waits; a run's stop waits while it is on the task.
+describe("waitPrompt — the task's own hold, under either marker", () => {
+  const answeredFirst = (kind: string) => ({
+    id: "t",
+    status: "in_progress",
+    holds: [
+      { id: "q1", source: { kind }, ask: { kind: "question", prompt: "Which region?" } },
+      { id: "q2", source: { kind }, ask: { kind: "question", prompt: "Ship it?" } },
+    ],
+    steers: [{ id: "s1", answers: "q1" }],
+  });
 
-// FIX-2317: a session's item log replays a task-change logged before the rename as stored, with
-// the row's holds under `questions`. Read as they are, the task would show no open question
-// while the board still holds it.
-describe("groupCollections — a task-change logged before holds had their name", () => {
-  const question = {
-    id: "q1",
-    actor: "user",
-    openedAt: 1,
-    source: { kind: "row" },
-    ask: { kind: "question", prompt: "Which region?" },
-  };
+  it.each(["task", "row"])("skips an answered question and shows the next open hold (%s)", (kind) => {
+    expect(waitPrompt(answeredFirst(kind) as never)).toBe("Ship it?");
+  });
 
-  it("reads a logged row's questions as its holds, and its open question as the reason it waits", () => {
-    const item = change({ requestId: "req_1", ts: 1_000, taskId: "task-a" });
-    (item as unknown as { data: { task: Record<string, unknown> } }).data.task.questions = [question];
-    const [collection] = groupCollections([item]);
-    const task = collection!.tasks[0]!.task;
-    expect(task.holds).toEqual([question]);
-    expect(task).not.toHaveProperty("questions");
-    expect(waitPrompt(task)).toBe("Which region?");
+  it("shows a run's stop while it is on the task, whatever answers name", () => {
+    const task = { id: "t", status: "in_progress", holds: [{ id: "susp_1", source: { kind: "suspension" }, ask: { kind: "review", prompt: "Which branch?" } }], steers: [{ id: "s1", answers: "susp_1" }] };
+    expect(waitPrompt(task as never)).toBe("Which branch?");
   });
 });

@@ -1,5 +1,6 @@
+// FIX-2428.
 /**
- * One push socket's session (FIX-2428): which topics it hears, and the
+ * One push socket's session: which topics it hears, and the
  * frames it sends. Transport-neutral: a host takes the upgrade and moves
  * frames (`@flow-state-dev/node`'s `serve()`), and this decides everything
  * else, so a later host reuses the check.
@@ -18,7 +19,8 @@
  *   socket says whether its process's bus hears other processes. A control
  *   frame about the socket, never a notice kind.
  */
-import { PUSH_CLOSE_CODES, wireTopicKey, type PushServerFrame, type WireTopic } from "@flow-state-dev/core";
+import { type WireTopic } from "@flow-state-dev/core";
+import { PUSH_CLOSE_CODES, wireTopicKey, type PushServerFrame } from "@flow-state-dev/core/internal";
 import type { BusTopic, ChangeBus, ChangeNotice } from "../bus/types";
 import { verifyPushTicket } from "./ticket";
 

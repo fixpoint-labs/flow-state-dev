@@ -42,6 +42,7 @@ export function isInlineConfig(value: unknown): boolean {
   return typeof record.execute === "function";
 }
 
+// FIX-508 §7.
 /**
  * Detects an options object in the trailing argument slot of the iterating
  * methods (`forEach`, `forEachSideChain`): the concurrency knob, and `blocks`
@@ -53,8 +54,7 @@ export function isInlineConfig(value: unknown): boolean {
  * the declaration is dropped without a compile error or a run-time one.
  *
  * Note: an empty object `{}` is treated as options (the `Object.keys` clause).
- * This matches current behavior; tightening it is a deliberate non-goal
- * (FIX-508 §7).
+ * This matches current behavior; tightening it is a deliberate non-goal.
  */
 export function isConcurrencyOptions(
   value: unknown
@@ -88,12 +88,14 @@ export type ChildCallShape = {
   connector?: ConnectorFn<any, any>;
   factory?: InlineBlockFactory;
   inlineConfig?: Record<string, unknown>;
-  /** Per-step dispatch options (FIX-1005) — see {@link isStepOptions}. */
+  // FIX-1005.
+  /** Per-step dispatch options — see {@link isStepOptions}. */
   stepOptions?: StepOptions;
 };
 
+// FIX-1005.
 /**
- * Per-step dispatch options for `.step()` (FIX-1005).
+ * Per-step dispatch options for `.step()`.
  *
  * Deliberately tiny. This is not a general escape hatch for per-step config —
  * both members carry something a step's *dispatch* owns and the block itself
@@ -156,8 +158,9 @@ export type StepOptions = {
   onSettled?: (ctx: BlockContext, outcome: StepOutcome) => void;
 };
 
+// FIX-1005.
 /**
- * How a step's dispatch left (FIX-1005).
+ * How a step's dispatch left.
  *
  * `"suspended"` is separated from `"threw"` even though both arrive as a throw,
  * because they are opposite situations for a caller holding a resource: a

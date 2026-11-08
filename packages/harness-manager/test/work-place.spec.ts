@@ -15,7 +15,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { worktreeRowSchema } from "@flow-state-dev/workspace";
+import { worktreeResourceStateSchema } from "@flow-state-dev/workspace";
 import { shellWord, workPlace } from "../src/work-place";
 
 const git = (cwd: string, ...args: string[]) =>
@@ -43,7 +43,7 @@ function worktree() {
 describe("where a run's work went", () => {
   it("reads a session's worktree row, and its commands reach the branch and list its commits", () => {
     const { base, path, branch } = worktree();
-    const row = worktreeRowSchema.parse({ key: "h/s1", name: "s1-a1b2c3", path, branch, baseCommit: base, commits: 2, state: "ready", owner: { kind: "session", id: "s1" } });
+    const row = worktreeResourceStateSchema.parse({ key: "h/s1", name: "s1-a1b2c3", path, branch, baseCommit: base, commits: 2, state: "ready", owner: { kind: "session", id: "s1" } });
     const place = workPlace(row, { session: "s1" })!;
     expect(place).toMatchObject({ branch, path, baseCommit: base, commits: 2, name: "s1-a1b2c3", state: "ready", attachedTo: null });
     expect(sh(`${place.commands.cd} && git rev-parse --abbrev-ref HEAD`)).toBe(branch);
@@ -60,7 +60,7 @@ describe("where a run's work went", () => {
   });
 
   it("names the owner for a session attached to another's worktree", () => {
-    const row = worktreeRowSchema.parse({ path: "/w", branch: "b", owner: { kind: "session", id: "s-owner" }, attached: ["s-guest"] });
+    const row = worktreeResourceStateSchema.parse({ path: "/w", branch: "b", owner: { kind: "session", id: "s-owner" }, attached: ["s-guest"] });
     expect(workPlace(row, { session: "s-guest" })?.attachedTo).toBe("s-owner");
     expect(workPlace(row, { session: "s-owner" })?.attachedTo).toBeNull();
     expect(workPlace({ ...row, owner: { kind: "run", id: "t1" } }, { session: "s-guest" })?.attachedTo).toBeNull();

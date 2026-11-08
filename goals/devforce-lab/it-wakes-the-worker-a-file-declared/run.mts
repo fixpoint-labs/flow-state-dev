@@ -43,7 +43,6 @@ import { inMemoryStores } from "@flow-state-dev/engine";
 import { runBoardSegment } from "@flow-state-dev/harness-manager";
 import { checkoutPathFor } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
-import { WORKER_TASK_ENTRY } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import {
@@ -438,10 +437,10 @@ await runGoal(async (failures) => {
       const entriesOf = (seatId: string): string[] =>
         Object.keys((lab.workers[seatId] as { task?: { actions?: object } } | undefined)?.task?.actions ?? {});
       const emEntries = entriesOf(fixture.coordinatorSeat);
-      if (!sameSet(emEntries, [WORKER_TASK_ENTRY])) {
+      if (!sameSet(emEntries, ["work"])) {
         note(
           `${fixture.coordinatorSeat} declares task entries ${JSON.stringify(emEntries)}, wanted only ` +
-            `${WORKER_TASK_ENTRY} — the coordinator seat must have no route to a harness at all`,
+            `work — the coordinator seat must have no route to a harness at all`,
         );
       }
       if (entriesOf(fixture.assignedSeat).length === 0) {

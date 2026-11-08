@@ -13,8 +13,10 @@
  *     host that said its session has no branch.
  */
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { createInMemoryStores, runAction, runRead } from "@flow-state-dev/engine";
+import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { runRead } from "@flow-state-dev/engine/internal";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -387,7 +389,7 @@ function createCheck(workspace: HarnessSessionWorkspace) {
       flow: { kind: "stub-session", id: "stub-session" },
       state,
       via: "create",
-      readCollectionItem: async () => undefined,
+      readCollectionResource: async () => undefined,
     });
 }
 

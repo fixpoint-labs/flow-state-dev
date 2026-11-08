@@ -1,6 +1,7 @@
+// FIX-981; BP-031.
 /**
  * The bound claim ticket — the token a task write presents to prove it owns
- * the row it is writing to (FIX-981).
+ * the row it is writing to.
  *
  * The token this replaces was a bare attempt number. Attempt numbers are small
  * and collide constantly across a board — two freshly claimed tasks are both on
@@ -28,7 +29,7 @@
  * millisecond stamp is not enough to tell two incarnations apart. See its own
  * doc on {@link TaskClaimTicket}.
  *
- * Tickets are **server-derived and never caller-supplied** (BP-031): they are
+ * Tickets are **server-derived and never caller-supplied**: they are
  * minted here from a claim the substrate just committed. A model naming a task
  * id therefore supplies the *target* of a check and never the *authority* for
  * it.
@@ -52,14 +53,16 @@ export interface TaskClaimTicket {
   readonly attempt: number;
   /** `task.createdAt` as of the claim — task identity across delete/recreate. */
   readonly createdAt: number;
+  // FIX-2133 D3.
   /**
-   * `task.turn` as of the claim: the row's turn generation (FIX-2133 D3).
+   * `task.turn` as of the claim: the row's turn generation.
    * Every claim of a row advances it, a same-attempt re-entry's included, so
    * two turns of one attempt hold different tickets and a turn's late write
    * never lands after its successor's claim. Checked by every claim-ticket
    * write, at `transitionDeclineReason`.
    */
   readonly turn: number;
+  // BP-030.
   /**
    * `task.incarnationId` as of the claim — the row's identity nonce, and the
    * only one of these fields that survives a same-millisecond recreate.
@@ -71,7 +74,7 @@ export interface TaskClaimTicket {
    * gate is the one that does — can ask the question `createdAt` cannot answer.
    *
    * **Absent on a row persisted before `incarnationId` shipped, and on any
-   * hand-written `TaskCollectionRef` that maintains no provenance** (BP-030).
+   * hand-written `TaskCollectionRef` that maintains no provenance**.
    * A reader compares it only when both sides carry one, exactly as
    * `didWriteLand`'s incarnation arm does; absent is "cannot tell", never "does
    * not match".
@@ -96,8 +99,9 @@ export interface TaskClaimTicket {
    * of the write fence: the ref a write goes through is already narrowed to it.
    */
   readonly partition?: string;
+  // FIX-1817.
   /**
-   * `task.followUpOf` as of the claim (FIX-1817): the finished task the
+   * `task.followUpOf` as of the claim: the finished task the
    * claimed row follows up. A hand-over keys the follow-up's session by it, so
    * the follow-up runs in that task's session. Not part of the write fence.
    */
@@ -192,9 +196,10 @@ export function ticketNamesTask(
   );
 }
 
+// FIX-2288.
 /**
  * {@link ticketNamesTask}, and the ticket's `incarnationId` matches the row's
- * when both carry one (FIX-2288). For a write that lands on a settled row from
+ * when both carry one. For a write that lands on a settled row from
  * a request that may have outlived it, such as a run's spend: a row deleted and
  * recreated within the same millisecond keeps `createdAt` but not its nonce.
  * A legacy row or ticket without a nonce falls back to `createdAt` alone.

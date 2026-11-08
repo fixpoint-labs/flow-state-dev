@@ -74,6 +74,7 @@ export async function emitStateChangeItem(options: {
   await typed.emitItemDone(item);
 }
 
+// FIX-1506.
 /**
  * Wraps a set of `StateRef` operations so each committed mutation emits a
  * `state_change` SSE item. Handles both outer scopes (request/session/user/org)
@@ -85,7 +86,7 @@ export async function emitStateChangeItem(options: {
  *
  * `onCommitted`, when given, runs once after every committed mutation, before
  * the emit and whether or not the response can emit: the session, user and
- * org scopes publish their change notice through it (FIX-1506), so a write
+ * org scopes publish their change notice through it, so a write
  * from a run no stream follows still reaches other views. Request and
  * block-instance state pass none, and publish nothing.
  */

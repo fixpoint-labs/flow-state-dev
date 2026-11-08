@@ -1,0 +1,33 @@
+diff --git a/packages/core/src/capability/types.ts b/packages/core/src/capability/types.ts
+index 319c4185..4d221b41 100644
+--- a/packages/core/src/capability/types.ts
++++ b/packages/core/src/capability/types.ts
+@@ -49,15 +49,10 @@ type MaybePromise<T> = T | Promise<T>;
+  * Resources live at `ctx.resources` (FIX-435); they're a flat namespace
+  * routed by each resource's intrinsic `scope`.
+  */
+-export type CapabilityPresetCtx<TSessionState = any> = {
+-  session: {
+-    state: Readonly<TSessionState>;
+-    identity: { id: string; userId?: string; orgId?: string };
+-    [key: string]: any;
+-  };
+-  resources: Record<string, any>;
+-  [key: string]: any;
+-};
++export type CapabilityPresetCtx<TSessionState = any> = BlockContext<
++  Record<string, unknown>,
++  [TSessionState] extends [object] ? TSessionState : Record<string, unknown>
++>;
+ 
+ /**
+  * A preset definition — a partial block config. TSessionState flows from
+@@ -707,7 +702,7 @@ export type InferCapabilityTargetSchemas<TUses extends readonly UsesEntry[]> =
+ 
+ type InferCapabilityTargetSchemasEntry<T> =
+   T extends DefinedCapability<any, any, any, any, any, any, infer S, any, any>
+-    ? S extends Record<string, ZodTypeAny> ? S : {}
++    ? S extends Record<string, ZodTypeAny> ? (string extends keyof S ? {} : S) : {}
+     : {};
+ 
+ /**

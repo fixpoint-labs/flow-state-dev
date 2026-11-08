@@ -1,3 +1,4 @@
+// FIX-814.
 /**
  * Isomorphic resolution of an item's visibility.
  *
@@ -10,7 +11,7 @@
  * - Structural trace types (`block_trace`, `router_decision`,
  *   `state_snapshot`, `generator_step`) → `{ client: false, history: false }`,
  *   always — keyed by `item.type`, no stamp needed. `generator_step` is a
- *   replay-only resume substrate (FIX-814): client-invisible and never in LLM
+ *   replay-only resume substrate: client-invisible and never in LLM
  *   history.
  * - Conversational types (`message`, `reasoning`, `tool_output`)
  *   inherit visibility from `item.itemVisibility`. Absent

@@ -1,5 +1,6 @@
+// FIX-2078 D1.
 /**
- * Shared conformance for `WakeStore` backends (FIX-2078 D1). Every adapter
+ * Shared conformance for `WakeStore` backends. Every adapter
  * (memory, filesystem, SQLite, Postgres) runs it via `@flow-state-dev/engine/testing`.
  *
  * A wake is how a debt survives a crash: written before the write that owes,

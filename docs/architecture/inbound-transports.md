@@ -193,7 +193,7 @@ interface InboundTransportHost {
 `host.usesExternalRunner` is published so a request-host operation can
 refuse what cannot be fenced across a process boundary: a `dispatcher()`
 delivering into an *existing* session (`{ id }`) is refused with
-`external-dispatcher` on such a host, while a `{ key }` child and every
+`external-flow-runner` on such a host, while a `{ key }` child and every
 transport dispatch take the ordinary enqueue path. The refusal is lifted when
 `host.arbitratesExternalDispatch` is true, which the host sets when its arbiter
 runs over a lease backend the worker adapter supplied: the delivery is then

@@ -73,8 +73,9 @@ export interface HandlerConfig<
   BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
   "execute" | "stateSchema" | "flowConfigSchema"
 > {
+  // FIX-1331.
   /**
-   * What this block requires of whatever flow installs it (FIX-1331). Types
+   * What this block requires of whatever flow installs it. Types
    * `ctx.flow.config` off this schema, and makes the flow refuse when it
    * cannot supply a bag that satisfies it. Names no flow, so the block stays
    * portable. See {@link BlockConfig.flowConfigSchema}.
@@ -86,16 +87,19 @@ export interface HandlerConfig<
   orgStateSchema?: TOrgStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
   parentInputSchema?: TParentInputSchema;
-  /** This block's own request-scoped state (FIX-914). Exposed via `ctx.self`. */
+  // FIX-914.
+  /** This block's own request-scoped state. Exposed via `ctx.self`. */
   stateSchema?: TStateSchema;
-  /** Expected shape of the immediate parent's own state (FIX-914). Exposed
+  // FIX-914.
+  /** Expected shape of the immediate parent's own state. Exposed
    *  via `ctx.parent`'s state ops when the parent declares `stateSchema`. */
   parentStateSchema?: TParentStateSchema;
+  // FIX-435.
   /**
    * Flat resource declaration: accessor key → resource definition. Resources
    * are routed to the right storage layer via their intrinsic `scope`
    * (set on `defineResource`). Replaces the legacy
-   * `sessionResources` / `userResources` / `orgResources` (FIX-435).
+   * `sessionResources` / `userResources` / `orgResources`.
    */
   resources?: TResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;

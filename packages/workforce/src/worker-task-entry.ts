@@ -1,6 +1,7 @@
+// FIX-2083.
 /**
  * The entry every worker flow takes work through: tasks, a coordinator's
- * routed messages among them (FIX-2083). A leaf module, so a flow that
+ * routed messages among them. A leaf module, so a flow that
  * declares the entry and the lookup that checks for it share the name without
  * either importing the other.
  */
@@ -11,12 +12,13 @@
  */
 export const WORKER_TASK_ENTRY = "work";
 
+// FIX-1842.
 /**
  * The mark on a task-ledger binding that takes a conversation's tasks: the
  * `from` of each `work` entry `workerTaskEntry` builds, and nothing else. A
  * `work` entry gated by another binding (a feature board's door, say) refuses
  * every conversation task at its claim gate, where nothing can record the
- * refusal on the conversation's row (FIX-1842), so the delegate check asks
+ * refusal on the conversation's row, so the delegate check asks
  * for this mark instead of whether the entry exists. A registered symbol, so
  * two installed copies of this package read each other's mark.
  */

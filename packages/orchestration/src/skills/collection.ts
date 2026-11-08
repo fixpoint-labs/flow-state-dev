@@ -66,6 +66,7 @@ export interface DefineSkillsCollectionOptions {
    * is mainly for tests.
    */
   scope?: ResourceScope;
+  // BP-030.
   /**
    * Give every registered copy of the declaring flow its OWN catalog. Default
    * `false` — one bucket shared by every copy, which is what a single-instance
@@ -80,7 +81,7 @@ export interface DefineSkillsCollectionOptions {
    *
    * Isolation moves the read to a new key, so a collection seeded before this
    * was switched on re-seeds from the new bucket and the old rows are orphaned,
-   * not lost (BP-030).
+   * not lost.
    */
   flowIsolation?: boolean;
   /**

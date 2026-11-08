@@ -7,7 +7,7 @@
  * stamp the seam wrote, and the walk goes on from the sender's row.
  */
 import { describe, expect, it } from "vitest";
-import { MAX_WAIT_DEPTH } from "@flow-state-dev/core/types";
+import { MAX_WAIT_DEPTH } from "@flow-state-dev/core/internal";
 import { createRequestWaits, installWaits, outcomeOfRequest, waitChainDepth, waitedByOf } from "../src/durability/wait-chain";
 
 type Parked = { requestId: string; data: Record<string, unknown> };

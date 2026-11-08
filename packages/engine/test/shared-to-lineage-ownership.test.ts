@@ -34,12 +34,13 @@ import { z } from "zod";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import type { ResourceRef } from "@flow-state-dev/core/types";
-import { createExecutionContext, createFlowRegistry, createInMemoryStores } from "../src";
+import { createExecutionContext, createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { getPersistedData } from "../src/resources/internal";
 import { handleGetSessionState } from "../src/routes/state-routes";
 import {
-  handleDeleteCollectionItem,
-  handleGetCollectionItemState,
+  handleDeleteCollectionResource,
+  handleGetCollectionResourceState,
   handleListCollectionState
 } from "../src/routes/resource-routes";
 import type { FlowInstance } from "@flow-state-dev/core";
@@ -298,7 +299,7 @@ describe("FIX-1068: collection routes address the key's owner, not the route's d
 
   it("get-state on a broad route returns the child's own row", async () => {
     const r = await seeded();
-    const res = await handleGetCollectionItemState(
+    const res = await handleGetCollectionResourceState(
       new Request("http://x/sessions/s_child/resources/shared/state"),
       {
         kind: "get_collection_item_state",
@@ -316,7 +317,7 @@ describe("FIX-1068: collection routes address the key's owner, not the route's d
 
   it("delete on a broad route removes the child's row and leaves the root's", async () => {
     const r = await seeded();
-    const res = await handleDeleteCollectionItem(
+    const res = await handleDeleteCollectionResource(
       new Request("http://x/sessions/s_child/resources/shared/x", { method: "DELETE" }),
       {
         kind: "delete_collection_item",

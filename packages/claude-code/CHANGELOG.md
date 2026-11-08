@@ -1,5 +1,21 @@
 # @flow-state-dev/claude-code
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [73f8352]
+- Updated dependencies [531bf32]
+- Updated dependencies [a124a8e]
+- Updated dependencies [05a7022]
+- Updated dependencies [c67aa49]
+- Updated dependencies [f1e6315]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/workspace@0.4.0
+  - @flow-state-dev/core@0.5.0
+
 ## 0.3.0
 
 ### Minor Changes

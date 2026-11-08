@@ -43,8 +43,8 @@ export {
   type DeriveWorkerSessionIdInput,
   type WorkerSessionCriteria
 } from "./derive-session-id";
-export { defineWorkerCollection, parseWorkerRow, workerRowSchema, type WorkerRow } from "./worker-row";
-export { defineStandardWorkerCollection, standardWorkerRowSchema, type StandardWorkerRow } from "./standard-workers";
+export { defineWorkerCollection, parseWorkerResourceState, workerResourceStateSchema, type WorkerResourceState } from "./worker-row";
+export { defineStandardWorkerCollection, standardWorkerResourceStateSchema, type StandardWorkerResourceState } from "./standard-workers";
 export {
   createWorkerInstallation,
   verifiedWorkerOf,
@@ -73,7 +73,7 @@ export {
   WORKER_USAGE_MAX_DAYS,
   WORKER_USAGE_RESOURCE,
   type WorkerSourceSpend,
-  type WorkerUsageRow,
+  type WorkerUsageView,
   type WorkerUsageState
 } from "./worker-usage";
 export { workerFlow, type WorkerFlowBuilder } from "./worker-flow";

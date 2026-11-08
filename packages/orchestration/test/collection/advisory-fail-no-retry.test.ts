@@ -8,7 +8,8 @@
  * `errored` row as a row someone else ended, and swallow the failure.
  */
 import { expect, it } from "vitest";
-import { createStateBackedTaskCollection, ticketForClaim, type TaskCollectionRef } from "../../src/tasks";
+import { ticketForClaim, type TaskCollectionRef } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { advisoryFail } from "../../src/tasks/collection/advisory-write-back";
 import { createFakeSequencerState } from "../helpers";
 

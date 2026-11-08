@@ -1,12 +1,13 @@
+// FIX-140.
 /**
- * SQLite-backed lease store for durable execution (FIX-140).
+ * SQLite-backed lease store for durable execution.
  *
  * One active lease per request. Acquire uses a transaction to atomically
  * check-and-replace. Expired leases are pruned via DELETE WHERE.
  */
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import type { Lease, LeaseOptions, LeaseStore } from "@flow-state-dev/engine";
+import type { Lease, LeaseOptions, LeaseStore } from "@flow-state-dev/engine/host";
 
 export function createSQLiteLeaseStore(db: Database.Database): LeaseStore {
   const getStmt = db.prepare(

@@ -15,7 +15,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, InitialSkill } from "@flow-state-dev/core/types";
 import { createTestContext, mockGenerator } from "@flow-state-dev/testing";
 import { executeBlock } from "@flow-state-dev/engine";
-import { formatAllowedToolsIntentNote } from "@flow-state-dev/orchestration";
+import { formatAllowedToolsIntentNote } from "@flow-state-dev/orchestration/internal";
 import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
@@ -601,10 +601,7 @@ describe("the built-in agent worker flow's skills switch — gates only the mode
     });
 
     expect(result.error).toBeUndefined();
-    const activeSkills = (runtime.ctx.session.state.activeSkills ?? []) as Array<{
-      name: string;
-      source: string;
-    }>;
+    const activeSkills = runtime.ctx.session.state.activeSkills as Array<{ name: string; source: string }>;
     expect(activeSkills.map((s) => s.name)).not.toContain("known");
   });
 });

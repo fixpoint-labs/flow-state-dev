@@ -11,19 +11,23 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
 import type { ModelResolver } from "@flow-state-dev/core/types";
-import { createInMemoryStores, createResponseEmitter, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import { GOAL_JUDGE_QUESTION, GOAL_JUDGE_WHY_QUESTION, goalJudge, type HarnessJudgeInput } from "../src";
 
 /** An evaluation model that answers one pick with a confidence, and records the questions it was asked. */
 function scripted(pick: { choice: string; confidence?: number; why?: string }) {
   const asked: string[][] = [];
+  const states: unknown[] = [];
   const model = {
     specificationVersion: "v4",
     provider: "test",
     modelId: "test/judge",
     supportedQuestionTypes: ["choice", "score", "boolean"],
-    async doEvaluate(call: { questions: Record<string, unknown> }) {
+    async doEvaluate(call: { state: unknown; questions: Record<string, unknown> }) {
       asked.push(Object.keys(call.questions));
+      states.push(call.state);
       return {
         answers: {
           [GOAL_JUDGE_QUESTION]: { type: "choice", choice: pick.choice },
@@ -38,19 +42,20 @@ function scripted(pick: { choice: string; confidence?: number; why?: string }) {
   const resolver = Object.assign(() => {
     throw new Error("the judge asks no generator model");
   }, { resolveId: (id: string) => id, resolveEvaluationModel: () => model }) as unknown as ModelResolver;
-  return { resolver, asked };
+  return { resolver, asked, states };
 }
 
 const RUN: HarnessJudgeInput = {
   goal: "Add a CHANGELOG line for the status page.",
   answer: "Added the line under Unreleased.",
   commits: { count: 1, subjects: ["docs: add the status page line"] },
+  diff: { files: [{ path: "CHANGELOG.md", added: 1, removed: 0 }], fileCount: 1, added: 1, removed: 0, verified: true },
 };
 
 async function judge(pick: { choice: string; confidence?: number; why?: string }, input: HarnessJudgeInput = RUN) {
   const { block, floor } = goalJudge({ name: "test-judge", model: "test/judge", floor: 0.6 });
   const flow = defineFlow({ kind: "goal-judge-test", actions: { judge: { inputSchema: block.inputSchema as never, block } } } as never)();
-  const { resolver, asked } = scripted(pick);
+  const { resolver, asked, states } = scripted(pick);
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
     flow,
@@ -63,7 +68,7 @@ async function judge(pick: { choice: string; confidence?: number; why?: string }
     responseEmitter: createResponseEmitter({ requestId: "req_test", now: () => Date.now() }),
     runtimeConfig: { modelResolver: resolver },
   } as never);
-  return { floor, asked, output: result.output as { verdict: string; confidence: number; reason: string } | undefined, error: result.error };
+  return { floor, asked, states, output: result.output as { verdict: string; confidence: number; reason: string } | undefined, error: result.error };
 }
 
 describe("goalJudge", () => {
@@ -71,6 +76,11 @@ describe("goalJudge", () => {
     const { floor, asked } = await judge({ choice: "done", confidence: 0.9 });
     expect(floor).toBe(0.6);
     expect(asked).toEqual([[GOAL_JUDGE_QUESTION, GOAL_JUDGE_WHY_QUESTION]]);
+  });
+
+  it("hands the model the files the run's commits changed, so a change is judged on the branch, not on a subject", async () => {
+    const { states } = await judge({ choice: "done", confidence: 0.9 });
+    expect(JSON.stringify(states)).toContain("CHANGELOG.md");
   });
 
   it("reads *done* as done, at the model's confidence", async () => {

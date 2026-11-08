@@ -1,3 +1,4 @@
+// FIX-1068; FIX-1258.
 /**
  * The one function every new session record goes through.
  *
@@ -14,13 +15,13 @@
  *
  * The decisions it carries, and why they are carried once:
  *
- * - **Minting** (FIX-1068). A session's `lineageId` is the address its
+ * - **Minting**. A session's `lineageId` is the address its
  *   `sharedToLineage` resources store under. A creator that omits it leaves the
  *   session on a value derived from its own key, so a deleted id recreated
  *   lands on the same address. The birth mints one unless the caller derives it.
  * - **Racing.** `get`-then-`set` is not create-if-absent: two callers both find
  *   nothing and the loser overwrites the winner. The write is `"absent"`.
- * - **Reclaiming** (FIX-1258). A record coming into existence starts a new
+ * - **Reclaiming**. A record coming into existence starts a new
  *   resource-state incarnation, and the previous one's tombstones go with it
  *   ({@link purgeStaleResourceState}).
  * - **Checking.** The session's initial state, parsed through the flow's
@@ -53,7 +54,9 @@ import {
 } from "../stores/scope-keys";
 import { toBareState } from "../stores/resource-state-views";
 import { deepEqual, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
+import { scopeStateSchema } from "./scope-state-defaults";
 
+// FIX-1000; FIX-1068.
 /**
  * Release a newborn session from the resource-state tombstones a previous
  * session under the same id left behind.
@@ -116,10 +119,10 @@ import { deepEqual, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
  * against a session that plainly already exists from reclaiming at all, so
  * only a genuine create race can reach step 3. It cannot close the race,
  * because there is no transaction across the two stores. Closing it needs a
- * **scope generation**, which is tracked and specced as FIX-1000 ("A create
+ * **scope generation**, which is tracked separately ("A create
  * racing session deletion lands in a purged, caller-reusable scope — fence the
  * scope generation") and deliberately not attempted here. Reach for that, not
- * for a second primitive: `lineageId` is a lineage address (FIX-1068) and
+ * for a second primitive: `lineageId` is a lineage address and
  * answers a different question.
  *
  * The one thing the narrowing to tombstones does buy: a losing reclaimer can
@@ -152,7 +155,7 @@ export async function purgeStaleResourceState(
 }
 
 /** The flow fields a birth reads. */
-export type BirthFlow = Pick<FlowInstance, "kind" | "id" | "session" | "resources"> & {
+export type BirthFlow = Pick<FlowInstance, "kind" | "id" | "session" | "resources" | "scopeStateSchemas"> & {
   isolateUserState?: boolean;
   isolateOrgState?: boolean;
 };
@@ -231,10 +234,10 @@ export function refuseServerOwnedState(
  * session-state field or a `session.createCheck`. A bound session is defined
  * by what it starts with, so its starting state must fit the schema.
  */
-function bindsSessions(flow: Pick<BirthFlow, "session">): boolean {
+function bindsSessions(flow: Pick<BirthFlow, "session" | "scopeStateSchemas">): boolean {
   return (
     flow.session?.createCheck !== undefined ||
-    getReadonlyStateKeys(flow.session?.stateSchema).length > 0
+    getReadonlyStateKeys(scopeStateSchema(flow, "session")).length > 0
   );
 }
 
@@ -252,11 +255,13 @@ function bindsSessions(flow: Pick<BirthFlow, "session">): boolean {
  *   a bound flow's schema refuses the state.
  */
 export function parseInitialSessionState(
-  flow: Pick<BirthFlow, "kind" | "session">,
+  flow: Pick<BirthFlow, "kind" | "session" | "scopeStateSchemas">,
   sessionId: string,
   state: Record<string, unknown> | undefined
 ): JsonObject {
   const raw = (state ?? {}) as JsonObject;
+  // A write, so it validates against the flow's own schema, as every write
+  // does; the merged schema only fills defaults and names readonly fields.
   const schema = flow.session?.stateSchema;
   if (schema === undefined) return raw;
   const parsed = schema.safeParse(raw);
@@ -296,7 +301,7 @@ export async function checkSessionCreate(
     flow: { kind: flow.kind, id: flow.id },
     state,
     via,
-    readCollectionItem: (ref, topic) => readCollectionItemAt(stores, flow, principal, ref, topic)
+    readCollectionResource: (ref, topic) => readCollectionResourceAt(stores, flow, principal, ref, topic)
   });
   if (!verdict.ok) {
     throw new SessionCreateRefusedError(sessionId, verdict.status ?? 400, verdict.message);
@@ -309,7 +314,7 @@ export async function checkSessionCreate(
  * creating principal's own cell. The create check's only read: bound to the
  * principal so the check cannot name another user's scope.
  */
-async function readCollectionItemAt(
+async function readCollectionResourceAt(
   stores: Pick<StoreRegistry, "resourceState">,
   flow: BirthFlow,
   principal: SessionCreatePrincipal,
@@ -324,7 +329,7 @@ async function readCollectionItemAt(
     found.scope === "session"
   ) {
     throw new Error(
-      `readCollectionItem: "${ref}" is not a user- or org-scoped collection of flow "${flow.kind}".`
+      `readCollectionResource: "${ref}" is not a user- or org-scoped collection of flow "${flow.kind}".`
     );
   }
   const { config, scope } = found;

@@ -159,11 +159,12 @@ export function createProjection({
   const entryKey = (mount: Mount, key: string): string =>
     mount.scope === undefined ? key : `${mount.scope}/${key}`;
 
+  // BP-033.
   /**
    * The rows a mount addresses, as `[key inside the mount, ref]`.
    *
    * A scoped mount asks the collection for its scope and nothing wider — the
-   * filter is applied where the rows are read (BP-033). The trailing `/` is
+   * filter is applied where the rows are read. The trailing `/` is
    * what bounds it: the collection's filter is a bare string prefix, so `a`
    * alone would return `ab/…` too. Each key is checked again on the way out,
    * so a store whose filter is looser than asked still cannot hand this mount

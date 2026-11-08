@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { generator, handler } from "@flow-state-dev/core";
 import { mergeCapabilities } from "@flow-state-dev/core/capability";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { InitialSkill } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
 import { createMockSkillsCollection } from "./mocks";
@@ -461,39 +461,6 @@ describe("createSkillsLibrary — block-state default reader", () => {
     });
     const out = await renderGeneratorSkills(gen, ctx);
     expect(out).toContain("LOADED-BODY-MARKER");
-  });
-});
-
-describe("createSkillsLibrary — removed skill sub-agents", () => {
-  // A skill used to run a private team (`agents:`). It is gone, and a bundled
-  // skill that still declares one is refused where the author is looking —
-  // at construction — rather than skipped like an ordinary malformed skill,
-  // which would leave a skill that silently never appears.
-  const teamSkill: InitialSkill = {
-    name: "team",
-    skillMd: [
-      "---",
-      "description: team skill",
-      "agents:",
-      "  researcher:",
-      "    prompt: You research things.",
-      "---",
-      "",
-      "createTask then runBoard.",
-    ].join("\n"),
-  };
-
-  it("refuses a bundled skill that still declares agents, at construction, naming the skill", () => {
-    expect(() => createSkillsLibrary({ initialSkills: [teamSkill] })).toThrow(
-      /bundled skill "team": SKILL\.md `agents:` was removed from skills/,
-    );
-  });
-
-  it("still skips (rather than refuses) a bundled skill that is merely malformed", () => {
-    // The control for the case above: only `agents:` is promoted to a
-    // construction-time refusal; an ordinary parse failure keeps its old path.
-    const malformed: InitialSkill = { name: "broken", skillMd: "no frontmatter" };
-    expect(() => createSkillsLibrary({ initialSkills: [malformed] })).not.toThrow();
   });
 });
 

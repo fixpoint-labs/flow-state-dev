@@ -26,6 +26,7 @@ export type OwnedRecord = {
 /** The parts of a catalog entry an ownership question needs. */
 export type InstanceIdentity = Pick<FlowListEntry, "id" | "kind" | "cardinality">;
 
+// BP-034.
 /**
  * Does `record` belong to `instance`?
  *
@@ -51,8 +52,7 @@ export type InstanceIdentity = Pick<FlowListEntry, "id" | "kind" | "cardinality"
  * Kept in step by hand for now. Hoisting the shared predicate into
  * `@flow-state-dev/core` so there is one implementation is the right end state
  * and is tracked as a follow-up — not done here, because a cross-package move
- * under two stacked PRs is churn, and a half-finished one is worse than none
- * (BP-034).
+ * under two stacked PRs is churn, and a half-finished one is worse than none.
  */
 export function recordBelongsTo(record: OwnedRecord, instance: InstanceIdentity): boolean {
   if (record.flowId != null) {

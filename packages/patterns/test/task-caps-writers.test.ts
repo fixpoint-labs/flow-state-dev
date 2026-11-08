@@ -22,7 +22,7 @@ import {
   getOrCreateTaskCollection,
   TaskCapExceededError,
   type TaskInit,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/tasks";
 import { createSeedTasksFromPlan } from "../src/shared/planning-entry";
 
 /**

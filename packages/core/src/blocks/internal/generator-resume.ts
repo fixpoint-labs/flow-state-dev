@@ -1,6 +1,6 @@
+// FIX-814.
 /**
- * Visibility-agnostic conversation reconstruction for generator resume
- * (FIX-814).
+ * Visibility-agnostic conversation reconstruction for generator resume.
  *
  * When a request continues after a generator tool called `ctx.suspend()`, the
  * generator block re-runs its owned tool loop from the top. Instead of

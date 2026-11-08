@@ -15,12 +15,33 @@ import { OrgRequiredError } from "../transports/errors";
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
-import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
-import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, blockPathObserver, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
-import { REQUEST_SPEND_SEAM, SESSION_REQUEST_END_HOOK, onRequestEnded, type BackgroundFailure, type HarnessRunSpend, type RequestEnding, type RequestSpendSeam, type TaskEntry } from "@flow-state-dev/core/types";
-import type { ReplayLog } from "@flow-state-dev/core";
+import { RESUME_ACTION_STATUS, addressEntries } from "@flow-state-dev/core/types";
+import { SuspensionError, resolveEntry as resolveTypedEntry, taskBindingOf } from "@flow-state-dev/core";
+import {
+  buildReplayLog,
+  REQUEST_SPEND_SEAM,
+  SESSION_REQUEST_END_HOOK,
+  onRequestEnded,
+  type BackgroundFailure,
+  type RequestEnding,
+  type RequestSpendSeam,
+  getRequestSideChainPool,
+  WAIT_DEADLINE_ENTRY,
+  isWaitGate,
+  continuesAtExpiry,
+  waitGateDataOf,
+  errorDetailsWithCause,
+  buildBlockInstanceId,
+  blockPathObserver,
+  parseBlockInstanceId,
+  ROOT_BLOCK_PATH
+} from "@flow-state-dev/core/internal";
+import {
+  type TaskEntry
+} from "@flow-state-dev/core/types";
+import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
+import type { ReplayLog, RuntimeItem } from "@flow-state-dev/core/internal";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
 import {
@@ -30,7 +51,7 @@ import {
   resolveSessionStorageKey,
   tenantMatches
 } from "../stores/scope-keys";
-import { canSpeak, canSpeakStream, getRequestSideChainPool } from "@flow-state-dev/core";
+import { canSpeak, canSpeakStream } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
   DEFAULT_RUNTIME_LOGGER,
@@ -81,12 +102,12 @@ import { claimRequestRecord, principalOwnsRequest } from "../context/request-pri
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
-import { ownRowOf, resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
+import { ownTaskOf, resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { noteSuspensionDeadline } from "../durability/suspension-deadlines";
 import { WRITES_OUTLIVE_ABORT, requestEndRegistryOf, type WritesOutliveAbort } from "./request-end-hooks";
 import { holdInterruptedEnding } from "./request-spend-ledger";
-import { WAIT_DEADLINE_ENTRY, isUserSuspension, isWaitGate, continuesAtExpiry, waitGateDataOf } from "@flow-state-dev/core/types";
+import { isUserSuspension } from "@flow-state-dev/core/types";
 import { clearParkOwed, parkOwedKey } from "../durability/park-owed";
 import { withChangeBus } from "../bus/publish-writes";
 
@@ -108,10 +129,11 @@ function lastItemIndexOf(items: readonly RuntimeItem[]): number {
   return items.reduce((last, item) => Math.max(last, item.itemIndex), -1);
 }
 
+// FIX-663.
 /**
  * Renders an `AbortSignal.reason` into a log-safe string. Reasons are
  * usually a `DOMException`/`Error`, but may be any thrown value, so this
- * never throws. Used by the FIX-663 abort diagnostics.
+ * never throws. Used by the abort diagnostics.
  */
 function serializeAbortReason(reason: unknown): string {
   if (reason === undefined) {
@@ -331,7 +353,7 @@ function assertDispatchersRoutable(
                   `dispatches to task:"${action}", which is gated for board ` +
                   `"${gatedBy?.boardId ?? "<none>"}", but the dispatcher is held by ` +
                   (binding === undefined ? "no board" : `board "${binding.boardId}"`) +
-                  `. One entry settles against one ledger; a row claimed on another board's ledger ` +
+                  `. One entry settles against one ledger; a task claimed on another board's ledger ` +
                   `would be refused at this gate after the dispatch was accepted. Dispatch from the ` +
                   `board that declares this entry, or declare an entry for the other board.`,
                 { scope: "request" }
@@ -406,10 +428,11 @@ function parseActionInput(action: ActionCore, input: unknown): unknown {
   );
 }
 
+// FIX-1735.
 /**
  * The items a request record holds: no transient item, and no ephemeral
  * content. The one rule for every write of a record's items, so a read while
- * a request runs (FIX-1735) shows what its settled record will. Hands the list
+ * a request runs shows what its settled record will. Hands the list
  * over as it is when nothing in it is left out, since a running request calls
  * this per streamed delta.
  */
@@ -597,9 +620,10 @@ function spentHarnessRunsOf(ctx: object): HarnessRunSpend[] | undefined {
   return runs === undefined || runs.length === 0 ? undefined : runs.map((run) => ({ ...run }));
 }
 
+// FIX-2145.
 /**
  * Writes an interrupted request's settled spend once its ending has handed it
- * on (FIX-2145), only while the record is still `interrupted` under this
+ * on, only while the record is still `interrupted` under this
  * request and no later settlement recorded a further cursor.
  */
 async function recordSettledSpend(
@@ -613,10 +637,11 @@ async function recordSettledSpend(
   await stores.request.setFieldsIfStatus(requestId, spend, ["interrupted"], Date.now(), incarnation);
 }
 
+// FIX-1661.
 /**
  * Ends a request's record: its status and the action result built from
  * `settlement` land in one write, so a poller never sees a final status
- * without its result (FIX-1661). A suspension goes through here too, and
+ * without its result. A suspension goes through here too, and
  * clears any result a prior write left.
  */
 async function settleRequestRecord(
@@ -1055,11 +1080,12 @@ export async function runActionInternal<
   }
 }
 
+// FIX-2082; FIX-2239.
 /**
- * A request that ended may be one a `dispatcher({ wait: true })` waits on
- * (FIX-2082): resume the request parked on it, in the session that dispatched
+ * A request that ended may be one a `dispatcher({ wait: true })` waits on:
+ * resume the request parked on it, in the session that dispatched
  * it. A run that resumed the request (a person answered or stopped it) also
- * resumes what its own session queued behind it (FIX-2239). Best-effort, read
+ * resumes what its own session queued behind it. Best-effort, read
  * off the settled record: a resume this misses is caught by the deadline
  * sweep, which looks at what each waited-on request came to.
  */
@@ -1785,7 +1811,9 @@ async function runActionAttempt<
     // dedups by block ownership — cannot remove the duplicate; the only correct
     // place to prevent it is here, at the source.
     if (action.userMessage !== undefined && !isReplayMode) {
-      const text = action.userMessage(parsedInput);
+      const echo = action.userMessage(parsedInput);
+      const text = typeof echo === "string" ? echo : echo.text;
+      const metadata = typeof echo === "string" ? undefined : echo.metadata;
       const userItem: MessageItem = {
         id: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
         type: "message",
@@ -1797,7 +1825,8 @@ async function runActionAttempt<
         provenance: RUNTIME_PROVENANCE,
         ts: Date.now(),
         ...requestTaskStamp(requestTaskId),
-        content: [{ type: "output_text", text }]
+        content: [{ type: "output_text", text }],
+        ...(metadata !== undefined ? { metadata } : {})
       };
       await response.emitItemAdded(userItem);
       await response.emitItemDone(userItem);
@@ -2469,7 +2498,7 @@ async function runActionAttempt<
           // dispatcher's wait) gets the row the engine reads off this
           // request's own task dispatch (FIX-2082).
           if (isWaitGate(record) && record.data != null && record.data.own === undefined) {
-            const own = ownRowOf(options.source, options.metadata, options.input);
+            const own = ownTaskOf(options.source, options.metadata, options.input);
             if (own !== undefined) record.data = { ...record.data, own };
           }
           const waitDeadline = isWaitGate(record) ? waitGateDataOf(record)?.deadline : undefined;

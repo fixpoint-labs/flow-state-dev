@@ -1,7 +1,8 @@
+// FIX-2160 D2; FIX-2173.
 /**
  * The request host's session reads: a running request checks a target session
- * before it writes anything to it (FIX-2160 D2), and reads what another of its
- * principal's sessions has said (FIX-2173).
+ * before it writes anything to it, and reads what another of its
+ * principal's sessions has said.
  *
  * The owner rule is the dispatch seam's own (`resolveExistingSession` in
  * `./create-request-host`): another user's or tenant's session, and one bound
@@ -16,15 +17,18 @@
  * writes nothing.
  */
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
+import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
 import type {
   FlowInstance,
   HistoryTurn,
+  TokenCounter
+} from "@flow-state-dev/core/types";
+import type {
   RequestSessions,
   SessionHistory,
   SessionHistoryQuery,
-  SessionView,
-  TokenCounter
-} from "@flow-state-dev/core/types";
+  PeerSessionView
+} from "@flow-state-dev/core/internal";
 import type { DurabilityProvider } from "../durability/types";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { RequestStore, SessionRecord, SessionStore } from "../stores/types";
@@ -112,17 +116,20 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
   };
 
   return {
-    async read(sessionId: string): Promise<SessionView | undefined> {
+    async read(sessionId: string): Promise<PeerSessionView | undefined> {
       const record = await owned(sessionId);
       if (record === undefined) return undefined;
       // The owner as `record-owner` reads it: the stored instance id, or, on a
       // legacy row, the singleton named by its kind. A flow of another kind
       // under that address is not its owner, and declares nothing for it.
       const owner = flowAt(record.flowId ?? record.flowKind);
-      const readonly = owner?.kind === record.flowKind ? getReadonlyStateKeys(owner.session?.stateSchema) : [];
+      const schema = owner?.kind === record.flowKind ? scopeStateSchema(owner, "session") : undefined;
+      const readonly = getReadonlyStateKeys(schema);
+      // As the session's own runs read it, defaults filled.
+      const effective = applyScopeStateDefaults(schema, record.state);
       const state: Record<string, unknown> = {};
       for (const key of readonly) {
-        if (Object.prototype.hasOwnProperty.call(record.state, key)) state[key] = structuredClone(record.state[key]);
+        if (Object.prototype.hasOwnProperty.call(effective, key)) state[key] = structuredClone(effective[key]);
       }
       return {
         flowKind: record.flowKind,
@@ -143,15 +150,11 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       const turns = Math.max(0, Math.min(SESSION_HISTORY_MAX_TURNS, Math.floor(count)));
       // The session's own request scope, as its own turns load their window.
       const scope = sessionRequestScope(sessionId, record, identity.tenantId);
-      const open = (await reads.requests.list({ ...scope, status: ["in_progress", "suspended"], orderBy: "startedAtMs" })).filter(
-        (r) => r.id !== reads.runningRequestId
-      );
       const past = await readSettledTurns({
         requests: reads.requests,
         scope,
         turns,
         runningRequestId: reads.runningRequestId,
-        openTurns: open,
         ...(reads.durability !== undefined ? { durability: reads.durability } : {}),
         onGateReadError: reads.onGateReadError
       });
@@ -168,17 +171,18 @@ export function createRequestSessions(inputs: RequestSessionsInputs): RequestSes
       const read: HistoryTurn[] = kept.map((r, at) => ({
         requestId: r.id,
         startedAtMs: r.startedAtMs,
-        settled: true,
+        // A turn waiting on a call is read as far as it got, and has not settled.
+        settled: !past.waiting.has(r.id),
         messages: selected[at]!.messages
       }));
-      const newest = kept.at(-1);
+      const newest = kept.filter((r) => !past.waiting.has(r.id)).at(-1);
       const first = kept[0];
       const leftOut = kept.length < past.settled.length || past.start !== undefined;
       return {
         turns: read,
         ...(first !== undefined && leftOut ? { startRequestId: first.id } : {}),
         ...(newest !== undefined ? { asOf: { requestId: newest.id, atMs: newest.completedAtMs ?? newest.updatedAt } } : {}),
-        running: open.length > 0 || past.parked.size > 0 || (past.start !== undefined && (await parkedBefore(reads, scope, past.window)))
+        running: past.open.length > 0 || past.parked.size > 0 || (past.start !== undefined && (await parkedBefore(reads, scope, past.window)))
       };
     },
   };

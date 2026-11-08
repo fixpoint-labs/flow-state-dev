@@ -109,8 +109,8 @@
       "name": "conversation",
       "title": "Conversation",
       "type": "registry:component",
-      "description": "Container for message threads with auto-scroll and session binding.",
-      "dependencies": ["@flow-state-dev/core", "lucide-react"],
+      "description": "The scrolling element of a conversation, on useJumpToLatest's scroll rule, with its jump-to-latest button.",
+      "dependencies": ["@flow-state-dev/react", "lucide-react"],
       "registryDependencies": ["button"],
       "files": [{
         "type": "registry:component",
@@ -120,12 +120,40 @@
       "categories": ["ai", "chat"]
     },
     {
+      "name": "session-overlay",
+      "title": "Session overlay",
+      "type": "registry:component",
+      "description": "A session over the thread, live: a header, the scrolling feed with the conversation's jump-to-latest arrow, and optional toolbar and footer rows. A sheet covers one area and leaves the page beside it live; a modal covers the page and holds Tab. Both close by Esc, the close button or a click on the backdrop, and give focus back.",
+      "dependencies": ["@flow-state-dev/react", "lucide-react"],
+      "registryDependencies": ["conversation"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/session-overlay.tsx",
+        "target": "components/flow-state/session-overlay.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
+      "name": "message-response",
+      "title": "Message Response",
+      "type": "registry:component",
+      "description": "Markdown drawn with Streamdown: MessageResponse, the renderer chat messages use, and MarkdownText for text a card shows, with any HTML in it kept as text and a one-line inline form.",
+      "dependencies": ["streamdown", "@streamdown/cjk", "@streamdown/code", "@streamdown/math", "@streamdown/mermaid"],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/message-response.tsx",
+        "target": "components/flow-state/message-response.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
       "name": "message",
       "title": "Message",
       "type": "registry:component",
       "description": "Individual message display with streaming markdown support.",
-      "dependencies": ["@flow-state-dev/core", "streamdown", "@streamdown/cjk", "@streamdown/code", "@streamdown/math", "@streamdown/mermaid", "lucide-react"],
-      "registryDependencies": ["button", "button-group", "tooltip"],
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
+      "registryDependencies": ["button", "button-group", "tooltip", "message-response"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/message.tsx",
@@ -185,6 +213,22 @@
       "categories": ["ai", "tools"]
     },
     {
+      "name": "working-status",
+      "title": "Working Status",
+      "type": "registry:component",
+      "description": "Pure helpers that say what a running task is doing now in one line: the tool call in flight, else the plan step in progress, else its progress note. Pairs with streaming-indicator.",
+      "dependencies": ["@flow-state-dev/core"],
+      "registryDependencies": ["tool-naming"],
+      "files": [
+        {
+          "type": "registry:lib",
+          "path": "registry/components/working-status.ts",
+          "target": "components/flow-state/working-status.ts"
+        }
+      ],
+      "categories": ["ai", "tools"]
+    },
+    {
       "name": "code-block",
       "title": "Code Block",
       "type": "registry:component",
@@ -203,7 +247,7 @@
       "title": "Prompt Input",
       "type": "registry:component",
       "description": "Smart input with auto-resize, file upload, and submit handling.",
-      "dependencies": ["lucide-react", "nanoid"],
+      "dependencies": ["@flow-state-dev/react", "lucide-react", "nanoid"],
       "registryDependencies": ["button", "command", "dropdown-menu", "hover-card", "input-group", "select", "spinner", "tooltip"],
       "files": [{
         "type": "registry:component",
@@ -351,12 +395,26 @@
       "categories": ["ai", "framework"]
     },
     {
+      "name": "task-signals",
+      "title": "Task signals",
+      "type": "registry:component",
+      "description": "A task row's time and stall signal: a running row's clock from this attempt's run start, quiet when its lease has lapsed (the board's own rule, never while the feed is stale), how long ago an ended row ended; and a list's per-state counts. Reads a listTasks row's taskRowView, run start and lease deadline; the app passes the time and its tone.",
+      "dependencies": ["@flow-state-dev/orchestration"],
+      "registryDependencies": ["spend"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/task-signals.tsx",
+        "target": "components/flow-state/task-signals.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
       "name": "approval",
       "title": "Approval",
       "type": "registry:component",
       "description": "Human-in-the-loop approval card for suspension items. Green Approve / red Reject while pending; collapses to a receipt once resolved. Logic comes from the useApproval hook in @flow-state-dev/react.",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react"],
-      "registryDependencies": ["session-items-context", "tokens"],
+      "registryDependencies": ["message-response", "session-items-context", "tokens"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/approval.tsx",
@@ -368,9 +426,9 @@
       "name": "review-hold",
       "title": "Review Hold",
       "type": "registry:component",
-      "description": "A coding run's changes waiting on the user's review: its commits on the branch, the judge's verdict, and Accept or Ask for changes. Reads harness-manager's review stop data and sends the only two answers it takes. Drawn from a task's hold, or for a kind: review suspension (SuspensionCard routes those here).",
+      "description": "A coding run's changes waiting on the user's review: its commits on the branch, the project's checks, the judge's verdict, and Accept or Ask for changes, with Accept split into Open a PR and Merge locally when the host can land the work. Reads harness-manager's review stop data and sends only the answers it takes. Drawn from a task's hold, or for a kind: review suspension (SuspensionCard routes those here).",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react"],
-      "registryDependencies": ["tokens"],
+      "registryDependencies": ["message-response", "run-checks", "tokens"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/review-hold.tsx",
@@ -459,7 +517,7 @@
       "type": "registry:component",
       "description": "Groups items by request ID with streaming indicator, source display, and collapsible tool-call summaries for consecutive calls.",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react"],
-      "registryDependencies": ["sources", "streaming-indicator", "tool", "task-plan"],
+      "registryDependencies": ["conversation", "sources", "streaming-indicator", "tool", "task-plan"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/request-group.tsx",
@@ -674,6 +732,20 @@
         "type": "registry:component",
         "path": "registry/components/task-actions.tsx",
         "target": "components/flow-state/task-actions.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
+      "name": "harness-readiness",
+      "title": "Harness Readiness",
+      "type": "registry:component",
+      "description": "Which coding harnesses can run on this machine: a chip per harness (\"✓ Cursor\", \"✗ Codex: Run `codex login`\", \"?\" for no answer) and a Re-check. Takes the rows of harness-manager's readiness action and a recheck that calls it with refresh: true.",
+      "dependencies": [],
+      "registryDependencies": ["tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/harness-readiness.tsx",
+        "target": "components/flow-state/harness-readiness.tsx"
       }],
       "categories": ["ai", "framework"]
     }

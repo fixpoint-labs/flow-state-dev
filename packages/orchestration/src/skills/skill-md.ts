@@ -20,7 +20,7 @@
  * file an author writes by hand so the two never drift apart.
  */
 
-import type { Skill, SkillState } from "@flow-state-dev/core";
+import type { SkillState } from "@flow-state-dev/core/types";
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import {
   parseFrontmatterYaml,
@@ -37,10 +37,10 @@ import {
 export const MAX_DESCRIPTION_LENGTH = 1024;
 
 /** Maximum allowed skill name length (Agent Skills spec). */
-export const MAX_NAME_LENGTH = 64;
+const MAX_NAME_LENGTH = 64;
 
 /** Maximum allowed `compatibility` length (Agent Skills spec). */
-export const MAX_COMPATIBILITY_LENGTH = 500;
+const MAX_COMPATIBILITY_LENGTH = 500;
 
 /** Names disallowed as skill names (reserved by the framework). */
 const RESERVED_NAMES = new Set(["_meta", ""]);
@@ -143,38 +143,6 @@ export function validateSkillName(name: string): void {
   if (isWindowsReservedName(name)) {
     throw new Error(`Skill name "${name}" is a reserved device name on Windows`);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Removed fields
-// ---------------------------------------------------------------------------
-
-/**
- * Thrown for a `SKILL.md` that declares `agents:` — skill sub-agents, removed
- * in FIX-1814.
- *
- * Its own class so a caller that otherwise skips a malformed skill can tell
- * this one apart and refuse it instead: `createSkillsLibrary` rethrows it at
- * construction rather than skipping a bundled skill that declares `agents:`.
- * It is the one removed shape refused by name; every other malformed skill
- * keeps its old path.
- */
-export class SkillAgentsRemovedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "SkillAgentsRemovedError";
-  }
-}
-
-/**
- * Why a skill may not declare a team (`agents:`, or its older name `workers:`),
- * so the two refusals cannot drift apart.
- */
-function teamFieldRemoved(key: "agents" | "workers"): string {
-  return (
-    `SKILL.md \`${key}:\` was removed from skills. A skill no longer runs a team of its own: ` +
-    `delegate to workers through the task board instead, and delete the \`${key}:\` block.`
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -323,16 +291,6 @@ export function parseSkillMd(
 
   if ("context" in raw) {
     const v = raw["context"];
-    if (v === "fork" || v === "pattern") {
-      // FIX-918 removed both non-inline modes. Fail loud rather than silently
-      // downgrade to inline (which would run work meant for its own context in
-      // the parent's — the opposite of what the author asked for).
-      throw new Error(
-        v === "fork"
-          ? `SKILL.md \`context: fork\` was removed. To run work in a context of its own, hand it to a worker through the task board.`
-          : `SKILL.md \`context: pattern\` was removed. Expose a task-board/goalSeekLoop block as an allowed tool instead.`,
-      );
-    }
     if (v === "inline") {
       state.contextMode = "inline";
     } else if (v !== undefined && v !== null) {
@@ -374,28 +332,6 @@ export function parseSkillMd(
     }
   }
 
-  // Legacy `pattern:` frontmatter — removed in FIX-918. Fail loud with a
-  // migration pointer rather than silently reinterpreting the file as inline.
-  if ("pattern" in raw && raw["pattern"] !== null && raw["pattern"] !== undefined) {
-    throw new Error(
-      `SKILL.md \`pattern:\` was removed. Expose a task-board/goalSeekLoop block as an allowed tool for deterministic multi-step recipes.`,
-    );
-  }
-
-  // Legacy `workers:` frontmatter — renamed to `agents:` in FIX-918, which
-  // FIX-1814 then removed. Fail loud rather than silently preserving the key.
-  // A plain Error on purpose: `createSkillsLibrary` skips a bundled skill that
-  // fails this way, like any parse failure; only `agents:` fails construction.
-  if ("workers" in raw && raw["workers"] !== null && raw["workers"] !== undefined) {
-    throw new Error(teamFieldRemoved("workers"));
-  }
-
-  // `agents:` (skill sub-agents) — removed in FIX-1814. Refused on any
-  // presence, an empty value included: preserving it would round-trip a team
-  // nothing runs, and dropping it would let the body ask for one silently.
-  if ("agents" in raw) {
-    throw new SkillAgentsRemovedError(teamFieldRemoved("agents"));
-  }
 
   // Warn about ignored Claude-Code fields.
   for (const key of WARN_IGNORED_KEYS) {
@@ -558,27 +494,4 @@ export function substitute(body: string, ctx: SubstitutionContext): string {
   }
 
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// Public: assemble Skill descriptor
-// ---------------------------------------------------------------------------
-
-/** Compose a Skill record from its name, parsed state, and body. */
-export function toSkill(name: string, state: SkillState, body: string): Skill {
-  validateSkillName(name);
-  return {
-    name,
-    body,
-    description: state.description,
-    license: state.license,
-    compatibility: state.compatibility,
-    metadata: state.metadata,
-    allowedTools: state.allowedTools,
-    contextMode: state.contextMode,
-    disableModelInvocation: state.disableModelInvocation,
-    whenToUse: state.whenToUse,
-    argumentHint: state.argumentHint,
-    keywords: state.keywords,
-  };
 }

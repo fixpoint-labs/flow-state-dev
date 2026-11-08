@@ -1,5 +1,6 @@
+// BR-10.
 /**
- * A declared document, opened read-only from Jump to (BR-10): its content as
+ * A declared document, opened read-only from Jump to: its content as
  * the Lab serves it, through a session whose flow serves it. Nothing here
  * writes; the page offers no edit.
  */

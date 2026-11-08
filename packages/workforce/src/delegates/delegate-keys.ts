@@ -13,8 +13,9 @@ export const REMOVE_DELEGATE = "removeDelegate";
 export const SET_FALLBACK = "setFallback";
 export const LIST_DELEGATES = "listDelegates";
 
+// FIX-2081 D2.
 /**
- * A worker file's `delegates: all` (FIX-2081 D2): the whole roster, read on
+ * A worker file's `delegates: all`: the whole roster, read on
  * every call, rather than a written list.
  */
 export const ALL_DELEGATES = "all";

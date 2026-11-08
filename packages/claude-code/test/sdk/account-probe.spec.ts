@@ -1,5 +1,5 @@
 /**
- * `probeClaudeAccount`: whether Claude Code has a credential to run on, asked
+ * `probeClaudeCodeAccount`: whether Claude Code has a credential to run on, asked
  * before anything is started on it, with no model turn.
  *
  * The scripted cases pin each outcome and that the probe never sends a
@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkClaudeCodeReadiness, CLAUDE_SIGN_IN_REMEDY, probeClaudeAccount } from "../../src/sdk/account-probe";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_SIGN_IN_REMEDY, probeClaudeCodeAccount } from "../../src/sdk/account-probe";
 
 /** A scripted SDK whose `query` answers `accountInfo` with `info`, recording what it was handed. */
 function scriptedSdk(info: () => Promise<Record<string, unknown>>) {
@@ -37,11 +37,11 @@ function scriptedSdk(info: () => Promise<Record<string, unknown>>) {
   };
 }
 
-describe("probeClaudeAccount, scripted", () => {
+describe("probeClaudeCodeAccount, scripted", () => {
   it("says account when an API key source comes back, sends no message, and closes", async () => {
     const sdk = scriptedSdk(async () => ({ apiKeySource: "ANTHROPIC_API_KEY", apiProvider: "firstParty" }));
     const env = { PATH: "/bin", ANTHROPIC_API_KEY: "k" };
-    const result = await probeClaudeAccount({ env, importSdk: sdk.importSdk });
+    const result = await probeClaudeCodeAccount({ env, importSdk: sdk.importSdk });
     expect(result).toEqual({ status: "account", apiKeySource: "ANTHROPIC_API_KEY" });
     expect(sdk.seen.env).toEqual(env);
     expect(sdk.seen.messagesSent).toBe(0);
@@ -50,13 +50,13 @@ describe("probeClaudeAccount, scripted", () => {
 
   it("says account when only a token source comes back", async () => {
     const sdk = scriptedSdk(async () => ({ tokenSource: "claude.ai" }));
-    expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({ status: "account", tokenSource: "claude.ai" });
+    expect(await probeClaudeCodeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({ status: "account", tokenSource: "claude.ai" });
   });
 
   it("says account for a subscription sign-in, which names no key or token source", async () => {
     // The shape the SDK returns for a `claude` login (keychain / ~/.claude) with no API key set.
     const sdk = scriptedSdk(async () => ({ email: "a@b.c", organization: "o", subscriptionType: "Claude Max", apiProvider: "firstParty" }));
-    expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({
+    expect(await probeClaudeCodeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({
       status: "account",
       email: "a@b.c",
       subscriptionType: "Claude Max",
@@ -68,9 +68,9 @@ describe("probeClaudeAccount, scripted", () => {
     // field present means a sign-in was found. The probe still does not check
     // that the credential works (see the file header).
     const emailOnly = scriptedSdk(async () => ({ email: "a@b.c", apiProvider: "firstParty" }));
-    expect(await probeClaudeAccount({ env: {}, importSdk: emailOnly.importSdk })).toEqual({ status: "account", email: "a@b.c" });
+    expect(await probeClaudeCodeAccount({ env: {}, importSdk: emailOnly.importSdk })).toEqual({ status: "account", email: "a@b.c" });
     const planOnly = scriptedSdk(async () => ({ subscriptionType: "Claude Pro" }));
-    expect(await probeClaudeAccount({ env: {}, importSdk: planOnly.importSdk })).toEqual({
+    expect(await probeClaudeCodeAccount({ env: {}, importSdk: planOnly.importSdk })).toEqual({
       status: "account",
       subscriptionType: "Claude Pro",
     });
@@ -79,7 +79,7 @@ describe("probeClaudeAccount, scripted", () => {
   it("says none, with the reason, when neither source comes back", async () => {
     // The shape the SDK returns with no credential: subscriptionType "Claude API", its no-plan label.
     const sdk = scriptedSdk(async () => ({ apiProvider: "firstParty", subscriptionType: "Claude API" }));
-    const result = await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk });
+    const result = await probeClaudeCodeAccount({ env: {}, importSdk: sdk.importSdk });
     expect(result.status).toBe("none");
     expect(result.status === "none" && result.reason).toMatch(/no API key and no sign-in/);
     expect(sdk.seen.closed).toBe(true);
@@ -88,13 +88,13 @@ describe("probeClaudeAccount, scripted", () => {
   it("says none when the plan is null or absent", async () => {
     for (const info of [{ apiProvider: "firstParty", subscriptionType: null }, { apiProvider: "firstParty" }]) {
       const sdk = scriptedSdk(async () => info);
-      expect((await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).status).toBe("none");
+      expect((await probeClaudeCodeAccount({ env: {}, importSdk: sdk.importSdk })).status).toBe("none");
     }
   });
 
   it("says none when Claude Code does not answer within timeoutMs", async () => {
     const sdk = scriptedSdk(() => new Promise(() => {}));
-    const result = await probeClaudeAccount({ env: {}, timeoutMs: 50, importSdk: sdk.importSdk });
+    const result = await probeClaudeCodeAccount({ env: {}, timeoutMs: 50, importSdk: sdk.importSdk });
     expect(result).toEqual({ status: "none", reason: "Claude Code did not report an account within 50 ms", unanswered: true });
     expect(sdk.seen.closed).toBe(true);
   });
@@ -105,7 +105,7 @@ describe("probeClaudeAccount, scripted", () => {
     const stop = new AbortController();
     const started = Date.now();
     setTimeout(() => stop.abort(), 20);
-    const result = await probeClaudeAccount({ env: {}, timeoutMs: 60_000, signal: stop.signal, importSdk: sdk.importSdk });
+    const result = await probeClaudeCodeAccount({ env: {}, timeoutMs: 60_000, signal: stop.signal, importSdk: sdk.importSdk });
     expect(result.status).toBe("none");
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(sdk.seen.closed).toBe(true);
@@ -115,7 +115,7 @@ describe("probeClaudeAccount, scripted", () => {
     const sdk = scriptedSdk(async () => {
       throw new Error("spawn claude ENOENT");
     });
-    expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({
+    expect(await probeClaudeCodeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({
       status: "none",
       reason: "Claude Code could not be asked for its account: spawn claude ENOENT",
       unanswered: true,
@@ -123,7 +123,7 @@ describe("probeClaudeAccount, scripted", () => {
   });
 
   it("says sdk-missing when the Agent SDK can't be loaded", async () => {
-    const result = await probeClaudeAccount({
+    const result = await probeClaudeCodeAccount({
       env: {},
       importSdk: async () => {
         throw new Error("Cannot find package '@anthropic-ai/claude-agent-sdk'");
@@ -134,17 +134,17 @@ describe("probeClaudeAccount, scripted", () => {
   });
 });
 
-describe("probeClaudeAccount, on the installed Agent SDK", () => {
+describe("probeClaudeCodeAccount, on the installed Agent SDK", () => {
   const emptyHome = () => mkdtempSync(join(tmpdir(), "account-probe-home-"));
   const base = () => ({ PATH: process.env.PATH ?? "", HOME: emptyHome() });
 
   it("says none for an empty home with no credential variable", async () => {
-    const result = await probeClaudeAccount({ env: base() });
+    const result = await probeClaudeCodeAccount({ env: base() });
     expect(result.status).toBe("none");
   }, 30_000);
 
   it("says account for the ANTHROPIC_API_KEY in the environment it is handed, without checking the key", async () => {
-    const result = await probeClaudeAccount({ env: { ...base(), ANTHROPIC_API_KEY: "sk-ant-api03-not-a-real-key" } });
+    const result = await probeClaudeCodeAccount({ env: { ...base(), ANTHROPIC_API_KEY: "sk-ant-api03-not-a-real-key" } });
     expect(result).toMatchObject({ status: "account", apiKeySource: "ANTHROPIC_API_KEY" });
   }, 30_000);
 });
@@ -158,7 +158,7 @@ describe("checkClaudeCodeReadiness, scripted", () => {
   it("is not ready with the sign-in remedy when there is no credential", async () => {
     const sdk = scriptedSdk(async () => ({ apiProvider: "firstParty" }));
     const answer = await checkClaudeCodeReadiness({ env: {}, importSdk: sdk.importSdk });
-    expect(answer).toMatchObject({ ready: false, remedy: CLAUDE_SIGN_IN_REMEDY });
+    expect(answer).toMatchObject({ ready: false, remedy: CLAUDE_CODE_SIGN_IN_REMEDY });
     expect(answer).not.toHaveProperty("unanswered");
   });
 

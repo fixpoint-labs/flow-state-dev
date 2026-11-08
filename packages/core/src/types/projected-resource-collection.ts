@@ -1,5 +1,6 @@
+// FIX-858.
 /**
- * Projected resource collections (FIX-858).
+ * Projected resource collections.
  *
  * A read-only collection whose instances are resolved from an app-owned store
  * (a SQL table, an HTTP API) instead of the framework's `ResourceStateStore`.
@@ -37,11 +38,12 @@ import { validateReactTo, type ReactiveBinding } from "./resource-change";
 // Query / hit / result shapes
 // ---------------------------------------------------------------------------
 
+// FIX-833 / FIX-142.
 /**
  * Minimal portable query pushed down to a projected collection's `search`. The
  * app engine runs it (never enumerate-in-memory). Deliberately closed this
- * slice; a richer filter AST and semantic search extend this type via
- * FIX-833 / FIX-142.
+ * slice; a richer filter AST and semantic search extend this type
+ * later.
  */
 export type ResourceQuery = {
   /** Free-text relevance (lexical now; semantic later). Maps to `searchResources`' query. */
@@ -56,6 +58,7 @@ export type ResourceQuery = {
   cursor?: string;
 };
 
+// BP-038; FIX-142 / FIX-833.
 /**
  * One hit returned by a projected collection's `search`. `key` is the within-scope
  * row key/path — the framework normalizes it through the collection pattern
@@ -64,8 +67,8 @@ export type ResourceQuery = {
  *
  * Ranking is the hook's RETURN ORDER (the framework preserves it); the snippet is
  * derived framework-side from rendered content. App-supplied `score` / `snippet`
- * overrides are deferred until a consumer needs them (BP-038) — they land with
- * semantic-search ranking (FIX-142 / FIX-833), where an app score is no longer
+ * overrides are deferred until a consumer needs them — they land with
+ * semantic-search ranking, where an app score is no longer
  * redundant with hook order. Re-add the two optional fields here + prefer them in
  * `searchProjectedRecords` when that consumer arrives.
  */
@@ -83,8 +86,9 @@ export type ResourceSearchResult<TState extends JsonObject = JsonObject> = {
   nextCursor?: string;
 };
 
+// BP-031.
 /**
- * Trusted, server-derived context handed to `read` / `search` (BP-031: never
+ * Trusted, server-derived context handed to `read` / `search` (never
  * caller-controllable). The framework populates every field from a trusted
  * source (the loaded session / scope identity), so the hook can safely scope its
  * own query to the same owner/tenant namespace the framework uses.
@@ -224,9 +228,10 @@ export interface ProjectedResourceCollectionRef<TState extends JsonObject = Json
   get(key: string): Promise<ProjectedResourceRef<TState>>;
   /** Resolve one instance, or `undefined` when the app has no such record. */
   getOptional(key: string): Promise<ProjectedResourceRef<TState> | undefined>;
+  // BP-033.
   /**
    * List a page of instances by pushing the query DOWN to the app's `search`
-   * hook (never enumerate-in-memory — BP-033). A bare string is shorthand for
+   * hook (never enumerate-in-memory). A bare string is shorthand for
    * `{ search }`. Returns app-ranked hits resolved to read-only refs plus the
    * app's opaque `nextCursor` (absent when the result set is exhausted); pass it
    * back as `query.cursor` for the next page.
@@ -360,6 +365,7 @@ export function defineProjectedResourceCollection<
 // Shared read-through resolution
 // ---------------------------------------------------------------------------
 
+// BP-031.
 /**
  * Invoke a projected collection's `read` backing and validate the result through
  * its `stateSchema`. Returns the parsed record, or `undefined` when the app has
@@ -371,7 +377,7 @@ export function defineProjectedResourceCollection<
  * single-flight) and the client route read helpers (which call it directly).
  * `key` is the within-scope row key the app resolves against.
  *
- * BP-031: an org-scoped read for a session with no org binding has no trusted
+ * An org-scoped read for a session with no org binding has no trusted
  * org coordinate (`scopeId` would be `""`), so treat it as absent rather than
  * let the hook query an empty/unscoped org bucket. Enforced here — the one
  * place all three call sites (registry handle, scope `client.data` handle, and
@@ -408,6 +414,7 @@ export type ValidatedProjectedHit<TState extends JsonObject = JsonObject> = {
   state: TState;
 };
 
+// BP-031.
 /**
  * Invoke a projected collection's `search` backing, validate every hit's state
  * through `stateSchema`, and normalize each hit key to its canonical storage
@@ -418,7 +425,7 @@ export type ValidatedProjectedHit<TState extends JsonObject = JsonObject> = {
  *
  * Unlike a single read, a hit that fails `stateSchema` is DROPPED and logged
  * (not thrown) — one bad row must not sink a whole page (§4.3). The app's
- * `nextCursor` is passed straight through for opaque pagination. BP-031: the
+ * `nextCursor` is passed straight through for opaque pagination. The
  * same org-binding guard as the read path — an org read with no org coordinate
  * returns an empty page rather than querying an unscoped bucket.
  */

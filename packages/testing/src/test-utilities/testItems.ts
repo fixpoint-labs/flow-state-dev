@@ -1,6 +1,6 @@
 import type { BlockTraceItem, ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 
 /**
  * Builds item-focused query helpers for deterministic test assertions.

@@ -18,20 +18,22 @@ export type Item = { type: string; role?: string; requestId?: string; blockName?
 /**
  * The Teammates lab for `user` on a fresh store under `dir`, its working
  * folder `workdir` (an empty git checkout is made there when none exists).
- * `app` is what `--app` serves (default: the package's built pages).
+ * `app` is what `--app` serves (default: the package's built pages), and
+ * `port` the port to serve on (default: a random one; pass the last one to
+ * serve again where an open page still looks).
  */
 export async function startTeammates(
   dir: string,
   user: string,
   env: Record<string, string>,
   workdir = join(dir, "workdir"),
-  app = "@flow-state-dev/teammates"
+  app = "@flow-state-dev/teammates",
+  port = 46_000 + randomInt(0, 9_000)
 ): Promise<{ child: ChildProcess; origin: string }> {
   if (!existsSync(workdir)) {
     mkdirSync(workdir, { recursive: true });
     execFileSync("git", ["init", "-q", workdir]);
   }
-  const port = 46_000 + randomInt(0, 9_000);
   const origin = `http://127.0.0.1:${port}`;
   await refuseIfAnswering(origin);
   let log = "";

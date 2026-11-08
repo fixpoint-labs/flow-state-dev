@@ -24,7 +24,7 @@ export {
   type ScheduleCollectionState
 } from "./defineScheduleCollection";
 
-export { type ScheduleIndex, type ScheduleIndexRow } from "./scheduleIndex";
+export { type ScheduleIndex, type ScheduleIndexEntry } from "./scheduleIndex";
 
 export { parseNextFireAt } from "./parseNextFireAt";
 

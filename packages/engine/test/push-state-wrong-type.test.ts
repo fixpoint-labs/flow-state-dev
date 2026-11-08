@@ -6,7 +6,7 @@
  * suite; this pins the same rule on the container's own mutator.
  */
 import { describe, expect, it } from "vitest";
-import { createScopeStateOps, createStateContainer } from "../src";
+import { createScopeStateOps, createStateContainer } from "../src/stores/state-container";
 
 type State = Record<string, unknown>;
 

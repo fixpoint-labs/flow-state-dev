@@ -13,11 +13,13 @@ import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   createFlowState,
-  createInMemoryStores,
   inMemoryStores,
   runAction,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { sharedResource, writeShared } from "../src/shared-resource";
 import { workerConfigSchema } from "../src/worker-config";
 import { bootHost, FIXTURE, ORG as HARNESS_ORG } from "./worker-model-harness";

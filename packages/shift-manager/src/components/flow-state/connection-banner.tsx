@@ -16,13 +16,13 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 /** The session feed's states, as `sessionFeed` reports them. */
-export type ConnectionFeedState = "connecting" | "live" | "reconnecting" | "lapsed" | "stopped";
+export type ConnectionFeedStatus = "connecting" | "live" | "reconnecting" | "lapsed" | "stopped";
 
 /**
  * Whether what a feed last said may be out of date: a retry has failed, or
  * the feed has stopped. The one definition the bar and stale styling share.
  */
-export function isFeedStale(state: ConnectionFeedState): boolean {
+export function isFeedStale(state: ConnectionFeedStatus): boolean {
   return state === "lapsed" || state === "stopped";
 }
 
@@ -54,7 +54,7 @@ export function ConnectionBanner({
   onRetry,
   className
 }: {
-  feed: { state: ConnectionFeedState };
+  feed: { state: ConnectionFeedStatus };
   onRetry?: () => void;
   className?: string;
 }) {

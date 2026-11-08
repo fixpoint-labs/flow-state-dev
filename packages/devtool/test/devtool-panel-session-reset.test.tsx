@@ -296,7 +296,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
   });
 
   it("re-reads the dispatch-run axis when a suspension resolves", async () => {
-    // `resumeSuspension` in the contract's list. A resume restarts the run, and
+    // `answerSuspension` in the contract's list. A resume restarts the run, and
     // a restarted run can file background work — so the axis has to advance
     // here for the same reason it does on a dispatch.
     await act(async () => render(<DevToolPanel userId="u1" />));

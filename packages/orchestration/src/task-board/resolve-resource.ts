@@ -9,11 +9,11 @@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
-  hasFrozenLedgerAssignee,
   resolveResourceCollection,
   type DefinedTaskCollection,
   type TaskCollectionRef,
 } from "../tasks";
+import { hasFrozenLedgerAssignee } from "../tasks/collection/define-task-collection";
 import { resolveTaskPartition } from "../tasks/collection/partition";
 
 export async function resolveResourceTaskCollection<TInput = unknown, TOutput = unknown>(
@@ -22,8 +22,9 @@ export async function resolveResourceTaskCollection<TInput = unknown, TOutput = 
     boardName: string;
     resourceKey: string;
     collectionId: string;
+    // FIX-982.
     /**
-     * The ledger declaration this board binds (FIX-982). Carries the frozen-
+     * The ledger declaration this board binds. Carries the frozen-
      * assignee policy, which is read HERE — at resolution — rather than passed
      * in as a boolean the caller captured when it was constructed.
      *

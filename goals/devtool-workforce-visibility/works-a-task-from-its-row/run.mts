@@ -33,7 +33,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Locator, Page } from "playwright";
-import { SERVER_ONLY_TASK_FIELDS, taskToolSuffix } from "@flow-state-dev/orchestration";
+import { taskToolSuffix, SERVER_ONLY_TASK_FIELDS } from "@flow-state-dev/orchestration/internal";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
@@ -417,7 +417,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
     /** The row's open question: a row hold on a running row no steer answers yet. */
     const openQuestion = (row: BoardRow | undefined) => {
       const answered = new Set((row?.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
-      return row?.status === "in_progress" ? row.holds?.find((hold) => hold.source.kind === "row" && !answered.has(hold.id)) : undefined;
+      return row?.status === "in_progress" ? row.holds?.find((hold) => hold.source.kind === "task" && !answered.has(hold.id)) : undefined;
     };
     const parked = await lab.waitForRow((row) => row.goal === fixture.piece.goal && openQuestion(row) !== undefined);
     const parkLine = lab.workLines().find((line) => line.taskId === parked?.id && line.event === "asked");

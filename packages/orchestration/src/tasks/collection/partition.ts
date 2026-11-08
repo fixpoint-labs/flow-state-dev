@@ -1,3 +1,4 @@
+// FIX-1794's POC, leg E1.
 /**
  * A task ledger kept per partition: one set of rows per partition value, at the
  * owner's user scope (`defineTaskCollection({ partitionBy })`).
@@ -9,7 +10,7 @@
  * narrows the ledger itself, not a claim filter over it, so **every** operation
  * a ref makes goes through it: list, read, claim, the drain's wake and exit
  * counts, the task tools, change events. A filter at the claim alone holds the
- * claim and leaves the read and the wake open (FIX-1794's POC, leg E1).
+ * claim and leaves the read and the wake open.
  *
  * Orchestration knows no conversation or worker. The composing layer supplies
  * the partition as a function of the running context, and it must read data
@@ -32,9 +33,10 @@ import type {
 } from "@flow-state-dev/core/types";
 import { encodeUserSegment, getPatternPrefix } from "@flow-state-dev/core/types";
 
+// BP-031.
 /**
  * What a partition function sees: the running session's server-set identity,
- * and nothing else (BP-031).
+ * and nothing else.
  *
  * Purpose-built rather than a trimmed block context, because a block context
  * carries request input through more than one handle (the parent's `input`,
@@ -86,7 +88,7 @@ export async function resolveTaskPartition(
   const value: unknown = await partitionBy(partitionContextOf(collectionId, ctx));
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(
-      `[tasks] ledger "${collectionId}" keeps its rows per partition, and its partitionBy ` +
+      `[tasks] ledger "${collectionId}" keeps its tasks per partition, and its partitionBy ` +
         `returned ${JSON.stringify(value)}. Return a non-empty string from data only the ` +
         `server writes.`
     );
@@ -105,7 +107,7 @@ function partitionContextOf(collectionId: string, ctx: BlockContext): TaskPartit
   const userId = identity?.userId ?? ctx.user?.identity?.userId;
   if (identity?.id === undefined || userId === undefined) {
     throw new Error(
-      `[tasks] ledger "${collectionId}" keeps its rows per partition, and this context has no ` +
+      `[tasks] ledger "${collectionId}" keeps its tasks per partition, and this context has no ` +
         `session or user to partition by.`
     );
   }
@@ -126,16 +128,17 @@ function partitionContextOf(collectionId: string, ctx: BlockContext): TaskPartit
 function assertPartitionedTaskId(collectionId: string, taskId: string): void {
   if (taskId.length === 0 || taskId.includes("/") || taskId.includes("\\")) {
     throw new Error(
-      `[tasks] ledger "${collectionId}" keeps its rows per partition, so a task id must be ` +
+      `[tasks] ledger "${collectionId}" keeps its tasks per partition, so a task id must be ` +
         `one path segment: ${JSON.stringify(taskId)} contains a "/" or "\\" (or is empty).`
     );
   }
 }
 
+// FIX-990.
 /**
  * One view per (resource collection handle, partition). Shared because the
  * resource backing's task set is keyed by the handle it reads through, and
- * every resolution within one request must read one task set (FIX-990).
+ * every resolution within one request must read one task set.
  */
 const views = new WeakMap<
   ResourceCollectionRef<JsonObject>,
@@ -166,7 +169,7 @@ export function partitionedResourceCollection(
   const keyOf = (key: string | Record<string, string>): string => {
     if (typeof key !== "string") {
       throw new Error(
-        `[tasks] ledger "${collectionId}" addresses its rows by task id, not by pattern parameters`
+        `[tasks] ledger "${collectionId}" addresses its tasks by task id, not by pattern parameters`
       );
     }
     assertPartitionedTaskId(collectionId, key);
@@ -194,6 +197,8 @@ export function partitionedResourceCollection(
     upsert: (key, update, createOnly) => inner.upsert(keyOf(key), update, createOnly),
     delete: (key) => inner.delete(keyOf(key)),
     list: async (within) => (await inner.list(`${segment}/${within ?? ""}`)).filter(isDirectChild),
+    // The partition's rows only, like `list`.
+    findBy: async (index, value) => (await inner.findBy(index, value)).filter(isDirectChild),
     count: async () => (await view.list()).length,
   };
   byPartition.set(partition, view);

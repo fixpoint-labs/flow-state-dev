@@ -1,5 +1,5 @@
 ---
-name: Chief of Staff
+name: Lead
 description: Runs the team's work with you. It asks researcher and writer for facts and drafts, and starts coding tasks for code changes.
 icon: "★"
 color: amber

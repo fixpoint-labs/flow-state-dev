@@ -1,7 +1,8 @@
+// BP-012.
 /**
  * Seed initial tasks into a Task Board collection.
  *
- * State-mutation-only — wired with `.tap()` per BP-012. No
+ * State-mutation-only — wired with `.tap()`. No
  * `outputSchema`, no `return input`.
  *
  * Idempotent on replay: if any task with a given id already lives in
@@ -26,15 +27,16 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { TaskCollectionRef, TaskInit } from "../../tasks";
 
+// FIX-2210; BP-031.
 /**
  * The drains marked to run over the board as it stands, without its
- * `initialTasks` seed (FIX-2210), by request id and collection id. For a
+ * `initialTasks` seed, by request id and collection id. For a
  * consumer that drains again within one pass it already seeded: `goalSeekLoop`
  * taking a turn an answer earned just as the drain stopped. An id-less initial
  * task would otherwise be added a second time. Marked by that consumer and
  * taken by the next seed of that board in that request, never read off the
  * drain's input: a drain can be mounted as a flow action, and its caller must
- * not be able to drop the board's configured work (BP-031). Mark only a board
+ * not be able to drop the board's configured work. Mark only a board
  * with id-less initial tasks, so its seed is there to take the mark. Keyed on
  * the request's incarnation too: a request id can name a later request.
  */

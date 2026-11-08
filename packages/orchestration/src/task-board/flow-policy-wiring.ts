@@ -1,5 +1,6 @@
+// FIX-610 (Wave 1 tool-cache + Wave 2 flow policy).
 /**
- * Task Board wiring for FIX-610 (Wave 1 tool-cache + Wave 2 flow policy).
+ * Task Board wiring for the tool-result cache and the flow policy.
  *
  * The board's outer sequencer fires `installBoardCacheAndLedger` at the
  * top of every run (before `seedCollection`), which constructs a fresh
@@ -30,14 +31,13 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { generateId } from "../tasks/generate-id";
 import {
-  createObservationLedger,
   flowPolicy as builtinFlowPolicy,
-  type ObservationLedger,
   type ObservationLedgerView,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskFlowPolicy,
 } from "../tasks";
+import { createObservationLedger, type ObservationLedger } from "../tasks/flow-policy/index";
 import type { TaskBoardToolCacheConfig } from "./index";
 
 /**
@@ -89,12 +89,13 @@ function getRequestResolverBag(ctx: BlockContext): Record<string, unknown> {
   return bag;
 }
 
+// FIX-1244.
 /**
  * One drain's flow state: the cache store, ledger and policy the drain
  * installed. It lives on the request's resolver bag, under the board's slot,
  * for exactly as long as that drain runs — setup writes it, the worker-step
  * resolver reads it, teardown removes it. It is NOT a closure-scoped bag on
- * the board definition (FIX-1244): two drains of one board can overlap in
+ * the board definition: two drains of one board can overlap in
  * one process — an answer's drain starting while the drain that parked the
  * task is still open on a hold board, or two answers arriving in two requests
  * on an exit board — and a shared bag would let the second's install take the
@@ -106,13 +107,14 @@ function getRequestResolverBag(ctx: BlockContext): Record<string, unknown> {
  * clobbering Worker A's claim mid-await and misattributing A's cache writes
  * and observation entries to B.
  */
-export interface BoardRunFlowState {
+interface BoardRunFlowState {
   cacheStore?: ToolCacheStore;
   ledger?: ObservationLedger;
   policy?: TaskFlowPolicy;
   collectionId: string;
+  // FIX-1236; FIX-963.
   /**
-   * Identifies THIS drain, minted fresh on every install (FIX-963).
+   * Identifies THIS drain, minted fresh on every install.
    *
    * Recorder-failure reports land on the per-REQUEST item buffer, which
    * outlives a single drain — a request can run the same board twice. Stamping
@@ -121,13 +123,14 @@ export interface BoardRunFlowState {
    *
    * Two batches of one board OVERLAPPING in a request still interfere, because
    * they share this slot: the second install overwrites the first's stamp. That
-   * is the pre-existing interference tracked as FIX-1236 and is not narrowed
+   * is a known, separately tracked interference and is not narrowed
    * here — sequential re-entry, which is what the board actually does, is
    * correct.
    */
   runId: string;
 }
 
+// FIX-981.
 /**
  * Per-worker **claim ticket**, scoped via Node's `AsyncLocalStorage`. Each
  * forEach iteration runs in its own async context tree (Node propagates
@@ -137,7 +140,7 @@ export interface BoardRunFlowState {
  * including any cacheable tool call inside a generator — reads its own
  * claim, not a sibling's.
  *
- * It carried a bare task id until FIX-981. Widening it to the whole ticket
+ * It once carried a bare task id. Widening it to the whole ticket
  * gives the model-facing task tools an ownership token to present without
  * threading anything new through `BlockContext`, and reuses the argument this
  * seam already won: a shared field races under `concurrency > 1`, and the
@@ -148,8 +151,9 @@ const workerClaimStore = new AsyncLocalStorage<ClaimSlot>();
 /** Opened before the ticket exists, same as the lease-renewal slot. */
 type ClaimSlot = { ticket?: TaskClaimTicket; task?: WorkerTask; request?: string };
 
+// FIX-2129.
 /**
- * Which task the running worker's request works (FIX-2129): its filing
+ * Which task the running worker's request works: its filing
  * identity, apart from the claim that is its authority to write the task's
  * result. A claim always carries one. A run admitted holding no claim (a task
  * cancelled while its run waited for a user, resumed to run to its end) still
@@ -465,9 +469,10 @@ export function currentWorkerClaim(ctx: WorkerClaimReader): TaskClaimTicket | un
   return slotInRequest(claimRequestKey(ctx))?.ticket;
 }
 
+// FIX-963.
 /**
- * Read the stamp identifying the drain currently installed for `name`
- * (FIX-963), or `undefined` when nothing has installed one.
+ * Read the stamp identifying the drain currently installed for `name`,
+ * or `undefined` when nothing has installed one.
  *
  * Both the recorders and the drain's tail read through this: the recorders
  * stamp a failure report with it, and the tail keeps only the reports carrying

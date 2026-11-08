@@ -77,6 +77,7 @@ export function checkWriteVersion(
     : resourceStateConflict(row);
 }
 
+// FIX-1266.
 /**
  * The value a `ResourceStateStore` commits for `state`: its JSON round-trip.
  *
@@ -86,7 +87,7 @@ export function checkWriteVersion(
  * dropped, and a `bigint` or a cycle throws a `TypeError` before anything is
  * written. The memory and filesystem adapters snapshot through this instead of
  * a structured clone so they commit that same value: one write, one stored
- * value, whichever adapter a deployment runs (FIX-1266). It is also a deep
+ * value, whichever adapter a deployment runs. It is also a deep
  * copy, so it doubles as the snapshot that keeps the caller's object from
  * aliasing the stored row.
  */

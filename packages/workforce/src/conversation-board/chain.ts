@@ -1,5 +1,6 @@
+// FIX-1802 S5.
 /**
- * How far a chain of split tasks goes (FIX-1802 S5): its depth, and how many
+ * How far a chain of split tasks goes: its depth, and how many
  * tasks one top task may have under it.
  *
  * A *chain* starts at a task a session that isn't a task session files: its
@@ -190,11 +191,12 @@ export async function reserveInChain(
   }
 }
 
+// FIX-2078.
 /**
  * Mark the tasks at `entries` added in their chain's record: their adds
  * committed. Only a reserved entry moves: writes nothing when none is, and
  * never brings back a record its top's ending deleted, also when the delete
- * lands while this write runs (an ending heard late, FIX-2078).
+ * lands while this write runs (an ending heard late).
  */
 export async function markAddedInChain(ctx: BlockContext, top: ChainTop, entries: readonly string[]): Promise<void> {
   if (entries.length === 0) return;

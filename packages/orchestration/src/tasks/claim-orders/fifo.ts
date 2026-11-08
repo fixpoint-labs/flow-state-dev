@@ -1,9 +1,12 @@
+// FIX-1005; FIX-443 §10.1.
 /**
- * `fifoClaimOrder` — picks the earliest-`createdAt` `pending` task.
+ * `fifoClaimOrder` — picks the earliest-`createdAt` claimable task. The
+ * task board's default claim order.
  *
- * Eligibility excludes `parked` naturally because the default
- * eligibility predicate inside the collection's `claim` requires
- * `status === 'pending'` (FIX-443 §10.1).
+ * It adds no eligibility of its own: the collection's `claim` admits only a
+ * claimable row whose `deps[]` are all `completed`, so fifo is dep-gated
+ * without restating that rule (a copy would stop recovering abandoned work
+ * the day the substrate's rule widens), and it skips `parked`.
  */
 import type { ClaimOrder } from "./types";
 

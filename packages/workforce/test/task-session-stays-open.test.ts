@@ -329,7 +329,7 @@ function questioner(marker: string, questions: string[], answers: string[], fini
 
 /** The row's one open question, by id. */
 const openQuestion = (row: Task) => {
-  const open = (row.holds ?? []).filter((hold) => hold.source.kind === "row" && !(row.steers ?? []).some((steer) => steer.answers === hold.id));
+  const open = (row.holds ?? []).filter((hold) => hold.source.kind === "task" && !(row.steers ?? []).some((steer) => steer.answers === hold.id));
   expect(open).toHaveLength(1);
   return open[0]!;
 };

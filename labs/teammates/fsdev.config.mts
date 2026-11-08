@@ -2,7 +2,7 @@
  * The Teammates lab's server, as `fsdev dev --app @flow-state-dev/teammates`
  * loads it from this folder. Everything is read from the environment:
  *
- * - `TEAMMATES_MODEL`: the model Chief of Staff, researcher and writer answer on
+ * - `TEAMMATES_MODEL`: the model Lead, researcher and writer answer on
  *   (default `openai/gpt-6-luna`).
  * - `TEAMMATES_WORKDIR`: the working folder, an absolute path to a git
  *   checkout (default: the root of the repository this lab lives in). Coding
@@ -27,7 +27,10 @@
  *   start.
  * - `GOAL_HARNESS=stub`: for goal checks only. Every coding worker runs on a
  *   scripted harness, no model and no sign-in, whose five steps are
- *   `GOAL_HARNESS_STEP_MS` apart (default 2000).
+ *   `GOAL_HARNESS_STEP_MS` apart (default 2000). `GOAL_STALE_THRESHOLD_MS`
+ *   then sets how long a silent request waits before the server takes it as
+ *   interrupted (default one minute), so a goal can read a dead run's row
+ *   before the board takes it back.
  */
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -52,4 +55,7 @@ export default await openTeammates({
   ...(process.env.TEAMMATES_TREE === undefined ? {} : { tree: process.env.TEAMMATES_TREE }),
   ...(process.env.TEAMMATES_HARNESS === undefined ? {} : { harness: process.env.TEAMMATES_HARNESS }),
   ...(process.env.GOAL_HARNESS === "stub" ? { scriptedHarnessStepMs: Number(process.env.GOAL_HARNESS_STEP_MS ?? 2_000) } : {}),
+  ...(process.env.GOAL_HARNESS === "stub" && process.env.GOAL_STALE_THRESHOLD_MS !== undefined
+    ? { staleThresholdMs: Number(process.env.GOAL_STALE_THRESHOLD_MS) }
+    : {}),
 });

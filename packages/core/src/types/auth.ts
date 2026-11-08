@@ -18,9 +18,10 @@
  */
 export type InboundSource = string;
 
+// FIX-1442.
 /**
  * The organization every unauthenticated single-organization deployment runs
- * under (FIX-1442).
+ * under.
  *
  * Organization identity is never optional: a session, request or dispatched
  * child always carries one. An app that configures no `resolvePrincipal` has
@@ -68,13 +69,14 @@ export function isValidOrgId(value: unknown): value is string {
 /** A high surrogate with no low one after it, or a low one with no high one before it. */
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
+// FIX-1442.
 /**
  * Resolved caller principal stamped onto every dispatched envelope. The
  * runtime treats the `userId` here as authoritative for state-scope routing,
  * and the `orgId` as the authoritative organization boundary for everything
  * the resulting session goes on to create, read or dispatch.
  *
- * `orgId` is **required** (FIX-1442). A caller-supplied organization never
+ * `orgId` is **required**. A caller-supplied organization never
  * reaches this type: the value here came from a configured resolver's verified
  * principal, or is {@link DEFAULT_ORG_ID} for an app that configures none.
  * Body, query, header and metadata organization fields cannot override it.
@@ -115,6 +117,7 @@ export interface PrincipalResolutionContext {
   rawBody?: Uint8Array;
 }
 
+// FIX-1442.
 /**
  * Caller-supplied principal resolver. May return a fully resolved principal,
  * a partial `{ userId?, orgId? }` (the framework will then apply
@@ -123,8 +126,8 @@ export interface PrincipalResolutionContext {
  * Whatever shape it returns, the framework requires a verified organization
  * before any effect: a resolver that yields no `orgId`, one {@link isValidOrgId}
  * rejects (empty, whitespace-only, a lone surrogate), or the reserved
- * {@link DEFAULT_ORG_ID} is refused at principal resolution
- * (FIX-1442). `null` is refused for the same reason — it cannot be repaired by
+ * {@link DEFAULT_ORG_ID} is refused at principal resolution.
+ * `null` is refused for the same reason — it cannot be repaired by
  * the `defaultUserId` fallback, which supplies a user and never an
  * organization. A machine transport returns `{ orgId }` and lets
  * `defaultUserId` name its system user.

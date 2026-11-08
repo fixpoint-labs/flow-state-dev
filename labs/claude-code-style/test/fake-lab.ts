@@ -11,26 +11,28 @@
  *
  * Threads mode: any ask starts three threads. One asks you a question and
  * waits under *Waiting on you* until you answer in its thread; one becomes
- * ready for review. An ask that names a code change or the CHANGELOG starts
+ * ready for review. A request that names a code change or the CHANGELOG starts
  * one thread through Claude Code instead, which becomes ready for review with
  * the judge's verdict.
  *
- * In either mode, an ask that says "stop" or "cancel" while a task runs makes
- * the main session cancel it. A line sent while a turn runs waits, and runs
+ * In either mode, a request that says "stop" or "cancel" while a task runs makes
+ * the main session cancel it. `failTurn` fails the running turn, as an
+ * engine `error` item would; Retry runs that turn's line again. A line sent while a turn runs waits, and runs
  * when the turn ends.
  */
 import type {
   ConnectionState,
   LabAdapter,
-  ProjectRow,
+  LabProject,
   ReviewDetail,
-  SessionRow,
-  TaskRow,
+  LabSession,
+  LabTask,
   TaskWork,
   ThreadEntry,
   ThreadView,
   Unsubscribe,
 } from "../src/adapter";
+import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { waitingOnYou } from "../src/lib/columns";
 import { toolRun } from "../src/lib/tool-steps";
 import { modeById, modeOfWorker, type ModeId } from "../src/modes";
@@ -49,18 +51,22 @@ export interface FakeLab extends LabAdapter {
   setConnection(state: ConnectionState): void;
   /** The open task titled `title`, in any session, fails with `error`, as its run would. */
   fail(title: string, error: string): void;
-  /** The next turn's model call fails: the turn ends with no reply, as the real adapter shows it today. */
-  failNextTurn(): void;
+  /** The running turn of session `sessionId` fails with `reason`: a reply under way is left incomplete. */
+  failTurn(sessionId: string, reason: string): void;
+  /** Each `retry` the screen made, in order. */
+  readonly retries: { sessionId: string; requestId: string }[];
+  /** The next turn's model call fails with `reason`, before any reply: the contract tests' failed turn. */
+  failNextTurn(reason: string): void;
 }
 
-interface FixtureTask extends TaskRow {
+interface FixtureTask extends LabTask {
   work: ThreadEntry[];
   /** What its run's review stop carries, for a harness thread ready for review. */
   reviewDetail?: ReviewDetail;
 }
 
 interface FixtureSession {
-  row: SessionRow;
+  row: LabSession;
   entries: ThreadEntry[];
   running: boolean;
   turnStartedAt?: number;
@@ -91,6 +97,7 @@ const CODE_REVIEW: ReviewDetail = {
     confidence: 0.91,
     reason: "The CHANGELOG gains one line naming Vendor C and why; nothing else in the repository changed, and the line follows the file's existing format.",
   },
+  checks: null,
 };
 
 /** The run's last words, as a real one ends: a long path and its branch, unbroken. */
@@ -120,7 +127,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   const listeners = new Set<() => void>();
   let seq = 0;
   let connection: ConnectionState = "live";
-  let failNext = false;
+  let failNext: string | undefined;
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
   const notify = () => {
@@ -261,7 +268,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
         return;
       }
       push(s, { kind: "tool", id: nextId("tool"), ...toolRun([{ id: "c", name: "updateTask", args: { taskId: task.id, status: "cancelled" }, status: "done", output: { ok: true } }]) });
-      setTask(s, task.id, { status: "cancelled", statusNote: undefined, waitingOn: undefined });
+      setTask(s, task.id, { status: "cancelled", statusNote: undefined, openHold: undefined });
       push(s, { kind: "assistant", id: nextId("a"), text: `Stopped "${task.title}". The summary covers what is done so far.` });
     }],
     [200, () => endTurn(s)],
@@ -291,8 +298,8 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   const advance = (s: FixtureSession, ref: Ref, patch: Partial<FixtureTask>, line?: string): Step[1] => () =>
     writeStep(s, s.tasks.find((t) => t.id === ref.id), patch, line);
 
-  const ask = (prompt: string): Partial<FixtureTask> => ({ status: "held", waitingOn: { kind: "question", prompt }, statusNote: prompt });
-  const review = (prompt: string): Partial<FixtureTask> => ({ status: "in_progress", waitingOn: { kind: "review", prompt }, statusNote: prompt });
+  const ask = (prompt: string): Partial<FixtureTask> => ({ status: "held", openHold: { kind: "question", prompt }, statusNote: prompt });
+  const review = (prompt: string): Partial<FixtureTask> => ({ status: "in_progress", openHold: { kind: "review", prompt }, statusNote: prompt });
 
   const threadsScript = (s: FixtureSession, origin: string): Step[] => {
     const [a, b, c]: Ref[] = [{}, {}, {}];
@@ -322,10 +329,10 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
 
   const turn = (s: FixtureSession, text: string, origin: string) => {
     startTurn(s);
-    if (failNext) {
-      // fake: the real adapter draws no failed turn yet (FIX-2550): the turn just ends.
-      failNext = false;
-      play(s, [[300, () => endTurn(s)]]);
+    if (failNext !== undefined) {
+      const reason = failNext;
+      failNext = undefined;
+      play(s, [[300, () => fake.failTurn(s.row.id, reason)]]);
       return;
     }
     const threads = modeOfWorker(s.row.worker)?.id === "threads";
@@ -355,14 +362,14 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   // fake: the person's access to each project. A session may open only where they may work: a
   // member of a shared project or the owner of a private one. Reading one is not enough, the same
   // not-a-member refusal projectWorkspace() makes for a run.
-  const projects: (ProjectRow & { visibility: "shared" | "private"; access: "member" | "owner" | "reader" })[] = [
+  const projects: (LabProject & { visibility: "shared" | "private"; access: "member" | "owner" | "reader" })[] = [
     { id: "project-vendor-notes", name: "vendor-notes", visibility: "shared", access: "member" },
     { id: "project-onboarding-app", name: "onboarding-app", visibility: "private", access: "owner" },
     { id: "project-billing-service", name: "billing-service", visibility: "shared", access: "reader" },
   ];
   const mayWorkIn = projects
     .filter((p) => (p.visibility === "shared" ? p.access === "member" : p.access === "owner"))
-    .map(({ id, name }): ProjectRow => ({ id, name }));
+    .map(({ id, name }): LabProject => ({ id, name }));
 
   const seed = (title: string, ago: number, projectId: string | null, lines: [string, string]) => {
     const id = nextId("session");
@@ -425,13 +432,29 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     return task;
   };
 
-  return {
+  const retries: { sessionId: string; requestId: string }[] = [];
+
+  const fake: FakeLab = {
+    retries,
+    failTurn(sessionId, reason) {
+      const s = session(sessionId);
+      if (!s.running) return;
+      for (const t of s.timers) clearTimeout(t);
+      s.timers = [];
+      // The turn's line names it, so Retry can run it again; an older failure is no longer the newest turn.
+      const line = [...s.entries].reverse().find((e) => e.kind === "user");
+      const requestId = `turn-${line?.id ?? nextId("r")}`;
+      const last = s.entries[s.entries.length - 1];
+      s.entries = s.entries.map((e) => (e.kind === "failed" ? { ...e, retryable: false } : e === last && e.kind === "assistant" ? { ...e, incomplete: true } : e));
+      push(s, { kind: "failed", id: nextId("f"), reason, retryable: true, requestId });
+      endTurn(s);
+    },
     setConnection(state) {
       connection = state;
       notify();
     },
-    failNextTurn() {
-      failNext = true;
+    failNextTurn(reason) {
+      failNext = reason;
     },
     fail(title, error) {
       for (const s of sessions.values()) {
@@ -454,10 +477,24 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       return project;
     },
 
+    async checkRepository(repository: string) {
+      // The fake's one unusable shape: a folder named for it. Everything else is a listed repository.
+      return repository.includes("not-a-repo")
+        ? { usable: false as const, problem: "there is no git repository there. Run `git init` there, or name a repository's folder." }
+        : { usable: true as const, how: "worktree" as const };
+    },
+
+    async readHarnesses() {
+      return [
+        { harness: "claude-code", label: "Claude Code", ready: true, reason: null, remedy: null, unanswered: false },
+        { harness: "codex", label: "Codex", ready: false, reason: "Codex has no credential", remedy: "Run `codex login`", unanswered: false },
+      ];
+    },
+
     async openSession(mode: ModeId, projectId: string) {
       if (!mayWorkIn.some((p) => p.id === projectId)) throw new Error(`not-a-member: ${projectId}`);
       const id = nextId("session");
-      const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, waiting: 0, projectId };
+      const row: LabSession = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, waiting: 0, projectId };
       sessions.set(id, { row, entries: [], running: false, queue: [], timers: [], taskTimers: [], tasks: [] });
       notify();
       return row;
@@ -486,6 +523,15 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       endTurn(s);
     },
 
+    async retry(sessionId, requestId) {
+      retries.push({ sessionId, requestId });
+      const s = session(sessionId);
+      const line = s.entries.find((e) => e.kind === "user" && `turn-${e.id}` === requestId);
+      if (line?.kind !== "user") throw new Error(`No failed turn "${requestId}" to retry.`);
+      s.entries = s.entries.map((e) => (e.kind === "failed" ? { ...e, retryable: false } : e));
+      turn(s, line.text, line.id);
+    },
+
     watchThread(sessionId, onChange) {
       return watch(() => {
         const s = sessions.get(sessionId);
@@ -498,7 +544,8 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     watchTasks(sessionId, onChange) {
       return watch(() => {
         const s = sessions.get(sessionId);
-        onChange(s ? s.tasks.map(({ work: _work, reviewDetail: _review, ...row }) => row) : []);
+        // Each row with its view, as the adapter reads one from the board's row (no holds: a fixture's wait is its `openHold`).
+        onChange(s ? s.tasks.map(({ work: _work, reviewDetail: _review, ...row }) => ({ ...row, view: taskView({ id: row.id, title: row.title, goal: row.goal, status: row.status, updatedAt: row.updatedAt, board: sessionId }) })) : []);
       });
     },
 
@@ -507,11 +554,11 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       const task = s.tasks.find((t) => t.id === taskId);
       if (!task) return;
       const work = [...task.work, { kind: "user" as const, id: nextId("w"), text: line }];
-      if (task.waitingOn?.kind !== "question") {
+      if (task.openHold?.kind !== "question") {
         setTask(s, taskId, { work: [...work, { kind: "assistant", id: nextId("w"), text: "Noted. I'll work that in." }] });
         return;
       }
-      setTask(s, taskId, { status: "in_progress", waitingOn: undefined, statusNote: "Working with your answer", work });
+      setTask(s, taskId, { status: "in_progress", openHold: undefined, statusNote: "Working with your answer", work });
       play(s, [[1200, advance(s, { id: taskId }, review(`Summary for ${line} ready`), `Done, going by your answer: ${line}.`), "background"]]);
     },
 
@@ -520,7 +567,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       return {
         async cancel(id) {
           openTask(session(sessionId), id);
-          setTask(session(sessionId), id, { status: "cancelled", statusNote: undefined, waitingOn: undefined });
+          setTask(session(sessionId), id, { status: "cancelled", statusNote: undefined, openHold: undefined });
           return [];
         },
         async steer(id, message) {
@@ -531,7 +578,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
         async release(id) {
           const s = session(sessionId);
           if (openTask(s, id).status !== "held") throw new Error(`Task "${id}" isn't held.`);
-          setTask(s, id, { status: "pending", waitingOn: undefined });
+          setTask(s, id, { status: "pending", openHold: undefined });
         },
         async retry(id) {
           const s = session(sessionId);
@@ -545,10 +592,10 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     async resolve(sessionId, taskId) {
       const s = session(sessionId);
       const task = s.tasks.find((t) => t.id === taskId);
-      if (task?.waitingOn?.kind !== "review") return;
+      if (task?.openHold?.kind !== "review") return;
       setTask(s, taskId, {
         status: "completed",
-        waitingOn: undefined,
+        openHold: undefined,
         statusNote: undefined,
         review: "accepted",
         work: [...task.work, { kind: "assistant", id: nextId("w"), text: "Resolved. Your review accepted the work." }],
@@ -558,10 +605,10 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     async requestChanges(sessionId, taskId, words) {
       const s = session(sessionId);
       const task = s.tasks.find((t) => t.id === taskId);
-      if (task?.waitingOn?.kind !== "review") return;
+      if (task?.openHold?.kind !== "review") return;
       setTask(s, taskId, {
         status: "in_progress",
-        waitingOn: undefined,
+        openHold: undefined,
         statusNote: "Revising",
         work: [...task.work, { kind: "user", id: nextId("w"), text: words }],
       });
@@ -590,4 +637,5 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       });
     },
   };
+  return fake;
 }

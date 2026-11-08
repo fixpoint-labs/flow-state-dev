@@ -19,10 +19,12 @@ import {
   createBearerSecretPrincipalResolver,
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter,
-  runAction,
+  runAction
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import {
   createResourceCollectionScheduleResolver,
   createScheduledTransportAdapter,

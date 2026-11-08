@@ -13,17 +13,15 @@ import {
   defineFlow,
   evaluator,
   generator,
-  parseModelString,
   DEFAULT_ORG_ID,
   type ModelResolver,
 } from "@flow-state-dev/core";
+import { parseModelString } from "@flow-state-dev/core/models";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import {
-  createInMemoryStores,
-  createModelResolver,
-  createResponseEmitter,
-  runAction,
-} from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { createModelResolver } from "@flow-state-dev/core";
+import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import { z } from "zod";
 import { REPO_ROOT, fail, loadFixture, runGoal, stripIntentOverrides } from "../../lib/index.mts";
 

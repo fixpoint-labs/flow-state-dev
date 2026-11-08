@@ -1,27 +1,28 @@
+// BR-12, BR-18, BR-22 to BR-28, BR-38; BR-28; BR-18, BR-19; BR-38; BR-12; BR-18.
 /**
- * The project level (BR-12, BR-18, BR-22 to BR-28, BR-38): one
+ * The project level: one
  * project the user reads, shared or their own private one, in four tabs.
  *
  * - **Stream** is the user's conversation with their project coordinator:
  *   a session of the standard coordinator worker the Lab's project setup
  *   names, linked to this project, found or started when the tab opens. It
  *   hands a line to the user's own workstreams in the project. A finished
- *   turn reads the Lab again (BR-28), as every conversation does.
+ *   turn reads the Lab again, as every conversation does.
  * - **Board** draws the tasks of the user's own workstream sessions in the
  *   project, one panel per session, each read from that session alone. Another
  *   user's workstream sessions, and the Lab-wide inventory of boards, are
  *   never read here.
  * - **Workstreams** lists the project's workstreams as their entries say,
- *   with the progress worked out from them (BR-18, BR-19). It opens none: a
+ *   with the progress worked out from them. It opens none: a
  *   workstream opens when the user asks their project coordinator in
- *   Stream for the work, and it names the lead (BR-38).
+ *   Stream for the work, and it names the lead.
  *   Each row counts its objectives met. An entry opens on its own view,
  *   under its objectives, each marked met or not: its owner talks with its
- *   lead in its workstream session; anyone else reads the entry (BR-12).
+ *   lead in its workstream session; anyone else reads the entry.
  * - **Brief** is the row's brief, under the repository its code lives in, or
  *   a line saying it has none and its coding work runs on its files.
  *
- * **What a project view reads** (BR-18): the row and the entries, by one
+ * **What a project view reads**: the row and the entries, by one
  * prefix, when it opens, each time the Lab is read again, and every few
  * seconds while Board or Workstreams is on screen; never a read of
  * the whole Lab of its own. The title comes from the snapshot every level shares.
@@ -188,7 +189,7 @@ function ProjectBody({
   const needsEntries = route.tab === "board" || route.tab === "workstreams";
   const { read, reread } = useProjectRead(address, needsEntries ? reader : null, snapshot.readAt);
   const { setup, retry: retrySetup } = useProjectSetup();
-  const roster = useRoster(snapshot.readAt);
+  const roster = useRoster();
   const { workers } = withRoster(snapshot, roster);
   const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries : undefined;
   const readFailure =
@@ -339,7 +340,8 @@ function CoordinatorStream({
   );
 }
 
-/** The project's progress, worked out from its entries (BR-18, BR-19). */
+// BR-18, BR-19.
+/** The project's progress, worked out from its entries. */
 function Progress({ read }: { read: ProjectRead }) {
   const { progress } = read;
   const statuses = Object.entries(progress.byStatus);
@@ -396,10 +398,10 @@ function EntryList({ entries, route }: { entries: readonly WorkstreamEntry[]; ro
   );
 }
 
+// BR-12.
 /**
  * One entry's view. Its owner talks with its lead in its workstream session;
- * anyone else reads the entry and its latest report, and never its session
- * (BR-12).
+ * anyone else reads the entry and its latest report, and never its session.
  */
 function EntryView({
   snapshot,
@@ -478,7 +480,8 @@ function EntryView({
   return <EntryDetails address={address} entry={entry} leadName={leadName} readerSessionId={readerSessionId} back={back} />;
 }
 
-/** Another user's entry, as anyone who reads the project reads it (BR-12). */
+// BR-12.
+/** Another user's entry, as anyone who reads the project reads it. */
 function EntryDetails({
   address,
   entry,

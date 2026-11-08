@@ -1,5 +1,6 @@
+// FIX-2129, D2; FIX-999.
 /**
- * The answer route (FIX-2129, D2): how a screen answers a suspension that waits
+ * The answer route: how a screen answers a suspension that waits
  * for a user, whatever started the run that asked, a task's run included.
  *
  *   POST /api/flows/:flowKind/requests/:requestId/answer
@@ -17,7 +18,7 @@
  *
  * Unlike the resume route, it never re-enters a request with caller gate data
  * beyond that answer, so it is open to every source the resume route refuses
- * (`task` among them, FIX-999). The answer resolves the stop through its single
+ * (`task` among them). The answer resolves the stop through its single
  * pending state, under its request's lease, so an answer and a cancel, a
  * deadline or a stop resume it once: the one that loses is told
  * `already-resolved` (409).
@@ -27,7 +28,8 @@ import { ownsRecord } from "../context/record-owner";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
-import { isUserSuspension, isWaitGate, type SuspensionRecord } from "@flow-state-dev/core/types";
+import { isUserSuspension, type SuspensionRecord } from "@flow-state-dev/core/types";
+import { isWaitGate } from "@flow-state-dev/core/internal";
 import { expireUnderLease, latestGateIdOf, resumeUnderLease } from "../durability/resume-under-lease";
 import { loggedUserStop, PARKED } from "../durability/stop-suspended";
 import { callerReachesRequest, getString, jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
@@ -39,7 +41,8 @@ type AnswerRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
   durabilityProvider?: DurabilityProvider;
-  /** Caller's tenant (FIX-682), extracted as every other request route does. */
+  // FIX-682.
+  /** Caller's tenant, extracted as every other request route does. */
   tenantId?: string;
   /** The authenticated caller, when route-level authentication is active. */
   principal?: ResolvedPrincipal;

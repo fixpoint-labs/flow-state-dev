@@ -3,9 +3,7 @@ import {
   ApprovalRenderer,
   FlowProvider,
   ItemRenderer,
-  coreItemImportProof,
   deriveSuspensions,
-  reactPackageMarker,
   resolveSuspension,
   useAction,
   useFlow,
@@ -17,14 +15,6 @@ import {
 } from "../src";
 
 describe("@flow-state-dev/react", () => {
-  it("exports scaffold marker", () => {
-    expect(reactPackageMarker).toBe("@flow-state-dev/react");
-  });
-
-  it("keeps core import proof wired", () => {
-    expect(coreItemImportProof).toBe("message");
-  });
-
   it("exports hooks", () => {
     expect(typeof useFlow).toBe("function");
     expect(typeof useSession).toBe("function");

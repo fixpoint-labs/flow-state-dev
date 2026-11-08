@@ -1,25 +1,26 @@
+// FIX-1662 PLAN; FIX-1989; FIX-2085; FIX-2141; FIX-1723; FIX-2007; FIX-1905.
 /**
  * Shift Manager's addresses. The level and the tab live in the URL, so a link opens
  * the same view.
  *
- * Pinned (FIX-1662 PLAN, "Pinned names"): the task route and the project
+ * Pinned ("Pinned names"): the task route and the project
  * route. The rest are Shift Manager's own.
  *
  *     /shift-coordinator             Shift Coordinator: where `/` and any unknown path land
  *     /inbox[/<item>]                one Inbox item: a suspension id, or a held question's row (`inbox.ts`)
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
- *     /messages                      every message between the user's workers (FIX-1989)
- *     /schedules                     the user's scheduled work, each with its next run (FIX-2085)
- *     /usage                         how much of each harness's subscription the user has used (FIX-2141)
+ *     /messages                      every message between the user's workers
+ *     /schedules                     the user's scheduled work, each with its next run
+ *     /usage                         how much of each harness's subscription the user has used
  *     /s/<sessionId>                 one of the user's sessions with a worker, as a conversation
  *     /p/<projectId>/<stream|board|workstreams|brief>[?owner=<userId>&ws=<workstreamId>]
  *     /p/private/<projectId>/<tab>[?owner=…&ws=…]   one of the user's own private projects
  *     /r/<sessionId>/<resourceRef>   a declared document, read-only
- *     /roster[?team=<teamId>]        every worker, or one team's (pinned, FIX-1723)
- *     /roster/<workerId>/settings    one worker's settings: its standing rules for the user (FIX-2007)
+ *     /roster[?team=<teamId>]        every worker, or one team's (pinned)
+ *     /roster/<workerId>/settings    one worker's settings: its standing rules for the user
  *     /roster/<workerId>/rules       the same page, at the address it had before (read, never written)
- *     /settings                      the user's own keys for the Lab's MCP servers (pinned, FIX-1905)
+ *     /settings                      the user's own keys for the Lab's MCP servers (pinned)
  */
 import { useSyncExternalStore } from "react";
 import { readBasePath } from "@flow-state-dev/devtool/react";
@@ -62,7 +63,8 @@ function oneOf<T extends string>(values: readonly T[], value: string | undefined
   return values.includes(value as T) ? (value as T) : fallback;
 }
 
-/** Read a route from a path and query string. `/`, `/shift-coordinator` and anything unknown are Shift Coordinator (BR-1). */
+// BR-1.
+/** Read a route from a path and query string. `/`, `/shift-coordinator` and anything unknown are Shift Coordinator. */
 export function parseRoute(pathname: string, search = ""): Route {
   const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
   const [head, a, b, c] = parts;

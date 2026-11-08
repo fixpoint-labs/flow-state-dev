@@ -1,7 +1,8 @@
+// FIX-658; FIX-480.
 /**
  * Per-task item attribution — the substrate's view of "which items did worker
  * X emit while it held task T?". Promoted from the kitchen-sink renderer
- * (FIX-480) and, since FIX-658, delegated to the single shared algorithm in
+ * and delegated to the single shared algorithm in
  * `@flow-state-dev/core/items` so the substrate (`task.items()`) and the UI
  * (`<TaskPlan />`) return identical answers.
  *

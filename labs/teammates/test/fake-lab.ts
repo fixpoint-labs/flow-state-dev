@@ -5,8 +5,8 @@
  * in `src/` imports it.
  *
  * Three teammates, each with one conversation, and three hidden coding
- * workers, one per harness (Claude Code, Codex, Cursor). Your first ask to Chief of Staff makes it message researcher;
- * researcher looks the fact up and replies. Ask Chief of Staff to fix something and Chief of Staff
+ * workers, one per harness (Claude Code, Codex, Cursor). Your first ask to Lead makes it message researcher;
+ * researcher looks the fact up and replies. Ask Lead to fix something and Lead
  * starts a coding task on the agent you name, or on Claude Code, which runs in the working folder;
  * one on a harness the double is told isn't set up fails at once, saying so. Told to, a run asks
  * you a question before it edits, and waits for your review once it has committed. A run reports
@@ -17,9 +17,12 @@
  * publish and it waits for your yes first. Each worker
  * answers one request at a time: a line you send, or a message from another
  * worker, waits while the worker is answering, and runs when it is done.
- * Chief of Staff's conversation starts past the 50-turn history window.
+ * Lead's conversation starts past the 50-turn history window.
+ * `failTurn` leaves a failed turn in a conversation, as an engine `error` item
+ * would; Retry runs that turn's line again.
  */
-import type { SessionConnectionState } from "@flow-state-dev/client";
+import type { SessionConnectionStatus } from "@flow-state-dev/client";
+import { taskView } from "@flow-state-dev/orchestration/inbox";
 import {
   rerunOverrides,
   runSteps,
@@ -28,11 +31,11 @@ import {
   type TaskAnswer,
   type LabAdapter,
   type SessionStep,
-  type TalkRow,
+  type LabTalk,
   type BoardTask,
   type Unsubscribe,
   type WindowMark,
-  type WorkerRow,
+  type LabWorker,
 } from "../src/adapter";
 
 /** How the double keeps time, and what it plays. */
@@ -47,8 +50,16 @@ export interface FixtureOptions {
   notSetUp?: string[];
   /** A coding run asks which line has the typo before it edits, and waits for your answer. */
   asks?: boolean;
+  /** A coding run holds before its first step until `startRuns()`, so what shows before it reports anything can be read. */
+  held?: boolean;
   /** A coding run that committed waits for your review: Accept completes it, Ask for changes runs it once more. */
   review?: boolean;
+  /**
+   * The review offers both ways to land an accept, Open a PR and Merge locally,
+   * as harness-manager's does on a host that can land. A merge conflicts the
+   * first time, and the review is asked again with the error.
+   */
+  lands?: boolean;
   /** How many roster reads fail as an unreachable server would, before one lands. */
   unreachableReads?: number;
   /** Board rows already there when the lab opens, each filed by the conversation of the worker `filer` names. */
@@ -58,9 +69,15 @@ export interface FixtureOptions {
 /** The fixture, plus what a test does to its server. */
 export interface FixtureLab extends LabAdapter {
   /** Every conversation's feed reports `state` from now on. */
-  setConnection(state: SessionConnectionState): void;
-  /** The next line's turn fails at its model call: the turn ends with no reply, as the real adapter shows it today. */
-  failNextTurn(): void;
+  setConnection(state: SessionConnectionStatus): void;
+  /** The newest turn of conversation `sessionId` failed with `reason`: a reply under way is left incomplete. */
+  failTurn(sessionId: string, reason: string): void;
+  /** Each `retry` the screen made, in order. */
+  readonly retries: { sessionId: string; requestId: string }[];
+  /** With `held`, every coding run waiting to start goes on to its first step. */
+  startRuns(): void;
+  /** The next line's turn fails at its model call with `reason`, before any reply: the contract tests' failed turn. */
+  failNextTurn(reason: string): void;
 }
 
 /**
@@ -100,8 +117,8 @@ const RUN_TOOLS: Record<string, Record<"read" | "edit" | "check", [string, Recor
 const WINDOW_TURNS = 50;
 const MINUTE = 60_000;
 
-const ROSTER: WorkerRow[] = [
-  { id: "teammates.chief-of-staff", name: "Chief of Staff", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
+const ROSTER: LabWorker[] = [
+  { id: "teammates.chief-of-staff", name: "Lead", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
   { id: "teammates.researcher", name: "researcher", icon: "🔎", color: "teal", role: "Finds facts for the team, and replies to whoever asked." },
   { id: "teammates.writer", name: "writer", icon: "✎", color: "violet", role: "Drafts and tightens copy when you or another worker asks." },
   { id: "teammates.claude-code", name: "Claude Code", role: "Runs coding tasks on Claude Code.", takesTasks: true, harness: "claude-code" },
@@ -111,19 +128,20 @@ const ROSTER: WorkerRow[] = [
 const LEAD = "teammates.chief-of-staff";
 const RESEARCHER = "teammates.researcher";
 const WRITER = "teammates.writer";
-/** The coding worker a task that names no harness goes to: Chief of Staff's default. */
+/** The coding worker a task that names no harness goes to: Lead's default. */
 const DEFAULT_CODER = "teammates.cursor";
 
-type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: TalkRow } | { kind: "result"; task: BoardTask };
+type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: LabTalk } | { kind: "result"; task: BoardTask };
 
 /** A board row, and the conversation that filed it. `attempt` counts its runs, so a run a cancel or retry left behind stops. */
-type FixtureTask = BoardTask & { sessionId: string; attempt?: number };
+/** A fixture's row: the task, and the times the board keeps for it (its view reads them, as the adapter's does). */
+type FixtureTask = BoardTask & { sessionId: string; attempt?: number; createdAt?: number; completedAt?: number };
 
 /** The board's words for an action on a task that has ended or is still open, as `updateTask` and `retryTask` refuse. */
 const refusal = (task: FixtureTask, verb: string) => `${verb}: task "${task.title}" (${task.id}) is ${task.boardStatus}.`;
 
 interface FixtureWorker {
-  row: WorkerRow;
+  row: LabWorker;
   sessionId: string;
   entries: ConversationEntry[];
   running: boolean;
@@ -134,7 +152,7 @@ interface FixtureWorker {
 /** A scripted step: wait, then run. */
 type Step = [delayMs: number, run: () => void];
 
-/** Planning chatter for Chief of Staff's older turns. */
+/** Planning chatter for Lead's older turns. */
 const OLDER_TURNS: [string, string][] = [
   ["Who is the post for?", "Teams that sync files across offices. I'd write for the person who sets it up."],
   ["List the launch channels.", "The blog, the changelog, and the newsletter a day later."],
@@ -149,7 +167,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   const speed = options.speed ?? 1;
   const now = options.now ?? (() => Date.now());
   const listeners = new Set<() => void>();
-  const log: TalkRow[] = [];
+  const log: LabTalk[] = [];
   let seq = 0;
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
@@ -168,10 +186,12 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   const runs = new Map<string, Record<string, unknown>[]>();
   const notSetUp = new Set(options.notSetUp ?? []);
   let unreachable = options.unreachableReads ?? 0;
-  let connection: SessionConnectionState = "live";
-  let failNext = false;
+  let connection: SessionConnectionStatus = "live";
+  let failNext: string | undefined;
   /** What each run waiting on you is waiting for: the answer it goes on with. */
   const waits = new Map<string, (answer: TaskAnswer) => void>();
+  /** With `held`, the coding runs waiting on `startRuns()`. */
+  const held = new Set<() => void>();
   /** Each run's latest review, by its run session. */
   const reviews = new Map<string, ReviewDetail>();
   /** The worker each open approval belongs to, by suspension id. */
@@ -212,7 +232,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
    * `receive` queued for the recipient. A send that isn't an answer asks for one.
    */
   const sendMessage = (w: FixtureWorker, to: string, text: string, inReplyTo?: string): Step[1] => () => {
-    const message: TalkRow = { id: nextId("m"), from: w.row.id, to, text, inReplyTo, ...(inReplyTo ? {} : { replyRequested: true }), at: now() };
+    const message: LabTalk = { id: nextId("m"), from: w.row.id, to, text, inReplyTo, ...(inReplyTo ? {} : { replyRequested: true }), at: now() };
     push(w, { kind: "sent", id: nextId("s"), messageId: message.id, to, text });
     log.push(message);
     const recipient = worker(to);
@@ -250,6 +270,8 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       runSessionId: `run:${id}`,
       sessionId: w.sessionId,
       harness: HARNESS[harness]!.name,
+      createdAt: Date.now(),
+      startedAt: Date.now(),
     };
     push(w, { kind: "task", id: nextId("k"), taskId: task.id, title, to });
     setTimeout(() => {
@@ -272,7 +294,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     const end = (status: "done" | "failed", text: string) => () => {
       if (!live()) return;
       const ending = status === "done" ? { result: text } : { error: text };
-      updateTask(task.id, { status, boardStatus: status === "done" ? "completed" : "errored", ...ending });
+      updateTask(task.id, { status, boardStatus: status === "done" ? "completed" : "errored", completedAt: Date.now(), ...ending });
       w.queue.push({ kind: "result", task: { ...task, status, ...ending } });
       startNext(w);
     };
@@ -292,6 +314,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       if (!live()) throw new Error("left behind");
     };
     /** The task waits on you for `waiting`, until you answer. */
+    let holdCount = 0;
     const waitOn = (waiting: NonNullable<BoardTask["waiting"]>) =>
       new Promise<TaskAnswer>((resolve) => {
         waits.set(task.id, (answer) => {
@@ -299,9 +322,10 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
           updateTask(task.id, { waiting: undefined });
           resolve(answer);
         });
-        updateTask(task.id, { waiting });
+        updateTask(task.id, { waiting: { ...waiting, holdId: `hold-${++holdCount}` } });
       });
     void (async () => {
+      if (options.held) await new Promise<void>((resolve) => held.add(resolve));
       await sleep(600);
       // The run reports its model, if its harness reports one, once it starts.
       if (model !== undefined) updateTask(task.id, { model });
@@ -318,21 +342,38 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       call("check")();
       // What the run spent, as the row's folded view reads it once the run has reported.
       if (spent !== undefined) updateTask(task.id, { spend: { harness, model: model ?? null, ...spent, unreported: false, live: false } });
+      let landFailed: ReviewDetail["landFailed"] = null;
+      let landed: BoardTask["landed"];
       for (let commits = 1; options.review; commits++) {
+        const branch = `teammates/${task.id}--change`;
         reviews.set(task.runSessionId!, {
-          branch: `teammates/${task.id}--change`,
+          branch,
           commits,
           subjects: Array.from({ length: commits }, (_, i) => (i === 0 ? "docs: fix the README typo" : "docs: keep the old wording")).reverse(),
           judge: { verdict: "done", confidence: 0.91, reason: "The typo on line 1 is fixed." },
+          checks: null,
+          lands: options.lands ? ["pull-request", "merge"] : [],
+          landFailed,
         });
         notify();
-        const answer = await waitOn({ kind: "review", prompt: `${commits} commit${commits === 1 ? "" : "s"} on teammates/${task.id}--change`, unanswerable: null });
-        if ("verdict" in answer && answer.verdict === "accepted") break;
+        const answer = await waitOn({ kind: "review", prompt: `${commits} commit${commits === 1 ? "" : "s"} on ${branch}`, unanswerable: null });
+        if ("verdict" in answer && answer.verdict === "accepted" && answer.land === "merge") {
+          // Every merge conflicts, the same way each time: asked again, nothing changed.
+          landFailed = { land: "merge", message: "Merging conflicts in README.md, so it was stopped." };
+          commits--;
+          continue;
+        }
+        if ("verdict" in answer && answer.verdict === "accepted") {
+          if (answer.land === "pull-request") landed = { kind: "pull-request", url: "https://github.com/acme/relay/pull/7", number: 7, branch, base: "main" };
+          if (answer.land === "merge") landed = { kind: "merge", branch: "main", commit: "c15d6f098abc", checkout: "/work/relay", from: branch };
+          break;
+        }
         report(task.id, harness, said(`Revising: ${"words" in answer ? answer.words : ""}`))();
         await sleep(600);
         call("edit")();
       }
       await sleep(400);
+      if (landed !== undefined) updateTask(task.id, { landed });
       end("done", "Fixed the typo in README.md, line 1.")();
     })().catch(() => {});
   };
@@ -369,7 +410,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
         [600, sendMessage(w, RESEARCHER, "What's our launch date?")],
       ];
     }
-    // Chief of Staff thinks longer than researcher looks a fact up, so a reply can arrive while you talk to Chief of Staff.
+    // Lead thinks longer than researcher looks a fact up, so a reply can arrive while you talk to Lead.
     return [[w.row.id === LEAD ? 6000 : 900, say(w, `Noted: "${job.text}" I've folded it into the plan.`)]];
   };
 
@@ -390,10 +431,11 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     }
     notify();
     let at = 0;
-    // fake: the real adapter draws no failed turn yet (FIX-2550): a failed turn just ends.
-    const failed = failNext && job.kind === "user";
-    if (failed) failNext = false;
-    for (const [delay, run] of [...(failed ? [] : script(w, job)), [200, () => endTurn(w)] as Step]) {
+    // The next line's turn fails before any reply: its failed line, then the turn ends.
+    const failed = failNext !== undefined && job.kind === "user" ? failNext : undefined;
+    if (failed !== undefined) failNext = undefined;
+    const steps: Step[] = failed !== undefined ? [[0, () => fake.failTurn(w.sessionId, failed)]] : script(w, job);
+    for (const [delay, run] of [...steps, [200, () => endTurn(w)] as Step]) {
       at += delay;
       setTimeout(run, at * speed);
     }
@@ -406,20 +448,20 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     startNext(w);
   };
 
-  // Seed: Chief of Staff's conversation runs two turns past the window, with an exchange with writer near its end.
+  // Seed: Lead's conversation runs two turns past the window, with an exchange with writer near its end.
   const seed = (w: FixtureWorker, entries: ConversationEntry[], lastActiveAt: number) => {
     w.entries = entries;
     w.lastActiveAt = lastActiveAt;
   };
-  const exchange = (from: string, to: string, text: string, ago: number, inReplyTo?: string): TalkRow => {
+  const exchange = (from: string, to: string, text: string, ago: number, inReplyTo?: string): LabTalk => {
     const message = { id: nextId("m"), from, to, text, inReplyTo, at: now() - ago };
     log.push(message);
     return message;
   };
   const user = (text: string): ConversationEntry => ({ kind: "user", id: nextId("u"), text });
   const assistant = (text: string): ConversationEntry => ({ kind: "assistant", id: nextId("a"), text });
-  const sent = (m: TalkRow): ConversationEntry => ({ kind: "sent", id: nextId("s"), messageId: m.id, to: m.to, text: m.text });
-  const received = (m: TalkRow): ConversationEntry => ({
+  const sent = (m: LabTalk): ConversationEntry => ({ kind: "sent", id: nextId("s"), messageId: m.id, to: m.to, text: m.text });
+  const received = (m: LabTalk): ConversationEntry => ({
     kind: "received",
     id: nextId("r"),
     messageId: m.id,
@@ -468,21 +510,73 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     now() - 2 * 60 * MINUTE,
   );
 
-  return {
-    failNextTurn() {
-      failNext = true;
+  const retries: { sessionId: string; requestId: string }[] = [];
+
+  const fake: FixtureLab = {
+    failNextTurn(reason) {
+      failNext = reason;
     },
     setConnection(state) {
       connection = state;
       notify();
     },
+    retries,
+    startRuns() {
+      for (const start of [...held]) start();
+      held.clear();
+    },
+    failTurn(sessionId, reason) {
+      const w = bySession(sessionId);
+      if (!w) throw new Error(`no conversation ${sessionId}`);
+      // The turn's line names it, so Retry can run it again; an older failure is no longer the newest turn.
+      const line = [...w.entries].reverse().find((e) => e.kind === "user");
+      const last = w.entries[w.entries.length - 1];
+      w.entries = w.entries.map((e) =>
+        e.kind === "failed" ? { ...e, retryable: false } : e === last && e.kind === "assistant" ? { kind: "assistant", id: e.id, text: e.text, incomplete: true } : e,
+      );
+      push(w, { kind: "failed", id: nextId("f"), requestId: `turn-${line?.id ?? nextId("r")}`, reason, retryable: true });
+    },
+    async retry(sessionId, requestId) {
+      retries.push({ sessionId, requestId });
+      const w = bySession(sessionId);
+      const line = w?.entries.find((e) => e.kind === "user" && `turn-${e.id}` === requestId);
+      if (!w || line?.kind !== "user") throw new Error(`No failed turn "${requestId}" to retry.`);
+      w.entries = w.entries.map((e) => (e.kind === "failed" ? { ...e, retryable: false } : e));
+      w.queue.push({ kind: "user", entryId: line.id, text: line.text });
+      startNext(w);
+    },
+
+    async readContext() {
+      return { folder: "/work/launch-site", folderProblem: null, model: "openai/gpt-6-luna", harness: "cursor", delegates: { [LEAD]: "all" as const } };
+    },
+
+    async readHarnesses() {
+      return [
+        { harness: "claude-code", label: "Claude Code", ready: true, reason: null, remedy: null, unanswered: false },
+        { harness: "codex", label: "Codex", ready: false, reason: "Codex has no credential", remedy: "Run `codex login`", unanswered: false },
+        { harness: "cursor", label: "Cursor", ready: true, reason: null, remedy: null, unanswered: false },
+      ];
+    },
 
     async listWorkers() {
+      return [...workers.values()].filter((w) => !fired.has(w.row.id)).map((w) => w.row);
+    },
+
+    watchWorkers(onChange, onError) {
       if (unreachable > 0) {
         unreachable -= 1;
-        throw new TypeError("fetch failed");
+        // Told after the call returns, as a read that failed would be.
+        queueMicrotask(() => onError?.(new TypeError("fetch failed")));
+        return () => {};
       }
-      return [...workers.values()].filter((w) => !fired.has(w.row.id)).map((w) => w.row);
+      let last = "";
+      return watch(() => {
+        const rows = [...workers.values()].filter((w) => !fired.has(w.row.id)).map((w) => w.row);
+        const seen = JSON.stringify(rows);
+        if (seen === last) return;
+        last = seen;
+        onChange(rows);
+      });
     },
 
     async openConversation(workerId) {
@@ -544,7 +638,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
 
     async hire({ name, role }) {
       if (workers.has(name) && !fired.has(name)) throw new Error(`"${name}" is already on your roster`);
-      const row: WorkerRow = { id: name, name, role, own: true };
+      const row: LabWorker = { id: name, name, role, own: true };
       workers.set(name, { row, sessionId: `conversation:${name}`, entries: [], running: false, lastActiveAt: now(), queue: [] });
       notify();
       return row;
@@ -562,14 +656,24 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     },
 
     watchTasks(sessionId, onChange) {
-      return watch(() => onChange(tasks.filter((t) => t.sessionId === sessionId).map(({ sessionId: _, ...card }) => card)));
+      // Each row with its view, as the adapter reads one from the board's row (no holds: a fixture's wait is its `waiting`).
+      return watch(() =>
+        onChange(
+          tasks
+            .filter((t) => t.sessionId === sessionId)
+            .map(({ sessionId: _, createdAt, completedAt, ...card }) => ({
+              ...card,
+              view: taskView({ id: card.id, status: card.boardStatus, title: card.title, goal: card.goal, board: sessionId, createdAt, startedAt: card.startedAt, completedAt }),
+            })),
+        ),
+      );
     },
 
     watchReview(runSessionId, onChange) {
       return watch(() => onChange(reviews.get(runSessionId)));
     },
 
-    async answerTask(_sessionId, taskId, answer) {
+    async answerOpenHold(_sessionId, taskId, answer) {
       const go = waits.get(taskId);
       if (go === undefined) throw new Error(`This task isn't waiting on you.`);
       go(answer);
@@ -588,7 +692,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
           const task = filed(taskId);
           if (!open(task)) throw new Error(refusal(task, "finished"));
           waits.delete(taskId);
-          updateTask(taskId, { status: "cancelled", boardStatus: "cancelled", waiting: undefined });
+          updateTask(taskId, { status: "cancelled", boardStatus: "cancelled", waiting: undefined, completedAt: Date.now() });
           return [];
         },
         async steer(taskId, message) {
@@ -605,7 +709,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
         async retry(taskId) {
           const task = filed(taskId);
           if (task.boardStatus !== "errored" && task.boardStatus !== "cancelled") throw new Error(refusal(task, "not_ended"));
-          updateTask(taskId, { status: "running", boardStatus: "in_progress", error: undefined, result: undefined });
+          updateTask(taskId, { status: "running", boardStatus: "in_progress", error: undefined, result: undefined, completedAt: undefined });
           runTask(filer(), filed(taskId));
         },
         async rerun(task, to) {
@@ -627,6 +731,8 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
             runSessionId: `run:${id}`,
             sessionId,
             harness: HARNESS[harness]!.name,
+            createdAt: Date.now(),
+            startedAt: Date.now(),
           };
           tasks = [...tasks, next];
           notify();
@@ -641,6 +747,15 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       return watch(() => {
         onChange(runSteps((runs.get(taskId) ?? []) as never));
       });
+    },
+
+    // The double's runs open no pull request.
+    readPullRequests: async () => [],
+
+    watchWorking(_run, onChange) {
+      // The double's runs report each step as it finishes and record no plan: the line keeps its plain label.
+      onChange({});
+      return () => {};
     },
 
     watchExchange(workerId, messageId, onChange) {
@@ -660,4 +775,5 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       });
     },
   };
+  return fake;
 }

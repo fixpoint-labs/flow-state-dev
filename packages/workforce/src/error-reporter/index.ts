@@ -1,5 +1,6 @@
+// FIX-1983.
 /**
- * The Error Reporter (FIX-1983): a worker that turns a failure that stayed
+ * The Error Reporter: a worker that turns a failure that stayed
  * failed, or a problem a user describes, into one reproducible bug report,
  * previewed to the operator in Inbox and filed through the project's tracker.
  */
@@ -34,7 +35,7 @@ export {
   type IntakeDecision,
   type Occurrence,
   type ReportLimits,
-  type ReportRow
+  type ReportResourceState
 } from "./reports";
 export { fingerprintOf, normalizeErrorMessage, type FingerprintParts } from "./fingerprint";
 export { redact, secretsFromEnv, REDACTED } from "./redact";

@@ -26,13 +26,15 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { z } from "zod";
 import {
   createTaskToolsCapability,
+  taskSettledEntry,
+  type TaskSettledInput
+} from "../../src";
+import {
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
-  taskSettledEntry,
-  type TaskCollectionRef,
-  type TaskSettledInput
-} from "../../src";
+  type TaskCollectionRef
+} from "../../src/tasks";
 import { payOwedResumes } from "../../src/tasks/helpers/wait-on-task";
 import { act, statusOf, stepModel, toolResults, until, type StepFn } from "./wait-fixture";
 

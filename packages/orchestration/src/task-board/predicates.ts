@@ -1,5 +1,6 @@
+// FIX-621.
 /**
- * Predicate factories for the task-board worker idle-wait (FIX-621).
+ * Predicate factories for the task-board worker idle-wait.
  *
  * The worker's `.waitForCondition(predicate, { timeoutMs })` step
  * suspends until the predicate returns true on an item event (or the
@@ -13,6 +14,7 @@ import type { TaskCollectionRef } from "../tasks";
 import { boardQuiescence } from "./quiescence";
 import { hasClaimableTask, type RunsElsewhere } from "./shared";
 
+// FIX-2131; FIX-990; FIX-982, FIX-2076.
 /**
  * Wake-up predicate for the worker idle-wait. Semantics depend on
  * `onIdle`:
@@ -25,7 +27,7 @@ import { hasClaimableTask, type RunsElsewhere } from "./shared";
  *
  * - `"complete-or-blocked"`: same as `"complete"` plus wake when no
  *   active worker is in `in_progress` (a row waiting on a person is
- *   none, FIX-2131) — if there's
+ *   none) — if there's
  *   no claimable pending in that snapshot either, `checkBoard` exits
  *   with reason `blocked`. The extra wake-up means a dep-blocked board
  *   no longer requires a timeout to notice it can't progress.
@@ -40,7 +42,7 @@ import { hasClaimableTask, type RunsElsewhere } from "./shared";
  *
  * Every mode above reduces to the same two disjuncts, so the terminal
  * half defers to `boardQuiescence` — the single definition of the exit
- * question the exit check also reads (FIX-990).
+ * question the exit check also reads.
  *
  * `hasClaimableTask` is NOT redundant with that verdict and must not be
  * folded into it. A board holding newly claimable work is `continue` by
@@ -48,7 +50,7 @@ import { hasClaimableTask, type RunsElsewhere } from "./shared";
  * alone would leave a worker asleep on claimable work until its timeout —
  * exactly the promptness defect this issue set out to fix.
  *
- * A delegation board passes `runsElsewhere` (FIX-982, FIX-2076), and it
+ * A delegation board passes `runsElsewhere`, and it
  * reaches the verdict half only. The claimable disjunct needs no adjustment for
  * it: `hasClaimableTask` judges rows by the substrate's lease, and a row a
  * child session holds has a live lease renewed from the child, so it is already
@@ -60,8 +62,9 @@ export function whenBoardClaimable(
   options: {
     onIdle: "wait" | "complete" | "complete-or-blocked";
     shouldExit?: (collection: TaskCollectionRef) => boolean;
+    // FIX-982.
     /**
-     * Rows a child session is running (FIX-982). Forwarded verbatim to
+     * Rows a child session is running. Forwarded verbatim to
      * `boardQuiescence`; this predicate adds no reading of its own, so the
      * wake test and the exit check keep answering out of one definition.
      */

@@ -1,5 +1,5 @@
 /**
- * The engine's half of the board-notice seam (FIX-2429): a task board's
+ * The engine's half of the board-notice seam: a task board's
  * change, named by orchestration as a session and a board, published on the
  * running request's bus.
  *
@@ -9,7 +9,7 @@
  * `board`, through the same end-of-turn queue (`publishNotices`) as the store writes' notices
  * (`publish-writes.ts`), so a failed publish never fails the write it follows.
  */
-import type { BoardNoticeSeam } from "@flow-state-dev/core/types";
+import type { BoardNoticeSeam } from "@flow-state-dev/core/internal";
 import { publishNotices } from "./publish-writes";
 import type { ChangeBus } from "./types";
 

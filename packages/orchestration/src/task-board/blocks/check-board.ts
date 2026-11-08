@@ -1,5 +1,6 @@
+// FIX-621; FIX-2131.
 /**
- * Termination handler for the Task Board worker loop (FIX-621).
+ * Termination handler for the Task Board worker loop.
  *
  * Pure exit-decision: reads the board's in-flight count (and
  * `shouldExit` for `onIdle: "wait"`) and returns
@@ -14,8 +15,8 @@
  *   pending has a non-`completed` dep (`blocked`). The blocked exit
  *   closes the dispatcher-deadlock class of bug where a `pending` task
  *   with an `errored` / `cancelled` dep keeps `inFlightCount` non-zero
- *   forever. A running row waiting on a person is not an active worker
- *   (FIX-2131), so a board whose only open rows wait on a person exits
+ *   forever. A running row waiting on a person is not an active worker,
+ *   so a board whose only open rows wait on a person exits
  *   `blocked` and leaves them as they are.
  *
  * - `complete`: exit only when no `pending` or `in_progress` tasks
@@ -27,7 +28,7 @@
  *   `shouldExit` predicate, evaluated once per iteration. Without
  *   `shouldExit`, the loop runs until `maxIterations` trips.
  *
- * Pre-FIX-621 this block also slept `idlePollMs` between iterations to
+ * This block once also slept `idlePollMs` between iterations to
  * bound busy-poll cost. That responsibility now lives in the worker
  * sequencer's `.waitForCondition` step (event-driven wake), so this
  * handler is purely synchronous decision logic.
@@ -49,8 +50,9 @@ export interface CheckBoardOptions {
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   onIdle: "wait" | "complete" | "complete-or-blocked";
   shouldExit?: (collection: TaskCollectionRef) => boolean;
+  // FIX-982.
   /**
-   * Rows a child session is running (FIX-982). Forwarded verbatim to
+   * Rows a child session is running. Forwarded verbatim to
    * `boardQuiescence`, which is the only thing that reads it — this block
    * keeps mapping the verdict straight onto its `reason` and holds no second
    * opinion about what counts as in-flight.

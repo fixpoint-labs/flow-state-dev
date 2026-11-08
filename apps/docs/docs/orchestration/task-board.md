@@ -32,9 +32,9 @@ The page starts with the board you build and drain in code. Later sections cover
 
 ## The parts
 
-The board is a handle you drain. Its tasks are rows in a collection. Workers are blocks keyed by assignee.
+The board is a handle you drain. Its tasks are resources in a collection. Workers are blocks keyed by assignee.
 
-<Figure svg={TaskBoardPartsDrawing} caption="Board, task collection, worker: where each lives" description={"The board is a handle that drains, the task collection holds the rows, and workers are blocks keyed by assignee"} />
+<Figure svg={TaskBoardPartsDrawing} caption="Board, task collection, worker: where each lives" description={"The board is a handle that drains, the task collection holds the tasks as resources, and workers are blocks keyed by assignee"} />
 
 ## Basic usage
 

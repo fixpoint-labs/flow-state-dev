@@ -15,7 +15,7 @@
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { OBSERVED_PULL_REQUESTS, writePullRequests } from "@flow-state-dev/core";
+import { OBSERVED_PULL_REQUESTS, writePullRequests } from "@flow-state-dev/core/harness";
 import { recordBranchPullRequests } from "../src/branch-pull-requests";
 import { git, tempDir } from "./git-fixtures";
 

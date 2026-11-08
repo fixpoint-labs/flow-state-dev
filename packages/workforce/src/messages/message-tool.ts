@@ -1,13 +1,13 @@
+// FIX-1989; FIX-2160; FIX-2318; FIX-2310.
 /**
- * `sendMessage` (FIX-1989): the tool a worker's model sends a message with,
+ * `sendMessage`: the tool a worker's model sends a message with,
  * as one capability a worker turn composes. Talk, not delegation: no task
  * row, no delegate, no result owed.
  *
  * Its input is strict (`to`, `text`, `inReplyTo`, `replyRequested`, `wait`,
  * `deadline`), so a send can't name a sender or a hop count, and a session
- * only as a target the server checks (FIX-2160). One contract for getting an
- * answer (FIX-2318): `replyRequested: true` asks for a reply (FIX-2310,
- * `./owed-replies`), and one answer is owed and always comes, the recipient's
+ * only as a target the server checks. One contract for getting an
+ * answer: `replyRequested: true` asks for a reply (`./owed-replies`), and one answer is owed and always comes, the recipient's
  * or a "no answer", as a message that wakes this worker. `wait: true` asks
  * the same way and waits for that answer in this request until the deadline
  * (`./wait-for-reply`): given in time, it is the tool's result and no message;
@@ -72,7 +72,8 @@ export const sendMessageInputSchema = z
   })
   .strict();
 
-/** A waited send's result (FIX-2318): the answer, or `running` at the deadline, or why it failed. */
+// FIX-2318.
+/** A waited send's result: the answer, or `running` at the deadline, or why it failed. */
 const waitResultSchema = z.object({
   status: z.enum(["answered", "running", "failed"]),
   sent: z.string(),
@@ -136,14 +137,14 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
         const { to, text, inReplyTo, replyRequested, wait, deadline } = input;
         const message = { to, text, ...(inReplyTo === undefined ? {} : { inReplyTo }) };
         if (wait === true) {
-          const outcome = await sendAndWaitForReply(ctx as never, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL);
+          const outcome = await sendAndWaitForReply(ctx, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL);
           // A refusal reads as any send's.
           return "ok" in outcome ? { ok: false as const, error: outcome.error } : outcome;
         }
         if (deadline !== undefined) {
           return { ok: false as const, error: "deadline_without_wait: a deadline goes with wait: true. Nothing was sent." };
         }
-        const sent = await sendMessage(ctx as never, installation, flowKind, message, SEND_MESSAGE_TOOL, replyRequested === true ? { replyRequested: {} } : {});
+        const sent = await sendMessage(ctx, installation, flowKind, message, SEND_MESSAGE_TOOL, replyRequested === true ? { replyRequested: {} } : {});
         if (!sent.ok) return { ok: false as const, error: sent.error };
         return { sent: sent.id };
       }
@@ -158,7 +159,7 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
         controlTools: async (ctx) => {
           const self = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
           if (typeof self !== "string") return [];
-          const description = BASE_DESCRIPTION + (await recipientsLine(ctx as never, installation, self));
+          const description = BASE_DESCRIPTION + (await recipientsLine(ctx, installation, self));
           let tool = built.get(description);
           if (tool === undefined) {
             if (built.size > 64) built.clear();

@@ -7619,7 +7619,7 @@ check('a verdict landing after Advance asks for another wake now', async () => {
 
 check('a dead or partial scan cannot clear a closed-handle blocker', async () => {
   // A dead scout leaves `fresh` empty and a partial multi-PR scan can omit the handle: in both cases "no
-  // closed handle reported" is indistinguishable from "reopened", so clearing on absence released the row
+  // closed handle reported" is indistinguishable from a reopened handle, so clearing on absence released the row
   // on an observation nobody made and dispatched work against a handle that is still dead.
   const carried = row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, closedBlocker: true, blocker: 'Closed without merging: impl PR #9. Needs a human decision' })
 
@@ -8198,7 +8198,7 @@ check('a repair answer survives a repair that opened nothing', async () => {
   assert.deepEqual(opened.result.issues[0].blockerResolutions, [], 'the repair landed, so the answer is spent')
 
   // ...and so did one that came back with a DIFFERENT question.
-  const reAsked = await run('epic-wake.js', {
+  const again = await run('epic-wake.js', {
     args: args(),
     respond: epicResponder({
       fresh,
@@ -8213,7 +8213,7 @@ check('a repair answer survives a repair that opened nothing', async () => {
     }),
   })
   assert.deepEqual(
-    reAsked.result.issues[0].blockerResolutions,
+    again.result.issues[0].blockerResolutions,
     [{ for: null, answer: 'key on tenant + scope' }],
     'a re-asked question keeps the answer too: the repair is still owed, and the wake that retries it needs it',
   )
@@ -9867,7 +9867,7 @@ check('INVARIANT: no assemble state is a dead end', async () => {
   // wait ending. GAP_BLOCKED satisfied the first test and stalled anyway, because nothing ever
   // re-read the flag it waited on; that's why "has a path out" is now its own assertion.
   const dispatching = ['NEEDS_GOAL', 'NEEDS_GAP', 'NEEDS_FIX', 'GAP_BLOCKED']
-  const waitingOn = { AWAITING_FIX: 'fixPr', GAP_BLOCKED: 'fixIssue', REPAIR_BLOCKED: 'fixBlocker' }
+  const waitsOn = { AWAITING_FIX: 'fixPr', GAP_BLOCKED: 'fixIssue', REPAIR_BLOCKED: 'fixBlocker' }
   // How each waiting state gets unstuck. Two different mechanisms, so they are checked in two
   // different places: a state the SCRIPT re-derives must dispatch something, and a state the
   // COORDINATOR clears must be documented in the skill as a field the coordinator clears — a
@@ -9891,7 +9891,7 @@ check('INVARIANT: no assemble state is a dead end', async () => {
   let stalls = 0
   for (const goal of space) {
     const state = assembleState(nodes, goal)
-    const known = dispatching.includes(state) || state in waitingOn || terminal.includes(state)
+    const known = dispatching.includes(state) || state in waitsOn || terminal.includes(state)
     assert.ok(known, `unknown state ${state} for ${JSON.stringify(goal)}`)
 
     // Every dispatching state must have a branch in the script, or nothing acts on it.
@@ -9899,9 +9899,9 @@ check('INVARIANT: no assemble state is a dead end', async () => {
       assert.ok(src.includes(`state === '${state}'`), `${state} is returned but never handled`)
     }
     // A waiting state with nothing to wait on is a stall.
-    if (state in waitingOn && !goal[waitingOn[state]]) {
+    if (state in waitsOn && !goal[waitsOn[state]]) {
       stalls++
-      assert.fail(`${state} with no ${waitingOn[state]} — waits on nothing: ${JSON.stringify(goal)}`)
+      assert.fail(`${state} with no ${waitsOn[state]} — waits on nothing: ${JSON.stringify(goal)}`)
     }
     // And a waiting state with no way to observe the wait ending is also a stall.
     if (state in scriptDispatches) {

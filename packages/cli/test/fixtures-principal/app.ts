@@ -21,11 +21,13 @@
 import {
   createBearerSecretPrincipalResolver,
   createFlowState,
-  createInMemoryStores,
   defaultBodyUserIdPrincipalResolver,
   type StoreAdapter,
-  type StoreRegistry,
+  type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 

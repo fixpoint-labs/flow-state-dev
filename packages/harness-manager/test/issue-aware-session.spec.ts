@@ -20,8 +20,9 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ORG_ID, handler } from "@flow-state-dev/core";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
+import { createFlowApiRouter, createFlowRegistry, runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { afterAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 

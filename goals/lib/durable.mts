@@ -16,9 +16,11 @@
  */
 import {
   createCheckpointDurabilityProvider,
-  createFlowRegistry,
-  createInMemoryStores,
+  createFlowRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import type { SuspensionRecord } from "@flow-state-dev/core/types";
 
 /** A durability provider over the in-memory stores it was built from. */

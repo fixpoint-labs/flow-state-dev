@@ -1,0 +1,163 @@
+<svg viewBox="0 0 940 344" role="img" aria-label="Who owns what: seven rules across FIX-824, FIX-2517 to FIX-2524 and the closure FIX-2565. Each rule has exactly one owner. ER-1 One attachment shape, by reference: owned by FIX-824, used by FIX-2517, FIX-2518, FIX-2519, FIX-2520, FIX-2521, FIX-2522, FIX-2523, FIX-2524. ER-2 Bytes only in the blob store: owned by FIX-824, used by FIX-2517, FIX-2518, FIX-2519, FIX-2520, FIX-2522, checked by the closure. ER-3 Served to the owner's readers: owned by FIX-824, used by FIX-2518. ER-4 One limits set, named refusals: owned by FIX-824, used by FIX-2517, FIX-2518, FIX-2520, checked by the closure. ER-5 A target says what it can't take: owned by FIX-2519, used by FIX-2517, FIX-2520, checked by the closure. ER-6 Composer pieces from the registry: owned by FIX-2518, used by FIX-2521, FIX-2522, FIX-2523, FIX-2524, checked by the closure. ER-7 A task's files are its brief's: owned by FIX-2522, used by FIX-2519, checked by the closure."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A; } }
+    .bg   { fill:var(--surface); }
+    .line { stroke:var(--rule); stroke-width:1; }
+    .o    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .u    { fill:var(--accent-soft); }
+    .c    { fill:var(--surface); stroke:var(--accent); stroke-width:1; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-id  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-o   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-u   { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="344"/>
+
+  <g id="columns">
+    <text class="t-col" x="331" y="36" text-anchor="middle">824</text>
+    <text class="t-lbl" x="331" y="52" text-anchor="middle">storage</text>
+    <text class="t-col" x="393" y="36" text-anchor="middle">2517</text>
+    <text class="t-lbl" x="393" y="52" text-anchor="middle">framework</text>
+    <text class="t-col" x="455" y="36" text-anchor="middle">2518</text>
+    <text class="t-lbl" x="455" y="52" text-anchor="middle">UI</text>
+    <text class="t-col" x="517" y="36" text-anchor="middle">2519</text>
+    <text class="t-lbl" x="517" y="52" text-anchor="middle">harness</text>
+    <text class="t-col" x="579" y="36" text-anchor="middle">2520</text>
+    <text class="t-lbl" x="579" y="52" text-anchor="middle">docs</text>
+    <text class="t-col" x="641" y="36" text-anchor="middle">2521</text>
+    <text class="t-lbl" x="641" y="52" text-anchor="middle">KS</text>
+    <text class="t-col" x="703" y="36" text-anchor="middle">2522</text>
+    <text class="t-lbl" x="703" y="52" text-anchor="middle">SM</text>
+    <text class="t-col" x="765" y="36" text-anchor="middle">2523</text>
+    <text class="t-lbl" x="765" y="52" text-anchor="middle">CC lab</text>
+    <text class="t-col" x="827" y="36" text-anchor="middle">2524</text>
+    <text class="t-lbl" x="827" y="52" text-anchor="middle">Team lab</text>
+    <text class="t-col" x="889" y="36" text-anchor="middle">2565</text>
+    <text class="t-lbl" x="889" y="52" text-anchor="middle">closure</text>
+    <line class="line" x1="16" y1="62" x2="924" y2="62"/>
+  </g>
+
+  <g id="er-1">
+    <text class="t-id" x="16" y="88">ER-1</text>
+    <text class="t-b" x="62" y="88">One attachment shape, by reference</text>
+    <rect class="o" x="304" y="72" width="54" height="22" rx="3"/>
+    <text class="t-o" x="331" y="87" text-anchor="middle">owns</text>
+    <rect class="u" x="366" y="72" width="54" height="22" rx="3"/>
+    <text class="t-u" x="393" y="87" text-anchor="middle">uses</text>
+    <rect class="u" x="428" y="72" width="54" height="22" rx="3"/>
+    <text class="t-u" x="455" y="87" text-anchor="middle">uses</text>
+    <rect class="u" x="490" y="72" width="54" height="22" rx="3"/>
+    <text class="t-u" x="517" y="87" text-anchor="middle">uses</text>
+    <rect class="u" x="552" y="72" width="54" height="22" rx="3"/>
+    <text class="t-u" x="579" y="87" text-anchor="middle">uses</text>
+    <rect class="u" x="614" y="72" width="54" height="22" rx="3"/>
+    <text class="t-u" x="641" y="87" text-anchor="middle">uses</text>
+    <rect class="u" x="676" y="72" width="54" height="22" rx="3"/>
+    <text class="t-u" x="703" y="87" text-anchor="middle">uses</text>
+    <rect class="u" x="738" y="72" width="54" height="22" rx="3"/>
+    <text class="t-u" x="765" y="87" text-anchor="middle">uses</text>
+    <rect class="u" x="800" y="72" width="54" height="22" rx="3"/>
+    <text class="t-u" x="827" y="87" text-anchor="middle">uses</text>
+    <line class="line" x1="16" y1="98" x2="924" y2="98"/>
+  </g>
+  <g id="er-2">
+    <text class="t-id" x="16" y="118">ER-2</text>
+    <text class="t-b" x="62" y="118">Bytes only in the blob store</text>
+    <rect class="o" x="304" y="102" width="54" height="22" rx="3"/>
+    <text class="t-o" x="331" y="117" text-anchor="middle">owns</text>
+    <rect class="u" x="366" y="102" width="54" height="22" rx="3"/>
+    <text class="t-u" x="393" y="117" text-anchor="middle">uses</text>
+    <rect class="u" x="428" y="102" width="54" height="22" rx="3"/>
+    <text class="t-u" x="455" y="117" text-anchor="middle">uses</text>
+    <rect class="u" x="490" y="102" width="54" height="22" rx="3"/>
+    <text class="t-u" x="517" y="117" text-anchor="middle">uses</text>
+    <rect class="u" x="552" y="102" width="54" height="22" rx="3"/>
+    <text class="t-u" x="579" y="117" text-anchor="middle">uses</text>
+    <rect class="u" x="676" y="102" width="54" height="22" rx="3"/>
+    <text class="t-u" x="703" y="117" text-anchor="middle">uses</text>
+    <rect class="c" x="862" y="102" width="54" height="22" rx="3"/>
+    <text class="t-u" x="889" y="117" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="128" x2="924" y2="128"/>
+  </g>
+  <g id="er-3">
+    <text class="t-id" x="16" y="148">ER-3</text>
+    <text class="t-b" x="62" y="148">Served to the owner's readers</text>
+    <rect class="o" x="304" y="132" width="54" height="22" rx="3"/>
+    <text class="t-o" x="331" y="147" text-anchor="middle">owns</text>
+    <rect class="u" x="428" y="132" width="54" height="22" rx="3"/>
+    <text class="t-u" x="455" y="147" text-anchor="middle">uses</text>
+    <line class="line" x1="16" y1="158" x2="924" y2="158"/>
+  </g>
+  <g id="er-4">
+    <text class="t-id" x="16" y="178">ER-4</text>
+    <text class="t-b" x="62" y="178">One limits set, named refusals</text>
+    <rect class="o" x="304" y="162" width="54" height="22" rx="3"/>
+    <text class="t-o" x="331" y="177" text-anchor="middle">owns</text>
+    <rect class="u" x="366" y="162" width="54" height="22" rx="3"/>
+    <text class="t-u" x="393" y="177" text-anchor="middle">uses</text>
+    <rect class="u" x="428" y="162" width="54" height="22" rx="3"/>
+    <text class="t-u" x="455" y="177" text-anchor="middle">uses</text>
+    <rect class="u" x="552" y="162" width="54" height="22" rx="3"/>
+    <text class="t-u" x="579" y="177" text-anchor="middle">uses</text>
+    <rect class="c" x="862" y="162" width="54" height="22" rx="3"/>
+    <text class="t-u" x="889" y="177" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="188" x2="924" y2="188"/>
+  </g>
+  <g id="er-5">
+    <text class="t-id" x="16" y="208">ER-5</text>
+    <text class="t-b" x="62" y="208">A target says what it can't take</text>
+    <rect class="o" x="490" y="192" width="54" height="22" rx="3"/>
+    <text class="t-o" x="517" y="207" text-anchor="middle">owns</text>
+    <rect class="u" x="366" y="192" width="54" height="22" rx="3"/>
+    <text class="t-u" x="393" y="207" text-anchor="middle">uses</text>
+    <rect class="u" x="552" y="192" width="54" height="22" rx="3"/>
+    <text class="t-u" x="579" y="207" text-anchor="middle">uses</text>
+    <rect class="c" x="862" y="192" width="54" height="22" rx="3"/>
+    <text class="t-u" x="889" y="207" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="218" x2="924" y2="218"/>
+  </g>
+  <g id="er-6">
+    <text class="t-id" x="16" y="238">ER-6</text>
+    <text class="t-b" x="62" y="238">Composer pieces from the registry</text>
+    <rect class="o" x="428" y="222" width="54" height="22" rx="3"/>
+    <text class="t-o" x="455" y="237" text-anchor="middle">owns</text>
+    <rect class="u" x="614" y="222" width="54" height="22" rx="3"/>
+    <text class="t-u" x="641" y="237" text-anchor="middle">uses</text>
+    <rect class="u" x="676" y="222" width="54" height="22" rx="3"/>
+    <text class="t-u" x="703" y="237" text-anchor="middle">uses</text>
+    <rect class="u" x="738" y="222" width="54" height="22" rx="3"/>
+    <text class="t-u" x="765" y="237" text-anchor="middle">uses</text>
+    <rect class="u" x="800" y="222" width="54" height="22" rx="3"/>
+    <text class="t-u" x="827" y="237" text-anchor="middle">uses</text>
+    <rect class="c" x="862" y="222" width="54" height="22" rx="3"/>
+    <text class="t-u" x="889" y="237" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="248" x2="924" y2="248"/>
+  </g>
+  <g id="er-7">
+    <text class="t-id" x="16" y="268">ER-7</text>
+    <text class="t-b" x="62" y="268">A task's files are its brief's</text>
+    <rect class="o" x="676" y="252" width="54" height="22" rx="3"/>
+    <text class="t-o" x="703" y="267" text-anchor="middle">owns</text>
+    <rect class="u" x="490" y="252" width="54" height="22" rx="3"/>
+    <text class="t-u" x="517" y="267" text-anchor="middle">uses</text>
+    <rect class="c" x="862" y="252" width="54" height="22" rx="3"/>
+    <text class="t-u" x="889" y="267" text-anchor="middle">checks</text>
+    <line class="line" x1="16" y1="278" x2="924" y2="278"/>
+  </g>
+
+  <g id="legend">
+    <rect class="o" x="16" y="304" width="40" height="18" rx="3"/>
+    <text class="t-b" x="64" y="317">decides or builds it · exactly one per rule</text>
+    <rect class="u" x="360" y="304" width="40" height="18" rx="3"/>
+    <text class="t-b" x="408" y="317">uses it · must not decide again</text>
+    <rect class="c" x="640" y="304" width="40" height="18" rx="3"/>
+    <text class="t-b" x="688" y="317">the closure checks it</text>
+  </g>
+</svg>

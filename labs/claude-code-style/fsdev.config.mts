@@ -26,7 +26,10 @@
  * main worker's flow: the goal check's control. `CLAUDE_CODE_STYLE_HARNESS=stub`
  * runs every coding task on harness-manager's scripted coder, no model, one
  * step every `CLAUDE_CODE_STYLE_HARNESS_STEP_MS` (default 2000): for a goal
- * check of what the lab does around a run, such as its task actions.
+ * check of what the lab does around a run, such as its task actions. With it,
+ * `CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS` sets how long a silent request waits
+ * before the server takes it as interrupted (default one minute), so a goal can
+ * read a dead run's row before the board takes it back.
  *
  * A coding run is done only when its project's checks pass (the project row's
  * `checks`; none named runs nothing). `CLAUDE_CODE_STYLE_SETUP`, one command
@@ -70,6 +73,11 @@ const { flowState, readiness } = await openLab({
   // The repositories a run works in a worktree of, by their real paths.
   repositories: (process.env.CLAUDE_CODE_STYLE_REPOSITORIES ?? startedIn()).split(delimiter).filter((path) => path !== "" && existsSync(path)).map((path) => realpathSync(path)),
   ...(setup === undefined ? {} : { setup }),
+  ...(process.env.CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS === undefined ? {} : { staleThresholdMs: Number(process.env.CLAUDE_CODE_STYLE_STALE_THRESHOLD_MS) }),
+  // `GOAL_CONTROL=no-repository-check` leaves the project repository check off, for the goal check's control.
+  checkRepository: process.env.GOAL_CONTROL !== "no-repository-check",
+  // `GOAL_FLOWS` names a module of a goal check's own flows (a goal's delivered message). Never set otherwise.
+  ...(process.env.GOAL_FLOWS ? { goalFlows: process.env.GOAL_FLOWS } : {}),
 });
 // At start, never awaited: a missing sign-in never stops the server.
 void readiness.read().then((rows) => console.log(formatHarnessReadiness(rows)));

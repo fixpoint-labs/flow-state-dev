@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/core",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Isomorphic builders, type contracts, and item taxonomy for the flow-state-dev block framework.",
   "keywords": [
     "ai",
@@ -36,13 +36,17 @@
       "types": "./dist/types/index.d.ts",
       "default": "./src/types/index.ts"
     },
+    "./harness": {
+      "types": "./dist/harness/index.d.ts",
+      "default": "./src/harness/index.ts"
+    },
+    "./internal": {
+      "types": "./dist/internal/index.d.ts",
+      "default": "./src/internal/index.ts"
+    },
     "./items": {
       "types": "./dist/items/index.d.ts",
       "default": "./src/items/index.ts"
-    },
-    "./items/internal": {
-      "types": "./dist/items/internal.d.ts",
-      "default": "./src/items/internal.ts"
     },
     "./prompt": {
       "types": "./dist/prompt/index.d.ts",
@@ -76,13 +80,17 @@
       "types": "./dist/errors/suspension-error.d.ts",
       "default": "./src/errors/suspension-error.ts"
     },
+    "./errors/unresolved-intent-error": {
+      "types": "./dist/errors/unresolved-intent-error.d.ts",
+      "default": "./src/errors/unresolved-intent-error.ts"
+    },
     "./blocks/handler": {
       "types": "./dist/blocks/handler.d.ts",
       "default": "./src/blocks/handler.ts"
     },
     "./blocks/sequencer": {
-      "types": "./dist/blocks/sequencer.d.ts",
-      "default": "./src/blocks/sequencer.ts"
+      "types": "./dist/blocks/sequencer-builder.d.ts",
+      "default": "./src/blocks/sequencer-builder.ts"
     }
   },
   "license": "MIT",
@@ -103,13 +111,17 @@
         "types": "./dist/types/index.d.ts",
         "default": "./dist/types/index.js"
       },
+      "./harness": {
+        "types": "./dist/harness/index.d.ts",
+        "default": "./dist/harness/index.js"
+      },
+      "./internal": {
+        "types": "./dist/internal/index.d.ts",
+        "default": "./dist/internal/index.js"
+      },
       "./items": {
         "types": "./dist/items/index.d.ts",
         "default": "./dist/items/index.js"
-      },
-      "./items/internal": {
-        "types": "./dist/items/internal.d.ts",
-        "default": "./dist/items/internal.js"
       },
       "./prompt": {
         "types": "./dist/prompt/index.d.ts",
@@ -143,18 +155,22 @@
         "types": "./dist/errors/suspension-error.d.ts",
         "default": "./dist/errors/suspension-error.js"
       },
+      "./errors/unresolved-intent-error": {
+        "types": "./dist/errors/unresolved-intent-error.d.ts",
+        "default": "./dist/errors/unresolved-intent-error.js"
+      },
       "./blocks/handler": {
         "types": "./dist/blocks/handler.d.ts",
         "default": "./dist/blocks/handler.js"
       },
       "./blocks/sequencer": {
-        "types": "./dist/blocks/sequencer.d.ts",
-        "default": "./dist/blocks/sequencer.js"
+        "types": "./dist/blocks/sequencer-builder.d.ts",
+        "default": "./dist/blocks/sequencer-builder.js"
       }
     }
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.3.0"
   },
   "sideEffects": false,
   "dependencies": {

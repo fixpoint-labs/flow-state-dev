@@ -1,3 +1,4 @@
+// FIX-1005.
 /**
  * `priorityClaimOrder` — picks the highest-`priority` `pending` task with
  * deps satisfied. Higher numeric priority wins; ties break on
@@ -9,7 +10,7 @@
  *
  * This claim order orders; it does not narrow. Its `isReady` eligibility
  * conjunct was a restatement of the substrate's own admission rule and came
- * out in FIX-1005 — a claim order carrying its own copy is one that stops
+ * out — a claim order carrying its own copy is one that stops
  * recovering abandoned work the day that rule widens.
  */
 import type { Task } from "../schema/task";

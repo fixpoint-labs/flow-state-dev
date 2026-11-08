@@ -1,5 +1,6 @@
+// FIX-1661.
 /**
- * How a request ends, and the action result its record stores (FIX-1661).
+ * How a request ends, and the action result its record stores.
  *
  * Every writer of a request record's final status describes the ending as a
  * {@link RequestSettlement} and builds the stored `result` from it here. The

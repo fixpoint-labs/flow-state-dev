@@ -11,7 +11,7 @@
  * turns red the day the issue lands, and that PR removes the mark.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -20,7 +20,7 @@ import type { ModelResolver } from "@flow-state-dev/core/types";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { pluggable, scriptedModels, waitFor } from "../../../test-support/contract";
 import { openLab } from "../../host.mts";
-import { createWiredLab, type LabAdapter, type TaskRow, type ThreadView, type Unsubscribe } from "../../src/adapter";
+import { createWiredLab, type LabAdapter, type LabTask, type ThreadView, type Unsubscribe } from "../../src/adapter";
 import type { ModeId } from "../../src/modes";
 import { createFakeLab } from "../fake-lab";
 
@@ -48,7 +48,7 @@ function fakeTarget(): Target {
   return {
     lab: fake,
     open: async (mode) => (await fake.openSession(mode, "project-vendor-notes")).id,
-    failNextTurn: () => fake.failNextTurn(),
+    failNextTurn: () => fake.failNextTurn(FAILURE),
     lose: () => fake.setConnection("lapsed"),
     restore: () => fake.setConnection("live"),
     close: async () => {},
@@ -94,6 +94,8 @@ function labScript(failing: { next: boolean }): ModelResolver {
         }
         return { text: "Noted." };
       },
+      // Each session is titled after its turn; the title is not what these rows check.
+      "auto-title:generate": () => ({ output: { title: "Vendor notes" } }),
       "coordinator-judgment": ({ step }) =>
         step === 0 ? { call: { name: "createTask", args: { assignee: "desk.thread", title: "Vendor B regions", goal: "Find where Vendor B hosts. Ask the user which region matters." } } } : { text: "I've started a thread for it." },
     },
@@ -106,7 +108,10 @@ async function realTarget(): Promise<Target> {
   const repo = join(data, "repo");
   const git = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
   execFileSync("git", ["init", "-q", "-b", "main", repo]);
-  execFileSync("git", ["-C", repo, "commit", "-q", "--allow-empty", "-m", "init"], { env: git });
+  // A project is refused when its repository would commit a run's question files.
+  writeFileSync(join(repo, ".gitignore"), "**/.fsdev/\n");
+  execFileSync("git", ["-C", repo, "add", "-A"], { env: git });
+  execFileSync("git", ["-C", repo, "commit", "-q", "-m", "init"], { env: git });
   const failing = { next: false };
   const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: [], modelResolver: labScript(failing) });
   const plug = pluggable(createInProcessFetch(flowState as never) as never);
@@ -128,7 +133,6 @@ async function realTarget(): Promise<Target> {
 
 /** Assertions the real adapter can't meet yet, by column, with the issue that closes each. */
 const GAPS: Record<string, { real?: string; fake?: string }> = {
-  "shows why the turn failed": { real: "FIX-2550", fake: "FIX-2550" },
   "shows that the turn was stopped": { real: "FIX-2375" },
 };
 
@@ -176,7 +180,7 @@ function follow<T>(watch: (on: (value: T) => void) => Unsubscribe): Followed<T> 
 }
 
 const thread = (lab: LabAdapter, id: string) => follow<ThreadView>((on) => lab.watchThread(id, on));
-const tasks = (lab: LabAdapter, id: string) => follow<TaskRow[]>((on) => lab.watchTasks(id, on));
+const tasks = (lab: LabAdapter, id: string) => follow<LabTask[]>((on) => lab.watchTasks(id, on));
 
 describe.each([
   ["fake", async () => fakeTarget()],
@@ -235,12 +239,12 @@ describe.each([
       const id = await target.open("threads");
       const board = tasks(lab, id);
       await lab.send(id, ASK.question);
-      const held = await board.until((r) => r.some((t) => t.waitingOn?.kind === "question"));
-      const task = held.find((t) => t.waitingOn?.kind === "question")!;
-      expect(task.waitingOn!.prompt).toBe(QUESTION);
+      const held = await board.until((r) => r.some((t) => t.openHold?.kind === "question"));
+      const task = held.find((t) => t.openHold?.kind === "question")!;
+      expect(task.openHold!.prompt).toBe(QUESTION);
       expect(["in_progress", "held"]).toContain(task.status);
       await lab.sayInThread(id, task.id, "EU");
-      await board.until((r) => r.some((t) => t.id === task.id && t.waitingOn === undefined && t.status !== "held"));
+      await board.until((r) => r.some((t) => t.id === task.id && t.openHold === undefined && t.status !== "held"));
     });
   });
 

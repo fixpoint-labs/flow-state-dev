@@ -1,5 +1,6 @@
+// FIX-2141; FIX-2145.
 /**
- * Usage (FIX-2141): how much of each coding harness's subscription the user
+ * Usage: how much of each coding harness's subscription the user
  * has used, window by window, from the Lab's one usage query.
  *
  * A number is never shown without where it came from and how old it is. A
@@ -9,7 +10,7 @@
  * percent for (Claude Code below its warning line, or at its limit) says how
  * close it is instead, and a window a run reported says so, with its own age.
  *
- * Under the windows (FIX-2145): how many tokens each of the user's workers
+ * Under the windows: how many tokens each of the user's workers
  * used, today or over 7 or 30 UTC days, by model and harness. It is usage,
  * not what is left: a cost shows only where a harness reported one on an API
  * key, and every other source says its cost was not reported.

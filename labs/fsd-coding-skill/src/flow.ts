@@ -2,11 +2,13 @@
  * One coding flow with four static doors sharing the host-selected adapter.
  */
 import { realpathSync } from "node:fs";
-import { defineFlow, sequencer, type harnessRunInputSchema } from "@flow-state-dev/core";
+import { defineFlow, sequencer } from "@flow-state-dev/core";
+import type { harnessRunInputSchema } from "@flow-state-dev/core/harness";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { BlockDefinition, HarnessCallbackContext, HarnessRunHandle } from "@flow-state-dev/core/types";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { HarnessCallbackContext, HarnessRunHandle } from "@flow-state-dev/core/harness";
 import type { z } from "zod";
-import { claudeCodeAgent, containmentSandbox, type ClaudeCodeAgentOptions } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent, claudeCodeContainmentSandbox, type ClaudeCodeAgentOptions } from "@flow-state-dev/claude-code";
 import { codexAgent, type CodexAgentOptions } from "@flow-state-dev/codex";
 import { cursorAgent, type CursorAgentOptions } from "@flow-state-dev/cursor";
 import {
@@ -55,10 +57,10 @@ export interface FsdCodingHostOptions {
 }
 
 function readStateId(
-  state: Partial<z.infer<typeof sessionStateSchema>> | undefined,
+  state: z.infer<typeof sessionStateSchema>,
   harness: HostHarness,
 ): string | null {
-  const id = state?.harnessSessions?.[harness];
+  const id = state.harnessSessions[harness];
   return typeof id === "string" && id !== "" ? id : null;
 }
 
@@ -179,7 +181,7 @@ export function createFsdCodingFlow(options: FsdCodingHostOptions) {
       agent = claudeCodeAgent({
         // Coding doors do their own work instead of spawning unbounded subagents.
         disallowedTools: ["Agent", "Task"],
-        sandbox: () => ({ ...containmentSandbox(cwd), failIfUnavailable: true }),
+        sandbox: () => ({ ...claudeCodeContainmentSandbox(cwd), failIfUnavailable: true }),
         ...options.claude,
         ...resolvers,
         permissionMode,

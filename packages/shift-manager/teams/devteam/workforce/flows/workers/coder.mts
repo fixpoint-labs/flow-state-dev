@@ -24,6 +24,14 @@
  * conversation's project, or the one the task names, and with none of these
  * it is refused (D3). A fixed repository runs every feature task there.
  *
+ * **A task whose work is a pull request is done when it merges**
+ * (`awaitPullRequests`, on in both managers): a run that opened one, or an
+ * accept that did (Open a PR), leaves its task open, waiting on it. A line in
+ * the run's session (the door below) wakes it, and so does a delivered
+ * message: the task reads the pull request first, and completes once it
+ * merged, is cancelled once it closed unmerged, or runs the line on the same
+ * coding session while it is still open.
+ *
  * **Jev reads the work** (D4). Both managers carry the judge, which reads a
  * task's goal against the run's answer and commits before it closes.
  *
@@ -45,7 +53,7 @@
  * from. While the task is open the line steers it, and the run takes it at
  * its next step; once the task has finished, the line is talk, answered by
  * one run resuming the task's coding session (FIX-2086). A steer a run's last
- * step missed is owed one more turn (`STEER_TURN_ENTRY`), which runs the task
+ * step missed is owed one more turn (`onTaskSteered`), which runs the task
  * again on its attempt.
  *
  * **A worker's message** lands in one of its tasks' sessions only, sent to the
@@ -74,20 +82,18 @@ import {
   type PhaseSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
-import { assertDispatchEntrySupported, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { assertDispatchEntrySupported } from "@flow-state-dev/orchestration/internal";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
   filingConversationBoard,
-  MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   messageReceivedSchema,
   projectWorkspaceCapability,
   startOwedSteerTurn,
-  STEER_TURN_ENTRY,
   steerTurnEntry,
-  WORKER_TASK_ENTRY,
   workerMessagesResources,
   workerTaskEntry,
   type MessageReceived,
@@ -223,6 +229,8 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     ...(options.judge === undefined ? {} : { judge: options.judge }),
     ...(options.reviewChanges === true ? { reviewChanges: true } : {}),
     ...(options.approveTools === true ? { approveTools: true } : {}),
+    // A task whose work is a pull request (its run's own, or an accept's Open a PR) is done when it merges.
+    awaitPullRequests: true,
   };
 
   /** How a task's run is keyed: its task id, in its payload's phase or the answer phase. */
@@ -284,7 +292,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // `workerTaskEntry` keeps the turn's skill state on the session, which lets
     // a harness through that would. Refused here, at startup, naming the entry.
     for (const manager of [implement, answer]) {
-      assertDispatchEntrySupported({ name: CODER_FLOW, target: WORKER_TASK_ENTRY, block: manager });
+      assertDispatchEntrySupported({ name: CODER_FLOW, target: "work", block: manager });
     }
 
     const byTask = router({
@@ -383,14 +391,14 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
       actions: {
         // The turn a steer the run's last step missed is owed (FIX-2086 D2):
         // the task once more, on its attempt, with every steer in its prompt.
-        [STEER_TURN_ENTRY]: steerTurnEntry({ name: `${CODER_FLOW}-steer-turn`, block: byTask }),
+        onTaskSteered: steerTurnEntry({ name: `${CODER_FLOW}-steer-turn`, block: byTask }),
         // A message lands in one of its tasks' sessions only: it has no
         // conversation to answer from, so one sent to it by name is refused
         // before anything is written (FIX-2238). One sent to a finished task
         // is answered by the talk turn, from the task's coding session
         // (FIX-2160); the coding agent has no sendMessage, so its reply stays
         // an item in that session.
-        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({
+        onMessageReceived: messageReceivedEntry({
           installation,
           flowKind: CODER_FLOW,
           hears: "task-sessions",
@@ -404,7 +412,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
     // The one door: any session's tasks, handed over under its board's id.
     task: {
       actions: {
-        [WORKER_TASK_ENTRY]: workerTaskEntry({ name: `${CODER_FLOW}-${WORKER_TASK_ENTRY}`, block: byTask }),
+        work: workerTaskEntry({ name: `${CODER_FLOW}-work`, block: byTask }),
       },
     },
   } as never);

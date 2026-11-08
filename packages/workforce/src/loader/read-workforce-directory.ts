@@ -25,10 +25,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  parseFrontmatterYaml,
-  splitFrontmatter,
-} from "@flow-state-dev/orchestration";
+import { parseFrontmatterYaml, splitFrontmatter } from "@flow-state-dev/orchestration/internal";
 import {
   REFUSED_PERSONA_KEY,
   REFUSED_PERSONA_KEY_MESSAGE,

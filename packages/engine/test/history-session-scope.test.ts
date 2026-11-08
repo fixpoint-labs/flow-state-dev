@@ -14,7 +14,8 @@ import type { MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createExecutionContext, createInMemoryStores } from "../src";
+import { createExecutionContext } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../src/stores/types";
 
 const SESSION = "sess_mixed";

@@ -12,13 +12,14 @@
  * way: a directory needs filesystem-safe segments, a key needs none.
  */
 
+// BP-031.
 /**
  * Read the principal off a block's execution context.
  *
  * The one place that knows which context fields carry it. `session.identity.id`
  * and `request.identity.id` come off the request body; `userId`, `orgId` and
  * `tenantId` come from a verified principal, which is what makes them safe to
- * key a shared scope on (BP-031). `request.incarnation` is the engine's, read
+ * key a shared scope on. `request.incarnation` is the engine's, read
  * from the request's stored record. It is optional here only so a hand-built
  * context without one still resolves, to a key of its own.
  */

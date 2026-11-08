@@ -131,7 +131,7 @@ const scripted = {
   },
 };
 
-const real = engine.createModelResolver();
+const real = core.createModelResolver();
 const modelResolver = Object.assign(
   (id: string, block?: string) => {
     if (id === "goal/real" || (REAL_MODEL !== "" && id === REAL_MODEL)) {
@@ -168,7 +168,7 @@ function posterFlow(installation: any) {
     actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
     // Every worker flow hears messages (FIX-2238); an older commit has no entry to build.
     ...(typeof wf.messageReceivedEntry === "function"
-      ? { internal: { actions: { [wf.MESSAGE_RECEIVED_ENTRY]: wf.messageReceivedEntry({ installation, flowKind: "poster" }) } } }
+      ? { internal: { actions: { onMessageReceived: wf.messageReceivedEntry({ installation, flowKind: "poster" }) } } }
       : {}),
   } as never);
 }

@@ -50,9 +50,7 @@ import {
   routedTaskHistory,
   workerConfigOf,
   workerIdentityPrompt,
-  WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry,
-  WORKER_TASK_ENTRY,
   workerTaskEntry,
   type ProjectAddress,
   type WorkerInstallation,
@@ -392,11 +390,11 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     // A coordinator's routed task (FIX-2083): the project coordinator's, for
     // the workstream this worker leads, or the Shift Coordinator's. A routed task
     // is a task on the coordinator's board, taken on `work` like any.
-    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "em-task", turn }) } },
+    task: { actions: { work: workerTaskEntry({ name: "em-task", turn }) } },
     internal: {
       actions: {
         // Opening a workstream this worker leads starts its session here.
-        [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry(),
+        onWorkstreamOpened: workstreamOpenedEntry(),
         // A run of the board, each task's notice (which wakes the turn), and
         // a split task's settle and cancel.
         ...factory.entries(turn),

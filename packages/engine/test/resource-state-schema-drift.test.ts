@@ -23,9 +23,11 @@ import {
 import type { JsonObject } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
-  createInMemoryStores,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 /**

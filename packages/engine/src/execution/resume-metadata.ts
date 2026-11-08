@@ -1,10 +1,11 @@
+// FIX-1707; BP-031.
 /**
- * Request metadata keys that must never act as a resume instruction (FIX-1707).
+ * Request metadata keys that must never act as a resume instruction.
  *
  * `metadata` reaches `runAction` from the caller — the HTTP body, a transport
  * envelope, a persisted record a caller once wrote. `resumeContext` and
  * `resumeOf` used to be read from it, which let a caller pre-approve a
- * human-approval gate or release another request's resume lease (BP-031). A
+ * human-approval gate or release another request's resume lease. A
  * resolution now arrives only as `RunActionOptions.resumeContext`, set by
  * `continueRequest`; these keys are dropped wherever metadata enters a run.
  */

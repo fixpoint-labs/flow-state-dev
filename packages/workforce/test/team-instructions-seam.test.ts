@@ -26,7 +26,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { mintWorkers } from "../src/hire";

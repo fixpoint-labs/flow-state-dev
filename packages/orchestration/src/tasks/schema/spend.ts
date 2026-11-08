@@ -1,5 +1,6 @@
+// FIX-2288; BP-023, BP-030.
 /**
- * `Task.spend` (FIX-2288): what a task's runs spent, as the row stores it.
+ * `Task.spend`: what a task's runs spent, as the row stores it.
  *
  * One entry per request admitted for the task: its settled part (what its
  * endings handed on, summed) and its live part (what it has spent since its
@@ -8,7 +9,7 @@
  * also keeps the harness and model its request last reported. The fold a
  * reader shows is `taskSpendView` (`../spend.ts`).
  *
- * Every field defaults, so a partial or older row parses (BP-023, BP-030).
+ * Every field defaults, so a partial or older row parses.
  */
 import { z } from "zod";
 
@@ -70,11 +71,12 @@ export const taskSpendViewSchema = z.object({
   inputTokens: z.number().nullable(),
   /** Output tokens likewise. */
   outputTokens: z.number().nullable(),
+  // FIX-2398 D3.
   /**
    * What the vendors billed, in US dollars: the sum of every charge a source
    * reported (an API-key harness run), or `null` when none reported one. A
    * subscription run reports none, and never reads as a cost. Never an
-   * estimate (FIX-2398 D3). Absent on a view stored before it existed.
+   * estimate. Absent on a view stored before it existed.
    */
   costUsd: z.number().nullable().optional(),
   /** `true` while some source in the count hasn't reported its tokens. */

@@ -1,5 +1,6 @@
+// FIX-811.
 /**
- * Inline renderer for `suspension_resume` items (FIX-811).
+ * Inline renderer for `suspension_resume` items.
  *
  * A suspension_resume item is emitted into the resumed request's log when a
  * suspension is resolved and the same request continues. It is the audit

@@ -62,6 +62,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
+import { isSendKey } from "@flow-state-dev/react";
 import {
   Children,
   createContext,
@@ -839,7 +840,6 @@ export const PromptInputTextarea = ({
 }: PromptInputTextareaProps) => {
   const controller = useOptionalPromptInputController();
   const attachments = usePromptInputAttachments();
-  const [isComposing, setIsComposing] = useState(false);
 
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = useCallback(
     (e) => {
@@ -849,13 +849,9 @@ export const PromptInputTextarea = ({
         return;
       }
 
-      if (e.key === "Enter") {
-        if (isComposing || e.nativeEvent.isComposing) {
-          return;
-        }
-        if (e.shiftKey) {
-          return;
-        }
+      // The one send rule: Enter sends, Shift+Enter is a new line, and an Enter
+      // that confirms an input method's word never sends (Safari included).
+      if (isSendKey(e, { enterSends: true })) {
         e.preventDefault();
 
         const { form } = e.currentTarget;
@@ -881,7 +877,7 @@ export const PromptInputTextarea = ({
         }
       }
     },
-    [onKeyDown, isComposing, attachments]
+    [onKeyDown, attachments]
   );
 
   const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = useCallback(
@@ -911,9 +907,6 @@ export const PromptInputTextarea = ({
     [attachments]
   );
 
-  const handleCompositionEnd = useCallback(() => setIsComposing(false), []);
-  const handleCompositionStart = useCallback(() => setIsComposing(true), []);
-
   const controlledProps = controller
     ? {
         onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
@@ -931,8 +924,6 @@ export const PromptInputTextarea = ({
       className={cn("field-sizing-content max-h-48 min-h-16", className)}
       data-testid="message-input"
       name="message"
-      onCompositionEnd={handleCompositionEnd}
-      onCompositionStart={handleCompositionStart}
       onKeyDown={handleKeyDown}
       onPaste={handlePaste}
       placeholder={placeholder}

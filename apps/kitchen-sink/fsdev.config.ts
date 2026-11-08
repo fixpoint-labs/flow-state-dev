@@ -201,7 +201,7 @@ const flowstate = createFlowState({
     ? { provider: new OpenAIVoiceProvider({ apiKey: openaiApiKey }) }
     : undefined,
   stores: {
-    prod: { primary: pgStores, scheduler: pgStores },
+    prod: { primary: pgStores },
     // The local profile persists to SQLite (`.fsdev/data/flowstate.db`) so
     // sessions and hired workers survive a restart. `STORE_TYPE=memory` opts
     // into ephemeral in-memory stores (tests, e2e); `STORE_TYPE=filesystem`

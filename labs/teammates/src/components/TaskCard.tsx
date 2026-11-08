@@ -1,5 +1,6 @@
 import { memo } from "react";
 import type { BoardTask } from "../adapter";
+import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
@@ -7,7 +8,7 @@ import { Spend } from "./flow-state/spend";
 import { RunsOn, runsOn, taskLabel, taskLine } from "./Popups";
 
 /** What a task's line draws: a board row's task, or a filed task's stand-in before its row is read. */
-export type TaskLine = Pick<BoardTask, "id" | "to" | "title" | "status" | "harness" | "model" | "spend">;
+export type TaskLine = Pick<BoardTask, "id" | "to" | "title" | "status" | "harness" | "model" | "spend" | "landed" | "waiting">;
 
 /**
  * A task a conversation filed, as one line in the thread: what was asked of
@@ -30,6 +31,7 @@ export const TaskCard = memo(function TaskCard({
 }) {
   const line = taskLine(task, coding, nameOf);
   const on = coding ? runsOn(task) : undefined;
+  const state = taskPresentation(task);
   return (
     <button
       type="button"
@@ -48,10 +50,15 @@ export const TaskCard = memo(function TaskCard({
       )}
       <span className="min-w-0 flex-1 truncate">{line}</span>
       {on === undefined ? null : <RunsOn on={on} />}
+      {task.landed === undefined ? null : (
+        <span data-task-landed={task.landed.kind} className="shrink-0 text-xs text-muted-foreground">
+          {task.landed.kind === "pull-request" ? `PR #${task.landed.number}` : `merged into ${task.landed.branch}`}
+        </span>
+      )}
       {/* What its runs spent: tokens, and the charge when the vendor reported one. The tag above names the model. */}
       {coding && task.spend ? <Spend spend={{ ...task.spend, model: null }} className="w-auto shrink-0" /> : null}
-      <span className={cn("shrink-0 text-xs", task.status === "failed" ? "text-destructive" : "text-muted-foreground")} data-task-status>
-        {task.status}
+      <span className={cn("shrink-0 text-xs", state.tone)} data-task-status>
+        {state.word}
       </span>
     </button>
   );

@@ -19,19 +19,20 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { encodeUserSegment, type FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import type { FlowStateRuntime, StoreRegistry } from "@flow-state-dev/engine";
+import type { FlowStateRuntime } from "@flow-state-dev/engine/host";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  MIN_LEASE_DURATION_MS,
   resolveResourceCollection,
   type Task,
   type ClaimOrder,
   type TaskWorkerInput,
-  openRowHolds,
 } from "../../src/tasks";
+import { MIN_LEASE_DURATION_MS } from "../../src/tasks/collection/internal";
+import { openOwnHolds } from "../../src/tasks/collection/holds";
 import { askMidway, taskBoard, taskToolActions, taskWorkerInputSchema } from "../../src/task-board";
 import { currentLeaseRenewal } from "../../src/tasks/lease-renewal-scope";
 import { heard } from "../fixtures/heard";
@@ -632,7 +633,7 @@ describe("a ledger kept per conversation, handed to a task session", () => {
       await h.drained(ALICE, "conv_a");
       const held = async () => {
         const row = await h.row(ALICE, "conv_a#0", "ask");
-        return row !== undefined && row.status === "in_progress" && openRowHolds(row).length === 1;
+        return row !== undefined && row.status === "in_progress" && openOwnHolds(row).length === 1;
       };
       await until(held, "the question");
       // The request's end leaves a held row held: nothing settles it.
@@ -652,7 +653,7 @@ describe("a ledger kept per conversation, handed to a task session", () => {
       await h.drained(ALICE, "conv_a");
       await until(() => told.length > 0, "the telling");
       const row = await h.row(ALICE, "conv_a#0", "ask");
-      const holds = openRowHolds(row!);
+      const holds = openOwnHolds(row!);
       expect(told).toEqual([{ taskId: "ask", filer: "conv_a", questions: holds.map((hold) => hold.id), prompts: ["needs a person"] }]);
     } finally {
       await h.state.dispose();
@@ -668,9 +669,9 @@ describe("a ledger kept per conversation, handed to a task session", () => {
       await h.drained(ALICE, "conv_a");
       await until(() => told.length >= 2, "both tellings");
       const row = await h.row(ALICE, "conv_a#0", "replay");
-      const [hold] = openRowHolds(row!);
+      const [hold] = openOwnHolds(row!);
       // One question on the row; both tellings name it, so a per-hold id dedupes them.
-      expect(openRowHolds(row!)).toHaveLength(1);
+      expect(openOwnHolds(row!)).toHaveLength(1);
       expect(told.map((t) => t.questions)).toEqual([[hold!.id], [hold!.id]]);
     } finally {
       await h.state.dispose();

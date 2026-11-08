@@ -18,7 +18,6 @@ import {
   createWorkerInstallation,
   defineCoordinatorFlow,
   hireWorkforce,
-  WORKER_TASK_ENTRY,
   workerConfigOf,
   workerConfigSchema,
   workerTaskEntry,
@@ -57,7 +56,7 @@ const researchFlow = defineFlow({
   resources: { ...installation.resources },
   request: { onStarted: loadWorker },
   actions: { respond: { inputSchema, block: researchAnswer, userMessage: (input) => input.message } },
-  task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "research", turn: researchAnswer }) } },
+  task: { actions: { work: workerTaskEntry({ name: "research", turn: researchAnswer }) } },
 });
 
 /** A worker flow that declares no settings of its own. */

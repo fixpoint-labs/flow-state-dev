@@ -12,20 +12,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
-import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
-  cancelAndResume,
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
   type SuspensionHold,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
+import { cancelAndResume } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { commandCheck, harnessDrainBudgetMs, harnessManager, harnessTaskInputSchema, resolveOwnership, runOwnerClaimOrder, runTopic, type CompletionRunContext, type HarnessFeeds, type PhaseSpec } from "../src";
 import { harnessTaskId } from "../src/workspace";
+import { reviewDetail } from "../src/browser";
 import { seedRepo } from "./fixtures";
 import { cleanUpHosts } from "./claim-host";
 import { releaseLock, tryAcquireLock } from "@flow-state-dev/workspace";
@@ -295,6 +296,10 @@ describe("a run is done only when its checks pass", () => {
       const hold = h.review(held)!;
       expect(hold.ask.prompt).toContain("Checks 1/1 passed.");
       expect((await h.suspension(hold))?.data?.checks).toEqual([
+        expect.objectContaining({ command: "node check.mjs", exitCode: 0, timedOut: false, skipped: false }),
+      ]);
+      // The browser reader hands the review card the same checks, so the card can't drift from the stop.
+      expect(reviewDetail((await h.suspension(hold))?.data)?.checks).toEqual([
         expect.objectContaining({ command: "node check.mjs", exitCode: 0, timedOut: false, skipped: false }),
       ]);
       const record = await h.runRow();

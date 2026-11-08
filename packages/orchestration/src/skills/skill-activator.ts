@@ -1,5 +1,6 @@
+// FIX-421.
 /**
- * `createSkillActivator` — the public factory for FIX-421's up-front
+ * `createSkillActivator` — the public factory for the up-front
  * skill-activation router.
  *
  * Composes a three-tier sequencer that decides which skills (if any) apply
@@ -33,7 +34,8 @@
  */
 
 import { z } from "zod";
-import { assertEvaluatorBlock, sequencer } from "@flow-state-dev/core";
+import { sequencer } from "@flow-state-dev/core";
+import { assertEvaluatorBlock } from "@flow-state-dev/core/internal";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import type { ExplicitActivationScope } from "./activation-store";
 import {

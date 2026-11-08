@@ -12,7 +12,7 @@
 import { describe, expect, it } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
 import { defineSkillsCollection } from "@flow-state-dev/orchestration";
-import { mockGenerator, testSequencer } from "@flow-state-dev/testing";
+import { mockGenerator, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { skillActivatorBlock } from "../flows/chat-agent/shared/capabilities/features";
 
@@ -41,7 +41,7 @@ describe("chat-agent skill activator", () => {
       script: [{ structuredOutput: { reasoning: "no match", activeSkills: [] } }],
     });
 
-    const result = await testSequencer(firstTurn, {
+    const result = await testBlock(firstTurn, {
       input: { message: "/tech-brief what changed in React 19?" },
       generators: { "skill-classifier": classifier },
     });

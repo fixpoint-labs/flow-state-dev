@@ -9,11 +9,12 @@ import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowRegistry,
-  createInMemoryStores,
-  createInboundTransportHost,
-  defaultBodyUserIdPrincipalResolver,
-  UserBindingMismatchError
+  defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
+import { createInboundTransportHost, UserBindingMismatchError } from "../../src/host";
 import { ConcurrencyRejectedError } from "../../src/transports/errors";
 
 type Gate = { id: string; release: () => void };

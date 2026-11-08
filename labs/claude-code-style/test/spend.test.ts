@@ -5,12 +5,12 @@
  * charge shows when the run reported one, and a subscription run shows none.
  */
 import { describe, expect, it } from "vitest";
-import type { TaskRow } from "../src/adapter";
+import type { LabTask } from "../src/adapter";
 import { spendLine } from "../src/components/flow-state/spend";
 import { harnessLabelOf } from "../src/components/ThreadStatus";
 
-const task = (spend?: TaskRow["spend"]): TaskRow => ({ id: "t1", title: "t", goal: "g", status: "in_progress", ...(spend ? { spend } : {}) });
-const spend = (inputTokens: number | null, outputTokens: number | null, unreported = false, costUsd: number | null = null): NonNullable<TaskRow["spend"]> => ({
+const task = (spend?: LabTask["spend"]): LabTask => ({ id: "t1", title: "t", goal: "g", status: "in_progress", ...(spend ? { spend } : {}) });
+const spend = (inputTokens: number | null, outputTokens: number | null, unreported = false, costUsd: number | null = null): NonNullable<LabTask["spend"]> => ({
   harness: "claude-code",
   model: "claude-sonnet-4-5",
   inputTokens,

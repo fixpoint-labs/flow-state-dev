@@ -1,0 +1,114 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, where an app reads one request's output. Chosen: the status route, behind a flag. Instead of: an id filter on the session list, or a new result route. It comes down to the first row, the caller's reach check: the status route already loads the one record and checks the caller and the flow; the list filter is scoped by session, needs its id and is paged; a new route writes the check again. The price is the second row: the status probe grows an optional field, only when the flag is sent. The third row: the status route and a new route both read one record by id, the list searches. Locks in: a flag and a field on the status route. Flips if: the status route must stay a cacheable probe."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where does an app read one request's output from?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The status route, a flag</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="468" y="112">An id filter on the list</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="708" y="112">A new result route</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE CALLER'S</text>
+    <text class="t-lbl" x="32" y="169">REACH CHECK</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Already there</text>
+    <text class="t-s" x="248" y="179">one record, caller and flow</text>
+    <text class="mark minus" x="468" y="162">−</text>
+    <text class="t-b" x="488" y="161">Session-scoped</text>
+    <text class="t-s" x="488" y="179">needs the session id; paged</text>
+    <text class="mark minus" x="708" y="162">−</text>
+    <text class="t-b" x="728" y="161">Written again</text>
+    <text class="t-s" x="728" y="179">a second read of one record</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="226">THE STATUS</text>
+    <text class="t-lbl" x="32" y="239">PROBE</text>
+    <text class="mark minus" x="228" y="228">−</text>
+    <text class="t-b" x="248" y="227">Grows a field</text>
+    <text class="t-s" x="248" y="245">only when the flag is sent</text>
+    <text class="mark plus" x="468" y="228">+</text>
+    <text class="t-b" x="488" y="227">Untouched</text>
+    <text class="t-s" x="488" y="245">the list carries it</text>
+    <text class="mark plus" x="708" y="228">+</text>
+    <text class="t-b" x="728" y="227">Untouched</text>
+    <text class="t-s" x="728" y="245">a route of its own</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="284">FOUND BY ID</text>
+    <text class="mark tie" x="228" y="286">=</text>
+    <text class="t-b" x="248" y="285">Yes</text>
+    <text class="t-s" x="248" y="303">one record read</text>
+    <text class="mark minus" x="468" y="286">−</text>
+    <text class="t-b" x="488" y="285">Searched</text>
+    <text class="t-s" x="488" y="303">list, then match</text>
+    <text class="mark tie" x="708" y="286">=</text>
+    <text class="t-b" x="728" y="285">Yes</text>
+    <text class="t-s" x="728" y="303">one record read</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">A flag and a field on the status route</text>
+    <text class="t-s" x="32" y="387">public HTTP and type surface</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">The status route must stay a cacheable probe</text>
+    <text class="t-s" x="494" y="387">then a route of its own, on purpose</text>
+  </g>
+
+</svg>

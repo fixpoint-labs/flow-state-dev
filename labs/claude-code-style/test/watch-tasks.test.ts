@@ -1,5 +1,5 @@
 /**
- * A session's task list reads when its board changes (FIX-2429), not every two
+ * A session's task list reads when its board changes, not every two
  * seconds all day: the conversation's session topic narrowed to each ledger
  * its `listTasks` read returns, so a reply streaming in the session never wakes
  * it. Wherever push can miss a change, `client.subscribe` reads on its timer,
@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { Client, SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
-import { createWiredLab, type TaskRow } from "../src/adapter";
+import { createWiredLab, type LabTask } from "../src/adapter";
 
 function fakeClient() {
   const reads: string[] = [];
@@ -54,7 +54,7 @@ describe("watchTasks", () => {
 
   it("reads once on open, again on a board notice, and keeps no timer of its own", async () => {
     const lab = fakeClient();
-    let rows: TaskRow[] = [];
+    let rows: LabTask[] = [];
     const stop = createWiredLab(lab.client).watchTasks("s1", (next) => (rows = next));
     await until(() => rows.length === 1);
     await new Promise((r) => setTimeout(r, 2_200));

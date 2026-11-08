@@ -12,8 +12,8 @@
  * - real provider packages load through the real loader (runtime smoke)
  * - `process.cwd()` resolution fallback for pnpm-strict app installs
  *
- * NOTE: these tests rely on `@ai-sdk/google` / `@ai-sdk/anthropic` NOT being
- * installed in this workspace, and `@ai-sdk/openai` being a core
+ * NOTE: these tests rely on `@ai-sdk/google` NOT being installed in this
+ * workspace (`goals/` installs `@ai-sdk/anthropic`), and `@ai-sdk/openai` being a core
  * devDependency (installed for the runtime smoke).
  */
 import { describe, expect, it, vi } from "vitest";
@@ -53,29 +53,29 @@ describe("createModelResolver — provider package loading", () => {
   });
 
   it("falls through to a configured gateway when the provider package is not installed (FIX-609)", async () => {
-    // Key present (provider detected) but `@ai-sdk/anthropic` is not
+    // Key present (provider detected) but `@ai-sdk/google` is not
     // installed → the direct path is unavailable at resolution and the
     // configured gateway instance must serve the bare provider/model string.
     const resolver = createModelResolver({
-      keys: { anthropic: "test-key" },
+      keys: { google: "test-key" },
       gateways: { vercel: mockGatewayInstance() },
     });
-    const model = resolver("anthropic/claude-sonnet-4-6");
+    const model = resolver("google/gemini-3");
     const result = await model.generate({ messages: [{ role: "user", content: "hi" }] });
-    expect(result.text).toBe("via-gateway:anthropic/claude-sonnet-4-6");
+    expect(result.text).toBe("via-gateway:google/gemini-3");
   });
 
   it("resolveId('intent/…') skips an unavailable first candidate and returns the one the executing path would use", () => {
-    // anthropic has a key but its package is not installed and no gateway is
+    // google has a key but its package is not installed and no gateway is
     // configured → unavailable. openai has a key AND an installed package
     // (core devDependency) → available. Both the executing path and
     // `resolveId` must land on the same (second) candidate — availability is
     // decided synchronously via module resolution, not deferred to the lazy
     // package import.
     const resolver = createModelResolver({
-      intents: { chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.4-mini"] },
+      intents: { chat: ["google/gemini-3", "openai/gpt-5.4-mini"] },
       defaultModel: "openai/gpt-5.4-mini",
-      keys: { anthropic: "test-key", openai: "test-key" },
+      keys: { google: "test-key", openai: "test-key" },
     });
     expect(resolver.resolveId("intent/chat")).toBe("openai/gpt-5.4-mini");
     // The executing path resolves without throwing (same winning candidate).

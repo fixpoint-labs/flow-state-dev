@@ -92,6 +92,28 @@ export function latestTurn(input: {
   return { requestId, number: turns.size, status };
 }
 
+/**
+ * The turn of the session that waits on an answer about a tool call, as the
+ * session flow records it, or `null`. Read the way the flow reads it when it
+ * refuses a new turn while one waits, so the page holds a message back
+ * instead of sending one the flow would refuse. A turn the items show stopped
+ * no longer waits, even before the record that says so is read.
+ *
+ * @param turns The session's turn records, by request id.
+ * @param items The session's items, for the stops among them.
+ */
+export function turnWaitingOnApproval(
+  turns: Readonly<Record<string, HarnessTurnRecord>> | null | undefined,
+  items: readonly TurnItem[],
+): string | null {
+  for (const [requestId, turn] of Object.entries(turns ?? {})) {
+    if (turn.waitsOnApproval !== true || turn.endedAt != null) continue;
+    if (items.some((item) => item.requestId === requestId && isStopItem(item))) continue;
+    return requestId;
+  }
+  return null;
+}
+
 /** What the session says under a turn. */
 export type TurnNotice =
   | { readonly kind: "continued"; readonly conversation: string }
@@ -136,7 +158,7 @@ export function turnNotice(turn: HarnessTurnRecord | null, status: TurnStatus, k
 }
 
 /** A plan row, as the resource route lists it: the topic under the collection, and its projected fields. */
-export interface PlanRowItem {
+export interface PlanEntry {
   readonly topic: string;
   readonly title: string | null;
   readonly status: string | null;
@@ -200,7 +222,7 @@ export interface PlanPanelInput {
    * The plan's rows, topics under the collection: `<request>/<run>/<item>` for
    * a turn's plan, `conversation/<id>/<item>` for a conversation's.
    */
-  readonly rows: readonly PlanRowItem[];
+  readonly rows: readonly PlanEntry[];
   /** The plan's list markers, topics under the collection (`<request>/<run>`, or `conversation/<id>`). */
   readonly markers: readonly PlanMarkerItem[];
   /**
@@ -216,7 +238,7 @@ export interface PlanPanelInput {
 export const PREDATES_REASON = "this conversation began before plans were kept across turns";
 
 /** How far along a plan row is, in the panel's three words plus whatever else a harness says. */
-export interface PlanRowStage {
+export interface PlanEntryStage {
   readonly stage: "pending" | "active" | "done" | "other";
   /** What the row reads as: a known stage's plain words, or the harness's own word. */
   readonly label: string;
@@ -227,7 +249,7 @@ export interface PlanRowStage {
  * `TaskCreate` carries no status), so `null` is a row nobody has started.
  * Spelling (snake, kebab, spaced, camel) is forgiven; a word this does not know is kept as said.
  */
-export function planRowStage(status: string | null): PlanRowStage {
+export function planEntryStage(status: string | null): PlanEntryStage {
   if (status === null || status.trim() === "") return { stage: "pending", label: "To do" };
   // `inProgress` (Cursor) and `in_progress` (Claude Code) are one word.
   switch (status.trim().replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase().replace(/[\s-]+/g, "_")) {

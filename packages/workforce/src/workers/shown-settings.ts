@@ -1,5 +1,6 @@
+// FIX-2281.
 /**
- * The settings a user sees on a worker's roster row (FIX-2281): only the
+ * The settings a user sees on a worker's roster row: only the
  * ones its flow's registration names in `showSettings`.
  *
  * The one place a browser read of a worker's settings is made, for standard

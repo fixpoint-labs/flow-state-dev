@@ -1,0 +1,7 @@
+{
+  "project": "Feed opens",
+  "modelProject": "Feed opens with a model",
+  "finishedGoal": "Add a line naming the finished run to NOTES.md in the project.",
+  "cancelledGoal": "Add a line naming the cancelled run to NOTES.md in the project.",
+  "ask": "In the background, have the coder add one line reading 'Checked from the feed.' to NOTES.md in the project. Start it as a background task and don't make the change yourself."
+}

@@ -8,10 +8,10 @@ export type AudioRecorderOptions = {
   audioBitsPerSecond?: number;
 };
 
-export type AudioRecorderState = "inactive" | "recording";
+export type AudioRecorderStatus = "inactive" | "recording";
 
 export type AudioRecorder = {
-  readonly state: AudioRecorderState;
+  readonly state: AudioRecorderStatus;
   start(): Promise<void>;
   stop(): Promise<Blob>;
   cancel(): void;
@@ -35,7 +35,7 @@ export function createAudioRecorder(
   let mediaRecorder: MediaRecorder | null = null;
   let stream: MediaStream | null = null;
   let chunks: Blob[] = [];
-  let currentState: AudioRecorderState = "inactive";
+  let currentState: AudioRecorderStatus = "inactive";
   let resolveStop: ((blob: Blob) => void) | null = null;
 
   const preferredMimeType = options?.mimeType ?? selectMimeType();

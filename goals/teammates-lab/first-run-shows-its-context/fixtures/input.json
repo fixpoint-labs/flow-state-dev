@@ -1,0 +1,5 @@
+{
+  "lead": "Lead",
+  "harness": { "value": "claude-code", "label": "Claude Code" },
+  "remedy": "codex login"
+}

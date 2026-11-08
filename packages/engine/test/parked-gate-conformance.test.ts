@@ -7,7 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll } from "vitest";
-import { createFilesystemStores, createInMemoryStores } from "../src";
+import { createFilesystemStores, createInMemoryStores } from "../src/host";
 import { createParkedGateConformanceTests } from "../src/testing";
 
 const dirs: string[] = [];

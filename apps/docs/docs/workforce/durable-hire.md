@@ -113,17 +113,32 @@ user: one user's workers on `agent` share it, and another user's workers can't r
 flow you write, that is up to you: see
 [Where a worker's data lives](./workers-on-disk.md#where-a-workers-data-lives).
 
-## After a hire, refresh the roster
+## Keep the roster current
 
-Read the roster again after any turn, since a turn may have hired, forked or fired.
+A hire can come from anywhere: another tab, another device, or a worker's own turn. So a screen
+that lists workers should follow the roster rather than read it once. `watchRoster` hands you the
+roster, then hands it again each time a hire, fork, edit or fire changes it.
 
 ```ts
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser"
 
 const workforce = createWorkforceClient(fsd) // fsd: your app's client from createClient
-const workers = await workforce.roster()
-// [{ id: "scribe", flow: "agent", standard: false, description: null },
-//  { id: "researcher", flow: "agent", standard: true, description: "Finds things out." }]
+const stop = workforce.watchRoster(
+  (workers) => render(workers),
+  { onError: (error) => showProblem(error) },
+)
+// workers: [{ id: "scribe", flow: "agent", standard: false, description: null },
+//           { id: "researcher", flow: "agent", standard: true, description: "Finds things out." }]
+
+// Later, when the screen goes away:
+stop()
 ```
+
+It listens on the client's `subscribe`, so a change shows within about a second on a host that
+pushes. On a host without push, or while the socket is down, it reads every three seconds instead.
+It reports only when the roster changed. After a failed read, `onError` is called, and the next
+read that succeeds reports the roster again.
+
+For a one-off answer, such as checking an id before a hire, `workforce.roster()` reads it once.
 
 To talk to one, see [Talking to a worker](./workers-on-disk.md#talking-to-a-worker).

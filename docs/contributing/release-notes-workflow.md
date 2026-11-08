@@ -55,6 +55,8 @@ One user-facing sentence (FIX-123).
 
 The body is what shows up under that package's heading in the next `CHANGELOG.md` release section, so write it for the next reader, not for the PR reviewer. Implementation rationale, decision lineage, file paths, exact test counts, "out of scope" sections, and Linear ticket internals belong in the PR description, not in the fragment.
 
+**Keep it to what a user can now do or must change**, in one to three sentences. It is also the main input to the release docs pass ([release-docs.md](./release-docs.md)), which is the only place user docs get written: a fragment that retells the mechanism (timings, pools, internal fallbacks) becomes docs that retell it too. If you know which docs page it affects, end the body with a line `Docs: <page path under apps/docs>`.
+
 ## Pre-1.0 discipline (current state)
 
 Packages are at `0.x.y`. Changesets has no built-in pre-1.0 mode — a `major` against `0.x.y` bumps straight to `1.0.0`. Until the first launch:
@@ -71,21 +73,19 @@ This matches the [Vercel AI SDK contributing guide](https://github.com/vercel/ai
 
 ## Multi-package PRs
 
-Each fragment can list multiple packages with their own bumps:
+A PR that touches three published packages writes three fragments, one each:
 
 ```md
 ---
-"@flow-state-dev/core": minor
-"@flow-state-dev/engine": patch
-"@flow-state-dev/react": patch
+"@flow-state-dev/engine": minor
 ---
 
-One sentence describing the change for users (FIX-123).
+`createFlowState` no longer accepts `dispatcher`; pass the same FlowRunner as `runner` (FIX-123).
 ```
 
-Use one fragment per logical change, not one fragment per package. `pnpm version-packages` aggregates fragments per package — if two PRs each ship a fragment touching `core`, that's two entries under the next `@flow-state-dev/core` release heading and a single `core` version bump (taking the max of the bumps).
+Write one fragment per published package the PR touches, each with one line for that package's reader, naming each moved or retired name's new home. A reader of `@flow-state-dev/engine`'s changelog should not have to read core's entry to learn what changed for them, so a change that spans packages is told once in each, in that package's terms. `pnpm version-packages` aggregates fragments per package — if two PRs each ship a fragment touching `core`, that's two entries under the next `@flow-state-dev/core` release heading and a single `core` version bump (taking the max of the bumps).
 
-If a single PR ships two unrelated changes touching overlapping packages, write two fragments. They'll group naturally at release time.
+A fragment names its package's change only: core's features go in core's fragment, not in the fragment of a package that merely uses them.
 
 ### Workspace cascade
 
@@ -101,7 +101,7 @@ A maintainer (or the release workflow) runs `pnpm version-packages`. For each af
 
 With no pending fragments, `pnpm version-packages` prints `No unreleased changesets found, exiting` and changes nothing. That is the expected steady state now, not a problem.
 
-`.github/workflows/release.yml` automates this when `CHANGESETS_TOKEN` is configured: it opens a "Version Packages" PR with the proposed bumps and changelog edits. Merging that PR publishes to npm with provenance and creates GitHub Releases from the per-package changelogs.
+`.github/workflows/release.yml` automates this when `CHANGESETS_TOKEN` is configured: it opens a "Version Packages" PR with the proposed bumps and changelog edits. Merging that PR publishes to npm with provenance and creates GitHub Releases from the per-package changelogs. It can't merge until the release docs pass has covered every changeset in it ([release-docs.md](./release-docs.md)).
 
 `.changeset/` is not a persistent store. Anything that needs to outlive a release lives in `packages/<name>/CHANGELOG.md`.
 

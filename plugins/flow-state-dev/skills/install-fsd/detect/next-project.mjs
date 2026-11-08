@@ -167,7 +167,11 @@ export function resolveMountPath(basePath) {
  */
 export function scanRouteSlots(appRootAbs, enabledExtensions) {
   const scanSet = [...new Set([...(enabledExtensions ?? []), ...EMITTABLE_ROUTE_EXTENSIONS])];
-  return MOUNT.slots.map((slot) => {
+  const slots = [
+    ...MOUNT.slots.map((slot) => ({ slot, retired: false })),
+    ...MOUNT.retiredSlots.map((slot) => ({ slot, retired: true })),
+  ];
+  return slots.map(({ slot, retired }) => {
     const dir = join(appRootAbs, slot);
     const occupants = [];
     for (const ext of scanSet) {
@@ -181,7 +185,7 @@ export function scanRouteSlots(appRootAbs, enabledExtensions) {
         enabled: (enabledExtensions ?? []).includes(ext),
       });
     }
-    return { slot: join(appRootAbs, slot), leaf: MOUNT.leaf, scanSet, occupants };
+    return { slot: join(appRootAbs, slot), leaf: MOUNT.leaf, retired, scanSet, occupants };
   });
 }
 
@@ -194,6 +198,7 @@ export function classifySlot(slot, selectedExtension) {
   if (slot.occupants.length === 0) return { verdict: "write", occupants: [] };
   const foreign = slot.occupants.filter((o) => !o.ours);
   if (foreign.length > 0) return { verdict: "refuse-foreign", occupants: foreign };
+  if (slot.retired) return { verdict: "refuse-retired", occupants: slot.occupants };
   const stale = slot.occupants.filter((o) => o.extension !== selectedExtension);
   if (stale.length > 0) return { verdict: "refuse-stale", occupants: stale };
   return { verdict: "ours", occupants: slot.occupants };

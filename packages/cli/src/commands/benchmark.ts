@@ -5,7 +5,7 @@
  * The command is generic: it loads a default-exported `defineBenchmark(...)`
  * definition, resolves its `patterns` against the registry the definition
  * carries (so the CLI never imports a specific pattern package), runs the sweep
- * via `@flow-state-dev/testing`, and renders the report as a table, markdown, or
+ * via `@flow-state-dev/testing/benchmark`, and renders the report as a table, markdown, or
  * JSON. Real runs make real model calls and need provider credentials in the
  * environment; `--max-cost` stops the sweep early when the estimate is exceeded.
  */
@@ -21,7 +21,7 @@ import {
   type BenchmarkDefinition,
   type BenchmarkReport,
   type ComparePatternsConfig,
-} from "@flow-state-dev/testing";
+} from "@flow-state-dev/testing/benchmark";
 import { CliError } from "../resolve-block";
 import {
   EXIT_SUCCESS,

@@ -1,5 +1,6 @@
+// FIX-1005.
 /**
- * Lease renewal — the worker half of durable-job recovery (FIX-1005).
+ * Lease renewal — the worker half of durable-job recovery.
  *
  * A worker that is running keeps its own task's lease alive. It is the only
  * party that can, and it is extending a row it already proved it owns. Once
@@ -63,8 +64,9 @@ import type { TaskCollectionRef } from "./collection/types";
  */
 export const RENEWAL_DIVISOR = 3;
 
+// FIX-1005.
 /**
- * Floor on the **first** delay only (FIX-1005), below which the helper sets no
+ * Floor on the **first** delay only, below which the helper sets no
  * timer and renews inline as it starts.
  *
  * A helper that starts late phases its first tick against the lease that is
@@ -293,9 +295,10 @@ export interface Ticker {
   idle(): Promise<void>;
 }
 
+// FIX-2288.
 /**
  * The lease driver's timing, for any write a running request repeats while it
- * works (FIX-2288: a task's live spend rides it too): ticks on a fixed grid
+ * works (a task's live spend rides it too): ticks on a fixed grid
  * phased from the first, single-flight (a tick whose predecessor is still in
  * flight is skipped), stopped on {@link Ticker.stop} or the signal, on an
  * unref'd timer that never holds the process open.

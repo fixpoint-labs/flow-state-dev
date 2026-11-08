@@ -16,6 +16,7 @@ import {
   NODE_FLOOR,
 } from "../skills/install-fsd/detect/constants.mjs";
 import { parseAsCli, parseAsNextDev } from "../skills/install-fsd/detect/env-parsers.mjs";
+import { meetsNodeFloor } from "../skills/install-fsd/detect/report.mjs";
 
 const repoRoot = join(import.meta.dirname, "../../..");
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf-8");
@@ -114,14 +115,17 @@ describe("the supported Next range is the adapters' own", () => {
   );
 });
 
-describe("the Node floor is the one the config loader's own remediation names", () => {
-  it("matches the version load-config.ts tells a developer to run", () => {
-    // `>=22` is the wrong number twice over: 22.0–22.17 passes it and then fails at config load,
-    // because the CLI imports the emitted TypeScript config natively and that needs type
-    // stripping. The loader's own error message carries the real number.
-    const source = read("packages/cli/src/load-config.ts");
-    const named = /Node >= (\d+\.\d+)/.exec(source);
-    expect(named, "load-config.ts no longer names a Node version in its remediation").not.toBeNull();
-    expect(NODE_FLOOR.startsWith(named[1])).toBe(true);
+describe("the Node floor never admits a Node the CLI refuses", () => {
+  it("is at or above the engines.node minimum of the fsdev package", () => {
+    // A wired-up project runs the `fsdev` CLI, so the floor this report enforces must never fall
+    // below what that package declares it runs on. The CLI loads a TypeScript config itself on
+    // any Node its `engines` allows, so `engines.node` is the requirement the floor tracks.
+    const engines = JSON.parse(read("packages/cli/package.json")).engines?.node;
+    expect(engines, "packages/cli/package.json no longer declares engines.node").toBeDefined();
+    const minimum = /^>=\s*(\d+(?:\.\d+){0,2})$/.exec(engines.trim());
+    expect(minimum, `engines.node "${engines}" is not a plain >= range this check reads`).not.toBeNull();
+    // `>=22` names only a major; pad it to the x.y.z the comparison reads.
+    const padded = [...minimum[1].split("."), "0", "0"].slice(0, 3).join(".");
+    expect(meetsNodeFloor(NODE_FLOOR, padded)).toBe(true);
   });
 });

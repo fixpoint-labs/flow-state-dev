@@ -1,8 +1,9 @@
+// FIX-910; BP-030.
 /**
  * `applyReplan` — adds replanner-produced tasks to a board's collection
  * during a replan iteration.
  *
- * Lifted from `@flow-state-dev/patterns/plan-and-execute` (FIX-910) so the
+ * Lifted from `@flow-state-dev/patterns/plan-and-execute` so the
  * `goalSeekLoop` primitive — which lives below patterns in the layering — can
  * execute it directly. Patterns re-export it to preserve their public surface.
  *
@@ -23,35 +24,36 @@
  * referenced the original id. The replanner's intent — adding fresh work — is
  * preserved without breaking referential integrity inside the batch.
  *
- * Backing-aware collection resolution (FIX-910): when a board `capability` is
+ * Backing-aware collection resolution: when a board `capability` is
  * supplied, tasks are read/written through the board's OWN accessor
  * (`ctx.cap.<name>.tasks()`), so a resource-backed board or a custom
  * `stateKey` resolves correctly. When omitted, the block falls back to the
  * legacy name-based request reconstruction — preserving the pre-lift signature
- * for existing callers (BP-030).
+ * for existing callers.
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockDefinition, DefinedCapability } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
-  SKIPPED_LABEL,
   TaskFilingRefusedError,
   type Task,
   type TaskCollectionRef,
   type TaskInit,
 } from "../tasks";
+import { SKIPPED_LABEL } from "../tasks/collection/cascade";
 import { skippedFor } from "../tasks/collection/cascade";
 import { generateId } from "../tasks/generate-id";
 
+// FIX-827; BP-034.
 /**
  * How each task's `context` is populated when the planner/replanner didn't
- * supply one (FIX-827). `"goal"` (default) copies the (synthesized) goal into
+ * supply one. `"goal"` (default) copies the (synthesized) goal into
  * every gap-task — free, deterministic. `false` leaves context empty. A
  * `BlockDefinition` runs a custom enricher (used on the seed path only; the
  * replan path always uses the deterministic goal-fill — see below).
  *
- * The canonical home for this type (BP-034): it moves here with the lifted
+ * The canonical home for this type: it moves here with the lifted
  * `createApplyReplan`; `@flow-state-dev/patterns` re-exports it so callers that
  * import it from `planning-entry` keep working.
  */
@@ -62,8 +64,9 @@ export interface ApplyReplanOptions {
   name: string;
   /** Default `maxAttempts` to stamp on tasks that don't carry one. */
   maxAttemptsPerTask: number;
+  // FIX-827.
   /**
-   * Per-task context supply for replanned tasks (FIX-827). The replan loop
+   * Per-task context supply for replanned tasks. The replan loop
    * re-enters the board directly, bypassing the planning-entry enricher, so
    * this applies the same gap-fill here: unless `false`, a replanned task
    * without context gets the goal copied in. A custom-block `taskContext`
@@ -71,17 +74,19 @@ export interface ApplyReplanOptions {
    * custom enricher mid-loop is a documented fast-follow). Default `"goal"`.
    */
   taskContext?: TaskContextSupply;
+  // FIX-910; BP-030.
   /**
-   * Board capability for backing-aware collection resolution (FIX-910). When
+   * Board capability for backing-aware collection resolution. When
    * provided, the block declares it in `uses` and reads/writes the board's
    * tasks through `ctx.cap.<capability.name>.tasks()` — correct for request,
    * resource, or custom-`stateKey` backings. Omit for the legacy name-based
-   * request reconstruction (`== null`-guarded, BP-030).
+   * request reconstruction (`== null`-guarded).
    */
   capability?: DefinedCapability<any, any>;
+  // FIX-910.
   /**
    * Sequencer state schema the block declares so its `ctx.sequencer.state.goal`
-   * read is typed against the caller's real container (FIX-910: decoupled from
+   * read is typed against the caller's real container (decoupled from
    * the patterns-owned `planAndExecuteStateSchema`). Defaults to a permissive
    * passthrough carrying an optional `goal` — enough for the gap-fill read;
    * consumers with richer state (goalSeekLoop's merged container, P&E's own
@@ -222,8 +227,9 @@ export function createApplyReplan(options: ApplyReplanOptions) {
   });
 }
 
+// FIX-2080.
 /**
- * File a replan's tasks (FIX-2080). A replan comes after a failure, which is
+ * File a replan's tasks. A replan comes after a failure, which is
  * when a planner is most likely to name the failed task: a task whose
  * dependency has already failed or been cancelled is filed skipped
  * (`cancelled`, labelled `skipped`), as such a dependent always ended, and so

@@ -19,7 +19,7 @@ The config calls `createFlowState` with:
 
 When the project already has a config, do not write one. If that winner carries our `fsd:generated` marker, the demo flow is already registered — print no registration line. If it does not, hand back the one line that registers `./flows/hello/flow.mts` as kind `hello`. Do not edit a file this run did not author. Auth for the demo stays on that flow alone — do not add a host-level `resolvePrincipal` to a config you did not write.
 
-The Next mount pair imports the CLI winner (`fsdevConfig.winner`), not a hardcoded `fsdev.config.mts`.
+The Next mount imports the CLI winner (`fsdevConfig.winner`), not a hardcoded `fsdev.config.mts`.
 
 ## Provider wiring
 
@@ -37,14 +37,13 @@ Kind `hello`, action `send`, input `{ userId, message }`. Closed over HTTP: `aut
 
 `FSD_DEMO_TOKEN` is generated into `.env.local`. Never printed, echoed, or read back.
 
-## Next.js mount pair
+## Next.js mount
 
-Two files under the detected app root, with the detected route extension:
+One file under the detected app root, with the detected route extension:
 
-- `<appRoot>/api/flows/[...path]/route.<ext>` — `createNextHandler(flowstate)` from `@flow-state-dev/next`
-- `<appRoot>/api/flows/route.<ext>` — the same handler, forwarding `{ path: [] }`
+- `<appRoot>/api/flows/[[...path]]/route.<ext>` — `createNextHandler(flowstate)` from `@flow-state-dev/next`
 
-`list_flows` is `GET /` on the mount base. A required catch-all cannot match zero segments, so the bare file exists. On Vercel, `createVercelNextHandler` from `@flow-state-dev/vercel/next` is the same shape with SSE shaping.
+`list_flows` is `GET /` on the mount base. The optional catch-all matches zero segments, so the same file answers it. A route left at `api/flows/route.<ext>` or `api/flows/[...path]/route.<ext>` by an earlier run collides with it, and detection refuses until it is deleted. On Vercel, `createVercelNextHandler` from `@flow-state-dev/vercel/next` is the same shape with SSE shaping.
 
 The mount imports the root config by relative path. There is no `lib/flowstate` re-export on this path — that file is not on the allowlist.
 

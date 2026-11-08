@@ -1,7 +1,7 @@
 /**
  * Public surface of `@flow-state-dev/cursor`: the Cursor harness block, its
- * opt-in capability, the client seam and its version gate, the sandbox probe,
- * the sign-in check and its readiness check, the environment pass-list, the pure translation layer, the cost derivation, the handle and wire types,
+ * opt-in capability, the client seam, the sandbox probe,
+ * the sign-in check and its readiness check, the model list, the environment pass-list, the handle and wire types,
  * and the typed errors.
  *
  * A *harness* is a coding agent driven as a block — you hand it a prompt, it
@@ -13,25 +13,15 @@
 export { cursorAgent, type CursorAgentOptions } from "./agent";
 export { createCursorAgentCapability } from "./capability";
 export { CURSOR_PASS } from "./env-pass";
+export { listCursorModels, type CursorModelVariant, type ListCursorModelsOptions } from "./model-list";
 export {
-  assertTestedSdkVersion,
   createDefaultResolveCursorClient,
-  readInstalledCursorSdkVersion,
   type CursorSdkImporter,
 } from "./cursor-client";
 export { probeCursorSandbox, type CursorSandboxProbeOptions, type CursorSandboxSupport } from "./sandbox-probe";
-export { checkCursorReadiness, cursorSignIn, CURSOR_SIGN_IN_REMEDY, type CursorSignIn } from "./sign-in";
-export { translateCursorMessage } from "./translate";
-export { estimateCursorCost } from "./cost";
-export {
-  createEmitState,
-  emitTranslatedEvent,
-  finalizeOpenItems,
-  type EmitState,
-} from "./emit";
+export { checkCursorReadiness, cursorSignIn, CURSOR_SIGN_IN_REMEDY, type CursorReadinessOptions, type CursorSignIn } from "./sign-in";
 export {
   CURSOR_SOURCE,
-  TESTED_SDK_VERSION,
   cursorAgentHandleSchema,
   type CursorAgentHandle,
   type CursorAgentLike,
@@ -45,16 +35,12 @@ export {
   type CursorSdkMessage,
   type CursorSendOptions,
   type CursorWireUsage,
-  type InstalledSdkVersion,
-  type InstalledSdkVersionReader,
   type ResolveCursorClient,
   type ResolvedCursorClient,
-  type TranslatedEvent,
 } from "./types";
 export {
   CursorAgentAbortedError,
   CursorAgentConfigError,
   CursorAgentRunError,
   CursorSdkNotInstalledError,
-  CursorSdkVersionMismatchError,
 } from "./errors";

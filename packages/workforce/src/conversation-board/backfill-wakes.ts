@@ -1,5 +1,6 @@
+// FIX-2078, BP-030; FIX-2077.
 /**
- * The upgrade's one-off backfill of wakes (FIX-2078, BP-030).
+ * The upgrade's one-off backfill of wakes.
  *
  * A debt a board recorded before wakes existed has no due time the engine
  * keeps: an owed notice or report marker on a row. Nothing would pay it in a quiet conversation. Run once at host start
@@ -9,7 +10,7 @@
  * stamped due and sent, and an old report marker is sent to the Error
  * Reporter once. A running task a queued message held open (`keptOpenBy:
  * "queued"`) gets a wake for its task session's check entry instead
- * (`CHECK_TASK_ENTRY`, FIX-2077): it reads as answered and waiting on its
+ * (`CHECK_TASK_ENTRY`): it reads as answered and waiting on its
  * filed work, and the check settles it with the answer it kept.
  *
  * Safe to run again: a wake coalesces into the one already kept, and a pass
@@ -66,7 +67,7 @@ export interface BoardWakeBackfillOptions {
 }
 
 /** A stored row, as far as the backfill reads it. */
-interface StoredRow {
+interface StoredTask {
   readonly goal?: unknown;
   readonly status?: unknown;
   readonly keptOpenBy?: unknown;
@@ -78,7 +79,7 @@ interface StoredRow {
 const OWED_MARKER = /^(noticeOwed|reportOwed):/;
 
 /** The session a row's debt is paid in and the entry that pays it, or `undefined` when it owes nothing. */
-function payerOf(row: StoredRow, partition: string): { session: string; entry: string } | undefined {
+function payerOf(row: StoredTask, partition: string): { session: string; entry: string } | undefined {
   // Known gap: a "queued" row with no `run.sessionId` names no session, so it gets no check.
   const checked = row.status === "in_progress" && row.keptOpenBy === "queued";
   if (checked) return typeof row.run?.sessionId === "string" ? { session: row.run.sessionId, entry: CHECK_TASK_ENTRY } : undefined;
@@ -116,7 +117,7 @@ export async function backfillBoardWakes(stores: BoardWakeBackfillStores, option
   for (const cell of cells.keys()) {
     const stored = await stores.resourceState.getByPrefix("user", cell, `${CONVERSATION_LEDGER_ID}/`);
     for (const [key, value] of Object.entries(stored)) {
-      const row = value.state as StoredRow | null;
+      const row = value.state as StoredTask | null;
       if (row === null || typeof row !== "object" || typeof row.goal !== "string" || typeof row.status !== "string") continue;
       // `<ledger>/<partition segment>/<task id>`.
       const parts = key.split("/");

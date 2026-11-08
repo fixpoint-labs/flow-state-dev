@@ -280,6 +280,7 @@ export function defaultDestinationFor(provider: SandboxProvider | undefined): st
   return "/workspace";
 }
 
+// BP-031.
 /**
  * A scope id as a directory name it is safe to join onto a root.
  *
@@ -288,7 +289,7 @@ export function defaultDestinationFor(provider: SandboxProvider | undefined): st
  * that they are strings. `scopeId` then becomes a path segment under
  * `.fsdev/workspaces/`, so `../../` in one puts a run's workspace outside the
  * workspaces root entirely — and `userId`/`orgId`, which DO come from a
- * verified principal, fall back to the session id when absent (BP-031).
+ * verified principal, fall back to the session id when absent.
  *
  * **Every id is encoded. There is no pass-through branch**, and its absence is
  * the point rather than an oversight. Keeping ordinary ids readable meant a
@@ -354,6 +355,7 @@ export function resolveWorkspaceCwdForTest(
   return path.join(process.cwd(), ".fsdev", "workspaces", scope, scopeId);
 }
 
+// BP-031.
 /**
  * The registry key and workspace directory a scope resolves to.
  *
@@ -377,7 +379,7 @@ export function resolveWorkspaceCwdForTest(
  * `:` collide — `(org "a", user "b:c", request "d")` and `(org "a:b", user
  * "c", request "d")` both spell `run:a:b:c:d` — and the collision is on the
  * REGISTRY key, so the second principal is handed the first's live sandbox
- * before its own directory is ever created (BP-031).
+ * before its own directory is ever created.
  *
  * Tenant ABSENCE is framed too, rather than written as a value. A sentinel
  * like `"-"` is a tenant id the engine accepts — `extractTenantId` rejects

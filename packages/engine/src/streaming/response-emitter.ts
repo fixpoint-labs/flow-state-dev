@@ -53,10 +53,11 @@ type RequestEventDraft<TEvent extends RequestStreamEvent> = Omit<
 export type CreateResponseEmitterOptions = {
   requestId: string;
   startSequenceNumber?: number;
+  // FIX-811.
   /**
    * Starting item index for this emitter — the next item it assigns gets
    * `startItemIndex + (items emitted so far)`. A same-request continuation
-   * (FIX-811) seeds this from the suspended request's last persisted item
+   * seeds this from the suspended request's last persisted item
    * index so re-entry items (`suspension_resume` + post-resume items) continue
    * after the pre-suspension log instead of restarting at `0`. Without it,
    * persistent stores that order items by index (e.g. SQLite `ORDER BY
@@ -65,9 +66,10 @@ export type CreateResponseEmitterOptions = {
    */
   startItemIndex?: number;
   maxBufferSize?: number;
+  // FIX-1772.
   /**
    * Largest block output or tool result, in serialized UTF-8 bytes, that the
-   * emitter records whole (FIX-1772). Larger values are recorded as an
+   * emitter records whole. Larger values are recorded as an
    * `omitted` placeholder; the producer keeps the real value. Defaults to
    * 256 KiB, so an emitter built without the option is still limited.
    */
@@ -89,9 +91,10 @@ const DEFAULT_PROVENANCE: ItemProvenance = {
 export type ResponseEmitterItemHooks = {
   /** Fires once an item reaches a terminal status via `item.done`. */
   onItemDone?: (item: RuntimeItem) => void;
+  // FIX-479.
   /**
    * Fires when an in-flight item's content is mutated by a streaming
-   * `content.delta` event (FIX-479). Both `MessageItem.content[i].text`
+   * `content.delta` event. Both `MessageItem.content[i].text`
    * and `ReasoningItem.summary[i].text` accumulation flow through this
    * hook so callers can checkpoint the running snapshot to durable
    * storage at a coalesced cadence. The hook is synchronous and not a
@@ -105,10 +108,11 @@ export type ResponseEmitterItemHooks = {
 
 export type ResponseEmitterEventHooks = {
   onEvent?: (events: RequestStreamEventWithId[]) => void;
+  // FIX-399.
   /**
    * Awaitable durability barrier. When provided, the emitter awaits this
    * after `onEvent` and before publishing to the wire so the client never
-   * observes an event that isn't yet durable (FIX-399). Without this hook,
+   * observes an event that isn't yet durable. Without this hook,
    * persistence remains fire-and-forget (legacy behavior, useful for tests).
    */
   flushEvents?: () => Promise<void>;
@@ -264,9 +268,10 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     this.itemHooks = hooks;
   }
 
+  // FIX-621; FIX-660.
   /**
-   * Subscribes to subsequent item lifecycle transitions on this emitter
-   * (FIX-621). `kind` is `"added"` for fresh items, `"updated"` for in-place
+   * Subscribes to subsequent item lifecycle transitions on this emitter.
+   * `kind` is `"added"` for fresh items, `"updated"` for in-place
    * mutations (item.updated and streaming content.delta), and `"done"` for
    * terminal status. Returns an idempotent unsubscribe — calling it more
    * than once is a no-op. Listener errors are isolated: a throw routes to
@@ -278,7 +283,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * registered during fan-out only sees subsequent events.
    *
    * When `options.filter` is provided, the listener is skipped for events
-   * the filter returns false for (FIX-660). Filter throws are caught and
+   * the filter returns false for. Filter throws are caught and
    * the listener STILL fires (fail-open) — a filter that throws is a
    * caller bug; failing closed would silently produce 5-second
    * `.waitForCondition` timeouts with nothing in the trace explaining why.
@@ -713,39 +718,42 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     return [...this.events];
   }
 
+  // FIX-406 6G.
   /**
    * Returns current tracked items in stream (insertion) order.
    *
    * The backing `Map` preserves first-insert order and re-`set`s (item.done /
    * item.updated) keep an item's original slot, so iteration order already
    * matches the emission sequence that `itemIndex` encodes. No read-time sort
-   * (FIX-406 6G) — the previous `Array.from(...).sort()` ran on every emit via
+   * — the previous `Array.from(...).sort()` ran on every emit via
    * `getItemCount`'s former `getItems().length`, compounding to O(N² log N).
    */
   getItems(): RuntimeItem[] {
     return Array.from(this.itemsById.values());
   }
 
+  // FIX-811.
   /**
    * O(1) next-`itemIndex` cursor. Used on the per-emit hot path to assign the
    * next item's index without materializing or ordering the items snapshot.
    * Includes `baseItemIndex` so a same-request continuation's re-entry items
-   * continue after the prior persisted log (FIX-811); `baseItemIndex` is `0` on
+   * continue after the prior persisted log; `baseItemIndex` is `0` on
    * a fresh run, so this stays `itemsById.size` there.
    */
   getItemCount(): number {
     return this.baseItemIndex + this.itemsById.size;
   }
 
+  // FIX-479; FIX-523.
   /**
    * Returns all replayable events (excludes ping, debug, content.delta, and
    * content.audio.delta).
    *
-   * `content.delta` is reclassified as non-replayable (FIX-479): the running
+   * `content.delta` is reclassified as non-replayable: the running
    * text is checkpointed via `MessageItem.content` / `ReasoningItem.summary`
    * snapshots through the `onItemUpdate` hook instead.
    *
-   * `content.audio.delta` follows the same policy (FIX-523): the durable
+   * `content.audio.delta` follows the same policy: the durable
    * representation is the eventual `OutputAudioContent` snapshot delivered
    * via `content.added` / `content.done`. Replaying per-chunk audio would
    * 10–100x the event-log size for sub-second TTS without enabling any
@@ -880,8 +888,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     return withId;
   }
 
+  // FIX-479.
   /**
-   * Applies a streaming text delta to an in-flight item's content (FIX-479).
+   * Applies a streaming text delta to an in-flight item's content.
    *
    * `content.delta` events share a single wire type for both message and
    * reasoning streaming (verified at generator.ts where reasoning deltas
@@ -912,8 +921,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     this.fanoutItemEvent(item, "updated");
   }
 
+  // FIX-1772.
   /**
-   * The record limit (FIX-1772), for a whole item: a copy with any block output
+   * The record limit, for a whole item: a copy with any block output
    * or tool result over `maxRecordedValueBytes` replaced by an `omitted`
    * placeholder, or the same item when nothing is over. Never mutates the
    * caller's object: producers keep references to the items they emit, and the

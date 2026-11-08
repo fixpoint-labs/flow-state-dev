@@ -8,6 +8,12 @@
  * the server share one spelling.
  */
 
+/**
+ * The internal entry a workstream's open dispatches to on the lead's flow
+ * (`./workstream-lead`). **Pinned**: an app's flow declares it by this string.
+ */
+export const WORKSTREAM_OPENED_ENTRY = "onWorkstreamOpened";
+
 /** The resource-map ref of a shared project's workstream entries, at org scope. */
 export const WORKSTREAMS_RESOURCE = "workstreams";
 /** The resource-map ref of a private project's workstream entries, at the owner's user scope. */

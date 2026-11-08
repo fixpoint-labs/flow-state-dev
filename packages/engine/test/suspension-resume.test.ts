@@ -4,12 +4,14 @@
  * Verifies the ctx.suspend() → suspended status → resume endpoint → flow
  * completion lifecycle for durable actions.
  */
-import { buildReplayLog, collapseToCanonicalLog, defineFlow, handler, parseBlockInstanceId, sequencer } from "@flow-state-dev/core";
+import { collapseToCanonicalLog, defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { buildReplayLog, parseBlockInstanceId } from "@flow-state-dev/core/internal";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { DurabilityProvider } from "../src/durability/types";
 import type { StoreRegistry } from "../src/stores/types";

@@ -1,3 +1,4 @@
+// FIX-918.
 /**
  * Final step of skillActivator — collapses the cross-tier sequencer state
  * into the active-skills session-state slot.
@@ -8,7 +9,7 @@
  * dedup-by-name+mode logic there keeps the array clean.
  *
  * Each entry carries the activation `source` (slash / keyword /
- * classifier). Since fork/pattern modes were removed (FIX-918), every
+ * classifier). Since fork/pattern modes were removed, every
  * activated skill is inline, so the entry `mode` is stamped `"inline"`
  * unconditionally — never read from a possibly-stale persisted
  * `contextMode`, which the binding reader would then skip if it still

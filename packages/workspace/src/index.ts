@@ -59,12 +59,14 @@ export {
   splitCheckoutCommand,
 } from "./checkout-commands";
 export type { CheckoutCommandResult, RunCheckoutCommandsOptions } from "./checkout-commands";
-export { BRANCH_PULL_REQUESTS_TIMEOUT_MS, pullRequestHead, recordBranchPullRequests } from "./branch-pull-requests";
+export { BRANCH_PULL_REQUESTS_TIMEOUT_MS, pullRequestHead, readPullRequest, recordBranchPullRequests } from "./branch-pull-requests";
 export type {
   BranchPullRequestsContext,
   BranchPullRequestsResult,
   PullRequestHead,
   PullRequestHeadOptions,
+  PullRequestRead,
+  ReadPullRequestOptions,
   RecordBranchPullRequestsOptions,
 } from "./branch-pull-requests";
 export type { RunOptions } from "./exec";
@@ -75,17 +77,19 @@ export {
   worktreeName,
   worktreeOwnerSchema,
   worktreePullRequestSchema,
-  worktreeRowSchema,
+  worktreeResourceStateSchema,
   worktreesCollection,
-  worktreeStateSchema,
+  worktreeStatusSchema,
 } from "./worktrees";
 export type { CheckoutSnapshot } from "./worktrees";
-export type { WorktreeAttached, WorktreeCollection, WorktreeOwner, WorktreePullRequest, WorktreeRecording, WorktreeRow, WorktreeState } from "./worktrees";
+export type { WorktreeAttached, WorktreeCollection, WorktreeOwner, WorktreePullRequest, WorktreeRecording, WorktreeResourceState, WorktreeStatus } from "./worktrees";
 export { acquireLock, releaseLock, sleep, tryAcquireLock } from "./lock";
 export { checkedOutBranch, occupyWorktree, worktreeLockPath } from "./occupancy";
 export type { AcquireOptions, LockBounds, LockLease } from "./lock";
 export { identityFromCommonDir, repositoryIdentity, resolvesToCommit } from "./repository";
 export { redactRemote } from "./remotes";
+export { LAND_TIMEOUT_MS } from "./land";
+export type { Landed, LandRequest, LandTarget } from "./land";
 export type {
   ListedWorktree,
   LocalWorkspaceHostOptions,
@@ -95,6 +99,7 @@ export type {
   RemovedWorktree,
   RemoveOptions,
   RemoveTarget,
+  RepositoryCheckResult,
   WorkspaceHost,
   WorkspacePlace,
 } from "./local-host";

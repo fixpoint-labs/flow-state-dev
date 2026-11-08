@@ -269,14 +269,17 @@ export type MergedCapabilitySurface = {
   userStateSchema: ZodTypeAny | undefined;
   orgStateSchema: ZodTypeAny | undefined;
   sequencerStateSchema: ZodTypeAny | undefined;
-  /** Own-state contribution, merged across capabilities (FIX-914 PR2). */
+  // FIX-914 PR2.
+  /** Own-state contribution, merged across capabilities. */
   stateSchema: ZodTypeAny | undefined;
   targetStateSchemas: Record<string, ZodTypeAny> | undefined;
   contextEntries: Array<PresetContextEntry>;
   toolEntries: Array<GeneratorTool[] | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>)>;
-  /** Fence-exempt control tools (FIX-1393) — see `PresetDef.controlTools`. */
+  // FIX-1393.
+  /** Fence-exempt control tools — see `PresetDef.controlTools`. */
   controlToolEntries: Array<GeneratorTool[] | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>)>;
-  /** History query entries (FIX-1613) — see `PresetDef.history`. In merge order. */
+  // FIX-1613.
+  /** History query entries — see `PresetDef.history`. In merge order. */
   historyEntries: Array<NonNullable<PresetDef["history"]>>;
   // Generator-only singletons. Last-wins among capabilities; block-level
   // setting wins over capability (handled in the generator block factory).
@@ -338,6 +341,7 @@ function mergeResourcesInto(
   return merged;
 }
 
+// see FIX-914 PR2.
 /**
  * Merge Zod state schemas using z.object().extend() semantics.
  * Both schemas must be ZodObject instances for extend to work.
@@ -346,8 +350,7 @@ function mergeResourcesInto(
  * session/request/user/org/sequencer scope schemas, where a later capability
  * refining a field is intended. Own-state (`stateSchema`) deliberately does
  * NOT route through here: it uses `mergeOwnStateShapes` instead, which throws
- * on a duplicate field unless both sides are the same schema reference (see
- * FIX-914 PR2). Do not "simplify" own-state by pointing it at `extendSchema`
+ * on a duplicate field unless both sides are the same schema reference. Do not "simplify" own-state by pointing it at `extendSchema`
  * — the loud-collision behavior is the point.
  */
 function extendSchema(

@@ -36,8 +36,8 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
-import { testFlow } from "@flow-state-dev/testing";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { testBlock, testFlow } from "@flow-state-dev/testing";
 
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { codexSessionFlow } from "@/lib/codex-mode";
@@ -264,6 +264,436 @@ describe("the session flow, for every mode", () => {
       const source = readFileSync(join(import.meta.dirname, "..", file), "utf8");
       expect(source, file).not.toMatch(/from "@flow-state-dev\/(claude-code|codex|cursor)/);
       expect(source, file).not.toMatch(/mode === /);
+    }
+  });
+});
+
+/**
+ * The contract every harness owes a HOST (FIX-2458): the jobs an app does with
+ * a harness before and around a run, done the same way for all three, so an
+ * app that offers more than one coding agent writes each job once.
+ *
+ * Read only as a host reads it: each package's public entry, imported as a
+ * namespace when the cell runs (a missing name fails its own cell, not the
+ * file), driven only through the seams the package documents (an SDK
+ * importer or module, a client resolver, Codex's program), and judged against
+ * core's shared shapes and readers. No harness's internals are imported, and
+ * no error class is named: a host branches on core's readers.
+ *
+ * Red under main at the merge base: the Cursor list cell (no `listCursorModels`),
+ * the Claude Code list cell (its list was `listClaudeModels`), the base-list
+ * cell (no `HARNESS_BASE_PASS`), the no-hand-list cell, the Codex and Cursor
+ * stop cells for every reason, and Claude Code's stop cells for a timeout and
+ * a plain `Error`, and every SDK-version readiness cell. The Codex list cell,
+ * the pass-list cells, Claude Code's reason-less stop and every not-a-stop
+ * cell pass there, which shows the block reaches the code.
+ *
+ * A block's own build-time refusal of an SDK outside its range is held in each
+ * package's tests, not here: the reader that refusal reads is deliberately off
+ * every public entry, so no host can answer it with the tested version.
+ */
+describe("the contract every harness owes a host", () => {
+  /** The models every scripted SDK below answers with, in the shared shape they come back in. */
+  const LISTED = [
+    { id: "model-a", label: "Model A", description: "The first", isDefault: true },
+    { id: "model-b", label: "Model B", isDefault: false },
+  ];
+
+  /** A stand-in Codex program answering `model/list` with {@link LISTED}, in the app-server's own rows. */
+  function scriptedCodexProgram(): { path: string; pathDirs: string[] } {
+    const path = join(scratch, "scripted-codex-app-server.mjs");
+    const rows = LISTED.map((m) => ({ id: m.id, model: m.id, displayName: m.label, ...(m.description ? { description: m.description } : {}), hidden: false, isDefault: m.isDefault }));
+    writeFileSync(
+      path,
+      [
+        "#!/usr/bin/env node",
+        'import { createInterface } from "node:readline";',
+        'const say = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");',
+        "for await (const line of createInterface({ input: process.stdin })) {",
+        '  if (line.trim() === "") continue;',
+        "  const m = JSON.parse(line);",
+        '  if (m.method === "initialize") say({ id: m.id, result: {} });',
+        `  else if (m.method === "model/list") say({ id: m.id, result: { data: ${JSON.stringify(rows)}, nextCursor: null } });`,
+        "}",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    return { path, pathDirs: [] };
+  }
+
+  /** Each harness as a host meets it: its entry, its pass-list's name, and its model list driven through its own seam. */
+  const HOSTED = [
+    {
+      mode: "claude-code",
+      entry: () => import("@flow-state-dev/claude-code") as Promise<Record<string, unknown>>,
+      pass: "CLAUDE_CODE_PASS",
+      list: "listClaudeCodeModels",
+      // The SDK importer: Claude Code's `supportedModels()`, the default as its own row.
+      seam: () => ({
+        importSdk: async () => ({
+          query: (args: { prompt: AsyncIterable<unknown> }) => {
+            void (async () => {
+              for await (const _ of args.prompt);
+            })();
+            return {
+              supportedModels: async () => [
+                { value: "default", resolvedModel: "model-a", displayName: "Default", description: "The first" },
+                { value: "model-a", displayName: "Model A", description: "The first" },
+                { value: "model-b", displayName: "Model B" },
+              ],
+              close: () => {},
+            };
+          },
+        }),
+      }),
+    },
+    {
+      mode: "codex",
+      entry: () => import("@flow-state-dev/codex") as Promise<Record<string, unknown>>,
+      pass: "CODEX_PASS",
+      list: "listCodexModels",
+      // The program option: Codex's app-server, answering `model/list`.
+      seam: () => ({ program: scriptedCodexProgram() }),
+    },
+    {
+      mode: "cursor",
+      entry: () => import("@flow-state-dev/cursor") as Promise<Record<string, unknown>>,
+      pass: "CURSOR_PASS",
+      list: "listCursorModels",
+      // The SDK module the asking process loads: Cursor's `Cursor.models.list()`, which marks no model default.
+      seam: () => ({
+        sdkModule: `data:text/javascript,${encodeURIComponent(
+          `export const Cursor = { models: { list: async () => ${JSON.stringify([
+            { id: "model-a", displayName: "Model A", description: "The first", variants: [{ params: [], displayName: "Model A", isDefault: true }] },
+            { id: "model-b", displayName: "Model B" },
+          ])} } };`,
+        )}`,
+      }),
+    },
+  ] as const;
+
+  it("core holds one environment base: the 13 names every harness's child needs", async () => {
+    const { HARNESS_BASE_PASS } = (await import("@flow-state-dev/core/harness")) as Record<string, unknown>;
+    expect(Array.isArray(HARNESS_BASE_PASS), "core/harness exports HARNESS_BASE_PASS").toBe(true);
+    expect([...(HARNESS_BASE_PASS as string[])].sort()).toEqual(
+      ["PATH", "HOME", "USER", "SHELL", "TMPDIR", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"].sort(),
+    );
+  });
+
+  describe.each(HOSTED)("$mode", (harness) => {
+    it("its pass-list holds every name of core's environment base", async () => {
+      const { HARNESS_BASE_PASS } = (await import("@flow-state-dev/core/harness")) as Record<string, unknown>;
+      const pass = (await harness.entry())[harness.pass] as readonly string[] | undefined;
+      expect(pass, `${harness.mode} exports ${harness.pass}`).toBeDefined();
+      for (const name of (HARNESS_BASE_PASS as string[] | undefined) ?? []) expect(pass, name).toContain(name);
+    });
+
+    it("lists its models as core's HarnessModelList, from what its SDK answered", async () => {
+      const list = (await harness.entry())[harness.list] as
+        | ((options: Record<string, unknown>) => Promise<{ status: string; models?: Array<Record<string, unknown>> }>)
+        | undefined;
+      expect(typeof list, `${harness.mode} exports ${harness.list}`).toBe("function");
+      const found = await list!({ env: { PATH: process.env.PATH ?? "" }, timeoutMs: 10_000, ...harness.seam() });
+      expect(found.status, JSON.stringify(found)).toBe("models");
+      // The shared fields, compared alike for all three; Cursor's variants ride beside them.
+      const shared = found.models!.map(({ id, label, description, isDefault }) => ({ id, label, ...(description === undefined ? {} : { description }), isDefault }));
+      // Cursor's catalog marks no model default: a list with no default is a valid answer.
+      const expected = harness.mode === "cursor" ? LISTED.map((m) => ({ ...m, isDefault: false })) : LISTED;
+      expect(shared).toEqual(expected);
+    });
+  });
+
+  /**
+   * Each harness's block as a host builds it from the package's entry, behind
+   * the scripted SDK Kitchen Sink's modes use (`lib/scripted-*.ts`): a
+   * `[slow]` prompt holds the run long enough for a stop to land, `[fail]`
+   * fails it, and `[refuse]` refuses the conversation it was asked to resume.
+   */
+  const RUNNABLE = [
+    {
+      mode: "claude-code",
+      block: async (seam: (createDefault: unknown) => Record<string, unknown>) => {
+        const { claudeCodeAgent, createDefaultResolveClaudeCodeAgent } = (await import("@flow-state-dev/claude-code")) as Record<string, any>;
+        return claudeCodeAgent({ resolveClaudeAgent: scriptedClaudeCode(), cwd: () => repo, ...seam(createDefaultResolveClaudeCodeAgent) });
+      },
+      absent: (create: any) => ({ resolveClaudeAgent: create(async () => Promise.reject(new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'"))) }),
+    },
+    {
+      mode: "codex",
+      block: async (seam: (createDefault: unknown) => Record<string, unknown>) => {
+        const { codexAgent, createDefaultResolveCodexClient } = (await import("@flow-state-dev/codex")) as Record<string, any>;
+        return codexAgent({ resolveCodexClient: scriptedCodex(), cwd: () => repo, ...seam(createDefaultResolveCodexClient) });
+      },
+      absent: (create: any) => ({ resolveCodexClient: create({}, async () => Promise.reject(new Error("Cannot find module '@openai/codex-sdk'"))) }),
+    },
+    {
+      mode: "cursor",
+      block: async (seam: (createDefault: unknown) => Record<string, unknown>) => {
+        const { cursorAgent, createDefaultResolveCursorClient } = (await import("@flow-state-dev/cursor")) as Record<string, any>;
+        return cursorAgent({ resolveCursorClient: scriptedCursor(), cwd: () => repo, model: "composer-2.5", ...seam(createDefaultResolveCursorClient) });
+      },
+      absent: (create: any) => ({ resolveCursorClient: create(async () => Promise.reject(new Error("Cannot find module '@cursor/sdk'"))) }),
+    },
+  ] as const;
+
+  /** `harness`'s block, built from its entry with `options` and, for `absent`, a resolver over an SDK that won't load. */
+  function blockOf(harness: (typeof RUNNABLE)[number], options: Record<string, unknown>, absent: boolean) {
+    return harness.block((create) => ({ ...(absent ? harness.absent(create) : {}), ...options }));
+  }
+
+  /**
+   * Run one turn of `harness`'s block on `prompt` through the host path
+   * (`testBlock`, as a sequencer's step, the way the session flow runs it) and
+   * return the error it failed with. `options` are added to the block's own
+   * (`resume`); `absent` gives it an SDK that won't load; `stop`, when given,
+   * fires the run's signal once the run has its prompt.
+   */
+  async function failureOf(
+    harness: (typeof RUNNABLE)[number],
+    prompt: string,
+    { options = {}, absent = false, stop }: { options?: Record<string, unknown>; absent?: boolean; stop?: (controller: AbortController) => void } = {},
+  ): Promise<unknown> {
+    const block = (await blockOf(harness, options, absent)) as Parameters<typeof testBlock>[0];
+    const controller = new AbortController();
+    scriptedReceived.length = 0;
+    // A step, because Cursor's script reads its directives off the turn's input, which a block carries as its parent's.
+    const running = testBlock(block, { input: { prompt }, sequencer: { state: {} }, signal: controller.signal });
+    if (stop !== undefined) {
+      for (let waited = 0; !scriptedReceived.includes(prompt); waited += 10) {
+        if (waited > 5_000) throw new Error(`${harness.mode}: the run never had its prompt`);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      stop(controller);
+    }
+    const { error } = await running;
+    if (error === null) throw new Error(`${harness.mode}: the turn did not fail`);
+    return error;
+  }
+
+  /** The ways a host stops a run: with no reason, a deadline, and a plain error (harness-manager's steer). */
+  const STOPS = [
+    { reason: "none", stop: (c: AbortController) => c.abort() },
+    { reason: "a timeout", stop: (c: AbortController) => c.abort(new DOMException("The deadline passed.", "TimeoutError")) },
+    { reason: "a plain Error", stop: (c: AbortController) => c.abort(new Error("[harness-manager] stopped for a steer")) },
+  ] as const;
+
+  describe.each(RUNNABLE)("$mode, telling a stop from a failure with core's readers", (harness) => {
+    beforeEach(() => {
+      for (const pauses of [scriptedPauses, scriptedCodexPauses, scriptedCursorPauses]) pauses.slowMs = 20_000;
+    });
+    afterEach(() => {
+      for (const pauses of [scriptedPauses, scriptedCodexPauses, scriptedCursorPauses]) pauses.slowMs = 0;
+    });
+
+    it.each(STOPS)("a stop with $reason is abort-like", async ({ stop }) => {
+      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
+      const thrown = await failureOf(harness, "[slow] do some work", { stop });
+      expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(true);
+    }, 15_000);
+
+    it("a run that failed is not abort-like", async () => {
+      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
+      // Codex's `[fail]` is a failed turn it reports, not a throw; `[fail-early]` throws.
+      const thrown = await failureOf(harness, harness.mode === "codex" ? "[fail-early] do some work" : "[fail] do some work");
+      expect(String(thrown)).toMatch(/fail/i);
+      expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(false);
+    });
+
+    it("an absent SDK is not abort-like", async () => {
+      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
+      const thrown = await failureOf(harness, "do some work", { absent: true });
+      expect(String(thrown)).toMatch(/install/i);
+      expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(false);
+    });
+
+    it("a refused resume is not abort-like, and reads as an unknown conversation", async () => {
+      const { isAbortLike } = (await import("@flow-state-dev/core")) as Record<string, any>;
+      const { harnessFailureKind } = (await import("@flow-state-dev/core/harness")) as Record<string, any>;
+      // Claude Code takes a conversation to resume only as background work: in a session its own state owns it.
+      const resume = { resume: () => "conversation-gone", ...(harness.mode === "claude-code" ? { detached: true } : {}) };
+      const thrown = await failureOf(harness, "[refuse] go on", { options: resume });
+      expect(isAbortLike(thrown), `${harness.mode}: ${String(thrown)}`).toBe(false);
+      expect(harnessFailureKind(thrown), `${harness.mode}: ${String(thrown)}`).toBe("unknown-conversation");
+    });
+  });
+
+  /**
+   * Each harness's readiness check as a host calls it, from the package's
+   * entry, with the installed-SDK reader it takes for a host's own check, and
+   * a version one step below and one step above the range the package tested.
+   */
+  const VERSIONED = [
+    {
+      mode: "claude-code",
+      pkg: "claude-code",
+      sdk: "@anthropic-ai/claude-agent-sdk",
+      below: "0.3.315",
+      above: "0.4.0",
+      ready: async (read: unknown) => {
+        const { checkClaudeCodeReadiness } = (await import("@flow-state-dev/claude-code")) as Record<string, any>;
+        return checkClaudeCodeReadiness({ env: {}, timeoutMs: 1, readInstalledSdkVersion: read });
+      },
+    },
+    {
+      mode: "codex",
+      pkg: "codex",
+      sdk: "@openai/codex-sdk",
+      below: "0.163.0",
+      above: "0.164.1",
+      ready: async (read: unknown) => {
+        const { checkCodexReadiness } = (await import("@flow-state-dev/codex")) as Record<string, any>;
+        return checkCodexReadiness({ env: {}, timeoutMs: 1, readInstalledSdkVersion: read });
+      },
+    },
+    {
+      mode: "cursor",
+      pkg: "cursor",
+      sdk: "@cursor/sdk",
+      below: "1.0.39",
+      above: "1.0.41",
+      ready: async (read: unknown) => {
+        const { checkCursorReadiness } = (await import("@flow-state-dev/cursor")) as Record<string, any>;
+        return checkCursorReadiness({}, { readInstalledSdkVersion: read });
+      },
+    },
+  ] as const;
+
+  describe.each(VERSIONED)("$mode, refusing an SDK it never ran against", (harness) => {
+    /** The package's peer range for its SDK: the range it tested. */
+    const peerRange = () =>
+      (JSON.parse(readFileSync(join(import.meta.dirname, "../../../packages", harness.pkg, "package.json"), "utf8")) as {
+        peerDependencies: Record<string, string>;
+      }).peerDependencies[harness.sdk]!;
+
+    it("peers its SDK at a bounded range", () => {
+      expect(peerRange()).not.toBe("*");
+      expect(peerRange()).toMatch(/\d+\.\d+\.\d+/);
+    });
+
+    it.each(["below", "above"] as const)("readiness is not ready for an SDK one step %s the range, naming both versions", async (side) => {
+      const installed = harness[side];
+      const answer = (await harness.ready(() => ({ kind: "version", version: installed }))) as { ready: boolean; reason?: string; remedy?: string };
+      expect(answer.ready, JSON.stringify(answer)).toBe(false);
+      expect(answer.reason).toContain(installed);
+      // The range it names is the one the package peers at.
+      expect(answer.reason).toContain(peerRange());
+      expect(answer.remedy).toContain(harness.sdk);
+    });
+
+    it("readiness is not ready for an absent SDK, with a remedy", async () => {
+      const answer = (await harness.ready(() => ({ kind: "absent" }))) as { ready: boolean; remedy?: string };
+      expect(answer.ready, JSON.stringify(answer)).toBe(false);
+      expect(answer.remedy).toContain(harness.sdk);
+    });
+  });
+
+  it("Kitchen Sink keeps no hand list of Cursor's models", () => {
+    const source = readFileSync(join(import.meta.dirname, "..", "lib/cursor-mode.ts"), "utf8");
+    expect(source).not.toMatch(/CURSOR_MODELS\s*[:=]/);
+    expect(source).toMatch(/listCursorModels/);
+  });
+
+  /**
+   * Each harness package's published surface, as an installer meets it: the
+   * entries in its exports map and the names each one exports (types too),
+   * read by the same per-entry index the export check reads.
+   */
+  const SURFACES = [
+    { mode: "claude-code", pkg: "@flow-state-dev/claude-code", dir: "claude-code", spelling: /ClaudeCode|claudeCode|CLAUDE_CODE_/ },
+    { mode: "codex", pkg: "@flow-state-dev/codex", dir: "codex", spelling: /Codex|codex|CODEX_/ },
+    { mode: "cursor", pkg: "@flow-state-dev/cursor", dir: "cursor", spelling: /Cursor|cursor|CURSOR_/ },
+  ] as const;
+
+  /**
+   * Every `export → type` pair where a public export's signature names a type
+   * declared in the package's own source that its entry doesn't export. Types
+   * from other packages (core's, the vendor's) are another entry's to publish.
+   * Function bodies are not read: only what a caller sees.
+   */
+  async function unreachableTypes(dir: string): Promise<string[]> {
+    const ts = (await import("typescript")).default;
+    const pkgDir = join(import.meta.dirname, "../../../packages", dir);
+    const manifest = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8")) as { exports: Record<string, { default: string }> };
+    const entry = join(pkgDir, manifest.exports["."]!.default);
+    const src = join(pkgDir, "src");
+    const program = ts.createProgram([entry], {
+      noEmit: true,
+      skipLibCheck: true,
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+    });
+    const checker = program.getTypeChecker();
+    const resolve = (symbol: import("typescript").Symbol) =>
+      symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+    const exported = checker.getExportsOfModule(checker.getSymbolAtLocation(program.getSourceFile(entry)!)!);
+    const reachable = new Set(exported.map(resolve));
+    const misses = new Set<string>();
+    for (const symbol of exported) {
+      const visit = (node: import("typescript").Node): void => {
+        if (ts.isBlock(node)) return;
+        if (ts.isTypeReferenceNode(node) || ts.isExpressionWithTypeArguments(node)) {
+          const at = ts.isTypeReferenceNode(node) ? node.typeName : node.expression;
+          const found = checker.getSymbolAtLocation(at);
+          const target = found === undefined ? undefined : resolve(found);
+          const file = target?.declarations?.[0]?.getSourceFile().fileName ?? "";
+          if (target !== undefined && !(target.flags & ts.SymbolFlags.TypeParameter) && file.startsWith(src) && !reachable.has(target)) {
+            misses.add(`${symbol.name} → ${target.name}`);
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      for (const declaration of resolve(symbol).declarations ?? []) {
+        // A variable's initializer is its body; only its declared type is the signature.
+        if (ts.isVariableDeclaration(declaration)) {
+          if (declaration.type !== undefined) visit(declaration.type);
+        } else visit(declaration);
+      }
+    }
+    return [...misses].sort();
+  }
+
+  /** The translation layer and the item emitter: how a harness works, not what a host calls. */
+  const INTERNALS = /translate|Translate|emit[A-Z]|Emit|finalizeOpenItems|closeStreamingItems|drainUnsettledObservations/;
+
+  /** A package's entries and each one's names, from the per-entry export index. */
+  async function surfaceOf(pkg: string): Promise<Map<string, string[]>> {
+    const { fsReader, packageEntryExports } = (await import(join(import.meta.dirname, "../../../scripts/mechanism-exports.mjs"))) as {
+      fsReader: (root: string) => unknown;
+      packageEntryExports: (read: unknown) => Map<string, Map<string, Map<string, unknown>>>;
+    };
+    const entries = packageEntryExports(fsReader(join(import.meta.dirname, "../../.."))).get(pkg) ?? new Map();
+    return new Map([...entries].map(([subpath, names]) => [subpath, [...names.keys()]]));
+  }
+
+  describe.each(SURFACES)("$mode, its published surface", (harness) => {
+    it("is one entry, the package root", async () => {
+      expect([...(await surfaceOf(harness.pkg)).keys()]).toEqual(["."]);
+    });
+
+    it("exports no translation or emitter name", async () => {
+      const names = [...(await surfaceOf(harness.pkg)).values()].flat();
+      expect(names.filter((name) => INTERNALS.test(name))).toEqual([]);
+    });
+
+    it("spells every name it owns with its package's name", async () => {
+      const names = [...(await surfaceOf(harness.pkg)).values()].flat();
+      expect(names.filter((name) => !harness.spelling.test(name))).toEqual([]);
+    });
+
+    // A name on the entry is usable only if every type its signature names is
+    // one a host can reach too: a public option typed by an internal type is a
+    // name no host can call. Checked by the compiler, so a new name of any
+    // spelling is held to it, not only the ones a pattern lists.
+    it("names in its public signatures only types a host can reach", async () => {
+      expect(await unreachableTypes(harness.dir)).toEqual([]);
+    }, 60_000);
+  });
+
+  it("Kitchen Sink checks no harness's SDK by hand: its modes read the package's readiness", () => {
+    for (const file of ["lib/codex-mode.ts", "lib/cursor-mode.ts"]) {
+      const source = readFileSync(join(import.meta.dirname, "..", file), "utf8");
+      expect(source, file).not.toMatch(/TESTED_SDK_VERSION|readInstalled\w*SdkVersion|assertTestedSdkVersion/);
     }
   });
 });

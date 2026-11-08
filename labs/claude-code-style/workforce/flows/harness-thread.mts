@@ -14,6 +14,12 @@
  * mode's coder); one without it completes on the run's own check. Either
  * way `goalJudge` first reads a run that passed against its task's goal.
  *
+ * **A task whose run opened a pull request is done when the pull request
+ * merges** (`awaitPullRequests`): until then it stays open, waiting on it, and
+ * a line typed in its run's session (the door below) wakes it to read the pull
+ * request again. Merged completes it, closed unmerged cancels it, still open
+ * runs the line on the same coding session.
+ *
  * **Where a run works** is the host's `workspace`, over `projectWorkspace()`:
  * the task inherits its session's project through `filingProjectId`, and a
  * run with no project is refused `no-project` before any checkout (spec D3).
@@ -26,9 +32,11 @@
  * that changed nothing (a question) skips them, so a project whose branch is
  * already red can still be asked about.
  */
-import { defineFlow, handler, harnessEnv, router, sequencer } from "@flow-state-dev/core";
-import type { BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
-import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { defineFlow, handler, router, sequencer } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import { CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
 import { CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
@@ -51,15 +59,12 @@ import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
   filingConversationBoard,
-  MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   messageReceivedSchema,
   projectChecks,
   projectWorkspaceCapability,
   startOwedSteerTurn,
-  STEER_TURN_ENTRY,
   steerTurnEntry,
-  WORKER_TASK_ENTRY,
   workerConfigSchema,
   workerMessagesResources,
   workerTaskEntry,
@@ -238,6 +243,8 @@ export function defineHarnessThreadFlow({ installation, workspace, scriptedStepM
       harness,
       reviewChanges,
       judge: goalJudge({ name: `harness-thread-${name}${reviewChanges ? "-reviewed" : ""}-judge` }),
+      // A run that opened a pull request leaves its task open until the pull request merges or closes.
+      awaitPullRequests: true,
       uses: [projectWorkspaceCapability],
     } as never) as unknown as BlockDefinition<any, any>;
   // Per builder: the managers that run a task, and the door a line typed in its run's session takes.
@@ -312,7 +319,7 @@ export function defineHarnessThreadFlow({ installation, workspace, scriptedStepM
     internal: {
       actions: {
         // Another worker's message lands in a task's session only, and a finished task's coding session answers it.
-        [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({
+        onMessageReceived: messageReceivedEntry({
           installation,
           flowKind: HARNESS_THREAD_FLOW,
           hears: "task-sessions",
@@ -321,7 +328,7 @@ export function defineHarnessThreadFlow({ installation, workspace, scriptedStepM
             byHarness("harness-thread-message", z.object({ message: z.string() }), (b) => b.talk),
           ),
         }),
-        [STEER_TURN_ENTRY]: steerTurnEntry({
+        onTaskSteered: steerTurnEntry({
           name: `${HARNESS_THREAD_FLOW}-steer-turn`,
           block: byHarness("harness-thread-steer", taskWorkerInputSchema.passthrough(), (b) => b.manager),
         }),
@@ -329,8 +336,8 @@ export function defineHarnessThreadFlow({ installation, workspace, scriptedStepM
     },
     task: {
       actions: {
-        [WORKER_TASK_ENTRY]: workerTaskEntry({
-          name: `${HARNESS_THREAD_FLOW}-${WORKER_TASK_ENTRY}`,
+        work: workerTaskEntry({
+          name: `${HARNESS_THREAD_FLOW}-work`,
           block: byHarness("harness-thread-by-harness", taskWorkerInputSchema.passthrough(), (b) => b.manager),
         }),
       },

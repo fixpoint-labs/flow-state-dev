@@ -15,7 +15,7 @@ const question = {
   id: "q1",
   actor: "user",
   openedAt: 1,
-  source: { kind: "row", closedBy: [{ by: "answer" }] },
+  source: { kind: "task", closedBy: [{ by: "answer" }] },
   ask: { kind: "question", prompt: "Which CSV export?" },
 };
 const stop = {

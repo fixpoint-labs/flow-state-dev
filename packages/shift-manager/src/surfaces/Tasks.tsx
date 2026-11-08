@@ -1,19 +1,20 @@
+// BR-15; BR-14; FIX-2398; BR-16.
 /**
  * Tasks (S9): every row on every attached board, done ones left out, full
- * width (BR-15). Grouped by State, Worker or Stream over the same rows.
+ * width. Grouped by State, Worker or Stream over the same rows.
  *
  * Drawn as design v2's Tasks (v2:650-689): the ALL STREAMS tag and a mono
  * summary line, GROUP BY as a segmented control, and the Queued toggle, off
- * by default and saying how many rows it hides (BR-14). The columns are
+ * by default and saying how many rows it hides. The columns are
  * v2's: the state square, ID, TASK, NOW, STREAM, WORKER, TIME (elapsed from
  * the row's start, by a clock) and COST (the vendor's charge its runs
- * reported, FIX-2398). Columns with no shipped read say who ships them (BR-16).
+ * reported). Columns with no shipped read say who ships them.
  * A failed row carries its error as a line under its title.
  */
 import { useEffect, useState } from "react";
 import { COLUMNS, columnFor } from "../lib/columns";
-import { boardOwnerOf, openRows, rosterOf, workerFor, workerLabel, type LoadedSnapshot } from "../lib/derive";
-import type { BoardRow } from "../lib/reads";
+import { boardOwnerOf, openTasks, rosterOf, workerFor, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import type { BoardTaskView } from "../lib/reads";
 import { navigate, TASK_GROUPINGS, type Route, type TaskGrouping } from "../lib/routes";
 import { elapsed, isQueued, tasksSummary } from "../lib/tasks";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare } from "../components/ui";
@@ -40,7 +41,7 @@ function useNow(running: boolean): number {
 }
 
 /** A row's task screen, at its session tab. */
-function taskRoute(row: BoardRow): Route {
+function taskRoute(row: BoardTaskView): Route {
   return { level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" };
 }
 
@@ -56,14 +57,14 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
   const { refresh, stale } = useLab();
   const [showQueued, setShowQueued] = useState(false);
   const roster = rosterOf(snapshot);
-  const all = openRows(snapshot);
+  const all = openTasks(snapshot);
   const queued = all.filter(isQueued).length;
   const rows = showQueued ? all : all.filter((row) => !isQueued(row));
   // While the server is gone the TIME column stops where the data did.
   const now = useNow(!stale && rows.some((row) => row.status === "in_progress"));
   const failed = Object.entries(snapshot.boards).filter(([, b]) => !b.ok);
 
-  const keyOf = (row: BoardRow): string =>
+  const keyOf = (row: BoardTaskView): string =>
     by === "state" ? columnFor(row.status) : by === "worker" ? (workerFor(roster, row)?.id ?? row.assignee ?? "unassigned") : boardOwnerOf(snapshot, row);
   const groups =
     by === "state"

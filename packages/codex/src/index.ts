@@ -1,7 +1,6 @@
 /**
  * Public surface of `@flow-state-dev/codex`: the Codex harness block, its
- * opt-in capability, the client seam and its version gate, the pure
- * translation layer, the cost derivation, the usage read, the environment pass-list, the start-time account probe and its readiness check, the model list, the handle and wire types, and the
+ * opt-in capability, the client seam, the usage read, the environment pass-list, the start-time account probe and its readiness check, the model list, the handle and wire types, and the
  * typed errors.
  *
  * A *harness* is a coding agent driven as a block — you hand it a prompt, it
@@ -14,31 +13,21 @@ export { codexAgent, type CodexAgentOptions } from "./agent";
 export { CODEX_PASS } from "./env-pass";
 export { createCodexAgentCapability } from "./capability";
 export {
-  assertTestedSdkVersion,
   createDefaultResolveCodexClient,
-  readInstalledCodexSdkVersion,
   type CodexSdkImporter,
 } from "./codex-client";
-export { translateCodexEvent } from "./translate";
-export { estimateCodexCost } from "./cost";
 export { findCodexProgram, readCodexUsage, type CodexProgram, type ReadCodexUsageOptions } from "./usage";
-export { listCodexModels, type CodexModelInfo, type CodexModelList, type ListCodexModelsOptions } from "./model-list";
+export { listCodexModels, type ListCodexModelsOptions } from "./model-list";
 export {
   checkCodexReadiness,
   CODEX_SIGN_IN_REMEDY,
   probeCodexAccount,
   type CodexAccountProbe,
+  type CodexReadinessOptions,
   type ProbeCodexAccountOptions,
 } from "./account-probe";
 export {
-  createEmitState,
-  emitTranslatedEvent,
-  finalizeOpenItems,
-  type EmitState,
-} from "./emit";
-export {
   CODEX_SOURCE,
-  TESTED_SDK_VERSION,
   codexAgentHandleSchema,
   type CodexAgentHandle,
   type CodexClientOptions,
@@ -49,15 +38,12 @@ export {
   type CodexThreadLike,
   type CodexThreadOptions,
   type CodexWireUsage,
-  type InstalledSdkVersionReader,
   type ResolveCodexClient,
   type ResolvedCodexClient,
-  type TranslatedEvent,
 } from "./types";
 export {
   CodexAgentAbortedError,
   CodexAgentConfigError,
   CodexAgentRunError,
   CodexSdkNotInstalledError,
-  CodexSdkVersionMismatchError,
 } from "./errors";

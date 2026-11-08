@@ -51,3 +51,6 @@ graphify-out/*
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 graft/
 .omp/
+
+# Playwright writes its last-run state here on every run.
+test-results/

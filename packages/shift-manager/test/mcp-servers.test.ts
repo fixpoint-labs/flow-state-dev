@@ -18,8 +18,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
+import { handler } from "@flow-state-dev/core";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { mcpCredentialsCapability, projectWorkspaceCapability, type ProjectMcpServers } from "@flow-state-dev/workforce";
 import { commitScriptedWork, type HarnessFeeds } from "../teams/devteam/harness.mts";
@@ -289,7 +290,7 @@ describe("the harness a Lab runs", () => {
   it("hands Claude Code's harness exactly what it handed before when the Lab offers no servers, and the env never carries a seed (BR-19, BR-25)", async () => {
     vi.resetModules();
     const handed: Record<string, unknown>[] = [];
-    vi.doMock("@flow-state-dev/claude-code/sdk", async (original) => ({
+    vi.doMock("@flow-state-dev/claude-code", async (original) => ({
       ...((await original()) as object),
       claudeCodeAgent: (options: Record<string, unknown>) => (handed.push(options), handler({ name: "x", execute: async () => null } as never)),
     }));
@@ -302,7 +303,7 @@ describe("the harness a Lab runs", () => {
       errorReporterHarness({ cwd: () => "/w" } as never);
     } finally {
       delete process.env.FSD_TEST_LINEAR_SEED;
-      vi.doUnmock("@flow-state-dev/claude-code/sdk");
+      vi.doUnmock("@flow-state-dev/claude-code");
     }
     const [without, withTools, reporter] = handed;
     expect(reporter).toMatchObject({ settingSources: ["project"], settings: { disableAllHooks: true } });

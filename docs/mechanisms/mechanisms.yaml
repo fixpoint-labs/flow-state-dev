@@ -238,7 +238,7 @@ mechanisms:
     file: packages/core/src/blocks/dispatcher.ts
     builtOn: [block, dispatch]
     overlaps:
-      - { id: task, relation: distinct-jobs, note: "fifo, priority and topological claim orders pick a pending task row; dispatcher() sends work to a session." }
+      - { id: task, relation: distinct-jobs, note: "fifo and priority claim orders pick a pending task row; dispatcher() sends work to a session." }
     status: canonical
     doc: docs/architecture/dispatched-work.md
 
@@ -255,8 +255,8 @@ mechanisms:
   - id: durability
     job: Keep a run recoverable across a process loss (checkpoints, and the sweeper that resumes what was left).
     package: "@flow-state-dev/engine"
-    anchor: createDurabilitySweeper
-    file: packages/engine/src/durability/durability-sweeper.ts
+    anchor: createCheckpointDurabilityProvider
+    file: packages/engine/src/durability/checkpoint-durability-provider.ts
     builtOn: [execution, store]
     overlaps: []
     status: unconfirmed
@@ -286,7 +286,7 @@ mechanisms:
   - id: store
     job: The persistence seam for sessions, resources and requests. Memory, filesystem, SQLite, Postgres and Vercel Postgres are adapters of one seam.
     package: "@flow-state-dev/engine"
-    anchor: createInMemoryStores
+    anchor: inMemoryStores
     file: packages/engine/src/stores/index.ts
     adapters: ["@flow-state-dev/store-sqlite", "@flow-state-dev/store-postgres"]
     builtOn: []
@@ -396,8 +396,8 @@ mechanisms:
   - id: voice
     job: Speak and hear through a flow. Engine owns the sentence buffer and TTS pipeline; OpenAI is the provider package.
     package: "@flow-state-dev/engine"
-    anchor: createTTSPipeline
-    file: packages/engine/src/voice/tts-pipeline.ts
+    anchor: voiceContext
+    file: packages/engine/src/voice/context.ts
     adapters: ["@flow-state-dev/voice-openai"]
     builtOn: [streaming]
     overlaps: []
@@ -458,7 +458,7 @@ mechanisms:
 
   # ── Orchestration ─────────────────────────────────────────────────────────
   - id: task
-    job: One row of work on a board. Claim orders (fifo, priority, topological) pick a pending row; the row carries status, attempts and holds. A hold keeps a row from being claimed, the filer's (status held) or the user's (`holds`, a question, a confirm, or a run's suspension mirrored). isClaimable is the one claim predicate over both.
+    job: One row of work on a board. Claim orders (fifo, priority) pick a pending row; the row carries status, attempts and holds. A hold keeps a row from being claimed, the filer's (status held) or the user's (`holds`, a question, a confirm, or a run's suspension mirrored). isClaimable is the one claim predicate over both.
     package: "@flow-state-dev/orchestration"
     anchor: defineTaskCollection
     file: packages/orchestration/src/tasks/collection/define-task-collection.ts
@@ -707,6 +707,19 @@ mechanisms:
     overlaps:
       - { id: worker-messages, relation: distinct-jobs, note: "The door takes a user's line into a worker's session; worker messages are one worker talking to another." }
     status: unconfirmed
+    doc: packages/workforce/README.md
+
+  - id: subscriptions
+    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it, with no model; a provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. The two tools are the only writers of a subscription; a PR's closing and a task's failure or cancel end one.
+    package: "@flow-state-dev/workforce"
+    anchor: subscriptionTools
+    file: packages/workforce/src/subscriptions/subscribe.ts
+    builtOn: [collection, worker-messages, durability, flow, sequencer-dsl]
+    overlaps:
+      - { id: webhook, relation: distinct-jobs, note: "A webhook binding dispatches one action on a flow for a verified request; subscriptions route an already normalized event to the conversations that follow where it happened. FIX-2535 wires a GitHub webhook into routeServiceEvent." }
+      - { id: worker-messages, relation: distinct-jobs, note: "A delivery lands as a worker message (sendServiceMessage shares sendMessage's budget-free tail), but from a service, addressed by the subscription row, never by the roster." }
+      - { id: schedule, relation: distinct-jobs, note: "A dynamic schedule and an owner run both start a run as the user whose row the host found (one cell rule, resolveSharedUserCellKey); a schedule fires on a clock, a delivery on an event." }
+    status: canonical
     doc: packages/workforce/README.md
 
   # ── Coding harnesses ──────────────────────────────────────────────────────

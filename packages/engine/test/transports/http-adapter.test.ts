@@ -9,11 +9,13 @@ import { z } from "zod";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  disposeFlowApiRouter,
-  TransportRouteCollisionError,
-  type InboundTransportAdapter
+  disposeFlowApiRouter
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
+import { TransportRouteCollisionError } from "../../src/transports/errors";
+import { type InboundTransportAdapter } from "../../src/host";
 
 function makeFlow(kind: string, id = kind) {
   return defineFlow({

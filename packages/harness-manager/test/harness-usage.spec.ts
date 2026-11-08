@@ -7,7 +7,12 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
-import type { BlockContext, HarnessUsageReader, HarnessUsageReading, HarnessUsageReport } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type {
+  HarnessUsageReader,
+  HarnessUsageReading,
+  HarnessUsageReport,
+} from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   HARNESS_USAGE,
@@ -17,7 +22,7 @@ import {
   harnessUsageCollection,
   harnessUsageStateSchema,
   recordHarnessUsage,
-  type HarnessUsageRow,
+  type HarnessUsageView,
   type HarnessUsageState,
 } from "../src/harness-usage";
 
@@ -83,8 +88,8 @@ function lab(readers: Record<string, HarnessUsageReader>, timeoutMs?: number) {
     if (result.error !== undefined) throw new Error(JSON.stringify(result.error));
     return result.output;
   };
-  const usage = async (refresh: boolean, userId?: string, orgId?: string): Promise<HarnessUsageRow[]> =>
-    ((await act("harnessUsage", refresh ? { refresh: true } : {}, userId, orgId)) as { harnesses: HarnessUsageRow[] }).harnesses;
+  const usage = async (refresh: boolean, userId?: string, orgId?: string): Promise<HarnessUsageView[]> =>
+    ((await act("harnessUsage", refresh ? { refresh: true } : {}, userId, orgId)) as { harnesses: HarnessUsageView[] }).harnesses;
   return { act, usage };
 }
 

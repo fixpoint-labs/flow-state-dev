@@ -53,24 +53,18 @@
  * No model. The "harness" is the scripted run below, the turn each task
  * entry runs.
  */
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import {
-  DEFAULT_ORG_ID,
   OBSERVED_PULL_REQUESTS,
-  defineFlow,
-  handler,
   observedPullRequestsCollection,
   writePullRequests,
   type PullRequestCollection,
-} from "@flow-state-dev/core";
-import { harnessConversationNamespace, reportHarnessSpend, type BlockContext, type FlowInstance } from "@flow-state-dev/core/types";
-import {
-  OBSERVED_FILE_OPS,
-  OBSERVED_PLAN,
-  OBSERVED_PLAN_LIST,
-  observedFileOpsCollection,
-  observedPlanCollection,
-  observedPlanListCollection,
-} from "@flow-state-dev/claude-code/sdk";
+  harnessConversationNamespace,
+  reportHarnessSpend,
+} from "@flow-state-dev/core/harness";
+import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
+import { CLAUDE_CODE_FILE_OPS, claudeCodeFileOpsCollection } from "@flow-state-dev/claude-code";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, observedPlanCollection, observedPlanListCollection } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -85,7 +79,6 @@ import {
   workerConfigSchema,
   workerTaskEntry,
   type InventoryActionRequest,
-  MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   workerMessagesResources,
 } from "@flow-state-dev/workforce";
@@ -223,7 +216,7 @@ const scriptedRun = handler({
 
     const resources = (ctx as { resources?: Record<string, unknown> }).resources ?? {};
     const plan = resources[OBSERVED_PLAN] as Upsertable | undefined;
-    const files = resources[OBSERVED_FILE_OPS] as Upsertable | undefined;
+    const files = resources[CLAUDE_CODE_FILE_OPS] as Upsertable | undefined;
     const marker = resources[OBSERVED_PLAN_LIST] as Upsertable | undefined;
     const run = `${ctx.request.identity.id}/0#0`;
     // As a harness records it: the plan under its conversation, the run's pointer to it, files per run.
@@ -335,13 +328,13 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean;
         ...(records ? {
               [OBSERVED_PLAN]: observedPlanCollection,
               [OBSERVED_PLAN_LIST]: observedPlanListCollection,
-              [OBSERVED_FILE_OPS]: observedFileOpsCollection,
+              [CLAUDE_CODE_FILE_OPS]: claudeCodeFileOpsCollection,
               [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection,
             } : {}),
         ...workerMessagesResources,
       },
       actions: { ...(options.untaskedDoors === true ? untaskedHearingDoor : hearingDoor) },
-      internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: flow }) } },
+      internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: flow }) } },
       task: { actions: { work: workerTaskEntry({ name: `run-lab-${flow}-task`, turn: scriptedRun }) } },
     } as never);
   const coordinator = defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL });

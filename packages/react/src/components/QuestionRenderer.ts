@@ -1,5 +1,6 @@
+// FIX-849.
 /**
- * Built-in default card for a clarifying-question suspension (FIX-849).
+ * Built-in default card for a clarifying-question suspension.
  *
  * Chosen by `ItemRenderer` for a `user_input` suspension whose `resumeSchema` is
  * a single string (or absent). Renders the question and a free-text box; submit

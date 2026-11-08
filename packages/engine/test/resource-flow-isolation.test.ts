@@ -15,9 +15,11 @@ import type { ResourceRef } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
   createFlowRegistry,
-  createInMemoryStores,
   toBareStates
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import type { SessionRecord } from "../src/stores/types";
 import { getPersistedData } from "../src/resources/internal";
 

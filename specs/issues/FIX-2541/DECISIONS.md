@@ -83,6 +83,28 @@ lab fails. That re-opens FIX-2500 late, at wrap, by one issue.
 - **The coder leg runs Claude Code** in all four apps, the harness each app has by default;
   Codex and Cursor are not part of the closure.
 
+## Decided in build
+
+- **Kitchen Sink's multi-file ask reads published docs, drawn from a pool (EM, Nov 4).** No fresh
+  value can be planted in published pages, and Kitchen Sink gets no local-docs tool for the
+  closure. So it stays in all four apps, with two guard rails: each run draws one question from a
+  pool whose answer needs facts from three separate flow-state.dev pages, and the run passes only
+  if the turn's own tool calls fetched every one of those pages and the reply states each fact. A
+  fact the model already knew fails on the fetch. The pool is `fixtures.mts` → `DOC_ASKS`; each
+  page and fact was checked against the published site.
+- **Switches and the fitting skill are written at run time, never committed.** On the control and
+  the cut run the scripts add `skills: activateTool: true` to the asked worker's `WORKER.md` for
+  the run, and put it back after; the wrap writes no switch. The skill itself is a held-out fixture
+  (a new marker each run), planted on every pass. What a run plants is journaled first, so a run
+  the machine kills is undone by the next one.
+- **The driver answers what an app stops to ask the person.** A tool approval gets "yes" for the
+  run, a review of a run's changes gets "accepted", as the person at the page would to let the
+  work they asked for go on. A question a run asks is left waiting.
+- **The closure passes run on Haiku (owner, Nov 6).** With `GOAL_HAIKU=1` every app's agents
+  and evaluators, and Claude Code, run on one Haiku model on Anthropic directly. The control and
+  the cut run use the same model, so they stay comparable. Each sheet records its model, and the
+  verdict refuses a pass whose sheets mix models.
+
 ## Considered and dropped
 
 - **One monolith per app with seven inline asserts.** Four copies of each grader that drift.
@@ -101,8 +123,11 @@ lab fails. That re-opens FIX-2500 late, at wrap, by one issue.
 - **The Claude Code-style lab has no fold (read, Nov 4).** No `historySummary` anywhere under
   `labs/claude-code-style`; Teammates builds one in `host.mts`. This is the open question.
 
-**In flight, load-bearing:** the four app drivers are not built. The cut run cannot start
-until they are. See `poc/closure-asks/README.md`.
+- **The four app drivers are built (Nov 4).** `goals/closure-smarter-agents/<app>/run.mts`, one
+  per app, over the shared graders and `closure.mts`; `verdict/run.mts` reads a pass's sheets. One
+  real-model run of each non-coder ask reached every app's worker. The coder ask has not yet
+  passed on a host where Claude Code starts, and Kitchen Sink's docs asks wait on FIX-2496. The
+  POC in `poc/closure-asks/` stays as the retained evidence the graders came from.
 
 ## How it got here
 

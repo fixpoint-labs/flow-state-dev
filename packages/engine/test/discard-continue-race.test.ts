@@ -6,7 +6,8 @@
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { recordRequestStop } from "../src/execution/record-request-stop";
 
 describe("a Discard that lands after a Continue was admitted", () => {

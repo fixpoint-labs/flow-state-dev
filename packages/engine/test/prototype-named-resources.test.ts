@@ -26,7 +26,8 @@ import {
 } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createExecutionContext, createInMemoryStores, type StoreRegistry } from "../src";
+import { createExecutionContext, type StoreRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import {
   filterFlowLevelEager,
   loadDeclaredResourceState,

@@ -231,7 +231,7 @@ wired:
 
 `action` holds the handler block's `name` — provenance for the
 listing, not a resolver key. `description` is omitted when the
-schedule declares none. Dynamic rows live in host-owned storage and
+schedule declares none. Dynamic schedules live in host-owned storage and
 are not enumerated. The route goes through `host.resolvePrincipal`
 and respects `requireUser`.
 

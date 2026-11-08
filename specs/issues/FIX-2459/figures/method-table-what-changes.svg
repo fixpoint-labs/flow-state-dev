@@ -1,0 +1,89 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="What changes. Today, on the left: the state backing and the resource backing each hold their own copy of the 38 task-collection methods, each over its own read, write and list, and they refuse a write in two forms, a returned decline and a thrown WriteDeclined. After, on the right: one method table holds the 38 methods once, with one decline form, over two storage adapters that each supply read, compare-and-set write and list; the resource storage adds an after-commit hook. Across the bottom of both sides, unchanged: callers such as the task board, the task tools and workforce's wrapper, and every name the package exports."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .box    { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; }
+    .dup    { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arrow  { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .div    { stroke:var(--rule); stroke-width:1.2; }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="headings">
+    <text class="t-lbl" x="24" y="30">TODAY</text>
+    <text class="t-q" x="24" y="52">Two backings, two copies</text>
+    <text class="t-lbl" x="486" y="30">AFTER</text>
+    <text class="t-q" x="486" y="52">One table, two storages</text>
+    <line class="div" x1="470" y1="18" x2="470" y2="262"/>
+  </g>
+
+  <g id="today">
+    <rect class="dup" x="24" y="70" width="206" height="96" rx="6"/>
+    <text class="t-tag c-gone" x="38" y="90">STATE BACKING</text>
+    <text class="t-h c-lost" x="38" y="114">38 methods, copy 1</text>
+    <text class="t-s" x="38" y="134">refuses with a returned</text>
+    <text class="t-s" x="38" y="150">decline · 8 sites</text>
+    <rect class="dup" x="246" y="70" width="206" height="96" rx="6"/>
+    <text class="t-tag c-gone" x="260" y="90">RESOURCE BACKING</text>
+    <text class="t-h c-lost" x="260" y="114">38 methods, copy 2</text>
+    <text class="t-s" x="260" y="134">refuses with a thrown</text>
+    <text class="t-s" x="260" y="150">WriteDeclined · 13 sites</text>
+    <rect class="box" x="24" y="186" width="206" height="56" rx="6"/>
+    <text class="t-b" x="38" y="210">state slot</text>
+    <text class="t-s" x="38" y="228">read · write · list</text>
+    <rect class="box" x="246" y="186" width="206" height="56" rx="6"/>
+    <text class="t-b" x="260" y="210">shared resource</text>
+    <text class="t-s" x="260" y="228">read · write · list</text>
+  </g>
+
+  <g id="after">
+    <rect class="chosen" x="486" y="70" width="430" height="96" rx="6"/>
+    <text class="t-tag c-code" x="502" y="90">ONE METHOD TABLE</text>
+    <text class="t-h c-code" x="502" y="114">38 methods, written once</text>
+    <text class="t-s" x="502" y="134">over patch and transition</text>
+    <text class="t-s" x="502" y="150">one decline form, a returned reason</text>
+    <path class="arrow" d="M592 166 V184 M810 166 V184"/>
+    <rect class="box" x="486" y="186" width="206" height="56" rx="6"/>
+    <text class="t-b" x="500" y="210">state storage</text>
+    <text class="t-s" x="500" y="228">read · CAS write · list</text>
+    <rect class="box" x="710" y="186" width="206" height="56" rx="6"/>
+    <text class="t-b" x="724" y="210">resource storage</text>
+    <text class="t-s" x="724" y="228">same, plus an after-commit hook</text>
+  </g>
+
+  <g id="unchanged">
+    <rect class="foot" x="16" y="276" width="908" height="68" rx="6"/>
+    <text class="t-lbl" x="32" y="298">UNCHANGED, ON BOTH SIDES</text>
+    <text class="t-b" x="32" y="320">Callers: the task board, the task tools, workforce's wrapper · every exported name</text>
+    <text class="t-s" x="32" y="337">TaskCollectionRef and both backing constructors keep their names and signatures</text>
+  </g>
+</svg>

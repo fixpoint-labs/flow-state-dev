@@ -1,8 +1,8 @@
 /**
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
+import { createFlowRegistry } from "@flow-state-dev/engine";
 import {
-  createFlowRegistry,
   ensureSessionRecord,
   ownsRecord,
   ReadonlySessionStateError,
@@ -10,31 +10,35 @@ import {
   refuseServerOwnedState,
   SessionCreateRefusedError,
   type SessionRecord
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
+import { UNRESOLVED_INTENT_CODE } from "@flow-state-dev/core/errors/unresolved-intent-error";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import {
   runAction,
-  resolveInProcessPrincipal,
-  createModelResolver,
   resolveDurabilityProvider,
+  type StoreRegistry
+} from "@flow-state-dev/engine";
+import {
+  resolveInProcessPrincipal,
   withChangeBus,
   createResponseEmitter,
   type ExecutionResult,
   type RequestStreamEventWithId,
   type RuntimeConfig,
-  type RuntimeLoggerLevel,
-  type StoreRegistry
-} from "@flow-state-dev/engine";
+  type RuntimeLoggerLevel
+} from "@flow-state-dev/engine/host";
+import { createModelResolver } from "@flow-state-dev/core";
 import type { FlowInstance, ModelResolver, JsonObject } from "@flow-state-dev/core/types";
 import { formatFailedImportSection } from "../resolve-flow";
 import { resolveRuntimeSource, assertNoFlowDirWithConfig, createCliLogger, resolveLogLevel } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
 import { parseInputArg } from "../parse-input";
 import { CliError } from "../resolve-block";
+import { CONFIG_FILENAMES } from "../load-config";
 import { collectValues } from "../cli-options";
 import {
   askFlowState,
@@ -59,8 +63,9 @@ export type FlowEvent =
   | ({ type: "suspended" } & RunSuspension)
   | { type: "error"; message: string; code?: string };
 
+// FIX-2063 D3.
 /**
- * A stop the run ended on (FIX-2063 D3): the request is held, waiting for a
+ * A stop the run ended on: the request is held, waiting for a
  * person, and is answered through a server on the same store (`fsdev dev`).
  */
 export interface RunSuspension {
@@ -520,7 +525,7 @@ export async function executeRunCommand(
 
     const startMs = Date.now();
     let result: ExecutionResult;
-    let error: { message: string; stack?: string } | undefined;
+    let error: { message: string; stack?: string; code?: string } | undefined;
     let success = true;
 
     try {
@@ -541,6 +546,7 @@ export async function executeRunCommand(
         error = {
           message: result.error.message,
           stack: result.error.stack,
+          code: result.error.code,
         };
       }
     } catch (err) {
@@ -575,6 +581,12 @@ export async function executeRunCommand(
         type: "error",
         message: error!.message,
       });
+      // `--no-config` is a discovery run too, but the config search never ran, so
+      // "none found" would be false there.
+      const searchedForConfig = options.config !== false;
+      if (resolved.source === "discovery" && searchedForConfig && error!.code === UNRESOLVED_INTENT_CODE && !options.quiet) {
+        process.stderr.write(describeMissingConfigIntent(resolved.cwd));
+      }
     }
 
     const runResult: FlowRunResult = {
@@ -648,6 +660,19 @@ export async function heldStop(
     ...(item.message === undefined ? {} : { message: item.message }),
     answer,
   };
+}
+
+/**
+ * Stderr hint for a discovery run that failed on an `intent/*` model: no
+ * `fsdev.config.*` was found, so the intents the app declared elsewhere were
+ * never read.
+ */
+function describeMissingConfigIntent(cwd: string): string {
+  return (
+    `[fsdev] no fsdev.config.* found in ${cwd}; the file that calls createFlowState is not read.\n` +
+    `[fsdev]   fsdev takes the app's models, intents and stores only from ${CONFIG_FILENAMES.join(", ")}.\n` +
+    `[fsdev]   Default-export your createFlowState(...) from ${CONFIG_FILENAMES[0]}, or pass --config <path>.\n`
+  );
 }
 
 /** The waiting report on stderr: what waits, its ids, where to answer it, and when its deadline fires. */

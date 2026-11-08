@@ -1,17 +1,17 @@
+// FIX-2239, FIX-2318.
 /**
- * Waiting for a reply (FIX-2239, folded into the reply request by FIX-2318):
+ * Waiting for a reply, folded into the reply request:
  * `sendMessage({ to, text, wait: true })` asks for a reply and parks in this
  * request until that answer or the deadline. The answer is `sendMessage({ inReplyTo })`.
  * While the sender still waits, that send is held and is the tool's result.
  * Once the wait has ended, at the deadline with no answer yet, the tool answers
  * `running` and the same answer arrives later as a message.
  */
-import { waitOnRequest } from "@flow-state-dev/core";
+import { requestHostOf, waitOnRequest } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { checkWaitable, toolCallOf } from "@flow-state-dev/orchestration/task-board";
-import { hasEnded } from "@flow-state-dev/orchestration/tasks";
+import { checkWaitable, toolCallOf, hasEnded } from "@flow-state-dev/orchestration/internal";
 import type { WorkerInstallation } from "../workers/installation";
-import { messageLogOf, newMessageId, type WorkerMessageRow } from "./message-log";
+import { messageLogOf, newMessageId, type WorkerMessageResourceState } from "./message-log";
 import { sendMessage, type SendMessageInput } from "./send-message";
 
 /** What a wait came to, once its checks passed. `sent` is the message's id. */
@@ -83,7 +83,7 @@ export async function sendAndWaitForReply(
   };
   // The park is owed before the row (FIX-2269): a process that dies between
   // the row and the park leaves the request for the engine to continue.
-  const waits = ctx.requestHost?.waits;
+  const waits = requestHostOf(ctx)?.waits;
   return waits?.owingPark !== undefined ? waits.owingPark(sendThenWait) : sendThenWait();
 }
 
@@ -100,7 +100,7 @@ export async function sendAndWaitForReply(
  *   `"retry"` while the sender hasn't parked yet, or the gate is busy, so the
  *   answer stays undelivered and its sender's pass sends it again.
  */
-export async function wakeHeldWait(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">): Promise<"not-held" | "woken" | "retry"> {
+export async function wakeHeldWait(ctx: BlockContext, row: Pick<WorkerMessageResourceState, "id" | "inReplyTo">): Promise<"not-held" | "woken" | "retry"> {
   if (row.inReplyTo === undefined) return "not-held";
   const log = messageLogOf(ctx);
   for (let tries = 0; tries < WAKE_TRIES; tries += 1) {
@@ -108,7 +108,7 @@ export async function wakeHeldWait(ctx: BlockContext, row: Pick<WorkerMessageRow
     const asked = (await log.getOptional(row.inReplyTo))?.state;
     if (asked === undefined || asked.answeredBy !== row.id || asked.deadlineAt === undefined || asked.waitEndedAt !== undefined) return "not-held";
     if (asked.fromSession !== ctx.session.identity.id) return "not-held";
-    const resumeWait = ctx.requestHost?.resumeWait;
+    const resumeWait = requestHostOf(ctx)?.resumeWait;
     // No host that resumes waits holds none: the wait read the answer at its request's end.
     if (resumeWait === undefined) return "woken";
     // Not parked yet: look again shortly.

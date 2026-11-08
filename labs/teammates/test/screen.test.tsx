@@ -79,18 +79,18 @@ function layOutFeeds(height: (feed: HTMLElement) => number = () => 5000) {
 }
 
 describe("the teammates screen", () => {
-  it("lists teammates, not sessions, and opens on Chief of Staff's one conversation", async () => {
+  it("lists teammates, not sessions, and opens on Lead's one conversation", async () => {
     render(<App adapter={fast()} />);
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
     // Coding is a background task, not a teammate: the worker coding tasks run on is not listed.
     for (const coder of ["Claude Code", "Codex", "Cursor"]) expect(workers().querySelector(`[data-worker="${coder}"]`), coder).toBeNull();
-    expect(workerRow("Chief of Staff").getAttribute("aria-current")).toBe("true");
-    expect(within(conversation()).getByRole("heading", { name: "Chief of Staff" })).toBeTruthy();
+    expect(workerRow("Lead").getAttribute("aria-current")).toBe("true");
+    expect(within(conversation()).getByRole("heading", { name: "Lead" })).toBeTruthy();
     // Grok Bot's sidebar has no session list and no new chat.
     expect(screen.queryByRole("button", { name: /new (chat|session)/i })).toBeNull();
   });
 
-  it("marks where Chief of Staff's word-for-word turns begin, and calls it out of view, not summarized", async () => {
+  it("marks where Lead's word-for-word turns begin, and calls it out of view, not summarized", async () => {
     render(<App adapter={fast()} />);
     const divider = await screen.findByRole("separator");
     expect(divider.getAttribute("aria-label")).toBe("Earlier turns out of view");
@@ -107,25 +107,25 @@ describe("the teammates screen", () => {
     expect(divider.getAttribute("aria-label")).toBe("Earlier turns summarized");
   });
 
-  it("draws Chief of Staff's message to researcher in both conversations", async () => {
+  it("draws Lead's message to researcher in both conversations", async () => {
     render(<App adapter={fast()} />);
-    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
 
-    // Step 2: one line in Chief of Staff's conversation, "Messaged researcher", that opens the exchange.
+    // Step 2: one line in Lead's conversation, "Messaged researcher", that opens the exchange.
     const line = await within(conversation()).findByRole("button", { name: "Messaged researcher: What's our launch date?" });
     expect(line.getAttribute("aria-expanded")).toBeNull();
 
-    // While Chief of Staff waits, its row says so.
-    await waitFor(() => expect(workerRow("Chief of Staff").querySelector("[data-status]")?.textContent).toBe("Messaging researcher"));
+    // While Lead waits, its row says so.
+    await waitFor(() => expect(workerRow("Lead").querySelector("[data-status]")?.textContent).toBe("Messaging researcher"));
 
-    // researcher sees the message as a line from Chief of Staff.
+    // researcher sees the message as a line from Lead.
     fireEvent.click(workerRow("researcher"));
-    expect(await within(conversation()).findByRole("region", { name: "From Chief of Staff" })).toBeTruthy();
+    expect(await within(conversation()).findByRole("region", { name: "From Lead" })).toBeTruthy();
   });
 
   it("opens a message line to the exchange in a popup that fills in live, and closes it with Esc or a click outside", async () => {
     render(<App adapter={fast()} />);
-    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     expect(line.querySelector("[data-sent-status]")?.textContent).toBe("working");
 
@@ -139,7 +139,7 @@ describe("the teammates screen", () => {
     // Live: researcher's reading of the message, then the reply it sent, arrive while the popup is open.
     await waitFor(() => expect(popup.querySelector('[data-step="given"]')?.textContent).toMatch(/What's our launch date\?/), { timeout: 2000 });
     await waitFor(() => expect(popup.querySelector('[data-step="sent"]')?.textContent).toMatch(/Nov 12/), { timeout: 2000 });
-    await waitFor(() => expect(popup.querySelector("[data-popup-status]")?.textContent).toBe("replied"));
+    await waitFor(() => expect(popup.querySelector("[data-overlay-status]")?.textContent).toBe("replied"));
     expect(line.querySelector("[data-sent-status]")?.textContent).toBe("replied");
 
     // Modal: Tab can't leave it, and focus that strayed behind it comes back in.
@@ -151,18 +151,31 @@ describe("the teammates screen", () => {
     fireEvent.keyDown(document, { key: "Tab" });
     expect(popup.contains(document.activeElement)).toBe(true);
 
-    fireEvent.keyDown(document, { key: "Escape" });
+    // An input method's Esc ends its composition, not the popup.
+    fireEvent.keyDown(document, { key: "Escape", isComposing: true });
+    expect(screen.queryByRole("dialog")).not.toBeNull();
+    // The Esc that closes is spent, so nothing under the popup acts on it too.
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(false);
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(line);
 
+    // Its close button and a click outside close it the same way, and focus goes back to the line.
+    line.focus();
     fireEvent.click(line);
-    fireEvent.click(document.querySelector("[data-popup-backdrop]")!);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(line);
+
+    line.focus();
+    fireEvent.click(line);
+    fireEvent.click(document.querySelector("[data-overlay-backdrop]")!);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(line);
   });
 
   it("a pick from ⌘K over a popup closes the popup, so the picked conversation takes the keys", async () => {
     render(<App adapter={fast()} />);
-    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     line.focus();
     fireEvent.click(line);
@@ -175,21 +188,21 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Message writer")));
   });
 
-  it("holds researcher's reply as pending while Chief of Staff answers you, and lands it after that answer", async () => {
+  it("holds researcher's reply as pending while Lead answers you, and lands it after that answer", async () => {
     render(<App adapter={fast()} />);
-    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await within(conversation()).findByRole("button", { name: /^Messaged researcher/ });
 
-    // Step 3: a second line before researcher answers. Chief of Staff takes it, and the reply arrives mid-turn.
-    await tell("Chief of Staff", "Make section 2 about pricing.");
-    await waitFor(() => expect(conversation().querySelector("[data-pending]")?.textContent).toBe("← researcher replied · Chief of Staff reads it after this turn"), {
+    // Step 3: a second line before researcher answers. Lead takes it, and the reply arrives mid-turn.
+    await tell("Lead", "Make section 2 about pricing.");
+    await waitFor(() => expect(conversation().querySelector("[data-pending]")?.textContent).toBe("← researcher replied · Lead reads it after this turn"), {
       interval: 5,
       timeout: 2000,
     });
-    expect(within(conversation()).getByRole("status").textContent).toMatch(/Chief of Staff is answering/);
+    expect(within(conversation()).getByRole("status").textContent).toMatch(/Lead is answering/);
     expect(entries("received")).toHaveLength(2); // only writer's two older replies so far
 
-    // The reply lands as its own line after Chief of Staff's answer to you, and Chief of Staff's next line uses it.
+    // The reply lands as its own line after Lead's answer to you, and Lead's next line uses it.
     const reply = await within(conversation()).findByRole("region", { name: "From researcher" }, { timeout: 2000 });
     expect(conversation().querySelector("[data-pending]")).toBeNull();
     const answer = within(conversation()).getByText(/Noted: "Make section 2 about pricing\."/);
@@ -197,9 +210,9 @@ describe("the teammates screen", () => {
     expect(await within(conversation()).findByText(/researcher answered: "Nov 12, per the plan doc\."/, {}, { timeout: 2000 })).toBeTruthy();
   });
 
-  it("counts what researcher did while you watched Chief of Staff as unread, and clears it when you open researcher", async () => {
+  it("counts what researcher did while you watched Lead as unread, and clears it when you open researcher", async () => {
     render(<App adapter={fast()} />);
-    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     await waitFor(() => expect(within(workerRow("researcher")).getByLabelText(/unread/).textContent).toBe("3"), { timeout: 2000 });
     fireEvent.click(workerRow("researcher"));
     await waitFor(() => expect(within(workerRow("researcher")).queryByLabelText(/unread/)).toBeNull());
@@ -207,14 +220,14 @@ describe("the teammates screen", () => {
 
   it("has no Talk panel or Talk control: the right pane is the open teammate's panel", async () => {
     render(<App adapter={fast()} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
     expect(screen.queryByRole("complementary", { name: "Talk" })).toBeNull();
     expect(screen.queryByRole("button", { name: /talk/i })).toBeNull();
     // Who it is, at the top of its panel, and a place for its routines.
-    const info = within(panel("Chief of Staff")).getByRole("region", { name: "Teammate" });
-    expect(within(info).getByRole("heading", { name: "Chief of Staff" })).toBeTruthy();
+    const info = within(panel("Lead")).getByRole("region", { name: "Teammate" });
+    expect(within(info).getByRole("heading", { name: "Lead" })).toBeTruthy();
     expect(info.textContent).toMatch(/Plans the launch with you/);
-    expect(within(panel("Chief of Staff")).getByRole("region", { name: "Routines" })).toBeTruthy();
+    expect(within(panel("Lead")).getByRole("region", { name: "Routines" })).toBeTruthy();
   });
 
   it("lists only the open teammate's tasks in its panel, and switching teammates switches them", async () => {
@@ -225,12 +238,12 @@ describe("the teammates screen", () => {
     ];
     render(<App adapter={fast({ tasks })} />);
     const lead = await screen.findByRole("button", { name: "Coding task: Bump the version, on Cursor" });
-    expect(panel("Chief of Staff").contains(lead)).toBe(true);
+    expect(panel("Lead").contains(lead)).toBe(true);
     expect(screen.queryByRole("button", { name: "Asked writer to draft the survey summary" })).toBeNull();
 
     fireEvent.click(workerRow("researcher"));
     const research = await within(panel("researcher")).findByRole("button", { name: "Asked writer to draft the survey summary" });
-    expect(screen.queryByRole("complementary", { name: "Chief of Staff's panel" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Lead's panel" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Coding task: Bump the version, on Cursor" })).toBeNull();
     // A row opens the task's popup, the same one its line in the thread opens.
     fireEvent.click(research);
@@ -242,34 +255,40 @@ describe("the teammates screen", () => {
     expect(await within(panel("writer")).findByText("writer hasn't started any tasks yet.")).toBeTruthy();
   });
 
-  it("puts the running tasks first, folds the ended ones into groups with their counts, and moves a task that ends into its group live", async () => {
+  it("puts the running tasks first, shows the failed ones, folds done and cancelled into groups with their counts, and moves a task that ends into its group live", async () => {
     const ended = (id: string, title: string, status: "done" | "failed" | "cancelled") => ({ filer: "teammates.chief-of-staff", id, to: "teammates.researcher", title, status });
     const tasks = [ended("t-1", "Look up the launch date", "done"), ended("t-2", "Check the beta numbers", "failed"), ended("t-3", "Find a customer quote", "done"), ended("t-4", "Pull the survey", "cancelled")];
     render(<App adapter={fast({ tasks })} />);
-    const side = await screen.findByRole("complementary", { name: "Chief of Staff's panel" });
-    const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.textContent);
-    // Ended tasks are folded: their groups show counts, and none of their rows.
-    await waitFor(() => expect(groups()).toEqual(["Done (2)▸", "Failed (1)▸", "Cancelled (1)▸"]));
+    const side = await screen.findByRole("complementary", { name: "Lead's panel" });
+    const groups = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-label"));
+    // Done and cancelled tasks are folded: their groups show counts, and none of their rows.
+    await waitFor(() => expect(groups()).toEqual(["Done (2)", "Cancelled (1)"]));
+    const folded = () => [...side.querySelectorAll("button[aria-expanded]")].map((b) => b.getAttribute("aria-expanded"));
+    expect(folded()).toEqual(["false", "false"]);
     expect(within(side).queryByRole("button", { name: "Asked researcher to look up the launch date" })).toBeNull();
+    // A failure is something to act on: its rows show without a click.
+    const failed = within(side).getByRole("list", { name: "Failed" });
+    expect(within(failed).getByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeTruthy();
     // Opening a group shows its rows, and only its own.
     fireEvent.click(within(side).getByRole("button", { name: /^Done \(2\)/ }));
+    expect(folded()).toEqual(["true", "false"]);
     const done = within(side).getByRole("list", { name: "Done" });
     expect(within(done).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Asked researcher to look up the launch date", "Asked researcher to find a customer quote"]);
-    expect(within(side).queryByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeNull();
+    expect(within(done).queryByRole("button", { name: "Asked researcher to check the beta numbers" })).toBeNull();
 
     // A task filed now runs at the top, above the groups, and moves into Done when it ends, with no reload.
-    await tell("Chief of Staff", "Fix the typo in the README's first line.");
-    const active = await within(side).findByRole("list", { name: "Active" }, { timeout: 2000 });
+    await tell("Lead", "Fix the typo in the README's first line.");
+    const active = await within(side).findByRole("list", { name: "Running" }, { timeout: 2000 });
     expect(within(active).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).toBeTruthy();
     expect(active.compareDocumentPosition(within(side).getByRole("button", { name: /^Done/ })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await waitFor(() => expect(within(side).getByRole("button", { name: /^Done \(3\)/ })).toBeTruthy(), { timeout: 4000 });
-    expect(within(side).queryByRole("list", { name: "Active" })).toBeNull();
+    expect(within(side).queryByRole("list", { name: "Running" })).toBeNull();
     expect(within(within(side).getByRole("list", { name: "Done" })).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).toBeTruthy();
   });
 
   it("starts a coding task at once, with no project anywhere on the screen, and lands its result as the coding task's", async () => {
     render(<App adapter={fast()} />);
-    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await tell("Lead", "Fix the typo in the README's first line.");
 
     // Step 5: the task runs in the working folder straight away: nothing asks where.
     const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
@@ -277,10 +296,11 @@ describe("the teammates screen", () => {
     expect(tile.querySelector("[data-task-status]")?.textContent).toBe("running");
     // The lab has no projects: no select, no prompt, no card, and no word for one anywhere.
     expect(screen.queryByRole("combobox")).toBeNull();
-    expect(screen.queryByRole("group")).toBeNull();
+    // The one group on screen is the harness chips (FIX-2403), never a project choice.
+    expect(screen.queryAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual(["Coding harnesses"]);
     expect(document.body.textContent).not.toMatch(/project/i);
 
-    // The result lands as the coding task's, never a teammate's, and Chief of Staff's next line uses it.
+    // The result lands as the coding task's, never a teammate's, and Lead's next line uses it.
     expect(await within(conversation()).findByRole("button", { name: "Coding task finished: Fix the typo in the README's first line" }, { timeout: 2000 })).toBeTruthy();
     expect(within(conversation()).queryByRole("button", { name: /^Cursor finished/ })).toBeNull();
     expect(tile.querySelector("[data-task-status]")?.textContent).toBe("done");
@@ -290,12 +310,12 @@ describe("the teammates screen", () => {
 
   it("brings a finished task back as one collapsed line that opens the task, with the filer's own reply expanded under it", async () => {
     render(<App adapter={fast()} />);
-    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await tell("Lead", "Fix the typo in the README's first line.");
     const back = await within(conversation()).findByRole("button", { name: "Coding task finished: Fix the typo in the README's first line" }, { timeout: 2000 });
     // Collapsed: one line, never the result drawn as a block in the thread.
     expect(within(conversation()).queryByRole("region", { name: /^From the coding task/ })).toBeNull();
     expect(back.closest("section")).toBeNull();
-    // Chief of Staff's own reply stays expanded, as its answer.
+    // Lead's own reply stays expanded, as its answer.
     expect(await within(conversation()).findByText(/The coding task is done: "Fixed the typo in README.md, line 1\."/, {}, { timeout: 2000 })).toBeTruthy();
     // The line opens the task, where the whole result is.
     fireEvent.click(back);
@@ -305,7 +325,7 @@ describe("the teammates screen", () => {
 
   it("opens a coding task's run in a popup, from its line in the thread or its row in the teammate's panel", async () => {
     render(<App adapter={fast()} />);
-    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await tell("Lead", "Fix the typo in the README's first line.");
     const card = await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
 
     // From the thread: the run fills in live, with no composer (its one box is the task's Steer line), and its result lands in it.
@@ -319,8 +339,8 @@ describe("the teammates screen", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
 
     // From the panel, under Done now that it has ended: the same popup, and the row says it's the one open. The conversation stays.
-    fireEvent.click(within(panel("Chief of Staff")).getByRole("button", { name: /^Done \(1\)/ }));
-    const item = within(panel("Chief of Staff")).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
+    fireEvent.click(within(panel("Lead")).getByRole("button", { name: /^Done \(1\)/ }));
+    const item = within(panel("Lead")).getByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" });
     fireEvent.click(item);
     popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
     expect(item.getAttribute("aria-current")).toBe("true");
@@ -335,13 +355,13 @@ describe("the teammates screen", () => {
     const on = () => line().querySelector("[data-harness]")?.textContent;
 
     // No agent named: the default, Cursor, runs with no question first. Cursor reports no model, so none shows.
-    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await tell("Lead", "Fix the typo in the README's first line.");
     await waitFor(() => expect(on()).toBe("Cursor"), { timeout: 2000 });
     await waitFor(() => expect(line().querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
     expect(on()).toBe("Cursor");
 
     // Named: that one runs. Codex reports its model once its run starts, and only then is it shown.
-    await tell("Chief of Staff", "Have Codex fix the typo in the README's first line.");
+    await tell("Lead", "Have Codex fix the typo in the README's first line.");
     await waitFor(() => expect(entries("task")).toHaveLength(2), { timeout: 3000 });
     await waitFor(() => expect(on()).toBe("Codex"), { timeout: 2000 });
     await waitFor(() => expect(on()).toBe("Codex · gpt-5.5-codex"), { timeout: 2000 });
@@ -353,37 +373,40 @@ describe("the teammates screen", () => {
     fireEvent.keyDown(document, { key: "Escape" });
 
     await waitFor(() => expect(line().querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
-    await tell("Chief of Staff", "Have Claude Code fix the typo in the README's first line.");
+    await tell("Lead", "Have Claude Code fix the typo in the README's first line.");
     await waitFor(() => expect(entries("task")).toHaveLength(3), { timeout: 3000 });
     await waitFor(() => expect(on()).toBe("Claude Code"), { timeout: 2000 });
     // All three are tasks, never teammates.
     for (const coder of ["Claude Code", "Codex", "Cursor"]) expect(workers().querySelector(`[data-worker="${coder}"]`), coder).toBeNull();
   });
 
-  it("shows a coding run as plain steps, the same on every harness: the result first, what it said as text, and no bare tool name", async () => {
+  it("shows a coding run as plain steps, the same on every harness: what it said as text, the result last, and no bare tool name", async () => {
     // Each harness reports its own tools (Claude Code's Bash and Edit, Codex's command_execution and file_change, Cursor's shell and edit).
     const BARE = /^(Bash|Read|Edit|Write|command_execution|file_change|shell|read|edit)$/;
-    render(<App adapter={fast({ speed: 0.3 })} />);
+    // Each run holds before its first step until the popup has shown what it starts on: that line lasts only until the run reports.
+    const lab = fast({ speed: 0.3, held: true });
+    render(<App adapter={lab} />);
     for (const [ask, harness, check] of [
       ["Have Claude Code fix the typo in the README's first line.", "Claude Code", "Run the docs check"],
       ["Have Codex fix the typo in the README's first line.", "Codex", "pnpm docs:check"],
       ["Have Cursor fix the typo in the README's first line.", "Cursor", "pnpm docs:check"],
     ] as const) {
       const count = entries("task").length;
-      await tell("Chief of Staff", ask);
+      await tell("Lead", ask);
       await waitFor(() => expect(entries("task")).toHaveLength(count + 1), { timeout: 3000 });
       const line = entries("task").at(-1) as HTMLElement;
       fireEvent.click(line);
       const popup = await screen.findByRole("dialog", { name: "Coding task: Fix the typo in the README's first line" });
       // The first signal: what it starts on, before its run reports a step.
       await waitFor(() => expect(popup.textContent).toContain(`Starting on ${harness}…`), { timeout: 2000 });
+      lab.startRuns();
       await waitFor(() => expect(line.querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 4000 });
       await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 });
 
       const body = popup.querySelector("[data-step=result]")!.parentElement!;
       const kinds = [...body.querySelectorAll(":scope > [data-step]")].map((el) => el.getAttribute("data-step"));
-      // The result leads; under it, the harness, then what the run did in order.
-      expect(kinds).toEqual(["result", "harness", "tool", "said", "tools"]);
+      // The harness, then what the run did in order, then its result last: the popup opens on its latest entry.
+      expect(kinds).toEqual(["harness", "tool", "said", "tools", "result"]);
       expect(popup.querySelector("[data-step=harness]")?.textContent).toBe(`Started on ${harness}`);
       expect(popup.querySelector("[data-step=said]")?.textContent).toContain('The typo is on line 1: "Relay keps".');
       // A run of steps folds into one line, in the same words on every harness, and opens to each one.
@@ -399,7 +422,7 @@ describe("the teammates screen", () => {
 
   it("fails a task on a harness this machine isn't set up for at once, naming it, and runs nothing else in its place", async () => {
     render(<App adapter={fast({ notSetUp: ["cursor"] })} />);
-    await tell("Chief of Staff", "Have Cursor fix the typo in the README's first line.");
+    await tell("Lead", "Have Cursor fix the typo in the README's first line.");
     await waitFor(() => expect(entries("task")).toHaveLength(1), { timeout: 3000 });
     const line = entries("task")[0] as HTMLElement;
     await waitFor(() => expect(line.querySelector("[data-task-status]")?.textContent).toBe("failed"), { timeout: 2000 });
@@ -416,7 +439,7 @@ describe("the teammates screen", () => {
 
   it("lines the composer up with the message list: one column token, centred", async () => {
     render(<App adapter={fast()} />);
-    const box = await screen.findByLabelText("Message Chief of Staff");
+    const box = await screen.findByLabelText("Message Lead");
     const columns = () => [...conversation().querySelectorAll<HTMLElement>("[data-column]")];
     const capped = (el: HTMLElement) => el.classList.contains("max-w-(--thread-width)") && el.classList.contains("mx-auto");
     // The list's column and the composer's: the same cap, and the composer's holds the box.
@@ -433,10 +456,10 @@ describe("the teammates screen", () => {
     const feeds = layOutFeeds();
     onTestFinished(feeds.restore);
     render(<App adapter={fast({ speed: 0.5 })} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
     const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
     const before = entries("assistant");
-    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await tell("Lead", "Fix the typo in the README's first line.");
     await waitFor(() => expect(entries("assistant").at(-1)?.textContent).toMatch(/^Starting a coding task/), { interval: 5 });
     // Up to read while it is still being written.
     scroller.scrollTop = 1200;
@@ -464,7 +487,7 @@ describe("the teammates screen", () => {
     const feeds = layOutFeeds();
     try {
       render(<App adapter={fast()} />);
-      await screen.findByLabelText("Message Chief of Staff");
+      await screen.findByLabelText("Message Lead");
       await screen.findByRole("separator");
       const first = conversation().querySelector<HTMLElement>("[data-scroller]")!;
       expect(first.scrollTop).toBe(4500);
@@ -487,7 +510,7 @@ describe("the teammates screen", () => {
     const feeds = layOutFeeds();
     try {
       render(<App adapter={fast()} />);
-      await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+      await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
       const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
       feeds.scrolls.length = 0;
       fireEvent.click(line);
@@ -513,11 +536,11 @@ describe("the teammates screen", () => {
     const feeds = layOutFeeds((feed) => 500 + (feed.textContent?.length ?? 0));
     onTestFinished(feeds.restore);
     render(<App adapter={fast({ speed: 0.5 })} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
     await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
     const scroller = conversation().querySelector<HTMLElement>("[data-scroller]")!;
     // Your own line takes you to the end.
-    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await tell("Lead", "Fix the typo in the README's first line.");
     const streaming = await waitFor(
       () => {
         const last = entries("assistant").at(-1);
@@ -544,7 +567,7 @@ describe("the teammates screen", () => {
 
   it("draws a task card the moment it is filed and fills it in place: the same card from filing to done", async () => {
     render(<App adapter={fast()} />);
-    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await tell("Lead", "Fix the typo in the README's first line.");
     const card = (await within(conversation()).findByRole("button", { name: "Coding task: Fix the typo in the README's first line, on Cursor" })).closest("[data-entry=task]")!;
     await waitFor(() => expect(card.querySelector("[data-task-status]")?.textContent).toBe("done"), { timeout: 3000 });
     expect(conversation().querySelector("[data-entry=task]")).toBe(card);
@@ -552,7 +575,7 @@ describe("the teammates screen", () => {
 
   it("sizes the composer's box to its draft in CSS, so a column that narrows rewraps and regrows it", async () => {
     render(<App adapter={fast()} />);
-    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     // One line to start; the browser grows the box with its text (and its width) up to the cap, then it scrolls.
     expect(box.getAttribute("rows")).toBe("1");
     expect(box.classList.contains("field-sizing-content")).toBe(true);
@@ -562,8 +585,8 @@ describe("the teammates screen", () => {
 
   it("doesn't carry a draft to another worker: switching workers starts an empty box", async () => {
     render(<App adapter={fast()} />);
-    const leadBox = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
-    fireEvent.change(leadBox, { target: { value: "For Chief of Staff only" } });
+    const leadBox = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
+    fireEvent.change(leadBox, { target: { value: "For Lead only" } });
     fireEvent.click(workerRow("researcher"));
     const researcherBox = (await screen.findByLabelText("Message researcher")) as HTMLTextAreaElement;
     expect(researcherBox.value).toBe("");
@@ -578,8 +601,8 @@ describe("the teammates screen", () => {
         refuse ? Promise.reject(new Error("the server refused it (401)")) : lab.send(sessionId, text),
     };
     render(<App adapter={adapter} />);
-    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
-    await tell("Chief of Staff", "Where is the launch plan?");
+    const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
+    await tell("Lead", "Where is the launch plan?");
     const alert = await within(conversation()).findByRole("alert");
     expect(alert.textContent).toMatch(/Not sent: the server refused it \(401\)/);
     // Nothing typed is lost, and nothing claims it was sent.
@@ -601,8 +624,8 @@ describe("the teammates screen", () => {
       send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
     };
     render(<App adapter={adapter} />);
-    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
-    await tell("Chief of Staff", "first ask");
+    const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
+    await tell("Lead", "first ask");
     expect(box.value).toBe("first ask");
     expect(within(conversation()).getByRole("button", { name: "Sending…" })).toBeTruthy();
     fireEvent.change(box, { target: { value: "and a second thought" } });
@@ -619,35 +642,35 @@ describe("the teammates screen", () => {
       send: (sessionId: string, text: string) => new Promise<void>((resolve) => (land = resolve)).then(() => lab.send(sessionId, text)),
     };
     const first = render(<App adapter={adapter} />);
-    await tell("Chief of Staff", "first ask");
+    await tell("Lead", "first ask");
     first.unmount();
 
     const second = render(<App adapter={adapter} />);
-    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     expect(box.value).toBe("first ask");
     fireEvent.change(box, { target: { value: "first ask, revised" } });
     await act(async () => land());
     second.unmount();
 
     render(<App adapter={lab} />);
-    expect(((await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement).value).toBe("first ask, revised");
+    expect(((await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement).value).toBe("first ask, revised");
   });
 
   it("brings an unsent draft back after a reload, for that worker only", async () => {
     const lab = fast();
     const first = render(<App adapter={lab} />);
-    fireEvent.change(await screen.findByLabelText("Message Chief of Staff"), { target: { value: "half a thought" } });
+    fireEvent.change(await screen.findByLabelText("Message Lead"), { target: { value: "half a thought" } });
     first.unmount();
 
     render(<App adapter={lab} />);
-    expect(((await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement).value).toBe("half a thought");
+    expect(((await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement).value).toBe("half a thought");
     fireEvent.click(workerRow("researcher"));
     expect(((await screen.findByLabelText("Message researcher")) as HTMLTextAreaElement).value).toBe("");
   });
 
   it("sends with Cmd+Enter and Ctrl+Enter as well as Enter, and Shift+Enter stays a new line", async () => {
     render(<App adapter={fast()} />);
-    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "first line" } });
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
     expect(box.value).toBe("first line");
@@ -660,7 +683,7 @@ describe("the teammates screen", () => {
 
   it("doesn't send when Enter ends an input method's composition", async () => {
     render(<App adapter={fast()} />);
-    const box = await screen.findByLabelText("Message Chief of Staff");
+    const box = await screen.findByLabelText("Message Lead");
     fireEvent.change(box, { target: { value: "日本語" } });
     fireEvent.keyDown(box, { key: "Enter", isComposing: true });
     // Safari: the committing Enter arrives after compositionend, marked only by keyCode 229.
@@ -692,12 +715,12 @@ describe("the teammates screen", () => {
       const avatar = row.querySelector<HTMLElement>("[data-avatar]")!;
       return [avatar.textContent, avatar.dataset.avatar];
     };
-    expect(look(workerRow("Chief of Staff"))).toEqual(["★", "amber"]);
+    expect(look(workerRow("Lead"))).toEqual(["★", "amber"]);
     expect(look(workerRow("researcher"))).toEqual(["🔎", "teal"]);
     expect(look(workerRow("writer"))).toEqual(["✎", "violet"]);
     expect(look(within(conversation()).getByRole("banner"))).toEqual(["★", "amber"]);
 
-    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
+    await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
     const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
     expect(look(line)).toEqual(["🔎", "teal"]);
     fireEvent.click(line);
@@ -706,7 +729,7 @@ describe("the teammates screen", () => {
 
   it("gives a teammate whose file sets no look its initial, on a color of the palette", async () => {
     render(<App adapter={fast()} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
     fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
     const form = screen.getByRole("form", { name: "Hire a teammate" });
     fireEvent.change(within(form).getByLabelText("Teammate name"), { target: { value: "tester" } });
@@ -721,26 +744,26 @@ describe("the teammates screen", () => {
     render(<App adapter={fast()} />);
     const status = (name: string) => workerRow(name).querySelector("[data-status]")?.textContent;
     const header = () => conversation().querySelector("[data-header-status]")?.textContent;
-    await waitFor(() => expect(status("Chief of Staff")).toMatch(/^Idle/));
+    await waitFor(() => expect(status("Lead")).toMatch(/^Idle/));
     expect(header()).toMatch(/^Idle/);
 
-    await tell("Chief of Staff", "Ask researcher for our launch date, and help me outline the post.");
-    await waitFor(() => expect(status("Chief of Staff")).toBe("Replying to you"), { interval: 5 });
+    await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
+    await waitFor(() => expect(status("Lead")).toBe("Replying to you"), { interval: 5 });
     expect(header()).toBe("Replying to you");
     // researcher answers the message it was sent, and says whose.
-    await waitFor(() => expect(status("researcher")).toBe("Replying to Chief of Staff"), { interval: 5, timeout: 2000 });
-    await waitFor(() => expect(status("Chief of Staff")).toBe("Messaging researcher"), { interval: 5, timeout: 2000 });
+    await waitFor(() => expect(status("researcher")).toBe("Replying to Lead"), { interval: 5, timeout: 2000 });
+    await waitFor(() => expect(status("Lead")).toBe("Messaging researcher"), { interval: 5, timeout: 2000 });
     // Once the reply is in and read, nothing is running: idle, and nothing made up.
     await waitFor(() => expect(status("researcher")).toMatch(/^Idle/), { timeout: 3000 });
 
-    await tell("Chief of Staff", "Fix the typo in the README's first line.");
-    await waitFor(() => expect(status("Chief of Staff")).toBe("Running coding task: Fix the typo in the README's first line"), { interval: 5, timeout: 2000 });
+    await tell("Lead", "Fix the typo in the README's first line.");
+    await waitFor(() => expect(status("Lead")).toBe("Running coding task: Fix the typo in the README's first line"), { interval: 5, timeout: 2000 });
     expect(header()).toBe("Running coding task: Fix the typo in the README's first line");
   });
 
   it("hires with Cmd+Enter in the instructions and saves new ones with Ctrl+Enter, never from a form that can't send yet", async () => {
     render(<App adapter={fast()} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
     fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
     const form = screen.getByRole("form", { name: "Hire a teammate" });
     const instructions = within(form).getByLabelText("Teammate instructions");
@@ -775,10 +798,10 @@ describe("the teammates screen", () => {
       return editInstructions(worker, instructions);
     };
     render(<App adapter={lab} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
     // A worker from the files has no fire control, and its panel's Edit instructions says why it can't be used.
     expect(within(conversation()).queryByRole("button", { name: "Fire" })).toBeNull();
-    const locked = within(panel("Chief of Staff")).getByRole("button", { name: "Edit instructions" }) as HTMLButtonElement;
+    const locked = within(panel("Lead")).getByRole("button", { name: "Edit instructions" }) as HTMLButtonElement;
     expect(locked.disabled).toBe(true);
     expect(document.getElementById(locked.getAttribute("aria-describedby")!)?.textContent).toMatch(/can't be changed here yet/);
 
@@ -792,6 +815,10 @@ describe("the teammates screen", () => {
 
     fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit instructions" }));
     const edit = within(panel("tester")).getByRole("form", { name: "Instructions for tester" });
+    // The name shows in the form but can't be changed yet, and the form says why.
+    const name = within(edit).getByLabelText("Name of tester") as HTMLInputElement;
+    expect([name.value, name.readOnly]).toEqual(["tester", true]);
+    expect(document.getElementById(name.getAttribute("aria-describedby")!)?.textContent).toMatch(/Renaming a teammate isn't possible yet/);
     fireEvent.change(within(edit).getByLabelText("New instructions for tester"), { target: { value: "Answer in one sentence." } });
     await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save instructions" })));
     await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());

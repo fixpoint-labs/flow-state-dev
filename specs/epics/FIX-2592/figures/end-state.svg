@@ -1,0 +1,97 @@
+<svg viewBox="0 0 940 508" role="img" aria-label="What's in the box. In the box, the lab: one sidebar of work sessions and coordinator sessions; a new-session dialog that asks for a type and a repository with none chosen for you; Settings, which lists, adds, checks and removes repositories and holds the harness readiness chips and the first-run copy; the word repository everywhere the lab says project; a harness choice with a model list for that harness only; plan mode as an option of a harness that has one, with the plan signed off before work starts. In the box, the lab's thread: the working line pinned at the bottom while a turn runs. In the box, the packages: the workspace host registers a repository while it runs with the checks start-up applies, and removes one without stranding a run that holds a worktree; each harness package says whether it has a plan mode, with the model-choice shape lifted out of Kitchen Sink; its models are FIX-2458's. A fence across the box: registering a repository lets a run move that repository's branches with the operator's own access, so the package refuses registration unless the host is built to allow it, and the lab allows it only by the bind. Composed in by the app: the list of repositories, which the host admits and a project row points at. Replaced in one line: the view switch and the page address's view, and the environment variable as the only door. Not built: workstreams, members, MCP servers or checks in any screen; the trusted-repository flag; sessions started elsewhere joining the sidebar live; rename, archive and search; a live-checkout opt-out; any workforce package change."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .chip  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .one   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .none  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="508"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="612" height="340" rx="8"/>
+    <text class="t-tag c-code" x="32" y="38">IN THE BOX · WHAT THE LAB IS AFTER THIS</text>
+    <text class="t-lbl" x="32" y="62">THE LAB · FIX-2594 · 2598 · 2599</text>
+    <rect class="chip" x="32" y="70" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="92">One sidebar, two session types</text>
+    <rect class="chip" x="32" y="110" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="132">New session: a type and a repository</text>
+    <rect class="chip" x="32" y="150" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="172">Settings: repositories, harness chips</text>
+    <rect class="chip" x="32" y="190" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="212">“Repository” wherever it said project</text>
+    <rect class="chip" x="32" y="230" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="252">Harness, its models, and plan mode</text>
+    <text class="t-lbl" x="330" y="62">THE LAB'S THREAD · FIX-2595</text>
+    <rect class="chip" x="330" y="70" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="92">The working line pinned while it runs</text>
+    <text class="t-lbl" x="330" y="130">THE PACKAGES · FIX-2593 · FIX-2597</text>
+    <rect class="chip" x="330" y="138" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="160">Register a repository while it runs</text>
+    <rect class="chip" x="330" y="178" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="200">Remove one without stranding a run</text>
+    <rect class="chip" x="330" y="218" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="240">Each harness: plan mode, the choice shape</text>
+    <text class="t-s" x="32" y="284">no repository is chosen for you</text>
+  </g>
+
+  <g id="the-fence">
+    <line class="fence" x1="16" y1="300" x2="628" y2="300"/>
+    <text class="t-tag c-gone" x="32" y="320">FENCE · ER-4 · Q1</text>
+    <text class="t-b" x="32" y="338">Admission is off unless allowed: a run moves that repository's branches with the operator's access</text>
+    <text class="t-s" x="32" y="352">the package refuses by default; the lab allows it at loopback, or on another bind when the operator turns it on</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="644" y="16" width="280" height="150" rx="8"/>
+    <text class="t-tag c-acc" x="660" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="660" y="66">The list of repositories</text>
+    <text class="t-s" x="660" y="84">the host admits each; a project row</text>
+    <text class="t-s" x="660" y="100">only points at one</text>
+    <text class="t-b" x="660" y="130">The lab's look and copy</text>
+    <text class="t-s" x="660" y="148">the registry's pieces, the lab's words</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="one" x="644" y="182" width="280" height="174" rx="8"/>
+    <text class="t-lbl" x="660" y="204">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="660" y="232">The view switch, and ?view=</text>
+    <text class="t-s" x="660" y="250">sessions group by type instead</text>
+    <text class="t-b" x="660" y="282">The environment variable as the</text>
+    <text class="t-b" x="660" y="298">only door for a repository</text>
+    <text class="t-s" x="660" y="316">Settings adds one while the lab runs</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="none" x="16" y="372" width="908" height="124" rx="8"/>
+    <text class="t-tag c-gone" x="32" y="394">NOT BUILT</text>
+    <text class="t-b" x="32" y="422">Workstreams, members, MCP</text>
+    <text class="t-s" x="32" y="438">and checks, in any screen</text>
+    <text class="t-b" x="252" y="422">Trusted-repository flag</text>
+    <text class="t-s" x="252" y="438">FIX-2421</text>
+    <text class="t-b" x="472" y="422">Sessions joining live</text>
+    <text class="t-s" x="472" y="438">FIX-2552</text>
+    <text class="t-b" x="692" y="422">Rename, archive, search</text>
+    <text class="t-s" x="692" y="438">FIX-2402</text>
+    <text class="t-b" x="32" y="468">A live-checkout opt-out</text>
+    <text class="t-s" x="32" y="484">FIX-2251</text>
+    <text class="t-b" x="252" y="468">Any workforce package change</text>
+  </g>
+</svg>

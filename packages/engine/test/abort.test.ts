@@ -4,13 +4,15 @@ import { z } from "zod";
 import { afterEach, describe, expect, it, beforeEach, vi } from "vitest";
 import {
   continueRequest,
-  createInMemoryStores,
   runAction,
   createFlowRegistry,
   createFlowApiRouter,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import { createInboundTransportHost } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createParkedStopDeps } from "../src/durability/stop-suspended";
 import { parseFlowRoute } from "../src/routes/parseFlowRoute";

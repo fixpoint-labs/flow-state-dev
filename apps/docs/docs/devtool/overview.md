@@ -19,7 +19,7 @@ pnpm add -D @flow-state-dev/devtool
 Then run `fsdev dev` from your project root:
 
 ```bash
-fsdev dev
+pnpm fsdev dev
 ```
 
 This starts an HTTP server that serves both your flow API and the DevTool UI. Open the printed URL (default: `http://localhost:4200`) in your browser. The DevTool discovers all flows in your project and is ready to use.
@@ -55,10 +55,10 @@ For production, `fsdev serve` runs the same flow API and MCP endpoints with no D
 
 ```bash
 # Start with a custom port and model override
-fsdev dev --port 3000 --model openai/gpt-6-luna
+pnpm fsdev dev --port 3000 --model openai/gpt-6-luna
 
 # Point at a specific flow directory
-fsdev dev --flow-dir ./my-flows
+pnpm fsdev dev --flow-dir ./my-flows
 ```
 
 ## Flow overview

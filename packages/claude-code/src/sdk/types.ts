@@ -1,21 +1,22 @@
 /**
  * Type contracts for the in-process Agent SDK path (`./sdk`).
  *
- * Holds the source-specific handle (`SdkAgentHandle`) returned by the agent
+ * Holds the source-specific handle (`ClaudeCodeAgentHandle`) returned by the agent
  * block, a structural subset of the SDK's streamed message shape
- * (`SdkMessageLike`) so this package never type-depends on the optional SDK,
+ * (`ClaudeCodeSdkMessage`) so this package never type-depends on the optional SDK,
  * the pure translation layer's output union (`TranslatedEvent`), and the
  * option/resolution interfaces shared across the path.
  */
 import { z } from "zod";
-import type { ClaudeAgentSpawnOptions } from "./process-exit";
+import type { ClaudeCodeSpawnOptions } from "./process-exit";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
-import type { HarnessRunHandle, HarnessRunOutcome } from "@flow-state-dev/core/types";
-import type { ObservedFileOpKind, ObservedGapKind, ObservedOutcome } from "./work-collections";
+import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import type { HarnessRunHandle, HarnessRunOutcome } from "@flow-state-dev/core/harness";
+import type { ObservedOutcome } from "@flow-state-dev/core/harness";
+import type { ClaudeCodeFileOpKind, ObservedGapKind } from "./work-collections";
 
 /** Terminal result subtype reported by the SDK's `result` message. */
-export type SdkResultSubtype =
+export type ClaudeCodeResultSubtype =
   | "success"
   | "error_max_turns"
   | "error_max_budget_usd"
@@ -26,8 +27,9 @@ export type SdkResultSubtype =
  * This door's `<package>/<door>` name, the convention every writer of a harness
  * handle's `source` follows.
  */
-export const CLAUDE_SDK_SOURCE = "claude-code/sdk" as const;
+export const CLAUDE_CODE_SOURCE = "claude-code/sdk" as const;
 
+// LAB-154.
 /**
  * How the SDK's terminal subtype reads in the framework's neutral vocabulary.
  *
@@ -41,15 +43,15 @@ export const CLAUDE_SDK_SOURCE = "claude-code/sdk" as const;
  * unrecognized subtype — a future SDK failure mode — to `null`, the same value
  * a run that never produced a result carries. Collapsing the two would report
  * `outcome: null` for a run that demonstrably failed, and `null` is the one
- * thing a manager reads as "no terminal result arrived" (LAB-154 settles runs
- * on this field). `translate.ts` guards the same hazard by keying its error
+ * thing a manager reads as "no terminal result arrived" (a manager settles
+ * runs on this field). `translate.ts` guards the same hazard by keying its error
  * event off the raw subtype.
  *
  * `isError` is the result's `is_error` flag. It only changes a `success`: the
  * error subtypes already read as a limit or a failure.
  */
 export function outcomeFromResultSubtype(
-  subtype: SdkResultSubtype | null,
+  subtype: ClaudeCodeResultSubtype | null,
   terminalResultArrived: boolean,
   isError = false,
 ): HarnessRunOutcome | null {
@@ -80,29 +82,30 @@ export function outcomeFromResultSubtype(
  * reported them. Usage and cost are `null` when the SDK result omitted them —
  * values are never invented.
  */
-export interface SdkAgentHandle extends HarnessRunHandle {
-  source: typeof CLAUDE_SDK_SOURCE;
+export interface ClaudeCodeAgentHandle extends HarnessRunHandle {
+  source: typeof CLAUDE_CODE_SOURCE;
   status: "running" | "completed" | "errored";
   /** The SDK's terminal `result.subtype`, or `null` if the run never produced one. */
-  resultSubtype: SdkResultSubtype | null;
+  resultSubtype: ClaudeCodeResultSubtype | null;
   /** Distinct SDK tool names observed during the run, in first-seen order. */
   toolsObserved: string[];
 }
 
+// BP-030.
 /**
- * Runtime validator for {@link SdkAgentHandle}.
+ * Runtime validator for {@link ClaudeCodeAgentHandle}.
  *
  * A handle persisted before `outcome`/`cost` existed picks them up as `null`
- * from the neutral schema's defaults (BP-030).
+ * from the neutral schema's defaults.
  *
  * **`costUsd` is gone and is not rejected.** It was a dual carried beside the
  * neutral `cost` for one release, while the run manager still read it; the
  * manager reads `cost` now, so nothing reads the dual. Handles persisted with
  * it still parse — zod strips the unknown key rather than failing — which is
- * what BP-030 asks for on a field that was only ever a copy of one still here.
+ * enough for a field that was only ever a copy of one still here.
  */
-export const sdkAgentHandleSchema = harnessRunHandleSchema.extend({
-  source: z.literal(CLAUDE_SDK_SOURCE),
+export const claudeCodeAgentHandleSchema = harnessRunHandleSchema.extend({
+  source: z.literal(CLAUDE_CODE_SOURCE),
   status: z.enum(["running", "completed", "errored"]),
   resultSubtype: z
     .enum([
@@ -121,14 +124,15 @@ export const sdkAgentHandleSchema = harnessRunHandleSchema.extend({
  * package reads. Declared locally so `./sdk` never statically imports the SDK's
  * types (the SDK is an optional peer dependency). Discriminated by `type`.
  */
-export type SdkMessageLike =
+export type ClaudeCodeSdkMessage =
   | {
       type: "system";
       subtype?: "init" | "compact_boundary" | string;
       session_id?: string;
       /** On `init`: every MCP server the run connected to, or tried to. */
       mcp_servers?: Array<{ name: string; status?: string }>;
-      /** On `init`: the model the run uses, as Claude Code names it (FIX-2288). */
+      // FIX-2288.
+      /** On `init`: the model the run uses, as Claude Code names it. */
       model?: string;
       /** On `api_retry`: the failed call's retry attempt, its limit and the wait before it. */
       attempt?: number;
@@ -149,8 +153,9 @@ export type SdkMessageLike =
        */
       parent_tool_use_id?: string | null;
       message?: {
+        // FIX-2288.
         /**
-         * The model message's id (FIX-2288). A parallel tool call splits one
+         * The model message's id. A parallel tool call splits one
          * model message into several assistant messages that share it, each
          * repeating its `usage`.
          */
@@ -173,6 +178,7 @@ export type SdkMessageLike =
       type: "user";
       session_id?: string;
       parent_tool_use_id?: string | null;
+      // BP-030.
       /**
        * The tool's full structured Output object — a MESSAGE-level sibling of
        * the content blocks below, not a field on one. The two carry different
@@ -181,7 +187,7 @@ export type SdkMessageLike =
        * while this carries the declared Output (`filePath`, `structuredPatch`,
        * `task.id`, …). Optional and untyped on purpose — it is absent on older
        * messages and its shape is the vendor's, so every read of it is a
-       * tolerated probe rather than a contract (BP-030).
+       * tolerated probe rather than a contract.
        */
       tool_use_result?: unknown;
       message?: {
@@ -218,7 +224,7 @@ export type SdkMessageLike =
     }
   | {
       type: "result";
-      subtype?: SdkResultSubtype | string;
+      subtype?: ClaudeCodeResultSubtype | string;
       /** Present only on the `success` result variant. */
       result?: string;
       /** Present only on error-subtype results (replaces `result`). */
@@ -316,7 +322,7 @@ export type TranslatedEvent =
        * divergence as a gap rather than silently keying under either.
        */
       resolvedPath?: string;
-      op: ObservedFileOpKind;
+      op: ClaudeCodeFileOpKind;
       outcome: ObservedOutcome;
     }
   /**
@@ -367,7 +373,7 @@ export type TranslatedEvent =
   /** The SDK's terminal result, carrying session id, usage, and cost. */
   | {
       kind: "result";
-      subtype: SdkResultSubtype | null;
+      subtype: ClaudeCodeResultSubtype | null;
       /** The result's `is_error` flag; `false` when the SDK omitted it. */
       isError: boolean;
       finalMessage: string | null;
@@ -382,29 +388,29 @@ export type TranslatedEvent =
       costUsd: number | null;
     };
 
-/** What a {@link ResolveClaudeAgent} returns: the SDK's `query` entry point. */
-export interface ResolvedClaudeAgent {
-  query: ClaudeAgentQuery;
+/** What a {@link ResolveClaudeCodeAgent} returns: the SDK's `query` entry point. */
+export interface ResolvedClaudeCodeAgent {
+  query: ClaudeCodeQuery;
 }
 
 /**
  * The SDK `query()` function shape this package calls. Structural so a scripted
  * fake satisfies it in tests without importing the SDK. Returns an async
- * iterable of {@link SdkMessageLike}.
+ * iterable of {@link ClaudeCodeSdkMessage}.
  */
-export type ClaudeAgentQuery = (args: {
+export type ClaudeCodeQuery = (args: {
   prompt: string | AsyncIterable<unknown>;
-  options?: ClaudeAgentQueryOptions;
-}) => AsyncIterable<SdkMessageLike>;
+  options?: ClaudeCodeQueryOptions;
+}) => AsyncIterable<ClaudeCodeSdkMessage>;
 
 /** Options forwarded to the SDK `query()` call. Loosely typed by design. */
-export interface ClaudeAgentQueryOptions {
+export interface ClaudeCodeQueryOptions {
   model?: string;
-  systemPrompt?: ClaudeAgentSystemPrompt;
+  systemPrompt?: ClaudeCodeSystemPrompt;
   allowedTools?: string[];
   disallowedTools?: string[];
   permissionMode?: string;
-  canUseTool?: SdkCanUseTool;
+  canUseTool?: ClaudeCodeCanUseTool;
   agents?: unknown;
   maxTurns?: number;
   resume?: string;
@@ -424,7 +430,7 @@ export interface ClaudeAgentQueryOptions {
    * directory, so a directory the run did not come with can otherwise
    * configure the agent working in it.
    */
-  settingSources?: ClaudeAgentSettingSource[];
+  settingSources?: ClaudeCodeSettingSource[];
   /** Environment variables for the run's own process. */
   env?: Record<string, string | undefined>;
   /**
@@ -456,7 +462,7 @@ export interface ClaudeAgentQueryOptions {
    * process and can wait for it to exit on abort; a scripted `query` may
    * ignore it.
    */
-  spawnClaudeCodeProcess?: (options: ClaudeAgentSpawnOptions) => unknown;
+  spawnClaudeCodeProcess?: (options: ClaudeCodeSpawnOptions) => unknown;
 }
 
 /**
@@ -467,12 +473,12 @@ export interface ClaudeAgentQueryOptions {
  * - `{ type: "preset", preset: "claude_code" }` is Claude Code's own prompt,
  *   the one the `claude` CLI uses; `append` adds text after it
  *
- * Declared here rather than imported, like {@link ClaudeAgentSettingSource},
+ * Declared here rather than imported, like {@link ClaudeCodeSettingSource},
  * because the SDK is an optional peer. The preset object stays open so a field
  * the SDK adds later passes through: the value is forwarded verbatim and the
  * SDK validates it.
  */
-export type ClaudeAgentSystemPrompt =
+export type ClaudeCodeSystemPrompt =
   | string
   | string[]
   | {
@@ -488,17 +494,17 @@ export type ClaudeAgentSystemPrompt =
  * Declared here rather than imported from the SDK so the option is usable —
  * and typo-proof — without the optional peer installed.
  */
-export type ClaudeAgentSettingSource = "user" | "project" | "local";
+export type ClaudeCodeSettingSource = "user" | "project" | "local";
 
 /** The SDK's `canUseTool` callback shape (HITL seam target). */
-export type SdkCanUseTool = (
+export type ClaudeCodeCanUseTool = (
   toolName: string,
   input: unknown,
   extra: { signal?: AbortSignal; suggestions?: unknown },
-) => Promise<SdkToolDecision>;
+) => Promise<ClaudeCodeSdkToolDecision>;
 
 /** A tool-approval decision in the SDK's `canUseTool` vocabulary. */
-export type SdkToolDecision =
+export type ClaudeCodeSdkToolDecision =
   | { behavior: "allow"; updatedInput: unknown }
   | { behavior: "deny"; message: string; interrupt?: boolean };
 
@@ -507,12 +513,12 @@ export type SdkToolDecision =
  * block context loosely so a fully parameterized `execute` context passes
  * without a cast at the call site.
  */
-export type ResolveClaudeAgent = (
+export type ResolveClaudeCodeAgent = (
   ctx: BlockContext<any, any, any, any, any, any, any, any, any>,
-) => ResolvedClaudeAgent | Promise<ResolvedClaudeAgent>;
+) => ResolvedClaudeCodeAgent | Promise<ResolvedClaudeCodeAgent>;
 
 /** An approval request handed to {@link ClaudeCodeAgentOptions.onToolApproval}. */
-export interface ToolApprovalRequest {
+export interface ClaudeCodeToolApprovalRequest {
   toolName: string;
   input: unknown;
   /**
@@ -532,7 +538,7 @@ export interface ToolApprovalRequest {
  *   answer). The call does not run, the turn stops (the SDK's `interrupt`),
  *   and it is recorded as waiting on a person, not as denied.
  */
-export type ToolApprovalDecision =
+export type ClaudeCodeToolApprovalDecision =
   | { decision: "allow"; updatedInput?: unknown }
   | { decision: "deny"; message?: string }
   | { decision: "held"; message?: string };

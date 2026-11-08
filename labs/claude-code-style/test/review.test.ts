@@ -13,6 +13,7 @@ const review = (patch: Partial<ReviewDetail> = {}): ReviewDetail => ({
   commits: 1,
   subjects: ["docs: note the vendor pick"],
   judge: { verdict: "done", confidence: 0.912, reason: "One line added." },
+  checks: null,
   ...patch,
 });
 

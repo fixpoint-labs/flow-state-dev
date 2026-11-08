@@ -31,18 +31,18 @@ afterEach(cleanup);
 /** A collection source that answers one fixed page and counts its calls. */
 function fakeSource(items: Array<{ topic: string; clientData: unknown }>) {
   return {
-    listCollectionItems: vi.fn(async () => ({ items }))
+    listCollectionResources: vi.fn(async () => ({ items }))
   };
 }
 
 /** A source that never settles — the only honest way to hold the loading render. */
 function pendingSource() {
-  return { listCollectionItems: vi.fn(() => new Promise<never>(() => {})) };
+  return { listCollectionResources: vi.fn(() => new Promise<never>(() => {})) };
 }
 
 function failingSource(message: string) {
   return {
-    listCollectionItems: vi.fn(async () => {
+    listCollectionResources: vi.fn(async () => {
       throw new Error(message);
     })
   };
@@ -56,7 +56,7 @@ function failingSource(message: string) {
  * V11).
  */
 function pagedSource(items: Array<{ topic: string; clientData: unknown }>, pageSize = 50) {
-  const listCollectionItems = vi.fn(
+  const listCollectionResources = vi.fn(
     async (
       _sessionId: string,
       _ref: string,
@@ -72,7 +72,7 @@ function pagedSource(items: Array<{ topic: string; clientData: unknown }>, pageS
       return { items: page, ...(hasMore ? { nextCursor: page[page.length - 1]!.topic } : {}) };
     }
   );
-  return { listCollectionItems };
+  return { listCollectionResources };
 }
 
 /**
@@ -82,7 +82,7 @@ function pagedSource(items: Array<{ topic: string; clientData: unknown }>, pageS
 function endlessSource(row: (n: number) => { topic: string; clientData: unknown }) {
   let n = 0;
   return {
-    listCollectionItems: vi.fn(async () => {
+    listCollectionResources: vi.fn(async () => {
       const item = row(n++);
       return { items: [item], nextCursor: item.topic };
     })
@@ -115,7 +115,7 @@ describe("Roster", () => {
     // The read is addressed to the session and the declared ref, and nothing
     // else — there is no organization to pass, because the server already
     // resolved one.
-    expect(source.listCollectionItems).toHaveBeenCalledWith("s1", "roster", {});
+    expect(source.listCollectionResources).toHaveBeenCalledWith("s1", "roster", {});
   });
 
   it("reports workers skipped at boot as a count AND a list (BR-20)", async () => {
@@ -159,7 +159,7 @@ describe("Roster", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     // One read, not a timer. A region that quietly re-reads hides a broken
     // deployment behind a spinner.
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(1);
   });
 
   it("hands a slot `null` for a row written before instructions existed (BP-030)", async () => {
@@ -224,7 +224,7 @@ describe("Roster", () => {
       "51"
     );
     // Two requests: the first page and the one the cursor points to.
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(2);
   });
 
   it("errors rather than render a partial roster when the page ceiling is hit with rows left", async () => {
@@ -242,21 +242,21 @@ describe("Roster", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(screen.queryByText("worker-0000")).toBeNull();
     expect(document.querySelector("[data-roster-workers]")).toBeNull();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1000);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(1000);
   });
 
   it("errors after two pages rather than read to the ceiling when the server repeats its cursor", async () => {
     // A transport that hands back the same cursor every time. Without the
     // repeated-cursor check the panel asks 1,000 times before it errors.
     const source = {
-      listCollectionItems: vi.fn(async () => ({ items: [worker("worker-0000")], nextCursor: "stuck" }))
+      listCollectionResources: vi.fn(async () => ({ items: [worker("worker-0000")], nextCursor: "stuck" }))
     };
     render(createElement(Roster, { sessionId: "s1", client: { resources: source }, collectionRef: "roster" }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(screen.getByText(/same page cursor twice/)).toBeTruthy();
     expect(document.querySelector("[data-roster-workers]")).toBeNull();
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(2);
   });
 
   it("renders a roster that ends exactly on the last page the ceiling allows", async () => {
@@ -273,7 +273,7 @@ describe("Roster", () => {
     expect(document.querySelector("[data-roster-workers]")?.getAttribute("data-roster-workers")).toBe(
       "1000"
     );
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1000);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(1000);
   });
 });
 
@@ -402,7 +402,7 @@ describe("BoardColumns", () => {
 
       await waitFor(() => expect(screen.getByText("task 50")).toBeTruthy());
       expect(document.querySelectorAll('[data-column="pending"] [data-task-id]').length).toBe(51);
-      expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+      expect(source.listCollectionResources).toHaveBeenCalledTimes(2);
 
       // None of the withheld envelope fields ever reach the DOM — only what
       // `defaultCardBody` projects (the label and, when present, `assignee`).
@@ -419,6 +419,6 @@ describe("BoardColumns", () => {
     expect(screen.getByText(/more still to read/)).toBeTruthy();
     expect(document.querySelectorAll("[data-task-id]").length).toBe(0);
     // Stops at the ceiling rather than reading forever.
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1000);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(1000);
   });
 });

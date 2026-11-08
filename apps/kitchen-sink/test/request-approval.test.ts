@@ -12,7 +12,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow } from "@flow-state-dev/core";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/items";
 import type {
   FlowInstance,
   SuspensionRecord
@@ -21,9 +21,11 @@ import {
   continueRequest,
   createCheckpointDurabilityProvider,
   createFlowRegistry,
-  createInMemoryStores,
   runAction
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { approvalGate, approvalGateInput } from "../flows/chat-agent/approval-gate";
 

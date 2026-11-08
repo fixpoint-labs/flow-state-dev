@@ -54,7 +54,7 @@ describe("a task's ending in the conversation", () => {
     expect(entry).not.toHaveProperty("failed");
   });
 
-  // FIX-2349: a task Chief of Staff cancelled read "failed" while its run was still going.
+  // FIX-2349: a task Lead cancelled read "failed" while its run was still going.
   it("draws a cancelled task as cancelled, never as failed", () => {
     expect(toBoardTask({ id: "task_c", status: "cancelled", assignee: CODER, title: "Misc bug fix" }).status).toBe("cancelled");
     const [entry] = toEntries([row("task_c", "cancelled"), ending("d", "task_c", { ending: "cancelled" })], new Set([CODER]));
@@ -141,7 +141,7 @@ describe("the turn a message's popup shows", () => {
   });
 });
 
-// FIX-2393: a worker's tool steps show in the conversation during its turn, not only in a popup.
+// A worker's tool steps show in the conversation during its turn, not only in a popup.
 describe("a worker's tool steps in its conversation", () => {
   const call = (id: string, name: string, args: Record<string, unknown>, status: string, output?: unknown, requestId = "r1") =>
     ({ id, type: "tool_output", status, requestId, toolCall: { name, arguments: JSON.stringify(args) }, ...(output === undefined ? {} : { output }) });

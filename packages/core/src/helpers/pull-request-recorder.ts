@@ -128,7 +128,7 @@ export function recordPullRequests(ctx: PullRequestRecorderContext, options: Rec
     await writes;
   };
   // Registered first: a context with no seam must not leave a listener behind.
-  if (!onRequestEnded(ctx as never, stop)) {
+  if (!onRequestEnded(ctx, stop)) {
     note(ctx, "Pull requests are not being recorded: this context has no request-end seam to stop the recorder at.");
     return;
   }

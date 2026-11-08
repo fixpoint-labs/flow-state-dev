@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { checkWorkerFlows, resolveWorkerFlows } from "../src/hire";
-import { standardWorkerRow } from "../src/workers/standard-workers";
+import { standardWorkerResourceState } from "../src/workers/standard-workers";
 import type { WorkerManifest } from "../src/manifest";
 
 const LOOKS = { icon: z.string().optional(), color: z.string().optional() };
@@ -32,7 +32,7 @@ describe("an app's settings on the agent flow", () => {
     const flows = resolveWorkerFlows({ agent: { flow: agent, showSettings: ["icon", "color"] } });
     expect(refusal(() => checkWorkerFlows(flows))).toBe("");
     // Only the shown keys: `tone` is in the file but no flow shows it.
-    expect(standardWorkerRow(scout, "agent", (flow) => flows[flow]?.showSettings ?? []).settings).toEqual({ icon: "🔎", color: "teal" });
+    expect(standardWorkerResourceState(scout, "agent", (flow) => flows[flow]?.showSettings ?? []).settings).toEqual({ icon: "🔎", color: "teal" });
   });
 
   it("without them the flow's settings are fixed: a worker setting one is refused, and so is a registration showing it", () => {

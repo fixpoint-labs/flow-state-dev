@@ -45,14 +45,16 @@ export const OBSERVED_PULL_REQUESTS = "observed-pull-requests" as const;
  */
 export type PullRequestSource = "tool" | "branch";
 
+// BP-023.
 /**
  * One pull request, keyed by {@link pullRequestKey}.
  *
  * `requestId` is a read key: a reader narrows a shared session's rows to the
  * request that opened them by it (a task's run, a turn). It is set once and
- * never moved. `state` is what was seen when the row was written (at opening,
- * or at the branch check), not kept current after the session. Every field is
- * nullable with a null default (BP-023), so a row written by an older or newer
+ * never moved. `state` is the last state a writer saw (at opening, at the
+ * branch check, or at a read of the pull request): each sighting that names
+ * one replaces it, so a row reads `merged` once a read saw the merge. Every field is
+ * nullable with a null default, so a row written by an older or newer
  * shape still parses.
  */
 export const observedPullRequestStateSchema = z.object({
@@ -400,9 +402,11 @@ export interface WritePullRequestsOptions {
  *
  * - A new key is written whole, with `firstSeenAt`.
  * - An existing row keeps `requestId` and `firstSeenAt` once set; a later
- *   sighting only fills a null `title`, `state`, `branch`, `requestId` or
- *   `url`. That is what lands a repeated link, a second recorder and the
- *   branch check on one row.
+ *   sighting only fills a null `title`, `branch`, `requestId` or `url`. That
+ *   is what lands a repeated link, a second recorder and the branch check on
+ *   one row.
+ * - `state` is kept current: a sighting that names one replaces the stored
+ *   one, so a read that saw the pull request merged or closed lands on the row.
  * - A `tool` sighting upgrades a `branch` row's `source`.
  *
  * Writes run one after another, so two refs to one key in a call never race.
@@ -434,9 +438,10 @@ export async function writePullRequests(
       continue;
     }
     const update: Record<string, unknown> = {};
-    for (const field of ["url", "title", "state", "branch", "requestId"] as const) {
+    for (const field of ["url", "title", "branch", "requestId"] as const) {
       if ((prior[field] === null || prior[field] === undefined) && sighting[field] !== null) update[field] = sighting[field];
     }
+    if (sighting.state !== null && sighting.state !== prior.state) update.state = sighting.state;
     if (options.source === "tool" && prior.source !== "tool") update.source = "tool";
     if (Object.keys(update).length > 0) await collection.upsert(key, update);
   }

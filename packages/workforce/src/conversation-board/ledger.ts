@@ -1,11 +1,12 @@
+// FIX-1791; FIX-1794 S3; FIX-2078; FIX-2080 D2.
 /**
- * The ledger a conversation's task board keeps its rows in (FIX-1794 S3).
+ * The ledger a conversation's task board keeps its rows in.
  *
  * One durable collection for every conversation, at the owner's user scope,
  * which crosses flows, so a task session on another flow reads and settles the
  * row it was handed. Each conversation reaches only its own partition: the
  * conversation's `filingSessionId`, its id plus the incarnation the server
- * minted when it was created (FIX-1791's value, epic D6). A conversation
+ * minted when it was created (its value). A conversation
  * deleted and created again under the same id starts with an empty board; the
  * old rows stay in the store, unread.
  *
@@ -14,7 +15,7 @@
  * - **A notice** is a marker the ending's own write puts on the row:
  *   orchestration records it for every row a board hands out, so the ending
  *   and the debt to tell its filer land together or not at all, and delivers
- *   it (`./delivery`). Only the filer's delivery clears it (FIX-2078).
+ *   it (`./delivery`). Only the filer's delivery clears it.
  * - **A report** the Error Reporter is owed for a task that failed for good
  *   rides that notice (`./report-owed`): no marker of its own.
  * - **A start** is no marker at all: it is the row's own state. A row that is
@@ -23,7 +24,7 @@
  *   that same write. The run that claims it pays it. Nothing can strand a
  *   start between two writes, because there is no second write.
  *
- * - **A cascade** a task's ending owes (FIX-2080 D2): its open dependents on
+ * - **A cascade** a task's ending owes: its open dependents on
  *   this board, and the open tasks its session filed (`./cascade`), recorded
  *   by orchestration in the ending's own write and paid by the ending's own
  *   pass, or by the board's next touch once past due.
@@ -35,14 +36,16 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  hasFrozenLedgerAssignee,
   resolveResourceCollection,
   type TaskCollectionRef,
   type TaskPartitionContext,
   type TaskSettingsSupport,
-  taskLedgerResources,
-  withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
+import {
+  hasFrozenLedgerAssignee,
+  taskLedgerResources,
+  withoutNoticeMarkers,
+} from "@flow-state-dev/orchestration/internal";
 import { FILED_HOP, FILED_MARKER, FILED_PROJECT, PIECE_OF, SPLIT_MARKER } from "./board-entries";
 import { filedCascadeOver } from "./cascade";
 import { filingSessionIdOf } from "./filing-session";
@@ -68,11 +71,12 @@ export function conversationPartition(view: TaskPartitionContext): Promise<strin
   });
 }
 
+// BP-015; FIX-2133.
 /**
  * The fields of a row a browser reads: what a task screen or a board column
  * draws, and nothing a run keeps for itself (its input, output, metadata and
- * write log stay on the server, BP-015). What holds a row for the user is
- * `holds`, with the `steers` that answer its questions (FIX-2133): the one
+ * write log stay on the server). What holds a row for the user is
+ * `holds`, with the `steers` that answer its questions: the one
  * thing that says what waits on the user. `spend` is what its runs spent, so
  * a task's tokens and cost read from the row.
  */
@@ -95,10 +99,8 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   // What holds a task for the user (FIX-2133): the Inbox lists the task's item from its open holds,
   // and a question is open while no steer carries its id.
   "holds",
-  // A row stored before FIX-2317 keeps its holds as `questions`; a reader maps it with `withRetiredShapes` (BP-030).
-  "questions",
   "steers",
-  // What its runs spent (FIX-2398): the stored ledger, which a reader folds with `taskRowView`.
+  // What its runs spent (FIX-2398): the stored ledger, which a reader folds with `taskView`.
   "spend",
   "createdAt",
   "updatedAt",
@@ -116,8 +118,9 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
  * conversation's partition. That is how an app lists the tasks its user's
  * conversations filed, and what a task screen reads.
  */
+// FIX-2080.
 /**
- * The settings a conversation's board honours (FIX-2080): a task can run in the
+ * The settings a conversation's board honours: a task can run in the
  * delegate's ongoing session for the conversation, and send its result to the
  * conversation. The board's guarded add takes both only from a conversation.
  */
@@ -142,7 +145,7 @@ export const conversationLedger = Object.assign(
   { client: { state: { read: true }, expose: CONVERSATION_BOARD_CLIENT_FIELDS } }
 );
 
-/** The flow resources that install the ledger, with the id index a `{ task }` message finds its row by (FIX-2160). */
+/** The flow resources that install the ledger. A `{ task }` message finds its row by the ledger's own `byTaskId` index. */
 export const conversationLedgerResources = taskLedgerResources(conversationLedger);
 
 /**
@@ -179,13 +182,14 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
   return conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
 }
 
+// FIX-1802 S4; FIX-2080; FIX-2106; FIX-2161.
 /**
  * Metadata a caller hands in, without any marker this board keeps: a filing
  * or a patch can't forge an owed notice or an owed report, or clear one, or
  * make a row a piece of a task, or point a row at a
- * session as its split (FIX-1802 S4) or as the session that filed its work
- * (FIX-2080), or set the hop count its turn starts at (FIX-2106), or the
- * project it was filed in (FIX-2161).
+ * session as its split or as the session that filed its work,
+ * or set the hop count its turn starts at, or the
+ * project it was filed in.
  */
 export function callerMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined

@@ -1,3 +1,4 @@
+// BP-030.
 /**
  * The `references/` migration — find and clear the stored rows that shadow a
  * reference's file, for a document that was written while it still lived under
@@ -15,7 +16,7 @@
  * So for a tree that has ever been written to, moving the file does not make
  * the promise true. This does.
  *
- * **The old shape is tolerated, not assumed away** (BP-030). A row may be there
+ * **The old shape is tolerated, not assumed away**. A row may be there
  * or may not; both are ordinary. What this refuses to do is leave a present one
  * in place and say nothing.
  *
@@ -161,10 +162,10 @@ function referenceScopeId(orgId: string, installedOn: ReferenceInstallFlow): str
   ];
   if (offending.length > 0) {
     throw new Error(
-      `Cannot address this org's reference rows: ${offending.join(" and ")} contains ":" or a ` +
+      `Cannot address this org's reference resources: ${offending.join(" and ")} contains ":" or a ` +
         `backslash, which the engine escapes when it builds a storage bucket — with a rule this ` +
         `package cannot reproduce without keeping a second copy of it. Refusing rather than ` +
-        `reading the wrong cell and reporting nothing to clear. Clear these rows with the ` +
+        `reading the wrong cell and reporting nothing to clear. Clear these resources with the ` +
         `engine's own store helpers, or migrate this org by hand.`,
     );
   }

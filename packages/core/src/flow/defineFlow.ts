@@ -1,12 +1,13 @@
+// FIX-435; FIX-431.
 /**
  * defineFlow — assembles a flow definition into a callable factory.
  *
- * FIX-435: resources are intrinsic to their definition (`scope`,
+ * Resources are intrinsic to their definition (`scope`,
  * `flowIsolation`) and live in a single flat `flow.resources` map. Block
  * declarations bubble up via `declaredResources` and are merged into that
  * flat map; `(scope, ref, flowIsolation)` collisions are surfaced at
  * build time. Conflict detection across flows still lives in the cross-flow
- * schema registry path (FIX-431).
+ * schema registry path.
  */
 import { generator, type GeneratorConfig } from "../blocks/generator";
 import { mergeDeclaredResources } from "../blocks/internal/build-block";
@@ -46,6 +47,14 @@ import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
 import { hasZodObjectCatchall, introspectStateKeys, isZodObject } from "../helpers/zod-introspect";
 import { walkBlockGraph } from "../helpers/block-graph";
+import { warnOnceDev } from "../helpers/deprecation";
+import {
+  mergeScopeStateSchemas,
+  refuseUnstoredFactoryDefaults,
+  type ScopeStateDeclaration
+} from "../helpers/scope-state-merge";
+import { getBaseCapability } from "../capability/merge";
+import type { CapabilityRef } from "../capability/types";
 import {
   describeFlowConfigIssues,
   describeFlowConfigMismatch,
@@ -130,43 +139,6 @@ type AnyFlowInstanceOptions = FlowInstanceOptions<
   AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg,
   Record<string, DeclaredResourceEntry>, ZodTypeAny
 >;
-
-function rejectRemovedMiddleware(value: object | undefined, location: string): void {
-  if (value !== undefined && Object.hasOwn(value, "middleware")) {
-    throw new Error(
-      `${location} uses the removed "middleware" option. ` +
-      "Middleware is not executed; move policy checks to the HTTP authentication layer or block logic."
-    );
-  }
-}
-
-/**
- * Reject the removed flow-level `work` option.
- *
- * `work` declared four lifecycle hooks (`onStarted` / `onCompleted` /
- * `onErrored` / `onFinished`) that the engine never invoked — nothing read
- * `flow.work` to dispatch them. They are gone from `FlowDefinition` and
- * `FlowInstanceOptions` (FIX-766), so a TypeScript caller passing a fresh
- * object literal now fails to compile; this is the runtime half, for plain JS
- * and for a non-fresh object TypeScript lets through.
- *
- * Failing loudly matters even though the hooks never fired. Silently dropping
- * the key would take the resource declarations with it: the hooks WERE walked
- * for declaration discovery, so a resource declared only on one of them was
- * registered, and after the removal it is not. That is a real behaviour change
- * hiding behind a dead contract, and it is exactly the case BP-030 has in mind
- * when it says to reject removed keys loudly.
- */
-function rejectRemovedWork(value: object | undefined, location: string): void {
-  if (value !== undefined && Object.hasOwn(value, "work")) {
-    throw new Error(
-      `${location} uses the removed "work" option. ` +
-      "Its four hooks were never invoked, so no lifecycle behaviour is lost — but they were walked for " +
-      "resource declaration, so any resource declared only there is no longer registered. " +
-      "Move those declarations onto a block that runs, and dispatch background steps with `.sideChain()`."
-    );
-  }
-}
 
 /** The definition-only options {@link rejectDefinitionOnlyOptions} refuses. */
 const DEFINITION_ONLY_INSTANCE_OPTIONS = [
@@ -422,12 +394,13 @@ function resolveInstanceId(
   return suppliedId ?? flowKind;
 }
 
+// FIX-1048.
 /**
  * Reject transport configs that are declared on the flow DEFINITION only.
  *
  * Passing one as an instance option used to type-check and then do nothing at
  * all — the instance carried the definition's values either way, so
- * `flow({ webhooks })` looked configured and was not (FIX-1048). They are gone
+ * `flow({ webhooks })` looked configured and was not. They are gone
  * from {@link FlowInstanceOptions}, so a TypeScript caller now fails to compile;
  * this guard is the runtime half, for the caller who reaches past the types
  * (plain JS, or an `as any` cast): fail loudly rather than accept-and-ignore.
@@ -535,6 +508,34 @@ function withFlowToolsEntries<TEntry extends InternalEntry | TaskEntry>(
     result[name] = { ...entry, block: withFlowTools(entry.block, flowTools) };
   }
   return result;
+}
+
+/**
+ * Warn, once per flow kind and action and in dev only, about each caller
+ * action whose block is a generator with no `itemVisibility`: it emits no
+ * items, so a chat mounted on it renders nothing. A warning, not a throw: a
+ * headless generator action is legitimate, and `itemVisibility` gets no
+ * position-inferred default (`docs/architecture/generator-identity.md`). Only
+ * `actions`: internal, task, webhook and schedule entries have no chat.
+ *
+ * Only a generator that IS the action's block is checked. A sequencer whose
+ * generator steps are all silent is not warned, since a handler step can emit
+ * and silence can't be proved statically: no warning does not mean the action
+ * renders.
+ */
+function warnSilentGeneratorActions(kind: string, actions: AnyActions): void {
+  for (const [name, action] of Object.entries(actions)) {
+    const block = action.block as BlockDefinition | undefined;
+    if (block?.kind !== "generator") continue;
+    if ((block.config as { itemVisibility?: unknown }).itemVisibility !== undefined) continue;
+    warnOnceDev(
+      `core/silent-generator-action/${kind}/${name}`,
+      `Flow "${kind}" action "${name}" runs generator "${block.name}" with no \`itemVisibility\`, ` +
+        `so it emits no items and a chat on this action renders nothing. Set ` +
+        `\`itemVisibility: { client: true, history: true }\` to show its reply in chat, or ` +
+        `\`itemVisibility: { client: false, history: false }\` to keep it headless on purpose.`
+    );
+  }
 }
 
 function mergeActions(
@@ -719,6 +720,67 @@ function collectBlockResources(
 }
 
 
+type StateScope = "session" | "user" | "org";
+const STATE_SCOPES: readonly StateScope[] = ["session", "user", "org"];
+
+/**
+ * Every scope-state schema the reachable blocks declare, for one scope: each
+ * block's own, then each capability it uses, named by the capability so a
+ * refusal points at what the author wrote. Dynamic `uses` and presets
+ * contribute none.
+ */
+function blockScopeStateDeclarations(
+  scope: StateScope,
+  reachable: readonly BlockDefinition[]
+): ScopeStateDeclaration[] {
+  const key = `${scope}StateSchema` as const;
+  const out: ScopeStateDeclaration[] = [];
+  for (const block of reachable) {
+    const config = block.config as Partial<Record<typeof key, ZodTypeAny>> & {
+      __resolvedCapabilities?: readonly CapabilityRef[];
+    };
+    const own = config[key];
+    if (own !== undefined) out.push({ schema: own, source: `block "${block.name}"` });
+    for (const ref of config.__resolvedCapabilities ?? []) {
+      const capability = getBaseCapability(ref);
+      const schema = capability[key];
+      if (schema !== undefined) {
+        out.push({ schema, source: `capability "${capability.name}" (used by block "${block.name}")` });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The schema each scope's reads fill defaults from: the flow's own
+ * `stateSchema` merged with every declaration its reachable blocks and their
+ * capabilities make (`mergeScopeStateSchemas`). The flow's own schema still
+ * validates writes; this one only fills defaults, so a block's declared
+ * default reads on a fresh record without the flow restating it.
+ *
+ * Throws when two declarations disagree on a field, naming both. Never calls
+ * an author's default factory: a dynamic default agrees only with itself.
+ */
+function mergeFlowScopeStateSchemas(
+  kind: string,
+  scopes: Record<StateScope, { stateSchema?: ZodTypeAny } | undefined>,
+  reachable: readonly BlockDefinition[]
+): NonNullable<FlowInstance["scopeStateSchemas"]> {
+  const merged: { session?: ZodTypeAny; user?: ZodTypeAny; org?: ZodTypeAny } = {};
+  for (const scope of STATE_SCOPES) {
+    const own = scopes[scope]?.stateSchema;
+    const declarations = [
+      ...(own === undefined ? [] : [{ schema: own, source: `flow "${kind}"` }]),
+      ...blockScopeStateDeclarations(scope, reachable)
+    ];
+    refuseUnstoredFactoryDefaults(`Flow "${kind}"`, scope, own, declarations);
+    const schema = mergeScopeStateSchemas(`Flow "${kind}"`, scope, declarations);
+    if (schema !== undefined) merged[scope] = schema;
+  }
+  return merged;
+}
+
 /**
  * Read the entries of one typed map (`flow.internal` / `flow.task`), refusing
  * the flat sibling shape by name.
@@ -743,8 +805,9 @@ function typedEntries<TEntry>(
   return value.actions;
 }
 
+// FIX-2286.
 /**
- * Validate the flow's `reads` at definition time (FIX-2286): each is an object
+ * Validate the flow's `reads` at definition time: each is an object
  * with a block, so a read with none fails here by name rather than as a
  * property read on `undefined` when an app calls it.
  */
@@ -862,7 +925,7 @@ function resolveDispatchTargets(
     for (const needed of requires ?? []) {
       if (internal !== undefined && Object.hasOwn(internal, needed)) continue;
       throw new Error(
-        `Flow "${kind}" holds board "${taskBindingOf(block)!.boardId}", which hands rows out through ` +
+        `Flow "${kind}" holds board "${taskBindingOf(block)!.boardId}", which hands tasks out through ` +
           `block "${block.name}", but the flow declares no \`${needed}\` entry, so it would never hear ` +
           `how a task it handed out ended. Add \`internal: { actions: { ${needed}: taskSettledEntry({ block }) } }\` ` +
           `(from @flow-state-dev/orchestration).`
@@ -898,7 +961,7 @@ function resolveDispatchTargets(
           throw new Error(
             `Flow "${kind}" reaches block "${block.name}", which dispatches to task:"${action}", but the ` +
               `flow declares no such task entry. Add \`task: { actions: { ${action}: { block } } }\` ` +
-              `to the flow — the block that runs each row this dispatcher dispatches.`
+              `to the flow — the block that runs each task this dispatcher dispatches.`
           );
         }
         const binding = taskBindingOf(block);
@@ -906,7 +969,7 @@ function resolveDispatchTargets(
           throw new Error(
             `Flow "${kind}" reaches block "${block.name}", which dispatches to ${label}, but no ` +
               `task board holds it. A task dispatcher belongs to a board: put it under a board's ` +
-              `\`workers\`, which is the only place a claim on a durable row is minted.`
+              `\`workers\`, which is the only place a claim on a durable task is minted.`
           );
         }
         const holder = gatedBy.get(action);
@@ -1144,7 +1207,7 @@ function mergeFlowResourceMap(
         `sharedToLineage: ${flowShared}, but a block declared the same accessor with ` +
         `sharedToLineage: ${blockShared}. Letting the flow's declaration win would ` +
         `move the resource between the running session and the lineage without the ` +
-        `block knowing — a task board that dispatches would claim rows in one place while its ` +
+        `block knowing — a task board that dispatches would claim tasks in one place while its ` +
         `child session reads an empty ledger and loops. Make the two agree, or give one a ` +
         `distinct accessor name.`
     );
@@ -1298,10 +1361,6 @@ function normalizeFlowConfig(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
 ): NormalizedFlowConfig {
-  rejectRemovedMiddleware(definition, `Flow "${definition.kind}"`);
-  rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
-  rejectRemovedWork(definition, `Flow "${definition.kind}"`);
-  rejectRemovedWork(options, `Flow "${definition.kind}" instance options`);
   rejectDefinitionOnlyOptions(options, definition.kind);
   rejectInstanceCardinality(options, definition.kind);
   rejectInstanceConfigSchema(options, definition.kind);
@@ -1326,6 +1385,7 @@ function normalizeFlowConfig(
   const tools = mergeToolsConfig(definition.tools, options?.tools);
   const kind = options?.kind ?? definition.kind;
   const actions = mergeActions(definition.actions, options?.actions, tools);
+  warnSilentGeneratorActions(kind, actions);
 
   const session = mergeConfig(definition.session, options?.session);
   const user = mergeConfig(definition.user, options?.user);
@@ -1419,7 +1479,12 @@ function normalizeFlowConfig(
   // `tools` array — so a block reached only as a tool still lands its
   // resources on `ctx.resources` (FIX-1578). A block reachable both ways is
   // merged twice under the same `defineResource()` reference, which dedupes.
-  const blockResources = collectBlockResources(walkBlockGraph(declaredBlocks));
+  const declaredReachable = walkBlockGraph(declaredBlocks);
+  const blockResources = collectBlockResources(declaredReachable);
+  // Off the same walk: every scope-state declaration the flow reaches, merged
+  // into the schema each scope's reads fill defaults from. Refuses here, at
+  // definition, when two of them disagree on a field.
+  const scopeStateSchemas = mergeFlowScopeStateSchemas(kind, { session, user, org }, declaredReachable);
   const flowOwnResources = options?.resources ?? definition.resources;
   // Accessor keys declared in the flow's OWN `resources` map, captured before
   // block-tree/capability resources bubble up and merge in (FIX-688). The
@@ -1491,7 +1556,8 @@ function normalizeFlowConfig(
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator,
     isolateUserState,
-    isolateOrgState
+    isolateOrgState,
+    scopeStateSchemas
   };
 }
 
@@ -1579,6 +1645,9 @@ export function defineFlow<
     costEstimator: baseInstance.costEstimator,
     isolateUserState: baseInstance.isolateUserState,
     isolateOrgState: baseInstance.isolateOrgState,
-    flowLevelResourceKeys: baseInstance.flowLevelResourceKeys
+    flowLevelResourceKeys: baseInstance.flowLevelResourceKeys,
+    // Mirrored so a blueprint the registry admits in place of an instance
+    // fills its blocks' defaults like a minted copy does.
+    scopeStateSchemas: baseInstance.scopeStateSchemas
   });
 }

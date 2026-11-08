@@ -1,6 +1,7 @@
 /**
- * The removed gateway/provider/model form throws, naming its colon spelling.
- * This file quotes that form, so the guard excludes it.
+ * A three-part slash string (gateway/provider/model) is not a model string:
+ * it throws as an invalid format, before any gateway call. This file quotes
+ * that form, so the guard excludes it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createModelResolver } from "../../src/models/createModelResolver";
@@ -33,20 +34,18 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("the slash multi-hop form is removed", () => {
-  it("the parser rejects it, naming the colon spelling", () => {
-    expect(() => parseModelString("vercel/openai/gpt-5.4")).toThrow(/"vercel:openai\/gpt-5\.4"/);
-    expect(() => parseModelString("openrouter/anthropic/claude-sonnet-5")).toThrow(
-      /"openrouter:anthropic\/claude-sonnet-5"/
-    );
+describe("the slash multi-hop form is invalid", () => {
+  it("the parser rejects it", () => {
+    expect(() => parseModelString("vercel/openai/gpt-5.4")).toThrow(/Invalid model format/);
+    expect(() => parseModelString("openrouter/anthropic/claude-sonnet-5")).toThrow(/Invalid model format/);
   });
 
   it("a block's string fails on first resolve, before any gateway call", () => {
     const gateway = recordingGateway();
     const resolver = createModelResolver({ gateways: { vercel: gateway.instance }, env: {} });
 
-    expect(() => resolver("vercel/openai/gpt-5.4-mini")).toThrow(/"vercel:openai\/gpt-5\.4-mini"/);
-    expect(() => resolver.resolveId("vercel/openai/gpt-5.4-mini")).toThrow(/"vercel:openai\/gpt-5\.4-mini"/);
+    expect(() => resolver("vercel/openai/gpt-5.4-mini")).toThrow(/Invalid model format/);
+    expect(() => resolver.resolveId("vercel/openai/gpt-5.4-mini")).toThrow(/Invalid model format/);
     expect(gateway.ids).toEqual([]);
   });
 
@@ -54,16 +53,14 @@ describe("the slash multi-hop form is removed", () => {
     const gateway = recordingGateway();
     const resolver = createModelResolver({ gateways: { vercel: gateway.instance }, env: {} });
 
-    await expect(resolver.resolveEvaluationModel!("vercel/typesafe-ai/jev")).rejects.toThrow(
-      /"vercel:typesafe-ai\/jev"/
-    );
+    await expect(resolver.resolveEvaluationModel!("vercel/typesafe-ai/jev")).rejects.toThrow(/Invalid model format/);
     expect(gateway.ids).toEqual([]);
   });
 
   it("a defaultModel fails when the resolver is built", () => {
     expect(() =>
       createModelResolver({ defaultModel: "vercel/anthropic/claude-sonnet-5", env: {} })
-    ).toThrow(/"vercel:anthropic\/claude-sonnet-5"/);
+    ).toThrow(/Invalid model format/);
   });
 
   it("an intent candidate fails when the resolver is built", () => {
@@ -73,12 +70,12 @@ describe("the slash multi-hop form is removed", () => {
         defaultModel: "openai/gpt-5.4-mini",
         env: {},
       })
-    ).toThrow(/"vercel:google\/gemini-3\.1-flash-lite"/);
+    ).toThrow(/Invalid model format/);
   });
 
   it("an env-var override fails when the resolver is built, naming the variable", () => {
     expect(() =>
       createModelResolver({ env: { FSDEV_DEFAULT_MODEL: "vercel/openai/gpt-5.4-mini" } })
-    ).toThrow(/FSDEV_DEFAULT_MODEL.*"vercel:openai\/gpt-5\.4-mini"/s);
+    ).toThrow(/FSDEV_DEFAULT_MODEL.*Invalid model format/s);
   });
 });

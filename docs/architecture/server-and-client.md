@@ -180,8 +180,9 @@ await fsd.flow("hello-chat").send("chat", { message: "Hello!" });
 // Typed: the flow's type, imported as a type only
 const sent = await fsd.flow<typeof helloChat>("hello-chat").send("chat", { message: "Hello!" });
 
-// The request: status, wait, abort, continue, retry, resume, stream
-await sent.wait();
+// The request: status, wait, result, abort, continue, retry, resume, stream
+// result() is wait()'s polls by id, each asking for the stored answer; the settling read is returned.
+const { status, output, error } = await sent.result({ timeoutMs: 30_000 });
 for (const lost of await fsd.requests.interrupted()) await lost.continue();
 ```
 
@@ -407,7 +408,7 @@ Client                        Server
 - Framework examples use `userId: "devuser"` as local default
 - POST returns `202 Accepted` immediately — execution is async
 - Client can pre-generate `requestId` and pass it in the POST body
-- The action's result is stored on the request record as `result` (`output`, and/or `error`) in the same write as the final status. `GET /sessions/:id/requests` returns it, with `result.output` only on `include_result_output=true` (every entry carries `hasOutput`). A missing `result` means unfinished, aborted/interrupted, or a legacy record (BP-030)
+- The action's result is stored on the request record as `result` (`output`, and/or `error`) in the same write as the final status. `GET /sessions/:id/requests` returns it, with `result.output` only on `include_result_output=true` (every entry carries `hasOutput`). `GET /requests/:requestId/status?include_result_output=true` returns the same projection for one request by its id, the read for a caller that wants one request's answer; without the flag the status snapshot carries no `result`. A missing `result` means unfinished, aborted/interrupted, or a legacy record (BP-030)
 
 ## Canonical Authority
 

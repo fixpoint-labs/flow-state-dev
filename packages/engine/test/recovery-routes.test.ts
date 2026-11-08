@@ -1,7 +1,8 @@
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
+import { createFlowApiRouter, createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { parseFlowRoute } from "../src/routes/parseFlowRoute";
 import type { StoreRegistry } from "../src/stores/types";
 

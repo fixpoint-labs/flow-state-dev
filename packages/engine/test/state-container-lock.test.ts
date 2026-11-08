@@ -8,13 +8,14 @@ import {
   continueRequest,
   createExecutionContext,
   createFlowRegistry,
-  createInMemoryStores,
-  createScopeStateOps,
-  createStateContainer,
-  detectInterruptedRequests,
-  runAction,
-  ScopeMutationTimeoutError
+  runAction
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import { createScopeStateOps, createStateContainer } from "../src/stores/state-container";
+import { detectInterruptedRequests } from "../src/execution/request-recovery";
+import { ScopeMutationTimeoutError } from "../src/stores/scope-lock";
 import type { CASPersist } from "../src/stores/cas";
 import { withScopeLock } from "../src/stores/scope-lock";
 

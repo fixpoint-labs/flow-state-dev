@@ -1,8 +1,9 @@
+// FIX-576.
 /**
  * Pure reducer that folds a `state_change` SSE item into the React layer's
  * cached `SessionStateSnapshotResponse`, so `useClientData` can surface
  * mid-stream session/user/org-scope updates without waiting for terminal
- * status (FIX-576).
+ * status.
  *
  * Why "only merge keys already present in clientData[scope]": `clientData` is
  * the projected slice of scope state — the server filters down to the flow's

@@ -11,7 +11,8 @@ import {
 import type { SuspensionStore } from "../types";
 
 export class InMemorySuspensionStore implements SuspensionStore {
-  /** Kept in this process only (FIX-2063 D2). */
+  // FIX-2063 D2.
+  /** Kept in this process only. */
   readonly persists = false;
 
   private readonly data = new Map<string, SuspensionRecord>();

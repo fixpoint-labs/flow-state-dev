@@ -5,12 +5,9 @@ import {
   createMockTransportHost,
   createInboundTransportConformanceTests
 } from "@flow-state-dev/testing/conformance";
-import {
-  ConcurrencyRejectedError,
-  PrincipalResolutionError,
-  createInMemoryResourceStateStore,
-  type ActiveRequestRegistry
-} from "@flow-state-dev/engine";
+import { ConcurrencyRejectedError, type ActiveRequestRegistry } from "@flow-state-dev/engine/host";
+import { PrincipalResolutionError } from "@flow-state-dev/engine";
+import { createInMemoryResourceStateStore } from "@flow-state-dev/engine/host";
 import {
   createScheduledTransportAdapter,
   SCHEDULED_TRANSPORT_SOURCE

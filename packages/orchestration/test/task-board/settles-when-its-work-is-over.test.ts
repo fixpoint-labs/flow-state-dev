@@ -16,30 +16,32 @@ import {
   continueRequest,
   createCheckpointDurabilityProvider,
   createFlowRegistry,
-  createInMemoryStores,
-  runAction,
+  runAction
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { z } from "zod";
 import {
   askMidway,
-  createTaskGate,
   currentWorkerClaim,
   noteTaskAnswer,
   taskRequestAdmission,
   taskWorkerInputSchema,
 } from "../../src/task-board";
+import { createTaskGate } from "../../src/task-board/task-entry";
 import { runningTaskOf, takeRunningSteers, type ShownSteer } from "../../src/skills/steer-context";
 import { createHoldTaskForUser, createSuspendForUserTool } from "../../src/skills/task-tools-capability";
 import { runForTest } from "@flow-state-dev/testing";
 import {
-  createResourceBackedTaskCollection,
   filedWorkKeepsOpen,
   openHolds,
   type Task,
-  type TaskChangeEvent,
   type TaskCollectionRef,
   type TaskWriteOutcome,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import { createFakeResourceCollection } from "../helpers";
 // Not exported from the engine's entry: the stop of a parked turn, as its routes run it.
 import { createParkedStopDeps, stopSuspendedRequest } from "../../../engine/src/durability/stop-suspended";
@@ -604,7 +606,7 @@ describe("a task held on its questions midway (FIX-2133)", () => {
     await h.run();
     const row = (await h.row())!;
     // The row holds its question alone: no mirror, no wait recorded, not settled.
-    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["row"]);
+    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["task"]);
     expect(row).toMatchObject({ status: "in_progress", attempts: 1 });
     expect(row.keptOpenBy).toBeUndefined();
   });
@@ -980,7 +982,7 @@ describe("a task turn's model waits on a person one way per turn (FIX-2131)", ()
       { ok: false, error: expect.stringMatching(/^one_wait_per_turn: .*holdTaskForUser/) },
     ]);
     const row = (await h.row())!;
-    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["row"]);
+    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["task"]);
   });
 
   it("suspendForUser and holdTaskForUser in one step: the review, first, suspends the run; the question is refused naming it, and no question is kept", async () => {

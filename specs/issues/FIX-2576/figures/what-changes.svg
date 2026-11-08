@@ -1,0 +1,83 @@
+<svg viewBox="0 0 940 372" role="img" aria-label="What changes. Two rows, today and after. Today: the flow's own state schema goes to the fill, and a block's or capability's state schema only types ctx; its defaults are dropped, so a fresh session reads undefined. After: defineFlow walks the flow's reachable blocks and capabilities and unions their scope schemas with the flow's into one merged schema per scope; every read of stored state, seven call sites, fills from it, so a fresh session reads the block's default. Two declarations that disagree stop defineFlow, naming the field and both declarers. When a server admits its flows, two flows that type a shared user or org field differently stop the server, naming both flows."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F3E3E1; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A2220; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface-2); }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .drop  { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .stop  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .ln-n  { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .ln-x  { stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; fill:none; }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:13px; font-weight:600; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .ah    { fill:var(--ink-3); }
+    .ah-n  { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="372"/>
+
+  <g id="today">
+    <text class="t-lbl" x="20" y="30">TODAY</text>
+    <rect class="box" x="20" y="44" width="210" height="44" rx="5"/>
+    <text class="t-h" x="34" y="63">flow stateSchema</text>
+    <text class="t-s" x="34" y="79">session · user · org</text>
+    <rect class="box" x="20" y="100" width="210" height="44" rx="5"/>
+    <text class="t-h" x="34" y="119">block · capability schema</text>
+    <text class="t-s" x="34" y="135">sessionStateSchema and the like</text>
+    <path class="ln" d="M230 66 H452"/>
+    <polygon class="ah" points="452,61 462,66 452,71"/>
+    <rect class="box" x="462" y="44" width="200" height="44" rx="5"/>
+    <text class="t-h" x="476" y="63">the fill · 7 reads</text>
+    <text class="t-s" x="476" y="79">load, writes, two routes</text>
+    <path class="ln-x" d="M230 122 H300"/>
+    <rect class="drop" x="300" y="104" width="150" height="36" rx="5"/>
+    <text class="t-g" x="314" y="126">types ctx only</text>
+    <text class="t-b" x="690" y="63">fresh session reads</text>
+    <text class="t-b" x="690" y="81">the block's field as undefined</text>
+  </g>
+
+  <line class="rule" x1="20" y1="166" x2="920" y2="166"/>
+
+  <g id="after">
+    <text class="t-lbl" x="20" y="194">AFTER</text>
+    <rect class="box" x="20" y="208" width="210" height="44" rx="5"/>
+    <text class="t-h" x="34" y="227">flow stateSchema</text>
+    <text class="t-s" x="34" y="243">session · user · org</text>
+    <rect class="box" x="20" y="264" width="210" height="44" rx="5"/>
+    <text class="t-h" x="34" y="283">block · capability schema</text>
+    <text class="t-s" x="34" y="299">every reachable one</text>
+    <path class="ln-n" d="M230 230 H262 V256 H290"/>
+    <path class="ln-n" d="M230 286 H262 V256"/>
+    <polygon class="ah-n" points="290,251 300,256 290,261"/>
+    <rect class="new" x="300" y="226" width="150" height="60" rx="5"/>
+    <text class="t-h" x="314" y="249">defineFlow walk</text>
+    <text class="t-c" x="314" y="267">one merged schema</text>
+    <text class="t-c" x="314" y="281">per scope, internal</text>
+    <path class="ln-n" d="M450 256 H452"/>
+    <polygon class="ah-n" points="452,251 462,256 452,261"/>
+    <rect class="box" x="462" y="234" width="200" height="44" rx="5"/>
+    <text class="t-h" x="476" y="253">the fill · 7 reads</text>
+    <text class="t-s" x="476" y="269">unchanged, new input</text>
+    <text class="t-b" x="690" y="253">fresh session reads</text>
+    <text class="t-b" x="690" y="271">the block's default</text>
+    <path class="ln" d="M375 286 V320"/>
+    <rect class="stop" x="300" y="320" width="300" height="40" rx="5"/>
+    <text class="t-b" x="314" y="338">disagree: defineFlow stops</text>
+    <text class="t-s" x="314" y="353">names the field and both declarers</text>
+    <rect class="stop" x="620" y="320" width="300" height="40" rx="5"/>
+    <text class="t-b" x="634" y="338">user or org across flows: server stops</text>
+    <text class="t-s" x="634" y="353">checked when the server admits its flows</text>
+  </g>
+</svg>

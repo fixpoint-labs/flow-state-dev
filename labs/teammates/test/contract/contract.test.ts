@@ -20,7 +20,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createClient, type SessionConnectionState } from "@flow-state-dev/client";
+import { createClient, type SessionConnectionStatus } from "@flow-state-dev/client";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { pluggable, scriptedModels, waitFor } from "../../../test-support/contract";
@@ -59,7 +59,7 @@ function fakeTarget(asks: boolean): Target {
   const fake = createFixtureLab({ speed: 0.2, asks, review: true });
   return {
     lab: fake,
-    failNextTurn: () => fake.failNextTurn(),
+    failNextTurn: () => fake.failNextTurn(FAILURE),
     lose: () => fake.setConnection("lapsed"),
     restore: () => fake.setConnection("live"),
     close: async () => {},
@@ -135,7 +135,6 @@ async function realTarget(): Promise<Target> {
 
 /** Assertions the real adapter can't meet yet, by column, with the issue that closes each. */
 const GAPS: Record<string, { real?: string; fake?: string }> = {
-  "shows why the turn failed": { real: "FIX-2550", fake: "FIX-2550" },
 };
 
 const stops: Unsubscribe[] = [];
@@ -183,7 +182,7 @@ function follow<T>(watch: (on: (value: T) => void) => Unsubscribe): Followed<T> 
 
 const conversation = (lab: LabAdapter, id: string) => follow<ConversationView>((on) => lab.watchConversation(id, on));
 const tasks = (lab: LabAdapter, id: string) => follow<BoardTask[]>((on) => lab.watchTasks(id, on));
-const connection = (lab: LabAdapter, id: string) => follow<SessionConnectionState>((on) => lab.watchConnection(id, on));
+const connection = (lab: LabAdapter, id: string) => follow<SessionConnectionStatus>((on) => lab.watchConnection(id, on));
 
 describe.each([
   ["fake", async (asks: boolean) => fakeTarget(asks)],
@@ -213,7 +212,7 @@ describe.each([
       const card = filed.entries.find((e) => e.kind === "task") as { taskId: string; to: string };
       // A coding run that committed waits for your review, answerable once the adapter knows the run's flow.
       await board.until((r) => r.some((t) => t.id === card.taskId && t.waiting?.kind === "review" && t.waiting.unanswerable === null), 30_000);
-      await lab.answerTask(id, card.taskId, { verdict: "accepted" });
+      await lab.answerOpenHold(id, card.taskId, { verdict: "accepted" });
       await view.until((v) => v.entries.some((e) => e.kind === "result" && e.taskId === card.taskId && e.from === card.to && e.failed !== true && e.text.length > 0));
       await board.until((r) => r.some((t) => t.id === card.taskId && t.status === "done"));
     });
@@ -248,9 +247,9 @@ describe.each([
       await lab.send(id, ASK.question);
       const held = await board.until((r) => r.some((t) => t.waiting?.kind === "question" && t.waiting.unanswerable === null));
       const task = held.find((t) => t.waiting?.kind === "question")!;
-      expect(task.waiting).toEqual({ kind: "question", prompt: QUESTION, unanswerable: null });
+      expect(task.waiting).toMatchObject({ kind: "question", prompt: QUESTION, unanswerable: null });
       expect(task.status).toBe("running");
-      await lab.answerTask(id, task.id, { text: "Only line 1." });
+      await lab.answerOpenHold(id, task.id, { text: "Only line 1." });
       await board.until((r) => r.some((t) => t.id === task.id && t.waiting === undefined));
     });
   });

@@ -1,6 +1,7 @@
+// FIX-1440.
 /**
  * The dispatch runs a session started, as nodes in that session's own block
- * tree (FIX-1440).
+ * tree.
  *
  * Reading one causal chain used to mean opening the run's session, reading it,
  * and coming back. These nodes put the run where it was triggered instead — one

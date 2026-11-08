@@ -23,8 +23,9 @@ import { atomicWrite, ensureDirectory } from "./shared";
 export type FilesystemTraceStoreOptions = {
   rootDir: string;
   maxRequests?: number;
+  // FIX-406 6B.
   /**
-   * Fired on a background write failure before the safety-net log (FIX-406 6B).
+   * Fired on a background write failure before the safety-net log.
    */
   onPersistError?: PersistErrorHandler;
 };

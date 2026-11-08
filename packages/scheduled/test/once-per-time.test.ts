@@ -11,10 +11,12 @@ import {
   createBearerSecretPrincipalResolver,
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { createScheduledTransportAdapter } from "../src";
 import { recentTimes } from "./recent-times";
 
@@ -195,11 +197,6 @@ describe("one firing per scheduled time", () => {
       // Nothing was claimed by the refused fire.
       expect((await fire(a!, { nominalFireTime: LATEST })).status).toBe(202);
     });
-  });
-
-  it("refuses the removed idempotencyWindowMs option at construction", () => {
-    expect(() => createScheduledTransportAdapter({ idempotencyWindowMs: 60_000 } as never)).toThrow(/idempotencyWindowMs/);
-    expect(() => createScheduledTransportAdapter({ idempotencyOptions: {} } as never)).toThrow(/idempotencyOptions/);
   });
 });
 

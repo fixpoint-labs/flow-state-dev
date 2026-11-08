@@ -3,7 +3,8 @@
  * reads as, and the bearer it presents, as an app's `fsdev.config.*` declares
  * them in its `devtool` block.
  */
-import type { DevToolConnectionConfig, FlowState } from "@flow-state-dev/engine";
+import type { DevToolConnectionConfig } from "@flow-state-dev/engine/host";
+import type { FlowState } from "@flow-state-dev/engine";
 
 /**
  * The `devtool` block a `FlowState` declares, or `undefined` when it declares

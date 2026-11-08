@@ -50,7 +50,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
@@ -271,7 +271,7 @@ function attempts(): RecordedAttempt[] {
     .map((line) => JSON.parse(line) as RecordedAttempt);
 }
 /** A row's attempts, by the row line of the prompt each was handed. */
-const attemptsOf = (rowId: string) => attempts().filter((a) => a.row.startsWith(`Row ${rowId},`));
+const attemptsOf = (rowId: string) => attempts().filter((a) => a.row.startsWith(`Task ${rowId},`));
 
 // ---- the page ----------------------------------------------------------------
 

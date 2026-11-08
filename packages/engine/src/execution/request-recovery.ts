@@ -26,9 +26,10 @@ import { bringSessionWakesForward } from "../durability/request-wakes";
  */
 export const DEFAULT_DETECTION_STALE_THRESHOLD_MS = 30_000;
 
+// FIX-2166.
 /**
- * {@link detectInterruptedRequests}' `wakeEntriesOf`, read off a flow registry
- * (FIX-2166): the internal entries of the flow instance that owns a record.
+ * {@link detectInterruptedRequests}' `wakeEntriesOf`, read off a flow registry:
+ * the internal entries of the flow instance that owns a record.
  * Read per call, so a flow registered after the sweep was built is found. A
  * record whose owner isn't registered here has none.
  */
@@ -44,6 +45,7 @@ export type InterruptedRequestInfo = {
   requestRecord?: RequestRecord;
 };
 
+// FIX-999.
 /**
  * Scans the active request registry for stale entries and marks
  * the corresponding request records as interrupted.
@@ -60,7 +62,7 @@ export type InterruptedRequestInfo = {
  * kind.
  *
  * A request queued with an external runner and not yet claimed by a worker
- * is skipped while it is within `queuedGraceMs` (FIX-999): it has no heartbeat
+ * is skipped while it is within `queuedGraceMs`: it has no heartbeat
  * because nothing is running it yet, so its age is queue wait rather than
  * death. Marking it `interrupted` invites reconciliation to retry a job the
  * queue is still holding — duplicate execution. Past the grace it is swept
@@ -82,8 +84,9 @@ export async function detectInterruptedRequests(options: {
   userId?: string;
   /** Restrict the sweep to entries this predicate admits. Undefined means unrestricted. */
   ownedBy?: (entry: ActiveRequestEntry) => boolean;
+  // FIX-2166.
   /**
-   * The internal entries of the flow a request ran on (FIX-2166): the keys its
+   * The internal entries of the flow a request ran on: the keys its
    * session's wakes can have. With it, a request marked interrupted here
    * brings its session's wakes forward to now, so a pass that held something
    * for the request while it ran sends it at once, not at its backoff.
@@ -108,7 +111,8 @@ export async function detectInterruptedRequests(options: {
   );
   const results: InterruptedRequestInfo[] = [];
 
-  /** Owe the interrupted request's session its passes now (FIX-2166); never fails the sweep. */
+  // FIX-2166.
+  /** Owe the interrupted request's session its passes now; never fails the sweep. */
   const wakeSessionOf = async (record: RequestRecord, now: number): Promise<void> => {
     const wakes = stores.wakes;
     if (wakes === undefined || options.wakeEntriesOf === undefined || record.sessionId == null) return;

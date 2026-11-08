@@ -1,0 +1,71 @@
+<svg viewBox="0 0 940 300" role="img" aria-label="What changes. Left, removed: the Claude Code-style lab's Sheet.tsx and the Teammates lab's SessionPopup.tsx, two frames for one job. Centre, added: one session-overlay item in the UI registry, which reuses the registry's conversation scroll button. Right: each lab installs a byte-identical copy. The Claude Code-style lab uses the sheet variant, over the thread with the pane live. Teammates uses the modal variant, over the page with focus held."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .use   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .reuse { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; text-decoration:line-through; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="300"/>
+
+  <g id="removed">
+    <text class="t-lbl" x="24" y="30">REMOVED · TWO FRAMES, ONE JOB</text>
+    <rect class="gone" x="24" y="44" width="230" height="70" rx="5"/>
+    <text class="t-x" x="40" y="70">Sheet.tsx</text>
+    <text class="t-s" x="40" y="90">Claude Code-style lab</text>
+    <text class="t-s" x="40" y="105">capture Esc, no focus return</text>
+    <rect class="gone" x="24" y="132" width="230" height="70" rx="5"/>
+    <text class="t-x" x="40" y="158">SessionPopup.tsx (frame)</text>
+    <text class="t-s" x="40" y="178">Teammates lab</text>
+    <text class="t-s" x="40" y="193">holds Tab, focus back, plain Esc</text>
+  </g>
+
+  <g id="added">
+    <text class="t-lbl" x="330" y="30">ADDED · UI REGISTRY</text>
+    <rect class="new" x="330" y="44" width="260" height="110" rx="5"/>
+    <text class="t-b" x="346" y="70">session-overlay</text>
+    <text class="t-s" x="346" y="90">header · toolbar · feed · footer</text>
+    <text class="t-s" x="346" y="106">one Esc rule · focus back on close</text>
+    <text class="t-s" x="346" y="122">variant: sheet | modal</text>
+    <text class="t-s" x="346" y="140">no lab code inside</text>
+    <rect class="reuse" x="330" y="182" width="260" height="54" rx="5"/>
+    <text class="t-lbl" x="346" y="202">REUSED</text>
+    <text class="t-s" x="346" y="222">conversation · ConversationScrollButton</text>
+    <path class="arrow" d="M460 182 L460 160"/>
+    <path class="head" d="M455 162 L460 154 L465 162 Z"/>
+  </g>
+
+  <g id="installed">
+    <text class="t-lbl" x="666" y="30">INSTALLED · BYTE FOR BYTE</text>
+    <rect class="use" x="666" y="44" width="250" height="70" rx="5"/>
+    <text class="t-b" x="682" y="70">Claude Code-style: sheet</text>
+    <text class="t-s" x="682" y="90">over the thread only</text>
+    <text class="t-s" x="682" y="105">side pane stays live</text>
+    <rect class="use" x="666" y="132" width="250" height="70" rx="5"/>
+    <text class="t-b" x="682" y="158">Teammates: modal</text>
+    <text class="t-s" x="682" y="178">over the page</text>
+    <text class="t-s" x="682" y="193">Tab held inside</text>
+    <path class="arrow" d="M590 90 L658 79"/>
+    <path class="head" d="M656 74 L666 78 L657 84 Z"/>
+    <path class="arrow" d="M590 110 L658 165"/>
+    <path class="head" d="M653 167 L664 170 L659 160 Z"/>
+  </g>
+
+  <g id="foot">
+    <text class="t-s" x="24" y="272">Each lab's copy test fails while its installed file differs from the registry.</text>
+  </g>
+</svg>

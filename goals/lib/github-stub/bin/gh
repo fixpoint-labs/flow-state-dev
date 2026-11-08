@@ -1,0 +1,85 @@
+#!/usr/bin/env node
+/*
+ * A stub `gh` for goal checks, first on a server's PATH. It plays GitHub for
+ * one repository's pull requests, from the state file the check writes
+ * (`GOAL_GH_STATE`): `{ prs: { [n]: { branch?, match?, state } }, next?, fail? }`.
+ * It logs every call (`GOAL_GH_LOG`), one JSON line each.
+ *
+ * - `gh pr list --repo R --head B --state open …`: the open pull request on
+ *   branch B, as `[{ number, url }]`; a landing asks this before it opens one.
+ * - `gh pr create --repo R --head owner:B …`: opens one on branch B, numbered
+ *   `next` (default 7), open, written back to the state, and prints its link.
+ * - `gh api repos/{owner}/{repo}/pulls?head=…`: the branch listing a run's end
+ *   makes. It lists pull request N when its `branch` is the call's, or when its
+ *   `match` is in the call or the working folder and the run did its work there
+ *   (`SCRIPTED-RUN.md`): a run that opened one itself.
+ * - `gh api repos/{owner}/{repo}/pulls/N`: one pull request's state (`open`,
+ *   `merged`, `closed`), or a failure while `fail` is set.
+ *
+ * Every link is `https://github.com/acme/app/pull/N`. Anything else fails, naming the call.
+ */
+import fs from "node:fs";
+import path from "node:path";
+const args = process.argv.slice(2);
+const stateFile = process.env.GOAL_GH_STATE;
+const log = process.env.GOAL_GH_LOG;
+const state = stateFile && fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, "utf8")) : { prs: {} };
+state.prs ??= {};
+const url = (n) => `https://github.com/acme/app/pull/${n}`;
+const flag = (name) => {
+  const at = args.indexOf(name);
+  return at === -1 ? undefined : args[at + 1];
+};
+const answer = (out, code = 0, err = "") => {
+  if (log) fs.appendFileSync(log, JSON.stringify({ at: Date.now(), args, cwd: process.cwd(), code }) + "\n");
+  if (err) process.stderr.write(err);
+  if (out !== undefined) process.stdout.write(typeof out === "string" ? out : JSON.stringify(out));
+  process.exit(code);
+};
+const open = Object.entries(state.prs).filter(([, pr]) => pr.state === "open");
+
+if (args[0] === "pr" && args[1] === "list") {
+  const branch = flag("--head");
+  answer(open.filter(([, pr]) => pr.branch === branch).slice(0, 1).map(([n]) => ({ number: Number(n), url: url(n) })));
+}
+if (args[0] === "pr" && args[1] === "create") {
+  const head = flag("--head") ?? "";
+  const branch = head.includes(":") ? head.slice(head.indexOf(":") + 1) : head;
+  const n = Number(state.next ?? 7);
+  state.prs[n] = { branch, state: "open", title: flag("--title") ?? null };
+  state.next = n + 1;
+  fs.writeFileSync(stateFile, JSON.stringify(state));
+  answer(`${url(n)}\n`);
+}
+if (args[0] !== "api") answer(undefined, 1, `stub gh: unexpected call ${args.join(" ")}\n`);
+const call = args.at(-1) ?? "";
+const where = `${decodeURIComponent(call)} ${process.cwd()}`;
+const record = (n, pr) => ({
+  number: Number(n),
+  html_url: url(n),
+  title: pr.title ?? `Pull request ${n}`,
+  state: pr.state === "open" ? "open" : "closed",
+  draft: false,
+  merged: pr.state === "merged",
+  merged_at: pr.state === "merged" ? new Date().toISOString() : null,
+  created_at: new Date().toISOString(),
+  head: { ref: pr.branch ?? "branch", sha: "0000000", repo: { full_name: "acme/app" } },
+  base: { repo: { full_name: "acme/app" } },
+});
+if (call.includes("/pulls?")) {
+  const worked = fs.existsSync(path.join(process.cwd(), "SCRIPTED-RUN.md"));
+  const head = /[?&]head=([^&]+)/.exec(decodeURIComponent(call))?.[1] ?? "";
+  const branchOf = head.includes(":") ? head.slice(head.indexOf(":") + 1) : head;
+  const listed = Object.entries(state.prs).filter(
+    ([, pr]) => (typeof pr.branch === "string" && pr.branch === branchOf) || (worked && typeof pr.match === "string" && where.includes(pr.match)),
+  );
+  answer(listed.map(([n, pr]) => record(n, pr)));
+}
+const read = /pulls\/(\d+)$/.exec(call);
+if (read !== null) {
+  if (state.fail === true) answer(undefined, 1, "gh: To get started with GitHub CLI, please run:  gh auth login\n");
+  const pr = state.prs[Number(read[1])];
+  if (pr === undefined) answer(undefined, 1, `gh: Not Found (HTTP 404): pull request ${read[1]}\n`);
+  answer(record(read[1], pr));
+}
+answer(undefined, 1, `stub gh: unexpected call ${args.join(" ")}\n`);

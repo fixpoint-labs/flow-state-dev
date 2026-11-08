@@ -1,15 +1,16 @@
+// Per FIX-22 § 3.3; Per FIX-22 § 3.4; Per FIX-22 § 3.8.
 /**
  * Action → MCP tool conversion.
  *
- * Per FIX-22 § 3.3: tool names are derived deterministically from the
+ * Tool names are derived deterministically from the
  * action key via `decamelize`. The flow IS the MCP server (one server
  * per flow at `POST /api/flows/:kind/mcp`), so the tool name is bare —
  * no flow-kind prefix.
  *
- * Per FIX-22 § 3.4: `description` is required at flow registration and
+ * `description` is required at flow registration and
  * becomes the LLM-facing tool description.
  *
- * Per FIX-22 § 3.8: tool results are text-only in v1 — `outputSchema`,
+ * Tool results are text-only in v1 — `outputSchema`,
  * `structuredContent`, and progress notifications are deferred.
  */
 import type { ActionConfig } from "@flow-state-dev/core/types";

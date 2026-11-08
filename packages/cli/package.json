@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/fsdev",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "The fsdev command-line interface for flow-state-dev.",
   "keywords": [
     "ai",
@@ -46,10 +46,13 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       }
+    },
+    "bin": {
+      "fsdev": "./dist/bin.js"
     }
   },
   "bin": {
-    "fsdev": "./dist/bin.js"
+    "fsdev": "./bin/fsdev.ts"
   },
   "engines": {
     "node": ">=22"
@@ -62,10 +65,11 @@
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "jiti": "^2.7.0"
   },
   "peerDependencies": {
-    "@flow-state-dev/devtool": "workspace:>=0.0.0"
+    "@flow-state-dev/devtool": "workspace:^"
   },
   "peerDependenciesMeta": {
     "@flow-state-dev/devtool": {

@@ -1,5 +1,6 @@
+// FIX-2086.
 /**
- * The one read of a task as stored now (FIX-2086).
+ * The one read of a task as stored now.
  *
  * A request's collection ref reads rows as the request first saw them, so a
  * steer another request wrote is invisible to `get`. The late-steer check and
@@ -22,7 +23,7 @@ export async function readCommittedTask(ref: TaskCollectionRef, id: string): Pro
   if (!warned.has(ref.collectionId)) {
     warned.add(ref.collectionId);
     console.warn(
-      `[tasks] board "${ref.collectionId}" can't read a row as stored (no getCommitted): a steer written by another ` +
+      `[tasks] board "${ref.collectionId}" can't read a task as stored (no getCommitted): a steer written by another ` +
         "request may go unseen until this request ends."
     );
   }

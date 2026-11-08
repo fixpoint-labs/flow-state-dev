@@ -19,8 +19,8 @@ const ledger = {
   }
 };
 
-vi.mock("@flow-state-dev/orchestration/tasks", async (original) => ({
-  ...(await original<typeof import("@flow-state-dev/orchestration/tasks")>()),
+vi.mock("@flow-state-dev/orchestration/internal", async (original) => ({
+  ...(await original<typeof import("@flow-state-dev/orchestration/internal")>()),
   findTaskPartitions: async () => ["alice"]
 }));
 vi.mock("../src/conversation-board/ledger", async (original) => ({
@@ -35,7 +35,7 @@ const taskRow = (answered: boolean) => ({
   id: "t1",
   status: "in_progress",
   run: { sessionId: "s_task" },
-  holds: [{ id: "h1", source: { kind: "row" }, kind: "question", prompt: "Which branch?" }],
+  holds: [{ id: "h1", source: { kind: "task" }, kind: "question", prompt: "Which branch?" }],
   steers: answered ? [{ id: "s1", answers: "h1", text: "main" }] : []
 });
 

@@ -377,7 +377,8 @@ export function createRequestStoreConformanceTests(
       });
     });
 
-    it("followThroughSuspend streams past request.suspended to the real terminal (FIX-811)", async () => {
+    // FIX-811.
+    it("followThroughSuspend streams past request.suspended to the real terminal", async () => {
       await withStore(async (store) => {
         // The pre-suspension run, then the continuation events, then completion.
         store.persistEvents("r1", [makeRequestStreamEvent("r1", 1)]);

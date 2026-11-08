@@ -1,6 +1,7 @@
+// FIX-976; FIX-989.
 /**
  * Durable write provenance — how a caller finds out whether its own task write
- * committed, after a call that threw (FIX-989).
+ * committed, after a call that threw.
  *
  * ## The gap this closes
  *
@@ -8,7 +9,7 @@
  * as a tail call, strictly after the durable write resolves, so a failure in
  * the announcement rejects a call whose write already landed. The caller sees
  * only a rejection, and a rejected promise carries no value — so the write
- * verdict FIX-976 added (`TaskWriteOutcome`) cannot reach it.
+ * verdict (`TaskWriteOutcome`) cannot reach it.
  *
  * Reading the task back does not close the gap either. Two histories read
  * identically:
@@ -66,6 +67,7 @@ import type { Task, TaskWriteReceipt } from "./schema/task";
  */
 const WRITE_LOG_CAP = 4;
 
+// BP-031.
 /**
  * A caller's claim on one write it is about to make.
  *
@@ -75,7 +77,7 @@ const WRITE_LOG_CAP = 4;
  * write for {@link didWriteLand}'s coverage proofs to mean anything.
  *
  * Tokens are minted by first-party callers from a task they already hold, and
- * are never accepted from model or tool input (BP-031): a model naming a write
+ * are never accepted from model or tool input: a model naming a write
  * id would be asserting authorship of a write nobody checked.
  */
 export interface TaskWriteToken {

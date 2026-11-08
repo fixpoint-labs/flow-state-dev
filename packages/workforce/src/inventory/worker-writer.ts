@@ -11,8 +11,8 @@
 import { handler } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { defineWorkerInventoryCollection, workerInventoryRowSchema } from "./collections";
-import type { WorkerInventoryRow } from "./collections";
+import { defineWorkerInventoryCollection, workerInventoryResourceStateSchema } from "./collections";
+import type { WorkerInventoryResourceState } from "./collections";
 
 /**
  * The action the boot binder dispatches ONCE, carrying the roster's workers.
@@ -30,7 +30,7 @@ export const INVENTORY_REGISTER_WORKERS = "registerWorkersInInventory";
 
 /** The roster's workers, as the binder holds them. */
 const registerWorkersInputSchema = z
-  .object({ workers: z.array(workerInventoryRowSchema) })
+  .object({ workers: z.array(workerInventoryResourceStateSchema) })
   .strict();
 
 /** What the worker write reports: how many rows landed. */
@@ -40,7 +40,7 @@ export const inventoryWorkersRegisteredSchema = z.object({ written: z.number() }
  * Write one worker row from a boot. A worker's row is its standard worker's, the
  * same on every process, so a later boot's write replaces an earlier one's.
  */
-async function publishBootWorkerRow(workers: ResourceCollectionRef, row: WorkerInventoryRow): Promise<void> {
+async function publishBootWorkerRow(workers: ResourceCollectionRef, row: WorkerInventoryResourceState): Promise<void> {
   await workers.upsert(row.id, row);
 }
 
@@ -79,7 +79,7 @@ export function inventoryWriterActions() {
     execute: async (input, ctx) => {
       if (ctx.org === undefined) {
         throw new Error(
-          "the worker rows cannot be written: this request carries no organization, and the " +
+          "the worker resources cannot be written: this request carries no organization, and the " +
             "inventory is org-scoped storage. Run the worker write under the app's `orgId`."
         );
       }
@@ -104,7 +104,7 @@ export function inventoryWriterActions() {
       // output would reach nobody.
       if (problems.length > 0) {
         throw new Error(
-          `${problems.length} of ${input.workers.length} worker rows could not be written:\n  - ` +
+          `${problems.length} of ${input.workers.length} worker resources could not be written:\n  - ` +
             problems.join("\n  - ")
         );
       }
@@ -116,7 +116,7 @@ export function inventoryWriterActions() {
     [INVENTORY_REGISTER_WORKERS]: {
       block: registerWorkers,
       description:
-        "Write the org's worker rows into the live inventory. Boot machinery, called once by " +
+        "Write the org's worker resources into the live inventory. Boot machinery, called once by " +
         "`openInventory` with the roster it was hired from."
     }
   };

@@ -1,0 +1,118 @@
+<svg viewBox="0 0 940 540" role="img" aria-label="Before and after for the testing package, in two bands. Top band, a test of an approval step: today testFlow calls runAction with no durability and the run ends failed, needs durable execution. After, the run parks as suspended with the stop on run.suspension, run.answer goes through the engine's answer route in process, and the run completes with its output and items. Bottom band, where each name lives: today the testing root holds 90 names, 61 test helpers and evals beside 21 benchmark names, 3 scanner names, testSequencer and testRouter, and a package marker; core's root holds 6 Benchmark types and patterns' root 8 benchmark names. After, the testing root holds 61 test helpers and evals; testing/benchmark and patterns/benchmark are public subpaths; and the scanners sit below a fence in a ./bundle entry for repo tests only."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F3E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg    { fill:var(--surface); }
+    .band  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .new   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .gone  { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .fence { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:8 5; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .tipf  { fill:var(--ink-3); }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; letter-spacing:.12em; font-weight:600; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-gone { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="540"/>
+
+  <g id="columns">
+    <text class="t-col" x="16" y="24">TODAY</text>
+    <text class="t-col" x="478" y="24">AFTER</text>
+    <line class="box" x1="470" y1="12" x2="470" y2="528"/>
+  </g>
+
+  <g id="band-run">
+    <text class="t-lbl" x="16" y="48">A TEST OF AN APPROVAL STEP</text>
+    <rect class="box" x="16" y="58" width="130" height="50" rx="5"/>
+    <text class="t-b" x="28" y="80">testFlow</text>
+    <text class="t-s" x="28" y="97">runAction, no durability</text>
+    <path class="arrow" d="M146,83 L190,83"/>
+    <path class="tipf" d="M196,83 l-8,-4 v8 z"/>
+    <rect class="gone" x="198" y="58" width="256" height="50" rx="5"/>
+    <text class="t-b c-gone" x="210" y="80">failed</text>
+    <text class="t-s" x="210" y="97">"needs durable execution"</text>
+
+    <rect class="keep" x="478" y="58" width="130" height="50" rx="5"/>
+    <text class="t-b c-code" x="490" y="80">suspended</text>
+    <text class="t-s" x="490" y="97">run.suspension</text>
+    <path class="arrow" d="M608,83 L630,83"/>
+    <path class="tipf" d="M636,83 l-8,-4 v8 z"/>
+    <rect class="new" x="638" y="58" width="134" height="50" rx="5"/>
+    <text class="t-b c-acc" x="650" y="80">run.answer</text>
+    <text class="t-s" x="650" y="97">the answer route</text>
+    <path class="arrow" d="M772,83 L786,83"/>
+    <path class="tipf" d="M792,83 l-8,-4 v8 z"/>
+    <rect class="keep" x="794" y="58" width="130" height="50" rx="5"/>
+    <text class="t-b c-code" x="806" y="80">completed</text>
+    <text class="t-s" x="806" y="97">output, items</text>
+    <text class="t-s" x="638" y="126">in process, the engine's own checks</text>
+  </g>
+
+  <g id="band-names-today">
+    <text class="t-lbl" x="16" y="160">WHERE EACH NAME LIVES</text>
+    <rect class="box" x="16" y="170" width="438" height="196" rx="6"/>
+    <text class="t-lbl" x="28" y="190">@flow-state-dev/testing · ROOT · 90 NAMES</text>
+    <rect class="keep" x="28" y="200" width="414" height="34" rx="4"/>
+    <text class="t-b c-code" x="40" y="222">61 test helpers, mocks and evals</text>
+    <rect class="gone" x="28" y="242" width="200" height="34" rx="4"/>
+    <text class="t-b c-gone" x="40" y="264">21 benchmark names</text>
+    <rect class="gone" x="242" y="242" width="200" height="34" rx="4"/>
+    <text class="t-b c-gone" x="254" y="264">3 scanner names</text>
+    <rect class="gone" x="28" y="284" width="270" height="34" rx="4"/>
+    <text class="t-b c-gone" x="40" y="306">testSequencer · testRouter · 2 types</text>
+    <rect class="gone" x="312" y="284" width="130" height="34" rx="4"/>
+    <text class="t-b c-gone" x="324" y="306">a marker</text>
+    <text class="t-s" x="28" y="346">the scanners are read only by repo tests</text>
+
+    <rect class="box" x="16" y="380" width="212" height="70" rx="6"/>
+    <text class="t-lbl" x="28" y="400">CORE · ROOT</text>
+    <text class="t-b c-gone" x="28" y="424">6 Benchmark* types</text>
+    <rect class="box" x="242" y="380" width="212" height="70" rx="6"/>
+    <text class="t-lbl" x="254" y="400">PATTERNS · ROOT</text>
+    <text class="t-b c-gone" x="254" y="424">8 benchmark names</text>
+  </g>
+
+  <g id="band-names-after">
+    <rect class="box" x="478" y="170" width="446" height="106" rx="6"/>
+    <text class="t-lbl" x="490" y="190">@flow-state-dev/testing · ROOT · 61 NAMES</text>
+    <rect class="keep" x="490" y="200" width="422" height="34" rx="4"/>
+    <text class="t-b c-code" x="502" y="222">test helpers, mocks and evals</text>
+    <text class="t-s" x="490" y="258">testBlock covers sequencers and routers</text>
+
+    <rect class="new" x="478" y="290" width="216" height="76" rx="6"/>
+    <text class="t-lbl" x="490" y="310">testing/benchmark · PUBLIC</text>
+    <text class="t-b c-acc" x="490" y="334">21 benchmark names</text>
+    <text class="t-s" x="490" y="352">the six types included</text>
+    <rect class="new" x="708" y="290" width="216" height="76" rx="6"/>
+    <text class="t-lbl" x="720" y="310">patterns/benchmark · PUBLIC</text>
+    <text class="t-b c-acc" x="720" y="334">8 adapters, registry</text>
+    <text class="t-s" x="720" y="352">testing as an optional peer</text>
+
+    <line class="fence" x1="478" y1="398" x2="924" y2="398"/>
+    <text class="t-lbl c-gone" x="478" y="390">THE FENCE · NOT FOR ADOPTERS</text>
+    <rect class="box" x="478" y="412" width="446" height="56" rx="6"/>
+    <text class="t-lbl" x="490" y="432">testing ./bundle · HIDDEN BY publishConfig</text>
+    <text class="t-b" x="490" y="454">the 3 scanner names, for repo tests only</text>
+  </g>
+
+  <g id="legend">
+    <rect class="keep" x="16" y="496" width="14" height="14" rx="2"/>
+    <text class="t-s" x="36" y="508">stays</text>
+    <rect class="new" x="96" y="496" width="14" height="14" rx="2"/>
+    <text class="t-s" x="116" y="508">new home</text>
+    <rect class="gone" x="196" y="496" width="14" height="14" rx="2"/>
+    <text class="t-s" x="216" y="508">leaves this place</text>
+  </g>
+</svg>

@@ -1,8 +1,9 @@
+// FIX-2145.
 /**
  * How much of each coding harness's subscription the user has used: the Lab's
  * one `harnessUsage` query, read on the flow that answers it. And how many
  * tokens each of the user's workers used over a period: the `workerUsage`
- * query, on the same flow (FIX-2145).
+ * query, on the same flow.
  *
  * Opening Usage asks for a fresh reading (`refresh: true`). The Lab asks a
  * harness at most once a minute, so a view that re-renders or re-reads costs
@@ -10,9 +11,9 @@
  * "rolled over" is the Lab's, worked out by its clock, never this page's.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { HarnessUsageLevel } from "@flow-state-dev/core/types";
+import type { HarnessUsageLevel } from "@flow-state-dev/core/harness";
 import { ActionRefused, runAction } from "./action";
-import { newSessionId } from "./ids";
+import { newSessionId, USAGE_SESSION_PREFIX } from "./ids";
 import { useLab } from "./lab-data";
 import { describeFailure, readerSessionId, type Failure } from "./reads";
 import type { Client } from "@flow-state-dev/client";
@@ -69,9 +70,6 @@ function usageFlowOf(client: Client, action: string = HARNESS_USAGE_ACTION): Pro
   }
   return found;
 }
-
-/** The prefix of the usage session opened when the user's one reader id is another organization's. */
-const USAGE_SESSION_PREFIX = "usage-own";
 
 /**
  * Run the query on the user's reading session on `flow`. Session ids are not

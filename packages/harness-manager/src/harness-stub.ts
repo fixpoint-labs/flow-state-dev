@@ -15,15 +15,19 @@
  * through `onToolApproval` when the manager hands it (`approveTools`).
  */
 
-import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import { reportHarnessSpend } from "@flow-state-dev/core/types";
+import { handler } from "@flow-state-dev/core";
+import {
+  harnessRunHandleSchema,
+  harnessRunInputSchema,
+  reportHarnessSpend,
+} from "@flow-state-dev/core/harness";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import type {
   HarnessBlock,
   HarnessCallbackContext,
   HarnessRunOutcome,
   HarnessRunStatus,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/harness";
 import type { HarnessFeeds } from "./manager";
 import { TOOL_NOT_ALLOWED } from "./tool-approval";
 

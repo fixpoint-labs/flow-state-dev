@@ -1,12 +1,13 @@
+// FIX-140.
 /**
- * PostgreSQL-backed lease store for durable execution (FIX-140).
+ * PostgreSQL-backed lease store for durable execution.
  *
  * One active lease per request. Acquire is a single conditional upsert,
  * so two concurrent acquirers cannot both win. Lease ids are UUIDs, so a
  * stale holder's `release` cannot free a lease minted by another process.
  */
 import { randomUUID } from "node:crypto";
-import type { Lease, LeaseOptions, LeaseStore } from "@flow-state-dev/engine";
+import type { Lease, LeaseOptions, LeaseStore } from "@flow-state-dev/engine/host";
 import type { QueryExecutor } from "./types";
 
 function rowToLease(row: Record<string, unknown>): Lease {

@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/patterns",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Higher-level composition patterns for flow-state-dev.",
   "keywords": [
     "ai",
@@ -40,7 +40,7 @@
       "types": "./dist/supervisor/index.d.ts",
       "default": "./src/supervisor/index.ts"
     },
-    "./routedSpecialists": {
+    "./routed-specialists": {
       "types": "./dist/routedSpecialists/index.d.ts",
       "default": "./src/routedSpecialists/index.ts"
     },
@@ -48,7 +48,7 @@
       "types": "./dist/response-auditor/index.d.ts",
       "default": "./src/response-auditor/index.ts"
     },
-    "./eventActors": {
+    "./event-actors": {
       "types": "./dist/eventActors/index.d.ts",
       "default": "./src/eventActors/index.ts"
     },
@@ -59,6 +59,10 @@
     "./debate": {
       "types": "./dist/debate/index.d.ts",
       "default": "./src/debate/index.ts"
+    },
+    "./benchmark": {
+      "types": "./dist/benchmark/index.d.ts",
+      "default": "./src/benchmark/index.ts"
     }
   },
   "license": "MIT",
@@ -83,7 +87,7 @@
         "types": "./dist/supervisor/index.d.ts",
         "default": "./dist/supervisor/index.js"
       },
-      "./routedSpecialists": {
+      "./routed-specialists": {
         "types": "./dist/routedSpecialists/index.d.ts",
         "default": "./dist/routedSpecialists/index.js"
       },
@@ -91,7 +95,7 @@
         "types": "./dist/response-auditor/index.d.ts",
         "default": "./dist/response-auditor/index.js"
       },
-      "./eventActors": {
+      "./event-actors": {
         "types": "./dist/eventActors/index.d.ts",
         "default": "./dist/eventActors/index.js"
       },
@@ -102,6 +106,10 @@
       "./debate": {
         "types": "./dist/debate/index.d.ts",
         "default": "./dist/debate/index.js"
+      },
+      "./benchmark": {
+        "types": "./dist/benchmark/index.d.ts",
+        "default": "./dist/benchmark/index.js"
       }
     }
   },
@@ -113,6 +121,14 @@
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "zod": "^3.24.1"
+  },
+  "peerDependencies": {
+    "@flow-state-dev/testing": "workspace:>=0.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@flow-state-dev/testing": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@flow-state-dev/testing": "workspace:*",

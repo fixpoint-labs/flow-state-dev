@@ -69,7 +69,7 @@ export type SessionCreateCheckInput = {
    *
    * @throws when `ref` is not a user- or org-scoped collection of this flow.
    */
-  readCollectionItem(
+  readCollectionResource(
     ref: string,
     topic: string | Record<string, string>
   ): Promise<Record<string, unknown> | undefined>;

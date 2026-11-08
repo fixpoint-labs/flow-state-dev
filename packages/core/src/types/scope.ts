@@ -10,13 +10,14 @@ export type ScopeIdentity = {
   id: string;
   userId?: string;
   orgId?: string;
+  // FIX-406 6D; FIX-682.
   /**
-   * Optional tenant the request runs under (FIX-406 6D). Extracted from a
+   * Optional tenant the request runs under. Extracted from a
    * configurable HTTP header (default `x-tenant-id`) and exposed on request,
    * session, user, and org scope identities so handlers and lifecycle hooks can
    * branch on it. Undefined for single-tenant apps.
    *
-   * When present, it also namespaces session storage (FIX-682): the session
+   * When present, it also namespaces session storage: the session
    * record, session-scoped content/resource-state, and request history listing
    * isolate by tenant, so two tenants sharing a session id never share data.
    * User and org scopes stay shared across tenants by design.
@@ -105,8 +106,11 @@ export type HistoryTurn = {
   startedAtMs: number;
   /**
    * Whether the turn has finished for good. A turn still running, suspended on
-   * a gate, or interrupted and parked to run again has not, and carries no
-   * messages: what it says is not final until it settles.
+   * a gate, or interrupted and parked to run again has not, and `items.turns()`
+   * gives it no messages: what it says is not final until it settles. A
+   * session's history read (`RequestSessions.history`) lists a turn waiting
+   * on a call with what it has settled so far, as a model reads it, and
+   * `settled: false`.
    */
   settled: boolean;
   messages: LLMMessage[];
@@ -263,9 +267,10 @@ export type StopRequestOutcome =
   | "already-resolved"
   | "not-in-this-session";
 
+// FIX-435.
 /**
  * Session scope handle — exposes per-session state and metadata. Resources
- * have been lifted to the flat `ctx.resources` registry (FIX-435); a
+ * have been lifted to the flat `ctx.resources` registry; a
  * resource's intrinsic `scope` routes its storage to the session record
  * for session-scoped definitions.
  */

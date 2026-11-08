@@ -1,12 +1,6 @@
 /**
  * Public React-facing wrappers, render helpers, and context utilities.
  */
-export type {
-  CoreItemImportProof,
-  CoreTypeImportProof
-} from "./_core-import-smoke";
-export { coreItemImportProof } from "./_core-import-smoke";
-
 export {
   useFlow,
   type UseFlowOptions,
@@ -60,9 +54,9 @@ export {
 } from "./hooks/useResourceCollectionList";
 
 export {
-  useResourceCollectionItem,
-  type UseResourceCollectionItemResult
-} from "./hooks/useResourceCollectionItem";
+  useCollectionResource,
+  type UseCollectionResourceResult
+} from "./hooks/useCollectionResource";
 
 export {
   useResourceManifest,
@@ -148,41 +142,12 @@ export {
   type FlowNavigatorProps,
   type FlowNavigatorRow,
   type FlowNavigatorSection,
-  type FlowNavigatorSlots
+  type FlowNavigatorSlots,
+  sessionLabel,
+  sessionRowState,
+  sessionAge,
+  type SessionRowState
 } from "./components/flow-navigator";
-
-export {
-  Roster,
-  rosterPropNames,
-  BoardColumns,
-  boardColumnsPropNames,
-  BoardList,
-  boardListPropNames,
-  groupIntoColumns,
-  BOARD_STATUS_COLUMNS,
-  type BoardCard,
-  type BoardCardRow,
-  type BoardColumn,
-  type BoardColumnsProps,
-  type BoardColumnsSlots,
-  type BoardListProps,
-  type BoardListSlots,
-  type BoardStatus,
-  type PanelRowSource,
-  type PanelItemSource,
-  type PanelLiveSource,
-  type RosterProps,
-  type RosterWorker,
-  type RosterWorkerRow,
-  type RosterSlots,
-  WorkerDetail,
-  type WorkerDetailProps
-} from "./components/panels";
-
-export {
-  useReadFence,
-  type ReadFence
-} from "./hooks/useReadFence";
 
 export {
   useJumpToLatest,
@@ -194,6 +159,12 @@ export {
 export { useDraft, clearDraft, readDraft, saveDraft } from "./hooks/useDraft";
 
 export { useSubscription, type UseSubscriptionOptions } from "./hooks/useSubscription";
+export {
+  useSessionList,
+  type SessionList,
+  type SessionListClient,
+  type UseSessionListOptions
+} from "./hooks/useSessionList";
 
 export {
   useSubmit,
@@ -245,14 +216,12 @@ export {
   isSpeechRecognitionAvailable,
   type AudioPlayer,
   type AudioPlayerCallbacks,
-  type AudioPlayerState,
+  type AudioPlayerStatus,
   type AudioRecorder,
   type AudioRecorderOptions,
-  type AudioRecorderState,
+  type AudioRecorderStatus,
   type SpeechRecognitionCallbacks,
   type SpeechRecognitionHandle,
   type UseVoiceOptions,
   type VoiceState
 } from "./voice";
-
-export const reactPackageMarker = "@flow-state-dev/react";

@@ -1,5 +1,6 @@
+// FIX-2085.
 /**
- * Scheduled work (FIX-2085): the user's schedules, each with the task it files,
+ * Scheduled work: the user's schedules, each with the task it files,
  * on whose board, and when it is next due. A fire files an ordinary task, so
  * what a schedule filed is on Tasks like any other.
  */

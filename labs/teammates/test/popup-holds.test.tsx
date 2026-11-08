@@ -24,7 +24,7 @@ const conversation = () => screen.getByRole("main", { name: "Conversation" });
 const TASK = "Coding task: Fix the typo in the README's first line";
 
 async function fileCodingTask() {
-  const box = await screen.findByLabelText("Message Chief of Staff");
+  const box = await screen.findByLabelText("Message Lead");
   await act(async () => {
     fireEvent.change(box, { target: { value: "Fix the typo in the README's first line." } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -60,6 +60,51 @@ describe("a coding task's popup answers what its run waits on you for", () => {
     await waitFor(() => expect(within(popup).queryByRole("region", { name: "Ready for review" })).toBeNull());
   });
 
+  // The popup opens on the run's latest step, so a hold drawn at the top of the feed is off-screen:
+  // what you must act on sits outside the scrolling feed, below it, and the header says you're on.
+  it("a pending question or review sits below the scrolling feed, the header says so, and your verdict stays in the log", async () => {
+    render(<App adapter={fast({ asks: true, review: true })} />);
+    const popup = await fileCodingTask();
+    const status = () => popup.querySelector("[data-overlay-status]")?.textContent;
+    const feedOf = () => popup.querySelector('[data-step="said"]')!.parentElement!;
+    const belowFeed = (panel: HTMLElement) => {
+      const feed = feedOf();
+      expect(feed.contains(panel)).toBe(false);
+      expect(feed.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    };
+
+    const asked = await within(popup).findByRole("region", { name: "Waiting on you" }, { timeout: 2000 });
+    belowFeed(asked);
+    expect(status()).toBe("Waiting on you");
+    fireEvent.change(within(asked).getByLabelText("Your answer"), { target: { value: "Only line 1." } });
+    fireEvent.click(within(asked).getByRole("button", { name: "Answer" }));
+    await waitFor(() => expect(within(popup).queryByRole("region", { name: "Waiting on you" })).toBeNull());
+
+    const review = await within(popup).findByRole("region", { name: "Ready for review" }, { timeout: 3000 });
+    belowFeed(review);
+    expect(status()).toBe("Needs review");
+    fireEvent.change(within(review).getByLabelText("What to change"), { target: { value: "Keep the old wording." } });
+    fireEvent.click(within(review).getByRole("button", { name: "Ask for changes" }));
+    await waitFor(() => expect(within(popup).queryByRole("region", { name: "Ready for review" })).toBeNull());
+    // The pending card is gone; the feed keeps what you decided, where you decided it.
+    const decisions = () => [...feedOf().querySelectorAll('[data-step="decision"]')].map((d) => d.textContent);
+    expect(decisions()).toEqual(["Asked for changes: Keep the old wording."]);
+    // It reads before the run's next turn, which it caused.
+    const revising = await within(popup).findByText(/Revising: Keep the old wording\./, undefined, { timeout: 3000 });
+    const decision = feedOf().querySelector('[data-step="decision"]')!;
+    expect(decision.compareDocumentPosition(revising) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const again = await within(popup).findByRole("region", { name: "Ready for review" }, { timeout: 3000 });
+    belowFeed(again);
+    fireEvent.click(within(again).getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(within(popup).queryByRole("region", { name: "Ready for review" })).toBeNull());
+    expect(decisions()).toEqual(["Asked for changes: Keep the old wording.", "Accepted"]);
+    // The result is the feed's last entry, where the popup opens.
+    const result = await within(popup).findByRole("region", { name: "Result" }, { timeout: 2000 });
+    expect(feedOf().contains(result)).toBe(true);
+    expect([...feedOf().querySelectorAll("[data-step]")].pop()).toBe(result);
+  });
+
   it("control: a run with nothing to ask and no review shows no box and no card, and completes on its own", async () => {
     render(<App adapter={fast()} />);
     const popup = await fileCodingTask();
@@ -67,4 +112,38 @@ describe("a coding task's popup answers what its run waits on you for", () => {
     expect(within(popup).queryByRole("region", { name: "Waiting on you" })).toBeNull();
     expect(within(popup).queryByRole("region", { name: "Ready for review" })).toBeNull();
   });
+});
+
+describe("accepting a coding task's review says where its work goes", () => {
+  it("offers Open a PR and Merge locally; a merge that conflicts shows the error and a Retry, and a PR after it shows its link and what's next", async () => {
+    render(<App adapter={fast({ review: true, lands: true })} />);
+    const popup = await fileCodingTask();
+
+    const review = await within(popup).findByRole("region", { name: "Ready for review" }, { timeout: 3000 });
+    // Two clearly labelled ways to accept, and no bare Accept.
+    expect(await within(review).findByRole("button", { name: "Accept: Open a PR" })).toBeTruthy();
+    expect(within(review).queryByRole("button", { name: "Accept" })).toBeNull();
+    fireEvent.click(within(review).getByRole("button", { name: "Accept: Merge locally" }));
+
+    // The merge conflicted: the error, a Retry of it, and the other way.
+    const again = await waitFor(
+      () => {
+        const card = within(popup).getByRole("region", { name: "Ready for review" });
+        expect(within(card).getByRole("alert").textContent).toMatch(/Merging locally failed: Merging conflicts in README\.md/);
+        return card;
+      },
+      { timeout: 3000 },
+    );
+    // A retry that fails with the same words is a new ask: Retry is offered again, not a receipt.
+    const retry = within(again).getByRole("button", { name: "Retry: Merge locally" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(within(popup).getByRole("button", { name: "Retry: Merge locally" })).not.toBe(retry), { timeout: 3000 });
+    fireEvent.click(within(popup).getByRole("button", { name: "Accept: Open a PR" }));
+
+    const result = await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
+    await waitFor(() => expect(result.textContent).toMatch(/Opened pull request #7 into main\. Next: review and merge it\./));
+    expect(within(result).getByRole("link", { name: "pull request #7" }).getAttribute("href")).toBe("https://github.com/acme/relay/pull/7");
+    // The task's row in the thread says it too.
+    expect(within(conversation()).getByRole("button", { name: `${TASK}, on Cursor` }).textContent).toMatch(/PR #7/);
+  }, 20_000);
 });

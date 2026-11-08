@@ -24,17 +24,19 @@ export type FilesystemActiveRequestRegistryOptions = {
   filename?: string;
   /** fsync before rename. Default: true */
   fsync?: boolean;
+  // FIX-406 6B.
   /**
-   * Fired on a registry write failure before the safety-net log (FIX-406 6B).
+   * Fired on a registry write failure before the safety-net log.
    */
   onPersistError?: PersistErrorHandler;
 };
 
 export class FilesystemActiveRequestRegistry implements ActiveRequestRegistry {
+  // FIX-999.
   /**
    * The registry file may sit on a volume every worker mounts, or in a
    * per-process temp dir — and this adapter cannot tell which from its own
-   * construction. Where it cannot know, it declares not shared (FIX-999), so a
+   * construction. Where it cannot know, it declares not shared, so a
    * deployment that really is shared gets liveness refused rather than a
    * deployment that is not getting liveness that lies.
    */

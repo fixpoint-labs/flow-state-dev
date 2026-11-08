@@ -28,7 +28,7 @@ import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext, mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { system } from "@flow-state-dev/memory";
@@ -236,14 +236,12 @@ describe("memory attaches to the built-in agent worker flow by composition", () 
     // The standing-rules record is the worker's notes for each user, not memory (FIX-1945), and the
     // routed-session record is which routed task a workstream's session works (FIX-2083). The
     // project rows are what the work-project action checks a user's membership against (FIX-2161).
-    // The ledger's id index is which conversation holds a task id (FIX-2160).
     expect(Object.keys(plain!.resources ?? {}).sort()).toEqual([
       "privateProjects",
       "projects",
       "skills",
       "standing-rules",
       "tasks",
-      "tasks__ids",
       "workforceRoutedSessions"
     ]);
     // Nothing runs after the answer — the sequence is what it was.

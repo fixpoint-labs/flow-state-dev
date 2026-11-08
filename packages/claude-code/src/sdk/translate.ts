@@ -2,7 +2,7 @@
  * Pure translation layer: SDK message → canonical `TranslatedEvent[]`.
  *
  * This module is deliberately free of `ctx`, the SDK, and any I/O. It owns the
- * stateful bookkeeping needed to interpret a stream of {@link SdkMessageLike}
+ * stateful bookkeeping needed to interpret a stream of {@link ClaudeCodeSdkMessage}
  * messages — open tool/sub-agent ids, the last assistant text — but mutates
  * only the {@link TranslateState} passed in, and returns the events a message
  * implies. `emit.ts` turns those events into item emissions; keeping the two
@@ -13,8 +13,8 @@
  * - partial: `stream_event` messages carry `content_block_delta` tokens (only
  *   present when `includePartialMessages` is on).
  */
-import type { SdkMessageLike, SdkResultSubtype, TranslatedEvent } from "./types";
-import type { ObservedFileOpKind } from "./work-collections";
+import type { ClaudeCodeSdkMessage, ClaudeCodeResultSubtype, TranslatedEvent } from "./types";
+import type { ClaudeCodeFileOpKind } from "./work-collections";
 
 /** The SDK tool names that denote a sub-agent spawn (alias pair). */
 const SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
@@ -30,7 +30,7 @@ const SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
  * designed outcome (§9) rather than a gap — add a name once a run is seen using
  * it, not because a type declaration mentions it.
  */
-const FILE_MUTATION_TOOLS = new Map<string, ObservedFileOpKind>([
+const FILE_MUTATION_TOOLS = new Map<string, ClaudeCodeFileOpKind>([
   ["Write", "created"],
   ["Edit", "edited"],
 ]);
@@ -46,7 +46,7 @@ const FILE_MUTATION_TOOLS = new Map<string, ObservedFileOpKind>([
  * at all, which is why the call-time kind stays the fallback rather than the
  * exception.
  */
-const FILE_OUTPUT_KINDS = new Map<string, ObservedFileOpKind>([
+const FILE_OUTPUT_KINDS = new Map<string, ClaudeCodeFileOpKind>([
   ["create", "created"],
   ["update", "edited"],
 ]);
@@ -113,10 +113,11 @@ function readNestedString(source: unknown, outer: string, inner: string): string
   return readString((source as Record<string, unknown>)[outer], inner);
 }
 
+// BP-030.
 /**
  * Which fields the harness says it actually applied (`TaskUpdateOutput`'s
  * `updatedFields`). `null` when absent — an older or unknown shape, where the
- * tolerant reading is "no opinion", not "applied nothing" (BP-030).
+ * tolerant reading is "no opinion", not "applied nothing".
  */
 function readAppliedFields(structured: unknown): ReadonlySet<string> | null {
   if (typeof structured !== "object" || structured === null) return null;
@@ -212,7 +213,7 @@ export interface TranslateState {
    */
   quietStatus: boolean;
   /** File mutations whose call was seen, awaiting the result that settles them. */
-  readonly openFileOps: Map<string, { path: string; op: ObservedFileOpKind }>;
+  readonly openFileOps: Map<string, { path: string; op: ClaudeCodeFileOpKind }>;
   /**
    * Plan creates whose call was seen. Nothing is emitted at call time because
    * the item has no id yet — the id only exists once the harness answers, and
@@ -243,7 +244,7 @@ export function createTranslateState(options: TranslateStateOptions = {}): Trans
     partialMessages: options.partialMessages ?? true,
     inputsMayBeRevised: options.inputsMayBeRevised ?? false,
     quietStatus: false,
-    openFileOps: new Map<string, { path: string; op: ObservedFileOpKind }>(),
+    openFileOps: new Map<string, { path: string; op: ClaudeCodeFileOpKind }>(),
     openPlanCreates: new Map<string, { title: string | null }>(),
     openPlanUpdates: new Map<
       string,
@@ -253,7 +254,7 @@ export function createTranslateState(options: TranslateStateOptions = {}): Trans
 }
 
 /** Normalize the SDK's terminal subtype string to a known value or `null`. */
-function normalizeSubtype(raw: string | undefined): SdkResultSubtype | null {
+function normalizeSubtype(raw: string | undefined): ClaudeCodeResultSubtype | null {
   switch (raw) {
     case "success":
     case "error_max_turns":
@@ -316,7 +317,7 @@ export function drainUnsettledObservations(state: TranslateState): TranslatedEve
  * mutation: no `ctx`, no SDK, no I/O.
  */
 export function translateSdkMessage(
-  msg: SdkMessageLike,
+  msg: ClaudeCodeSdkMessage,
   state: TranslateState,
 ): TranslatedEvent[] {
   const events = translateByType(msg, state);
@@ -329,7 +330,7 @@ export function translateSdkMessage(
   return events;
 }
 
-function translateByType(msg: SdkMessageLike, state: TranslateState): TranslatedEvent[] {
+function translateByType(msg: ClaudeCodeSdkMessage, state: TranslateState): TranslatedEvent[] {
   switch (msg.type) {
     case "system":
       return translateSystem(msg, state);
@@ -376,7 +377,7 @@ function clipStatus(text: string): string {
  * `init` says nothing: the session id reaches the host through `onSession`, and
  * a "session started" line only read as stale once the run was working.
  */
-function translateSystem(msg: Extract<SdkMessageLike, { type: "system" }>, state: TranslateState): TranslatedEvent[] {
+function translateSystem(msg: Extract<ClaudeCodeSdkMessage, { type: "system" }>, state: TranslateState): TranslatedEvent[] {
   if (msg.subtype === "compact_boundary") {
     state.quietStatus = true;
     return [{ kind: "status", message: "Claude Code agent compacted its context" }];
@@ -413,7 +414,7 @@ function translateSystem(msg: Extract<SdkMessageLike, { type: "system" }>, state
  * inside; it is threaded onto the events so `emit.ts` can nest them.
  */
 function translateAssistant(
-  msg: Extract<SdkMessageLike, { type: "assistant" }>,
+  msg: Extract<ClaudeCodeSdkMessage, { type: "assistant" }>,
   state: TranslateState,
 ): TranslatedEvent[] {
   const events: TranslatedEvent[] = [];
@@ -761,7 +762,7 @@ function observeToolResult(
  * by tool_use id to the open tool or sub-agent that produced it.
  */
 function translateUser(
-  msg: Extract<SdkMessageLike, { type: "user" }>,
+  msg: Extract<ClaudeCodeSdkMessage, { type: "user" }>,
   state: TranslateState,
 ): TranslatedEvent[] {
   const events: TranslatedEvent[] = [];
@@ -827,7 +828,7 @@ function translateUser(
  * whole `tool_use` block in the eventual `assistant` message is authoritative.
  */
 function translateStreamEvent(
-  msg: Extract<SdkMessageLike, { type: "stream_event" }>,
+  msg: Extract<ClaudeCodeSdkMessage, { type: "stream_event" }>,
 ): TranslatedEvent[] {
   const event = msg.event;
   if (event?.type !== "content_block_delta" || event.delta === undefined) return [];
@@ -846,7 +847,7 @@ function translateStreamEvent(
 }
 
 /** `result` terminal message → an optional error notice plus a result event. */
-function translateResult(msg: Extract<SdkMessageLike, { type: "result" }>): TranslatedEvent[] {
+function translateResult(msg: Extract<ClaudeCodeSdkMessage, { type: "result" }>): TranslatedEvent[] {
   const rawSubtype = msg.subtype;
   const subtype = normalizeSubtype(rawSubtype);
   const usage =
@@ -896,13 +897,14 @@ function translateResult(msg: Extract<SdkMessageLike, { type: "result" }>): Tran
   return events;
 }
 
+// FIX-2145.
 /**
- * What a whole query spent, cached input counted as input (FIX-2145). The
+ * What a whole query spent, cached input counted as input. The
  * result's `usage` is the main agent loop only, so `modelUsage` (every model
  * the query called, sub-agents included) is read when it is there.
  */
 function spentTokensOf(
-  msg: Extract<SdkMessageLike, { type: "result" }>,
+  msg: Extract<ClaudeCodeSdkMessage, { type: "result" }>,
 ): { inputTokens: number; outputTokens: number } | null {
   const models = msg.modelUsage ? Object.values(msg.modelUsage) : [];
   if (models.length > 0) {

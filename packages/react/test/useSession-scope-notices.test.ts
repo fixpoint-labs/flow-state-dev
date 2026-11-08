@@ -20,7 +20,7 @@ import type { SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/cl
 
 const { sessionsMock, flowMock, subscriptions, ownStreams, resourcesMock } = vi.hoisted(() => ({
   sessionsMock: { get: vi.fn(), state: vi.fn(), requests: vi.fn(), children: vi.fn() },
-  resourcesMock: { listCollectionItems: vi.fn(), getResourceManifest: vi.fn() },
+  resourcesMock: { listCollectionResources: vi.fn(), getResourceManifest: vi.fn() },
   flowMock: { send: vi.fn(), abort: vi.fn() },
   subscriptions: [] as Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }>,
   // The view's own request streams, read from a send's response.
@@ -124,7 +124,7 @@ describe("useSession live · other sessions' scope changes", () => {
     sessionsMock.state.mockResolvedValue(snapshot());
     sessionsMock.requests.mockResolvedValue([]);
     sessionsMock.children.mockResolvedValue([]);
-    resourcesMock.listCollectionItems.mockResolvedValue({ items: [] });
+    resourcesMock.listCollectionResources.mockResolvedValue({ items: [] });
     resourcesMock.getResourceManifest.mockResolvedValue({
       flowKind: "demo",
       resources: [
@@ -319,7 +319,7 @@ describe("useSession live · other sessions' scope changes", () => {
     await waitFor(() => expect(subscriptions.filter((s) => !s.closed)).toHaveLength(1));
     await hear(null);
     await flush();
-    const rosterReads = () => resourcesMock.listCollectionItems.mock.calls.filter(([, ref]) => ref === "roster").length;
+    const rosterReads = () => resourcesMock.listCollectionResources.mock.calls.filter(([, ref]) => ref === "roster").length;
     const before = rosterReads();
     await hear({ topic: topic.org({ resource: "desks/d1" }), kind: "resource" });
     await flush();

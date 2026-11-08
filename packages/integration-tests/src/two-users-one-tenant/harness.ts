@@ -28,15 +28,17 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createFlowState,
-  createInMemoryLeaseBackend,
+  type FlowState
+} from "@flow-state-dev/engine";
+import { createInMemoryLeaseBackend } from "@flow-state-dev/engine/internal";
+import {
   type ConcurrencyLeaseBackend,
-  type FlowState,
   type LeasePlace,
   type InboundTransportAdapter,
-  type ResolvePrincipalFn,
   type WorkerAdapter,
   type WorkerMode
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
+import { type ResolvePrincipalFn } from "@flow-state-dev/core/types";
 import {
   bullmqWorker,
   createBullmqRuntime,
@@ -45,10 +47,12 @@ import {
 } from "@flow-state-dev/bullmq";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import {
-  createSQLiteStores,
-  sqliteStores,
-  type SQLiteStoreRegistry
+  sqliteStores
 } from "@flow-state-dev/store-sqlite";
+import {
+  createSQLiteStores,
+  type SQLiteStoreRegistry
+} from "@flow-state-dev/store-sqlite/host";
 
 /** The tenant both users share. */
 export const TENANT_ID = "tenant_shared";

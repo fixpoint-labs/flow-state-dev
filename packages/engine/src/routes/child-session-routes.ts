@@ -1,6 +1,7 @@
+// FIX-1010, FIX-1440.
 /**
  * `GET /sessions/:sessionId/children` — the provenance index for one session:
- * which dispatch runs were started from it (FIX-1010, FIX-1440).
+ * which dispatch runs were started from it.
  *
  * It is one of two doors to the same work, and the pair is the point. A
  * dispatch run is an ordinary session of its flow and is listed as one —
@@ -25,7 +26,7 @@
  */
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { RequestStore, SessionRecord, StoreRegistry } from "../stores/types";
+import type { RequestRecord, RequestStore, SessionRecord, StoreRegistry } from "../stores/types";
 import { toBareSessionId } from "../stores/scope-keys";
 import { jsonResponse, loadCheckedSession, unknownSessionResponse } from "./route-utils";
 import { DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT } from "../runtime-config";
@@ -193,10 +194,12 @@ export type ChildSessionSummary = {
 type ChildSessionRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
-  /** Tenant id from the request header (FIX-682). */
+  // FIX-682.
+  /** Tenant id from the request header. */
   tenantId?: string;
+  // FIX-1012.
   /**
-   * Largest `limit` this listing accepts (FIX-1012). Absent →
+   * Largest `limit` this listing accepts. Absent →
    * {@link CHILD_LIST_MAX_LIMIT}.
    */
   maxListLimit?: number;
@@ -207,9 +210,10 @@ type ChildSessionRouteContext = {
   checkedSession?: SessionRecord | null;
 };
 
+// BP-031.
 /**
  * The identity every read on this route conjoins, taken from the **stored
- * parent record** rather than from the principal (BP-031) — the parent is
+ * parent record** rather than from the principal — the parent is
  * already resolved and tenant-checked, so these are trusted server-side
  * values, and they work on the framework default resolver where no principal
  * exists.
@@ -248,8 +252,9 @@ export function parentIdentity(
   };
 }
 
+// FIX-1010.
 /**
- * Resolve one job's status with two bounded reads (FIX-1010).
+ * Resolve one job's status with two bounded reads.
  *
  * **Read 1 — the existence check, issued unordered.** "Does a non-terminal run
  * exist" has no ordering in it, so it cannot be inverted by a tie, a late
@@ -283,27 +288,43 @@ export async function resolveDispatchRunStatus(
   childSessionId: string,
   identity: ParentIdentity
 ): Promise<ChildSessionStatus | undefined> {
-  const live = await store.list({
-    sessionId: childSessionId,
-    status: LIVE_STATUSES,
-    orderBy: "none",
-    limit: 1,
-    ...identity
-  });
-  if (live.length > 0) return "active";
-
-  const [mostRecent] = await store.list({
-    sessionId: childSessionId,
-    orderBy: "startedAtMs",
-    limit: 1,
-    ...identity
-  });
-  if (mostRecent === undefined) return undefined;
-  if (isLiveWhenMostRecent(mostRecent.status)) return "active";
+  const governing = await governingRequest(store, { sessionId: childSessionId, ...identity });
+  if (governing === undefined) return undefined;
+  if (isLiveWhenMostRecent(governing.status)) return "active";
 
   // Terminal outcomes pass through unchanged, but through a total map rather
   // than a cast — see {@link TERMINAL_WIRE_STATUS}.
-  return TERMINAL_WIRE_STATUS[mostRecent.status];
+  return TERMINAL_WIRE_STATUS[governing.status];
+}
+
+/**
+ * The request that speaks for one session's runs: a live one
+ * ({@link LIVE_STATUSES}) wherever it sits, else the most recent.
+ *
+ * The one place this rule and its read order are written. The dispatch-run
+ * listing maps the answer to its wire status; the session listing's
+ * `include=status` (`session-request-status.ts`) sends the request's own.
+ *
+ * Live first, then most recent, because the two reads are not atomic. A run
+ * that ends between them is read as its finished self by read 2, which is
+ * true. A run that starts between them is read 2's most recent record and is
+ * still live, so a caller that treats a live most-recent record as live
+ * ({@link isLiveWhenMostRecent}) never reports it as an older outcome.
+ *
+ * At most two reads, each `limit: 1`; read 1 is unordered, so a session that
+ * has piled up suspended records costs one row.
+ *
+ * @param filter The session's request filter: its id plus the identity keys
+ *   the caller scopes by.
+ */
+export async function governingRequest(
+  store: RequestStore,
+  filter: Omit<NonNullable<Parameters<RequestStore["list"]>[0]>, "status" | "orderBy" | "limit">
+): Promise<RequestRecord | undefined> {
+  const [live] = await store.list({ ...filter, status: LIVE_STATUSES, orderBy: "none", limit: 1 });
+  if (live !== undefined) return live;
+  const [mostRecent] = await store.list({ ...filter, orderBy: "startedAtMs", limit: 1 });
+  return mostRecent;
 }
 
 /** How many runs one batched read names: keeps an `IN (…)` list within SQL parameter limits. */
@@ -378,6 +399,7 @@ export async function resolveActiveDispatchRuns(
   return active;
 }
 
+// BP-030.
 /**
  * Project the two labels the dispatch seam stamps onto the row.
  *
@@ -388,7 +410,7 @@ export async function resolveActiveDispatchRuns(
  * issue's to build.
  *
  * Both stay optional on the wire, and the guard is `== null` rather than a
- * truthiness check (BP-030): a child written before the fields existed reads
+ * truthiness check: a child written before the fields existed reads
  * `undefined`, a store that nulls absent keys hands back `null`, and both mean
  * *unlabelled* — a row a UI shows without a name, never an error. An ordinary
  * child session that is not background work has neither, which is the same

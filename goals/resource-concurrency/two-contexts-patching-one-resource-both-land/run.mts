@@ -22,7 +22,7 @@ import { z } from "zod";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "@flow-state-dev/engine";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { runGoal, stripIntentOverrides, type GoalResult } from "../../lib/index.mts";
 
 // No generator/model intents declared by this flow (goal.md's Model field is

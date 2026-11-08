@@ -48,7 +48,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 - **Implementation-level pattern** that should propagate → new BP (next global number) in its home per the best-practices update policy: universal → `docs/contributing/best-practices.md` + `CLAUDE.md` mirror; situational → `docs/contributing/best-practices/<category>.md` + both indexes.
 - **Architecture refinement** that updates a documented contract → edit the relevant `docs/architecture/<area>.md` directly and call it out in the change description.
 - **Specific actionable refactor** with a clear owner → Linear issue.
-- **Surface-level user-facing change** → update the package `README.md` and any affected `apps/docs` page in the same change set (CLAUDE.md rule).
+- **Surface-level user-facing change** → write the changeset; the package `README.md` and `apps/docs` are updated at release, not in this change (CLAUDE.md rule).
 
 **Lock state to check before proposing**:
 
@@ -124,7 +124,7 @@ Side effects happen inline as decisions crystallize. **Route each by scope** —
 
 - **A new cross-cutting implementation pattern emerges from the discussion?** Draft a new BP (next global number) in its home per the best-practices update policy — universal in `docs/contributing/best-practices.md`, situational in `docs/contributing/best-practices/<category>.md`. Keep it concise and rule-shaped, matching BP-001–BP-039.
 - **A term in `docs/architecture/<area>.md` was fuzzy and got sharpened?** Update the relevant `docs/architecture/*` doc directly in the same change set.
-- **A public API surface changed?** Update the package's `README.md` in the same change set (CLAUDE.md rule for user-facing changes); add or revise the relevant `apps/docs` page.
+- **A public API surface changed?** Write the changeset (BP-022), naming the affected docs page with a `Docs:` line. Don't edit the package `README.md` or `apps/docs`; `/release-docs` does at release (CLAUDE.md rule).
 - **User rejects the candidate?** Apply the **three-way filter** below to decide whether to record it.
 - **Want to explore alternative interfaces for the deepened module?** See [INTERFACE-DESIGN.md](INTERFACE-DESIGN.md). The parallel-sub-agent pattern is especially valuable when the candidate is a capability or pattern factory — "design it twice" applies cleanly because capabilities/patterns are the deepest reusable modules in the framework.
 

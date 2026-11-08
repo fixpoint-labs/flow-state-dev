@@ -1,3 +1,4 @@
+// BP-023; BP-024; BP-016.
 /**
  * `lifecycleSchema` — a status-bearing field set for a streamed artifact's
  * resource state schema.
@@ -9,14 +10,14 @@
  * `client: { live: true }`: the status field is what the live projection
  * streams as it transitions.
  *
- * Per BP-023, the optional fields are `.nullable().default(null)` so callers
+ * The optional fields are `.nullable().default(null)` so callers
  * pass only the non-null scaffold (the `status`) and let the framework's
  * `safeParse` fill the rest. Timestamps are ISO strings, matching the
  * established resource-state precedent. This is a plain schema-fragment helper
- * (data, not a body-callback factory) per BP-024.
+ * (data, not a body-callback factory).
  *
  * It belongs on resource state schemas only — not on generator outputs, which
- * forbid `.default()` under BP-016.
+ * forbid `.default()` in OpenAI strict mode.
  */
 import { z } from "zod";
 

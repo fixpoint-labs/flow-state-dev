@@ -1,5 +1,6 @@
+// FIX-506.
 /**
- * In-memory trace event store with bounded retention (FIX-506).
+ * In-memory trace event store with bounded retention.
  *
  * Two retention bounds run concurrently:
  *   - `maxRequests`: FIFO over distinct request IDs by Map insertion order.

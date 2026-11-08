@@ -1,5 +1,6 @@
+// FIX-378.
 /**
- * `@flow-state-dev/skills` — runtime implementation of the FIX-378 Skills
+ * `@flow-state-dev/skills` — runtime implementation of the Skills
  * System. Skills are user-modifiable folders (SKILL.md + supporting files)
  * stored as resources, invoked by the agent through a `runSkill` tool.
  *
@@ -10,8 +11,6 @@
  *     custom generator configurations that don't go through the capability.
  *   - `inlineActivate` — the inline activation branch, exported so custom
  *     tool wiring can reuse it.
- *   - `buildSkillsCatalogContext`, `buildActiveSkillsContext` — the dynamic
- *     context formatters, exported for the same reason.
  *   - `createSkillsCapability` — the recommended path: bundles all of the
  *     above into one `uses: [skillsCap]` slot.
  *   - `readSkillsDirectory`, `importSkillsDirectory` — Node-only directory
@@ -48,66 +47,31 @@ export {
 
 export {
   defineSkillsCollection,
-  skillStateSchema,
-  skillManifestKey,
-  skillFileKey,
-  META_KEY,
   type DefineSkillsCollectionOptions,
 } from "./collection";
 
 export {
-  partitionedSkillsCollection,
-  resolveSkillsCollection,
   type SkillsPartitionFn,
 } from "./partition";
 
 export {
   parseSkillMd,
   serializeSkillMd,
-  substitute,
-  validateSkillName,
-  toSkill,
-  kebabToCamel,
-  camelToKebab,
-  MAX_COMPATIBILITY_LENGTH,
-  MAX_DESCRIPTION_LENGTH,
-  MAX_NAME_LENGTH,
   type ParsedSkillMd,
   type ParseSkillMdOptions,
-  type SubstitutionContext,
 } from "./skill-md";
 
 export {
   createRunSkillTool,
-  buildRunSkillDescription,
-  listEnabledSkills,
   type RunSkillToolOptions,
 } from "./run-skill-tool";
 
 export {
-  buildActiveSkillsContext,
-  buildSkillsCatalogContext,
-  type SkillsContextOptions,
-} from "./context-fn";
-
-export { formatAllowedToolsIntentNote } from "./render-skill-body";
-
-export {
-  activeSkillStateSchema,
   activeSkillsArraySchema,
-  pushActiveSkill,
-  readActiveSkills,
-  unionAllowedTools,
-  type ActiveSkillEntry,
 } from "./active-skill-state";
 
 export {
   createTaskToolsCapability,
-  // The task tools on their own, for a consumer that composes its own
-  // capability around them — one that also has to declare the ledger the
-  // resolver reaches, which `createTaskToolsCapability` has no slot for.
-  buildTaskToolsList,
-  taskToolsForTurn,
   type TaskToolsOptions,
   type TaskCollectionResolver,
   // Part of `createTaskToolsCapability`'s signature, so a caller supplying a
@@ -115,12 +79,6 @@ export {
   type AssigneeRoster,
   // A roster fixed, or read per call from the running context (FIX-1794 T1).
   type AssigneeRosterSource,
-  // The task tools as flow actions, and the board qualifier they are named by.
-  taskToolActions,
-  // The task list as a flow read, stored nowhere (FIX-2286).
-  taskToolReads,
-  taskToolSuffix,
-  type TaskToolActionsBoard,
   // A task turn's question and a turn's stop for the user, and the rules for
   // offering them (FIX-2131).
   createHoldTaskForUser,
@@ -129,27 +87,7 @@ export {
   // A task turn's own progress report and the rule for offering it (FIX-2081).
   createReportProgress,
   type ReportProgressOptions,
-  STATUS_NOTE_LIMIT,
-  // One task as getTask reads it, for a turn handed a task's ending as that read (FIX-2345).
-  readTaskView,
 } from "./task-tools-capability";
-
-// How a running request takes a steer, and the words a steer is shown in (FIX-2086).
-export {
-  createSteerContext,
-  renderSteers,
-  runningTaskOf,
-  showTakenSteers,
-  takeRunningSteers,
-  STEERED_WHILE_RUNNING,
-  type ShownSteer,
-  type RunningTask,
-  type SteerContextOptions,
-} from "./steer-context";
-
-export {
-  ensureSeeded,
-} from "./seeding";
 
 // Seeding writes a copy, so pulling a source edit onto a catalog that already
 // holds the skill is its own deliberate call.
@@ -162,14 +100,11 @@ export {
 // consumer whose catalog is per-instance (a hired worker) says where its own set
 // lives without this layer learning what an instance is.
 export {
-  resolveInitialSkills,
   type InitialSkillsSource,
 } from "./initial-skills";
 
 export {
   inlineActivate,
-  inlineActivateInputSchema,
-  inlineActivateOutputSchema,
 } from "./inline-activate";
 
 // Skill activation (FIX-421) — up-front skill activation router.
@@ -209,16 +144,4 @@ export {
 } from "./import-directory";
 
 // Re-export the canonical types from core.
-export type {
-  InitialSkill,
-  MatchedSkill,
-  RunSkillInput,
-  RunSkillOutput,
-  Skill,
-  SkillActivationSource,
-  SkillContextMode,
-  SkillFile,
-  SkillState,
-  SkillsCollectionMeta,
-  ToolCatalog,
-} from "@flow-state-dev/core";
+export type { InitialSkill, MatchedSkill, SkillActivationSource, SkillContextMode, SkillFile, SkillState, ToolCatalog } from "@flow-state-dev/core/types";

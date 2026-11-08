@@ -1,5 +1,24 @@
 # @flow-state-dev/devtool
 
+## 0.3.2
+
+### Patch Changes
+
+- dabee4a: `useJumpToLatest` brings the person's line to near the top of the feed when they send, and never scrolls for content that arrives after it. Mark each of their lines with `{...feed.mine(line.id)}` and call `sent()` on send; without them the view stays where the reader put it and `atEnd` turns `false` when there is more below. DevTool's stream view and Shift Manager's conversation and task session scroll this way (FIX-2360).
+- Updated dependencies [531bf32]
+- Updated dependencies [05a7022]
+- Updated dependencies [c67aa49]
+- Updated dependencies [a1386ea]
+- Updated dependencies [f1e6315]
+- Updated dependencies [bc65135]
+- Updated dependencies [dabee4a]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/react@0.5.0
+  - @flow-state-dev/core@0.5.0
+  - @flow-state-dev/client@0.5.0
+
 ## 0.3.1
 
 ### Patch Changes

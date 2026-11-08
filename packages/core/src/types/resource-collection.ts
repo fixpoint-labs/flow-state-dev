@@ -6,6 +6,7 @@ import type { ResourceTemplate } from "../resource-template/resource-template";
 import type { EdgeSlotConfig } from "../graph";
 import type { ProjectedClient } from "../helpers/client-projection";
 import type { ReactiveBindings } from "./resource-change";
+import type { ResourceIndexDeclaration, ResourceIndexValue } from "./resource-index";
 
 // Re-export pattern utilities for consumers
 export {
@@ -56,9 +57,10 @@ export type CollectionHookContext = {
    * `cell` + key. Opaque: store and compare it, never parse it.
    */
   cell: string;
+  // FIX-1442.
   /**
-   * The organization the execution that fired this hook was admitted under
-   * (FIX-1442). Server-derived, never the caller's — a hook that persists a
+   * The organization the execution that fired this hook was admitted under.
+   * Server-derived, never the caller's — a hook that persists a
    * binding for later trusted use (a dynamic schedule's target organization)
    * takes it from here rather than from the state it was handed, which the
    * caller wrote.
@@ -99,9 +101,10 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    * `ResourceConfig.flowIsolation`. Rejected at session scope.
    */
   flowIsolation?: boolean;
+  // FIX-1068.
   /**
    * Give this session-scoped collection ONE identity across the whole session
-   * lineage (FIX-1068). Same semantics as `ResourceConfig.sharedToLineage`,
+   * lineage. Same semantics as `ResourceConfig.sharedToLineage`,
    * applied to every instance: a session and the background child sessions it
    * spawns resolve the collection against the lineage root, so they read and
    * write one instance set. Session-scope only; rejected at user/org scope.
@@ -110,9 +113,10 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   stateSchema: ZodTypeAny;
   maxInstances?: number;
   eviction?: EvictionPolicy;
+  // FIX-688.
   /**
-   * When this collection's instances are loaded relative to a request
-   * (FIX-688). `'eager'` (default when omitted) loads the full instance set
+   * When this collection's instances are loaded relative to a request.
+   * `'eager'` (default when omitted) loads the full instance set
    * when the scope's resource registry is constructed, giving the collection
    * ref synchronous `get`/`list`/`count`. `'lazy'` defers loading: the ref's
    * read methods become async and the collection holds only a partial cache.
@@ -212,8 +216,9 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
   /** Fires when a specific instance is deleted (including eviction). */
   onInstanceDeleted?: (key: string, ctx: CollectionHookContext) => void | Promise<void>;
 
+  // FIX-751, FIX-843.
   /**
-   * Bind blocks to this collection's instance mutations (FIX-751, FIX-843). Each
+   * Bind blocks to this collection's instance mutations. Each
    * present entry names a block — bare, or `{ block, when }` with an optional
    * gate — that the server dispatcher runs when that mutation fires. The state
    * kinds (`created` / `stateUpdated` / `deleted`) get a `ResourceChange`
@@ -223,20 +228,32 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    * itself a block to run, not just a side effect.
    */
   reactTo?: ReactiveBindings<TState>;
+
+  /**
+   * Fields this collection's rows can be looked up by with
+   * `findBy(name, value)`. Each entry is an index function of the row's key
+   * and state (version 1), or `{ version, value }`. The function must answer
+   * from `key` and `state` alone. Bump `version` when it changes what it
+   * returns for existing rows: the next lookup in each scope rebuilds the
+   * index from the rows, as the first lookup after the index is added does.
+   * Names must be non-empty and must not contain `@`.
+   */
+  indexes?: Record<string, ResourceIndexDeclaration<TState>>;
 };
 
 type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
 
+// FIX-741; FIX-700.
 /**
  * Branded type returned by `defineResourceCollection()`.
  * Carries phantom `StateType` for downstream type inference, and `ClientType`
- * (FIX-741) — the projected client-data shape derived from the `client` config
+ * — the projected client-data shape derived from the `client` config
  * (`expose`/`exclude`/`data`/identity). `ClientType` is a pure type-level brand;
  * the runtime `clientData` payload stays `JsonValue`. Extract it with
  * `ClientDataOf<typeof collection>`. The `prefetchMode` config field still exists
  * (it controls server-side loading behaviour), but it no longer affects the
  * ref's read-method signatures — both eager and lazy collections expose the same
- * async `ResourceCollectionRef` interface (FIX-700).
+ * async `ResourceCollectionRef` interface.
  */
 export type DefinedResourceCollection<
   TState extends JsonObject = JsonObject,
@@ -252,13 +269,14 @@ export type DefinedResourceCollection<
 // Runtime Ref
 // ---------------------------------------------------------------------------
 
+// FIX-700.
 /**
  * Runtime ref for accessing a collection's dynamic resource instances.
  *
  * All read methods (`get`/`getOptional`/`list`/`count`) are async regardless
  * of `prefetchMode` — the server implementation resolves immediately for eager
- * collections and performs a load for lazy ones, but callers always `await`
- * (FIX-700). Mutation methods (`create`/`getOrCreate`/`upsert`/`delete`) were
+ * collections and performs a load for lazy ones, but callers always `await`.
+ * Mutation methods (`create`/`getOrCreate`/`upsert`/`delete`) were
  * already async and are unchanged.
  *
  * `ResourceRef.state` is a synchronous getter on the ref itself — do NOT await it.
@@ -324,6 +342,17 @@ export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
   list(prefix?: string): Promise<ResourceRef<TState>[]>;
 
   /**
+   * The instances whose declared index `index` has `value`, in key order.
+   * Reads the same rows `list()` does and passes the same owner fence. On a
+   * store that keeps index entries (SQLite, Postgres) it reads the index, plus
+   * one row read per hit; elsewhere it scans the collection. Every hit is
+   * checked against its row, so a row whose value changed is never returned.
+   * Equality only. Throws when the collection declares no index named
+   * `index`.
+   */
+  findBy(index: string, value: ResourceIndexValue): Promise<ResourceRef<TState>[]>;
+
+  /**
    * Delete an instance. No-op if the instance does not exist.
    * Throws the same read-only error as `setState` when the collection
    * is `writable: false`.
@@ -345,6 +374,7 @@ import { z } from "zod";
 import { extractPatternParams, validatePattern } from "./collection-patterns";
 import { validateClientProjection } from "../helpers/client-projection";
 import { validateReactTo } from "./resource-change";
+import { validateIndexDeclarations } from "./resource-index";
 import { edgeListSchema } from "../graph";
 
 export function defineResourceCollection<
@@ -367,7 +397,7 @@ export function defineResourceCollection<
     // Every user's create sees every owner's rows, so its eviction would pick
     // a row its caller may not delete.
     if (config.eviction !== undefined && config.eviction !== "none") {
-      throw new Error(`${named} must not evict: an eviction would delete another user's row.`);
+      throw new Error(`${named} must not evict: an eviction would delete another user's resource.`);
     }
   }
 
@@ -438,6 +468,7 @@ export function defineResourceCollection<
   });
 
   validateReactTo("defineResourceCollection()", config.reactTo);
+  validateIndexDeclarations(config.pattern, config.indexes);
 
   if (
     config.stampOrgId === true &&

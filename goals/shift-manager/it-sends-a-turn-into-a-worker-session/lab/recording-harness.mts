@@ -19,8 +19,9 @@
  */
 import { appendFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
+import { handler } from "@flow-state-dev/core";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import type { HarnessFeeds } from "../../../../packages/shift-manager/teams/devteam/harness.mts";
 
 /** The file each attempt's record is appended to. */
@@ -82,7 +83,7 @@ export function recordingHarness(feeds: HarnessFeeds): HarnessBlock {
       const resume = fresh ? null : offeredResume;
       const session = resume ?? `sess_turn_goal_${randomUUID().slice(0, 8)}`;
       const attempt: RecordedAttempt = {
-        row: input.prompt.split("\n").find((line) => line.startsWith("Row ")) ?? "",
+        row: input.prompt.split("\n").find((line) => line.startsWith("Task ")) ?? "",
         prompt: input.prompt,
         offeredResume,
         resume,

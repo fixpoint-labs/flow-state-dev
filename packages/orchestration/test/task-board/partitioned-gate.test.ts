@@ -10,7 +10,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core";
 import type { ActionCore, BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
@@ -20,7 +21,8 @@ import {
   type TaskCollectionRef,
   type TaskWorkerInput,
 } from "../../src/tasks";
-import { createTaskGate, taskLedgers, taskWorkerInputSchema } from "../../src/task-board";
+import { taskLedgers, taskWorkerInputSchema } from "../../src/task-board";
+import { createTaskGate } from "../../src/task-board/task-entry";
 import { createFakeResourceCollection } from "../helpers";
 import { heard } from "../fixtures/heard";
 
@@ -34,7 +36,7 @@ async function harness() {
   }) as ResourceCollectionRef<JsonObject>;
   const ctx = {
     emit: { component: () => undefined },
-    resources: { [`${LEDGER}__ids`]: createFakeResourceCollection<JsonObject>(`${LEDGER}__ids/**`) },
+    resources: {},
     session: { identity: { type: "session", id: "s_parent", userId: USER_ID } },
     request: { identity: { type: "request", id: "r_parent" } },
   } as unknown as BlockContext;

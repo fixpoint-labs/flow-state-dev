@@ -162,6 +162,39 @@ describe("hireWorkforce", () => {
     expect(hire(true)).not.toThrow();
   });
 
+  // A manager's pieces read the delegate list and the notices acted on as
+  // their defaults. The board's blocks declare those fields with their
+  // defaults, so a manager flow that doesn't restate them hires, and a fresh
+  // session reads each default.
+  it("hires a manager flow that doesn't restate its board's session fields, and they read their defaults", () => {
+    let flows: Record<string, unknown> = {};
+    const made = createWorkerInstallation({
+      standardWorkers: [{ id: "desk.ok", declared: { flow: "research" }, body: "Fine." }],
+      workerFlows: () => flows as never
+    });
+    const board = defineSessionBoard({ installation: made, flowKind: "manages" });
+    const turn = generator({ name: "manages-answer", model: "openai/gpt-6-luna", inputSchema: door, prompt: "Answer.", user: (input: { message: string }) => input.message, uses: [board.messages] });
+    const manages = defineFlow({
+      kind: "manages",
+      configSchema: workerConfigSchema(),
+      session: { ...made.session(undefined), serverOwned: [...board.serverOwned] },
+      resources: { ...made.resources, ...board.resources },
+      actions: { respond: { inputSchema: door, userMessage: (i: { message: string }) => i.message, block: turn }, ...board.actions },
+      internal: { actions: board.entries(turn) }
+    } as never);
+    flows = { research: researchFlow(made), manages: { flow: manages, roles: ["manager"] } };
+    expect(() => hireWorkforce(made)).not.toThrow();
+
+    // The schema a session of this flow fills its defaults from.
+    const session = hireWorkforce(made).find((copy) => copy.kind === "manages")?.scopeStateSchemas?.session as
+      | z.AnyZodObject
+      | undefined;
+    const defaults = Object.fromEntries(
+      ["delegates", "fallback", "taskNotices"].map((key) => [key, session?.shape[key]?.safeParse(undefined).data])
+    );
+    expect(defaults).toEqual({ delegates: null, fallback: null, taskNotices: [] });
+  });
+
   it("builds a workerFlow(...) entry on its installation, once, and registers it like any flow", () => {
     // A flow in its own file has no installation to import: its module
     // exports a builder, and the installation builds it with itself.

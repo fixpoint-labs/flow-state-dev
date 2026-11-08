@@ -97,7 +97,9 @@ const modeSwitch = handler({
 });
 ```
 
-When these blocks are composed into a flow, their state declarations are collected and merged. The flow ends up with a combined session state of `{ messageCount: number, mode: "chat" | "agent" }` — without you repeating those fields in a flow-level `stateSchema`.
+When these blocks are composed into a flow, their state declarations are collected and merged into the type of `ctx.session.state`. The flow's session state is typed `{ messageCount: number, mode: "chat" | "agent" }` without you repeating those fields in a flow-level `stateSchema`.
+
+Block declarations shape the types. They don't fill in defaults when a run reads stored state; only the flow's own `stateSchema` does that (see [Creating sessions](#creating-sessions)). Until something writes `mode`, a block that reads `ctx.session.state.mode` gets `undefined` unless the flow declares the field too.
 
 You *can* still define a flow-level schema if you want one place to see everything:
 
@@ -113,7 +115,7 @@ defineFlow({
 });
 ```
 
-But you don't have to. The flow-level schema only needs to declare fields that aren't already declared by blocks, or fields the flow itself references (like in a `client.expose` list or a `client.derived` compute function).
+The flow-level schema needs the fields a block reads before anything writes them, so their defaults apply, and the fields the flow itself references (like in a `client.expose` list or a `client.derived` compute function).
 
 ### Why bubbling matters
 
@@ -184,6 +186,8 @@ A new session typically starts via `fsd.flow(address).createSession({...})` on t
 If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through.
 
 A caller can pass initial `state` when it creates a session. It is parsed through the flow's session `stateSchema`, so missing fields take their defaults. A state that doesn't fit the schema is kept as sent, and your actions validate it when they run, unless the flow binds its sessions, meaning it declares a readonly field or a `createCheck`.
+
+Defaults also apply every time a run reads stored state. When a session, user or org record loads, each field of the flow's `stateSchema` (`session`, `user` or `org`) that the record doesn't hold reads as its default, so `ctx.user.state.count` is `0` on a brand-new user and on one stored before you added the field. Only missing values are filled in. A value already stored is read as stored, and keys the schema doesn't declare are kept, so another flow's fields on a shared user or org record survive your reads and writes.
 
 Initial state suits preferences and drafts. On its own it is the wrong place for a value that grants anything, because the caller wrote it; a `createCheck` that confirms the value (below) changes that.
 
@@ -307,10 +311,10 @@ The check gets one object:
 |-------|------------|
 | `state` | The session's initial state, after the schema parsed it. A state the schema refuses never reaches the check. |
 | `principal` | The caller: `{ userId, orgId, tenantId? }`. |
-| `readCollectionItem(ref, topic)` | Reads one row of a user- or org-scoped collection this flow declares. `ref` is the key in the flow's `resources` (`"projects"`). `topic` is the row's key in the collection: `"q3-launch"` for `projects/q3-launch`, or the parameters for a pattern like `[team]/info` (`{ team: "eng" }`). Resolves the row's state, or `undefined` when there is no such row. Throws if `ref` isn't a user- or org-scoped collection of this flow. |
+| `readCollectionItem(ref, topic)` | Reads one resource of a user- or org-scoped collection this flow declares. `ref` is the key in the flow's `resources` (`"projects"`). `topic` is the resource's key in the collection: `"q3-launch"` for `projects/q3-launch`, or the parameters for a pattern like `[team]/info` (`{ team: "eng" }`). Resolves the resource's state, or `undefined` when there is no such resource. Throws if `ref` isn't a user- or org-scoped collection of this flow. |
 | `sessionId`, `flow`, `via` | The id being created, the flow (`{ kind, id }`), and which path is creating it: `"create"`, `"action"`, `"webhook"`, `"cli"` or `"dispatch"`. |
 
-`readCollectionItem` reads only the caller's own scope: their own rows of a user-scoped collection, their own organization's rows of an org-scoped one. The check above answers "not yours" with the same 404 as "doesn't exist", so it doesn't reveal which projects exist.
+`readCollectionItem` reads only the caller's own scope: their own resources in a user-scoped collection, their own organization's resources in an org-scoped one. The check above answers "not yours" with the same 404 as "doesn't exist", so it doesn't reveal which projects exist.
 
 Return `{ ok: true }` to create the session, or `{ ok: false, message, status }` to refuse it. `status` can be 400, 403 or 404, and defaults to 400.
 
@@ -529,6 +533,7 @@ In practice, most state declarations live on blocks, not flows. A counter block 
 Reach for flow-level `session.stateSchema` (or `user`, `org`) when:
 
 - You write a `client.derived` compute function that reads the field — the compute function lives on the flow config, so the field has to be visible there.
+- A block reads the field before anything writes it, and needs its default. Defaults apply on read only from the flow's schema.
 - You want one place to see the canonical schema for code review or onboarding.
 - A field doesn't belong to any one block (rare).
 

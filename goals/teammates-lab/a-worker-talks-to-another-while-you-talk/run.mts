@@ -38,7 +38,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright";
 import { createClient, readEveryCollectionPage } from "@flow-state-dev/client";
-import { createWorkforceClient, WORKER_MESSAGES_RESOURCE, workerMessageRowSchema } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, WORKER_MESSAGES_RESOURCE, workerMessageResourceStateSchema } from "@flow-state-dev/workforce/browser";
 import {
   DEFAULT_MODEL,
   assertPatched,
@@ -409,7 +409,7 @@ await runGoal(async (failures, tell_) => {
       const session = await workforce.ensureWorkerSession({ worker: fixture.lead });
       const rows = await readEveryCollectionPage(client.resources, session.id, WORKER_MESSAGES_RESOURCE);
       return rows.flatMap((row) => {
-        const parsed = workerMessageRowSchema.safeParse(row.clientData);
+        const parsed = workerMessageResourceStateSchema.safeParse(row.clientData);
         return parsed.success ? [parsed.data] : [];
       });
     };

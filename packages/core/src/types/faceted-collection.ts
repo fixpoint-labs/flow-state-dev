@@ -266,7 +266,7 @@ function checkConfig(config: FacetedCollectionConfig): Record<string, EvaluatorQ
   if (isParameterizedPattern(config.pattern)) {
     refuse(
       name,
-      `pattern "${config.pattern}" has parameters. A content change can't address a parameterized row by key; ` +
+      `pattern "${config.pattern}" has parameters. A content change can't address a parameterized resource by key; ` +
         'use a wildcard pattern such as "tickets/*" or "docs/**".'
     );
   }
@@ -475,7 +475,7 @@ export function defineFacetedCollection<
       const ref = await collectionOf(ctx).getOptional(change.key);
       // The row the change names, in this collection's scope, or nothing is written.
       if (ref === undefined || ref.path !== change.ref || ref.scope !== collection.scope) {
-        throw unregistered(`the row "${change.ref}" isn't this collection's row under "${name}".`);
+        throw unregistered(`the resource "${change.ref}" isn't this collection's resource under "${name}".`);
       }
       const token = crypto.randomUUID();
       await ref.patchState({ facets: null, indexedAs: token });

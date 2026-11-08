@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @flow-state-dev/example-knowledge-base — reference-app barrel (FIX-813).
+// @flow-state-dev/example-knowledge-base — reference-app barrel.
 //
 // A frozen reference app, not a published package: an OKF v0.1 interchange
 // adapter + a thin knowledgeBase capability over the resource graph, exposed

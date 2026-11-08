@@ -12,20 +12,19 @@
  */
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
+import { defineCapability, defineResourceCollection } from "@flow-state-dev/core";
 import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
-  defineCapability,
-  defineResourceCollection,
   observedPlanCollection,
   observedPlanListCollection,
-} from "@flow-state-dev/core";
+} from "@flow-state-dev/core/harness";
 import { createCursorAgentCapability } from "../src/capability";
-import { INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
-import { TESTED_SDK_VERSION } from "../src/types";
+import { INTERNAL_CURSOR_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
+import { TESTED_CURSOR_SDK } from "../src/types";
 
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_CURSOR_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CURSOR_SDK.range }),
 } as CursorAgentOptions;
 
 describe("createCursorAgentCapability", () => {
@@ -51,7 +50,7 @@ describe("createCursorAgentCapability", () => {
   it("forwards its options to the block, so the version gate still refuses here", () => {
     expect(() =>
       createCursorAgentCapability({
-        [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: "1.0.30" }),
+        [INTERNAL_CURSOR_SDK_VERSION_READER]: () => ({ kind: "version", version: "1.0.30" }),
       } as CursorAgentOptions),
     ).toThrow();
   });

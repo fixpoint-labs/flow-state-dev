@@ -23,12 +23,16 @@ import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import {
   createExecutionContext,
-  createInMemoryStores,
+  runAction
+} from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import {
   createResponseEmitter,
   OrgBindingMismatchError,
-  runAction,
   UserBindingMismatchError
-} from "../src";
+} from "../src/host";
 
 function createTestFlow() {
   return defineFlow({

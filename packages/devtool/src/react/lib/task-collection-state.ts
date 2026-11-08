@@ -1,6 +1,7 @@
+// FIX-444 / FIX-446; FIX-445; FIX-1071.
 /**
  * Local mirror of the unified Plan/Task substrate's component-item types
- * (FIX-444 / FIX-446) for the DevTool TaskCollections panel (FIX-445), plus
+ * for the DevTool TaskCollections panel, plus
  * the derivation that folds a session's item stream back into boards.
  *
  * Inlined rather than imported from `@flow-state-dev/orchestration` to keep the
@@ -11,7 +12,7 @@
  * `packages/patterns/src/task-board/blocks/board-meta.ts`.
  *
  * {@link groupCollections} lived in `components/workspace/task-collections-view`
- * until the ChildSessions panel needed the same boards (FIX-1071). It is a pure
+ * until the ChildSessions panel needed the same boards. It is a pure
  * fold over items with no rendering in it, so it belongs beside the wire shapes
  * it produces rather than inside one of its two consumers.
  */
@@ -86,7 +87,11 @@ export type Task = {
   completedAt?: number;
 };
 
-/** One hold on a task, wire-shape: a question (`source.kind: "row"`) or a run's stop (`"suspension"`). */
+/**
+ * One hold on a task, wire-shape: the task's own question or confirm (`source.kind: "task"`, or
+ * `"row"` as earlier versions stored it) or a run's stop (`"suspension"`). Read on the stop's marker,
+ * so either marker of the task's own reads the same.
+ */
 export type TaskHoldWire = {
   id: string;
   source: { kind: string };
@@ -94,20 +99,6 @@ export type TaskHoldWire = {
 };
 
 const SETTLED: ReadonlySet<string> = new Set(["completed", "errored", "cancelled"]);
-
-/**
- * A `task-change` item logged before FIX-2317 carries the row's holds as
- * `questions`. A session's item log replays it as stored, so the fold reads it
- * under `holds`, as the server's retired-shape map (`withRetiredShapes`, its
- * `questions` entry) reads a stored row. Without it, an old session's task
- * shows no open question while the board still holds it (BP-030).
- */
-function withHoldsUnderTheirName(task: Task): Task {
-  const legacy = (task as Task & { questions?: TaskHoldWire[] }).questions;
-  if (!Array.isArray(legacy)) return task;
-  const { questions: _questions, ...rest } = task as Task & { questions?: TaskHoldWire[] };
-  return task.holds === undefined ? { ...rest, holds: legacy } : rest;
-}
 
 /**
  * What a running task waits on a person for, as the person was asked: the
@@ -118,7 +109,7 @@ function withHoldsUnderTheirName(task: Task): Task {
 export function waitPrompt(task: Pick<Task, "status" | "holds" | "steers">): string | undefined {
   if (task.holds === undefined || SETTLED.has(task.status)) return undefined;
   const answered = new Set((task.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
-  return task.holds.find((hold) => hold.source.kind !== "row" || !answered.has(hold.id))?.ask.prompt;
+  return task.holds.find((hold) => hold.source.kind === "suspension" || !answered.has(hold.id))?.ask.prompt;
 }
 
 /** Counts payload on `task-board-meta` completion. */
@@ -296,7 +287,7 @@ export function groupCollections(
       }
       bucket.tsById.set(change.taskId, ts);
       bucket.tasksById.set(change.taskId, {
-        task: withHoldsUnderTheirName(change.task),
+        task: change.task,
         kind: change.kind,
         prevStatus: change.prevStatus,
         changeCount,

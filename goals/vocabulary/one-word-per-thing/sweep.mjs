@@ -2,24 +2,26 @@
 /**
  * FIX-1876 vocabulary sweep — one word per thing. The goal check for goal.md beside it.
  *
- * Walks every git-tracked file under the swept roots, finds each use of a retired
- * name or a retired meaning (rules.mjs → RETIRED), and fails on any hit that the
- * keep list (rules.mjs → KEEP) does not classify. A line carrying the marker
- * `retired-name-refusal` names a retired name on purpose (a legacy reader, BP-030, or a refusal)
- * and is counted, not failed.
+ * Walks every git-tracked file, finds each use of a retired
+ * name or a retired meaning, and fails on any hit that an exemption does not
+ * classify. The words, the trees, the exclusions and the exemptions are all read
+ * from the glossary (docs/contributing/glossary.mjs); this file owns only the walk,
+ * the totality check and the report. A line carrying the glossary's refusal marker
+ * names a retired name on purpose (a legacy reader, BP-030, or a refusal) and is
+ * counted, not failed.
  *
  *   node goals/vocabulary/one-word-per-thing/sweep.mjs            # report + verdict
  *   node goals/vocabulary/one-word-per-thing/sweep.mjs --list     # every unclassified hit
  *   node goals/vocabulary/one-word-per-thing/sweep.mjs --control  # planted hit must FAIL
  *   node goals/vocabulary/one-word-per-thing/sweep.mjs --only ask # one family (rule-id prefix)
  *
- * Totality: every tracked file under a swept root is either scanned or excluded by a
- * named rule in rules.mjs → EXCLUDE; the report prints both counts, and the run fails
+ * Totality: every tracked file is either scanned or excluded by a
+ * named rule (the glossary's EXCLUDE); the report prints both counts, and the run fails
  * if a file is neither. CI's Process guards run it, and again with `--control`.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { EXCLUDE, KEEP, REFUSAL_MARKER, RETIRED, ROOTS } from "./rules.mjs";
+import { EXCLUDE, REFUSAL_MARKER, SWEEP_EXEMPTIONS as KEEP, SWEEP_RULES as RETIRED } from "../../../docs/contributing/glossary.mjs";
 
 const argv = process.argv.slice(2);
 const args = new Set(argv);
@@ -28,16 +30,19 @@ const onlyAt = argv.indexOf("--only");
 const only = onlyAt >= 0 ? argv[onlyAt + 1].split(",") : undefined;
 const inScope = (id) => only === undefined || only.some((p) => id.startsWith(p));
 const repo = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-const tracked = execFileSync("git", ["ls-files", "--", ...ROOTS], { cwd: repo, encoding: "utf8" })
+const tracked = execFileSync("git", ["ls-files"], { cwd: repo, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
   .split("\n")
   .filter(Boolean);
 
 // The negative control: planted files, through the same path as every real one. FIX-2242 D2
 // adds one per message row, the `replyTo` one under Workforce, the only place that row reads.
+// FIX-2354 adds a retired name in a contributor doc and in a skill, the trees agents read most.
+const CONTRIBUTOR_PLANTS = ["docs/contributing/__planted__.md", ".agents/skills/__planted__/SKILL.md"];
 const planted = args.has("--control")
   ? [
       { path: "packages/core/src/__planted__.ts", text: "export const x = parkOnAsk;\n" },
-      { path: "packages/workforce/src/__planted__.ts", text: "export const y = messageWorker;\nexport const z = { replyTo: 1 };\n" }
+      { path: "packages/workforce/src/__planted__.ts", text: "export const y = messageWorker;\nexport const z = { replyTo: 1 };\n" },
+      ...CONTRIBUTOR_PLANTS.map((path) => ({ path, text: "Locality is decided by `isInProcessDispatcher`.\n" }))
     ]
   : undefined;
 const plantedText = new Map((planted ?? []).map((p) => [p.path, p.text]));
@@ -94,7 +99,7 @@ const byFile = new Map();
 for (const h of open) byFile.set(h.path, (byFile.get(h.path) ?? 0) + 1);
 
 console.log(`commit ${execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: repo, encoding: "utf8" }).trim()}`);
-console.log(`files: ${files.length} tracked under ${ROOTS.join(" ")} · ${scanned.length} scanned · ${[...excluded.values()].reduce((a, b) => a + b, 0)} excluded · ${unruled.length} with no rule`);
+console.log(`files: ${files.length} tracked · ${scanned.length} scanned · ${[...excluded.values()].reduce((a, b) => a + b, 0)} excluded · ${unruled.length} with no rule`);
 for (const [why, n] of excluded) console.log(`  excluded ${n} · ${why}`);
 console.log(`hits: ${hits.length} · refusal-marked ${marked.length} · kept ${kept.length} · OPEN ${open.length}`);
 console.log(`open by rule: ${JSON.stringify(byRule(open))}`);
@@ -107,7 +112,7 @@ if (args.has("--list")) {
   for (const [path, n] of [...byFile].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`  ${String(n).padStart(4)}  ${path}`);
 }
 
-// Totality: a file under a swept root with no scanning rule and no exclusion is a hole.
+// Totality: a tracked file with no scanning rule and no exclusion is a hole.
 if (unruled.length > 0) {
   console.log(`TOTALITY FAIL: ${unruled.length} files neither scanned nor excluded, e.g. ${unruled.slice(0, 5).join(", ")}`);
 }
@@ -117,7 +122,8 @@ if (planted) {
   const want = [
     ["packages/core/src/__planted__.ts", "ask-symbol"],
     ["packages/workforce/src/__planted__.ts", "message-names"],
-    ["packages/workforce/src/__planted__.ts", "message-reply-to"]
+    ["packages/workforce/src/__planted__.ts", "message-reply-to"],
+    ...CONTRIBUTOR_PLANTS.map((path) => [path, "isInProcessDispatcher"])
   ].filter(([, rule]) => inScope(rule));
   // Under `--only`, only the selected families' plants are expected; none selected proves nothing.
   const caught = want.length > 0 && want.every(([path, rule]) => open.some((h) => h.path === path && h.rule === rule));

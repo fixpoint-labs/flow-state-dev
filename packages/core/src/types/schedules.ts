@@ -85,6 +85,7 @@ export type ScheduleResolutionContext = {
    * without depending on the engine.
    */
   userStorageKey(userId: string, orgId: string): string;
+  // FIX-1798.
   /**
    * The owner pin of the registered instance this dispatch addresses, when
    * that instance is pinned to an owner; absent for every other flow. Taken
@@ -92,7 +93,7 @@ export type ScheduleResolutionContext = {
    * user-scoped storage is keyed by the organization the schedule id names
    * (see `resolveUserStorageKey` in `@flow-state-dev/engine`). A resolver uses
    * it only to refuse an id naming another organization than the pin's, or
-   * another user than a user-owned pin's. Removed with owner pins (FIX-1798).
+   * another user than a user-owned pin's. Removed with owner pins.
    */
   ownerPin?: InstanceOwnerPin;
 };
@@ -152,6 +153,7 @@ export type ScheduleConfig = ActionCore & {
    */
   input?: unknown | ScheduleInputFn;
 
+  // FIX-1442; BR-19.
   /**
    * The principal the action runs as — the *target*, not the dispatch
    * caller. For static framework-level schedules this is typically a
@@ -165,12 +167,12 @@ export type ScheduleConfig = ActionCore & {
    * almost always set this explicitly.
    *
    * The organization may be omitted while the user is named, and then it
-   * alone falls back to the gateway's (FIX-1442). That is for a STATIC
+   * alone falls back to the gateway's. That is for a STATIC
    * schedule, whose principal is trusted config written in the flow
    * definition. A dynamic schedule must not reach that fallback — a stored
    * schedule fires into the organization that created it, not into whichever
    * one happens to be firing the beat — so its resolver refuses to build a
-   * config without the stored organization (BR-19).
+   * config without the stored organization.
    */
   principal?: { userId: string; orgId?: string };
 

@@ -1,6 +1,7 @@
+// FIX-2078; FIX-1794 P2, S6 and S7; FIX-2078 D2; FIX-2123; FIX-2082.
 /**
  * The child-finished signal: how a delegated task's ending becomes one notice
- * to the session that filed it (FIX-1794 P2, S6 and S7; FIX-2078).
+ * to the session that filed it.
  *
  * Pure functions over a board row and the notice it owes. Nothing here reads
  * a store, runs a block or knows a worker, a delegate or a conversation, and a
@@ -17,7 +18,7 @@
  * filer's delivery clears a marker ({@link clearNotice}), and a clear names one
  * marker, so it can't erase a later ending's.
  *
- * ## Which endings owe a notice (FIX-2078 D2)
+ * ## Which endings owe a notice
  *
  * A completion, a final failure and a park that asks someone something each
  * owe one. A cancel owes one too, unless the filer already knows of it:
@@ -35,7 +36,7 @@
  * filer's wait on it was made owes one at its ending, and the wait that finds
  * it ended drops it ({@link deliveredByWait}): the wait's answer delivered it.
  *
- * ## A notice is taken before it runs (FIX-2123)
+ * ## A notice is taken before it runs
  *
  * The filer's `onTaskSettled` takes a notice before it runs the flow's block,
  * in one conditional write that records its request beside the marker
@@ -49,7 +50,7 @@
  * and takes it over once that request has ended without clearing it (its
  * block failed, or its process died).
  *
- * ## An ending held for the request that waited (FIX-2082)
+ * ## An ending held for the request that waited
  *
  * A wait's deadline lapses the row's wait slot rather than clearing it. An
  * ending written onto a lapsed slot owes the filer's notice, **held**: no fast
@@ -65,16 +66,17 @@
  * {@link decideNotice} is the one choice: a waited-on row's ending resumes the
  * turn parked on it, and any other wakes the filer's judgment turn, or lands
  * as a line under a fixed routing policy. A retried notice, which only a row
- * stored before FIX-2078 can still owe, runs the board. {@link noticeKey} is
+ * stored by an older version can still owe, runs the board. {@link noticeKey} is
  * the dedupe key, task and attempt and ending, so a notice sent twice is acted
  * on once.
  */
 import type { Task } from "../schema/task";
 import type { TaskEnding } from "../collection/ending";
 
+// FIX-2078.
 /**
- * The endings a filer hears about. `retried` is read only off a marker stored
- * before FIX-2078, which recorded one.
+ * The endings a filer hears about. `retried` is read only off a marker an
+ * older version stored, which recorded one.
  */
 export type NoticeEnding = "completed" | "errored" | "retried" | "cancelled";
 
@@ -91,11 +93,13 @@ export interface TaskNotice {
   readonly ending: NoticeEnding;
   readonly output?: unknown;
   readonly error?: string;
-  /** The row is waited on: a turn is parked on its ending (read off a marker stored before FIX-2078). */
+  // FIX-2078.
+  /** The row is waited on: a turn is parked on its ending (read off a marker stored by an older version). */
   readonly waitedOn?: true;
+  // FIX-2078 D2.
   /**
    * On a failure or a cancel: the dependents this ending cancelled that share
-   * its filer, by id (FIX-2078 D2). They owe no notice of their own.
+   * its filer, by id. They owe no notice of their own.
    */
   readonly cancelled?: readonly string[];
 }
@@ -103,10 +107,11 @@ export interface TaskNotice {
 /** How long after its ending's write a notice falls due: the fast path pays it first. */
 export const NOTICE_DUE_MS = 2_000;
 
+// FIX-2082; FIX-2170.
 /**
  * How often a filer's pass looks again at a wait slot that lapsed for a
- * request still running (FIX-2082): the slot is released by the pass after
- * that request parks (FIX-2170) or ends, so an ending held for it is never
+ * request still running: the slot is released by the pass after
+ * that request parks or ends, so an ending held for it is never
  * stranded. The wake a park owes and the release at the request's end in its
  * own process come first; this is what pays it when that process is gone. Thirty seconds, the age at which a
  * request whose process died is marked interrupted. The first look; later
@@ -131,9 +136,9 @@ const OWED_PREFIX = "noticeOwed:";
  */
 const RESENT_PREFIX = "noticeResent:";
 
+// FIX-2113.
 /**
- * Where a busy session records that it turned an owed notice away (FIX-2113:
- * `taskSettledEntry`'s `defer`), and when. That is no failed delivery, so the
+ * Where a busy session records that it turned an owed notice away (`taskSettledEntry`'s `defer`), and when. That is no failed delivery, so the
  * notice's age, which ends it at the maximum debt age, counts from then. Kept
  * beside the marker, never in it, as a resend record is, so the write can't
  * bring back a marker its entry cleared meanwhile.
@@ -149,21 +154,24 @@ interface OwedMarker {
   readonly ending: NoticeEnding;
   readonly error?: string;
   readonly question?: string;
-  /** When it falls due (epoch ms). Absent on a marker stored before FIX-2078: due at once. */
+  // FIX-2078.
+  /** When it falls due (epoch ms). Absent on a marker stored by an older version: due at once. */
   readonly due?: number;
+  // FIX-2082.
   /**
-   * Held for the request whose wait on the row lapsed (FIX-2082): sent by no
+   * Held for the request whose wait on the row lapsed: sent by no
    * fast path and no pass until it is released. Absent on every other marker.
    */
   readonly held?: true;
 }
 
+// FIX-2123.
 /**
  * Where the `onTaskSettled` request delivering an owed notice records that it
- * took it (FIX-2123), by its request id, server-written, and when. Kept beside
+ * took it, by its request id, server-written, and when. Kept beside
  * the marker, as a resend record is, and left when the marker clears: a wait
  * reads it to tell that the request delivering the ending still runs. Absent
- * for a notice no request has taken, and for every notice owed before FIX-2123.
+ * for a notice no request has taken, and for every notice owed by an older version.
  */
 const TAKEN_PREFIX = "noticeTaken:";
 
@@ -171,7 +179,8 @@ function markerKey(attempt: number, ending: NoticeEnding): string {
   return `${OWED_PREFIX}${attempt}:${ending}`;
 }
 
-/** What the ending's write knows that its row can't say (FIX-2078 D2). */
+// FIX-2078 D2.
+/** What the ending's write knows that its row can't say. */
 export interface NoticeRecording {
   /** The filer made this cancel itself, through its model's task tool in its own turn. */
   readonly ownCancel?: boolean;
@@ -225,13 +234,15 @@ function isMarker(key: string, value: unknown): value is OwedMarker {
   return key.startsWith(OWED_PREFIX) && value !== null && typeof value === "object";
 }
 
-/** A marker a sender may send: owed, and not held for a request that waited (FIX-2082). */
+// FIX-2082.
+/** A marker a sender may send: owed, and not held for a request that waited. */
 function isSendable(key: string, value: unknown): value is OwedMarker {
   return isMarker(key, value) && value.held !== true;
 }
 
+// FIX-2123.
 /**
- * The request that took a notice (FIX-2123), off its take record, read
+ * The request that took a notice, off its take record, read
  * tolerantly: anything but a well-formed record reads as none.
  */
 function takerOf(row: Task, attempt: number, ending: NoticeEnding): string | undefined {
@@ -239,8 +250,9 @@ function takerOf(row: Task, attempt: number, ending: NoticeEnding): string | und
   return taken != null && typeof taken.by === "string" ? taken.by : undefined;
 }
 
+// FIX-2123.
 /**
- * The request that took `notice` to deliver it (FIX-2123), or `undefined` when
+ * The request that took `notice` to deliver it, or `undefined` when
  * `row` no longer owes it, or owes it and no request has taken it.
  */
 export function noticeTakenBy(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">): string | undefined {
@@ -248,8 +260,9 @@ export function noticeTakenBy(row: Task, notice: Pick<TaskNotice, "attempt" | "e
   return isSendable(key, (row.metadata ?? {})[key]) ? takerOf(row, notice.attempt, notice.ending) : undefined;
 }
 
+// FIX-2123.
 /**
- * The metadata patch that takes `notice` for the request `take.by` (FIX-2123):
+ * The metadata patch that takes `notice` for the request `take.by`:
  * its take record, naming that request. Empty when `row` doesn't owe it, or
  * another request holds it: one other than `take.replacing`, the taker its
  * caller found had ended. Run inside the write that commits it, on the row as
@@ -267,9 +280,10 @@ export function takenNoticePatch(
   return { [`${TAKEN_PREFIX}${notice.attempt}:${notice.ending}`]: { by: take.by, at: take.at } };
 }
 
+// FIX-2123; FIX-2181.
 /**
  * The request other than `requestId` (the one asking) that took the notice
- * for the ending `row` holds (FIX-2123), and whether that notice is still
+ * for the ending `row` holds, and whether that notice is still
  * owed; `undefined` when no other request took it. A wait answers that the
  * ending arrives as a notice while that notice is being delivered: still owed
  * (under way, or its taker failed and it goes again), or cleared by a taker
@@ -277,7 +291,7 @@ export function takenNoticePatch(
  * that is parked (waiting on a person, say) still counts as handling it, so a
  * wait answers `arrivesAsNotice` until that taker ends. Once it
  * is cleared and its taker has ended, it has been heard and nothing more is
- * coming (FIX-2181): the wait answers with the row, as a read of it does.
+ * coming: the wait answers with the row, as a read of it does.
  */
 export function noticeTakenByAnother(row: Task, requestId: string): { readonly by: string; readonly owed: boolean } | undefined {
   if (row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled") return undefined;
@@ -287,8 +301,9 @@ export function noticeTakenByAnother(row: Task, requestId: string): { readonly b
   return { by, owed: isMarker(key, (row.metadata ?? {})[key]) };
 }
 
+// FIX-2123.
 /**
- * Whether `row` owes a notice no request has taken (FIX-2123): one that a
+ * Whether `row` owes a notice no request has taken: one that a
  * send now would deliver. What the request that filed `row` sends as it ends.
  */
 export function owesUntakenNotice(row: Task): boolean {
@@ -298,8 +313,9 @@ export function owesUntakenNotice(row: Task): boolean {
   return false;
 }
 
+// FIX-2082.
 /**
- * The metadata patch that drops every held marker on `row` (FIX-2082): the
+ * The metadata patch that drops every held marker on `row`: the
  * request it was held for read the row, which delivered the ending.
  */
 export function droppedHeldNotices(row: Task): Record<string, null> {
@@ -310,13 +326,14 @@ export function droppedHeldNotices(row: Task): Record<string, null> {
   return patch;
 }
 
+// FIX-2112; FIX-2123.
 /**
  * The metadata patch that drops the notice `row`'s ending owes, when a wait on
- * the row found it already ended (FIX-2112): the wait's answer is the
+ * the row found it already ended: the wait's answer is the
  * ending's delivery, as it is for a wait the ending resumes. Empty when the
  * row hasn't ended or owes nothing for it. A marker held for a request whose
  * wait lapsed is that request's to deliver ({@link droppedHeldNotices}). A
- * taken marker is left too: its notice is the delivery (FIX-2123).
+ * taken marker is left too: its notice is the delivery.
  */
 export function deliveredByWait(row: Task): Record<string, null> {
   if (row.status !== "completed" && row.status !== "errored" && row.status !== "cancelled") return {};
@@ -324,9 +341,10 @@ export function deliveredByWait(row: Task): Record<string, null> {
   return isSendable(key, (row.metadata ?? {})[key]) && takerOf(row, row.attempts, row.status) === undefined ? { [key]: null } : {};
 }
 
+// FIX-2082.
 /**
- * The metadata patch that releases every held marker on `row`, due at `dueAt`
- * (FIX-2082): the request it was held for ended without reading the row, so
+ * The metadata patch that releases every held marker on `row`, due at `dueAt`:
+ * the request it was held for ended without reading the row, so
  * the filer is told now, as of any other ending.
  */
 export function releasedHeldNotices(row: Task, dueAt: number): Record<string, OwedMarker> {
@@ -356,7 +374,8 @@ export function resendNowPatch(row: Task): Record<string, null> {
   return patch;
 }
 
-/** Whether `row` holds an ending for the request whose wait on it lapsed (FIX-2082). */
+// FIX-2082.
+/** Whether `row` holds an ending for the request whose wait on it lapsed. */
 export function holdsAnEnding(row: Task): boolean {
   for (const [key, value] of Object.entries(row.metadata ?? {})) {
     if (isMarker(key, value) && value.held === true) return true;
@@ -364,6 +383,7 @@ export function holdsAnEnding(row: Task): boolean {
   return false;
 }
 
+// FIX-2078 D2.
 /**
  * The notices a row still owes, oldest attempt first, each rebuilt from its
  * marker and the row: a completion's output is the row's own, which is final
@@ -372,7 +392,7 @@ export function holdsAnEnding(row: Task): boolean {
  * @param row The row, as the board holds it now.
  * @param boardId The ledger it is on.
  * @param rows The board's rows, to name a failure's or a cancel's cancelled
- *   dependents (FIX-2078 D2). Omitted, the notice names none.
+ *   dependents. Omitted, the notice names none.
  * @param filerOf The board's filer resolver (see {@link cancelledDependents}).
  */
 export function owedNotices(
@@ -402,11 +422,12 @@ export function owedNotices(
   return notices.sort((a, b) => a.attempt - b.attempt);
 }
 
+// FIX-2082; FIX-2077.
 /**
  * Whether `row` still owes any notice, one held for a request that waited
- * included (FIX-2082). The boolean form of {@link owedNotices}, with an early
+ * included. The boolean form of {@link owedNotices}, with an early
  * exit and no notice built: what a check run at every request's end asks of
- * every row a task filed (FIX-2077).
+ * every row a task filed.
  */
 export function owesAnyNotice(row: Task): boolean {
   for (const [key, value] of Object.entries(row.metadata ?? {})) {
@@ -415,9 +436,10 @@ export function owesAnyNotice(row: Task): boolean {
   return false;
 }
 
+// FIX-2078.
 /**
  * When the earliest notice `row` owes falls due, or `undefined` when it owes
- * none. A marker stored before FIX-2078 carries no due time: it is due at once.
+ * none. A marker stored by an older version carries no due time: it is due at once.
  */
 export function noticeDueAt(row: Task): number | undefined {
   let due: number | undefined;
@@ -445,8 +467,9 @@ function nextSendAt(row: Task, marker: OwedMarker): number {
   return nextResendAt(resentOf(row, marker.attempt, marker.ending), marker.due ?? 0);
 }
 
+// FIX-2240.
 /**
- * The resend backoff, pure (FIX-2240): `due` until a pass has sent it again,
+ * The resend backoff, pure: `due` until a pass has sent it again,
  * then the last resend plus `NOTICE_DUE_MS · 2^n`, at most
  * {@link NOTICE_RESEND_CAP_MS}. A task notice and a worker message are resent
  * by it.
@@ -477,11 +500,12 @@ export function noticeTimes(
   return { due, next: nextSendAt(row, value), since: Math.max(due, deferredAt) };
 }
 
+// FIX-2113; FIX-2149.
 /**
  * The metadata patch that records a busy session turning `notice` away at
- * `now` (FIX-2113): a record beside its marker, which it leaves as it is.
+ * `now`: a record beside its marker, which it leaves as it is.
  * `{}` when `row` no longer owes it. With `whileRunning`, the request that
- * filed the task, which was running (FIX-2149): once that request stops
+ * filed the task, which was running: once that request stops
  * running, the filer's pass sends the notice past its backoff
  * ({@link heldWhileRunning}).
  */
@@ -495,14 +519,15 @@ export function deferredNoticePatch(
   return { [`${DEFERRED_PREFIX}${notice.attempt}:${notice.ending}`]: { at: now, ...(whileRunning !== undefined ? { whileRunning } : {}) } };
 }
 
+// FIX-2149; BP-030.
 /**
- * The request `notice` was last turned away for (FIX-2149): the filing
+ * The request `notice` was last turned away for: the filing
  * request, which was running then, when no copy has been sent again since.
  * Once that request parks or ends, the notice is due at once, past its
  * backoff: its backoff grew only while that request held it. `undefined` for
  * a notice `row` no longer owes, one a busy session turned away
- * (`taskSettledEntry`'s `defer`), one sent again since, and a record written
- * before FIX-2149 (BP-030).
+ * (`taskSettledEntry`'s `defer`), one sent again since, and a record an older
+ * version wrote.
  */
 export function heldWhileRunning(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">): string | undefined {
   const key = markerKey(notice.attempt, notice.ending);
@@ -522,6 +547,7 @@ export function resentRecord(row: Task, notice: Pick<TaskNotice, "attempt" | "en
   return { [`${RESENT_PREFIX}${notice.attempt}:${notice.ending}`]: { at: now, n } };
 }
 
+// BP-030.
 /**
  * The dependents `row`'s ending cancelled that share its filer, by id, all
  * the way down: the rows whose cascaded cancel names it (`causedBy`), filed by
@@ -531,7 +557,7 @@ export function resentRecord(row: Task, notice: Pick<TaskNotice, "attempt" | "en
  * @param filerOf Who filed a row, by the same rule the cascade decided "shares
  *   the filer" by, when it owed the dependent no notice of its own: the board's
  *   delivery resolver, which reads a row filed before `Task.filer` by its
- *   legacy filer (BP-030). Default: `Task.filer` alone.
+ *   legacy filer. Default: `Task.filer` alone.
  */
 export function cancelledDependents(
   row: Task,
@@ -588,8 +614,9 @@ export type NoticeDecision =
   | { readonly act: "wake-turn" }
   /** An ending, under a fixed policy: a line in the conversation. */
   | { readonly act: "line" }
+  // FIX-2078.
   /**
-   * A waited-on row's ending, owed by a marker stored before FIX-2078: resume
+   * A waited-on row's ending, owed by a marker stored by an older version: resume
    * the turn parked on it in the filer's pass, with no turn woken and no line:
    * the answer is the waiting call's result.
    */
@@ -694,9 +721,10 @@ export function noticeMetadata(
   };
 }
 
+// BP-030.
 /**
  * {@link noticeText}'s words, read back: what a line stored before its item
- * carried {@link noticeMetadata} says (BP-030). Kept beside the function that
+ * carried {@link noticeMetadata} says. Kept beside the function that
  * writes them, and tested against it, so the two change together.
  */
 const NOTICE_LINE =
@@ -775,10 +803,11 @@ export function parseNotice(item: {
 /** The metadata key a notice settled undeliverable is recorded under, on its row. */
 export const UNDELIVERABLE_PREFIX = "noticeUndeliverable:";
 
+// BP-031.
 /**
  * Metadata a caller hands in, without any notice marker or undeliverable
  * record: a filing or a patch can't forge a debt, clear one, or mark one
- * settled (BP-031). `undefined` stays `undefined`.
+ * settled. `undefined` stays `undefined`.
  */
 export function withoutNoticeMarkers(
   metadata: Readonly<Record<string, unknown>> | undefined

@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 446" role="img" aria-label="Before and after, three rows. The runtime file: today an engine import that names inMemoryStores and the line stores: default, primary, inMemoryStores; after, neither, and startup says it runs in memory. A profile's slots: today primary, bus, blobs, queue and scheduler, the last three doing nothing; after primary, bus and blobs, reserved for attachments, and queue and scheduler are gone from the type. A store package root: today 20 names in store-sqlite, the adapter factory, the registry factory and 10 per-store constructors among them; after the adapter factory, its options and the schedule index, with the other 17 under store-sqlite/host."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .old   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .chip  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .chipn { fill:var(--surface); stroke:var(--code); stroke-width:1.2; }
+    .chipx { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .chipr { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .strike{ stroke:var(--gone); stroke-width:1.4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-c   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-n   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="446"/>
+
+  <g id="columns">
+    <rect class="head" x="16" y="14" width="908" height="28" rx="5"/>
+    <text class="t-lbl" x="196" y="32">TODAY</text>
+    <text class="t-lbl" x="572" y="32">AFTER</text>
+  </g>
+
+  <g id="row-runtime-file">
+    <text class="t-lbl" x="24" y="76">THE FIRST</text>
+    <text class="t-lbl" x="24" y="89">RUNTIME FILE</text>
+    <rect class="old" x="180" y="56" width="360" height="108" rx="5"/>
+    <text class="t-c" x="194" y="78">import { createFlowState,</text>
+    <text class="t-g" x="210" y="94">inMemoryStores } from "…/engine"</text>
+    <text class="t-c" x="194" y="112">createFlowState({ flows, models,</text>
+    <text class="t-g" x="210" y="128">stores: { default: { primary:</text>
+    <text class="t-g" x="226" y="144">inMemoryStores() } } })</text>
+    <rect class="new" x="556" y="56" width="368" height="108" rx="5"/>
+    <text class="t-c" x="570" y="78">import { createFlowState } from "…/engine"</text>
+    <text class="t-c" x="570" y="112">createFlowState({ flows, models })</text>
+    <text class="t-n" x="570" y="148">startup: running in memory</text>
+  </g>
+
+  <g id="row-slots">
+    <text class="t-lbl" x="24" y="202">A PROFILE'S</text>
+    <text class="t-lbl" x="24" y="215">SLOTS</text>
+    <rect class="old" x="180" y="182" width="360" height="72" rx="5"/>
+    <rect class="chipn" x="194" y="196" width="62" height="24" rx="4"/><text class="t-c" x="204" y="212">primary</text>
+    <rect class="chipn" x="262" y="196" width="40" height="24" rx="4"/><text class="t-c" x="272" y="212">bus</text>
+    <rect class="chipr" x="308" y="196" width="50" height="24" rx="4"/><text class="t-c" x="316" y="212">blobs</text>
+    <rect class="chipx" x="364" y="196" width="50" height="24" rx="4"/><text class="t-g" x="372" y="212">queue</text>
+    <rect class="chipx" x="420" y="196" width="74" height="24" rx="4"/><text class="t-g" x="428" y="212">scheduler</text>
+    <text class="t-s" x="194" y="242">the last three construct and do nothing</text>
+    <rect class="new" x="556" y="182" width="368" height="72" rx="5"/>
+    <rect class="chipn" x="570" y="196" width="62" height="24" rx="4"/><text class="t-c" x="580" y="212">primary</text>
+    <rect class="chipn" x="638" y="196" width="40" height="24" rx="4"/><text class="t-c" x="648" y="212">bus</text>
+    <rect class="chipr" x="684" y="196" width="50" height="24" rx="4"/><text class="t-c" x="692" y="212">blobs</text>
+    <text class="t-s" x="570" y="242">blobs reserved for attachments; queue and scheduler gone</text>
+  </g>
+
+  <g id="row-store-root">
+    <text class="t-lbl" x="24" y="292">A STORE</text>
+    <text class="t-lbl" x="24" y="305">PACKAGE ROOT</text>
+    <text class="t-lbl" x="24" y="318">STORE-SQLITE</text>
+    <rect class="old" x="180" y="272" width="360" height="156" rx="5"/>
+    <text class="t-c" x="194" y="294">sqliteStores · SQLiteStoreOptions</text>
+    <text class="t-c" x="194" y="312">createSQLiteScheduleIndex</text>
+    <text class="t-g" x="194" y="330">createSQLiteStores · SQLiteStoreRegistry</text>
+    <text class="t-g" x="194" y="348">createSQLiteSessionStore · …RequestStore</text>
+    <text class="t-g" x="194" y="366">…UserStore · …OrgStore · and 6 more</text>
+    <text class="t-g" x="194" y="384">initializeSchema · applyConnectionPragmas · …</text>
+    <text class="t-s" x="194" y="412">20 names, two factory families</text>
+    <rect class="new" x="556" y="272" width="368" height="64" rx="5"/>
+    <text class="t-c" x="570" y="294">sqliteStores · SQLiteStoreOptions</text>
+    <text class="t-c" x="570" y="312">createSQLiteScheduleIndex</text>
+    <text class="t-n" x="570" y="328">3 names on the root</text>
+    <rect class="chip" x="556" y="348" width="368" height="80" rx="5"/>
+    <text class="t-lbl" x="570" y="368">STORE-SQLITE/HOST</text>
+    <text class="t-c" x="570" y="388">createSQLiteStores · the 10 constructors</text>
+    <text class="t-c" x="570" y="406">initializeSchema · the rest</text>
+    <text class="t-s" x="570" y="422">17 names, documented, nothing deleted</text>
+  </g>
+</svg>

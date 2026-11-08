@@ -1,6 +1,7 @@
+// FIX-948; FIX-917; FIX-931; FIX-939.
 /**
- * Collection caps — the two bounds a collection enforces on insertion
- * (FIX-931), the cumulative retry budget (FIX-948), and the typed breach every
+ * Collection caps — the two bounds a collection enforces on insertion,
+ * the cumulative retry budget, and the typed breach every
  * caller must reckon with.
  *
  * Four bounds sit at four scopes on a board. `concurrency` (the task-board
@@ -16,7 +17,7 @@
  *   backstop that catches a drain-then-re-enqueue runaway.
  *
  * - `maxTotalRetries` — how many times, in total, this collection may put a
- *   FAILED task back in the queue (FIX-948). Not a creation bound: it counts
+ *   FAILED task back in the queue. Not a creation bound: it counts
  *   re-runs of tasks that already exist, which is exactly what the two above
  *   cannot see. Enforced inside `fail()`'s atomic write; at the bound the
  *   failing task settles terminal `errored` instead of re-pending.
@@ -70,7 +71,7 @@
  *   whose `kind === "sequencer"`. A generator's own-state container is rebuilt
  *   from `stateSchema` per scope entry with no persist callback, so such a
  *   board's ledger — and its counts — start over. Durable non-sequencer block
- *   state is FIX-917's deferred follow-up.
+ *   state is the deferred follow-up.
  * - **Resource-backed** — no cap is enforced. The nearest durable analogue
  *   is `defineTaskCollection({ maxInstances })`, but it is a CAPACITY limit and
  *   NOT a lifetime ceiling, so it does not substitute for `maxTotalTasks`. The
@@ -84,7 +85,7 @@
  *   limit leaves every task before the throw in place — unlike the single CAS
  *   write that makes this file's caps atomic on the state backing.
  *   Bounding the `pending` subset stays deferred: the registry counts instances
- *   and has no notion of a task's status (see FIX-939).
+ *   and has no notion of a task's status.
  *
  *   **Counting and enforcing are separate on this backing, and the distinction
  *   is deliberate.** The retry COUNT is maintained here — `fail()`'s retry patch
@@ -100,7 +101,7 @@
  *
  * ## Counting begins at upgrade (`maxTotalRetries` only)
  *
- * A task persisted before FIX-948 carries no granted-retry count, so it reads as
+ * A task persisted by an older version carries no granted-retry count, so it reads as
  * zero and its pre-upgrade retries are not in the sum. The count means
  * "authorized retries since the upgrade", not "since the task was created".
  * Backfilling from `attempts` is deliberately NOT done: `attempts` also moves
@@ -113,8 +114,8 @@
  * live indefinitely but do not enforce, and the single real case — a sequencer
  * board resumed across a deploy — overshoots by at most one budget, once.
  *
- * "The caps reset on resume" is false for a true sequencer host and was wrong in
- * the docs before FIX-931 landed. What the spec actually scoped out was a
+ * "The caps reset on resume" is false for a true sequencer host and was once wrong in
+ * the docs. What the spec actually scoped out was a
  * cross-resume cumulative *guarantee* — we do not promise the counts survive,
  * because that depends on the backing and on whether a checkpoint was restored.
  * We equally do not promise they reset.
@@ -175,9 +176,10 @@ export interface TaskCapOptions {
   maxTotalTasks?: number | null;
   /** Enqueued-at-creation `pending` count. `null` = unbounded. */
   maxEnqueuedTasks?: number | null;
+  // FIX-948.
   /**
-   * Cumulative failure retries this collection may authorize, across every task
-   * (FIX-948). `null` = unbounded.
+   * Cumulative failure retries this collection may authorize, across every task.
+   * `null` = unbounded.
    *
    * **What omission does depends on where you are constructing.** Only the
    * DEFAULTING SURFACES turn an omitted axis into
@@ -216,14 +218,15 @@ export interface TaskCapOptions {
 }
 
 /** Default lifetime ceiling applied where a board/library constructs a collection. */
-export const DEFAULT_MAX_TOTAL_TASKS = 500;
+const DEFAULT_MAX_TOTAL_TASKS = 500;
 
 /** Default enqueue-burst ceiling applied where a board/library constructs a collection. */
-export const DEFAULT_MAX_ENQUEUED_TASKS = 100;
+const DEFAULT_MAX_ENQUEUED_TASKS = 100;
 
+// FIX-948.
 /**
  * Default cumulative retry budget applied where a board/pattern constructs a
- * collection (FIX-948).
+ * collection.
  *
  * Sized to be invisible in normal operation and decisive on a storm: a 25-task
  * board whose tasks each retry twice produces exactly 50 retries, so ordinary
@@ -353,9 +356,10 @@ export function resolveTaskCapDefaults(label: string, caps: TaskCapOptions): Tas
   return resolved;
 }
 
+// FIX-948.
 /**
  * The retry-budget opt-out a surface passes when its tasks can never retry
- * (FIX-948) — `eventActors`.
+ * — `eventActors`.
  *
  * It is `null`, not omission, and the difference is the whole point. Omitting
  * the axis means "take the default", so every defaulting site downstream —

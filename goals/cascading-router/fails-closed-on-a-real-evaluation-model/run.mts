@@ -29,8 +29,10 @@ import {
 } from "@flow-state-dev/core";
 import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import { buildItemLookup } from "@flow-state-dev/core/items";
-import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
-import { createInMemoryStores, createResponseEmitter, runAction } from "@flow-state-dev/engine";
+import { resolveBlockValueInternal } from "@flow-state-dev/core/internal";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { fail, loadFixture, runGoal, stripIntentOverrides } from "../../lib/index.mts";

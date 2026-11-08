@@ -25,6 +25,6 @@ export {
 
 export {
   defineWorkerInventoryCollection,
-  workerInventoryRowSchema,
-  type WorkerInventoryRow
+  workerInventoryResourceStateSchema,
+  type WorkerInventoryResourceState
 } from "./collections";

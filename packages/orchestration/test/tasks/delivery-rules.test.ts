@@ -5,7 +5,8 @@
  * without finishing hands it over, and resends space out the same way.
  */
 import { describe, expect, it } from "vitest";
-import { NOTICE_DUE_MS, NOTICE_RESEND_CAP_MS, nextResendAt, takeRule } from "../../src/tasks";
+import { NOTICE_DUE_MS, NOTICE_RESEND_CAP_MS, nextResendAt } from "../../src/tasks/notice/task-notice";
+import { takeRule } from "../../src/tasks/helpers/request-states";
 
 describe("takeRule", () => {
   it("takes as its own when nobody took it, or this request did", () => {

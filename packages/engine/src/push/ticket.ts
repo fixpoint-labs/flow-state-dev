@@ -1,5 +1,6 @@
+// FIX-2428 D1.
 /**
- * The push ticket (FIX-2428 D1): a short-lived, signed statement that the
+ * The push ticket: a short-lived, signed statement that the
  * mint checked a caller and granted it some topics.
  *
  * The mint signs one after it has run each topic through its scope's route

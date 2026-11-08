@@ -158,22 +158,28 @@ describe("V5 · BR-14 · an unavailable mode by its address", () => {
 const entry = (kind: string): FlowListEntry => ({ id: kind, kind, cardinality: "singleton", requireUser: false, actions: [] });
 
 /** A server holding two harness flow kinds and the sessions on each, newest first. */
-function fakeServer(rows: Array<{ id: string; kind: string; title: string }>) {
+function fakeServer(rows: Array<{ id: string; kind: string; title: string } & Record<string, unknown>>) {
   const created: Array<{ flowKind: string; userId: string; state?: Record<string, unknown> }> = [];
+  // The user topic's listeners: the server tells them a session was written.
+  const watchers = new Set<(notice: { kind: string } | null) => void>();
   return {
     created,
+    watchers,
+    /** A session written somewhere else: another tab, a script. */
+    written: () => watchers.forEach((hear) => hear({ kind: "run" })),
     listFlows: vi.fn(async () => [entry("codex-session"), entry("claude-code-session")]),
     sessionSource: {
       listSessions: vi.fn(async (options?: { flowKind?: string; flowId?: string }) =>
         rows
           .filter((row) => row.kind === (options?.flowId ?? options?.flowKind))
-          .map((row) => ({ id: row.id, flowKind: row.kind, title: row.title }) as unknown as SessionSummary),
+          .map(({ kind, ...row }) => ({ ...row, flowKind: kind }) as unknown as SessionSummary),
       ),
       createSession: vi.fn(async (options: { flowKind: string; userId: string; state?: Record<string, unknown> }) => {
         // What the frame's `client.flow(kind).createSession` would post.
         created.push({ flowKind: options.flowKind, userId: options.userId, state: options.state });
         const row = { id: `new-${created.length}`, kind: options.flowKind, title: "fresh" };
         rows.unshift(row);
+        watchers.forEach((hear) => hear({ kind: "run" }));
         return { id: row.id, flowKind: row.kind } as never;
       }),
     },
@@ -183,8 +189,8 @@ function fakeServer(rows: Array<{ id: string; kind: string; title: string }>) {
 /** A mode's models: two, the first preselected. */
 const TWO_MODELS: ModelChoices = {
   models: [
-    { id: "model-a", label: "Model A" },
-    { id: "model-b", label: "Model B" },
+    { id: "model-a", label: "Model A", isDefault: true },
+    { id: "model-b", label: "Model B", isDefault: false },
   ],
   defaultId: "model-a",
   reason: null,
@@ -197,6 +203,10 @@ function clientOf(server: ReturnType<typeof fakeServer>) {
     userId: "devuser",
     flows: server.listFlows,
     sessions: { list: server.sessionSource.listSessions },
+    subscribe: (_topics: unknown, options: { onChange: (notice: { kind: string } | null) => void }) => {
+      server.watchers.add(options.onChange);
+      return { close: () => server.watchers.delete(options.onChange) };
+    },
     flow: (flowKind: string) => ({
       createSession: (options: { state?: Record<string, unknown> } = {}) =>
         server.sessionSource.createSession({ flowKind, userId: "devuser", ...options }),
@@ -256,6 +266,26 @@ describe("V6 · a harness mode's frame", () => {
     expect(server.created[0]!.state).toEqual({ model: "model-b" });
   });
 
+  it("a pick the list no longer holds falls back to the default, so New session never sends a stale model", async () => {
+    const server = fakeServer([]);
+    const { rerender } = mount(server);
+    fireEvent.change(screen.getByTestId("model-picker"), { target: { value: "model-b" } });
+    // The list changes under the mounted frame and drops the picked model.
+    rerender(
+      <HarnessFrame
+        label="Codex"
+        flowKind="codex-session"
+        models={{ models: [{ id: "model-c", label: "Model C", isDefault: true }], defaultId: "model-c", reason: null, fallbackId: null }}
+        client={clientOf(server)}
+        stream={(sessionId) => <p data-testid="opened">{sessionId}</p>}
+      />,
+    );
+    expect((screen.getByTestId("model-picker") as HTMLSelectElement).value).toBe("model-c");
+    fireEvent.click(screen.getByTestId("new-session"));
+    await waitFor(() => expect(server.created).toHaveLength(1));
+    expect(server.created[0]!.state).toEqual({ model: "model-c" });
+  });
+
   it("with no model to offer, New session is off and the reason shows; a short list shows its reason too", async () => {
     const server = fakeServer([]);
     mount(server, { models: [], defaultId: null, reason: "The list can't be read.", fallbackId: null });
@@ -280,6 +310,33 @@ describe("V6 · a harness mode's frame", () => {
 });
 
 describe("a harness mode's session list", () => {
+  it("is live: a session made elsewhere joins it, and each row says its turn's state, model and age", async () => {
+    const now = Date.now();
+    const rows: Parameters<typeof fakeServer>[0] = [
+      { id: "c1", kind: "codex-session", title: "asks a question", requestStatus: "suspended", requestWaitsForUser: true, state: { model: "model-b" }, updatedAt: now - 3 * 60_000 },
+      { id: "c2", kind: "codex-session", title: "still going", requestStatus: "in_progress", state: { model: "model-a" }, updatedAt: now },
+      { id: "c3", kind: "codex-session", title: "done", requestStatus: "completed", updatedAt: now },
+    ];
+    const server = fakeServer(rows);
+    mount(server);
+    const rail = screen.getByTestId("rail");
+    await waitFor(() => expect(within(rail).getByText("asks a question")).toBeTruthy());
+    const row = (id: string) => rail.querySelector<HTMLElement>(`[data-session-id="${id}"]`)!;
+
+    // Only the one waiting on its person carries the needs-you mark.
+    expect(Array.from(rail.querySelectorAll("[data-needs-you]")).map((m) => m.closest("[data-session-id]")!.getAttribute("data-session-id"))).toEqual(["c1"]);
+    expect(row("c2").querySelector("[data-request-status]")!.getAttribute("aria-label")).toBe("Running");
+    expect(row("c3").querySelector("[data-request-status]")).toBeNull();
+    // The model by its name, and how long ago it changed.
+    expect(row("c1").querySelector("[data-session-model]")!.textContent).toBe("Model B");
+    expect(row("c1").querySelector("[data-session-age]")!.textContent).toBe("3m");
+
+    // Another tab starts a session: no reload, no click here.
+    rows.unshift({ id: "c4", kind: "codex-session", title: "from another tab" });
+    await act(async () => server.written());
+    await waitFor(() => expect(within(rail).getByText("from another tab")).toBeTruthy());
+  });
+
   it("says a failed read failed, and Retry reads again", async () => {
     const server = fakeServer([{ id: "c1", kind: "codex-session", title: "codex one" }]);
     server.sessionSource.listSessions.mockRejectedValueOnce(new Error("the server is down"));

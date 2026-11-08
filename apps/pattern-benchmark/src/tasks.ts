@@ -17,7 +17,7 @@
  * - planning: tasks that reward explicit step decomposition and sequencing
  *   (planning), even without external tools wired in.
  */
-import type { BenchmarkTask } from "@flow-state-dev/core";
+import type { BenchmarkTask } from "@flow-state-dev/testing/benchmark";
 
 export const tasks: BenchmarkTask[] = [
   // -------------------------------------------------------------------------

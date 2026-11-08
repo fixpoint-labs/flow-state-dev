@@ -7,9 +7,9 @@
  * sends the answer somewhere that refuses it, and the task waits forever.
  */
 import { describe, expect, it } from "vitest";
-import { holdsOfRows, reviewOf, toBoardTask } from "../src/adapter";
+import { holdsOfTasks, reviewOf, toBoardTask } from "../src/adapter";
 
-const CONVERSATION = "sess-cos";
+const CONVERSATION = "sess-lead";
 const RUN = "sess-run";
 
 /** A coding task's row as the board's stream carries it, holding `holds`. */
@@ -26,7 +26,7 @@ const question = {
   id: "q1",
   actor: "user",
   openedAt: 1,
-  source: { kind: "row", closedBy: [{ by: "answer" }] },
+  source: { kind: "task", closedBy: [{ by: "answer" }] },
   ask: { kind: "question", prompt: "Only line 1, or every typo?" },
 };
 const review = {
@@ -41,21 +41,21 @@ const flowOf = (id: string) => ({ [CONVERSATION]: "agent", [RUN]: "teammates-cod
 
 describe("a task waits on you while its row holds a question or a review", () => {
   it("a question: answered on the conversation's board, through its updateTask", () => {
-    const holds = holdsOfRows(CONVERSATION, [row([question])], flowOf).get("task_1")!;
+    const holds = holdsOfTasks(CONVERSATION, [row([question])], flowOf).get("task_1")!;
     expect(holds.map((h) => [h.ask.kind, h.source])).toEqual([
-      ["question", { kind: "row", flowId: "agent", sessionId: CONVERSATION, action: "updateTask_tasks", taskId: "task_1" }],
+      ["question", { kind: "task", flowId: "agent", sessionId: CONVERSATION, action: "updateTask_tasks", taskId: "task_1" }],
     ]);
-    expect(toBoardTask(row([question]), undefined, holds).waiting).toEqual({ kind: "question", prompt: "Only line 1, or every typo?", unanswerable: null });
+    expect(toBoardTask(row([question]), undefined, holds).waiting).toEqual({ kind: "question", prompt: "Only line 1, or every typo?", unanswerable: null, holdId: "q1" });
   });
 
   it("a review: answered on the run's own flow, at its stop", () => {
-    const holds = holdsOfRows(CONVERSATION, [row([review])], flowOf).get("task_1")!;
+    const holds = holdsOfTasks(CONVERSATION, [row([review])], flowOf).get("task_1")!;
     expect(holds[0]!.source).toEqual({ kind: "suspension", flowId: "teammates-coder", sessionId: RUN, requestId: "req-run", suspensionId: "susp-1" });
     expect(toBoardTask(row([review]), undefined, holds).waiting).toMatchObject({ kind: "review", unanswerable: null });
   });
 
   it("a review whose run's flow isn't known yet still shows, and says it can't be answered yet", () => {
-    const holds = holdsOfRows(CONVERSATION, [row([review])], () => undefined).get("task_1")!;
+    const holds = holdsOfTasks(CONVERSATION, [row([review])], () => undefined).get("task_1")!;
     expect(toBoardTask(row([review]), undefined, holds).waiting?.unanswerable).toEqual(expect.any(String));
   });
 

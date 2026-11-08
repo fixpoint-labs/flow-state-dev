@@ -103,8 +103,9 @@ export interface RouterConfig<
   BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
   "execute" | "stateSchema" | "flowConfigSchema"
 > {
+  // FIX-1331.
   /**
-   * What this block requires of whatever flow installs it (FIX-1331). Types
+   * What this block requires of whatever flow installs it. Types
    * `ctx.flow.config` off this schema, and makes the flow refuse when it
    * cannot supply a bag that satisfies it. Names no flow, so the block stays
    * portable. See {@link BlockConfig.flowConfigSchema}.
@@ -115,12 +116,15 @@ export interface RouterConfig<
   userStateSchema?: TUserStateSchema;
   orgStateSchema?: TOrgStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
-  /** This router's own request-scoped state (FIX-914). Read-only in
+  // FIX-914.
+  /** This router's own request-scoped state. Read-only in
    *  `execute` — see `ctx.self` purity note above. */
   stateSchema?: TStateSchema;
-  /** Expected shape of the immediate parent's own state (FIX-914). */
+  // FIX-914.
+  /** Expected shape of the immediate parent's own state. */
   parentStateSchema?: TParentStateSchema;
-  /** Flat resource declaration. See `HandlerConfig.resources` (FIX-435). */
+  // FIX-435.
+  /** Flat resource declaration. See `HandlerConfig.resources`. */
   resources?: TResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;

@@ -13,9 +13,10 @@ import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
-import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core";
-import type { HarnessSteer } from "@flow-state-dev/core/types";
-import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
+import { isAbortLike } from "@flow-state-dev/core";
+import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import type { HarnessSteer } from "@flow-state-dev/core/harness";
+import { cursorAgent, INTERNAL_CURSOR_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import {
   CursorAgentAbortedError,
   CursorAgentConfigError,
@@ -23,7 +24,7 @@ import {
   CursorSdkNotInstalledError,
 } from "../src/errors";
 import {
-  TESTED_SDK_VERSION,
+  TESTED_CURSOR_SDK,
   type CursorAgentHandle,
   type CursorAgentLike,
   type CursorCreateOptions,
@@ -37,7 +38,7 @@ import { CURSOR_PROJECT_NAME_LIMIT, cursorProjectName } from "../src/workspace-a
 
 /** Every spec below builds against a stubbed version gate; slice 1 owns the gate itself. */
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_CURSOR_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CURSOR_SDK.range }),
 } as CursorAgentOptions;
 
 interface Recorder {
@@ -754,6 +755,46 @@ describe("cursorAgent — open tool items when the stream ends without settling 
 });
 
 describe("cursorAgent — cancellation", () => {
+
+  // A host tells a stop from a failure with core's `isAbortLike`, whatever
+  // stopped it: harness-manager stops runs with a deadline (a TimeoutError),
+  // a plain Error for a steer, and no reason at all. A stop that read as a
+  // failure would be retried as one, and a harness used as a generator's tool
+  // would hand the model a failed call instead of stopping it.
+  it.each([
+    ["no reason", undefined],
+    ["a timeout", new DOMException("The deadline passed.", "TimeoutError")],
+    ["a plain Error", new Error("stopped for a steer")],
+  ])("is abort-like by core's reader for a stop with %s, and keeps the agent to resume", async (_label, reason) => {
+    const { resolve } = scripted(async function* () {
+      yield { type: "thinking", text: "started" } as CursorSdkMessage;
+      await new Promise((r) => setTimeout(r, 10_000));
+    });
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve });
+    const runtime = await createTestContext({});
+    const ac = new AbortController();
+    (runtime.ctx as { signal?: AbortSignal }).signal = ac.signal;
+    setTimeout(() => ac.abort(reason), 20);
+
+    const thrown = await Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never)).catch((e: unknown) => e);
+    expect(isAbortLike(thrown)).toBe(true);
+    expect(thrown).toBeInstanceOf(CursorAgentAbortedError);
+    expect((thrown as CursorAgentAbortedError).sessionId).toBe("agent_1");
+    // The signal's own reason travels with the stop, for a host that wants to know why.
+    expect((thrown as CursorAgentAbortedError).reason).toBe(ac.signal.reason);
+  }, 15_000);
+
+  it("is abort-like when the signal had fired before the run started", async () => {
+    const { resolve } = scripted(OK_STREAM);
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve });
+    const runtime = await createTestContext({});
+    const ac = new AbortController();
+    ac.abort(new Error("stopped before it started"));
+    (runtime.ctx as { signal?: AbortSignal }).signal = ac.signal;
+    const thrown = await Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never)).catch((e: unknown) => e);
+    expect(isAbortLike(thrown)).toBe(true);
+    expect((thrown as CursorAgentAbortedError).sessionId).toBeNull();
+  });
   it("throws WHEN THE SIGNAL FIRES, without waiting for the vendor's stream to close", async () => {
     const seen: string[] = [];
     const { resolve, rec } = scripted(async function* () {

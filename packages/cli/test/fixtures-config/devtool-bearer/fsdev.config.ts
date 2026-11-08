@@ -3,7 +3,8 @@
  * bearer token. `fsdev dev` writes them into loopback pages only, and refuses a
  * non-loopback host for it.
  */
-import { createFlowState, createInMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";

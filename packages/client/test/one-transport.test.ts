@@ -68,7 +68,7 @@ describe("one client is one transport", () => {
     await fsd.sessions.get("sess_1");
     await fsd.sessions.requests("sess_1");
     await fsd.sessions.state("sess_1");
-    await fsd.resources.listCollectionItems("sess_1", "notes");
+    await fsd.resources.listCollectionResources("sess_1", "notes");
     await fsd.resources.getResourceManifest("sess_1");
     await fsd.transcribe({ audio: new Uint8Array([1]) });
     const flow = fsd.flow("f");

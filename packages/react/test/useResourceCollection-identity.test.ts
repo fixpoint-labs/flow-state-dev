@@ -6,7 +6,7 @@ import type { CollectionListPage } from "@flow-state-dev/client";
 import {
   FlowProvider,
   useResourceCollection,
-  useResourceCollectionItem,
+  useCollectionResource,
   useResourceCollectionList
 } from "../src";
 import type { SessionView } from "../src/hooks/useSession";
@@ -314,12 +314,12 @@ describe("useResourceCollectionList across a session switch", () => {
   });
 });
 
-describe("useResourceCollectionItem across a session switch", () => {
+describe("useCollectionResource across a session switch", () => {
   it("does not show the old session's item while the new session's item loads", async () => {
     const { pending } = stubListFetch({ hold: true });
     baseUrl = "https://one.test";
     const { result, rerender } = renderHook(
-      ({ session }: { session: SessionView }) => useResourceCollectionItem(session, REF, "t1"),
+      ({ session }: { session: SessionView }) => useCollectionResource(session, REF, "t1"),
       { wrapper, initialProps: { session: sessionView("session-a") } }
     );
     await waitFor(() => expect(pending).toHaveLength(1));
@@ -344,7 +344,7 @@ describe("useResourceCollectionItem across a session switch", () => {
     baseUrl = "https://one.test";
     const fromA = { count: 1, live: { t1: { clientData: { from: "a-live" } } } };
     const { result, rerender } = renderHook(
-      ({ session }: { session: SessionView }) => useResourceCollectionItem(session, REF, "t1"),
+      ({ session }: { session: SessionView }) => useCollectionResource(session, REF, "t1"),
       { wrapper, initialProps: { session: switchedView("session-a", "session-a", fromA) } }
     );
     expect(result.current.item?.clientData).toEqual({ from: "a-live" });
@@ -364,7 +364,7 @@ describe("useResourceCollectionItem across a session switch", () => {
     const renders: { sessionId: string | undefined; error: Error | undefined }[] = [];
     const { result, rerender } = renderHook(
       ({ session }: { session: SessionView }) => {
-        const view = useResourceCollectionItem(session, REF, "t1");
+        const view = useCollectionResource(session, REF, "t1");
         renders.push({ sessionId: session.sessionId, error: view.error });
         return view;
       },
@@ -386,7 +386,7 @@ describe("useResourceCollectionItem across a session switch", () => {
     const { pending } = stubListFetch({ hold: true });
     baseUrl = "https://one.test";
     const { result } = renderHook(
-      ({ session }: { session: SessionView }) => useResourceCollectionItem(session, REF, "t1"),
+      ({ session }: { session: SessionView }) => useCollectionResource(session, REF, "t1"),
       { wrapper, initialProps: { session: sessionView("session-a") } }
     );
     await waitFor(() => expect(pending).toHaveLength(1));
@@ -407,7 +407,7 @@ describe("useResourceCollectionItem across a session switch", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("boom", { status: 500 })));
     baseUrl = "https://one.test";
     const { result } = renderHook(
-      ({ session }: { session: SessionView }) => useResourceCollectionItem(session, REF, "t1"),
+      ({ session }: { session: SessionView }) => useCollectionResource(session, REF, "t1"),
       { wrapper, initialProps: { session: sessionView("session-a") } }
     );
 

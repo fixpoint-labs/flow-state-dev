@@ -64,9 +64,10 @@ export class OrgBindingMismatchError extends Error {
   }
 }
 
+// FIX-682.
 /**
  * Thrown when a request resolves to a session record whose stored `tenantId`
- * differs from the request's tenant (FIX-682). The `${tenantId}:${sessionId}`
+ * differs from the request's tenant. The `${tenantId}:${sessionId}`
  * storage key is ambiguous when the caller controls `sessionId` — omitting the
  * tenant header while passing `sessionId = "${otherTenant}:${id}"` collides on
  * another tenant's key. Comparing the stored tenant to the request's closes

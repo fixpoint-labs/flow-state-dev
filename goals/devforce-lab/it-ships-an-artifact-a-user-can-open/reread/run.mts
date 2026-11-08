@@ -25,7 +25,7 @@
  */
 
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 
 /** What the goal reads back off stdout. */
 interface Reread {

@@ -176,7 +176,7 @@ export function composeToolCallsLabel(calls: ToolCallLabelInput[]): string {
 }
 
 /** Where one step, or a run of steps, stands. A state, never a colour: each app draws its own. */
-export type ToolStepState = "running" | "waiting" | "completed" | "error";
+export type ToolStepStatus = "running" | "waiting" | "completed" | "error";
 
 /** A call's own status, as a host reads it off its item, before its result is read. */
 export type ToolCallStatus = "running" | "waiting" | "failed" | "done";
@@ -186,7 +186,7 @@ export type ToolCallStatus = "running" | "waiting" | "failed" | "done";
  * reports a failure ({@link toolOutcome}). A refused read is as failed as a
  * thrown one.
  */
-export function toolStepState(status: ToolCallStatus, toolName: string, output?: unknown): ToolStepState {
+export function toolStepState(status: ToolCallStatus, toolName: string, output?: unknown): ToolStepStatus {
   if (status === "failed") return "error";
   if (status === "waiting") return "waiting";
   if (status === "running") return "running";
@@ -194,7 +194,7 @@ export function toolStepState(status: ToolCallStatus, toolName: string, output?:
 }
 
 /** A run's state from its steps': failed over waiting over running over done. */
-export function toolRunState(states: readonly ToolStepState[]): ToolStepState {
+export function toolRunState(states: readonly ToolStepStatus[]): ToolStepStatus {
   if (states.includes("error")) return "error";
   if (states.includes("waiting")) return "waiting";
   if (states.includes("running")) return "running";
@@ -205,7 +205,7 @@ export function toolRunState(states: readonly ToolStepState[]): ToolStepState {
  * A line with its state in words: "…" while running, "(failed)" or
  * "(waiting)" after it, "(2 failed)" for `count` of a run of `total` steps.
  */
-export function withToolState(label: string, state: ToolStepState, count = 1, total = 1): string {
+export function withToolState(label: string, state: ToolStepStatus, count = 1, total = 1): string {
   if (state === "running") return `${label}…`;
   if (state === "error" || state === "waiting") {
     const word = state === "error" ? "failed" : "waiting";
@@ -215,6 +215,6 @@ export function withToolState(label: string, state: ToolStepState, count = 1, to
 }
 
 /** A run of steps shows open while it is running and folds once it isn't. */
-export function toolRunOpen(state: ToolStepState): boolean {
+export function toolRunOpen(state: ToolStepStatus): boolean {
   return state === "running";
 }

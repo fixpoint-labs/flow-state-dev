@@ -34,9 +34,7 @@ import {
   projectMcpTools,
   projectWorkspaceCapability,
   type ProjectMcpServers,
-  WORKER_TASK_ENTRY,
   workerConfigSchema,
-  WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry
 } from "../src/index";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
@@ -81,7 +79,7 @@ function filerFlow(installation: WorkerInstallation) {
     session: { ...installation.session(board.sessionStateShape), serverOwned: [...board.serverOwned] },
     resources: { ...installation.resources, ...board.resources, ...PROJECT_ROW_RESOURCES },
     actions: { respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message }, ...board.actions },
-    internal: { actions: { ...board.entries(door), [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() } }
+    internal: { actions: { ...board.entries(door), onWorkstreamOpened: workstreamOpenedEntry() } }
   } as never);
 }
 
@@ -157,7 +155,7 @@ function takerFlow(installation: WorkerInstallation, runs: Relayed[], keys: Reco
     session: installation.session(),
     resources: { ...installation.resources },
     actions: { respond: { inputSchema: doorInput, block: turn, userMessage: (i: { message: string }) => i.message } },
-    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "taker-task", turn }) } }
+    task: { actions: { work: workerTaskEntry({ name: "taker-task", turn }) } }
   } as never);
 }
 
@@ -177,7 +175,7 @@ async function boot(options: { env?: Record<string, string>; failGithub?: boolea
     _createClient: scriptedClients(keys, () => options.failGithub === true)
   });
   const projects = defineProjectBlocks({ mcpServers: [...Object.keys(SERVERS), "jira"] });
-  const filerRef = { kind: "filer", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+  const filerRef = { kind: "filer", internal: { actions: { onWorkstreamOpened: {} } } };
   const h = await bootProjectsHost({
     standardWorkers,
     projectCoordinator: PROJECT_COORDINATOR,

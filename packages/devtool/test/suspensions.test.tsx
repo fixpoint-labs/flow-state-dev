@@ -11,6 +11,7 @@ import type { SuspensionRecord } from "@flow-state-dev/client";
 
 const listSuspensions = vi.fn();
 const resumeSuspension = vi.fn();
+const answerSuspension = vi.fn();
 
 const devToolState = {
   client: {
@@ -21,6 +22,11 @@ const devToolState = {
         resume: async (body: unknown) => {
           const resumed = await resumeSuspension(flowId, requestId, body);
           return { id: (resumed as { requestId: string }).requestId };
+        },
+        // A user's stop is answered here: the route that answers it in any run.
+        answer: async (body: unknown) => {
+          await answerSuspension(flowId, requestId, body);
+          return { id: requestId };
         },
       }),
     }),
@@ -60,6 +66,7 @@ describe("SuspensionsView", () => {
       requestId: "req_2",
       originalRequestId: "req_1",
     });
+    answerSuspension.mockReset().mockResolvedValue(undefined);
   });
 
   it("renders an empty state when there are no suspensions", async () => {
@@ -69,7 +76,7 @@ describe("SuspensionsView", () => {
     });
   });
 
-  it("renders a pending suspension and resolves it via Approve", async () => {
+  it("renders a pending user's stop and answers it via Approve, through the answer route", async () => {
     listSuspensions.mockResolvedValue({ suspensions: [pendingRecord()] });
     render(<SuspensionsView sessionId="sess_1" />);
 
@@ -88,13 +95,26 @@ describe("SuspensionsView", () => {
     fireEvent.click(approve);
 
     await waitFor(() => {
-      expect(resumeSuspension).toHaveBeenCalledWith("chat", "req_1", {
+      expect(answerSuspension).toHaveBeenCalledWith("chat", "req_1", {
         suspensionId: "sus_1",
         action: "approve",
-        data: undefined,
-        resumedBy: undefined,
       });
     });
+    expect(resumeSuspension).not.toHaveBeenCalled();
+  });
+
+  it("resumes a developer's own custom-reason stop through the resume route", async () => {
+    listSuspensions.mockResolvedValue({ suspensions: [pendingRecord({ reason: "budget_check" })] });
+    render(<SuspensionsView sessionId="sess_1" />);
+
+    await waitFor(() => expect(screen.getByText("chat")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("chat"));
+    fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
+
+    await waitFor(() => {
+      expect(resumeSuspension).toHaveBeenCalledWith("chat", "req_1", { suspensionId: "sus_1", action: "reject" });
+    });
+    expect(answerSuspension).not.toHaveBeenCalled();
   });
 
   it("resumes through the record's own instance, not its kind", async () => {
@@ -116,7 +136,7 @@ describe("SuspensionsView", () => {
     fireEvent.click(approve);
 
     await waitFor(() => {
-      expect(resumeSuspension).toHaveBeenCalledWith(
+      expect(answerSuspension).toHaveBeenCalledWith(
         "engineer-b",
         "req_1",
         expect.objectContaining({ suspensionId: "sus_1", action: "approve" }),
@@ -137,7 +157,7 @@ describe("SuspensionsView", () => {
     fireEvent.click(approve);
 
     await waitFor(() => {
-      expect(resumeSuspension).toHaveBeenCalledWith(
+      expect(answerSuspension).toHaveBeenCalledWith(
         "chat",
         "req_1",
         expect.objectContaining({ action: "approve" }),

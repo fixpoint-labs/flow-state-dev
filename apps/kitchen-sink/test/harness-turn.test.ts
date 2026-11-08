@@ -17,11 +17,12 @@ import {
   earliestTurnOf,
   latestTurn,
   planPanelState,
-  planRowStage,
+  planEntryStage,
   planSource,
   PREDATES_REASON,
   turnNotice,
   turnNumbers,
+  turnWaitingOnApproval,
   UNKNOWN_CONVERSATION,
   type PlanPanelInput,
 } from "@/lib/harness-turn";
@@ -60,6 +61,29 @@ describe("turnNotice", () => {
       conversation: "c2",
       previous: "c1",
     });
+  });
+});
+
+// The page holds a message back while a turn waits on an approval, because
+// the session flow would refuse it. So the read must match the flow's
+// refusal exactly, and let go the moment the turn is stopped.
+describe("turnWaitingOnApproval", () => {
+  const waiting = { ...blank, waitsOnApproval: true };
+  const stopItem = (requestId: string) => ({ requestId, type: "status", detail: { code: "system.request_aborted" } });
+
+  it("names the turn the flow would refuse a new one for", () => {
+    expect(turnWaitingOnApproval({ r1: blank, r2: waiting }, [])).toBe("r2");
+  });
+
+  it("names none once the waiting turn's record ended, as the flow reads it", () => {
+    expect(turnWaitingOnApproval({ r2: { ...waiting, endedAt: 5 } }, [])).toBeNull();
+    expect(turnWaitingOnApproval({ r1: blank }, [])).toBeNull();
+    expect(turnWaitingOnApproval(null, [])).toBeNull();
+  });
+
+  it("lets go of a turn the items show stopped, before its ended record is read", () => {
+    expect(turnWaitingOnApproval({ r2: waiting }, [stopItem("r2")])).toBeNull();
+    expect(turnWaitingOnApproval({ r2: waiting }, [stopItem("r1")])).toBe("r2");
   });
 });
 
@@ -205,20 +229,20 @@ describe("turnNumbers and earliestTurnOf", () => {
 // until it confirms a first move: Claude Code's create records no status, so a
 // row nobody has started yet holds null. The panel must read that as "to do",
 // not as a missing value.
-describe("planRowStage", () => {
+describe("planEntryStage", () => {
   it("reads a row with no status as not started, since a create records none", () => {
-    expect(planRowStage(null)).toEqual({ stage: "pending", label: "To do" });
+    expect(planEntryStage(null)).toEqual({ stage: "pending", label: "To do" });
   });
 
   it("reads the common words of the harnesses in any spelling", () => {
-    for (const word of ["pending", "Pending", "todo", "not_started", "notStarted", "", "  "]) expect(planRowStage(word).stage).toBe("pending");
+    for (const word of ["pending", "Pending", "todo", "not_started", "notStarted", "", "  "]) expect(planEntryStage(word).stage).toBe("pending");
     for (const word of ["in_progress", "in-progress", "In Progress", "running", "inProgress"]) {
-      expect(planRowStage(word)).toEqual({ stage: "active", label: "In progress" });
+      expect(planEntryStage(word)).toEqual({ stage: "active", label: "In progress" });
     }
-    for (const word of ["completed", "complete", "done"]) expect(planRowStage(word)).toEqual({ stage: "done", label: "Done" });
+    for (const word of ["completed", "complete", "done"]) expect(planEntryStage(word)).toEqual({ stage: "done", label: "Done" });
   });
 
   it("keeps a word it does not know, as the harness said it", () => {
-    expect(planRowStage("deleted")).toEqual({ stage: "other", label: "deleted" });
+    expect(planEntryStage("deleted")).toEqual({ stage: "other", label: "deleted" });
   });
 });

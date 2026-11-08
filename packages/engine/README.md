@@ -632,6 +632,27 @@ new session a new id.
 A store adapter shows it serves the stream with
 `createSessionStreamConformanceTests`, from `@flow-state-dev/engine/testing`.
 
+### Runs as a row's owner
+
+`fireOwnerRunThrough(host, run)` starts an internal entry as the user whose stored row it names.
+`run` is `{ flowKind, entry, input, owner: { userId, orgId, tenantId? }, rowKey }`, where `rowKey`
+is the row's full key in a user-scoped collection that every flow shares (`flowIsolation: false`).
+The owner only says whose rows to look in, the same per-user, per-org storage the scheduled
+dispatch endpoint reads (`resolveSharedUserCellKey`). The run starts only when that user's rows
+hold `rowKey`, the row's `orgId` and `tenantId` are the owner's, and the row isn't
+`enabled: false`. Otherwise it answers `{ fired: false, refused }` with `no_row`, `other_org`,
+`other_tenant` or `disabled`, and nothing runs. A run that starts answers `{ fired: true,
+requestId, finished }`. Every run of one row starts in the same session.
+
+`routeServiceEvent(host, { flowKind, entry, input, principal }, { concurrency? })` runs a service
+flow's internal entry as the service's own principal, then fires each run its output lists in
+`ownerRuns` through `fireOwnerRunThrough`, at most `concurrency` (8 by default) at once. It answers
+`{ output, error?, ownerRuns, malformed }`. Each owner run carries `finished`, `refused`, or
+`failed` (the host threw while starting it; the other runs still fire). `malformed` lists the
+entries it didn't fire: one naming another flow than the service's own, or an owner in another
+org. Workforce's subscriptions use it (`SUBSCRIPTION_ROUTE_ENTRY`). Reach the host from an
+inbound transport adapter's `createBindings(host)`.
+
 ## Change bus
 
 A change notice says that something under a topic changed, never what. Whoever
@@ -1064,12 +1085,13 @@ type VersionedResourceState = { state: JsonObject; version: number };
 
 interface ResourceStateStore {
   get(scopeType, scopeId, resourceKey): Promise<VersionedResourceState | undefined>;
-  set(scopeType, scopeId, resourceKey, state, expectedVersion): Promise<SetResult<JsonObject>>;
+  set(scopeType, scopeId, resourceKey, state, expectedVersion, options?): Promise<SetResult<JsonObject>>;
   delete(scopeType, scopeId, resourceKey, expectedVersion): Promise<SetResult<JsonObject>>;
   getAll(scopeType, scopeId): Promise<Record<string, VersionedResourceState>>;
   getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, VersionedResourceState>>;
   deleteAll(scopeType, scopeId): Promise<void>;
   purgeTombstones(scopeType, scopeId): Promise<void>;
+  indexes?: ResourceStateIndexes; // optional: see "Index entries" below
 }
 ```
 
@@ -1111,6 +1133,38 @@ It removes tombstones only. A live row is data — state can legitimately be wri
 The engine runs it immediately **before** creating the session record, not after. There is no transaction across the two stores, and creating first would leave a committed record over intact tombstones whenever the reclamation failed — with nothing to retry it, since a second create answers 409 and an action-driven create adopts the record instead. Reclaiming first commits nothing until it has succeeded, and running it twice is a no-op.
 
 **Writing an adapter:** `purgeTombstones` is required. It is one statement in SQL (`DELETE … WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'deleted'`), and the shared conformance suite covers it. Adding a required method to a published store interface breaks every implementer — including test doubles, which are implementers too.
+
+### Index entries
+
+A store can keep **index entries**: rows that let a collection be looked up by a field outside its key without reading the collection. Entries are optional. A store that keeps them has an `indexes` member with four verbs; one that does not (the memory and filesystem adapters) leaves it out, and lookups there read the scope's rows instead. The SQLite and Postgres adapters keep them.
+
+```ts
+type ResourceIndexEntry = { collection: string; index: string; values: string[] };
+
+interface ResourceStateIndexes {
+  state(scopeType, scopeId, collection, index): Promise<"unbuilt" | "building" | "built">;
+  beginBuild(scopeType, scopeId, collection, index): Promise<string>;
+  completeBuild(scopeType, scopeId, collection, index, build: string, entries: { key: string; values: string[] }[]): Promise<boolean>;
+  findKeys(scopeType, scopeId, collection, index, value): Promise<string[]>;
+}
+```
+
+`collection` is the collection's full declared pattern and `index` its stored name, version included; `values` are canonical strings. A writer passes a row's entries as `set(…, expectedVersion, { indexEntries })`. A store without `indexes` ignores that argument.
+
+Entries may be stale but never missing, because a reader checks every hit against its row and can drop a stale one but cannot find a row with no entry. The verbs keep that rule:
+
+| Operation | What it does to entries and markers |
+|---|---|
+| `set` that lands | The key's entries become exactly the ones it lists, in the row's own commit. The build marker of every index whose collection pattern covers the key, and that the call does not list, is cleared, so the next lookup rebuilds it |
+| `set` that conflicts | Changes no entry and clears no marker |
+| `delete`, `deleteAll`, `purgeTombstones` | Remove the entries of the rows they tombstone or reclaim. Markers stay |
+| `beginBuild` | Marks the index `building` in that scope and returns the build's token. A later `beginBuild` replaces the marker with a new token |
+| `completeBuild` | Adds the entries and marks the index `built`, in one commit, only if the `building` marker its token names is still there. Returns whether it did. It only adds, never replaces, because a live write may land during the scan |
+| `findKeys` | The keys with an entry of that value, in ascending order |
+
+Each scope's entries and markers are its own. **Writing an adapter:** implement all four verbs or none. Commit a row and its entries together: SQLite runs both in one transaction, and Postgres puts the entry upkeep in the write's own statement. Pass `indexes: true` to `createResourceStateStoreConformanceTests` to run the index cases against your store.
+
+**Who writes the entries.** The stores `createFlowState` resolves, and the ones a router built with `createFlowApiRouter` resolves, compute every row's entries from the collections the app declares with `indexes`, and pass them on each `set`. So block writes, the resource routes, and host code writing `runtime.stores` all keep the index current. `findBy` on a collection reads `findKeys` once the scope's index is built, and builds it on the first lookup otherwise. To check a whole registry end to end, run `createFindByConformanceTests({ name, createStores, indexes })` from `@flow-state-dev/engine/testing`: it boots an app over the registry and checks which rows `findBy` returns, and, with `indexes: true`, that a lookup on a built index makes no prefix or whole-scope read.
 
 `toBareState` / `toBareStates` are exported for readers that only want the stored value and not the version beside it. `VersionedResourceState` is **branded**, so it is not assignable to `JsonObject` and a missing unwrap fails to compile rather than silently handing the wrong shape downstream. The brand is a phantom optional property that never exists at runtime — adapters still construct a versioned read as a plain object literal. It does not defend against an explicit `as` cast; that stays the caller's assertion to make.
 

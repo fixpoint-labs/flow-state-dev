@@ -32,17 +32,16 @@ If `host.topology` is `null`, the report already refused. You have already stopp
 
 Files this run may write or append to, and no others. The count differs by host. Never write `package.json` or a lockfile — the package manager does.
 
-### next (7)
+### next (6)
 
 - `fsdev.config.mts`
 - `flows/hello/flow.mts`
-- `<appRoot.path>/api/flows/route.<routeExtension.value>`
-- `<appRoot.path>/api/flows/[...path]/route.<routeExtension.value>`
+- `<appRoot.path>/api/flows/[[...path]]/route.<routeExtension.value>`
 - `.gitignore`
 - `.env.local`
 - `AGENTS.md`
 
-Both mount paths sit under `appRoot.path` and use `routeExtension.value`. Never create a root `app/` when `appRoot.path` is `src/app`.
+The mount sits under `appRoot.path` and uses `routeExtension.value`. Never create a root `app/` when `appRoot.path` is `src/app`.
 
 ### node (5)
 
@@ -71,8 +70,8 @@ Every refusal is decided from state you have not modified. No refusal may origin
    ```
 
    Use `ANTHROPIC_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` when they chose that provider. Exit `1` here is a new refusal — **stop**. Read this report from here on.
-4. **PREFLIGHT every authored-whole path** — config, flow, and the mount pair. `.gitignore`, `.env.local`, and `AGENTS.md` are append/secret targets: an existing file of theirs does **not** refuse the run. They follow the append/fill rules in steps 5–6 and Phase 2.
-   - For a mount path, test the whole slot in `routeSlots` — every enabled extension, not just the one you picked.
+4. **PREFLIGHT every authored-whole path** — config, flow, and the mount. `.gitignore`, `.env.local`, and `AGENTS.md` are append/secret targets: an existing file of theirs does **not** refuse the run. They follow the append/fill rules in steps 5–6 and Phase 2.
+   - For the mount, test the whole slot in `routeSlots` — every enabled extension, not just the one you picked. A `retired` slot is never written; detection refuses when anything is there.
    - absent → will write
    - ours (`fsd:generated` marker matches) → will rewrite
    - their `fsdev.config.*` → not a collision; skip writing a config
@@ -112,7 +111,7 @@ Copy the matching template. Compute `sha256` of the body below the marker line a
 
 - `fsdev.config.mts` — only when no `fsdev.config.*` exists. Substitute the provider import, `providers: { <name> }`, `defaultModel`, and `intents.chat`. Register `./flows/hello/flow.mts` as `hello`.
 - `flows/hello/flow.mts`
-- Next only: the mount pair under `appRoot.path` with `routeExtension.value`. Substitute `{{CONFIG_IMPORT}}` with the relative path from that file to `fsdevConfig.winner` when a winner exists, otherwise to the write-root `fsdev.config.mts` this run is authoring.
+- Next only: the mount (`route-catchall.ts`) under `appRoot.path` with `routeExtension.value`. Substitute `{{CONFIG_IMPORT}}` with the relative path from that file to `fsdevConfig.winner` when a winner exists, otherwise to the write-root `fsdev.config.mts` this run is authoring.
 
 ### Appended files
 

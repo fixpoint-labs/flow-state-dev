@@ -60,7 +60,6 @@ import {
   workerConfigOf,
   workerConfigSchema,
   workerTaskEntry,
-  WORKER_TASK_ENTRY,
   type WorkerInstallation,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
@@ -136,7 +135,7 @@ function quietAgentFlow(installation: WorkerInstallation) {
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
     actions: { respond: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
-    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "quiet-agent-task", block: quiet }) } }
+    task: { actions: { work: workerTaskEntry({ name: "quiet-agent-task", block: quiet }) } }
   } as never);
 }
 
@@ -168,7 +167,7 @@ function linelessAgentFlow(installation: WorkerInstallation) {
     resources: { ...installation.resources },
     request: { onStarted: loadWorker },
     actions: { respond: { inputSchema: z.object({ message: z.string() }), block: run, userMessage: (i: { message: string }) => i.message } },
-    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "lineless-agent-task", turn: run }) } }
+    task: { actions: { work: workerTaskEntry({ name: "lineless-agent-task", turn: run }) } }
   } as never);
 }
 

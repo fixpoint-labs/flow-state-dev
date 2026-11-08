@@ -1,10 +1,11 @@
+// FIX-445; FIX-444; FIX-1071; FIX-1481; FIX-1629.
 /**
- * Task Collections view (FIX-445).
+ * Task Collections view.
  *
  * Developer-mode panel that surfaces every TaskCollection referenced by the
  * active session's items. Auto-discovery is by `data.collectionId` on
  * `task-change` and `task-board-meta` component items — pattern-agnostic, so
- * any consumer of the unified Plan/Task substrate (FIX-444) shows up here.
+ * any consumer of the unified Plan/Task substrate shows up here.
  *
  * The presentation is intentionally raw: full Task fields, all statuses
  * including cancelled/errored, and the latest TaskChangeKind. The polished
@@ -13,17 +14,17 @@
  *
  * A task whose worker dispatches its rows to a `task` entry is run by a dispatch run
  * rather than by the request you are looking at, so its row carries a link into that
- * dispatch run (FIX-1071). The link is derived, absent for most tasks, and never
+ * dispatch run. The link is derived, absent for most tasks, and never
  * something the row is gated on — see `lib/dispatch-run-links`.
  *
  * A task also carries a short note about itself on `feedback`, and the row's
- * reason slot renders it so a retried row says why without being opened
- * (FIX-1481). A task waiting on a person shows what it was asked there
+ * reason slot renders it so a retried row says why without being opened.
+ * A task waiting on a person shows what it was asked there
  * instead (`waitPrompt`): its open question, or its run's stop. The slot is keyed on the field being present, never on a
  * status, and the note is rendered exactly as stored — see
  * `showReason` in `CollectionCard` for why both of those are load-bearing.
  *
- * Each task is one row that opens in place, like an accordion (FIX-1629). The
+ * Each task is one row that opens in place, like an accordion. The
  * collapsed row leads with status, then goal and reason sharing the width, so
  * the reason is in view on a laptop-width pane; the open row is
  * `task-row-body`. Open rows are held here, keyed by board and task id, so a

@@ -1,5 +1,22 @@
 # @flow-state-dev/tools
 
+## 0.2.2
+
+### Patch Changes
+
+- 3b8c97c: `search({ includeDomains, excludeDomains })` now filters on Brave and Perplexity Sonar too, where the domains were ignored before. Brave writes them into the query as `site:` / `-site:` operators, as Serper does; Sonar sends them as `search_domain_filter`, as the Perplexity Search API does. Perplexity's filter takes an include list or an exclude list, not both, so on Perplexity and Sonar a search that sets both now sends the include list alone, where before it sent both and the request was not valid (FIX-2496).
+- Updated dependencies [73f8352]
+- Updated dependencies [531bf32]
+- Updated dependencies [a124a8e]
+- Updated dependencies [05a7022]
+- Updated dependencies [c67aa49]
+- Updated dependencies [f1e6315]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/workspace@0.4.0
+  - @flow-state-dev/core@0.5.0
+
 ## 0.2.1
 
 ### Patch Changes

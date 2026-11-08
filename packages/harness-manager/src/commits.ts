@@ -1,14 +1,15 @@
+// FIX-2384; FIX-2163.
 /**
  * What a run made on its branch: its commits (how many, and their subjects),
  * and what they changed (each file's added and removed lines, and one file's
- * patch, FIX-2384).
+ * patch).
  *
  * Read from the run's checkout, against the base its branch was cut from, by
  * one base rule for all three reads. Nothing here settles a row: a run's
  * output carries the count, a judge reads the subjects, and a person reviews
  * the files. So a checkout git cannot read answers none rather than failing
  * the run, and says it couldn't tell (`verified: false`), so a review
- * (FIX-2163) is never skipped on a count nobody read.
+ * is never skipped on a count nobody read.
  *
  * Only what the run committed is read: a change left uncommitted in the
  * checkout is not on its branch, so it is not what a review accepts.

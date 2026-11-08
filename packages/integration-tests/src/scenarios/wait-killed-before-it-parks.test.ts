@@ -15,8 +15,9 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler, parkOnWait, requireRequestHost, sequencer, type FlowInstance } from "@flow-state-dev/core";
-import type { WaitOutcome } from "@flow-state-dev/core/types";
+import { defineFlow, handler, sequencer, type FlowInstance } from "@flow-state-dev/core";
+import { requestHostOf, parkOnWait, requireRequestHost } from "@flow-state-dev/core/internal";
+import type { WaitOutcome } from "@flow-state-dev/core/internal";
 import { createFlowState, inMemoryStores, type FlowState, type StoreAdapter, type StoreRegistry } from "@flow-state-dev/engine";
 
 const USER = "u_waiter";
@@ -43,7 +44,7 @@ function waitingFlow(script: Script): FlowInstance {
           deadline: Date.now() + 3_600_000
         });
       };
-      const waits = ctx.requestHost?.waits;
+      const waits = requestHostOf(ctx)?.waits;
       const outcome = script.owe && waits?.owingPark !== undefined ? await waits.owingPark(sendThenWait) : await sendThenWait();
       return { answer: outcome.answered ? outcome.answer : outcome };
     }

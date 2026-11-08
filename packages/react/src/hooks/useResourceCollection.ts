@@ -1,9 +1,10 @@
+// FIX-427.
 /**
- * Hook for accessing a collection resource via paginated reads (FIX-427).
+ * Hook for accessing a collection resource via paginated reads.
  *
  * Snapshot exposes only `count` and an opt-in `prefetched` window. Use
  * `list()` / `get()` for on-demand reads, or one of the convenience hooks
- * (`useResourceCollectionList`, `useResourceCollectionItem`).
+ * (`useResourceCollectionList`, `useCollectionResource`).
  *
  * Caching lives per-instance: each hook call owns its own page cache keyed
  * by the normalized query, for the current client, session and collection. On
@@ -12,8 +13,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  type CollectionItemHandle,
-  type CollectionItemState,
+  type CollectionResourceHandle,
+  type CollectionResourceState,
   type CollectionListPage,
   type CollectionSnapshotEntry,
   type CollectionSnapshotPrefetchedItem,
@@ -43,10 +44,11 @@ export type CollectionListOptions = {
   topicPrefix?: string;
 };
 
+// FIX-741.
 /**
  * Return type for useResourceCollection.
  *
- * `TClient` (FIX-741) is the collection's projected per-item client-data type;
+ * `TClient` is the collection's projected per-item client-data type;
  * pass it via the hook generic, e.g.
  * `useResourceCollection<ClientDataOf<typeof memos>>(...)`. Defaults to `unknown`
  * so existing untyped call sites are unchanged.
@@ -59,7 +61,7 @@ export type UseResourceCollectionResult<TClient = unknown> = {
    */
   list: (options?: CollectionListOptions) => Promise<CollectionListPage>;
   /** Fetch a single item by topic. Returns `null` if not present. */
-  get: (topic: string) => Promise<CollectionItemState | null>;
+  get: (topic: string) => Promise<CollectionResourceState | null>;
   /** Alias for list(); reads more naturally when a topicPrefix is the focus. */
   query: (options: CollectionListOptions) => Promise<CollectionListPage>;
   /** Mutation actions (create/update/delete content). */
@@ -67,25 +69,27 @@ export type UseResourceCollectionResult<TClient = unknown> = {
   /** Clear the per-instance page cache and re-trigger active subscribers. */
   refetch: () => void;
   /** Items inlined in the snapshot when `prefetchWindow > 0`, wrapped as handles. */
-  prefetched: CollectionItemHandle<TClient>[] | undefined;
+  prefetched: CollectionResourceHandle<TClient>[] | undefined;
   /** Total item count from the snapshot, when the collection is client-visible. */
   count: number | undefined;
+  // FIX-739.
   /**
-   * Per-topic live overlay from the snapshot (FIX-739), populated for
+   * Per-topic live overlay from the snapshot, populated for
    * `client.live: true` collections. A created/updated entry carries
    * `clientData`; a deleted entry is a tombstone (`deleted: true`). The
    * convenience hooks apply this over their fetched items so list/item reads
    * reflect mid-stream mutations without a refetch.
    */
   live: Record<string, { clientData?: unknown; deleted?: boolean }> | undefined;
+  // FIX-296.
   /**
    * Wraps a raw `{ topic, clientData? }` page item from `list()` as a
-   * `CollectionItemHandle` with the FIX-296 lazy `fetchContent()` ergonomic.
+   * `CollectionResourceHandle` with the lazy `fetchContent()` ergonomic.
    * Reuses the hook's resource client; the convenience hooks
-   * (`useResourceCollectionList` / `useResourceCollectionItem`) share this
+   * (`useResourceCollectionList` / `useCollectionResource`) share this
    * to avoid constructing redundant clients.
    */
-  wrap: (raw: { topic: string; clientData?: unknown; content?: string }) => CollectionItemHandle<TClient>;
+  wrap: (raw: { topic: string; clientData?: unknown; content?: string }) => CollectionResourceHandle<TClient>;
 };
 
 // ---------------------------------------------------------------------------
@@ -141,7 +145,7 @@ function wrapItem<TClient>(
   client: ResourcesApi,
   sessionId: string | undefined,
   ref: string
-): CollectionItemHandle<TClient> {
+): CollectionResourceHandle<TClient> {
   return {
     topic: raw.topic,
     // Runtime payload is the server's JsonValue projection; the cast threads the
@@ -150,7 +154,7 @@ function wrapItem<TClient>(
     fetchContent: async () => {
       if (!sessionId) return null;
       if (raw.content !== undefined) return raw.content;
-      const result = await client.getCollectionItemContent(sessionId, ref, raw.topic);
+      const result = await client.getCollectionResourceContent(sessionId, ref, raw.topic);
       return result.content;
     }
   };
@@ -242,7 +246,7 @@ export function useResourceCollection<TClient = unknown>(
       }
       // Still answers for the identity it closed over. This cache belongs to the one in play.
       if (!fence.isCurrent()) {
-        return client.listCollectionItems(sessionId, ref, options);
+        return client.listCollectionResources(sessionId, ref, options);
       }
       if (cacheRef.current.owner !== fence) {
         cacheRef.current = { owner: fence, pages: new Map() };
@@ -255,7 +259,7 @@ export function useResourceCollection<TClient = unknown>(
       // Skip the write if invalidate() bumped generation. Write `cache`, not
       // `cacheRef.current`: a switch replaces that ref while this is in flight.
       const startGen = generationRef.current;
-      const page = await client.listCollectionItems(sessionId, ref, options);
+      const page = await client.listCollectionResources(sessionId, ref, options);
       if (startGen === generationRef.current) {
         cache.pages.set(key, { page });
       }
@@ -267,13 +271,13 @@ export function useResourceCollection<TClient = unknown>(
   );
 
   const get = useCallback(
-    async (topic: string): Promise<CollectionItemState | null> => {
+    async (topic: string): Promise<CollectionResourceState | null> => {
       const sessionId = session.sessionId;
       if (!sessionId) return null;
-      return client.getCollectionItemState(sessionId, ref, topic);
+      return client.getCollectionResourceState(sessionId, ref, topic);
     },
     // `generation` is in deps so the callback identity flips on invalidation;
-    // `useResourceCollectionItem` watches `get` and refetches the active topic
+    // `useCollectionResource` watches `get` and refetches the active topic
     // when a resource_change bumps the generation (e.g., a memo transitioning
     // from `writing` → `published` while the user is viewing it).
     [client, ref, session.sessionId, generation]
@@ -288,7 +292,7 @@ export function useResourceCollection<TClient = unknown>(
     create: async (options) => {
       const sessionId = session.sessionId;
       if (!sessionId) throw new Error("No active session");
-      const result = await client.createCollectionItem(sessionId, ref, options);
+      const result = await client.createCollectionResource(sessionId, ref, options);
       invalidate();
       return result;
     },
@@ -303,7 +307,7 @@ export function useResourceCollection<TClient = unknown>(
     delete: async (options) => {
       const sessionId = session.sessionId;
       if (!sessionId) throw new Error("No active session");
-      await client.deleteCollectionItem(sessionId, ref, options.topic);
+      await client.deleteCollectionResource(sessionId, ref, options.topic);
       invalidate();
     }
   }), [client, ref, session.sessionId, invalidate]);
@@ -314,7 +318,7 @@ export function useResourceCollection<TClient = unknown>(
     [client, session.sessionId, ref]
   );
 
-  const prefetched = useMemo<CollectionItemHandle<TClient>[] | undefined>(() => {
+  const prefetched = useMemo<CollectionResourceHandle<TClient>[] | undefined>(() => {
     const raw = collectionEntry?.prefetched as CollectionSnapshotPrefetchedItem[] | undefined;
     if (raw === undefined) return undefined;
     return raw.map(wrap);

@@ -30,7 +30,7 @@ import { createFlowRegistry } from "../src";
 const NOTES = "notes/[owner]/[id]";
 
 const overlap = (pattern: string, owned = NOTES): string =>
-  `Collection pattern "${pattern}" can reach the rows of owner-private collection "${owned}". ` +
+  `Collection pattern "${pattern}" can reach the resources of owner-private collection "${owned}". ` +
   `Only that collection reads or writes them, each for the user it belongs to.`;
 
 const held = (id: string): string => ` Flow "${id}" declares it and is already registered.`;
@@ -252,7 +252,7 @@ describe("owner-private admission · armed", () => {
 describe("owner-private admission · a single resource keyed with a segment beginning ~", () => {
   const marked = (accessor: string, key: string): string =>
     `Resource "${accessor}" has storage key "${key}", with a segment beginning "~". ` +
-    `That segment is reserved for the user an owner-private collection's row belongs to, ` +
+    `That segment is reserved for the user an owner-private collection's resource belongs to, ` +
     `and a single resource's key is the same for every user.`;
 
   const single = (scope: "org" | "user" | "session", ref?: string) =>

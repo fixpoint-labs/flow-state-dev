@@ -11,6 +11,7 @@ import type { StepOptions } from "./internal/arg-shapes";
 
 export type { StepOptions, StepOutcome } from "./internal/arg-shapes";
 
+// FIX-914.
 /**
  * Shorthand for a `BlockContext` whose `sequencer.state` slot is typed from
  * a sequencer-level `stateSchema`. Other generics fall back to the same
@@ -18,7 +19,7 @@ export type { StepOptions, StepOutcome } from "./internal/arg-shapes";
  * slots, `unknown` for parent input, etc.) so non-sequencer accesses still
  * surface typos as type errors instead of silently passing under `any`.
  *
- * FIX-914: the sequencer's own DSL callbacks (`.step`/`.tap`/`.loopBack`'s
+ * The sequencer's own DSL callbacks (`.step`/`.tap`/`.loopBack`'s
  * `when`, etc.) run AS the sequencer's own scope, so `ctx.self` mirrors
  * `ctx.sequencer` here — both typed from the same `TStateSchema`. (A
  * sequencer's `ctx.parent` — its own enclosing block's state — isn't typed
@@ -456,8 +457,9 @@ export type SequencerConfig<
   TFlowConfigSchema extends ZodTypeAny | undefined = undefined,
 > = {
   name: string;
+  // FIX-1331.
   /**
-   * What this sequencer requires of whatever flow installs it (FIX-1331).
+   * What this sequencer requires of whatever flow installs it.
    * Types `ctx.flow.config` in every DSL callback — connectors, taps,
    * conditions — and makes the flow refuse when it cannot supply a bag that
    * satisfies it. See {@link BlockConfig.flowConfigSchema}.
@@ -465,20 +467,22 @@ export type SequencerConfig<
   flowConfigSchema?: TFlowConfigSchema;
   description?: string;
   transient?: boolean;
+  // FIX-401; FIX-141.
   /**
    * When true (default), the sequencer's state is checkpointed to
    * `stores.checkpoints` at every step boundary. The Phase 2 resume runtime
-   * (FIX-141) reads the latest checkpoint to pick up after an interrupted
+   * reads the latest checkpoint to pick up after an interrupted
    * request. Set `false` to opt out — typically for tests or single-shot
    * ephemeral sequencers where persistence is unwanted overhead.
    *
    * Latest-only semantics: storage is constant per sequencer regardless of
-   * step count. See `SequencerCheckpoint` and FIX-401 spec.
+   * step count. See `SequencerCheckpoint`.
    */
   durable?: boolean;
   inputSchema?: TInputSchema;
   outputSchema?: ZodTypeAny;
-  /** This sequencer's own request-scoped state (FIX-914 alias: also exposed
+  // FIX-914.
+  /** This sequencer's own request-scoped state (an alias: also exposed
    *  as `ctx.self` within its own DSL callbacks, in addition to `ctx.sequencer`). */
   stateSchema?: TStateSchema;
   /** Capabilities to install. Merges resources, state schemas, targets,
@@ -520,16 +524,18 @@ export type SequencerRuntimeState = {
    * drains only the calling sequencer's contributions to the pool.
    */
   scopeId: string;
+  // FIX-573 §3.3.
   /**
    * Path of the most recently invoked child block within this sequencer. Used
-   * by subsequent ops to compute the `input.source` ref for the next child
-   * (FIX-573 §3.3). Undefined before the first child runs (sequencer head)
+   * by subsequent ops to compute the `input.source` ref for the next child.
+   * Undefined before the first child runs (sequencer head)
    * and for ops that don't dispatch a child (`.map`, `.exitIf`, etc.).
    */
   lastChildPath?: string;
+  // FIX-573 §3.3.
   /**
    * Running BlockValue descriptor for the sequencer's value as it would feed
-   * into the next op (FIX-573 §3.3). Mirrors the running output descriptor at
+   * into the next op. Mirrors the running output descriptor at
    * sequencer level, but expressed as a `BlockValueInternal` source so it can
    * be stamped directly onto the next child's `input.source`. Aggregator ops
    * (`.parallel`, `.stepAll`, `.forEach`) write a `structure` here so the
@@ -537,8 +543,9 @@ export type SequencerRuntimeState = {
    * single ref.
    */
   lastChildInputHint?: import("../items/types").BlockValueInternal<unknown>;
+  // FIX-643.
   /**
-   * Active `loopBack` generation for child path construction (FIX-643). 0
+   * Active `loopBack` generation for child path construction. 0
    * (the default) on the first pass and after a loop exits, so child paths are
    * unchanged for non-looping code. Each `loopBack` jump bumps it to the next
    * value of `loopJumps`, so steps re-executed in pass N get a `loop[N]`

@@ -1,3 +1,4 @@
+// FIX-2083 D2.
 /**
  * Rounds: how far a delegate's answer goes back out (`rounds:`).
  *
@@ -18,13 +19,13 @@
  * the routings still adding to it, and the answers that landed in it. What
  * went out in a round is not kept here: each delegate's post is a row on the
  * conversation's board carrying its round, and the caller reads those rows
- * ({@link RoundRows}). A round closes once no routing is still adding rows to
+ * ({@link RoundTasks}). A round closes once no routing is still adding rows to
  * it, each of its rows has ended (completed, failed or cancelled) and each
  * reply among them has landed here, or once its deadline has passed, whatever
  * is still out. Closing removes the record,
  * so an answer that lands after its round closed lands once and routes
  * nowhere. The deadline is set by the round's first row, and the coordinator
- * owes a wake on its own session at it (FIX-2083 D2), so a round whose
+ * owes a wake on its own session at it, so a round whose
  * delegate is still working closes then, after a host restart too. Every
  * wake also closes each overdue round ({@link closeOverdue}).
  *
@@ -72,18 +73,18 @@ export type RouteOn = z.infer<typeof routeOnSchema>;
 export type ClosedRound = { messageRequestId: string; round: number; deliveries: number; answers: RoundAnswer[] };
 
 /**
- * A round's rows, as the caller read them off the board, read before the
+ * A round's tasks, as the caller read them off the board, read before the
  * write that may close the round, once per write.
  *
- * A row can end before its ending lands here, so a reply's row holds its
+ * A task can end before its ending lands here, so a reply's task holds its
  * round open until the reply is among the round's answers: a delegate has
- * one row per post per round, so the reply is matched by its author.
+ * one task per post per round, so the reply is matched by its author.
  */
-export type RoundRows = (messageRequestId: string, round: number) => RoundRead;
+export type RoundTasks = (messageRequestId: string, round: number) => RoundRead;
 
-/** One round's rows as read, with the round as it stood just before the read. */
+/** One round's tasks as read, with the round as it stood just before the read. */
 export interface RoundRead {
-  /** Every post row that went out in it. */
+  /** Every post task that went out in it. */
   readonly ids: readonly string[];
   /** Whether any of them hasn't ended yet. */
   readonly running: boolean;
@@ -156,7 +157,7 @@ export function endRound(rounds: readonly OpenRound[], messageRequestId: string,
 function closeAt(
   rounds: readonly OpenRound[],
   at: number,
-  rows: RoundRows
+  rows: RoundTasks
 ): { rounds: OpenRound[]; closed: ClosedRound } {
   const open = rounds[at]!;
   return {
@@ -182,7 +183,7 @@ const pastDeadline = (open: OpenRound, now: number) => open.deadlineAt !== undef
  */
 export function closeRound(
   rounds: readonly OpenRound[],
-  rows: RoundRows,
+  rows: RoundTasks,
   messageRequestId: string,
   round: number,
   now: number,
@@ -210,7 +211,7 @@ export function closeRound(
  */
 export function closeOverdue(
   rounds: readonly OpenRound[],
-  rows: RoundRows,
+  rows: RoundTasks,
   now: number
 ): { rounds: OpenRound[]; closed: ClosedRound[] } {
   let remaining: OpenRound[] = [...rounds];
@@ -244,7 +245,7 @@ export function anyOverdue(rounds: readonly OpenRound[], now: number): boolean {
  */
 export function landAnswer(
   rounds: readonly OpenRound[],
-  rows: RoundRows,
+  rows: RoundTasks,
   posted: RoundTask,
   body: string,
   now: number

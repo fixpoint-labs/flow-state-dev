@@ -15,7 +15,9 @@ import { UnrecoverableError } from "bullmq";
 import type { Job } from "bullmq";
 
 vi.mock("@flow-state-dev/engine", () => ({
-  runAction: vi.fn(),
+  runAction: vi.fn()
+}));
+vi.mock("@flow-state-dev/engine/host", () => ({
   // The registry as the processor received it: these cases stub only the
   // store methods they read. What the wrap does is the engine's to test.
   withChangeBus: vi.fn((stores: unknown) => stores),
@@ -32,7 +34,8 @@ vi.mock("@flow-state-dev/engine", () => ({
   }
 }));
 
-import { holdLeasePlace, runAction, settleUnstartedRequest, withChangeBus } from "@flow-state-dev/engine";
+import { holdLeasePlace, settleUnstartedRequest, withChangeBus } from "@flow-state-dev/engine/host";
+import { runAction } from "@flow-state-dev/engine";
 import { createFlowJobProcessor, type FlowWorkerDeps } from "../src/worker";
 import type { FlowJobData } from "../src/types";
 

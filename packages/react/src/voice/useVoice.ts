@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Content, MessageItem, OutputAudioContent } from "@flow-state-dev/core/items";
 import { createAudioRecorder, type AudioRecorder } from "./audio-recorder";
-import { createAudioPlayer, type AudioPlayer, type AudioPlayerState } from "./audio-player";
+import { createAudioPlayer, type AudioPlayer, type AudioPlayerStatus } from "./audio-player";
 import type { ContentAudioDeltaEvent, OutputItem } from "@flow-state-dev/core/items";
 import {
   createSpeechRecognition,
@@ -60,18 +60,19 @@ export function useVoice(
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
-  const [playerState, setPlayerState] = useState<AudioPlayerState>("idle");
+  const [playerState, setPlayerState] = useState<AudioPlayerStatus>("idle");
 
   const recorderRef = useRef<AudioRecorder | null>(null);
   const playerRef = useRef<AudioPlayer | null>(null);
   const recognitionRef = useRef<SpeechRecognitionHandle | null>(null);
   const playedKeysRef = useRef<Set<string>>(new Set());
+  // FIX-523.
   /**
    * `(itemId, contentIndex)` pairs that have received streaming audio
    * deltas in this session. The batch-path scanner below skips any
    * `OutputAudioContent` whose key is in this set so a streaming TTS turn
    * doesn't get double-played when the final snapshot arrives via
-   * `content.added` after the chunks (FIX-523). Writes happen synchronously
+   * `content.added` after the chunks. Writes happen synchronously
    * inside the audio-delta callback — before any `decodeAudioData` await —
    * so the batch scanner can never observe a streaming part without its
    * dedup entry already in place.
