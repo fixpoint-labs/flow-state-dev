@@ -76,7 +76,6 @@ export {
 
 export {
   useSuspensions,
-  deriveSuspensions,
   resolveSuspension,
   type ResolveSuspensionArgs,
   type SuspensionView,
@@ -99,7 +98,6 @@ export {
 } from "./hooks/useApproval";
 export {
   useSuspensionForm,
-  analyzeResumeSchema,
   suspensionShape,
   type UseSuspensionFormOptions,
   type UseSuspensionFormResult,
@@ -182,7 +180,6 @@ export {
   createInterruptKeys,
   interruptChordLabel,
   useInterruptKeys,
-  INTERRUPT_WINDOW_MS,
   type InterruptKeyEvent,
   type InterruptKeyResult,
   type InterruptKeysOptions,
@@ -210,18 +207,6 @@ export {
 
 export {
   useVoice,
-  createAudioRecorder,
-  createAudioPlayer,
-  createSpeechRecognition,
-  isSpeechRecognitionAvailable,
-  type AudioPlayer,
-  type AudioPlayerCallbacks,
-  type AudioPlayerState,
-  type AudioRecorder,
-  type AudioRecorderOptions,
-  type AudioRecorderState,
-  type SpeechRecognitionCallbacks,
-  type SpeechRecognitionHandle,
   type UseVoiceOptions,
   type VoiceState
 } from "./voice";

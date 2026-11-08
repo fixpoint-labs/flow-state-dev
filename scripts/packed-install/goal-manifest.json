@@ -91,7 +91,7 @@
     "surface.root.core": "pass",
     "surface.root.engine": "pass",
     "surface.root.client": "pass",
-    "surface.root.react": "fail",
+    "surface.root.react": "pass",
     "surface.root.testing": "pass",
     "surface.root.orchestration": "pass",
     "surface.root.patterns": "pass",
