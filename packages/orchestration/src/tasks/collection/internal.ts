@@ -24,7 +24,7 @@ import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import { steersForAttempt, untakenSteers } from "../steers";
 import type { SuspensionHold } from "../schema/hold";
-import { answerOf, askedOnTicket, droppedMirror, hasOpenHold, holdWrite, isRowHold, keptOnEnding, newRowHolds, openRowHolds, owesTurn } from "./holds";
+import { answerOf, askedOnTicket, droppedMirror, hasOpenHold, holdWrite, isOwnHold, keptOnEnding, newOwnHolds, openOwnHolds, owesTurn } from "./holds";
 import type { TaskChangeKind } from "./change-event";
 import { SKIPPED_LABEL } from "./cascade";
 import type {
@@ -94,11 +94,11 @@ export function buildInitialTask<TInput, TOutput>(
   filing: FilingStamp = {}
 ): Task<TInput, TOutput> {
   const status = init.held === true ? "held" : (init.status ?? "pending");
-  // The filer's questions and confirms, each a row hold that keeps the task
+  // The filer's questions and confirms, each an own hold that keeps the task
   // from starting until it is answered (FIX-2133), due when the host sets a deadline.
   const holds =
     init.questions !== undefined && init.questions.length > 0
-      ? newRowHolds(init.questions, now, filing.holdDueMs !== undefined ? { dueMs: filing.holdDueMs } : {})
+      ? newOwnHolds(init.questions, now, filing.holdDueMs !== undefined ? { dueMs: filing.holdDueMs } : {})
       : undefined;
   const filedUnder = filing.filedUnder;
   return {
@@ -152,7 +152,7 @@ export function buildInitialTask<TInput, TOutput>(
 /**
  * What a backing stamps on every row it files beside the filer:
  * the tenant and org the filing request ran under, from its verified
- * identity, and how long a row hold waits before it goes ahead unanswered,
+ * identity, and how long an own hold waits before it goes ahead unanswered,
  * when the host sets that (`RequestHost.userDeadlineMs`). Server-set, never
  * from `TaskInit`.
  */
@@ -496,8 +496,8 @@ export function retryWrite(
       // The ended attempt's questions closed with it (`openHolds` reads none on
       // an ended row); reopened, they would hold the new attempt. Answered ones
       // stay, beside the steers that answer them.
-      ...(task.holds?.some((hold) => !isRowHold(hold) || answerOf(task, hold.id) === undefined)
-        ? { holds: task.holds.filter((hold) => isRowHold(hold) && answerOf(task, hold.id) !== undefined) }
+      ...(task.holds?.some((hold) => !isOwnHold(hold) || answerOf(task, hold.id) === undefined)
+        ? { holds: task.holds.filter((hold) => isOwnHold(hold) && answerOf(task, hold.id) !== undefined) }
         : {}),
       retryPending: true,
       retryLedger: grantRetry(task),
@@ -768,7 +768,7 @@ function attemptOwnsTask(task: Task, attempt: number): boolean {
  * dispatch's gate, an advisory write-back): two turns can share an attempt,
  * so an attempt-only check passes a stale turn.
  */
-export function ticketClaimsRow(ticket: TaskClaimTicket, collectionId: string, task: Task | undefined): task is Task {
+export function ticketStillRunsTask(ticket: TaskClaimTicket, collectionId: string, task: Task | undefined): task is Task {
   return (
     task !== undefined &&
     ticketNamesTask(ticket, collectionId, task) &&
@@ -878,7 +878,7 @@ export function transitionDeclineReason(
   const whileHoldOpen = (options as { whileHoldOpen?: string }).whileHoldOpen;
   if (whileHoldOpen !== undefined) {
     const hold = task.holds?.find((h) => h.id === whileHoldOpen);
-    if (hold === undefined || !isRowHold(hold)) return "no-such-question";
+    if (hold === undefined || !isOwnHold(hold)) return "no-such-question";
     if (answerOf(task, whileHoldOpen) !== undefined) return "answered";
   }
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
@@ -919,9 +919,9 @@ export function transitionDeclineReason(
   const adopting = options.adoptLapsedLease === true && targetStatus === "in_progress";
   if (claim !== undefined && !adopting && leaseLapsed(task, now)) return "lost-claim";
   // FIX-2133: a renewal (any open hold), or a mirror of a run's stop (an open
-  // row hold: one source at a time), refused on the committed row.
+  // own hold: one source at a time), refused on the committed row.
   if (options.refuseWithOpenHold === "any" && hasOpenHold(task)) return "open-question";
-  if (options.refuseWithOpenHold === "row" && openRowHolds(task).length > 0) return "open-question";
+  if (options.refuseWithOpenHold === "task" && openOwnHolds(task).length > 0) return "open-question";
   // Last: a write from an attempt that lost the row is refused as that, never
   // as owing a steer the row's next attempt holds (FIX-2086).
   if (options.refuseUntakenSteers === true && targetStatus === "completed" && untakenSteers(task).length > 0) {
@@ -997,7 +997,7 @@ export function leaseLapsed(task: Task, now: number): boolean {
  * this row" rather than as a short lease, which is the same conservative
  * answer those rows got before this field existed.
  *
- * `undefined` when the row holds no lease deadline — nothing is claiming to be
+ * `undefined` when the task holds no lease deadline — nothing is claiming to be
  * alive on it, so there is no committed span to report even if the duration a
  * past claim wrote is still on the row. A non-positive result is returned
  * as-is; what to do about it is the caller's: the driver goes inert, the
@@ -1261,7 +1261,7 @@ export function requireClaimTicket(
  *
  * With `hold`, a task run's stop for a person is mirrored on the
  * row as a suspension hold, in the same write (the caller's guard refuses it
- * on a row with an open row hold). Cleared with `resume`, the run's own
+ * on a row with an open own hold). Cleared with `resume`, the run's own
  * resume closes that mirror; a later request admitted while the run stays
  * parked leaves it. A clear that takes a turn the row owes (`turnOwed`: its
  * last question answered, or a steer no request took) is that turn's claim: it

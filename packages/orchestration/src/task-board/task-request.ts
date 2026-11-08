@@ -69,7 +69,7 @@ import { DEFAULT_LEASE_DURATION_MS } from "../tasks/collection/internal";
 import { MAX_QUESTION_PROMPT, type ExternalWait } from "../tasks/schema/hold";
 import { readCommittedTask } from "../tasks/collection/read-committed";
 import { untakenSteers } from "../tasks/steers";
-import { ticketClaimsRow } from "../tasks/collection/internal";
+import { ticketStillRunsTask } from "../tasks/collection/internal";
 import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
 import { advisoryCancel, advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
@@ -187,10 +187,10 @@ export function admittedTaskOf(ctx: BlockContext): { readonly ref: TaskCollectio
 /**
  * Whether the row is still on the claim `ticket` names: same row, running,
  * same attempt and same turn, by the one predicate the write
- * fence shares (`ticketClaimsRow`).
+ * fence shares (`ticketStillRunsTask`).
  */
 function claimHolds(ref: TaskCollectionRef, ticket: TaskClaimTicket, row: Task | undefined): row is Task {
-  return ticketClaimsRow(ticket, ref.collectionId, row);
+  return ticketStillRunsTask(ticket, ref.collectionId, row);
 }
 
 // FIX-2133.
@@ -213,7 +213,7 @@ function answeredBefore(prior: TaskKeptOpenBy | undefined): boolean {
  * row waited on, give it a lease again, renew it until the request ends, and
  * check the task at that end.
  *
- * @returns the lease renewal driver, when the row holds a lease to renew,
+ * @returns the lease renewal driver, when the task holds a lease to renew,
  *   and the ticket the request holds now: the one passed in, or, when the
  *   admission took a turn the row owed, the same claim at its new turn.
  * @throws {Error} when the row can't be given a lease again because its claim moved on.
@@ -901,7 +901,7 @@ export async function askMidway(
       if (row !== undefined && (asked.ok || askedOnTicket(row, claim))) await ledger.tellMidwayQuestions(row);
     } catch (error) {
       // Best effort: the question stands on the row and in the Inbox either way.
-      console.warn(`[task-board] task "${claim.taskId}": its row couldn't be read to tell the filer its question; it stays in the Inbox: ${(error as Error).message}`);
+      console.warn(`[task-board] task "${claim.taskId}" couldn't be read to tell the filer its question; it stays in the Inbox: ${(error as Error).message}`);
     }
   }
   return asked;

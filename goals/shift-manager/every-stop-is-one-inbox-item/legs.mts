@@ -6,7 +6,7 @@
 import type { InboxItem } from "@flow-state-dev/orchestration/inbox";
 import { allTaskRows } from "../../coordinators/files-tasks-down-the-owners-chain/store.mts";
 import { CAST, type Words } from "./cast.mts";
-import { proofsOf, rowHolds, show, sleep, STOREFRONT, suspensionHolds, TERMINAL, type Alice, type Row } from "./world.mts";
+import { proofsOf, ownHolds, show, sleep, STOREFRONT, suspensionHolds, TERMINAL, type Alice, type Row } from "./world.mts";
 
 /** The six stops, by the kind each one's Inbox item names. */
 export const STOPS = ["approval", "review", "input", "held", "midway", "coding"] as const;
@@ -47,9 +47,9 @@ const proofsFor = (c: Context, taskId: string | undefined, kind: string) => proo
 /** Whether a row waits on the person the way its stop does. */
 export function waiting(stop: Stop, row: Row | undefined): boolean {
   if (row === undefined) return false;
-  if (stop === "held") return row.status === "pending" && rowHolds(row).length > 0;
+  if (stop === "held") return row.status === "pending" && ownHolds(row).length > 0;
   if (SUSPENDS[stop]) return row.status === "in_progress" && suspensionHolds(row).length === 1;
-  return row.status === "in_progress" && rowHolds(row).length > 0;
+  return row.status === "in_progress" && ownHolds(row).length > 0;
 }
 
 /** The goal a doer task stopping for `stop` is filed with. */
@@ -82,7 +82,7 @@ export async function fileSix(c: Context, only: readonly Stop[] = STOPS, tag = "
         `File one task for ${CAST.doer} with the goal "${goal}". It must not start until I answer this question: "${c.words.heldQuestion}" Put that question, word for word, in the task's questions when you file it. File nothing else.`,
       );
       const filed = (await c.alice.rows()).filter((r) => !before.has(r.id));
-      const held = filed.find((r) => r.assignee === CAST.doer && rowHolds(r).some((h) => h.ask?.prompt?.includes(c.words.heldQuestion.replace(/\?$/, ""))));
+      const held = filed.find((r) => r.assignee === CAST.doer && ownHolds(r).some((h) => h.ask?.prompt?.includes(c.words.heldQuestion.replace(/\?$/, ""))));
       if (said.status !== "completed" || held === undefined) {
         c.fail(`${tag}:held-filed`, `desk.front's turn ${said.status} filed ${show(filed.map((r) => ({ goal: r.goal, assignee: r.assignee, holds: r.holds })))}, no task for ${CAST.doer} held on "${c.words.heldQuestion}"`);
       } else ids.held = held.id;
@@ -136,7 +136,7 @@ export async function checkSix(c: Context, ids: Partial<Record<Stop, string>>, r
     const holds = mine[0]!.holds;
     if (holds.length !== 1 || holds[0]!.ask.kind !== ASK_KIND[stop]) c.fail(`${tag}:six-items`, `the ${stop} item's holds are ${show(holds.map((h) => h.ask.kind))}, not one ${ASK_KIND[stop]}`);
     if (holds.some((h) => h.unanswerable !== null)) c.fail(`${tag}:six-items`, `the ${stop} item says it can't be answered: ${show(holds.map((h) => h.unanswerable))}`);
-    if (holds.some((h) => h.source.kind !== (SUSPENDS[stop] ? "suspension" : "row"))) c.fail(`${tag}:six-items`, `the ${stop} item answers through ${show(holds.map((h) => h.source.kind))}`);
+    if (holds.some((h) => h.source.kind !== (SUSPENDS[stop] ? "suspension" : "task"))) c.fail(`${tag}:six-items`, `the ${stop} item answers through ${show(holds.map((h) => h.source.kind))}`);
     if (holds.some((h) => h.due !== undefined)) c.fail(`${tag}:no-deadline-waits`, `the ${stop} item has a deadline: ${show(holds.map((h) => h.due))}`);
   }
   const strays = items.filter((item) => item.task === null || !Object.values(ids).includes(item.task.taskId));
@@ -150,7 +150,7 @@ export async function checkSix(c: Context, ids: Partial<Record<Stop, string>>, r
     const kept = stored(c, ids[stop]);
     if (row.status === "parked") c.fail(`${tag}:rows-read`, `the ${stop} row reads parked`);
     if (SUSPENDS[stop]) {
-      if (suspensionHolds(row).length !== 1 || rowHolds(row).length !== 0) c.fail(`${tag}:rows-read`, `the ${stop} row's holds are ${show(row.holds)}, not one open suspension hold`);
+      if (suspensionHolds(row).length !== 1 || ownHolds(row).length !== 0) c.fail(`${tag}:rows-read`, `the ${stop} row's holds are ${show(row.holds)}, not one open suspension hold`);
       // Its claim kept: the run that stopped is still the row's, on its first attempt, and the stop's
       // mirror names that run. The lease is dropped in the write that mirrors the stop (FIX-2129).
       const mirror = suspensionHolds(row)[0];
@@ -159,7 +159,7 @@ export async function checkSix(c: Context, ids: Partial<Record<Stop, string>>, r
       }
       if (kept?.leaseUntil != null) c.fail(`${tag}:rows-read`, `the ${stop} row holds a lease (${kept.leaseUntil}) while its run waits on a person`);
     } else {
-      if (rowHolds(row).length !== 1 || suspensionHolds(row).length !== 0) c.fail(`${tag}:rows-read`, `the ${stop} row's holds are ${show(row.holds)}, not one open row hold`);
+      if (ownHolds(row).length !== 1 || suspensionHolds(row).length !== 0) c.fail(`${tag}:rows-read`, `the ${stop} row's holds are ${show(row.holds)}, not one open row hold`);
       if (kept?.leaseUntil != null) c.fail(`${tag}:rows-read`, `the ${stop} row holds a lease (${kept.leaseUntil}) while it waits on a person`);
     }
     if ((row.holds ?? []).some((h: Row) => h.due != null)) c.fail(`${tag}:no-deadline-waits`, `the ${stop} row's hold has a deadline: ${show(row.holds)}`);
@@ -360,7 +360,7 @@ export async function legD(c: Context): Promise<void> {
     c.fail("d:no-request-beside", `after the answer the task ended ${done?.status} on attempt ${done?.attempts} with ${turns.length} turn(s): ${show(turns.map((t) => [t.attempt, t.turn, String(t.message).slice(0, 120)]))}; one more turn takes the steer`);
   }
 
-  const question = rowHolds(rows.midway)[0]!;
+  const question = ownHolds(rows.midway)[0]!;
   const plain = await c.alice.update({ id: byId.id, message: "Make it cheerful." });
   c.note(`d: a steer naming no question answered ${show(plain.output)}`);
   const outside = await c.alice.person.workforce.ensureWorkerSession({ worker: CAST.asker });
@@ -368,7 +368,7 @@ export async function legD(c: Context): Promise<void> {
   c.note(`d: a line to desk.asker outside the task ended ${talked.status}`);
   await sleep(3_000);
   const still = await c.alice.row(byId.id);
-  if (!rowHolds(still).some((h) => h.id === question.id) || (await c.alice.itemOf(byId.id)) === undefined) {
+  if (!ownHolds(still).some((h) => h.id === question.id) || (await c.alice.itemOf(byId.id)) === undefined) {
     c.fail("d:plain-answers-nothing", `a steer naming no question, or a line outside the task, answered it: holds ${show(still?.holds)}, steers ${show(still?.steers)}`);
   }
 

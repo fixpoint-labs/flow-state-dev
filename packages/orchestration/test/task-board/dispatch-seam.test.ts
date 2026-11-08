@@ -36,7 +36,7 @@ import {
   DISPATCH_SEAM
 } from "@flow-state-dev/core/internal";
 import type { TaskClaimTicket, TaskWorkerInput } from "../../src/tasks";
-import { createRowDispatch } from "../../src/task-board/blocks/dispatch-row";
+import { createTaskDispatch } from "../../src/task-board/blocks/dispatch-task";
 import type { TaskDispatchInput } from "../../src/task-board/task-entry";
 
 const CLAIM: TaskClaimTicket = {
@@ -60,7 +60,7 @@ const BINDING = { boardId: "issue-work", gate: (entry: unknown) => entry as neve
 
 /** A dispatch at assignee `implement`, for the dispatcher address an assignee would carry. */
 function dispatchWith(session: "per-task" | "per-worker" | { key: (task: TaskWorkerInput) => string }) {
-  return createRowDispatch({
+  return createTaskDispatch({
     name: "issue-work-dispatch-implement",
     boardId: "issue-work",
     assignee: "implement",
@@ -92,7 +92,7 @@ function drive(options: {
    */
   duringRelease?: () => void;
   /** Drive a dispatch other than the default per-task one above. */
-  block?: ReturnType<typeof createRowDispatch>;
+  block?: ReturnType<typeof createTaskDispatch>;
 }) {
   const timeline: string[] = [];
   let state: { currentClaim?: TaskClaimTicket } = { currentClaim: CLAIM };
@@ -362,7 +362,7 @@ describe("an assignee that names another flow", () => {
     // author-facing dispatcher() already forwards it; the drain's dispatch
     // is the path a real board takes, and omitting it makes the seam resolve
     // on the sender — `no-entry` against the wrong flow.
-    const block = createRowDispatch({
+    const block = createTaskDispatch({
       name: "issue-work-dispatch-implement",
       boardId: "issue-work",
       assignee: "implement",

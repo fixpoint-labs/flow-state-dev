@@ -23,7 +23,7 @@ export async function readCommittedTask(ref: TaskCollectionRef, id: string): Pro
   if (!warned.has(ref.collectionId)) {
     warned.add(ref.collectionId);
     console.warn(
-      `[tasks] board "${ref.collectionId}" can't read a row as stored (no getCommitted): a steer written by another ` +
+      `[tasks] board "${ref.collectionId}" can't read a task as stored (no getCommitted): a steer written by another ` +
         "request may go unseen until this request ends."
     );
   }

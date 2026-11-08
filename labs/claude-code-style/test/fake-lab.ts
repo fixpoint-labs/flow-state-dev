@@ -32,7 +32,7 @@ import type {
   ThreadView,
   Unsubscribe,
 } from "../src/adapter";
-import { taskRowView } from "@flow-state-dev/orchestration/inbox";
+import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { waitingOnYou } from "../src/lib/columns";
 import { toolRun } from "../src/lib/tool-steps";
 import { modeById, modeOfWorker, type ModeId } from "../src/modes";
@@ -533,7 +533,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       return watch(() => {
         const s = sessions.get(sessionId);
         // Each row with its view, as the adapter reads one from the board's row (no holds: a fixture's wait is its `openHold`).
-        onChange(s ? s.tasks.map(({ work: _work, reviewDetail: _review, ...row }) => ({ ...row, view: taskRowView({ id: row.id, title: row.title, goal: row.goal, status: row.status, updatedAt: row.updatedAt, board: sessionId }) })) : []);
+        onChange(s ? s.tasks.map(({ work: _work, reviewDetail: _review, ...row }) => ({ ...row, view: taskView({ id: row.id, title: row.title, goal: row.goal, status: row.status, updatedAt: row.updatedAt, board: sessionId }) })) : []);
       });
     },
 

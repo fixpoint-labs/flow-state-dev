@@ -211,7 +211,7 @@ cell. The run starts only when that user's cell for collections shared across
 flows (`resolveSharedUserCellKey`, the one the schedule resolver reads) holds
 the row, the row's stored `orgId` and `tenantId` are the nominated ones, and
 the row is not `enabled: false`. A
-nomination for a cell that holds no such row refuses as `no_row`, the same
+nomination for a cell that holds no such row refuses as `no_resource`, the same
 answer whether the row is another user's or nobody's. `routeServiceEvent`
 runs the service's entry, then reads each run its output names at the fence
 (a run of another flow, or of an owner in another org, fires nothing) and
@@ -609,7 +609,7 @@ lease — the turn that asked gave it up — so there is no claimant that could
 have died while the row still says someone is on it.
 
 A row waiting on something outside the board is excused the same way: an
-`external` row hold (FIX-2578), such as a coding task's wait on its pull
+`external` own hold (FIX-2578), such as a coding task's wait on its pull
 request. Its actor is `"system"`, never a
 person, so `holdActorOf(row)` says `"system"`, `waitsOnUser` is false, the Inbox
 does not list it and the filer is not told of it; but nothing in a drain moves
@@ -720,7 +720,7 @@ and the row stays as it is.
 | The dispatch seam: entry, session, envelope, start | `engine/src/context/create-request-host.ts`, `engine/src/context/dispatch-operation.ts` |
 | Child session derivation and adoption | `engine/src/context/dispatch-run.ts` |
 | Session policy and the child key | `core/src/types/dispatch.ts` → `taskSessionKeyFor` |
-| The dispatch at a board's dispatcher | `orchestration/src/task-board/blocks/dispatch-row.ts` |
+| The dispatch at a board's dispatcher | `orchestration/src/task-board/blocks/dispatch-task.ts` |
 | The claim gate | `orchestration/src/task-board/task-entry.ts` → `createTaskGate` |
 | Reading which assignees dispatch; construction-time refusals | `orchestration/src/task-board/dispatch-assignee.ts` |
 | Per-dispatch runtime config and the override warning | `engine/src/transports/host/createInboundTransportHost.ts` |

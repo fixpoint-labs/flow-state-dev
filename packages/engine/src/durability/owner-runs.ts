@@ -38,7 +38,7 @@ export interface OwnerRun {
 }
 
 /** Why a run did not start. */
-export type OwnerRunRefusal = "no_row" | "other_org" | "other_tenant" | "disabled";
+export type OwnerRunRefusal = "no_resource" | "other_org" | "other_tenant" | "disabled";
 
 /** What a fire came to. */
 export type OwnerRunFired =
@@ -61,7 +61,7 @@ export async function fireOwnerRunThrough(
 ): Promise<OwnerRunFired> {
   const { userId, orgId, tenantId } = run.owner;
   const stored = await host.stores.resourceState.get("user", resolveSharedUserCellKey(userId, orgId, run.flowKind), run.rowKey);
-  if (stored === undefined) return { fired: false, refused: "no_row" };
+  if (stored === undefined) return { fired: false, refused: "no_resource" };
   const state = stored.state as { orgId?: unknown; tenantId?: unknown; enabled?: unknown };
   // The row's stored organization and tenant, which must be the ones the nomination names.
   if (state.orgId !== orgId) return { fired: false, refused: "other_org" };

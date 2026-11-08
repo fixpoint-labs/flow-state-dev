@@ -17,7 +17,7 @@ import { runAction } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import {
-  openRowHolds,
+  openOwnHolds,
   GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
 } from "@flow-state-dev/orchestration/internal";
 import {
@@ -88,7 +88,7 @@ function buildFlow() {
     uses: [capability],
     execute: async (input, ctx) => {
       const tasks = await (ctx.cap as any)[capability.name].tasks();
-      const [hold] = openRowHolds(tasks.get("a"));
+      const [hold] = openOwnHolds(tasks.get("a"));
       return tasks.answer("a", { questionId: hold!.id, message: input.message, from: "user", by: USER_ID });
     },
   });

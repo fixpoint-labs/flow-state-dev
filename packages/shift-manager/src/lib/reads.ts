@@ -65,7 +65,7 @@ import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
-import { createInboxClient, inboxItems, taskActionName, taskHoldSchema, taskRowView, type BoardActions, type InboxAnswer, type TaskViewRow, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskActionName, taskHoldSchema, taskView, type BoardActions, type InboxAnswer, type TaskViewInput, type InboxHold, type InboxItem, type InboxTaskInput, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import { withRetiredShapes, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 
 /** Why a read did not load. */
@@ -213,7 +213,7 @@ export type BoardRow = {
   /** Its steers as the Inbox reads them: which question each answers. A question is open while none does. */
   steers: Array<{ id: string; answers?: string }>;
   /**
-   * What its runs spent, folded by orchestration's task-row view: harness,
+   * What its runs spent, folded by orchestration's task view: harness,
    * model, tokens and the vendor's charge. `null` before it runs, or from a
    * board that publishes no spend.
    */
@@ -553,15 +553,15 @@ export function toBoardRow(boardRef: string, ownerSessionId: string, topic: stri
 }
 
 /**
- * A stored row's spend as orchestration's task-row view folds it: `null` when
+ * A stored row's spend as orchestration's task view folds it: `null` when
  * it has none, or when the stored ledger can't be read (the view's fold never
  * throws on a row, so one bad write doesn't fail the board's read).
  */
 function spendOf(boardRef: string, data: unknown): TaskSpendView | null {
-  const spend = field(data, "spend") as TaskViewRow["spend"];
+  const spend = field(data, "spend") as TaskViewInput["spend"];
   if (spend == null) return null;
   const status = text(field(data, "status")) ?? "pending";
-  return taskRowView({ board: boardRef, id: text(field(data, "id")) ?? "", status, spend }).spend;
+  return taskView({ board: boardRef, id: text(field(data, "id")) ?? "", status, spend }).spend;
 }
 
 /**
@@ -647,7 +647,7 @@ export function inboxSection(
  * no action Shift Manager names: `null`, and its questions read as
  * unanswerable here.
  */
-function boardOwnerOf(row: BoardRow): InboxRow["holder"] {
+function boardOwnerOf(row: BoardRow): InboxTaskInput["holder"] {
   return row.boardRef === conversationBoardRef(row.ownerSessionId)
     ? { sessionId: row.ownerSessionId, action: taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION) }
     : null;

@@ -52,7 +52,7 @@ import { serve } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { probeClaudeCodeAccount } from "@flow-state-dev/claude-code";
 import { createInboxClient, taskActionName, type InboxItem } from "@flow-state-dev/orchestration/inbox";
-import { reconcileInbox, rowTruthOf, suspensionTruthOf } from "@flow-state-dev/orchestration/inbox/check";
+import { reconcileInbox, taskTruthOf, suspensionTruthOf } from "@flow-state-dev/orchestration/inbox/check";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, runGoal, silentLogger, stripIntentOverrides, type ModulePatch } from "../../lib/index.mts";
 import { claudeCodeEnv, claudeCodeHarness, selectHarness } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { harnessStub, type HarnessStubOptions, type StubRun } from "@flow-state-dev/harness-manager";
@@ -322,7 +322,7 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
     for (const sessionId of sessions) {
       suspensions.push(...suspensionTruthOf(sessionId, await client.sessions.requests(sessionId, { status: "suspended", includeItems: true })));
     }
-    const truth = { rows: rowTruthOf(rows.map((row) => ({ board, id: row.id, status: row.status, holds: row.holds ?? [], steers: [] }))), suspensions, closed };
+    const truth = { rows: taskTruthOf(rows.map((row) => ({ board, id: row.id, status: row.status, holds: row.holds ?? [], steers: [] }))), suspensions, closed };
     const result = reconcileInbox(await inbox(), truth);
     return result.green ? undefined : show({ ...result, green: undefined });
   };
@@ -345,7 +345,7 @@ async function open(label: string, goal: string, slot: (feeds: any) => HarnessBl
 }
 
 const isHeld = (task: Record<string, any> | undefined) =>
-  task?.status === "in_progress" && (task.holds ?? []).some((hold: any) => hold.source?.kind === "row");
+  task?.status === "in_progress" && (task.holds ?? []).some((hold: any) => hold.source?.kind === "task");
 const isSettled = (task: Record<string, any> | undefined) => ["completed", "errored", "cancelled", "pending"].includes(task?.status);
 const lockFree = (cwd: string | undefined) => cwd !== undefined && !existsSync(`${cwd}.lock`);
 

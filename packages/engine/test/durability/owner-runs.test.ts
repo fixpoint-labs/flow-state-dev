@@ -93,7 +93,7 @@ describe("fireOwnerRunThrough", () => {
     try {
       // Alice's row, nominated as bob's: bob's cell holds no such row.
       await write("alice", "subs/s1", { orgId: ORG, enabled: true });
-      expect(await fireOwnerRunThrough(host, run("bob", "subs/s1"))).toEqual({ fired: false, refused: "no_row" });
+      expect(await fireOwnerRunThrough(host, run("bob", "subs/s1"))).toEqual({ fired: false, refused: "no_resource" });
     } finally {
       await dispose();
     }
@@ -158,7 +158,7 @@ describe("routeServiceEvent", () => {
         input: { runs: [run("alice", "subs/a", "for alice"), run("bob", "subs/a", "for bob")] }
       });
       expect((routed.output as { ranAs: string }).ranAs).toBe("service:github");
-      expect(routed.ownerRuns.map((o) => o.refused ?? "fired")).toEqual(["fired", "no_row"]);
+      expect(routed.ownerRuns.map((o) => o.refused ?? "fired")).toEqual(["fired", "no_resource"]);
       const outputs = await Promise.all(routed.ownerRuns.flatMap((o) => (o.finished === undefined ? [] : [o.finished])));
       expect(outputs.map((r) => r.output)).toEqual([{ ranAs: "alice", note: "for alice" }]);
     } finally {

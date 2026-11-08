@@ -11,7 +11,7 @@
  * the times from the board's `listTasks` rows and the adapter case fails.
  */
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { taskRowView } from "@flow-state-dev/orchestration/inbox";
+import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it } from "vitest";
 import { toBoardTask, type BoardTask, type LabAdapter, type WorkerRow } from "../src/adapter";
 import { TaskCard } from "../src/components/TaskCard";
@@ -26,7 +26,7 @@ const MIN = 60_000;
 /** A task with its row's view, as the adapter reads one: its times are the board's `createdAt` / `startedAt` / `completedAt`. */
 const task = (id: string, over: Partial<BoardTask>, times: { createdAt?: number; startedAt?: number; completedAt?: number } = {}): BoardTask => {
   const t: BoardTask = { id, to: "researcher", title: `Task ${id}`, status: "running", boardStatus: "in_progress", goal: `Task ${id}`, ...over };
-  return { ...t, view: taskRowView({ id, status: t.boardStatus, title: t.title, goal: t.goal, board: "s1", ...times }) };
+  return { ...t, view: taskView({ id, status: t.boardStatus, title: t.title, goal: t.goal, board: "s1", ...times }) };
 };
 
 const TASKS: BoardTask[] = [

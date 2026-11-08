@@ -98,7 +98,7 @@ describe("readSessionPullRequests", () => {
         {
           id: "h1",
           openedAt: 1,
-          source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key: pullRequestKey({ host: "github.com", owner: "acme", name: "app", number: 7 }) }] },
+          source: { kind: "task", closedBy: [{ by: "event", event: "pull-request", key: pullRequestKey({ host: "github.com", owner: "acme", name: "app", number: 7 }) }] },
           ask: { kind: "external", prompt: "Waiting on pull request #7 to merge or close." },
         },
       ],
@@ -107,5 +107,24 @@ describe("readSessionPullRequests", () => {
     expect(pullRequestWait(task, records)?.pullRequests).toEqual([
       { key: pullRequestKey({ host: "github.com", owner: "acme", name: "app", number: 7 }), number: 7, url: "https://github.com/acme/app/pull/7", title: "Fix the bug" },
     ]);
+  });
+
+  // FIX-2479 D1 (BP-030): a screen hands pullRequestWait rows it never parsed (a replayed
+  // stream item from before the upgrade). A wait stored under the retired `"row"` marker is
+  // still the task's own, so the PR-open line stays.
+  it("reads a wait a caller hands it under the retired row marker as the task's own", () => {
+    const key = pullRequestKey({ host: "github.com", owner: "acme", name: "app", number: 7 });
+    const task = {
+      status: "in_progress",
+      holds: [
+        {
+          id: "h1",
+          openedAt: 1,
+          source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key }] },
+          ask: { kind: "external", prompt: "Waiting on pull request #7 to merge or close." },
+        },
+      ],
+    };
+    expect(pullRequestWait(task)).toMatchObject({ holdId: "h1", pullRequests: [{ key, number: 7 }] });
   });
 });

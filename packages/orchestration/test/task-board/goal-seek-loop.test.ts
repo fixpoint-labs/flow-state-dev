@@ -23,7 +23,7 @@ import {
 } from "../../src/task-board";
 import { GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE } from "../../src/task-board/goal-seek-loop";
 import { getOrCreateTaskCollection } from "../../src/tasks";
-import { openRowHolds } from "../../src/tasks/collection/holds";
+import { openOwnHolds } from "../../src/tasks/collection/holds";
 import { setNextDrainUnseeded } from "../../src/task-board/blocks/seed-collection";
 
 // ---------------------------------------------------------------------------
@@ -724,7 +724,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowHolds(collection.get("a")!);
+        const [hold] = openOwnHolds(collection.get("a")!);
         if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });
@@ -776,7 +776,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowHolds(collection.get("a")!);
+        const [hold] = openOwnHolds(collection.get("a")!);
         if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });
@@ -867,7 +867,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
         for (const row of collection.list()) {
-          const [hold] = openRowHolds(row);
+          const [hold] = openOwnHolds(row);
           if (hold !== undefined) await collection.answer!(row.id, { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
         }
       },
@@ -918,7 +918,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowHolds(collection.get("a")!);
+        const [hold] = openOwnHolds(collection.get("a")!);
         if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });

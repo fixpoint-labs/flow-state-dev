@@ -87,7 +87,11 @@ export type Task = {
   completedAt?: number;
 };
 
-/** One hold on a task, wire-shape: a question (`source.kind: "row"`) or a run's stop (`"suspension"`). */
+/**
+ * One hold on a task, wire-shape: the task's own question or confirm (`source.kind: "task"`, or
+ * `"row"` as earlier versions stored it) or a run's stop (`"suspension"`). Read on the stop's marker,
+ * so either marker of the task's own reads the same.
+ */
 export type TaskHoldWire = {
   id: string;
   source: { kind: string };
@@ -105,7 +109,7 @@ const SETTLED: ReadonlySet<string> = new Set(["completed", "errored", "cancelled
 export function waitPrompt(task: Pick<Task, "status" | "holds" | "steers">): string | undefined {
   if (task.holds === undefined || SETTLED.has(task.status)) return undefined;
   const answered = new Set((task.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
-  return task.holds.find((hold) => hold.source.kind !== "row" || !answered.has(hold.id))?.ask.prompt;
+  return task.holds.find((hold) => hold.source.kind === "suspension" || !answered.has(hold.id))?.ask.prompt;
 }
 
 /** Counts payload on `task-board-meta` completion. */

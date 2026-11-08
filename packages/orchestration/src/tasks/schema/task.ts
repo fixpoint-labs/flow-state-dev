@@ -525,9 +525,9 @@ export const taskSchema = z.object({
 
   // FIX-2183; FIX-2133 D2, FIX-2317.
   /**
-   * What holds the task on its row for a person: its
-   * question holds, a question or a confirm kept on the row (`source.kind:
-   * "row"`), and the mirror of a task run's `suspendForUser` stop
+   * What holds the task for a person: its
+   * question holds, the task's own, a question or a confirm (`source.kind:
+   * "task"`), and the mirror of a task run's `suspendForUser` stop
    * (`"suspension"`), oldest first. A question is one kind of hold, beside the
    * filer's (status `held`). *Open holds* (`openHolds`) is the one predicate
    * every reader asks: the claim never takes a row with one, the row settles
@@ -553,7 +553,7 @@ export const taskSchema = z.object({
 
   // FIX-2086; FIX-2133 D3.
   /**
-   * The last open row hold of a running task closed: it owes one
+   * The last open own hold of a running task closed: it owes one
    * more turn on its same attempt, with no lease. The claim takes it, using
    * no attempt, and clears it in the claim's write; a wake only starts that
    * sooner. Not the `keptOpenBy: "steer"`, which keeps its own meaning.

@@ -151,7 +151,7 @@ export function rosterOf(snapshot: LoadedSnapshot): Roster {
 
 /**
  * The Inbox item that shows suspension `suspensionId`: a task's item when its
- * row holds it, else the ask's own. Its id when the Inbox didn't load or
+ * task holds it, else the ask's own. Its id when the Inbox didn't load or
  * doesn't list it, so a link still opens the Inbox.
  */
 export function inboxItemIdOf(snapshot: LoadedSnapshot, suspensionId: string): string {
@@ -180,7 +180,7 @@ export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxI
 export function waitsOnYou(snapshot: LabSnapshot | undefined, row: BoardRow | undefined): boolean {
   if (snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || row === undefined || !snapshot.inbox.ok) return false;
   return snapshot.inbox.value.some(
-    (item) => item.task?.board === row.boardRef && item.task.taskId === row.id && item.holds.some((hold) => hold.source.kind === "row"),
+    (item) => item.task?.board === row.boardRef && item.task.taskId === row.id && item.holds.some((hold) => hold.source.kind === "task"),
   );
 }
 
