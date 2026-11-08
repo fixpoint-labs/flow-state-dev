@@ -27,9 +27,9 @@ export {
   PULL_REQUEST_EVENT,
   pullRequestWait,
   readSessionPullRequests,
-  type PullRequestRecordRow,
+  type PullRequestRecordResourceState,
   type PullRequestWait,
-  type PullRequestWaitRow,
+  type PullRequestWaitInput,
   type SessionPullRequest,
   type WaitedPullRequest,
 } from "./pull-request-wait";

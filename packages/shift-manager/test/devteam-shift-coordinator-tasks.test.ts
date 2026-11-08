@@ -597,7 +597,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(task.status).toBe("errored");
     expect(stub.runs.length).toBeGreaterThan(0);
     // Every attempt was the implement phase's: its prompt names the row and asks for a commit.
-    for (const run of stub.runs) expect(run.prompt).toMatch(/\nRow task_\w+, phase implement, attempt \d/);
+    for (const run of stub.runs) expect(run.prompt).toMatch(/\nTask task_\w+, phase implement, attempt \d/);
     // The row's id is the board's, so the issue the filer named is rendered on its own:
     // without it the coder is told which row it holds and never which issue.
     for (const run of stub.runs) expect(run.prompt).toContain("\nIssue greeting.");
@@ -626,7 +626,8 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     const stub = readsMarker({
       duringRun: async (run) => {
         // A feature run commits; the conversation's run holds until the feature row is done.
-        if (run.prompt.includes("\nRow ")) {
+        // Only the implement phase's task line names a phase: the answer prompt writes `Task <id>, attempt <n>.` too.
+        if (/\nTask \S+, phase /.test(run.prompt)) {
           writeFileSync(join(run.cwd, "GREETING.md"), "hello\n");
           commitAll(run.cwd, "feature run: add the greeting");
           return;

@@ -46,7 +46,7 @@ export interface HarnessReadinessSlot {
 }
 
 /** One harness's readiness, as last read. */
-export const harnessReadinessRowSchema = z.object({
+export const harnessReadinessViewSchema = z.object({
   /** The harness's key, as the host names it (`codex`). */
   harness: z.string(),
   /** The name the user sees. */
@@ -62,7 +62,7 @@ export const harnessReadinessRowSchema = z.object({
   checkedAt: z.number(),
 });
 
-export type HarnessReadinessRow = z.infer<typeof harnessReadinessRowSchema>;
+export type HarnessReadinessView = z.infer<typeof harnessReadinessViewSchema>;
 
 /** Options for {@link harnessReadiness}. */
 export interface HarnessReadinessOptions {
@@ -84,7 +84,7 @@ export interface HarnessReadinessRead {
    * Every harness's row, in {@link harnesses} order. Runs a check for any
    * harness with no row yet, and for those `refresh` names. Never throws.
    */
-  read(options?: ReadReadinessOptions): Promise<HarnessReadinessRow[]>;
+  read(options?: ReadReadinessOptions): Promise<HarnessReadinessView[]>;
   /**
    * Why a task on `harness` can't start, as a sentence that names it and
    * says what to do, or `undefined` when it can. A ready row answers without
@@ -108,10 +108,10 @@ export function harnessReadiness(
   const harnesses = Object.keys(slots);
   if (harnesses.length === 0) throw new Error("harnessReadiness: no harness to check.");
   const timeoutMs = options.timeoutMs ?? READINESS_CHECK_TIMEOUT_MS;
-  const rows = new Map<string, HarnessReadinessRow>();
-  const inFlight = new Map<string, Promise<HarnessReadinessRow>>();
+  const rows = new Map<string, HarnessReadinessView>();
+  const inFlight = new Map<string, Promise<HarnessReadinessView>>();
 
-  const run = (harness: string): Promise<HarnessReadinessRow> => {
+  const run = (harness: string): Promise<HarnessReadinessView> => {
     const running = inFlight.get(harness);
     if (running !== undefined) return running;
     const slot = slots[harness]!;
@@ -151,7 +151,7 @@ export function harnessReadiness(
 }
 
 /** A task's refusal on a harness that isn't ready, or whose check got no answer. */
-function refusalOf(row: HarnessReadinessRow): string {
+function refusalOf(row: HarnessReadinessView): string {
   const why = `${withStop(row.reason ?? "its check failed")}${remedyOf(row)}`;
   return row.unanswered
     ? `Couldn't tell whether ${row.label} is set up on this machine: ${why} Try starting the task again in a moment.`
@@ -159,7 +159,7 @@ function refusalOf(row: HarnessReadinessRow): string {
 }
 
 /** The row's remedy as a trailing sentence, or nothing. */
-function remedyOf(row: HarnessReadinessRow): string {
+function remedyOf(row: HarnessReadinessView): string {
   return row.remedy === null ? "" : ` ${withStop(row.remedy)}`;
 }
 
@@ -197,7 +197,7 @@ async function checkWithin(check: HarnessReadinessCheck, timeoutMs: number): Pro
 }
 
 /** A row from one check's answer. */
-function rowOf(harness: string, label: string, answer: HarnessReadiness, checkedAt: number): HarnessReadinessRow {
+function rowOf(harness: string, label: string, answer: HarnessReadiness, checkedAt: number): HarnessReadinessView {
   if (answer.ready) return { harness, label, ready: true, reason: null, remedy: null, unanswered: false, checkedAt };
   return {
     harness,
@@ -223,7 +223,7 @@ function messageOf(error: unknown): string {
  * that got no answer, under a heading. The start log and the coordinator's
  * context both print this.
  */
-export function formatHarnessReadiness(rows: readonly HarnessReadinessRow[]): string {
+export function formatHarnessReadiness(rows: readonly HarnessReadinessView[]): string {
   const lines = rows.map((row) => {
     if (row.ready) return `✓ ${row.label}`;
     return `${row.unanswered ? "?" : "✗"} ${row.label}: ${withStop(row.reason ?? "its check failed")}${remedyOf(row)}`;
@@ -236,7 +236,7 @@ export function formatHarnessReadiness(rows: readonly HarnessReadinessRow[]): st
  * `actions: { harnessReadiness: harnessReadinessAction(readiness) }`.
  *
  * Input `{ refresh?: boolean }`; `refresh: true` is Re-check. Output
- * `{ harnesses }`, one {@link HarnessReadinessRow} per harness. Zero-model.
+ * `{ harnesses }`, one {@link HarnessReadinessView} per harness. Zero-model.
  */
 export function harnessReadinessAction(readiness: HarnessReadinessRead) {
   return {
@@ -246,7 +246,7 @@ export function harnessReadinessAction(readiness: HarnessReadinessRead) {
     block: handler({
       name: "harness-readiness",
       inputSchema: z.object({ refresh: z.boolean().optional() }),
-      outputSchema: z.object({ harnesses: z.array(harnessReadinessRowSchema) }),
+      outputSchema: z.object({ harnesses: z.array(harnessReadinessViewSchema) }),
       execute: async (input) => ({ harnesses: await readiness.read({ refresh: input.refresh === true }) }),
     }),
   };

@@ -60,8 +60,8 @@ import {
   readSessionPullRequests,
   readRecordedWork,
   reviewDetail,
-  type PullRequestRecordRow,
-  type PullRequestWaitRow,
+  type PullRequestRecordResourceState,
+  type PullRequestWaitInput,
   type ReviewDetail,
 } from "@flow-state-dev/harness-manager/browser";
 import {
@@ -973,8 +973,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
    * read then and the board's poll reads nothing more. A read that fails is tried again on the next
    * poll; until one succeeds the wait shows its numbers, without links.
    */
-  const pullRequestReads = new Map<string, Promise<PullRequestRecordRow[]>>();
-  const pullRequestRecords = async (runSession: string, key: string): Promise<PullRequestRecordRow[]> => {
+  const pullRequestReads = new Map<string, Promise<PullRequestRecordResourceState[]>>();
+  const pullRequestRecords = async (runSession: string, key: string): Promise<PullRequestRecordResourceState[]> => {
     try {
       return await (pullRequestReads.get(key) ?? keptUnlessFailed(pullRequestReads, key, readSessionPullRequests(fsd, runSession)));
     } catch (cause) {
@@ -984,8 +984,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
   };
 
   /** What a listed task's open pull-request wait reads, or `undefined` when it waits on none. */
-  const waitOf = (task: Listed, records: readonly PullRequestRecordRow[] = []) =>
-    pullRequestWait({ status: task.status, holds: (task.holds ?? []) as unknown as PullRequestWaitRow["holds"] }, records);
+  const waitOf = (task: Listed, records: readonly PullRequestRecordResourceState[] = []) =>
+    pullRequestWait({ status: task.status, holds: (task.holds ?? []) as unknown as PullRequestWaitInput["holds"] }, records);
 
   /** The pull requests a listed task waits on, each with its link from its run session's record; `undefined` when it waits on none. */
   const pullRequestsOf = async (task: Listed): Promise<TaskRow["pullRequests"]> => {

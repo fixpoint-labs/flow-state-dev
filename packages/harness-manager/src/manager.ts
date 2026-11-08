@@ -114,7 +114,7 @@ import {
   RUNS,
   assertPlaceAndHeld,
   heldSchema,
-  placeStateSchema,
+  placeStatusSchema,
   openRunRow,
   readConfirmedSession,
   readRunRow,
@@ -123,8 +123,8 @@ import {
   writeRunRow,
   type AttemptIdentity,
   type HeldRecord,
-  type PlaceState,
-  type RunRowWrite,
+  type PlaceStatus,
+  type RunRecordWrite,
 } from "./run-record";
 import {
   failedHeldRecord,
@@ -1158,7 +1158,7 @@ const managerStateSchema = z.object({
    * The run record's `place` when this attempt opened: the host the run was
    * last ready on. Handed to `provision` and never written back from here.
    */
-  recordedPlace: z.object({ host: z.string(), state: placeStateSchema }).nullable().default(null),
+  recordedPlace: z.object({ host: z.string(), state: placeStatusSchema }).nullable().default(null),
   /**
    * The run record's `held`, read when the attempt opened and kept current by
    * every hold this attempt writes: the key a new hold replaces.
@@ -1203,7 +1203,7 @@ export class HarnessAttemptSuperseded extends Error {
   constructor(where: string) {
     super(
       `[harness-manager] this attempt was superseded before ${where}; stopping rather than ` +
-        `continuing to work a row another attempt now holds.`,
+        `continuing to work a task another attempt now holds.`,
     );
     this.name = "HarnessAttemptSuperseded";
   }
@@ -1224,7 +1224,7 @@ export class HarnessAttemptSuperseded extends Error {
  * own fence.
  */
 async function fenced(
-  write: Promise<RunRowWrite>,
+  write: Promise<RunRecordWrite>,
   where: string,
 ): Promise<void> {
   if ((await write) === "refused") throw new HarnessAttemptSuperseded(where);
@@ -1310,7 +1310,7 @@ function identityFrom(
   if (state?.topic == null || state.taskId == null || state.attempt == null) {
     throw new Error(
       "[harness-manager] the manager's sequencer state is empty — this block ran outside the " +
-        "manager, or before the row was opened.",
+        "manager, or before the run record was opened.",
     );
   }
   return {
@@ -2003,7 +2003,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (collection === undefined) {
       throw new Error(
         `[harness-manager] the board ledger "${boardCollectionId}" is not registered on this ` +
-          `worker, so its rows cannot be read or asked a question on.`,
+          `worker, so its tasks cannot be read or asked a question on.`,
       );
     }
     return getOrCreateTaskCollection({
@@ -2228,7 +2228,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * Write where the run's place stands, where the host holds work. With
    * holding off this is never called and the record gains no `place`.
    */
-  const recordPlace = async (ctx: BlockContext, placeHost: string, placeState: PlaceState): Promise<void> => {
+  const recordPlace = async (ctx: BlockContext, placeHost: string, placeState: PlaceStatus): Promise<void> => {
     await fenced(
       writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), {
         place: { host: placeHost, state: placeState },
@@ -2389,7 +2389,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         const sameIncarnation =
           claim.incarnationId === null || row?.incarnationId === undefined || row.incarnationId === claim.incarnationId;
         if (row === undefined || row.attempts !== input.attempts || row.status !== "in_progress" || !sameIncarnation) {
-          throw new HarnessAttemptSuperseded("the run was opened (its claim names no live row of this attempt)");
+          throw new HarnessAttemptSuperseded("the run was opened (its claim names no live task of this attempt)");
         }
         claim = { ...claim, incarnationId: claim.incarnationId ?? row.incarnationId ?? null };
         assertDerivedIdentity("the claim's ledger id", claim.collectionId);
@@ -2601,7 +2601,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           identityOf(ctx, harnessCtxState(ctx)),
           { workspacePath, branch, childSessionId: ctx.session.identity.id, run, runKey, ...(requestIds !== undefined ? { requestIds } : {}) },
         ),
-        "the run row was opened",
+        "the run record was opened",
       );
     },
   });
@@ -2661,7 +2661,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // A null read means the place has no row.
       return read === null ? null : worktreeKey(host.hostId(), place);
     } catch (error) {
-      ctx.emit.status(`The run's worktree row was not updated: ${error instanceof Error ? error.message : String(error)}`, {
+      ctx.emit.status(`The run's worktree resource was not updated: ${error instanceof Error ? error.message : String(error)}`, {
         transient: false,
       });
       return null;
@@ -3522,7 +3522,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (verdict === "complete") {
       // A wake's own words go with it: the task is done, and nothing is left owed.
       if (woken !== undefined) await takeSteersFor(ctx, `pull-request-wake:${ctx.request.identity.id}`, () => []);
-      await fenced(writeRunRow(ctx, identity, { outcome: "succeeded", reason: null, ...confirmed }), "the row was completed");
+      await fenced(writeRunRow(ctx, identity, { outcome: "succeeded", reason: null, ...confirmed }), "the run record was completed");
       return settled;
     }
     const board = await runBoard(ctx);
@@ -3667,7 +3667,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       }
       await fenced(
         writeRunRow(ctx, identity, { outcome: "succeeded", reason: null }),
-        "the row was completed",
+        "the run record was completed",
       );
       return output;
     },
@@ -4334,7 +4334,7 @@ function assertFeatureRowIdentity(
   // own identity says does not exist.
   if (!sameSegment(phaseName, configuredPhase)) {
     throw new HarnessAttemptFailed(
-      `[harness-manager] task ${taskId} is a "${phaseName}" row on a manager ` +
+      `[harness-manager] task ${taskId} is a "${phaseName}" task on a manager ` +
         `configured for "${configuredPhase}". Refusing rather than running ` +
         `${configuredPhase}'s prompt and completion check against it.`,
     );
@@ -4359,7 +4359,7 @@ function assertFeatureRowIdentity(
     throw new HarnessAttemptFailed(
       `[harness-manager] task ${taskId} carries the payload for ${canonicalId}. ` +
         `Refusing: the checkout, the branch and the run record are all derived from ` +
-        `that payload, so a second row under a different id would run the same work ` +
+        `that payload, so a second task under a different id would run the same work ` +
         `in the same tree.`,
     );
   }

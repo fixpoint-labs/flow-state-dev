@@ -93,8 +93,8 @@ const runOutcomeSchema = z.enum(["running", "succeeded", "failed"]);
  * Where a run's place stands, on a host that holds a run's work. The host's
  * `provision` reports none of these words; the manager writes them around it.
  */
-export const placeStateSchema = z.enum(["provisioning", "ready", "refused", "lost", "restoring"]);
-export type PlaceState = z.infer<typeof placeStateSchema>;
+export const placeStatusSchema = z.enum(["provisioning", "ready", "refused", "lost", "restoring"]);
+export type PlaceStatus = z.infer<typeof placeStatusSchema>;
 
 /** One hold of a run's work, as the run record keeps it. */
 export const heldSchema = z.object({
@@ -261,7 +261,7 @@ export const runRecordStateSchema = z.object({
   place: z
     .object({
       host: z.string(),
-      state: placeStateSchema,
+      state: placeStatusSchema,
     })
     .nullable()
     .default(null),
@@ -414,7 +414,7 @@ const ATTEMPT_SCOPED_CLEAR = {
 } as const;
 
 /** What {@link writeRunRow} did. */
-export type RunRowWrite = "applied" | "refused";
+export type RunRecordWrite = "applied" | "refused";
 
 /** The identity a write is fenced against. */
 export interface AttemptIdentity {
@@ -572,7 +572,7 @@ export async function writeRunRow(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
   update: Partial<RunRecordState>,
-): Promise<RunRowWrite> {
+): Promise<RunRecordWrite> {
   const runs = collectionRef(ctx, RUNS);
   const row =
     identity.readBoardRow !== undefined
@@ -658,7 +658,7 @@ export async function openRunRow(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
   opened: { workspacePath: string; branch: string; childSessionId: string; run?: number; runKey?: string; requestIds?: string[] },
-): Promise<RunRowWrite> {
+): Promise<RunRecordWrite> {
   return writeRunRow(ctx, identity, {
     ...ATTEMPT_SCOPED_CLEAR,
     workspacePath: opened.workspacePath,
