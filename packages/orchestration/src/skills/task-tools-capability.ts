@@ -77,14 +77,14 @@ import {
   taskHoldSchema,
   type QuestionAnswer,
   type QuestionInit,
-  type RowHold,
+  type OwnHold,
 } from "../tasks";
 import { TaskWriteRefusedError } from "../tasks/collection/refused-write";
 import type { TaskUpdateField } from "../tasks/collection/field-rules";
 import { withoutNoticeMarkers, cancelledDependents } from "../tasks/notice/task-notice";
 import { MAX_STEERS } from "../tasks/schema/steer";
 import { MAX_QUESTION_PROMPT } from "../tasks/schema/hold";
-import { externalHoldOf, isRowHold, steerPlacesTaken } from "../tasks/collection/holds";
+import { externalHoldOf, isOwnHold, steerPlacesTaken } from "../tasks/collection/holds";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
 // the task-board's public API to advertise it.
@@ -548,7 +548,7 @@ function resolveFollowUp(
         `no session to follow up in. File a new task instead. Nothing was filed.`,
     };
   }
-  // The follow-up's id is the root's, with the lowest number no row holds.
+  // The follow-up's id is the root's, with the lowest number no task holds.
   // Two follow-ups filed at once pick the same id, and the ledger's insert
   // takes one id once: the loser is refused, and files again.
   let number = 1;
@@ -607,7 +607,7 @@ export interface TaskTurnToolOptions {
 export type ReportProgressOptions = TaskTurnToolOptions;
 
 /** The row a task turn holds, with the ticket that proves it. */
-interface HeldRow {
+interface HeldTask {
   readonly claim: TaskClaimTicket;
   readonly ledger: TaskCollectionRef;
   readonly row: Task | undefined;
@@ -628,7 +628,7 @@ interface HeldRow {
 async function claimedRowOf(
   resolve: (ctx: BlockContext) => Promise<TaskCollectionRef | undefined>,
   ctx: BlockContext,
-): Promise<HeldRow | undefined> {
+): Promise<HeldTask | undefined> {
   if (!isTaskTurn(ctx)) return undefined;
   const ledger = await resolve(ctx);
   if (ledger === undefined) return undefined;
@@ -1670,7 +1670,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     const row = collection.get(input.id);
     if (row === undefined || !callerReaches(ctx, row)) return taskNotFoundError(input.id);
     const hold = row.holds?.find((h) => h.id === input.answers);
-    if (hold === undefined || !isRowHold(hold)) {
+    if (hold === undefined || !isOwnHold(hold)) {
       return refuse(`no_such_question: task "${input.id}" holds no question "${input.answers}". Read its open questions with getTask.`);
     }
     if (hold.ask.kind === "external") {
@@ -1729,7 +1729,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * with the No and its note as the reason. Retried after it landed, the same
    * No is a success; a task that finished another way is refused as finished.
    */
-  async function cancelOnNo(ctx: BlockContext, collection: TaskCollectionRef, row: Task, hold: RowHold, note: string | undefined) {
+  async function cancelOnNo(ctx: BlockContext, collection: TaskCollectionRef, row: Task, hold: OwnHold, note: string | undefined) {
     const reason = `No to "${hold.ask.prompt}"${note !== undefined && note.trim().length > 0 ? `: ${note}` : ""}`;
     if (isTerminalStatus(row.status)) {
       return row.status === "cancelled" && row.error === reason ? { ok: true as const } : lockedError(row, ["message"]);
@@ -1780,7 +1780,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     name: named("listTasks"),
     description:
       "List tasks on your delegation board, optionally filtered by status, assignee, or the task " +
-      "whose request filed them (filedByTask). Rows carry each task's status note, never its output: " +
+      "whose request filed them (filedByTask). Each listed task carries its status note, never its output: " +
       "read one task's output with getTask. Don't list to wait for a task you filed to end: end " +
       "your turn, and its ending wakes you.",
     inputSchema: z.object({

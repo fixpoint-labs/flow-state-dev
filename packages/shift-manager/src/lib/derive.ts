@@ -7,7 +7,7 @@ import { isDone } from "./columns";
 import {
   GENERAL_TEAM,
   type Ask,
-  type BoardRow,
+  type BoardTaskView,
   type Failure,
   type LabSnapshot,
   type Project,
@@ -20,8 +20,8 @@ import {
 /** A loaded snapshot (not a refusal, not an unreachable Lab). */
 export type LoadedSnapshot = Exclude<LabSnapshot, { refused: Failure } | { unreachable: Failure }>;
 
-/** Every row on every board that loaded, across conversations. */
-export function allRows(snapshot: LoadedSnapshot): BoardRow[] {
+/** Every task on every board that loaded, across conversations. */
+export function allTasks(snapshot: LoadedSnapshot): BoardTaskView[] {
   return Object.values(snapshot.boards).flatMap((boards) => (boards.ok ? boards.value.rows : []));
 }
 
@@ -32,7 +32,7 @@ export function allRows(snapshot: LoadedSnapshot): BoardRow[] {
  * are two boards; else the worker the conversation is with
  * (`@<worker>`); else the conversation's id.
  */
-export function boardOwnerOf(snapshot: LoadedSnapshot, row: BoardRow): string {
+export function boardOwnerOf(snapshot: LoadedSnapshot, row: BoardTaskView): string {
   const session = snapshot.sessions.find((s) => s.id === row.ownerSessionId);
   if (session === undefined) return row.ownerSessionId;
   const workstream = workstreamOf(session);
@@ -42,9 +42,9 @@ export function boardOwnerOf(snapshot: LoadedSnapshot, row: BoardRow): string {
 }
 
 // BR-15.
-/** The rows Tasks shows: every attached board's, excluding done ones. */
-export function openRows(snapshot: LoadedSnapshot): BoardRow[] {
-  return allRows(snapshot).filter((row) => !isDone(row.status));
+/** The tasks Tasks shows: every attached board's, excluding done ones. */
+export function openTasks(snapshot: LoadedSnapshot): BoardTaskView[] {
+  return allTasks(snapshot).filter((row) => !isDone(row.status));
 }
 
 /** The workers a row's assignee is resolved against. */
@@ -66,7 +66,7 @@ export type Roster = { workers: readonly Worker[] };
  * not published to a browser, and a declared assignee-to-worker map
  * arrives in a later release.
  */
-export function workerFor(roster: Roster, row: BoardRow): Worker | undefined {
+export function workerFor(roster: Roster, row: BoardTaskView): Worker | undefined {
   if (row.assignee === null) return undefined;
   const exact = roster.workers.find((worker) => worker.id === row.assignee);
   if (exact !== undefined) return exact;
@@ -85,9 +85,9 @@ export type WorkerState = {
   worker: Worker;
   status: ShiftStatus;
   /** Its rows that are running, waiting on you included, in board order: its slots in use. */
-  held: BoardRow[];
+  held: BoardTaskView[];
   /** Of `held`, the rows held on a question or confirm for you (their Inbox item's board holds). */
-  waitsOnYou: BoardRow[];
+  waitsOnYou: BoardTaskView[];
   /** Its pending asks, in Inbox's order. */
   asks: Ask[];
 };
@@ -125,7 +125,7 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
   const workers = new Map<string, WorkerState>(
     roster.workers.map((worker) => [worker.id, { worker, status: "off shift", held: [], waitsOnYou: [], asks: [] }]),
   );
-  for (const row of allRows(snapshot)) {
+  for (const row of allTasks(snapshot)) {
     if (row.status !== "in_progress") continue;
     const owner = workerFor(roster, row);
     if (owner === undefined) continue;
@@ -151,7 +151,7 @@ export function rosterOf(snapshot: LoadedSnapshot): Roster {
 
 /**
  * The Inbox item that shows suspension `suspensionId`: a task's item when its
- * row holds it, else the ask's own. Its id when the Inbox didn't load or
+ * task holds it, else the ask's own. Its id when the Inbox didn't load or
  * doesn't list it, so a link still opens the Inbox.
  */
 export function inboxItemIdOf(snapshot: LoadedSnapshot, suspensionId: string): string {
@@ -177,10 +177,10 @@ export function inboxItemAt(snapshot: LoadedSnapshot, id: string | null): InboxI
  * for you (an approval, a review) shows that stop as an ask instead
  * ({@link asksOfTask}). `false` while the snapshot or its Inbox isn't read.
  */
-export function waitsOnYou(snapshot: LabSnapshot | undefined, row: BoardRow | undefined): boolean {
+export function waitsOnYou(snapshot: LabSnapshot | undefined, row: BoardTaskView | undefined): boolean {
   if (snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || row === undefined || !snapshot.inbox.ok) return false;
   return snapshot.inbox.value.some(
-    (item) => item.task?.board === row.boardRef && item.task.taskId === row.id && item.holds.some((hold) => hold.source.kind === "row"),
+    (item) => item.task?.board === row.boardRef && item.task.taskId === row.id && item.holds.some((hold) => hold.source.kind === "task"),
   );
 }
 
@@ -191,7 +191,7 @@ export function waitsOnYou(snapshot: LabSnapshot | undefined, row: BoardRow | un
  * the very request the link names. Empty while the snapshot or its asks
  * aren't read.
  */
-export function asksOfTask(snapshot: LabSnapshot | undefined, row: BoardRow | undefined): Ask[] {
+export function asksOfTask(snapshot: LabSnapshot | undefined, row: BoardTaskView | undefined): Ask[] {
   if (snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined || !snapshot.asks.ok || row?.run == null) return [];
   const { sessionId, requestId } = row.run;
   return snapshot.asks.value.filter(
@@ -299,7 +299,7 @@ export function shiftCoordinatorOf(workers: readonly Worker[]): ShiftCoordinator
 }
 
 /** Whether a row is running. */
-const isRunning = (row: BoardRow) => row.status === "in_progress";
+const isRunning = (row: BoardTaskView) => row.status === "in_progress";
 
 /** The first failed board read, if any. */
 function boardFailure(snapshot: LoadedSnapshot): Failure | undefined {
@@ -322,7 +322,7 @@ export function shiftSummary(snapshot: LoadedSnapshot): {
 } {
   const boardsFailed = boardFailure(snapshot);
   const failed = snapshot.inventory.ok ? boardsFailed : snapshot.inventory.failure;
-  const running = openRows(snapshot).filter(isRunning);
+  const running = openTasks(snapshot).filter(isRunning);
   return {
     inbox: snapshot.inbox,
     asks: snapshot.asks,

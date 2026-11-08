@@ -4,17 +4,17 @@
  * surfacing live-created topics absent from the fetched window.
  */
 import { describe, expect, it } from "vitest";
-import type { CollectionItemHandle } from "@flow-state-dev/client";
+import type { CollectionResourceHandle } from "@flow-state-dev/client";
 import { applyLiveOverlay } from "../src/hooks/useResourceCollectionList";
 
-const handle = (topic: string, clientData: unknown): CollectionItemHandle => ({
+const handle = (topic: string, clientData: unknown): CollectionResourceHandle => ({
   topic,
   clientData,
   fetchContent: async () => null,
 });
 
 // Stand-in for useResourceCollection's `wrap`: builds a handle from a raw item.
-const wrap = (raw: { topic: string; clientData?: unknown }): CollectionItemHandle => ({
+const wrap = (raw: { topic: string; clientData?: unknown }): CollectionResourceHandle => ({
   topic: raw.topic,
   clientData: raw.clientData,
   fetchContent: async () => null,

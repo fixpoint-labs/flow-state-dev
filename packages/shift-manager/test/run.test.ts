@@ -9,7 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
 import { connect } from "../src/lib/connection";
-import { collectionOfBoard, createLabReader, type BoardRow } from "../src/lib/reads";
+import { collectionOfBoard, createLabReader, type BoardTaskView } from "../src/lib/reads";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import {
   followRequest,
@@ -32,12 +32,12 @@ let served: ServedLab;
 let client: Client;
 
 /** The lead's conversation board's rows, as Shift Manager's own board read returns them. */
-async function rows(): Promise<BoardRow[]> {
+async function rows(): Promise<BoardTaskView[]> {
   return createLabReader(client).readBoard(lab.conversation);
 }
 
 /** The row for a filed task, once its run has linked itself: running on the shared flow, or on a worker's own. */
-async function linked(kind: "running" | "short", workerFlow: "own" | "shared"): Promise<BoardRow> {
+async function linked(kind: "running" | "short", workerFlow: "own" | "shared"): Promise<BoardTaskView> {
   const worker = lab.workers.find((w) => (workerFlow === "own" ? w.id === lab.ownWorker!.id : w.flow === lab.sharedFlow!));
   const filed = lab.filed.find((f) => f.kind === kind && (kind === "short" || f.workerId === worker!.id))!;
   return eventually(async () => (await rows()).find((r) => r.id === filed.taskId && r.run !== null), `${filed.taskId}'s run link`);

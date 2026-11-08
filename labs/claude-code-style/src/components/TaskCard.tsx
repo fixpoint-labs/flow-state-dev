@@ -1,4 +1,4 @@
-import type { TaskRow } from "../adapter";
+import type { LabTask } from "../adapter";
 import { TASK_STATUS, taskSignalTone } from "../lib/task-status";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
@@ -16,7 +16,7 @@ import { harnessLabelOf, pullRequestOpenLine, waitsOnPullRequest } from "./Threa
  */
 
 /** A running or waiting task, at full size. */
-export function TaskCard({ task, selected, onOpen, now, stale = false }: { task: TaskRow; selected: boolean; onOpen: () => void; now: number; stale?: boolean }) {
+export function TaskCard({ task, selected, onOpen, now, stale = false }: { task: LabTask; selected: boolean; onOpen: () => void; now: number; stale?: boolean }) {
   const status = TASK_STATUS[task.status];
   return (
     <button
@@ -45,7 +45,7 @@ export function TaskCard({ task, selected, onOpen, now, stale = false }: { task:
 }
 
 /** A finished task, on one line: its mark, title, worker, what it spent and how long ago it ended. */
-export function TaskDoneRow({ task, selected, onOpen, now }: { task: TaskRow; selected: boolean; onOpen: () => void; now: number }) {
+export function TaskDoneRow({ task, selected, onOpen, now }: { task: LabTask; selected: boolean; onOpen: () => void; now: number }) {
   const status = TASK_STATUS[task.status];
   return (
     <button

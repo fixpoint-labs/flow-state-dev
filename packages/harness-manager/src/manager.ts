@@ -67,7 +67,7 @@ import {
   STEERED_WHILE_RUNNING,
   answerOf,
   hasFrozenLedgerAssignee,
-  isRowHold,
+  isOwnHold,
   MAX_STEERS,
   readCommittedTask,
   shownSteer,
@@ -85,7 +85,7 @@ import {
   type DefinedTaskCollection,
   type Task,
   type TaskClaimTicket,
-  type RowHold,
+  type OwnHold,
   type TaskCollectionRef,
   type TaskSteer,
   type TaskWorker,
@@ -114,17 +114,17 @@ import {
   RUNS,
   assertPlaceAndHeld,
   heldSchema,
-  placeStateSchema,
-  openRunRow,
+  placeStatusSchema,
+  openRunRecord,
   readConfirmedSession,
-  readRunRow,
+  readRunRecord,
   runRecordCollection,
   runTopic,
-  writeRunRow,
+  writeRunRecord,
   type AttemptIdentity,
   type HeldRecord,
-  type PlaceState,
-  type RunRowWrite,
+  type PlaceStatus,
+  type RunRecordWrite,
 } from "./run-record";
 import {
   failedHeldRecord,
@@ -1158,7 +1158,7 @@ const managerStateSchema = z.object({
    * The run record's `place` when this attempt opened: the host the run was
    * last ready on. Handed to `provision` and never written back from here.
    */
-  recordedPlace: z.object({ host: z.string(), state: placeStateSchema }).nullable().default(null),
+  recordedPlace: z.object({ host: z.string(), state: placeStatusSchema }).nullable().default(null),
   /**
    * The run record's `held`, read when the attempt opened and kept current by
    * every hold this attempt writes: the key a new hold replaces.
@@ -1203,7 +1203,7 @@ export class HarnessAttemptSuperseded extends Error {
   constructor(where: string) {
     super(
       `[harness-manager] this attempt was superseded before ${where}; stopping rather than ` +
-        `continuing to work a row another attempt now holds.`,
+        `continuing to work a task another attempt now holds.`,
     );
     this.name = "HarnessAttemptSuperseded";
   }
@@ -1224,7 +1224,7 @@ export class HarnessAttemptSuperseded extends Error {
  * own fence.
  */
 async function fenced(
-  write: Promise<RunRowWrite>,
+  write: Promise<RunRecordWrite>,
   where: string,
 ): Promise<void> {
   if ((await write) === "refused") throw new HarnessAttemptSuperseded(where);
@@ -1310,7 +1310,7 @@ function identityFrom(
   if (state?.topic == null || state.taskId == null || state.attempt == null) {
     throw new Error(
       "[harness-manager] the manager's sequencer state is empty — this block ran outside the " +
-        "manager, or before the row was opened.",
+        "manager, or before the run record was opened.",
     );
   }
   return {
@@ -2003,7 +2003,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (collection === undefined) {
       throw new Error(
         `[harness-manager] the board ledger "${boardCollectionId}" is not registered on this ` +
-          `worker, so its rows cannot be read or asked a question on.`,
+          `worker, so its tasks cannot be read or asked a question on.`,
       );
     }
     return getOrCreateTaskCollection({
@@ -2158,7 +2158,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     }
     if (state?.topic != null && state.taskId != null && state.attempt != null) {
       await fenced(
-        writeRunRow(ctx, identityOf(ctx, state), {
+        writeRunRecord(ctx, identityOf(ctx, state), {
           lastSave: { at: Date.now(), conflicts: leftAlone, error },
         }),
         "the run's kept files were saved",
@@ -2191,7 +2191,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const recorded = recordedHoldOf(previous);
     const writeHeld = (held: HeldRecord, where: string) =>
       withHoldRetries(
-        () => fenced(writeRunRow(ctx, identity, { held }), where),
+        () => fenced(writeRunRecord(ctx, identity, { held }), where),
         (error) => !(error instanceof HarnessAttemptSuperseded),
       );
 
@@ -2228,9 +2228,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * Write where the run's place stands, where the host holds work. With
    * holding off this is never called and the record gains no `place`.
    */
-  const recordPlace = async (ctx: BlockContext, placeHost: string, placeState: PlaceState): Promise<void> => {
+  const recordPlace = async (ctx: BlockContext, placeHost: string, placeState: PlaceStatus): Promise<void> => {
     await fenced(
-      writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), {
+      writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), {
         place: { host: placeHost, state: placeState },
       }),
       `the place was recorded ${placeState}`,
@@ -2329,7 +2329,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const identity = identityOf(ctx, state);
     const held = state.held === null ? null : { ...state.held, parked: true };
     await fenced(
-      writeRunRow(ctx, identity, {
+      writeRunRecord(ctx, identity, {
         ...(placeHost !== null ? { place: { host: placeHost, state: "lost" as const } } : {}),
         held,
       }),
@@ -2389,7 +2389,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         const sameIncarnation =
           claim.incarnationId === null || row?.incarnationId === undefined || row.incarnationId === claim.incarnationId;
         if (row === undefined || row.attempts !== input.attempts || row.status !== "in_progress" || !sameIncarnation) {
-          throw new HarnessAttemptSuperseded("the run was opened (its claim names no live row of this attempt)");
+          throw new HarnessAttemptSuperseded("the run was opened (its claim names no live task of this attempt)");
         }
         claim = { ...claim, incarnationId: claim.incarnationId ?? row.incarnationId ?? null };
         assertDerivedIdentity("the claim's ledger id", claim.collectionId);
@@ -2517,7 +2517,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // the prompt before anything is provisioned. A run already provisioned
       // keeps the repository its record names (see `pinnedAnswer`). With a
       // fixed `sourceRepo` this is the path `checkoutPathFor` derives.
-      const recorded = await readRunRow(ctx, topic);
+      const recorded = await readRunRecord(ctx, topic);
       try {
         assertPlaceAndHeld(recorded);
       } catch (corrupt) {
@@ -2550,7 +2550,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 
       // **Read the session the LAST attempt confirmed, before opening clears it.**
       //
-      // `openRunRow` applies the attempt-scoped clear, which sets `sessionId` to
+      // `openRunRecord` applies the attempt-scoped clear, which sets `sessionId` to
       // null — correctly, since the field describes the attempt now running and
       // this one has not reported yet. So the read has to happen here: after the
       // open, it is always `null`.
@@ -2596,12 +2596,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           ].slice(-MAX_TASK_REQUESTS)
         : undefined;
       await fenced(
-        openRunRow(
+        openRunRecord(
           ctx,
           identityOf(ctx, harnessCtxState(ctx)),
           { workspacePath, branch, childSessionId: ctx.session.identity.id, run, runKey, ...(requestIds !== undefined ? { requestIds } : {}) },
         ),
-        "the run row was opened",
+        "the run record was opened",
       );
     },
   });
@@ -2661,7 +2661,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // A null read means the place has no row.
       return read === null ? null : worktreeKey(host.hostId(), place);
     } catch (error) {
-      ctx.emit.status(`The run's worktree row was not updated: ${error instanceof Error ? error.message : String(error)}`, {
+      ctx.emit.status(`The run's worktree resource was not updated: ${error instanceof Error ? error.message : String(error)}`, {
         transient: false,
       });
       return null;
@@ -2803,7 +2803,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               }
             : { filesOnly: true };
         await fenced(
-          writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), pin),
+          writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), pin),
           "the run's source was recorded",
         );
         await ctx.sequencer!.patchState(pin);
@@ -2996,7 +2996,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // recording that makes the next attempt resume it again, forever.
       // Leaving it to the opening clear is what makes the retry self-heal.
       await fenced(
-        writeRunRow(ctx, identity, {
+        writeRunRecord(ctx, identity, {
         source: handle.source,
         finalMessage: handle.finalMessage,
         usage: handle.usage,
@@ -3124,7 +3124,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // **The checks it ran go on the run record, whatever the verdict**, so
         // a failed attempt's row says which command was red and how.
         if (verdict.checks !== undefined) {
-          await fenced(writeRunRow(ctx, identity, { checks: verdict.checks }), "the checks were recorded");
+          await fenced(writeRunRecord(ctx, identity, { checks: verdict.checks }), "the checks were recorded");
         }
         notDoneReason = verdict.done ? undefined : verdict.reason;
         if (verdict.done) {
@@ -3280,7 +3280,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // already unwinding and re-throws below whatever happens, so a refusal
         // means only that a superseded attempt recorded nothing — which is the
         // correct outcome. Every other call site stops on refusal.
-        await writeRunRow(
+        await writeRunRecord(
           ctx,
           identityOf(ctx, state),
           { outcome: "failed", reason },
@@ -3369,7 +3369,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // itself: it is mid-stream in paid model work on a row it no longer owns.
     onSession: async (sessionId, ctx) => {
       await fenced(
-        writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), {
+        writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), {
           sessionId,
         }),
         "the harness named its session",
@@ -3522,12 +3522,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (verdict === "complete") {
       // A wake's own words go with it: the task is done, and nothing is left owed.
       if (woken !== undefined) await takeSteersFor(ctx, `pull-request-wake:${ctx.request.identity.id}`, () => []);
-      await fenced(writeRunRow(ctx, identity, { outcome: "succeeded", reason: null, ...confirmed }), "the row was completed");
+      await fenced(writeRunRecord(ctx, identity, { outcome: "succeeded", reason: null, ...confirmed }), "the run record was completed");
       return settled;
     }
     const board = await runBoard(ctx);
     if (verdict === "cancel") {
-      if (woken !== undefined) await fenced(writeRunRow(ctx, identity, confirmed), "the run's session was kept");
+      if (woken !== undefined) await fenced(writeRunRecord(ctx, identity, confirmed), "the run's session was kept");
       // A person closed the work (D2): a cancel, by the claim holder, which reaches the filer through the task notice.
       const cancelled = await cancelFromTurn(ctx, board, CLOSED_WITHOUT_MERGING);
       if (cancelled.outcome === "declined" && cancelled.reason !== "terminal") {
@@ -3538,7 +3538,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     }
     // Kept before the wait drops the lease: what a wake that finds them merged completes with.
     await fenced(
-      writeRunRow(ctx, identity, { waitOutput: { attempt: state.attempt!, output: { ...output, pullRequests: null } } }),
+      writeRunRecord(ctx, identity, { waitOutput: { attempt: state.attempt!, output: { ...output, pullRequests: null } } }),
       "the task's output was kept for its pull requests",
     );
     const waited = await waitExternally(ctx, board, {
@@ -3588,11 +3588,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       if (!awaitPullRequests) return;
       const row = await committedRow(ctx);
       const state = managerState(harnessCtxState(ctx));
-      const recorded = await readRunRow(ctx, state.topic!);
+      const recorded = await readRunRecord(ctx, state.topic!);
       const wait = row === undefined ? undefined : wokenWait(row);
       // Each wait is woken once: a later turn of the task (a retry, a question's answer) is not its wake.
       if (wait === undefined || recorded?.wokeFor === wait.id) return;
-      await fenced(writeRunRow(ctx, identityOf(ctx, state), { wokeFor: wait.id }), "the wake was recorded");
+      await fenced(writeRunRecord(ctx, identityOf(ctx, state), { wokeFor: wait.id }), "the wake was recorded");
       await ctx.sequencer!.patchState({ wake: wait.id });
       const keys = wait.source.closedBy.flatMap((releaser) =>
         releaser.by === "event" && releaser.event === PULL_REQUEST_EVENT ? [releaser.key] : [],
@@ -3662,12 +3662,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const output: ManagerOutput = { ...decision.output, judged: read !== null, review, landed: decision.landed ?? null };
       // **A task whose work is a pull request is done when it merges** (FIX-2578).
       if (awaitPullRequests) {
-        const prs = await taskPullRequests(ctx, (await readRunRow(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id]);
+        const prs = await taskPullRequests(ctx, (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id]);
         if (prs.length > 0) return settleOnPullRequests(ctx, prs, output);
       }
       await fenced(
-        writeRunRow(ctx, identity, { outcome: "succeeded", reason: null }),
-        "the row was completed",
+        writeRunRecord(ctx, identity, { outcome: "succeeded", reason: null }),
+        "the run record was completed",
       );
       return output;
     },
@@ -4334,7 +4334,7 @@ function assertFeatureRowIdentity(
   // own identity says does not exist.
   if (!sameSegment(phaseName, configuredPhase)) {
     throw new HarnessAttemptFailed(
-      `[harness-manager] task ${taskId} is a "${phaseName}" row on a manager ` +
+      `[harness-manager] task ${taskId} is a "${phaseName}" task on a manager ` +
         `configured for "${configuredPhase}". Refusing rather than running ` +
         `${configuredPhase}'s prompt and completion check against it.`,
     );
@@ -4359,7 +4359,7 @@ function assertFeatureRowIdentity(
     throw new HarnessAttemptFailed(
       `[harness-manager] task ${taskId} carries the payload for ${canonicalId}. ` +
         `Refusing: the checkout, the branch and the run record are all derived from ` +
-        `that payload, so a second row under a different id would run the same work ` +
+        `that payload, so a second task under a different id would run the same work ` +
         `in the same tree.`,
     );
   }
@@ -4400,17 +4400,17 @@ function heldTicket(
 function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
   if (steer.answers === undefined || steer.from === "board") return false;
   const hold = row.holds?.find((h) => h.id === steer.answers);
-  return hold !== undefined && isRowHold(hold) && !isExternalHold(hold);
+  return hold !== undefined && isOwnHold(hold) && !isExternalHold(hold);
 }
 
 // FIX-2578.
 /**
  * The external wait `row`'s release owes this turn for: the
- * newest of its row holds, when that is an external wait a steer answered. A
+ * newest of its own holds, when that is an external wait a steer answered. A
  * question asked after it is newer, and its answer's turn is the question's.
  */
-function wokenWait(row: Task): RowHold | undefined {
-  const newest = (row.holds ?? []).filter(isRowHold).at(-1);
+function wokenWait(row: Task): OwnHold | undefined {
+  const newest = (row.holds ?? []).filter(isOwnHold).at(-1);
   return newest !== undefined && isExternalHold(newest) && answerOf(row, newest.id) !== undefined ? newest : undefined;
 }
 
@@ -4462,7 +4462,7 @@ function answeredQuestions(row: Task | undefined): AnsweredQuestion[] {
   if (row === undefined) return [];
   const answered: AnsweredQuestion[] = [];
   for (const hold of row.holds ?? []) {
-    if (!isRowHold(hold)) continue;
+    if (!isOwnHold(hold)) continue;
     const steer = answerOf(row, hold.id);
     if (steer === undefined || !isAnswer(row, steer)) continue;
     answered.push({ question: hold.ask.prompt, answer: steer.message });

@@ -6,7 +6,7 @@
  * board (the board's delivery reads the mark for a task's midway question).
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
-import type { RowHold, Task } from "@flow-state-dev/orchestration/tasks";
+import type { OwnHold, Task } from "@flow-state-dev/orchestration/tasks";
 import { MESSAGE_RECEIVED_ENTRY } from "./keys";
 
 /**
@@ -18,7 +18,7 @@ export type MessageHearing = "task-sessions";
 
 // FIX-2241.
 /** Tell a task's filer its open midway questions, from the asking request. */
-export type MidwayQuestionTeller = (ctx: BlockContext, row: Task, questions: readonly RowHold[]) => Promise<void>;
+export type MidwayQuestionTeller = (ctx: BlockContext, row: Task, questions: readonly OwnHold[]) => Promise<void>;
 
 /**
  * The mark `messageReceivedEntry` puts on what it builds.

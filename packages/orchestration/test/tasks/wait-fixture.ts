@@ -461,7 +461,7 @@ export async function approve(state: ReturnType<typeof runtimeFor>, requestId: s
   if (sent.status >= 300) throw new Error(`the approval was refused: ${sent.status}`);
 }
 
-export type Row = {
+export type StoredTask = {
   id: string;
   status: string;
   wait?: { gateId: string; deadline: number; requestId?: string; lapsed?: true };
@@ -469,8 +469,8 @@ export type Row = {
   attempts: number;
   metadata?: Record<string, unknown>;
 };
-export async function rows(state: ReturnType<typeof runtimeFor>, flow: FlowInstance, sessionId?: string): Promise<Row[]> {
-  return (await act(state, flow, "list", {}, sessionId !== undefined ? { sessionId } : {})).output as Row[];
+export async function rows(state: ReturnType<typeof runtimeFor>, flow: FlowInstance, sessionId?: string): Promise<StoredTask[]> {
+  return (await act(state, flow, "list", {}, sessionId !== undefined ? { sessionId } : {})).output as StoredTask[];
 }
 
 /** The request statuses the engine reads as a request's work being over (`wait-chain.ts`). */
@@ -481,7 +481,7 @@ const WORK_OVER = new Set(["completed", "incomplete", "failed", "aborted"]);
  * `arrivesAsNotice` while a taker still runs, even after it cleared the
  * marker, so a test that asserts a wait gets the row waits for both.
  */
-export async function untilTakersEnded(state: ReturnType<typeof runtimeFor>, row: Row, withinMs = 5_000): Promise<void> {
+export async function untilTakersEnded(state: ReturnType<typeof runtimeFor>, row: StoredTask, withinMs = 5_000): Promise<void> {
   const takers = Object.entries(row.metadata ?? {})
     .filter(([key, value]) => key.startsWith("noticeTaken:") && value != null)
     .map(([, value]) => (value as { by: string }).by);

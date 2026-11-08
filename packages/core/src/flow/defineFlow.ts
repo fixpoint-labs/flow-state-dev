@@ -925,7 +925,7 @@ function resolveDispatchTargets(
     for (const needed of requires ?? []) {
       if (internal !== undefined && Object.hasOwn(internal, needed)) continue;
       throw new Error(
-        `Flow "${kind}" holds board "${taskBindingOf(block)!.boardId}", which hands rows out through ` +
+        `Flow "${kind}" holds board "${taskBindingOf(block)!.boardId}", which hands tasks out through ` +
           `block "${block.name}", but the flow declares no \`${needed}\` entry, so it would never hear ` +
           `how a task it handed out ended. Add \`internal: { actions: { ${needed}: taskSettledEntry({ block }) } }\` ` +
           `(from @flow-state-dev/orchestration).`
@@ -961,7 +961,7 @@ function resolveDispatchTargets(
           throw new Error(
             `Flow "${kind}" reaches block "${block.name}", which dispatches to task:"${action}", but the ` +
               `flow declares no such task entry. Add \`task: { actions: { ${action}: { block } } }\` ` +
-              `to the flow — the block that runs each row this dispatcher dispatches.`
+              `to the flow — the block that runs each task this dispatcher dispatches.`
           );
         }
         const binding = taskBindingOf(block);
@@ -969,7 +969,7 @@ function resolveDispatchTargets(
           throw new Error(
             `Flow "${kind}" reaches block "${block.name}", which dispatches to ${label}, but no ` +
               `task board holds it. A task dispatcher belongs to a board: put it under a board's ` +
-              `\`workers\`, which is the only place a claim on a durable row is minted.`
+              `\`workers\`, which is the only place a claim on a durable task is minted.`
           );
         }
         const holder = gatedBy.get(action);
@@ -1207,7 +1207,7 @@ function mergeFlowResourceMap(
         `sharedToLineage: ${flowShared}, but a block declared the same accessor with ` +
         `sharedToLineage: ${blockShared}. Letting the flow's declaration win would ` +
         `move the resource between the running session and the lineage without the ` +
-        `block knowing — a task board that dispatches would claim rows in one place while its ` +
+        `block knowing — a task board that dispatches would claim tasks in one place while its ` +
         `child session reads an empty ledger and loops. Make the two agree, or give one a ` +
         `distinct accessor name.`
     );

@@ -9,8 +9,8 @@ import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, defineResource, defineResourceCollection, handler, ownerSegment } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
-  handleCreateCollectionItem,
-  handleDeleteCollectionItem,
+  handleCreateCollectionResource,
+  handleDeleteCollectionResource,
   handleUpdateResourceContent
 } from "../../src/routes/resource-routes";
 import { publishScopeChange } from "../../src/bus/scope-changes";
@@ -253,7 +253,7 @@ describe("the client's resource routes publish the session's topic", () => {
     const heard = hear(bus, sessionTopic("sess_1"));
     const ctx = { registry, stores };
 
-    const created = await handleCreateCollectionItem(
+    const created = await handleCreateCollectionResource(
       new Request("http://x/sessions/sess_1/resources/notes", { method: "POST", body: JSON.stringify({ topic: "a" }) }),
       { kind: "create_collection_item", sessionId: "sess_1", ref: "notes" },
       ctx
@@ -265,7 +265,7 @@ describe("the client's resource routes publish the session's topic", () => {
       ctx
     );
     await tick();
-    const deleted = await handleDeleteCollectionItem(
+    const deleted = await handleDeleteCollectionResource(
       new Request("http://x/sessions/sess_1/resources/notes/a", { method: "DELETE" }),
       { kind: "delete_collection_item", sessionId: "sess_1", ref: "notes", topic: "a" },
       ctx

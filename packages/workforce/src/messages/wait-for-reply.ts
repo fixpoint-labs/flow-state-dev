@@ -11,7 +11,7 @@ import { requestHostOf, waitOnRequest } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { checkWaitable, toolCallOf, hasEnded } from "@flow-state-dev/orchestration/internal";
 import type { WorkerInstallation } from "../workers/installation";
-import { messageLogOf, newMessageId, type WorkerMessageRow } from "./message-log";
+import { messageLogOf, newMessageId, type WorkerMessageResourceState } from "./message-log";
 import { sendMessage, type SendMessageInput } from "./send-message";
 
 /** What a wait came to, once its checks passed. `sent` is the message's id. */
@@ -100,7 +100,7 @@ export async function sendAndWaitForReply(
  *   `"retry"` while the sender hasn't parked yet, or the gate is busy, so the
  *   answer stays undelivered and its sender's pass sends it again.
  */
-export async function wakeHeldWait(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">): Promise<"not-held" | "woken" | "retry"> {
+export async function wakeHeldWait(ctx: BlockContext, row: Pick<WorkerMessageResourceState, "id" | "inReplyTo">): Promise<"not-held" | "woken" | "retry"> {
   if (row.inReplyTo === undefined) return "not-held";
   const log = messageLogOf(ctx);
   for (let tries = 0; tries < WAKE_TRIES; tries += 1) {

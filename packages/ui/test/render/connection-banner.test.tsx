@@ -15,7 +15,7 @@
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ConnectionBanner, isFeedStale, STALE_CLASS, type ConnectionFeedState } from "../../registry/components/connection-banner";
+import { ConnectionBanner, isFeedStale, STALE_CLASS, type ConnectionFeedStatus } from "../../registry/components/connection-banner";
 import { ConnectionScreen, retryDelayMs } from "../../registry/components/connection-screen";
 
 beforeEach(() => {
@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 describe("isFeedStale", () => {
-  const cases: Array<[ConnectionFeedState, boolean]> = [
+  const cases: Array<[ConnectionFeedStatus, boolean]> = [
     ["connecting", false],
     ["live", false],
     ["reconnecting", false],
@@ -41,7 +41,7 @@ describe("isFeedStale", () => {
 });
 
 describe("ConnectionBanner", () => {
-  it.each<ConnectionFeedState>(["connecting", "live", "reconnecting"])("draws nothing on %s", (state) => {
+  it.each<ConnectionFeedStatus>(["connecting", "live", "reconnecting"])("draws nothing on %s", (state) => {
     render(<ConnectionBanner feed={{ state }} />);
     expect(screen.queryByTestId("connection-banner")).toBeNull();
   });

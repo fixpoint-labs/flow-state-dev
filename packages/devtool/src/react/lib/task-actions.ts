@@ -157,7 +157,7 @@ export type RequestOutcomeSource = {
  *   (`output-not-recorded`). Never read as success: a refusal can hide in
  *   either.
  */
-export type RowActionOutcome =
+export type TaskActionOutcome =
   | { state: "pending" }
   | { state: "ok"; output: unknown }
   | { state: "refused"; message: string }
@@ -182,7 +182,7 @@ export const NO_RESULT_RECORDED = "No result recorded for this request.";
 export function outcomeOf(
   requests: readonly RequestOutcomeSource[],
   requestId: string
-): RowActionOutcome {
+): TaskActionOutcome {
   const request = requests.find((candidate) => candidate.requestId === requestId);
   if (request === undefined || isRequestOpen(request.status)) return { state: "pending" };
   const result = request.result ?? undefined;
@@ -204,7 +204,7 @@ export function outcomeOf(
 }
 
 /** What a completed action answered: a refusal, or success. */
-function classify(value: unknown): RowActionOutcome {
+function classify(value: unknown): TaskActionOutcome {
   if (isRefusal(value)) return { state: "refused", message: refusalMessage(value.error) };
   if (isDeclined(value)) return { state: "refused", message: declinedMessage(value) };
   return { state: "ok", output: value };

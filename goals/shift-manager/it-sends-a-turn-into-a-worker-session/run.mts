@@ -271,7 +271,7 @@ function attempts(): RecordedAttempt[] {
     .map((line) => JSON.parse(line) as RecordedAttempt);
 }
 /** A row's attempts, by the row line of the prompt each was handed. */
-const attemptsOf = (rowId: string) => attempts().filter((a) => a.row.startsWith(`Row ${rowId},`));
+const attemptsOf = (rowId: string) => attempts().filter((a) => a.row.startsWith(`Task ${rowId},`));
 
 // ---- the page ----------------------------------------------------------------
 

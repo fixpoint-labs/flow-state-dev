@@ -199,7 +199,7 @@ Deliberately unconditional, each for a stated reason rather than because it was 
 - **the two seed helpers in `@flow-state-dev/testing`** pass `"any"` when priming a fresh scope, where no concurrent writer exists by construction
 - **scope state** — `session` / `user` / `org` drive `runWithCAS` directly. Request scope runs that same driver under `withScopeLock` (`serialize: true`), so a same-process fan-out serializes rather than exhausting the retry budget, and the budget stays for a writer the queue cannot see. `createScopePersist` still downgrades to `"any"` for commutative hints on adapters advertising a delta verb, as described above
 
-The collection-item HTTP routes write this store directly, outside the registry and its queue, so they carry their own versions and surface a conflict to the client rather than retrying it. Their request/response contract — including when a caller sees a 409 — is [the resource client reference](./resources-and-client-data.md)'s, not this document's.
+The collection-resource HTTP routes write this store directly, outside the registry and its queue, so they carry their own versions and surface a conflict to the client rather than retrying it. Their request/response contract — including when a caller sees a 409 — is [the resource client reference](./resources-and-client-data.md)'s, not this document's.
 
 Cancellation uses the request's **background** abort signal, not the transport signal. The transport signal fires on client disconnect, which must not abandon the writes of a `.sideChain()` task the request is still running; and there is no per-scope signal available at this seam anyway, since persisters and `ResourceRef`s are built once per context while `ctx.signal` is per execution scope.
 
@@ -660,9 +660,9 @@ Four channels, and none of them is shared session state:
 1. **User and org scope** — live and shared, but keyed to the *principal*, not to the parent session. Two unrelated conversations belonging to the same user read the same cell.
 2. **The payload at dispatch** — a one-shot value handed to the dispatched request, frozen at dispatch. For a task dispatch it is the worker input the drain packed at claim time, inside the `task` envelope.
 3. **Provenance labels** — `topic` and `coordinate` on the child session record, and `metadata.dispatch` on the child's request record. Server-assembled, frozen, and display-only.
-4. **`parentTask()` / `settleParentTask()`** — one board row, server-stamped at dispatch and closed over. Deliberately not a cross-session browser: one coordinate, one row.
+4. **`parentTask()` / `settleParentTask()`** — one board task, server-stamped at dispatch and closed over. Deliberately not a cross-session browser: one coordinate, one row.
 
-**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host passes behaviour rather than handles — no type on it names a store, a session record or a task row. Its one read of another session, `sessions.read`, answers a session of the same principal with its flow and the state fields its flow declares readonly, never the rest of its state.
+**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host passes behaviour rather than handles — no type on it names a store, a session record or a task. Its one read of another session, `sessions.read`, answers a session of the same principal with its flow and the state fields its flow declares readonly, never the rest of its state.
 
 ### Resources shared to the lineage (FIX-1068)
 

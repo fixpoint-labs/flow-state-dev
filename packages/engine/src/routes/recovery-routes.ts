@@ -300,7 +300,7 @@ type ListingRouteContext = RecoveryRouteContext & {
 };
 
 /** A listed row: who owns it, in which instance, organization and tenant. */
-type ListedRow = OwnedRecord & {
+type ListedRecord = OwnedRecord & {
   userId: string;
   orgId?: string | null;
   tenantId?: string | null;
@@ -319,7 +319,7 @@ type ListedRow = OwnedRecord & {
  * own rows in their own organization; reached anonymously in a mixed app, the
  * rows of any instance that is not open are withheld.
  */
-async function listingAdmits(ctx: ListingRouteContext, row: ListedRow): Promise<boolean> {
+async function listingAdmits(ctx: ListingRouteContext, row: ListedRecord): Promise<boolean> {
   if (!tenantMatches(row.tenantId ?? undefined, ctx.tenantId)) return false;
   const own = await ownResolverVerdict(ctx.registry, ctx.callerFor, row);
   if (own !== undefined) return own;

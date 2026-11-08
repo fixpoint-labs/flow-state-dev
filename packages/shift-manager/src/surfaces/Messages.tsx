@@ -10,7 +10,7 @@
 import { useMemo } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
 import { workerLabel, type LoadedSnapshot } from "../lib/derive";
-import { firstLine, exchangesOf, useMessages, type WorkerMessageRow } from "../lib/messages";
+import { firstLine, exchangesOf, useMessages, type WorkerMessageResourceState } from "../lib/messages";
 import { projectReaderOf } from "../lib/projects";
 import { RouteLink } from "../components/RouteLink";
 import { clockTime } from "../lib/shell";
@@ -29,7 +29,7 @@ function Side({ worker, sessionId, testId }: { worker: string; sessionId: string
   );
 }
 
-function statusNote(row: WorkerMessageRow): string | null {
+function statusNote(row: WorkerMessageResourceState): string | null {
   if (row.status === "refused") return "not delivered";
   if (row.status === "undeliverable") return "couldn't be delivered";
   if (row.status === "unconfirmed") return "on its way";
@@ -37,13 +37,13 @@ function statusNote(row: WorkerMessageRow): string | null {
 }
 
 /** Where a reply request's answer is, or `null` for a plain message or one that ended undelivered. */
-function replyNote(row: WorkerMessageRow): string | null {
+function replyNote(row: WorkerMessageResourceState): string | null {
   if (row.replyRequested !== true || row.status === "refused" || row.status === "undeliverable") return null;
   if (row.answeredBy === undefined) return row.queuedBehind === "user" ? "reply · waiting on the user" : "reply · waiting";
   return row.waitEndedAt !== undefined ? "reply · answered late" : "reply · answered";
 }
 
-function MessageLine({ row }: { row: WorkerMessageRow }) {
+function MessageLine({ row }: { row: WorkerMessageResourceState }) {
   const note = statusNote(row);
   const reply = replyNote(row);
   return (

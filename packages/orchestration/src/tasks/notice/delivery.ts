@@ -26,8 +26,8 @@
 import { requestHostOf, dispatchThroughSeam, onRequestEnded, REQUEST_END_SEAM } from "@flow-state-dev/core/internal";
 import type { BlockContext, DispatchOutcome, SessionTarget } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
-import type { RowHold } from "../schema/hold";
-import { openRowHolds } from "../collection/holds";
+import type { OwnHold } from "../schema/hold";
+import { openOwnHolds } from "../collection/holds";
 import { clearNotice, NOTICE_DUE_MS, owedNotices, UNDELIVERABLE_PREFIX, type TaskNotice } from "./task-notice";
 
 /** The internal entry a notice arrives on in the filer's session, unless a board names another. Pinned. */
@@ -77,7 +77,7 @@ export interface DeclaredDelivery {
    * asking turn, after its lease is dropped, so a slow telling only delays
    * that turn's end. A throw is logged, never fails the question.
    */
-  readonly onMidwayQuestion?: (ctx: BlockContext, row: Task, questions: readonly RowHold[]) => Promise<void>;
+  readonly onMidwayQuestion?: (ctx: BlockContext, row: Task, questions: readonly OwnHold[]) => Promise<void>;
   // FIX-2082.
   /**
    * `false`: an ending owes its filer no notice, only the resume of a request
@@ -213,7 +213,7 @@ export function createDelivery(
   };
 
   async function tellMidwayQuestions(row: Task): Promise<void> {
-    const holds = openRowHolds(row).filter((hold) => hold.midway === true);
+    const holds = openOwnHolds(row).filter((hold) => hold.midway === true);
     if (holds.length === 0) return;
     if (filerOf(row) === undefined) {
       // A screen's or a schedule's filing, or a filer no longer known: the Inbox has it.

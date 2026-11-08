@@ -17,13 +17,13 @@ import { describe, expect, it } from "vitest";
 import { readRecordedWork, type RecordedWorkClient } from "../src/browser";
 
 /** A row as the store keys it: the full storage key, collection prefix included. */
-type Row = { topic: string; clientData?: unknown };
+type Listed = { topic: string; clientData?: unknown };
 
 function collection(name: string) {
   return { ref: name, kind: "collection" as const, scope: "session" as const, pattern: `${name}/**`, hasClientData: true, client: { state: { read: true } } };
 }
 
-function fakeClient(rows: Record<string, Row[]>, options: { pageLimit?: number; failWith?: Error } = {}): RecordedWorkClient {
+function fakeClient(rows: Record<string, Listed[]>, options: { pageLimit?: number; failWith?: Error } = {}): RecordedWorkClient {
   const manifest: ResourceManifest = { flowKind: "coding", resources: Object.keys(rows).map(collection) };
   return {
     resources: {
@@ -31,7 +31,7 @@ function fakeClient(rows: Record<string, Row[]>, options: { pageLimit?: number; 
         if (options.failWith) throw options.failWith;
         return manifest;
       },
-      async listCollectionItems(_sessionId, ref, list): Promise<CollectionListPage> {
+      async listCollectionResources(_sessionId, ref, list): Promise<CollectionListPage> {
         const all = (rows[ref] ?? [])
           .filter((r) => r.topic.startsWith(list?.topicPrefix ?? ""))
           .map((r) => ({ ...r, topic: r.topic.slice(`${ref}/`.length) }));

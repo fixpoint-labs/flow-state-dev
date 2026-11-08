@@ -1,7 +1,7 @@
 /**
  * Every fence's refusal is read.
  *
- * `openRunRow` and `writeRunRow` return `"refused"` when this attempt no longer
+ * `openRunRecord` and `writeRunRecord` return `"refused"` when this attempt no longer
  * holds the row. **A refusal that nobody reads is not a fence** — the worker
  * walks on into checkout preparation and paid agent execution for a row another
  * attempt now owns, and can take the tree ahead of its rightful holder, which
@@ -30,7 +30,7 @@ const MANAGER = readFileSync(join(__dirname, "..", "src", "manager.ts"), "utf8")
 /** Every call to a fenced write, with the text leading up to it. */
 function fenceCallSites(): string[] {
   const sites: string[] = [];
-  const pattern = /(openRunRow|writeRunRow)\s*\(/g;
+  const pattern = /(openRunRecord|writeRunRecord)\s*\(/g;
   for (let m = pattern.exec(MANAGER); m !== null; m = pattern.exec(MANAGER)) {
     // Skip the import list at the top of the file.
     const before = MANAGER.slice(Math.max(0, m.index - 420), m.index);

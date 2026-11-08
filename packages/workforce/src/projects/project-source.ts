@@ -18,7 +18,8 @@
  * a change to a project's files is a coding run's job.
  */
 
-import { defineCapability, handler, type LooseBlockContext } from "@flow-state-dev/core";
+import { defineCapability, handler } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   SOURCE_READ_LIMITS,
   WorkspaceRefusedError,
@@ -116,7 +117,7 @@ void schemasCoverHostResults;
  */
 export async function readProjectSourceFor(
   workspace: WorkspaceHost,
-  ctx: LooseBlockContext,
+  ctx: BlockContext,
   request: SourceReadRequest
 ): Promise<SourceReadResult | Refused> {
   const answer = await workspace.source(ctx);

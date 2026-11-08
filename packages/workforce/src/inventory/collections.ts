@@ -62,7 +62,7 @@ import { z } from "zod";
  * nothing. Required means the framework's read path surfaces such a row as
  * empty instead, which is visible.
  */
-export const workerInventoryRowSchema = z.object({
+export const workerInventoryResourceStateSchema = z.object({
   /** The worker's id — the same id the declared record carries. The join key. */
   id: z.string().min(1),
   /** The worker flow this worker was hired into, e.g. the built-in `"agent"`. */
@@ -129,8 +129,8 @@ export const workerInventoryRowSchema = z.object({
   incarnation: z.string().nullable().default(null),
 });
 
-/** One row of the worker inventory. @see workerInventoryRowSchema */
-export type WorkerInventoryRow = z.infer<typeof workerInventoryRowSchema>;
+/** One worker in the worker inventory. @see workerInventoryResourceStateSchema */
+export type WorkerInventoryResourceState = z.infer<typeof workerInventoryResourceStateSchema>;
 
 /**
  * `flowIsolation: false`, spelled out here rather than omitted.
@@ -176,7 +176,7 @@ export function defineWorkerInventoryCollection() {
     pattern: "inventory/workers/*",
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
-    stateSchema: workerInventoryRowSchema,
+    stateSchema: workerInventoryResourceStateSchema,
     client: { state: { read: true }, expose: WORKER_INVENTORY_CLIENT_FIELDS },
   });
 }

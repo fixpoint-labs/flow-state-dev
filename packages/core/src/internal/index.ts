@@ -68,7 +68,7 @@ export type {
   WaitGateBinding,
   WaitGateData,
   WaitOutcome,
-  WaitRow,
+  TaskAddress,
 } from "../types/wait-gate";
 export { waitOnRequest } from "../blocks/wait-on-request";
 export type { RequestWaitOutcome, WaitOnRequestInput } from "../blocks/wait-on-request";

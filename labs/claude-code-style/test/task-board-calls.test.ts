@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
-import { createWiredLab, type TaskRow } from "../src/adapter";
+import { createWiredLab, type LabTask } from "../src/adapter";
 
 type Sent = { flow: string; action: string; input: Record<string, unknown>; sessionId: string };
 
@@ -76,7 +76,7 @@ describe("the adapter's task actions", () => {
     );
     const wired = createWiredLab(lab.client);
     const read = () =>
-      new Promise<TaskRow[]>((resolve) => {
+      new Promise<LabTask[]>((resolve) => {
         const stop = wired.watchTasks("s1", (rows) => {
           stop();
           resolve(rows);
@@ -104,7 +104,7 @@ describe("the adapter's task actions", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     first();
     expect(reads).toBe(1);
-    const rows = await new Promise<TaskRow[]>((resolve) => {
+    const rows = await new Promise<LabTask[]>((resolve) => {
       const stop = wired.watchTasks("s1", (next) => {
         stop();
         resolve(next);

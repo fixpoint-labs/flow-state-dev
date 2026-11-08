@@ -31,7 +31,7 @@ import { useSubscription } from "@flow-state-dev/react";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import type { Client } from "@flow-state-dev/client";
 import type { InboxAnswer, InboxHold } from "@flow-state-dev/orchestration/inbox";
-import { isFeedStale, type ConnectionFeedState } from "../components/flow-state/connection-banner";
+import { isFeedStale, type ConnectionFeedStatus } from "../components/flow-state/connection-banner";
 import { retryDelayMs } from "../components/flow-state/connection-screen";
 import { connect, type Connection } from "./connection";
 import { FeedHealthContext, worstFeedState, type ReportFeed } from "./feed-health";
@@ -59,7 +59,7 @@ export type LabData = {
    * The page's connection health: the worst of the snapshot read's state and every
    * session feed on screen, ordered `stopped` › `lapsed` › the rest.
    */
-  health: ConnectionFeedState;
+  health: ConnectionFeedStatus;
   /** The page's connection is lapsed or stopped: what is drawn is the last the server said. */
   stale: boolean;
   /** Read everything again, as the user asked: counts dim until it lands. */
@@ -107,7 +107,7 @@ export function LabProvider({ connection, children }: { connection: Connection; 
   const [asking, setAsking] = useState(false);
   // Refreshes in a row that couldn't reach the Lab after a good read. The snapshot stays; the read is `lapsed`.
   const [lapses, setLapses] = useState(0);
-  const [feeds, setFeeds] = useState<ReadonlyMap<string, ConnectionFeedState>>(new Map());
+  const [feeds, setFeeds] = useState<ReadonlyMap<string, ConnectionFeedStatus>>(new Map());
   const [answered, setAnswered] = useState<LabData["answered"]>(undefined);
   // The snapshot on screen is a good read of this client's Lab: a later unreachable one doesn't replace it.
   const loaded = useRef(false);
@@ -198,7 +198,7 @@ export function LabProvider({ connection, children }: { connection: Connection; 
       return next;
     });
   }, []);
-  const read: ConnectionFeedState = lapses > 0 ? "lapsed" : snapshot === undefined ? "connecting" : "live";
+  const read: ConnectionFeedStatus = lapses > 0 ? "lapsed" : snapshot === undefined ? "connecting" : "live";
   const health = worstFeedState([read, ...feeds.values()]);
   const stale = isFeedStale(health);
 

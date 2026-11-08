@@ -39,7 +39,7 @@ import {
 import { matchesPattern, type JsonObject } from "@flow-state-dev/core/types";
 import type {
   ResourceIndexBuildEntry,
-  ResourceIndexBuildState,
+  ResourceIndexBuildStatus,
   ResourceIndexEntry,
   ResourceStateSetOptions,
   ResourceStateStore,
@@ -518,7 +518,7 @@ export function createSQLiteResourceStateStore(
     },
 
     indexes: {
-      async state(scopeType, scopeId, collection, index): Promise<ResourceIndexBuildState> {
+      async state(scopeType, scopeId, collection, index): Promise<ResourceIndexBuildStatus> {
         const row = selectMarkerStmt.get(scopeType, scopeId, collection, index) as
           | { status: string }
           | undefined;

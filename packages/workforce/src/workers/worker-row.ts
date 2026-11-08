@@ -26,7 +26,7 @@ import { shownSettingsOf, type ShownSettingsOf } from "./shown-settings";
  * `configSchema` checks it, and it is free to grow keys this package has never
  * heard of. The envelope is this package's.
  */
-export const workerRowSchema = z.object({
+export const workerResourceStateSchema = z.object({
   /** The flow the worker runs on: a registered worker flow's name. */
   flow: z.string().min(1),
   /** One line saying what the worker is for. */
@@ -53,8 +53,8 @@ export const workerRowSchema = z.object({
   forkedFrom: z.string().nullable().default(null)
 });
 
-/** One stored worker. @see workerRowSchema */
-export type WorkerRow = z.infer<typeof workerRowSchema>;
+/** One stored worker. @see workerResourceStateSchema */
+export type WorkerResourceState = z.infer<typeof workerResourceStateSchema>;
 
 /**
  * The user's worker collection: one row per worker, at user scope.
@@ -77,7 +77,7 @@ export function defineWorkerCollection(shown: ShownSettingsOf = () => []) {
     pattern: WORKERS_PATTERN,
     scope: "user",
     flowIsolation: false,
-    stateSchema: workerRowSchema.passthrough(),
+    stateSchema: workerResourceStateSchema.passthrough(),
     client: {
       state: { read: true },
       // A computed field, so `data` rather than `expose` (BP-015).
@@ -92,12 +92,12 @@ export function defineWorkerCollection(shown: ShownSettingsOf = () => []) {
 }
 
 /**
- * Parse one stored value as a worker row, or say why it can't be read.
+ * Parse one stored value as a worker, or say why it can't be read.
  * Never throws and never writes.
  */
-export function parseWorkerRow(value: unknown): { row: WorkerRow } | { problem: string } {
-  const parsed = workerRowSchema.safeParse(value);
-  if (parsed.success) return { row: parsed.data };
+export function parseWorkerResourceState(value: unknown): { worker: WorkerResourceState } | { problem: string } {
+  const parsed = workerResourceStateSchema.safeParse(value);
+  if (parsed.success) return { worker: parsed.data };
   const issues = parsed.error.issues
     .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
     .join("; ");

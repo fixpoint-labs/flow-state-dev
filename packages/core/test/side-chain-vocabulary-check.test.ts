@@ -216,7 +216,7 @@ describe("the denylist is closed, so ordinary use of the word stays legal", () =
   it("allows an ordinary domain model to use these as FIELD names", () => {
     expect(scan(`interface Job { work: string; }`, "apps/kitchen-sink/x.ts")).toEqual([]);
     expect(scan(`const dashboard = { backgroundTasks: 3 };`, "apps/kitchen-sink/x.ts")).toEqual([]);
-    expect(scan(`type Row = { workResults: number };`, "apps/kitchen-sink/x.ts")).toEqual([]);
+    expect(scan(`type Entry = { workResults: number };`, "apps/kitchen-sink/x.ts")).toEqual([]);
   });
 
   it("refuses the DSL verb when it is CALLED", () => {

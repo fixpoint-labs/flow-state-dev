@@ -23,7 +23,7 @@
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
 import { parseNextFireAt } from "./parseNextFireAt";
-import type { ScheduleIndex, ScheduleIndexRow } from "./scheduleIndex";
+import type { ScheduleIndex, ScheduleIndexEntry } from "./scheduleIndex";
 
 // FIX-838.
 /**
@@ -166,7 +166,7 @@ function stripPrefix(storageKey: string, pattern: string): string {
 }
 
 /**
- * Compute a `ScheduleIndexRow` from a freshly persisted schedule state.
+ * Compute a `ScheduleIndexEntry` from a freshly persisted schedule state.
  * Returns `null` and logs a warning if the cron expression fails to
  * parse — the write succeeds (the resource is durable), but no index
  * row is mirrored, so a broken row never fires.
@@ -221,8 +221,8 @@ function indexOrgFor(
   console.warn(
     `[flow-state/scheduled] schedule ${userId}/${key} is not indexed: its stored organization ` +
       `does not match the organization of the execution that wrote it. A schedule fires into ` +
-      `the organization that created it; write the row from that organization, or attribute a ` +
-      `pre-existing row with the upgrade recipe in the persistence guide.`
+      `the organization that created it; write the resource from that organization, or attribute a ` +
+      `pre-existing resource with the upgrade recipe in the persistence guide.`
   );
   return null;
 }
@@ -233,7 +233,7 @@ function rowFromState(
   orgId: string,
   key: string,
   state: ScheduleCollectionState
-): ScheduleIndexRow | null {
+): ScheduleIndexEntry | null {
   const nextFireAt = parseNextFireAt(state.cron, state.timezone);
   if (nextFireAt === null) {
     // eslint-disable-next-line no-console

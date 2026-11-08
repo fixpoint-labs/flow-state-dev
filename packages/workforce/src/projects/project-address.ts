@@ -26,7 +26,7 @@ import {
   PROJECTS_RESOURCE,
   type ProjectAddress,
   type ProjectFile,
-  type ProjectRow,
+  type ProjectResourceState,
   type ProjectVisibility
 } from "./collections";
 import { ProjectRefusedError } from "./project-refusal";
@@ -44,8 +44,8 @@ export const PROJECT_FILE_RESOURCES = {
   [PRIVATE_PROJECT_FILES_RESOURCE]: definePrivateProjectFilesCollection()
 } as const;
 
-/** The accessor a project's rows are declared under at `visibility`. */
-export function projectRowsAccessor(visibility: ProjectVisibility): string {
+/** The accessor a project's resources are declared under at `visibility`. */
+function projectResourcesAccessor(visibility: ProjectVisibility): string {
   return visibility === "private" ? PRIVATE_PROJECTS_RESOURCE : PROJECTS_RESOURCE;
 }
 
@@ -83,13 +83,13 @@ export function collectionAt<TState extends JsonObject = JsonObject>(
   return ref as ResourceCollectionRef<TState>;
 }
 
-/** The project rows at `visibility`, as the calling block declared them. */
-export function projectRowsAt(
+/** The project resources at `visibility`, as the calling block declared them. */
+export function projectResourcesAt(
   ctx: ResourcesContext,
   visibility: ProjectVisibility,
   missing: MissingCollection = spreadProjectResources
-): ResourceCollectionRef<ProjectRow> {
-  return collectionAt<ProjectRow>(ctx, projectRowsAccessor(visibility), missing);
+): ResourceCollectionRef<ProjectResourceState> {
+  return collectionAt<ProjectResourceState>(ctx, projectResourcesAccessor(visibility), missing);
 }
 
 /** The project files at `visibility`, as the calling block declared them. */
@@ -114,8 +114,8 @@ export function workstreamsAt(
  * The row `address` names, or a `no-such-project` refusal. A private address
  * is read in the caller's own user scope only.
  */
-export async function projectAt(ctx: ResourcesContext, address: ProjectAddress): Promise<ResourceRef<ProjectRow>> {
-  const row = await projectRowsAt(ctx, address.visibility).getOptional(address.id);
+export async function projectAt(ctx: ResourcesContext, address: ProjectAddress): Promise<ResourceRef<ProjectResourceState>> {
+  const row = await projectResourcesAt(ctx, address.visibility).getOptional(address.id);
   if (row === undefined) {
     throw new ProjectRefusedError(
       "no-such-project",

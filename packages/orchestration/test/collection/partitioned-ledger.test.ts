@@ -88,7 +88,7 @@ describe("resolving a partitioned ledger", () => {
         collectionId: LEDGER,
         collection: storeFor(partitioned()),
       })
-    ).rejects.toThrow(/keeps its rows per partition .* never read whole/);
+    ).rejects.toThrow(/keeps its tasks per partition .* never read whole/);
   });
 
   it("refuses a partition on a ledger declared without one", async () => {

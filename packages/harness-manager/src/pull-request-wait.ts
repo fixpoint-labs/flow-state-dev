@@ -15,13 +15,14 @@
  * Browser-safe: no Node built-in on this module's graph (`./browser`).
  */
 import { OBSERVED_PULL_REQUESTS, pullRequestKey } from "@flow-state-dev/core/harness";
+import { isExternalHold } from "@flow-state-dev/orchestration/tasks";
 import type { RecordedWorkClient } from "./recorded-work";
 
 /** The event an external wait on a pull request names on each releaser. */
 export const PULL_REQUEST_EVENT = "pull-request";
 
-/** The parts of a task row {@link pullRequestWait} reads. */
-export interface PullRequestWaitRow {
+/** The parts of a task {@link pullRequestWait} reads. */
+export interface PullRequestWaitInput {
   readonly status: string;
   readonly holds?: ReadonlyArray<{
     readonly id: string;
@@ -32,8 +33,8 @@ export interface PullRequestWaitRow {
   readonly steers?: ReadonlyArray<{ readonly answers?: string }> | null;
 }
 
-/** One row of the session's pull-request record, as a screen holds it (`observed-pull-requests`). */
-export interface PullRequestRecordRow {
+/** One resource in the session's pull-request record, as a screen holds it (`observed-pull-requests`). */
+export interface PullRequestRecordResourceState {
   readonly host?: string | null;
   readonly repository?: string | null;
   readonly number?: number | null;
@@ -43,7 +44,7 @@ export interface PullRequestRecordRow {
 }
 
 /** One pull request a run session's record holds, as {@link readSessionPullRequests} reads it: what a line draws. */
-export interface SessionPullRequest extends PullRequestRecordRow {
+export interface SessionPullRequest extends PullRequestRecordResourceState {
   /** `github.com`, or a GitHub Enterprise host. `null` when the row names none. */
   readonly host: string | null;
   /** `owner/name`. `null` when the row names none. */
@@ -81,7 +82,7 @@ export async function readSessionPullRequests(client: RecordedWorkClient, runSes
     (r) => r.kind === "collection" && r.pattern === `${OBSERVED_PULL_REQUESTS}/**` && r.client.state?.read === true,
   )?.ref;
   if (ref === undefined) return [];
-  const page = await client.resources.listCollectionItems(runSessionId, ref, {
+  const page = await client.resources.listCollectionResources(runSessionId, ref, {
     limit: SESSION_PULL_REQUESTS_PAGE,
     topicPrefix: `${OBSERVED_PULL_REQUESTS}/`,
   });
@@ -117,7 +118,7 @@ export interface PullRequestWait {
 }
 
 /** A record row's key, when it names its host, repository and number. */
-function keyOfRecord(row: PullRequestRecordRow): string | undefined {
+function keyOfRecord(row: PullRequestRecordResourceState): string | undefined {
   const [owner, name] = (row.repository ?? "").split("/");
   if (row.host == null || owner === undefined || name === undefined || owner === "" || name === "" || row.number == null) return undefined;
   return pullRequestKey({ host: row.host, owner, name, number: row.number });
@@ -134,18 +135,18 @@ function keyOfRecord(row: PullRequestRecordRow): string | undefined {
  * if (wait !== null) return <span>PR open · {wait.pullRequests.map((pr) => `#${pr.number}`).join(", ")}</span>;
  * ```
  */
-export function pullRequestWait(row: PullRequestWaitRow, records: readonly PullRequestRecordRow[] = []): PullRequestWait | null {
+export function pullRequestWait(row: PullRequestWaitInput, records: readonly PullRequestRecordResourceState[] = []): PullRequestWait | null {
   if (row.status !== "in_progress") return null;
   const answered = new Set((row.steers ?? []).map((steer) => steer.answers).filter((id): id is string => id !== undefined));
   const hold = (row.holds ?? []).find(
     (h) =>
-      h.source.kind === "row" &&
-      h.ask.kind === "external" &&
+      // A caller may hand rows it never parsed (a replayed stream item): the predicate reads a hold's marker forward.
+      isExternalHold(h) &&
       !answered.has(h.id) &&
       (h.source.closedBy ?? []).some((releaser) => releaser.by === "event" && releaser.event === PULL_REQUEST_EVENT),
   );
   if (hold === undefined) return null;
-  const byKey = new Map<string, PullRequestRecordRow>();
+  const byKey = new Map<string, PullRequestRecordResourceState>();
   for (const record of records) {
     const key = keyOfRecord(record);
     if (key !== undefined) byKey.set(key, record);

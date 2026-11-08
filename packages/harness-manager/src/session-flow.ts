@@ -902,7 +902,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
           try {
             await options.workspace.recordCheckout(place, { worktrees, by: { kind: "session", id: harnessCtx.session.identity.id } });
           } catch (error) {
-            ctx.emit.status(`The worktree's row was not updated: ${error instanceof Error ? error.message : String(error)}`, {
+            ctx.emit.status(`The worktree's resource was not updated: ${error instanceof Error ? error.message : String(error)}`, {
               transient: false,
             });
           }

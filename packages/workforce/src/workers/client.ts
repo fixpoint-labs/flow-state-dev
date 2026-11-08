@@ -372,7 +372,7 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
    * flow declares the entries with a browser read.
    */
   const namedLeadSession = async (rosterId: string, workstream: WorkstreamAddress): Promise<string | null> => {
-    const item = await resources.getCollectionItemState(
+    const item = await resources.getCollectionResourceState(
       rosterId,
       workstreamsAccessor(workstream.project.visibility),
       workstreamStorageKey(workstream, ownerSegment(userId))

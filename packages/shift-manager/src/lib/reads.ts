@@ -66,7 +66,7 @@ import { deriveSuspensions } from "@flow-state-dev/react/internal";
 import { ROSTER_FLOW, sessionIdOfFiling, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import type { Client } from "@flow-state-dev/client";
-import { createInboxClient, inboxItems, taskActionName, taskHoldSchema, taskRowView, type BoardActions, type InboxAnswer, type TaskViewRow, type InboxHold, type InboxItem, type InboxRow, type TaskHold } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskActionName, taskHoldSchema, taskView, type BoardActions, type InboxAnswer, type TaskViewInput, type InboxHold, type InboxItem, type InboxTaskInput, type TaskHold } from "@flow-state-dev/orchestration/inbox";
 import { withRetiredShapes, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 
 /** Why a read did not load. */
@@ -179,8 +179,8 @@ export type Projects = {
  */
 export type RunLink = { sessionId: string; requestId: string; attempt: number };
 
-/** One row on a conversation's board, with the fields a board publishes to a browser. */
-export type BoardRow = {
+/** One task on a conversation's board, with the fields a board publishes to a browser. */
+export type BoardTaskView = {
   /** The board's ref: `<sessionId>.tasks`, the conversation that holds it and the collection. */
   boardRef: string;
   /** The session id of the conversation that holds the board. */
@@ -214,7 +214,7 @@ export type BoardRow = {
   /** Its steers as the Inbox reads them: which question each answers. A question is open while none does. */
   steers: Array<{ id: string; answers?: string }>;
   /**
-   * What its runs spent, folded by orchestration's task-row view: harness,
+   * What its runs spent, folded by orchestration's task view: harness,
    * model, tokens and the vendor's charge. `null` before it runs, or from a
    * board that publishes no spend.
    */
@@ -226,7 +226,7 @@ export type BoardRow = {
 };
 
 /** A conversation's board and every row on it. */
-export type ConversationBoards = { refs: string[]; rows: BoardRow[] };
+export type ConversationBoards = { refs: string[]; rows: BoardTaskView[] };
 
 /** A pending approval, review or question, and the session that holds it. */
 export type Ask = {
@@ -520,13 +520,13 @@ function toSteerAnswers(value: unknown): Array<{ id: string; answers?: string }>
 }
 
 /**
- * A board row, from what the board publishes.
+ * A board's task, from what the board publishes.
  *
  * `title` is never absent: a row filed with none reads its goal there. The
  * Brief's `distinctTitle` (`lib/tasks.ts`) is written against that, and shows
  * a title only when it differs from `goal`.
  */
-export function toBoardRow(boardRef: string, ownerSessionId: string, topic: string, stored: unknown): BoardRow {
+export function toBoardTaskView(boardRef: string, ownerSessionId: string, topic: string, stored: unknown): BoardTaskView {
   // A row stored `blocked` (orchestration 0.5.0 and earlier) reads as `held`.
   const data = withRetiredShapes(stored);
   return {
@@ -554,15 +554,15 @@ export function toBoardRow(boardRef: string, ownerSessionId: string, topic: stri
 }
 
 /**
- * A stored row's spend as orchestration's task-row view folds it: `null` when
+ * A stored row's spend as orchestration's task view folds it: `null` when
  * it has none, or when the stored ledger can't be read (the view's fold never
  * throws on a row, so one bad write doesn't fail the board's read).
  */
 function spendOf(boardRef: string, data: unknown): TaskSpendView | null {
-  const spend = field(data, "spend") as TaskViewRow["spend"];
+  const spend = field(data, "spend") as TaskViewInput["spend"];
   if (spend == null) return null;
   const status = text(field(data, "status")) ?? "pending";
-  return taskRowView({ board: boardRef, id: text(field(data, "id")) ?? "", status, spend }).spend;
+  return taskView({ board: boardRef, id: text(field(data, "id")) ?? "", status, spend }).spend;
 }
 
 /**
@@ -614,7 +614,7 @@ export function inboxSection(
   sessions: readonly Pick<SessionSummary, "id" | "flowId">[],
 ): Section<InboxItem<Ask>[]> {
   if (!asks.ok) return asks;
-  const rows: BoardRow[] = [];
+  const rows: BoardTaskView[] = [];
   for (const board of Object.values(boards)) {
     if (!board.ok) return { ok: false, failure: { ...board.failure, message: `Inbox lists what each task waits on from its board, and a board did not load. ${board.failure.message}` } };
     rows.push(...board.value.rows);
@@ -648,7 +648,7 @@ export function inboxSection(
  * no action Shift Manager names: `null`, and its questions read as
  * unanswerable here.
  */
-function boardOwnerOf(row: BoardRow): InboxRow["holder"] {
+function boardOwnerOf(row: BoardTaskView): InboxTaskInput["holder"] {
   return row.boardRef === conversationBoardRef(row.ownerSessionId)
     ? { sessionId: row.ownerSessionId, action: taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION) }
     : null;
@@ -668,7 +668,7 @@ export type LabReader = {
   /** One refresh: every read once. */
   read(): Promise<LabSnapshot>;
   /** Re-read one conversation's board, for a screen waiting on a row to move. */
-  readBoard(sessionId: string): Promise<BoardRow[]>;
+  readBoard(sessionId: string): Promise<BoardTaskView[]>;
   /**
    * Answer an ask through its session's owning flow. Rejects when the session
    * names no owner, or when the Lab refuses the answer.
@@ -745,11 +745,11 @@ export function createLabReader(client: Client): LabReader {
     readEveryCollectionPage(client.resources, sessionId, ref, { limit: PAGE_SIZE });
 
   /** A conversation's board: the user's whole ledger, read through the conversation, keeping its own partition's rows. */
-  const readBoard = async (sessionId: string): Promise<BoardRow[]> => {
+  const readBoard = async (sessionId: string): Promise<BoardTaskView[]> => {
     const boardRef = conversationBoardRef(sessionId);
     return (await readCollection(sessionId, CONVERSATION_BOARD_COLLECTION))
       .filter((row) => conversationOfTopic(row.topic) === sessionId)
-      .map((row) => toBoardRow(boardRef, sessionId, row.topic, row.clientData));
+      .map((row) => toBoardTaskView(boardRef, sessionId, row.topic, row.clientData));
   };
 
   /**
@@ -781,12 +781,12 @@ export function createLabReader(client: Client): LabReader {
       }
       if (carrier === undefined) return [];
       const listed = new Set(sessions.map((s) => s.id));
-      const byHolder = new Map<string, BoardRow[]>();
+      const byHolder = new Map<string, BoardTaskView[]>();
       for (const row of await readCollection(carrier, CONVERSATION_BOARD_COLLECTION)) {
         const holder = conversationOfTopic(row.topic);
         if (!listed.has(holder)) continue;
         const rows = byHolder.get(holder) ?? [];
-        rows.push(toBoardRow(conversationBoardRef(holder), holder, row.topic, row.clientData));
+        rows.push(toBoardTaskView(conversationBoardRef(holder), holder, row.topic, row.clientData));
         byHolder.set(holder, rows);
       }
       return [...byHolder].map(

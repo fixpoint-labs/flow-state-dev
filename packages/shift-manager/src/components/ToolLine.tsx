@@ -38,9 +38,9 @@ import { MessageOrBrief } from "./TaskBrief";
 import { TaskBoardMeta } from "./TaskBoardMeta";
 import { ToolInput, ToolOutput } from "./flow-state/tool";
 
-type CallState = "pending" | "running" | "waiting" | "completed" | "error" | "retried";
+type CallStatus = "pending" | "running" | "waiting" | "completed" | "error" | "retried";
 
-function stateOf(item: ToolOutputItem): CallState {
+function stateOf(item: ToolOutputItem): CallStatus {
   if (isSuspensionWait(item)) return "waiting";
   switch (item.status) {
     case "in_progress":
@@ -59,7 +59,7 @@ function stateOf(item: ToolOutputItem): CallState {
  * completed is `retried`. Only the tool name is compared, not the arguments,
  * and a retry in another run doesn't count.
  */
-function statesInRun(items: readonly ToolOutputItem[]): CallState[] {
+function statesInRun(items: readonly ToolOutputItem[]): CallStatus[] {
   return items.map((item, i) => {
     const state = stateOf(item);
     if (state !== "error") return state;
@@ -69,7 +69,7 @@ function statesInRun(items: readonly ToolOutputItem[]): CallState[] {
 }
 
 /** The worst state in a run: any failure not retried, else any call waiting, else any call still going, else done. */
-function runState(states: readonly CallState[]): CallState {
+function runState(states: readonly CallStatus[]): CallStatus {
   if (states.includes("error")) return "error";
   if (states.includes("waiting")) return "waiting";
   if (states.some((s) => s === "running" || s === "pending")) return "running";
@@ -87,7 +87,7 @@ function argsOf(item: ToolOutputItem): unknown {
 }
 
 /** "Used discover", "Using discover…" while it runs, "discover failed" when it did, "discover is waiting" while it waits, "Tried discover" when a retry did it. */
-function callLabel(name: string, state: CallState): string {
+function callLabel(name: string, state: CallStatus): string {
   if (state === "error") return `${name} failed`;
   if (state === "retried") return `Tried ${name}`;
   if (state === "waiting") return `${name} is waiting`;
@@ -122,7 +122,7 @@ function CallDetails({ item }: { item: ToolOutputItem }) {
 }
 
 /** The muted line and its chevron, opening to `children`. */
-function QuietLine({ label, state, nested = false, children }: { label: string; state: CallState; nested?: boolean; children: ReactNode }) {
+function QuietLine({ label, state, nested = false, children }: { label: string; state: CallStatus; nested?: boolean; children: ReactNode }) {
   return (
     <Collapsible className="group/quiet not-prose w-full" data-testid={nested ? "tool-row" : "tool-group"} data-state-kind={state}>
       <CollapsibleTrigger className="inline-flex max-w-full items-center gap-1 text-left text-sm text-muted-foreground hover:text-foreground">

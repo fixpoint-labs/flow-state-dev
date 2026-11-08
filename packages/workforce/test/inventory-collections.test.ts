@@ -20,7 +20,7 @@ import { runAction } from "@flow-state-dev/engine";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { defineWorkerInventoryCollection, workerInventoryRowSchema } from "../src/index";
+import { defineWorkerInventoryCollection, workerInventoryResourceStateSchema } from "../src/index";
 
 const ORG = "org_acme";
 const OTHER_ORG = "org_other";
@@ -40,14 +40,14 @@ const inheritsIsolation = defineResourceCollection({
 
 const workers = defineWorkerInventoryCollection();
 
-type Rows = {
+type StoredResources = {
   workers: unknown[];
   control: unknown[];
 };
 
 const writeBlock = handler({
   name: "inventory-write",
-  inputSchema: z.object({ workers: z.array(workerInventoryRowSchema) }),
+  inputSchema: z.object({ workers: z.array(workerInventoryResourceStateSchema) }),
   outputSchema: z.object({ written: z.number() }),
   resources: { workers, control: inheritsIsolation },
   execute: async (input: any, ctx: any) => {
@@ -77,7 +77,7 @@ const readBlock = handler({
 });
 
 /**
- * Rows keyed by their own id, for comparison.
+ * StoredResources keyed by their own id, for comparison.
  *
  * `list()` declares no order — it returns the loaded set in insertion order —
  * so comparing positionally would assert something the collection does not
@@ -129,7 +129,7 @@ async function write(
 async function read(
   ctx: ReturnType<typeof twoFlows>,
   opts: { orgId?: string; tenantId?: string } = {}
-): Promise<Rows> {
+): Promise<StoredResources> {
   const result: any = await runAction({
     flow: ctx.reader,
     actionName: "read",
@@ -139,7 +139,7 @@ async function read(
     runtimeConfig: {} as never,
     ...opts
   });
-  return (result.output ?? result) as Rows;
+  return (result.output ?? result) as StoredResources;
 }
 
 describe("what the collections declare", () => {
@@ -224,7 +224,7 @@ describe("a flow that did not write the rows", () => {
 
 describe("the row schemas", () => {
   it("drops a key the schema does not declare", () => {
-    const parsed = workerInventoryRowSchema.parse({
+    const parsed = workerInventoryResourceStateSchema.parse({
       id: "eng.lead",
       kind: "agent",
       postCount: 7
@@ -237,7 +237,7 @@ describe("the row schemas", () => {
     // than defaulted, the framework's read path would fail the parse and hand
     // back the collection's default — so an older row would lose its `id` too,
     // not merely its new fields.
-    expect(workerInventoryRowSchema.parse({ id: "eng.lead", kind: "agent" })).toEqual({
+    expect(workerInventoryResourceStateSchema.parse({ id: "eng.lead", kind: "agent" })).toEqual({
       id: "eng.lead",
       kind: "agent",
       door: null,

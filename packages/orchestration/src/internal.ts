@@ -42,7 +42,7 @@ export {
 } from "./tasks/collection/filing";
 export { hasStarted } from "./tasks/collection/field-rules";
 export { endsFiledWork } from "./tasks/collection/cascade";
-export { answerOf, hasOpenHold, isRowHold, isSuspensionHold, nextHoldDue, openRowHolds } from "./tasks/collection/holds";
+export { answerOf, hasOpenHold, isOwnHold, isSuspensionHold, nextHoldDue, openOwnHolds } from "./tasks/collection/holds";
 export { MAX_QUESTION_PROMPT } from "./tasks/schema/hold";
 export { MAX_STEERS } from "./tasks/schema/steer";
 export {
@@ -57,7 +57,7 @@ export {
 } from "./tasks/steers";
 export { keepsFilerOpen } from "./tasks/helpers/filed-work";
 export { decideTake, hasEnded, type TakeRule } from "./tasks/helpers/request-states";
-export { rowsInSession } from "./tasks/helpers/session-rows";
+export { tasksInSession } from "./tasks/helpers/session-rows";
 export { cancelAndResume } from "./tasks/helpers/user-stop";
 export { checkWaitable, toolCallOf, type WaitableOptions, type WaitableRefusal } from "./tasks/helpers/wait-on-task";
 

@@ -18,7 +18,7 @@ import type { SessionsApi } from "../client";
  *   becomes `live` again when a connection names the runs.
  * - `stopped`: it will not come back: refused, the session gone, or closed.
  */
-export type SessionConnectionState = "connecting" | "live" | "reconnecting" | "lapsed" | "stopped";
+export type SessionConnectionStatus = "connecting" | "live" | "reconnecting" | "lapsed" | "stopped";
 
 export type FollowSessionOptions = {
   readonly sessionId: string;
@@ -41,8 +41,8 @@ export type FollowSessionOptions = {
   readonly onItem: (event: SessionItemEvent) => void;
   /** The session's unfinished runs: named first on every connection, then on each change. */
   readonly onRuns?: (event: SessionRunsChangedEvent) => void;
-  /** Each change of {@link SessionConnectionState}, after the first (`connecting`). */
-  readonly onConnection?: (state: SessionConnectionState) => void;
+  /** Each change of {@link SessionConnectionStatus}, after the first (`connecting`). */
+  readonly onConnection?: (state: SessionConnectionStatus) => void;
   /**
    * Read off the state: the stream had named the runs and has stopped
    * following the session, on entering `lapsed`, or `stopped` after `live`.
@@ -54,9 +54,9 @@ export type FollowSessionOptions = {
 
 /** Open the session's stream. Returns what closes it. */
 export function followSession(options: FollowSessionOptions): () => void {
-  let state: SessionConnectionState = "connecting";
+  let state: SessionConnectionStatus = "connecting";
   let vouched = false;
-  const enter = (next: SessionConnectionState): void => {
+  const enter = (next: SessionConnectionStatus): void => {
     if (state === next || state === "stopped") return;
     state = next;
     if (next === "live") vouched = true;

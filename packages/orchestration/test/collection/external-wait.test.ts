@@ -80,7 +80,7 @@ describe.each([
         id: outcome.questions![0],
         actor: "system",
         openedAt: 1_000,
-        source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
+        source: { kind: "task", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
         ask: { kind: "external", prompt: WAIT.prompt },
       },
     ]);
@@ -182,6 +182,31 @@ describe.each([
     const claimed = (await made.board.claim("w", { leaseDurationMs: 10_000 }))!;
     await expect(made.board.awaitExternal!("t", { prompt: "waiting", events: [] }, { claim: ticketForClaim("tasks", claimed) })).rejects.toThrow(/no event/);
     expect(made.board.get("t")!.holds).toBeUndefined();
+  });
+});
+
+// FIX-2479 D1 (BP-030): the hold predicates are what readers outside the board call on
+// rows they never parsed (a replayed stream item, a raw store read). A wait stored under
+// the retired `"row"` marker is still the task's own: it holds until a steer answers it.
+describe("an external wait a caller hands the predicates under the retired row marker", () => {
+  const legacy = {
+    id: "w1",
+    actor: "system",
+    openedAt: 1,
+    source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
+    ask: { kind: "external", prompt: WAIT.prompt },
+  };
+  const raw = (steers: Array<{ id: string; answers?: string }> = []) => ({ id: "t", status: "in_progress", holds: [legacy], steers }) as unknown as Task;
+
+  it("reads as the task's own external wait", () => {
+    expect(isExternalHold(legacy)).toBe(true);
+    expect(externalHoldOf(raw())?.id).toBe("w1");
+    expect(holdActorOf(raw())).toBe("system");
+  });
+
+  it("closes when a steer answers it", () => {
+    expect(openHolds(raw([{ id: "s1", answers: "w1" }]))).toEqual([]);
+    expect(holdActorOf(raw([{ id: "s1", answers: "w1" }]))).toBeUndefined();
   });
 });
 

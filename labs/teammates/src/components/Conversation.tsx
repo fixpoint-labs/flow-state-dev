@@ -1,6 +1,6 @@
 import { useJumpToLatest } from "@flow-state-dev/react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import type { ConversationEntry, HarnessRow, LabAdapter, LabContext, WorkerRow } from "../adapter";
+import type { ConversationEntry, LabHarness, LabAdapter, LabContext, LabWorker } from "../adapter";
 import { delegatesOf, emptyLine, starterLines } from "../lib/first-run";
 import type { Look } from "../lib/looks";
 import { useStatusLine } from "../lib/status";
@@ -61,12 +61,12 @@ export function Conversation({
   onRecheck,
 }: {
   adapter: LabAdapter;
-  worker: WorkerRow;
+  worker: LabWorker;
   /** The roster as read: an empty conversation names the worker's delegates from it. */
-  workers?: readonly WorkerRow[];
+  workers?: readonly LabWorker[];
   /** What the lab works on and with; drawn over the conversation. */
   context?: LabContext;
-  harnesses?: HarnessRow[];
+  harnesses?: LabHarness[];
   onRecheck?: () => Promise<unknown>;
   sessionId: string;
   nameOf: (id: string) => string;

@@ -301,7 +301,7 @@ export async function checkSessionCreate(
     flow: { kind: flow.kind, id: flow.id },
     state,
     via,
-    readCollectionItem: (ref, topic) => readCollectionItemAt(stores, flow, principal, ref, topic)
+    readCollectionResource: (ref, topic) => readCollectionResourceAt(stores, flow, principal, ref, topic)
   });
   if (!verdict.ok) {
     throw new SessionCreateRefusedError(sessionId, verdict.status ?? 400, verdict.message);
@@ -314,7 +314,7 @@ export async function checkSessionCreate(
  * creating principal's own cell. The create check's only read: bound to the
  * principal so the check cannot name another user's scope.
  */
-async function readCollectionItemAt(
+async function readCollectionResourceAt(
   stores: Pick<StoreRegistry, "resourceState">,
   flow: BirthFlow,
   principal: SessionCreatePrincipal,
@@ -329,7 +329,7 @@ async function readCollectionItemAt(
     found.scope === "session"
   ) {
     throw new Error(
-      `readCollectionItem: "${ref}" is not a user- or org-scoped collection of flow "${flow.kind}".`
+      `readCollectionResource: "${ref}" is not a user- or org-scoped collection of flow "${flow.kind}".`
     );
   }
   const { config, scope } = found;

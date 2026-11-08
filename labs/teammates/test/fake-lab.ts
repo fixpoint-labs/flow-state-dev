@@ -21,8 +21,8 @@
  * `failTurn` leaves a failed turn in a conversation, as an engine `error` item
  * would; Retry runs that turn's line again.
  */
-import type { SessionConnectionState } from "@flow-state-dev/client";
-import { taskRowView } from "@flow-state-dev/orchestration/inbox";
+import type { SessionConnectionStatus } from "@flow-state-dev/client";
+import { taskView } from "@flow-state-dev/orchestration/inbox";
 import {
   rerunOverrides,
   runSteps,
@@ -31,11 +31,11 @@ import {
   type TaskAnswer,
   type LabAdapter,
   type SessionStep,
-  type TalkRow,
+  type LabTalk,
   type BoardTask,
   type Unsubscribe,
   type WindowMark,
-  type WorkerRow,
+  type LabWorker,
 } from "../src/adapter";
 
 /** How the double keeps time, and what it plays. */
@@ -69,7 +69,7 @@ export interface FixtureOptions {
 /** The fixture, plus what a test does to its server. */
 export interface FixtureLab extends LabAdapter {
   /** Every conversation's feed reports `state` from now on. */
-  setConnection(state: SessionConnectionState): void;
+  setConnection(state: SessionConnectionStatus): void;
   /** The newest turn of conversation `sessionId` failed with `reason`: a reply under way is left incomplete. */
   failTurn(sessionId: string, reason: string): void;
   /** Each `retry` the screen made, in order. */
@@ -115,7 +115,7 @@ const RUN_TOOLS: Record<string, Record<"read" | "edit" | "check", [string, Recor
 const WINDOW_TURNS = 50;
 const MINUTE = 60_000;
 
-const ROSTER: WorkerRow[] = [
+const ROSTER: LabWorker[] = [
   { id: "teammates.chief-of-staff", name: "Lead", icon: "★", color: "amber", role: "Plans the launch with you, and asks the other workers when it needs a fact or a draft." },
   { id: "teammates.researcher", name: "researcher", icon: "🔎", color: "teal", role: "Finds facts for the team, and replies to whoever asked." },
   { id: "teammates.writer", name: "writer", icon: "✎", color: "violet", role: "Drafts and tightens copy when you or another worker asks." },
@@ -129,7 +129,7 @@ const WRITER = "teammates.writer";
 /** The coding worker a task that names no harness goes to: Lead's default. */
 const DEFAULT_CODER = "teammates.cursor";
 
-type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: TalkRow } | { kind: "result"; task: BoardTask };
+type Job = { kind: "user"; entryId: string; text: string } | { kind: "receive"; message: LabTalk } | { kind: "result"; task: BoardTask };
 
 /** A board row, and the conversation that filed it. `attempt` counts its runs, so a run a cancel or retry left behind stops. */
 /** A fixture's row: the task, and the times the board keeps for it (its view reads them, as the adapter's does). */
@@ -139,7 +139,7 @@ type FixtureTask = BoardTask & { sessionId: string; attempt?: number; createdAt?
 const refusal = (task: FixtureTask, verb: string) => `${verb}: task "${task.title}" (${task.id}) is ${task.boardStatus}.`;
 
 interface FixtureWorker {
-  row: WorkerRow;
+  row: LabWorker;
   sessionId: string;
   entries: ConversationEntry[];
   running: boolean;
@@ -165,7 +165,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   const speed = options.speed ?? 1;
   const now = options.now ?? (() => Date.now());
   const listeners = new Set<() => void>();
-  const log: TalkRow[] = [];
+  const log: LabTalk[] = [];
   let seq = 0;
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
@@ -184,7 +184,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
   const runs = new Map<string, Record<string, unknown>[]>();
   const notSetUp = new Set(options.notSetUp ?? []);
   let unreachable = options.unreachableReads ?? 0;
-  let connection: SessionConnectionState = "live";
+  let connection: SessionConnectionStatus = "live";
   /** What each run waiting on you is waiting for: the answer it goes on with. */
   const waits = new Map<string, (answer: TaskAnswer) => void>();
   /** With `held`, the coding runs waiting on `startRuns()`. */
@@ -229,7 +229,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
    * `receive` queued for the recipient. A send that isn't an answer asks for one.
    */
   const sendMessage = (w: FixtureWorker, to: string, text: string, inReplyTo?: string): Step[1] => () => {
-    const message: TalkRow = { id: nextId("m"), from: w.row.id, to, text, inReplyTo, ...(inReplyTo ? {} : { replyRequested: true }), at: now() };
+    const message: LabTalk = { id: nextId("m"), from: w.row.id, to, text, inReplyTo, ...(inReplyTo ? {} : { replyRequested: true }), at: now() };
     push(w, { kind: "sent", id: nextId("s"), messageId: message.id, to, text });
     log.push(message);
     const recipient = worker(to);
@@ -446,15 +446,15 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
     w.entries = entries;
     w.lastActiveAt = lastActiveAt;
   };
-  const exchange = (from: string, to: string, text: string, ago: number, inReplyTo?: string): TalkRow => {
+  const exchange = (from: string, to: string, text: string, ago: number, inReplyTo?: string): LabTalk => {
     const message = { id: nextId("m"), from, to, text, inReplyTo, at: now() - ago };
     log.push(message);
     return message;
   };
   const user = (text: string): ConversationEntry => ({ kind: "user", id: nextId("u"), text });
   const assistant = (text: string): ConversationEntry => ({ kind: "assistant", id: nextId("a"), text });
-  const sent = (m: TalkRow): ConversationEntry => ({ kind: "sent", id: nextId("s"), messageId: m.id, to: m.to, text: m.text });
-  const received = (m: TalkRow): ConversationEntry => ({
+  const sent = (m: LabTalk): ConversationEntry => ({ kind: "sent", id: nextId("s"), messageId: m.id, to: m.to, text: m.text });
+  const received = (m: LabTalk): ConversationEntry => ({
     kind: "received",
     id: nextId("r"),
     messageId: m.id,
@@ -628,7 +628,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
 
     async hire({ name, role }) {
       if (workers.has(name) && !fired.has(name)) throw new Error(`"${name}" is already on your roster`);
-      const row: WorkerRow = { id: name, name, role, own: true };
+      const row: LabWorker = { id: name, name, role, own: true };
       workers.set(name, { row, sessionId: `conversation:${name}`, entries: [], running: false, lastActiveAt: now(), queue: [] });
       notify();
       return row;
@@ -653,7 +653,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
             .filter((t) => t.sessionId === sessionId)
             .map(({ sessionId: _, createdAt, completedAt, ...card }) => ({
               ...card,
-              view: taskRowView({ id: card.id, status: card.boardStatus, title: card.title, goal: card.goal, board: sessionId, createdAt, startedAt: card.startedAt, completedAt }),
+              view: taskView({ id: card.id, status: card.boardStatus, title: card.title, goal: card.goal, board: sessionId, createdAt, startedAt: card.startedAt, completedAt }),
             })),
         ),
       );

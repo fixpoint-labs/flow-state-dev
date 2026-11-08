@@ -20,7 +20,7 @@ import type { SessionsApi } from "../client";
 import { bindStoreToCallbacks } from "../stream-client/bind-store-to-callbacks";
 import { createRequestStreamStore } from "../stream-client/request-stream-store";
 import { createSSEClientFromResponse } from "../stream-client/streams";
-import { followSession, type SessionConnectionState } from "./follow-session";
+import { followSession, type SessionConnectionStatus } from "./follow-session";
 import { mayReplaceItem } from "./session-history";
 import { readSessionEarlier, readSessionTail, type SessionItemsWindow } from "./session-window";
 
@@ -58,8 +58,8 @@ export type SessionFeedSnapshot = {
   readonly hasEarlier: boolean;
   /** The session's unfinished runs as the stream last named them; `null` until it has. */
   readonly runs: readonly SessionRun[] | null;
-  /** How far `items` and `runs` can be trusted. See {@link SessionConnectionState}. */
-  readonly state: SessionConnectionState;
+  /** How far `items` and `runs` can be trusted. See {@link SessionConnectionStatus}. */
+  readonly state: SessionConnectionStatus;
   /**
    * The last history read's failure: while it is read again, and after the
    * feed gave up (`stopped`). `null` once a read lands.

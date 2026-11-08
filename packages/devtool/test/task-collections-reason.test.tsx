@@ -86,7 +86,7 @@ const heldOnQuestion: Task = {
   id: "task-q",
   goal: "pick a region",
   status: "in_progress",
-  holds: [{ id: "q1", source: { kind: "row" }, ask: { kind: "question", prompt: "Which region, eu-west or us-east?" } }],
+  holds: [{ id: "q1", source: { kind: "task" }, ask: { kind: "question", prompt: "Which region, eu-west or us-east?" } }],
 };
 
 describe("the reason on a task row", () => {

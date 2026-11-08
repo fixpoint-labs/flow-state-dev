@@ -275,8 +275,8 @@ Workforce's private roster collection is the first consumer. Engine knows it onl
 
 A collection declaring `ownerWrites: { param }` takes the same key shape, the same definition checks except the browser-read one, and both fences. It differs in one rule: **every reader the scope serves reads the row, and only its owner writes it.**
 
-- **Reads.** The key fence admits the row to every read path listed above, for any caller, as long as its first `~` segment sits at the owner parameter. The request-start seed cache admits it too, judged against the run's declared collections, since those collections serve it from that cache.
-- **Writes.** A create, update or delete is refused with its own message (`A row of an owner-writes collection is written only by the user it belongs to.`) unless the session's user is the one the key's owner segment encodes. A reader holds refs it could write through, so the scope resource registry judges this where every write it makes meets the store (state mutate, state delete, content write, content delete), whichever handle, ref or eviction asked. The browser update and delete routes ask the same question before writing.
+- **Reads.** The key fence admits the resource to every read path listed above, for any caller, as long as its first `~` segment sits at the owner parameter. The request-start seed cache admits it too, judged against the run's declared collections, since those collections serve it from that cache.
+- **Writes.** A create, update or delete is refused with its own message (`A resource in an owner-writes collection is written only by the user it belongs to.`) unless the session's user is the one the key's owner segment encodes. A reader holds refs it could write through, so the scope resource registry judges this where every write it makes meets the store (state mutate, state delete, content write, content delete), whichever handle, ref or eviction asked. The browser update and delete routes ask the same question before writing.
 - **The startup fence** arms for either mode. An owner-private and an owner-writes declaration of one pattern are two declarations, and the second is refused.
 
 It reads only the key and the declaring collection, so a second process declaring the same collection over one store refuses the same writes. A flow that declares the pattern without the mode gets the key fence's plain-collection answer: absent, and refused on write.
@@ -550,7 +550,7 @@ Content is lazy-loaded via dedicated endpoints, gated by `client.content.read`:
 
 ```
 GET /api/flows/sessions/:sessionId/resources/:ref/content          → single resource
-GET /api/flows/sessions/:sessionId/resources/:ref/:topic/content   → collection item
+GET /api/flows/sessions/:sessionId/resources/:ref/:topic/content   → collection resource
 ```
 
 A single resource nothing has written yet returns the content its definition declares (`content` or `contentFile`), the same body a run's context starts from.
@@ -584,7 +584,7 @@ Item state and item content live in two stores (`ResourceStateStore`, `ContentSt
 | A `DELETE` lands in the window | The create's body is orphaned behind the tombstone; a later create carrying no content revives the row over it, surfacing a deleted generation's content as current. **No error** |
 | A `PATCH` lands in the window | It is acknowledged `200` and then overwritten by the in-flight create. **No error** |
 
-**The shape of a missing body is `null`, not `""`.** A failed content write leaves no content row, and `renderContent` (`packages/engine/src/resources/internal.ts`) returns `null` when `rawContent === undefined`. `handleGetCollectionItemContent` passes that straight through, so the item reads back as `{ content: null }`. Adapter and client code that branches on `content === ""` takes the wrong path — the distinction is between *absent* and *empty*, and only the former occurs here.
+**The shape of a missing body is `null`, not `""`.** A failed content write leaves no content row, and `renderContent` (`packages/engine/src/resources/internal.ts`) returns `null` when `rawContent === undefined`. `handleGetCollectionResourceContent` passes that straight through, so the item reads back as `{ content: null }`. Adapter and client code that branches on `content === ""` takes the wrong path — the distinction is between *absent* and *empty*, and only the former occurs here.
 
 **A template-backed collection splits that row rather than escaping it.** `renderContent` checks `contentTemplate` and `contentTemplateRef` *before* it looks at `rawContent` and returns from the template branch without consulting it, so **readability** costs nothing — the item renders from state whether or not a content row exists, and there is nothing to repair with `PATCH`. But the create route writes content whenever the caller sends any, with **no template guard**, so the **partial commit** is exactly as real: the request still fails, the item is still live and listable, and a retry still gets a `409`. Read the first row as two claims — *the body is absent*, which a template answers, and *the create half-committed*, which it does not.
 

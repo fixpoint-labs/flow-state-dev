@@ -29,7 +29,7 @@ import {
   type HarnessSessionFeeds,
   type HarnessSessionWorkspace,
 } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost, type WorktreeRow } from "@flow-state-dev/workspace";
+import { localWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { REPO_ROOT, intentFreeEnv, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 
@@ -189,14 +189,14 @@ async function settled(requestId: string): Promise<string | undefined> {
 }
 
 /** The worktree row a session points at (`state.workspace.worktree`), read as a page reads it. */
-async function rowOf(sessionId: string): Promise<WorktreeRow | undefined> {
+async function rowOf(sessionId: string): Promise<WorktreeResourceState | undefined> {
   const key = (((await stores.session.get(sessionId))?.state ?? {}) as { workspace?: { worktree: string | null } | null }).workspace?.worktree;
   if (key == null) return undefined;
   const res = await router.GET(
     new Request(`http://goal/api/flows/sessions/${sessionId}/resources/worktrees?userId=${USER}`),
     { params: { path: ["sessions", sessionId, "resources", "worktrees"] } },
   );
-  const body = (await res.json()) as { items?: Array<{ clientData?: WorktreeRow }> };
+  const body = (await res.json()) as { items?: Array<{ clientData?: WorktreeResourceState }> };
   return (body.items ?? []).map((item) => item.clientData).find((row) => row?.key === key);
 }
 

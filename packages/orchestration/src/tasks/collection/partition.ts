@@ -88,7 +88,7 @@ export async function resolveTaskPartition(
   const value: unknown = await partitionBy(partitionContextOf(collectionId, ctx));
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(
-      `[tasks] ledger "${collectionId}" keeps its rows per partition, and its partitionBy ` +
+      `[tasks] ledger "${collectionId}" keeps its tasks per partition, and its partitionBy ` +
         `returned ${JSON.stringify(value)}. Return a non-empty string from data only the ` +
         `server writes.`
     );
@@ -107,7 +107,7 @@ function partitionContextOf(collectionId: string, ctx: BlockContext): TaskPartit
   const userId = identity?.userId ?? ctx.user?.identity?.userId;
   if (identity?.id === undefined || userId === undefined) {
     throw new Error(
-      `[tasks] ledger "${collectionId}" keeps its rows per partition, and this context has no ` +
+      `[tasks] ledger "${collectionId}" keeps its tasks per partition, and this context has no ` +
         `session or user to partition by.`
     );
   }
@@ -128,7 +128,7 @@ function partitionContextOf(collectionId: string, ctx: BlockContext): TaskPartit
 function assertPartitionedTaskId(collectionId: string, taskId: string): void {
   if (taskId.length === 0 || taskId.includes("/") || taskId.includes("\\")) {
     throw new Error(
-      `[tasks] ledger "${collectionId}" keeps its rows per partition, so a task id must be ` +
+      `[tasks] ledger "${collectionId}" keeps its tasks per partition, so a task id must be ` +
         `one path segment: ${JSON.stringify(taskId)} contains a "/" or "\\" (or is empty).`
     );
   }
@@ -169,7 +169,7 @@ export function partitionedResourceCollection(
   const keyOf = (key: string | Record<string, string>): string => {
     if (typeof key !== "string") {
       throw new Error(
-        `[tasks] ledger "${collectionId}" addresses its rows by task id, not by pattern parameters`
+        `[tasks] ledger "${collectionId}" addresses its tasks by task id, not by pattern parameters`
       );
     }
     assertPartitionedTaskId(collectionId, key);

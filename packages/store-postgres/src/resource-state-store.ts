@@ -39,7 +39,7 @@ import {
 } from "@flow-state-dev/core/helpers";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
-  ResourceIndexBuildState,
+  ResourceIndexBuildStatus,
   ResourceIndexEntry,
   ResourceStateSetOptions,
   ResourceStateStore,
@@ -518,7 +518,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
     },
 
     indexes: {
-      async state(scopeType, scopeId, collection, index): Promise<ResourceIndexBuildState> {
+      async state(scopeType, scopeId, collection, index): Promise<ResourceIndexBuildStatus> {
         const result = await executor.query(
           `SELECT status FROM resource_index_built
             WHERE scope_type = $1 AND scope_id = $2 AND collection = $3 AND index_name = $4`,

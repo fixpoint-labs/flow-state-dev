@@ -291,7 +291,7 @@ function checkedPartition(options: ResourceBackingSpec): string | undefined {
   const where = `[tasks] getOrCreateTaskCollection("${options.collectionId}")`;
   if (partitioned && options.partition === undefined) {
     throw new Error(
-      `${where}: this ledger keeps its rows per partition (partitionBy), so it is resolved ` +
+      `${where}: this ledger keeps its tasks per partition (partitionBy), so it is resolved ` +
         `with a partition, never read whole.`
     );
   }

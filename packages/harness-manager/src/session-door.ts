@@ -30,13 +30,13 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import {
   LINE_STEER_REFUSALS,
-  rowsInSession,
+  tasksInSession,
   steerFromLine,
   type LineSteerRefusal,
 } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { resolveOwnership, type HarnessSlot } from "./manager";
-import { readRunRow, RUNS, runRecordCollection, runTopic } from "./run-record";
+import { readRunRecord, RUNS, runRecordCollection, runTopic } from "./run-record";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { acquireCheckout, releaseCheckout, runBoardSegment } from "./workspace";
 
@@ -131,8 +131,8 @@ function newest(rows: readonly Task[]): Task {
  * latest open one, a follow-up waiting to start; else, every one finished,
  * the latest that ran here, whose coding session talk resumes.
  */
-export function sessionRow(tasks: TaskCollectionRef, sessionId: string): Task | undefined {
-  const rows = rowsInSession(tasks, sessionId);
+export function sessionTask(tasks: TaskCollectionRef, sessionId: string): Task | undefined {
+  const rows = tasksInSession(tasks, sessionId);
   const linked = rows.filter((task) => task.run?.sessionId === sessionId);
   if (linked.length === 0) return undefined;
   const open = rows.filter((task) => !isTerminalStatus(task.status));
@@ -210,14 +210,14 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
     uses,
     execute: async (input, ctx: BlockContext) => {
       const board = await options.board(ctx);
-      const row = board === undefined ? undefined : sessionRow(board.tasks, ctx.session.identity.id);
+      const row = board === undefined ? undefined : sessionTask(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
       if (!isTerminalStatus(row.status)) throw new SessionDoorRefused("task-running");
       const identity = board.runOf(row);
       const record =
         identity === undefined
           ? undefined
-          : await readRunRow(ctx, runTopic(runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.phase));
+          : await readRunRecord(ctx, runTopic(runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.phase));
       if (record?.sessionId == null || record.workspacePath == null) throw new SessionDoorRefused("cannot-continue");
       // The checkout is held for the talk, as for any run, so a follow-up
       // claimed meanwhile waits rather than resume the same session beside it.
@@ -287,7 +287,7 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
     uses: options.uses ?? [],
     execute: async (input, ctx: BlockContext) => {
       const board = await options.board(ctx);
-      const row = board === undefined ? undefined : sessionRow(board.tasks, ctx.session.identity.id);
+      const row = board === undefined ? undefined : sessionTask(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
       if (isTerminalStatus(row.status)) return { talk: input.message };
       const refused = await steerFromLine(board.tasks, row.id, input.message, ctx);

@@ -17,7 +17,7 @@
  */
 
 import { timingSafeEqual } from "node:crypto";
-import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
+import type { ScheduleIndex, ScheduleIndexEntry } from "@flow-state-dev/scheduled";
 import { dynamicScheduleId } from "./schedule-id";
 
 /** Options for `createGetToPostCronShim`. */
@@ -88,7 +88,7 @@ export interface CreateScheduleTickHandlerOptions {
    * dispatched row and the HTTP status returned (or `0` when the POST
    * throws). The dispatcher never throws back to the cron caller.
    */
-  onDispatch?: (row: ScheduleIndexRow, status: number) => void;
+  onDispatch?: (row: ScheduleIndexEntry, status: number) => void;
 }
 
 /**
@@ -115,7 +115,7 @@ export function createScheduleTickHandler(
     const base = resolveBaseUrl(opts.baseUrl);
     if (base === null) return new Response("Server misconfigured: missing baseUrl", { status: 500 });
 
-    let due: ScheduleIndexRow[];
+    let due: ScheduleIndexEntry[];
     try {
       due = await opts.index.claimDue(Date.now(), maxPerTick);
     } catch (err) {
@@ -133,7 +133,7 @@ export function createScheduleTickHandler(
     // Never let an observer throw kill the worker — Promise.allSettled
     // on the worker pool would swallow the rejection and every later
     // item assigned to this slot would be silently skipped.
-    const notify = (row: ScheduleIndexRow, status: number): void => {
+    const notify = (row: ScheduleIndexEntry, status: number): void => {
       try {
         opts.onDispatch?.(row, status);
       } catch {

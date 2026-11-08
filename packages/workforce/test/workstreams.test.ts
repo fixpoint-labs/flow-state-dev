@@ -399,7 +399,7 @@ describe("who writes an entry", () => {
     // Flow code writing the collection, registered and run as bob.
     const forced = await h.ok("bob", "lab", await h.lab("bob"), "forceWrite", { owner: "alice", id: "checkout" });
     for (const outcome of Object.values(forced)) {
-      expect(outcome).toContain("refused: A row of an owner-writes collection is written only by the user it belongs to.");
+      expect(outcome).toContain("refused: A resource in an owner-writes collection is written only by the user it belongs to.");
     }
     // The app's action, naming her entry: the store refuses it by the same rule.
     const action = await h.act("bob", "lab", await h.lab("bob"), "updateWorkstream", {
@@ -410,7 +410,7 @@ describe("who writes an entry", () => {
       report: "BOB-REPORT"
     });
     expect(action.settled).not.toBe("completed");
-    expect(refusal(action)).toContain("A row of an owner-writes collection is written only by the user it belongs to.");
+    expect(refusal(action)).toContain("A resource in an owner-writes collection is written only by the user it belongs to.");
     // Left to the caller, the action addresses bob's own entry, which he doesn't have.
     const his = await h.act("bob", "lab", await h.lab("bob"), "updateWorkstream", { project: apollo, id: "checkout", status: "blocked" });
     expect(refusal(his)).toContain("no-such-workstream");

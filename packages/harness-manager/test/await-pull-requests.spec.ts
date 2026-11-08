@@ -142,7 +142,7 @@ describe("a coding task whose run opened a pull request", () => {
     expect(holds[0]).toMatchObject({
       actor: "system",
       ask: { kind: "external" },
-      source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key: PR_7 }] },
+      source: { kind: "task", closedBy: [{ by: "event", event: "pull-request", key: PR_7 }] },
     });
     expect(holds[0]).not.toHaveProperty("midway");
     // A screen reads the wait back as one line: the pull request it waits on.

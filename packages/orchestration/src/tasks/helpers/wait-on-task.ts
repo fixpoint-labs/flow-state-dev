@@ -69,7 +69,7 @@ import {
   parseBlockInstanceId
 } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import type { WaitGateBinding, WaitOutcome, WaitRow } from "@flow-state-dev/core/internal";
+import type { WaitGateBinding, WaitOutcome, TaskAddress } from "@flow-state-dev/core/internal";
 import { IllegalTaskTransitionError, isTerminalStatus } from "../schema/task-status";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
@@ -205,8 +205,8 @@ export interface CheckedWait {
   readonly key: string;
   readonly row: Task;
   readonly deadlineMs: number;
-  readonly binding: WaitRow;
-  readonly own: WaitRow | undefined;
+  readonly binding: TaskAddress;
+  readonly own: TaskAddress | undefined;
 }
 
 /**
@@ -303,7 +303,7 @@ async function check(
   const own =
     ctx.runOnce === undefined
       ? undefined
-      : ((await ctx.runOnce(`fsd.wait.own:${options.key}`, async () => ownWaitRowFromContext(ctx, options.ownBoard === true) ?? null)) ??
+      : ((await ctx.runOnce(`fsd.wait.own:${options.key}`, async () => ownTaskAddressFromContext(ctx, options.ownBoard === true) ?? null)) ??
         undefined);
   const waitable = await checkWaitable(ctx, {
     key: options.key,
@@ -332,7 +332,7 @@ export interface WaitableOptions {
   /** What the wait would park on, for the depth of its chain. */
   readonly binding?: WaitGateBinding;
   /** The request's own wait row, for the depth of its chain. */
-  readonly own?: WaitRow;
+  readonly own?: TaskAddress;
   /** What `wait_unavailable` says: the waiter names what it needs. */
   readonly unavailable: string;
 }
@@ -386,7 +386,7 @@ async function depthRefusal(
   ctx: BlockContext,
   memoKey: string,
   binding: WaitGateBinding | undefined,
-  own: WaitRow | undefined
+  own: TaskAddress | undefined
 ): Promise<Extract<TaskWaitResult, { ok: false }> | undefined> {
   const depth = await ctx.runOnce!(memoKey, () =>
     requestHostOf(ctx)!.waits!.depth({ ...(binding !== undefined ? { binding } : {}), ...(own !== undefined ? { own } : {}) })
@@ -499,7 +499,7 @@ function isLegacyTimeout(outcome: WaitOutcome): boolean {
  * above runs through the task. A drain's claim is the row it waits on, never
  * its own work.
  */
-function ownWaitRowFromContext(ctx: BlockContext, drain = false): WaitRow | undefined {
+function ownTaskAddressFromContext(ctx: BlockContext, drain = false): TaskAddress | undefined {
   const admitted = admittedTaskOf(ctx);
   if (admitted !== undefined) return { board: admitted.ref.collectionId, taskId: admitted.taskId };
   const claim = drain ? undefined : currentWorkerClaim(ctx);
@@ -897,7 +897,7 @@ async function cancelOrOwe(collection: TaskCollectionRef, taskId: string, reason
       );
     } catch (markError) {
       console.warn(
-        `[orchestration] wait "${taskId}": its cancel failed, and so did recording it as owed; the row stays open: ` +
+        `[orchestration] wait "${taskId}": its cancel failed, and so did recording it as owed; the task stays open: ` +
           `${(error as Error).message}; ${(markError as Error).message}`
       );
     }

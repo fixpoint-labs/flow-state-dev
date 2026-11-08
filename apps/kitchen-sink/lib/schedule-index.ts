@@ -14,7 +14,7 @@
  * no row mirrored" semantics.
  */
 
-import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
+import type { ScheduleIndex, ScheduleIndexEntry } from "@flow-state-dev/scheduled";
 
 let impl: ScheduleIndex = {
   async upsert() {},
@@ -32,7 +32,7 @@ export function setScheduleIndexImpl(next: ScheduleIndex): void {
  * Safe to import from anywhere at module-init time.
  */
 export const scheduleIndex: ScheduleIndex = {
-  upsert: (row: ScheduleIndexRow) => impl.upsert(row),
+  upsert: (row: ScheduleIndexEntry) => impl.upsert(row),
   claimDue: (now: number, limit?: number) => impl.claimDue(now, limit),
   remove: (id: { cell: string; key: string }) => impl.remove(id),
 };

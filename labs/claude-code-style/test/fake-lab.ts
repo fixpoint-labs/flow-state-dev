@@ -23,16 +23,16 @@
 import type {
   ConnectionState,
   LabAdapter,
-  ProjectRow,
+  LabProject,
   ReviewDetail,
-  SessionRow,
-  TaskRow,
+  LabSession,
+  LabTask,
   TaskWork,
   ThreadEntry,
   ThreadView,
   Unsubscribe,
 } from "../src/adapter";
-import { taskRowView } from "@flow-state-dev/orchestration/inbox";
+import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { waitingOnYou } from "../src/lib/columns";
 import { toolRun } from "../src/lib/tool-steps";
 import { modeById, modeOfWorker, type ModeId } from "../src/modes";
@@ -57,14 +57,14 @@ export interface FakeLab extends LabAdapter {
   readonly retries: { sessionId: string; requestId: string }[];
 }
 
-interface FixtureTask extends TaskRow {
+interface FixtureTask extends LabTask {
   work: ThreadEntry[];
   /** What its run's review stop carries, for a harness thread ready for review. */
   reviewDetail?: ReviewDetail;
 }
 
 interface FixtureSession {
-  row: SessionRow;
+  row: LabSession;
   entries: ThreadEntry[];
   running: boolean;
   turnStartedAt?: number;
@@ -353,14 +353,14 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   // fake: the person's access to each project. A session may open only where they may work: a
   // member of a shared project or the owner of a private one. Reading one is not enough, the same
   // not-a-member refusal projectWorkspace() makes for a run.
-  const projects: (ProjectRow & { visibility: "shared" | "private"; access: "member" | "owner" | "reader" })[] = [
+  const projects: (LabProject & { visibility: "shared" | "private"; access: "member" | "owner" | "reader" })[] = [
     { id: "project-vendor-notes", name: "vendor-notes", visibility: "shared", access: "member" },
     { id: "project-onboarding-app", name: "onboarding-app", visibility: "private", access: "owner" },
     { id: "project-billing-service", name: "billing-service", visibility: "shared", access: "reader" },
   ];
   const mayWorkIn = projects
     .filter((p) => (p.visibility === "shared" ? p.access === "member" : p.access === "owner"))
-    .map(({ id, name }): ProjectRow => ({ id, name }));
+    .map(({ id, name }): LabProject => ({ id, name }));
 
   const seed = (title: string, ago: number, projectId: string | null, lines: [string, string]) => {
     const id = nextId("session");
@@ -482,7 +482,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     async openSession(mode: ModeId, projectId: string) {
       if (!mayWorkIn.some((p) => p.id === projectId)) throw new Error(`not-a-member: ${projectId}`);
       const id = nextId("session");
-      const row: SessionRow = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, waiting: 0, projectId };
+      const row: LabSession = { id, title: "New session", worker: modeById(mode).worker, updatedAt: now(), running: false, waiting: 0, projectId };
       sessions.set(id, { row, entries: [], running: false, queue: [], timers: [], taskTimers: [], tasks: [] });
       notify();
       return row;
@@ -533,7 +533,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       return watch(() => {
         const s = sessions.get(sessionId);
         // Each row with its view, as the adapter reads one from the board's row (no holds: a fixture's wait is its `openHold`).
-        onChange(s ? s.tasks.map(({ work: _work, reviewDetail: _review, ...row }) => ({ ...row, view: taskRowView({ id: row.id, title: row.title, goal: row.goal, status: row.status, updatedAt: row.updatedAt, board: sessionId }) })) : []);
+        onChange(s ? s.tasks.map(({ work: _work, reviewDetail: _review, ...row }) => ({ ...row, view: taskView({ id: row.id, title: row.title, goal: row.goal, status: row.status, updatedAt: row.updatedAt, board: sessionId }) })) : []);
       });
     },
 

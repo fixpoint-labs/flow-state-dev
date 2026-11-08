@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import { firstLine, exchangesOf, toMessageRows, type WorkerMessageRow } from "../src/lib/messages";
+import { firstLine, exchangesOf, toMessages, type WorkerMessageResourceState } from "../src/lib/messages";
 import { parseRoute, pathFor } from "../src/lib/routes";
 
 const readPages = vi.fn();
@@ -18,7 +18,7 @@ vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 import { Messages } from "../src/surfaces/Messages";
 import { ToolLineGroup } from "../src/components/ToolLine";
 
-const row = (over: Partial<WorkerMessageRow> & Pick<WorkerMessageRow, "id" | "from" | "to" | "at">): WorkerMessageRow => ({
+const row = (over: Partial<WorkerMessageResourceState> & Pick<WorkerMessageResourceState, "id" | "from" | "to" | "at">): WorkerMessageResourceState => ({
   text: "hello",
   exchange: over.id,
   fromSession: `s_${over.from}`,
@@ -50,7 +50,7 @@ describe("the message log, as exchanges", () => {
   });
 
   it("leaves out a row that isn't a message, rather than drawing half of one", () => {
-    expect(toMessageRows([{ clientData: ask }, { clientData: { id: "x" } }, {}]).map((r) => r.id)).toEqual(["msg_a"]);
+    expect(toMessages([{ clientData: ask }, { clientData: { id: "x" } }, {}]).map((r) => r.id)).toEqual(["msg_a"]);
   });
 
   it("shows a message by its first line", () => {

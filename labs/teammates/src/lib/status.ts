@@ -8,8 +8,8 @@
  * log), or it is idle. Nothing is guessed: with no request, no running task
  * and no open message, it is idle.
  */
-import type { Activity, BoardTask, ConversationEntry, LabAdapter, TalkRow, WorkerRow } from "../adapter";
-import { taskRowPresentation } from "./task-presentation";
+import type { Activity, BoardTask, ConversationEntry, LabAdapter, LabTalk, LabWorker } from "../adapter";
+import { taskPresentation } from "./task-presentation";
 import { owedRepliesFrom } from "./talk";
 import { age, useNow, useWatch } from "./use-watch";
 
@@ -17,7 +17,7 @@ import { age, useNow, useWatch } from "./use-watch";
 export interface StatusInputs {
   activity: Activity | undefined;
   entries: readonly ConversationEntry[];
-  talk: readonly TalkRow[];
+  talk: readonly LabTalk[];
   tasks: readonly BoardTask[];
   now: number;
 }
@@ -25,12 +25,12 @@ export interface StatusInputs {
 /** How long a coding task's ending stays on the line: long enough for a glance; the panel keeps it after. */
 export const ENDING_SHOWN_MS = 2 * 60_000;
 
-/** An approval's tone: the attention colour, a person must act. A task's tone is `taskRowPresentation`'s. */
+/** An approval's tone: the attention colour, a person must act. A task's tone is `taskPresentation`'s. */
 const NEEDS_OK = "text-attention";
 /** The quiet tone of every other line. */
 const PLAIN = "text-muted-foreground";
 
-/** The line, and the class that colours it: a task's from `taskRowPresentation`, an approval's the attention colour. */
+/** The line, and the class that colours it: a task's from `taskPresentation`, an approval's the attention colour. */
 export interface Status {
   text: string;
   tone: string;
@@ -83,7 +83,7 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
   const need = needsOf(inputs)[0];
   if (need?.kind === "approval") return { text: `Needs your OK: ${need.text}`, tone: NEEDS_OK, needsYou: true };
   if (need?.kind === "task") {
-    const state = taskRowPresentation(need.task);
+    const state = taskPresentation(need.task);
     return { text: `${upperFirst(state.word)}: ${need.text}`, tone: state.tone, needsYou: true };
   }
   const plain = (text: string): Status => ({ text, tone: PLAIN, needsYou: false });
@@ -96,7 +96,7 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
   if (coding) return plain(`Running coding task: ${coding.title}`);
   const ended = freshEndings(tasks, now, isCoding)[0];
   if (ended) {
-    const state = taskRowPresentation(ended);
+    const state = taskPresentation(ended);
     return { text: `Coding task ${ended.status === "failed" ? state.word : "finished"}: ${ended.title}`, tone: state.tone, needsYou: false };
   }
   const waiting = owedRepliesFrom(worker, [...talk]);
@@ -106,7 +106,7 @@ export function statusOf(worker: string, inputs: StatusInputs, nameOf: (id: stri
 }
 
 /** A teammate's status line, its words alone, live. Its age holds while `stale`. */
-export function useStatusLine(adapter: LabAdapter, worker: WorkerRow, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
+export function useStatusLine(adapter: LabAdapter, worker: LabWorker, sessionId: string | undefined, nameOf: (id: string) => string, isCoding: (id: string) => boolean, stale = false): string {
   const now = useNow(undefined, !stale);
   const activity = useWatch(adapter.watchActivity, worker.id);
   const talk = useWatch(adapter.watchTalk, worker.id) ?? [];

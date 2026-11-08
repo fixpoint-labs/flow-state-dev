@@ -68,7 +68,7 @@ function findTool(name: string): GeneratorTool {
 }
 
 /** A task row as the board stores it. */
-type Row = {
+type StoredTask = {
   status: string;
   goal: string;
   title?: string;
@@ -84,8 +84,8 @@ type Row = {
 };
 
 /** The live board record off a mock ctx. */
-function boardOf(ctx: unknown): Record<string, Row> {
-  return (ctx as { parent: { state: Record<string, unknown> } }).parent.state[BOARD_FIELD] as Record<string, Row>;
+function boardOf(ctx: unknown): Record<string, StoredTask> {
+  return (ctx as { parent: { state: Record<string, unknown> } }).parent.state[BOARD_FIELD] as Record<string, StoredTask>;
 }
 
 /** Seed a board holding exactly one task `a` in `status`, plus any extra fields. */

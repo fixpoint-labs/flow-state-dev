@@ -6,7 +6,7 @@
  * the navigator's flow listing — so opening a worker never re-fetches what the
  * rail already knew before it was clicked.
  *
- * **Instructions are one item read**, `getCollectionItemState(sessionId,
+ * **Instructions are one item read**, `getCollectionResourceState(sessionId,
  * collectionRef, workerId)`, through the same `client` seam and the
  * same credential-less fallback `Roster` and `BoardColumns` ship with.
  * It reuses their fence (`usePanelItem`, in `reads.ts`) rather than

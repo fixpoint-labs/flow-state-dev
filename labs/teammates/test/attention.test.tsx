@@ -14,11 +14,11 @@
  * the title case fails.
  */
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
-import { taskRowView } from "@flow-state-dev/orchestration/inbox";
+import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BoardTask, ConversationEntry } from "../src/adapter";
 import { App } from "../src/App";
-import { createNotifier, rowAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
+import { createNotifier, teammateAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
 import { ENDING_SHOWN_MS, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
 import { createFixtureLab } from "./fake-lab";
 
@@ -28,7 +28,7 @@ const named = (id: string) => id;
 /** A task, with its row's view carrying when it ended (`completedAt`), as the adapter reads one. */
 const task = (id: string, { completedAt, ...over }: Partial<BoardTask> & { completedAt?: number }): BoardTask => {
   const t: BoardTask = { id, to: "cursor", title: `Task ${id}`, status: "running", boardStatus: "in_progress", goal: "g", ...over };
-  return { ...t, view: taskRowView({ id, status: t.boardStatus, title: t.title, goal: t.goal, board: "s1", completedAt }) };
+  return { ...t, view: taskView({ id, status: t.boardStatus, title: t.title, goal: t.goal, board: "s1", completedAt }) };
 };
 const approval = (resolution?: string): ConversationEntry => ({ kind: "approval", id: "ap", requestId: "q", suspensionId: "s", text: "Publish the draft?", ...(resolution ? { resolution } : {}) });
 const inputs = (over: Partial<StatusInputs>): StatusInputs => ({ activity: { running: false, lastActiveAt: 0 } as StatusInputs["activity"], entries: [], talk: [], tasks: [], now: NOW, ...over });
@@ -66,9 +66,9 @@ describe("the tab's title", () => {
 
   it("counts a teammate with only unread lines, though it needs nothing and notifies nothing", () => {
     // D3: the title counts unread or needing you; the badge and notifications are needs only.
-    const unreadOnly = rowAttention("writer", true, 2, [], []);
+    const unreadOnly = teammateAttention("writer", true, 2, [], []);
     expect(unreadOnly).toEqual({ asks: true, loaded: true, alerts: [] });
-    expect(titleFor({ writer: unreadOnly, researcher: rowAttention("researcher", true, 0, [], []) })).toBe("(1) Teammates");
+    expect(titleFor({ writer: unreadOnly, researcher: teammateAttention("researcher", true, 0, [], []) })).toBe("(1) Teammates");
   });
 });
 

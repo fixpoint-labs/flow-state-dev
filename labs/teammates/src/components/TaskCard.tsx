@@ -1,6 +1,6 @@
 import { memo } from "react";
 import type { BoardTask } from "../adapter";
-import { taskRowPresentation } from "../lib/task-presentation";
+import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
@@ -31,7 +31,7 @@ export const TaskCard = memo(function TaskCard({
 }) {
   const line = taskLine(task, coding, nameOf);
   const on = coding ? runsOn(task) : undefined;
-  const state = taskRowPresentation(task);
+  const state = taskPresentation(task);
   return (
     <button
       type="button"

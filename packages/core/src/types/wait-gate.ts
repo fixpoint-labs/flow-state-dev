@@ -83,11 +83,11 @@ export function continuesAtExpiry(suspension: {
   return isUserSuspension(suspension) || (suspension.allow ?? ["approve", "reject"]).includes("reject");
 }
 
-/** A row on a board: the waited-on task, or the task a waiting request works. */
-export type WaitRow = {
-  /** The board the row lives on. */
+/** A task's address on a board: the waited-on task, or the task a waiting request works. */
+export type TaskAddress = {
+  /** The board the task lives on. */
   readonly board: string;
-  /** The row's id on that board. */
+  /** The task's id on that board. */
   readonly taskId: string;
 };
 
@@ -96,7 +96,7 @@ export type WaitRow = {
  * What the parked request waits on: one row on one board, or one request it
  * dispatched (a `dispatcher({ wait: true })`).
  */
-export type WaitGateBinding = WaitRow | { readonly requestId: string };
+export type WaitGateBinding = TaskAddress | { readonly requestId: string };
 
 // FIX-2082.
 /**
@@ -186,7 +186,7 @@ export type ParkOnWaitInput = {
    * holds. Server-derived by the caller, never input. The engine's depth count
    * reads it to find what waits on this request's own work.
    */
-  readonly own?: WaitRow;
+  readonly own?: TaskAddress;
   /** Shown wherever the suspension is listed. */
   readonly message?: string;
   /**
@@ -200,7 +200,7 @@ export type ParkOnWaitInput = {
 /** What a wait gate's suspension data holds, as the engine reads it back. */
 export type WaitGateData = {
   readonly binding: WaitGateBinding;
-  readonly own?: WaitRow;
+  readonly own?: TaskAddress;
   readonly deadline?: number;
 };
 
@@ -215,12 +215,12 @@ export function waitGateDataOf(record: { readonly data?: Record<string, unknown>
   const data = record.data;
   if (data == null) return undefined;
   const own = data.own as Record<string, unknown> | undefined;
-  const ownRow =
+  const ownTask =
     own != null && typeof own.board === "string" && typeof own.taskId === "string"
       ? { board: own.board, taskId: own.taskId }
       : undefined;
   const deadline = typeof data.deadline === "number" ? data.deadline : undefined;
-  const extras = { ...(ownRow !== undefined ? { own: ownRow } : {}), ...(deadline !== undefined ? { deadline } : {}) };
+  const extras = { ...(ownTask !== undefined ? { own: ownTask } : {}), ...(deadline !== undefined ? { deadline } : {}) };
   if (typeof data.requestId === "string") return { binding: { requestId: data.requestId }, ...extras };
   if (typeof data.board === "string" && typeof data.taskId === "string") {
     return { binding: { board: data.board, taskId: data.taskId }, ...extras };

@@ -27,7 +27,7 @@ import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/c
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores, resolveUserStorageKey, runAction } from "@flow-state-dev/engine";
 import { runBoardSegment } from "@flow-state-dev/harness-manager";
-import { openRowHolds } from "@flow-state-dev/orchestration/internal";
+import { openOwnHolds } from "@flow-state-dev/orchestration/internal";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
@@ -348,11 +348,11 @@ async function heldOnQuestion(lab: Lab, id: string): Promise<{ taskId: string; q
   const taskId = listed.tasks[0]!.id as string;
   const held = await until(
     async () => storedTask(lab, taskId),
-    (task) => task?.status === "in_progress" && task.leaseUntil == null && openRowHolds(task as never).length > 0,
+    (task) => task?.status === "in_progress" && task.leaseUntil == null && openOwnHolds(task as never).length > 0,
     "the task held on a question",
   );
   expect(held).toMatchObject({ attempts: 1 });
-  return { taskId, question: openRowHolds(held as never)[0]! as unknown as Record<string, any> };
+  return { taskId, question: openOwnHolds(held as never)[0]! as unknown as Record<string, any> };
 }
 
 /** The task's row as stored on the conversation's board, in the user's scope. */
@@ -597,7 +597,7 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect(task.status).toBe("errored");
     expect(stub.runs.length).toBeGreaterThan(0);
     // Every attempt was the implement phase's: its prompt names the row and asks for a commit.
-    for (const run of stub.runs) expect(run.prompt).toMatch(/\nRow task_\w+, phase implement, attempt \d/);
+    for (const run of stub.runs) expect(run.prompt).toMatch(/\nTask task_\w+, phase implement, attempt \d/);
     // The row's id is the board's, so the issue the filer named is rendered on its own:
     // without it the coder is told which row it holds and never which issue.
     for (const run of stub.runs) expect(run.prompt).toContain("\nIssue greeting.");
@@ -626,7 +626,8 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     const stub = readsMarker({
       duringRun: async (run) => {
         // A feature run commits; the conversation's run holds until the feature row is done.
-        if (run.prompt.includes("\nRow ")) {
+        // Only the implement phase's task line names a phase: the answer prompt writes `Task <id>, attempt <n>.` too.
+        if (/\nTask \S+, phase /.test(run.prompt)) {
           writeFileSync(join(run.cwd, "GREETING.md"), "hello\n");
           commitAll(run.cwd, "feature run: add the greeting");
           return;

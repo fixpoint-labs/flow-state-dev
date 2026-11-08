@@ -8,12 +8,12 @@
  */
 import { describe, expect, it } from "vitest";
 import type { Task, TaskCollectionRef } from "../../src/tasks";
-import { rowsInSession } from "../../src/tasks/helpers/session-rows";
+import { tasksInSession } from "../../src/tasks/helpers/session-rows";
 
 const row = (id: string, over: Partial<Task> = {}) => ({ id, status: "completed", ...over }) as Task;
 const ledger = (rows: Task[]) => ({ list: () => rows }) as unknown as TaskCollectionRef;
 
-describe("rowsInSession", () => {
+describe("tasksInSession", () => {
   it("keeps a linked task and its follow-up waiting to start, and nothing else", () => {
     const rows = [
       row("root", { run: { sessionId: "s1" } as Task["run"] }),
@@ -22,7 +22,7 @@ describe("rowsInSession", () => {
       row("loose", { status: "pending" }),
     ];
 
-    expect(rowsInSession(ledger(rows), "s1").map((task) => task.id)).toEqual(["root", "next"]);
+    expect(tasksInSession(ledger(rows), "s1").map((task) => task.id)).toEqual(["root", "next"]);
   });
 
   it("finds the chain from a follow-up that ran there, as well as from its root", () => {
@@ -31,10 +31,10 @@ describe("rowsInSession", () => {
       row("next", { followUpOf: "root", run: { sessionId: "s1" } as Task["run"] }),
     ];
 
-    expect(rowsInSession(ledger(rows), "s1").map((task) => task.id)).toEqual(["root", "next"]);
+    expect(tasksInSession(ledger(rows), "s1").map((task) => task.id)).toEqual(["root", "next"]);
   });
 
   it("is empty for a session no row ran in", () => {
-    expect(rowsInSession(ledger([row("loose", { status: "pending" })]), "s1")).toEqual([]);
+    expect(tasksInSession(ledger([row("loose", { status: "pending" })]), "s1")).toEqual([]);
   });
 });

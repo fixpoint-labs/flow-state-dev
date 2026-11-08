@@ -477,9 +477,9 @@ export async function buildDebugResourceTree(opts: {
 }
 
 /**
- * One item in a collection's paginated debug listing.
+ * One resource in a collection's paginated debug listing.
  */
-export interface DebugCollectionItem {
+export interface DebugCollectionResource {
   topic: string;
   storageKey: string;
   state: JsonObject | null;
@@ -490,14 +490,15 @@ export interface DebugCollectionItem {
   contentVisibleToClient: boolean;
 }
 
-export interface DebugCollectionItemsResponse {
-  items: DebugCollectionItem[];
+/** One page of a collection's debug listing: its resources (under `items`, the wire field) and the next cursor. */
+export interface DebugCollectionResourcesResponse {
+  items: DebugCollectionResource[];
   nextCursor: string | null;
 }
 
-/** Outcome of `buildDebugCollectionItems` — distinguishes 404 vs 400. */
+/** Outcome of `buildDebugCollectionResources` — distinguishes 404 vs 400. */
 export type BuildItemsResult =
-  | { ok: true; data: DebugCollectionItemsResponse }
+  | { ok: true; data: DebugCollectionResourcesResponse }
   | {
       ok: false;
       kind: "session_not_found" | "resource_not_found" | "not_collection" | "bad_request";
@@ -512,7 +513,7 @@ const DEFAULT_PAGE_LIMIT = 50;
  * case-sensitive substring match on the bare topic. Pagination uses an opaque
  * base64 cursor encoding the last-yielded storage key in sorted order.
  */
-export async function buildDebugCollectionItems(opts: {
+export async function buildDebugCollectionResources(opts: {
   sessionId: string;
   ref: string;
   limit: number | null;
@@ -578,7 +579,7 @@ export async function buildDebugCollectionItems(opts: {
   const startIdx =
     after === null ? 0 : findCursorIndex(allKeys, after);
   const filter = opts.topicFilter ?? "";
-  const items: DebugCollectionItem[] = [];
+  const items: DebugCollectionResource[] = [];
   let scanned = startIdx;
   for (; scanned < allKeys.length && items.length < limit; scanned++) {
     const storageKey = allKeys[scanned]!;

@@ -10,7 +10,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { delegateAnswerMetadata } from "@flow-state-dev/workforce/browser";
-import type { TaskRow } from "../src/adapter";
+import type { LabTask } from "../src/adapter";
 import { Entry } from "../src/components/Entry";
 import { filedTaskOf, toolRun } from "../src/lib/tool-steps";
 
@@ -142,8 +142,8 @@ describe("a delegate's answer that landed in the conversation as written", () =>
 
 describe("a line that names a task", () => {
   // Only what the lines read of a row: its id, title and status.
-  const row = (id: string, status: TaskRow["status"]): TaskRow => ({ id, title: "Fix the login copy", goal: "…", status });
-  const result = (status: TaskRow["status"]) =>
+  const row = (id: string, status: LabTask["status"]): LabTask => ({ id, title: "Fix the login copy", goal: "…", status });
+  const result = (status: LabTask["status"]) =>
     ({ kind: "result", id: "r1", taskId: "task_1", title: "Fix the login copy", status, summary: REPLY, duringTurn: false }) as const;
   const startLine = toolRun([{ id: "c1", name: "createTask", args: { title: "Fix the login copy", goal: "…" }, status: "done", output: { ok: true, taskId: "task_1" } }]);
   const dotOf = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-task-dot]");

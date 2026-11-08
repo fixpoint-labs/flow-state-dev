@@ -100,7 +100,7 @@ export async function buildWorkerPrompt(
     ...worker,
     `# Where and how to work`,
     ``,
-    `Row ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
+    `Task ${run.issue}, phase ${run.phase}, attempt ${run.attempt}.`,
     ...issueLine(run),
     `Work in ${run.workspacePath}, on branch ${run.branch}.`,
     options.requireAcceptance === true

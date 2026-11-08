@@ -124,12 +124,12 @@ const projectsAccessor = (visibility: ProjectVisibility) => (visibility === "pri
  */
 export async function readProject(client: Client, readerSessionId: string, address: ProjectAddress, now = Date.now()): Promise<ProjectRead | null> {
   const [row, entries] = await Promise.all([
-    client.resources.getCollectionItemState(readerSessionId, projectsAccessor(address.visibility), address.id),
+    client.resources.getCollectionResourceState(readerSessionId, projectsAccessor(address.visibility), address.id),
     (async () => {
       const found: Omit<WorkstreamEntry, "stale">[] = [];
       let cursor: string | undefined;
       for (let page = 0; page < MAX_PAGES; page += 1) {
-        const listed = await client.resources.listCollectionItems(readerSessionId, workstreamsAccessor(address.visibility), {
+        const listed = await client.resources.listCollectionResources(readerSessionId, workstreamsAccessor(address.visibility), {
           limit: PAGE_SIZE,
           topicPrefix: `workstreams/${address.id}/`,
           ...(cursor === undefined ? {} : { cursor }),
@@ -163,7 +163,7 @@ export async function readEntryReport(
   project: ProjectAddress,
   entry: Pick<WorkstreamEntry, "key">,
 ): Promise<string | null> {
-  const read = await client.resources.getCollectionItemContent(readerSessionId, workstreamsAccessor(project.visibility), entry.key);
+  const read = await client.resources.getCollectionResourceContent(readerSessionId, workstreamsAccessor(project.visibility), entry.key);
   return typeof read.content === "string" && read.content.length > 0 ? read.content : null;
 }
 

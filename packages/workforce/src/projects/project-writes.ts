@@ -40,13 +40,13 @@ import {
   PROJECTS_RESOURCE,
   projectAddressSchema,
   projectIdProblem,
-  projectRowSchema,
+  projectResourceStateSchema,
   projectVisibilitySchema,
   type ProjectAddress,
-  type ProjectRow,
+  type ProjectResourceState,
   type ProjectVisibility
 } from "./collections";
-import { projectAt, projectRowsAt, PROJECT_ROW_RESOURCES } from "./project-address";
+import { projectAt, projectResourcesAt, PROJECT_ROW_RESOURCES } from "./project-address";
 import { isMember } from "./membership-gate";
 import { isAlreadyExists } from "./store-errors";
 import { readProjectFiles } from "./project-files";
@@ -92,7 +92,7 @@ export type CreateProjectInput = z.infer<typeof createProjectInputSchema>;
 
 /** What creating a project returns: the row, where it lives, and whether this call wrote it. */
 export const createProjectOutputSchema = z.object({
-  project: projectRowSchema,
+  project: projectResourceStateSchema,
   /** Where the row lives. With the row's id, the project's address. */
   visibility: projectVisibilitySchema,
   /** `false` when the same owner re-sent an id it already holds; the row is returned unchanged. */
@@ -111,7 +111,7 @@ export const setRepositoryInputSchema = z
 export type SetRepositoryInput = z.infer<typeof setRepositoryInputSchema>;
 
 /** What setting a project's repository returns: the row as written. */
-export const setRepositoryOutputSchema = z.object({ project: projectRowSchema });
+export const setRepositoryOutputSchema = z.object({ project: projectResourceStateSchema });
 
 /**
  * What `setMcpServers` takes: the address and the whole new list of MCP
@@ -127,7 +127,7 @@ export const setMcpServersInputSchema = z
 export type SetMcpServersInput = z.infer<typeof setMcpServersInputSchema>;
 
 /** What setting a project's MCP servers returns: the row as written. */
-export const setMcpServersOutputSchema = z.object({ project: projectRowSchema });
+export const setMcpServersOutputSchema = z.object({ project: projectResourceStateSchema });
 
 /** What `setChecks` takes: the address and the whole new list of commands; `[]` names none. No address: the linked project. */
 export const setChecksInputSchema = z
@@ -138,7 +138,7 @@ export const setChecksInputSchema = z
 export type SetChecksInput = z.infer<typeof setChecksInputSchema>;
 
 /** What setting a project's checks returns: the row as written. */
-export const setChecksOutputSchema = z.object({ project: projectRowSchema });
+export const setChecksOutputSchema = z.object({ project: projectResourceStateSchema });
 
 /** Options for {@link defineProjectBlocks}. */
 export interface ProjectBlocksOptions {
@@ -179,7 +179,7 @@ export const setBriefInputSchema = z
 export type SetBriefInput = z.infer<typeof setBriefInputSchema>;
 
 /** What setting a project's brief returns: the row as written. */
-export const setBriefOutputSchema = z.object({ project: projectRowSchema });
+export const setBriefOutputSchema = z.object({ project: projectResourceStateSchema });
 
 /** The project writes, the project read and the project files read, and the same blocks as an `actions` map. */
 export type ProjectBlocks = {
@@ -210,7 +210,7 @@ const WRITE_RESOURCES = { ...PROJECT_ROW_RESOURCES };
 
 function refsOf(ctx: BlockContext) {
   return {
-    projects: ctx.resources[PROJECTS_RESOURCE] as unknown as ResourceCollectionRef<ProjectRow>
+    projects: ctx.resources[PROJECTS_RESOURCE] as unknown as ResourceCollectionRef<ProjectResourceState>
   };
 }
 
@@ -265,8 +265,8 @@ function defineWriteProject(offered: readonly string[], check: RepositoryCheck |
       if (visibility === "private") return writePrivateProject(ctx, input, owner, mcpServers, checks, check);
       const { projects } = refsOf(ctx);
 
-      const heldBy = (row: ProjectRow): CreateProjectOutput => {
-        if (row.ownerUserId === owner) return { project: projectRowSchema.parse(row), visibility, created: false };
+      const heldBy = (row: ProjectResourceState): CreateProjectOutput => {
+        if (row.ownerUserId === owner) return { project: projectResourceStateSchema.parse(row), visibility, created: false };
         throw new ProjectRefusedError(
           "project-id-held",
           `project id "${input.id}" is held by another owner. Choose another id.`
@@ -274,11 +274,11 @@ function defineWriteProject(offered: readonly string[], check: RepositoryCheck |
       };
 
       const existing = await projects.getOptional(input.id);
-      if (existing !== undefined) return heldBy(existing.state as ProjectRow);
+      if (existing !== undefined) return heldBy(existing.state as ProjectResourceState);
       // Only a create that makes a row asks the host: a re-sent create hands its row back whatever the repository is now.
       await assertRepositoryUsable(check, input.repository);
 
-      const row: ProjectRow = projectRowSchema.parse({
+      const row: ProjectResourceState = projectResourceStateSchema.parse({
         id: input.id,
         title: input.title,
         brief: input.brief ?? null,
@@ -294,7 +294,7 @@ function defineWriteProject(offered: readonly string[], check: RepositoryCheck |
         // A duplicate create won the row: hand it back as any held id is.
         const winner = isAlreadyExists(error) ? (await projects.getOptional(input.id))?.state : undefined;
         if (winner === undefined) throw error;
-        return heldBy(winner as ProjectRow);
+        return heldBy(winner as ProjectResourceState);
       }
       return { project: row, visibility, created: true };
     }
@@ -324,16 +324,16 @@ async function writePrivateProject(
         `Make it shared to work on it with others.`
     );
   }
-  const projects = projectRowsAt(ctx, "private");
+  const projects = projectResourcesAt(ctx, "private");
   const done = (state: unknown, created: boolean): CreateProjectOutput => ({
-    project: projectRowSchema.parse(state),
+    project: projectResourceStateSchema.parse(state),
     visibility: "private",
     created
   });
   const existing = await projects.getOptional(input.id);
   if (existing !== undefined) return done(existing.state, false);
   await assertRepositoryUsable(check, input.repository);
-  const row: ProjectRow = projectRowSchema.parse({
+  const row: ProjectResourceState = projectResourceStateSchema.parse({
     id: input.id,
     title: input.title,
     brief: input.brief ?? null,
@@ -373,7 +373,7 @@ function defineSetRepository(check: RepositoryCheck | undefined) {
       assertRepository(input.repository);
       await assertRepositoryUsable(check, input.repository);
       await retryOnConflict(() => row.updateState((state) => ({ ...state, repository: input.repository })));
-      return { project: projectRowSchema.parse(row.state) };
+      return { project: projectResourceStateSchema.parse(row.state) };
     }
   });
 }
@@ -411,7 +411,7 @@ function defineSetMcpServers(offered: readonly string[]) {
       const row = await projectRowToChange(ctx, input.project, "MCP servers");
       const mcpServers = checkedMcpServers(input.mcpServers, offered);
       await retryOnConflict(() => row.updateState((state) => ({ ...state, mcpServers })));
-      return { project: projectRowSchema.parse(row.state) };
+      return { project: projectResourceStateSchema.parse(row.state) };
     }
   });
 }
@@ -430,7 +430,7 @@ const setChecks = handler({
     const row = await projectRowToChange(ctx, input.project, "checks");
     const checks = checkedChecks(input.checks);
     await retryOnConflict(() => row.updateState((state) => ({ ...state, checks })));
-    return { project: projectRowSchema.parse(row.state) };
+    return { project: projectResourceStateSchema.parse(row.state) };
   }
 });
 
@@ -443,7 +443,7 @@ const setBrief = handler({
   execute: async (input, ctx) => {
     const row = await projectRowToChange(ctx, input.project, "brief");
     await retryOnConflict(() => row.updateState((state) => ({ ...state, brief: input.brief })));
-    return { project: projectRowSchema.parse(row.state) };
+    return { project: projectResourceStateSchema.parse(row.state) };
   }
 });
 
@@ -510,7 +510,7 @@ export function defineProjectBlocks(options: ProjectBlocksOptions = {}): Project
       readProject: {
         block: readProject,
         description:
-          "Read a project by its address: its row, every workstream's entry, and its progress worked out from them."
+          "Read a project by its address: its resource, every workstream's entry, and its progress worked out from them."
       },
       listProjects: {
         block: listProjects,

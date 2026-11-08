@@ -1,6 +1,6 @@
 /**
  * Integration test for the FIX-739 live-overlay read path that
- * `useResourceCollectionItem` performs: a live `resource_change` is folded into
+ * `useCollectionResource` performs: a live `resource_change` is folded into
  * the snapshot by `mergeResourceChangeIntoSnapshot`, then the hook reads
  * `resources[scope][ref].live[topic].clientData` and layers it over the fetched
  * baseline. This exercises both halves (reduce + the snapshot read the hook's
@@ -33,7 +33,7 @@ function liveChange(resourcePath: string, delta: unknown): ResourceChangeItem {
 }
 
 /**
- * The exact read `useResourceCollectionItem` does: locate the collection entry
+ * The exact read `useCollectionResource` does: locate the collection entry
  * and apply its per-topic live overlay over the fetched baseline. `baseline`
  * is `null` when the HTTP fetch hasn't resolved (or returned nothing).
  */
@@ -51,7 +51,7 @@ function readItem(
   return { topic, clientData: liveEntry.clientData };
 }
 
-describe("useResourceCollectionItem live overlay (FIX-739)", () => {
+describe("useCollectionResource live overlay (FIX-739)", () => {
   const baseSnapshot: SessionStateSnapshotResponse = {
     sessionId: "sess",
     flowKind: "test",

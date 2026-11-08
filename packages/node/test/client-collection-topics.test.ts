@@ -53,7 +53,7 @@ async function hostWithItems() {
   const client = createClient({ userId: "alice", baseUrl: `http://127.0.0.1:${handle.port}` });
   await client.flow("files").createSession({ sessionId: "s_1" });
   for (const topic of TOPICS) {
-    await client.resources.createCollectionItem("s_1", "files", { topic, content: `body of ${topic}` });
+    await client.resources.createCollectionResource("s_1", "files", { topic, content: `body of ${topic}` });
   }
   return client;
 }
@@ -62,7 +62,7 @@ describe("a client's collection item reads", () => {
   it("reads each topic's own state, including one ending in /content", async () => {
     const client = await hostWithItems();
     for (const topic of TOPICS) {
-      const state = await client.resources.getCollectionItemState("s_1", "files", topic);
+      const state = await client.resources.getCollectionResourceState("s_1", "files", topic);
       expect(state).toMatchObject({ topic });
     }
   });
@@ -70,7 +70,7 @@ describe("a client's collection item reads", () => {
   it("reads each topic's own content", async () => {
     const client = await hostWithItems();
     for (const topic of TOPICS) {
-      const read = await client.resources.getCollectionItemContent("s_1", "files", topic);
+      const read = await client.resources.getCollectionResourceContent("s_1", "files", topic);
       expect(read).toMatchObject({ content: `body of ${topic}` });
     }
   });

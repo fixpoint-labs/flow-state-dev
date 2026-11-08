@@ -17,7 +17,7 @@ import {
   getOrCreateTaskCollection,
   resolveResourceCollection,
 } from "@flow-state-dev/orchestration/tasks";
-import { openRowHolds, taskToolSuffix } from "@flow-state-dev/orchestration/internal";
+import { openOwnHolds, taskToolSuffix } from "@flow-state-dev/orchestration/internal";
 import { taskBoard, taskToolActions } from "@flow-state-dev/orchestration/task-board";
 import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import {
@@ -28,7 +28,7 @@ import {
   harnessDrainBudgetMs,
   harnessManager,
   harnessTaskInputSchema,
-  readRunRow,
+  readRunRecord,
   resolveOwnership,
   runRecordCollection,
   runRecordStateSchema,
@@ -251,7 +251,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
         }
         const record =
           issue !== null && phaseName !== null && rowOwnsItsIdentity(task)
-            ? await readRunRow(ctx, runTopic(collectionId, issue, phaseName))
+            ? await readRunRecord(ctx, runTopic(collectionId, issue, phaseName))
             : undefined;
         rows.push({
           taskId: task.id,
@@ -262,7 +262,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
           feedback: task.feedback ?? null,
           run: record ?? null,
           output: task.output ?? null,
-          questions: openRowHolds(task).map((hold) => ({
+          questions: openOwnHolds(task).map((hold) => ({
             question: hold.id,
             text: hold.ask.prompt,
             askedAt: hold.openedAt,

@@ -69,7 +69,7 @@ const screenSettingsSchema = z.object({
 });
 
 /** One subscription. Server-written: the session, worker, task and user come from the subscribing turn, never from the tool's input. */
-export const subscriptionRowSchema = screenSettingsSchema.extend({
+export const subscriptionResourceStateSchema = screenSettingsSchema.extend({
   id: z.string().min(1),
   /** The sentence the subscriber gave: kept, for the screens a later issue adds. */
   interest: z.string(),
@@ -94,7 +94,7 @@ export const subscriptionRowSchema = screenSettingsSchema.extend({
   at: z.number()
 });
 
-export type SubscriptionRow = z.infer<typeof subscriptionRowSchema>;
+export type SubscriptionResourceState = z.infer<typeof subscriptionResourceStateSchema>;
 
 /** The most objects a cursor remembers; the oldest are forgotten first. */
 export const MAX_CURSOR_OBJECTS = 500;
@@ -132,9 +132,9 @@ export type IndexEntry = z.infer<typeof indexEntrySchema>;
  * thread at once both land: `updateState` re-runs its updater against the row
  * that won a write race, on every store.
  */
-const threadIndexRowSchema = z.object({ subscriptions: z.record(indexEntrySchema).default({}) });
+const threadIndexResourceStateSchema = z.object({ subscriptions: z.record(indexEntrySchema).default({}) });
 
-type ThreadIndexRow = z.infer<typeof threadIndexRowSchema>;
+type ThreadIndexResourceState = z.infer<typeof threadIndexResourceStateSchema>;
 
 /** The subscriptions, at `workforce/subscriptions/*` in the user's scope, shared across flows. Server-written. */
 const subscriptionsCollection = defineResourceCollection({
@@ -142,7 +142,7 @@ const subscriptionsCollection = defineResourceCollection({
   scope: "user",
   flowIsolation: false,
   prefetchMode: "lazy",
-  stateSchema: subscriptionRowSchema
+  stateSchema: subscriptionResourceStateSchema
 });
 
 /** The cursors, at `workforce/subscription-cursors/*` in the user's scope. Server-only. */
@@ -160,7 +160,7 @@ const subscriptionIndexCollection = defineResourceCollection({
   scope: "org",
   flowIsolation: false,
   prefetchMode: "lazy",
-  stateSchema: threadIndexRowSchema
+  stateSchema: threadIndexResourceStateSchema
 });
 
 /** The flow resources a flow that subscribes, delivers or ends subscriptions declares. */
@@ -179,16 +179,16 @@ function declared<T extends JsonObject>(ctx: BlockContext, name: string): Resour
 }
 
 /** The running user's subscriptions. */
-export const subscriptionsOf = (ctx: BlockContext) => declared<SubscriptionRow>(ctx, SUBSCRIPTIONS_RESOURCE);
+export const subscriptionsOf = (ctx: BlockContext) => declared<SubscriptionResourceState>(ctx, SUBSCRIPTIONS_RESOURCE);
 
 /** The running user's cursors. */
 export const subscriptionCursorsOf = (ctx: BlockContext) => declared<SubscriptionCursor>(ctx, SUBSCRIPTION_CURSORS_RESOURCE);
 
 /** The running org's thread index. */
-export const subscriptionIndexOf = (ctx: BlockContext) => declared<ThreadIndexRow>(ctx, SUBSCRIPTION_INDEX_RESOURCE);
+export const subscriptionIndexOf = (ctx: BlockContext) => declared<ThreadIndexResourceState>(ctx, SUBSCRIPTION_INDEX_RESOURCE);
 
 /** A thread key as an index row's key: one path segment. */
 export const indexKeyOf = (thread: string) => encodeURIComponent(thread);
 
 /** A subscription's full storage key, as the host's owner-run check reads it. */
-export const subscriptionRowKey = (id: string) => `${SUBSCRIPTIONS_PATTERN.replace("*", "")}${id}`;
+export const subscriptionResourceKey = (id: string) => `${SUBSCRIPTIONS_PATTERN.replace("*", "")}${id}`;

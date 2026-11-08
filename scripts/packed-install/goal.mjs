@@ -181,6 +181,10 @@ export function formatVerdict(verdict) {
 export const MOVED_RENAMES = {
   // Renamed so it no longer collides with react's public `SessionView`.
   SessionView: "PeerSessionView",
+  // Renamed so a stored thing is a resource, not a row.
+  planRowsPrefix: "planResourcesPrefix",
+  // Renamed because it addresses a task, not a row.
+  WaitRow: "TaskAddress",
 };
 
 // ── The ratchet strict-run protocol ────────────────────────────────────────

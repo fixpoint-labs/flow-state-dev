@@ -8,8 +8,8 @@
 import { describe, expect, it } from "vitest";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { COLUMNS, columnFor, isHeld, isDone } from "../src/lib/columns";
-import { openRows, workerFor, type LoadedSnapshot, type Roster } from "../src/lib/derive";
-import { toBoardRow, toWorker, type BoardRow } from "../src/lib/reads";
+import { openTasks, workerFor, type LoadedSnapshot, type Roster } from "../src/lib/derive";
+import { toBoardTaskView, toWorker, type BoardTaskView } from "../src/lib/reads";
 
 /** Where BR-12 puts each shipped status. */
 const EXPECTED: Record<string, (typeof COLUMNS)[number]> = {
@@ -45,13 +45,13 @@ describe("BR-12: a row's column", () => {
   });
 });
 
-const row = (status: string, assignee: string | null, id = status): BoardRow =>
-  toBoardRow("s_1.tasks", "s_1", id, { id, title: id, status, assignee });
+const row = (status: string, assignee: string | null, id = status): BoardTaskView =>
+  toBoardTaskView("s_1.tasks", "s_1", id, { id, title: id, status, assignee });
 
 describe("which worker holds a row, when a bare name is in more than one team", () => {
   const ops = toWorker({ id: "ops.builder", kind: "worker" })!;
   const eng = toWorker({ id: "eng.builder", kind: "worker" })!;
-  const rowFor = (assignee: string) => toBoardRow("s_1.tasks", "s_1", "r", { id: "r", title: "r", status: "in_progress", assignee });
+  const rowFor = (assignee: string) => toBoardTaskView("s_1.tasks", "s_1", "r", { id: "r", title: "r", status: "in_progress", assignee });
 
   it("attributes the row to no worker, never to several", () => {
     const roster: Roster = { workers: [ops, eng] };
@@ -75,6 +75,6 @@ describe("BR-15: Tasks leaves done rows out (BR-27)", () => {
     const snapshot = {
       boards: { s_1: { ok: true, value: { refs: ["s_1.tasks"], rows } } },
     } as unknown as LoadedSnapshot;
-    expect(openRows(snapshot).map((r) => r.status).sort()).toEqual(["errored", "held", "in_progress", "pending"]);
+    expect(openTasks(snapshot).map((r) => r.status).sort()).toEqual(["errored", "held", "in_progress", "pending"]);
   });
 });

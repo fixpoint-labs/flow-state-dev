@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { LabAdapter, NewTeammate, WorkerRow } from "../adapter";
+import type { LabAdapter, NewTeammate, LabWorker } from "../adapter";
 import type { Look } from "../lib/looks";
-import { rowAttention, supported, useAttention, useNotifyToggle, type RowAttention } from "../lib/attention";
+import { teammateAttention, supported, useAttention, useNotifyToggle, type TeammateAttention } from "../lib/attention";
 import { useStable } from "../lib/stable";
 import { freshEndings, needsOf, statusOf } from "../lib/status";
 import { useSeen } from "../lib/unread";
@@ -41,7 +41,7 @@ export function WorkersList({
 }: {
   adapter: LabAdapter;
   /** The teammates: the workers you can talk to. */
-  workers: WorkerRow[];
+  workers: LabWorker[];
   sessions: Record<string, string>;
   selected: string | undefined;
   nameOf: (id: string) => string;
@@ -57,8 +57,8 @@ export function WorkersList({
   const setHiring = onHiring;
   const notify = useNotifyToggle();
   // What each row reports: whether it has something for you, and what is new. A fired teammate's report leaves with its row.
-  const [reports, setReports] = useState<Record<string, RowAttention>>({});
-  const report = useCallback((worker: string, attention: RowAttention) => setReports((prev) => (prev[worker] === attention ? prev : { ...prev, [worker]: attention })), []);
+  const [reports, setReports] = useState<Record<string, TeammateAttention>>({});
+  const report = useCallback((worker: string, attention: TeammateAttention) => setReports((prev) => (prev[worker] === attention ? prev : { ...prev, [worker]: attention })), []);
   const current = useMemo(() => Object.fromEntries(workers.flatMap((w) => (reports[w.id] === undefined ? [] : [[w.id, reports[w.id]!]]))), [workers, reports]);
   useAttention(current, notify.on);
   return (
@@ -124,7 +124,7 @@ function WorkerItem({
   onReport,
 }: {
   adapter: LabAdapter;
-  worker: WorkerRow;
+  worker: LabWorker;
   nameOf: (id: string) => string;
   look: Look;
   isCoding: (id: string) => boolean;
@@ -133,7 +133,7 @@ function WorkerItem({
   seen: number | undefined;
   onSelect: () => void;
   onSeen: (count: number) => void;
-  onReport: (worker: string, attention: RowAttention) => void;
+  onReport: (worker: string, attention: TeammateAttention) => void;
 }) {
   // A row whose conversation's feed lost the server greys its status, and its age stops.
   const stale = useStale(adapter, sessionId);
@@ -155,7 +155,7 @@ function WorkerItem({
   const inputs = { activity, entries: view?.entries ?? [], talk, tasks, now };
   const status = statusOf(worker.id, inputs, nameOf, isCoding);
   // Reported up for the tab's title and the notifications; the same object while its content holds, so it reports only on change.
-  const attention = useStable(rowAttention(worker.name, loaded, unread, needsOf(inputs), freshEndings(tasks, now, isCoding)));
+  const attention = useStable(teammateAttention(worker.name, loaded, unread, needsOf(inputs), freshEndings(tasks, now, isCoding)));
   useEffect(() => onReport(worker.id, attention), [onReport, worker.id, attention]);
   return (
     <button

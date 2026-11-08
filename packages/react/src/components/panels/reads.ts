@@ -26,11 +26,11 @@ import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
  * its own client would read through no credential and fail against any
  * deployment that authenticates.
  */
-export type PanelRowSource = { readonly resources: Pick<ResourcesApi, "listCollectionItems"> };
+export type PanelRowSource = { readonly resources: Pick<ResourcesApi, "listCollectionResources"> };
 
 // FIX-1500 BR-27.
 /** `WorkerDetail`'s read is one item, not a page — the method name says which. */
-export type PanelItemSource = { readonly resources: Pick<ResourcesApi, "getCollectionItemState"> };
+export type PanelItemSource = { readonly resources: Pick<ResourcesApi, "getCollectionResourceState"> };
 
 /**
  * A live `BoardList`'s slice: the board read, and the subscription that says
@@ -46,7 +46,7 @@ export type PanelLiveSource = PanelRowSource & { readonly subscribe: Client["sub
  * subscription carry the host's credential.
  */
 export type PanelNoticeSource = {
-  readonly resources: Pick<ResourcesApi, "listCollectionItems" | "getResourceManifest">;
+  readonly resources: Pick<ResourcesApi, "listCollectionResources" | "getResourceManifest">;
   readonly subscribe: Client["subscribe"];
 };
 
@@ -221,7 +221,7 @@ export function usePanelItem<TClient = unknown>(
     null,
     failureMessage,
     async () => {
-      const result = await source.resources.getCollectionItemState(sessionId, ref, topic);
+      const result = await source.resources.getCollectionResourceState(sessionId, ref, topic);
       // `result === null` is the ONLY absent case (the route's own contract).
       // A non-null result with no `clientData` is the collection's
       // metadata-only shape (`{ topic, storageKey, hint }`) — the topic

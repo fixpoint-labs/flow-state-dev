@@ -93,8 +93,8 @@ const runOutcomeSchema = z.enum(["running", "succeeded", "failed"]);
  * Where a run's place stands, on a host that holds a run's work. The host's
  * `provision` reports none of these words; the manager writes them around it.
  */
-export const placeStateSchema = z.enum(["provisioning", "ready", "refused", "lost", "restoring"]);
-export type PlaceState = z.infer<typeof placeStateSchema>;
+export const placeStatusSchema = z.enum(["provisioning", "ready", "refused", "lost", "restoring"]);
+export type PlaceStatus = z.infer<typeof placeStatusSchema>;
 
 /** One hold of a run's work, as the run record keeps it. */
 export const heldSchema = z.object({
@@ -147,7 +147,7 @@ export const runRecordStateSchema = z.object({
    * The board row's `attempts` at the moment this attempt opened the row.
    *
    * A monotonic backstop under the board-claim fence below, not the fence
-   * itself. See {@link writeRunRow}.
+   * itself. See {@link writeRunRecord}.
    */
   attempt: z.number().nullable().default(null),
   // FIX-2133 D3.
@@ -155,7 +155,7 @@ export const runRecordStateSchema = z.object({
    * The row's turn generation when this run opened the record.
    * Two turns can share an attempt (an answered question owes one more), so a
    * write from an earlier turn of the same attempt is refused once a later
-   * one has opened. See {@link writeRunRow}.
+   * one has opened. See {@link writeRunRecord}.
    */
   turn: z.number().nullable().default(null),
   /** The incarnation of the task that last wrote the record: what {@link turn} is compared within. */
@@ -261,7 +261,7 @@ export const runRecordStateSchema = z.object({
   place: z
     .object({
       host: z.string(),
-      state: placeStateSchema,
+      state: placeStatusSchema,
     })
     .nullable()
     .default(null),
@@ -413,8 +413,8 @@ const ATTEMPT_SCOPED_CLEAR = {
   checks: null,
 } as const;
 
-/** What {@link writeRunRow} did. */
-export type RunRowWrite = "applied" | "refused";
+/** What {@link writeRunRecord} did. */
+export type RunRecordWrite = "applied" | "refused";
 
 /** The identity a write is fenced against. */
 export interface AttemptIdentity {
@@ -568,11 +568,11 @@ function leaseHasLapsed(claim: ClaimView, now: number): boolean {
  *
  * Both are named here so neither is mistaken for a bug or for a task.
  */
-export async function writeRunRow(
+export async function writeRunRecord(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
   update: Partial<RunRecordState>,
-): Promise<RunRowWrite> {
+): Promise<RunRecordWrite> {
   const runs = collectionRef(ctx, RUNS);
   const row =
     identity.readBoardRow !== undefined
@@ -654,12 +654,12 @@ export async function writeRunRow(
  * the verdict, and the door finds the row of a run whose next attempt has not
  * linked yet by this field.
  */
-export async function openRunRow(
+export async function openRunRecord(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
   opened: { workspacePath: string; branch: string; childSessionId: string; run?: number; runKey?: string; requestIds?: string[] },
-): Promise<RunRowWrite> {
-  return writeRunRow(ctx, identity, {
+): Promise<RunRecordWrite> {
+  return writeRunRecord(ctx, identity, {
     ...ATTEMPT_SCOPED_CLEAR,
     workspacePath: opened.workspacePath,
     branch: opened.branch,
@@ -671,7 +671,7 @@ export async function openRunRow(
 }
 
 /** Read one issue-phase's row, or `undefined` when nothing has opened it. */
-export async function readRunRow(
+export async function readRunRecord(
   ctx: CollectionHoldingContext,
   topic: string,
 ): Promise<RunRecordState | undefined> {
@@ -699,7 +699,7 @@ function sessionConfirmedBy(
  * The session attempt `attempt` (or a later one) has confirmed, as STORED now,
  * or `null` while it has confirmed none.
  *
- * {@link readRunRow} answers from what this request read first, which is right
+ * {@link readRunRecord} answers from what this request read first, which is right
  * for a decision made once and wrong for a wait: the harness confirms its
  * session from another request, and this one would never see it. A conditional
  * update that returns what it finds and changes nothing reads the committed
@@ -728,13 +728,13 @@ export async function readConfirmedSession(
  * through the same helper.
  */
 /** One row as {@link ReadableCollection.getOptional} hands it back: its state, and the write a committed read runs through. */
-interface CollectionRow extends UpdateStateRunner<Record<string, unknown>> {
+interface ReadResource extends UpdateStateRunner<Record<string, unknown>> {
   state: unknown;
   path: string;
 }
 
 interface ReadableCollection {
-  getOptional(key: string): Promise<CollectionRow | undefined>;
+  getOptional(key: string): Promise<ReadResource | undefined>;
   upsert(key: string, update: Record<string, unknown>): Promise<unknown>;
   list(prefix?: string): Promise<Array<{ state: unknown; path: string }>>;
 }
@@ -749,7 +749,7 @@ interface ReadableCollection {
  * every caller holding a narrower one. That is not hypothetical here: a harness
  * feed is handed the deliberately-tightened `HarnessCallbackContext`, which is
  * not structurally assignable to the wide `BlockContext`, so the manager's
- * session hook needed an `as unknown as` to reach `writeRunRow` — an unchecked
+ * session hook needed an `as unknown as` to reach `writeRunRecord` — an unchecked
  * claim, at a board-state write, which is the worst place to make one.
  *
  * Widening what callers may pass, so every existing one keeps compiling.

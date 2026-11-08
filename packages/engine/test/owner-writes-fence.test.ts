@@ -17,7 +17,7 @@ import { defineFlow, defineResourceCollection, handler, ownerSegment } from "@fl
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores } from "../src";
 import {
-  OWNER_ROW_REFUSAL,
+  OWNER_RESOURCE_REFUSAL,
   OWNER_WRITE_REFUSAL,
   ownerKeyAdmits,
   ownerKeyMaySeed,
@@ -26,7 +26,7 @@ import {
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const WRITE_REFUSAL = OWNER_WRITE_REFUSAL;
-const PRIVATE_REFUSAL = OWNER_ROW_REFUSAL;
+const PRIVATE_REFUSAL = OWNER_RESOURCE_REFUSAL;
 const ALICE_KEY = `entries/apollo/${ownerSegment("alice")}/checkout`;
 const ALICE_STATE = { status: "ALICE-ON-TRACK" };
 const passthrough = z.object({}).passthrough();
@@ -363,7 +363,7 @@ describe("the startup fence reaches owner-writes rows too", () => {
     everything: defineResourceCollection({ pattern: "entries/**", scope: "org", stateSchema: passthrough }),
   });
   const owned = flowWith("owned", { entries });
-  const reach = 'Collection pattern "entries/**" can reach the rows of owner-writes collection "entries/[project]/[owner]/[entry]".';
+  const reach = 'Collection pattern "entries/**" can reach the resources of owner-writes collection "entries/[project]/[owner]/[entry]".';
 
   it("refuses a wider collection registered after it", async () => {
     await expect(bootApp({ owned, wide }, inMemoryStores())).rejects.toThrow(reach);
@@ -385,7 +385,7 @@ describe("the startup fence reaches owner-writes rows too", () => {
       }),
     });
     await expect(bootApp({ owned, privateCopy }, inMemoryStores())).rejects.toThrow(
-      'Collection pattern "entries/[project]/[owner]/[entry]" can reach the rows of owner-writes collection "entries/[project]/[owner]/[entry]".'
+      'Collection pattern "entries/[project]/[owner]/[entry]" can reach the resources of owner-writes collection "entries/[project]/[owner]/[entry]".'
     );
   });
 

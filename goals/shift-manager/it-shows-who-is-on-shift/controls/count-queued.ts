@@ -9,7 +9,7 @@
  */
 import { readStatus } from "../../../../packages/shift-manager/src/lib/columns.ts";
 import {
-  allRows,
+  allTasks,
   rosterOf,
   workerFor,
   workerStates as asWritten,
@@ -27,7 +27,7 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
   const real = asWritten(snapshot);
   const roster = rosterOf(snapshot);
   const seats = new Map([...real.workers].map(([id, state]) => [id, { ...state, held: [...state.held] }]));
-  for (const row of allRows(snapshot)) {
+  for (const row of allTasks(snapshot)) {
     const status = readStatus(row.status);
     if (status !== "pending" && status !== "held") continue;
     const owner = workerFor(roster, row);

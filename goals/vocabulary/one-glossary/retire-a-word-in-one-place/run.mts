@@ -14,8 +14,8 @@
  *   plants, the side-chain check the second's, and nobody the third. With the
  *   entries removed and the plants left in, all three must pass. The copy's
  *   diff must touch only the glossary and the plants.
- * - **Parity.** On the same commit, the check files from before the move
- *   (`BEFORE`) and the ones that read the glossary must print the same counts:
+ * - **Parity.** On the move's own commit (`MOVED`), the check files from before
+ *   the move (`BEFORE`) and the ones that read the glossary must print the same counts:
  *   the sweep's hits, kept, marked and open and its open-by-rule; the guard's
  *   stripped per exception and counted per term; the side-chain check's
  *   findings; and every `--control` verdict. Skipped when the commit has no
@@ -23,8 +23,10 @@
  *
  * Model-free. `--at <ref>` reads another commit (default `HEAD`). The control is
  * `--at <BEFORE>`: there no check reads the glossary, so the lever leg must FAIL.
+ * `--parity-at <ref>` replays parity on another tree (default `MOVED`), so the
+ * parity leg's own control (a commit on `MOVED` that drops a rule) can reach it.
  *
- * Run: pnpm tsx goals/vocabulary/one-glossary/retire-a-word-in-one-place/run.mts [--at <ref>]
+ * Run: pnpm tsx goals/vocabulary/one-glossary/retire-a-word-in-one-place/run.mts [--at <ref>] [--parity-at <ref>]
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -35,6 +37,12 @@ import { runGoal } from "../../../lib/verdict.mts";
 
 /** The commit the move was built on: main with the approved spec merged, every check still holding its own lists. */
 const BEFORE = "0f1056861c07f2e39c11bc2a1e3c37231b757de0";
+/**
+ * The move's last commit, before any later issue edited the glossary. Parity is the claim that
+ * the move lost no rule, so it is read there: from FIX-2354 on, each issue changes what the
+ * checks read on purpose, and the pre-move files would differ by exactly that.
+ */
+const MOVED = "a3655381ede427f17a1ef1d628003e9ab2f0fa78";
 const GLOSSARY = "docs/contributing/glossary.mjs";
 const ENTRIES_OPEN = "export const ENTRIES = [\n";
 /** The check files the move changed, restored from BEFORE for the parity leg. */
@@ -52,6 +60,7 @@ const SIDE_CHAIN = ["scripts/validate-side-chain-vocabulary.mjs"];
 const at = process.argv.includes("--at") ? process.argv[process.argv.indexOf("--at") + 1] : "HEAD";
 const repo = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
 const commit = execFileSync("git", ["rev-parse", at], { cwd: repo, encoding: "utf8" }).trim();
+const parityAt = process.argv.includes("--parity-at") ? process.argv[process.argv.indexOf("--parity-at") + 1] : MOVED;
 
 const git = (cwd: string, args: string[]) =>
   execFileSync("git", ["-c", "user.name=goal", "-c", "user.email=goal@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], {
@@ -60,16 +69,16 @@ const git = (cwd: string, args: string[]) =>
     maxBuffer: 256 * 1024 * 1024,
   });
 
-/** A fresh repository holding `commit`'s tree as `main`, with this checkout's installs linked in. */
-function copyOf(label: string): string {
+/** A fresh repository holding `tree`'s tree (default: the commit read) as `main`, with this checkout's installs linked in. */
+function copyOf(label: string, tree: string = commit): string {
   const dir = join(goalTmpDir("one-glossary"), label);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  const tar = execFileSync("git", ["archive", commit], { cwd: repo, maxBuffer: 1024 * 1024 * 1024 });
+  const tar = execFileSync("git", ["archive", tree], { cwd: repo, maxBuffer: 1024 * 1024 * 1024 });
   execFileSync("tar", ["-x", "-C", dir], { input: tar, maxBuffer: 1024 * 1024 * 1024 });
   git(dir, ["init", "-q", "-b", "main"]);
   git(dir, ["add", "-A"]);
-  git(dir, ["commit", "-q", "-m", `copy of ${commit}`]);
+  git(dir, ["commit", "-q", "-m", `copy of ${tree}`]);
   // The side-chain check parses with ts-morph; `node_modules` is gitignored, so the link is never read as a file.
   symlinkSync(join(repo, "node_modules"), join(dir, "node_modules"));
   return dir;
@@ -169,7 +178,7 @@ await runGoal((failures, tell) => {
     evidence.push("parity: skipped, this commit has no glossary");
     return { failures, evidence: evidence.join("; ") };
   }
-  const after = copyOf("parity");
+  const after = copyOf("parity", parityAt);
   const runAll = (d: string) => ({
     sweep: check(d, SWEEP),
     sweepControl: check(d, SWEEP, ["--control"]),
@@ -193,7 +202,7 @@ await runGoal((failures, tell) => {
   compare("the sweep's control", lines(now.sweepControl.out, /^CONTROL /), lines(then.sweepControl.out, /^CONTROL /));
   compare("the guard's control", tell.over("parity: guard control verdicts", lines(now.guardControl.out, /^plant |^CONTROL /)), lines(then.guardControl.out, /^plant |^CONTROL /));
   for (const k of Object.keys(now) as Array<keyof typeof now>) compare(`${k}'s exit code`, now[k].status, then[k].status);
-  evidence.push(`parity: ${sweepCounts(now.sweep)[0] ?? "no sweep summary"}; ${guardCounts(now.guard).length} guard count lines and ${lines(now.guardControl.out, /^plant /).length} guard control verdicts match the pre-move checks`);
+  evidence.push(`parity: ${sweepCounts(now.sweep)[0] ?? "no sweep summary"}; ${guardCounts(now.guard).length} guard count lines and ${lines(now.guardControl.out, /^plant |^CONTROL /).length} guard control verdicts match the pre-move checks, at ${parityAt.slice(0, 9)}`);
 
   return { failures, evidence: evidence.join("; ") };
 });

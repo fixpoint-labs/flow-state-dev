@@ -38,7 +38,7 @@ export interface OwnerRun {
 }
 
 /** Why a run did not start. */
-export type OwnerRunRefusal = "no_row" | "other_org" | "other_tenant" | "disabled";
+export type OwnerRunRefusal = "no_resource" | "other_org" | "other_tenant" | "disabled";
 
 /** What a fire came to. */
 export type OwnerRunFired =
@@ -61,7 +61,7 @@ export async function fireOwnerRunThrough(
 ): Promise<OwnerRunFired> {
   const { userId, orgId, tenantId } = run.owner;
   const stored = await host.stores.resourceState.get("user", resolveSharedUserCellKey(userId, orgId, run.flowKind), run.rowKey);
-  if (stored === undefined) return { fired: false, refused: "no_row" };
+  if (stored === undefined) return { fired: false, refused: "no_resource" };
   const state = stored.state as { orgId?: unknown; tenantId?: unknown; enabled?: unknown };
   // The row's stored organization and tenant, which must be the ones the nomination names.
   if (state.orgId !== orgId) return { fired: false, refused: "other_org" };
@@ -111,7 +111,7 @@ function parseOwnerRun(value: unknown, flowKind: string, orgId: string): OwnerRu
   const run = value as Record<string, unknown>;
   const owner = run.owner as Record<string, unknown> | undefined;
   if (run.flowKind !== flowKind) return `names flow "${String(run.flowKind)}", not the service's own "${flowKind}"`;
-  if (!isString(run.entry) || !isString(run.rowKey)) return "names no entry or row";
+  if (!isString(run.entry) || !isString(run.rowKey)) return "names no entry or task";
   if (typeof owner !== "object" || owner === null || !isString(owner.userId)) return "names no owner";
   if (owner.orgId !== orgId) return "names an owner in another org";
   if (owner.tenantId !== undefined && !isString(owner.tenantId)) return "names a malformed tenant";

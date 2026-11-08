@@ -100,7 +100,7 @@ const saveScheduleOutputSchema = z.union([
   z.object({ ok: z.literal(false), error: z.string() })
 ]);
 
-type ScheduleRow = {
+type StoredSchedule = {
   cron: string;
   kind: string;
   timezone?: string;
@@ -110,7 +110,7 @@ type ScheduleRow = {
 };
 
 /** A schedule row as the list shows it, its next run worked out from `now`. */
-function listed(key: string, row: ScheduleRow): ListedSchedule {
+function listed(key: string, row: StoredSchedule): ListedSchedule {
   const timezone = row.timezone ?? "UTC";
   const enabled = row.enabled !== false;
   const next = enabled ? parseNextFireAt(row.cron, timezone) : null;
@@ -211,7 +211,7 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
       const due = (s: ListedSchedule) => (s.nextRunAt === null ? Number.POSITIVE_INFINITY : Date.parse(s.nextRunAt));
       return {
         schedules: rows
-          .map((ref) => listed(keyOf(ref.path), ref.state as ScheduleRow))
+          .map((ref) => listed(keyOf(ref.path), ref.state as StoredSchedule))
           .sort((a, b) => due(a) - due(b) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
       };
     }
@@ -241,7 +241,7 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
             "Use exactly five fields (minute hour day-of-month month day-of-week) and an IANA time zone. Nothing was saved."
         };
       }
-      const row: ScheduleRow = {
+      const row: StoredSchedule = {
         cron: input.cron,
         kind: TASK_SCHEDULE_HANDLER,
         input: input.input,

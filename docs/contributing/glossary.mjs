@@ -29,7 +29,8 @@
  * A retirement with no `check` is a whole-word name match, refused by both the sweep and the
  * guard. One that names a `check` uses that check's matcher: `"sweep"` (a `pattern` over `files`),
  * `"guard"` (a global `re`, optionally on Workforce's `ground` only), `"side-chain"` (an identifier,
- * matched on the syntax tree), or `"added-lines"` (the guard's scan of the lines a change adds).
+ * matched on the syntax tree), or `"tree"` (the guard's scan of every in-scope file for a declared
+ * name and a page's prose).
  *
  * `reach` is `"name"` (an identifier or a term, read in every tree the checks read, the contributor
  * trees included; the default) or `"meaning"` (an English word refused in one sense, read in code
@@ -96,8 +97,127 @@ const SEAT_MAILBOX_GOAL_NAMES = [
   "a-seat-reaches-the-documents-its-file-names",
 ];
 
-/** A collection module: a `collection` directory, or a file whose name says collection. */
-const COLLECTION_FILE = /(?:^|\/)collections?(?:\/|$)|(?:^|\/)[^/]*collection[^/]*\.(?:[cm]?[jt]sx?|mdx?)$/i;
+/** A name whose word parts include Row: `FooRow`, `Rows`, `RowHold`, `TaskRowsPage`, `writeRunRow`. Not `Arrow`, `Rowan`. */
+const ROW_NAME = String.raw`\w*Rows?(?:[A-Z_]\w*)?(?![\w$])`;
+/** `text` with every line and block comment blanked to spaces, newlines kept: same length, same offsets. */
+function blankComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (c) => c.replace(/[^\n]/g, " "));
+}
+
+/** An export list, read forward: `export {…}` or `export type {…}`, its members, and whether it re-exports (`from`). */
+const EXPORT_LIST = /(?<![\w$.])export\s+(?:type\s+)?\{([^}]*)\}(\s*from\b)?/g;
+const IS_ROW_NAME = new RegExp(String.raw`^(?:${ROW_NAME}|rows?[A-Z]\w*)$`);
+
+/**
+ * The Row names a module exports through a list: a local's own name (`export { readTaskRow }`), or an
+ * alias's exported name (`export { x as fooRow }`, a re-export too). A plain re-export (`export { FooRow } from`)
+ * is left: its declaration is where the name counts. Each hit is `{ index, name }`, `index` at the member.
+ * @param {string} text
+ * @returns {{ index: number; name: string }[]}
+ */
+function rowNamesInExportLists(text) {
+  const hits = [];
+  EXPORT_LIST.lastIndex = 0;
+  for (let m = EXPORT_LIST.exec(text); m !== null; m = EXPORT_LIST.exec(text)) {
+    const reexport = m[2] !== undefined;
+    const bodyAt = m.index + m[0].indexOf("{") + 1;
+    let offset = 0;
+    for (const part of blankComments(m[1]).split(",")) {
+      const spec = /^\s*(?:type\s+)?([\w$]+)(?:\s+as\s+([\w$]+))?\s*$/.exec(part);
+      if (spec !== null) {
+        const [, local, alias] = spec;
+        const exported = alias ?? local;
+        if ((alias !== undefined || !reexport) && IS_ROW_NAME.test(exported)) {
+          hits.push({ index: bodyAt + offset + part.indexOf(exported, alias !== undefined ? part.indexOf(" as ") : 0), name: exported });
+        }
+      }
+      offset += part.length + 1;
+    }
+  }
+  return hits;
+}
+
+/** An exported destructuring declaration's opening: `export const {` or `export let [`. */
+const EXPORT_PATTERN = /(?<![\w$.])export\s+(?:const|let|var)\s*([{[])/g;
+
+/** Split `text` at the commas that sit outside any bracket, keeping each part's offset. */
+function topLevelParts(text) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i <= text.length; i++) {
+    const c = text[i];
+    if (c === "{" || c === "[" || c === "(") depth++;
+    else if (c === "}" || c === "]" || c === ")") depth--;
+    else if ((c === "," && depth === 0) || i === text.length) {
+      parts.push({ text: text.slice(start, i), at: start });
+      start = i + 1;
+    }
+  }
+  return parts;
+}
+
+/** The names a destructuring pattern binds, each with its offset in `pattern` (the text inside the brackets). */
+function patternBindings(pattern, isObject) {
+  const out = [];
+  for (const part of topLevelParts(pattern)) {
+    let body = part.text;
+    let at = part.at;
+    // The default (`= …`) is read, not bound: cut it at the first top-level `=`.
+    let depth = 0;
+    for (let i = 0; i < body.length; i++) {
+      const c = body[i];
+      if (c === "{" || c === "[" || c === "(") depth++;
+      else if (c === "}" || c === "]" || c === ")") depth--;
+      else if (c === "=" && depth === 0) { body = body.slice(0, i); break; }
+    }
+    // In an object pattern `key: target` binds `target`; a bare key binds itself.
+    if (isObject) {
+      const colon = body.indexOf(":");
+      if (colon !== -1) { at += colon + 1; body = body.slice(colon + 1); }
+    }
+    const lead = body.length - body.trimStart().length;
+    at += lead;
+    body = body.trim().replace(/^\.\.\./, (m) => { at += m.length; return ""; });
+    const open = body[0];
+    if (open === "{" || open === "[") {
+      const close = body.lastIndexOf(open === "{" ? "}" : "]");
+      for (const b of patternBindings(body.slice(1, close), open === "{")) out.push({ name: b.name, at: at + 1 + b.at });
+    } else {
+      const name = /^[\w$]+/.exec(body)?.[0];
+      if (name) out.push({ name, at });
+    }
+  }
+  return out;
+}
+
+/**
+ * The Row names an exported destructuring declaration binds: `export const { readTaskRow } = helpers`,
+ * `export const { list: listTaskRows } = …`, nested and array patterns too. A property only read
+ * (`{ taskRow: task }`) is left: `task` is the name a consumer meets.
+ * @param {string} text
+ * @returns {{ index: number; name: string }[]}
+ */
+function rowNamesInExportedPatterns(text) {
+  const hits = [];
+  EXPORT_PATTERN.lastIndex = 0;
+  for (let m = EXPORT_PATTERN.exec(text); m !== null; m = EXPORT_PATTERN.exec(text)) {
+    const open = m.index + m[0].length - 1;
+    let depth = 0;
+    let close = -1;
+    for (let i = open; i < text.length; i++) {
+      const c = text[i];
+      if (c === "{" || c === "[" || c === "(") depth++;
+      else if (c === "}" || c === "]" || c === ")") { depth--; if (depth === 0) { close = i; break; } }
+    }
+    if (close === -1) continue;
+    for (const b of patternBindings(blankComments(text.slice(open + 1, close)), m[1] === "{")) {
+      if (IS_ROW_NAME.test(b.name)) hits.push({ index: open + 1 + b.at, name: b.name });
+    }
+    EXPORT_PATTERN.lastIndex = close;
+  }
+  return hits;
+}
 
 // ---------------------------------------------------------------------------------------------
 // 1. The terms
@@ -118,16 +238,23 @@ export const ENTRIES = [
     retires: [
       {
         id: "collection-row",
-        check: "added-lines",
-        // FIX-2479 turns this to the whole tree (epic ER-6). Until then it reads the lines a change adds.
-        say: "the resource: XResourceState for what is stored, XResourceRef for one instance",
-        anchor: ["ResourceRef", "XResourceState", "XResourceRef", "XCollectionRef"],
-        // A declaration of a type whose name ends in Row, when it is a resource (`context`). Uses do not match.
-        declaresRow: /\b(?:export\s+)?(?:declare\s+)?(?:type|interface)\s+(\w*Row)\b/g,
-        // A declaration of any name built on CollectionItem: always a resource, wherever it sits.
-        declaresItem: /\b(?:export\s+)?(?:declare\s+)?(?:type|interface|class|enum|function\*?|const|let|var)\s+(\w*CollectionItems?\w*)\b/g,
-        // A `…Row` declaration is a resource in a collection module, on a line that says collection, or when its name does.
-        context: { file: COLLECTION_FILE, line: /\bcollections?\b/i, name: /Collection/ },
+        check: "tree",
+        // The whole tree (epic ER-6): every in-scope file, so a name left anywhere counts, not only a new one.
+        say: "the resource: XResourceState for what is stored, XResourceRef for one instance; XStatus for a lifecycle",
+        anchor: ["ResourceRef", "XResourceState", "XResourceRef", "XCollectionRef", "XStatus"],
+        // Code. A type declared with Row in its name, exported or not: Row is a store adapter's word, and a UI list's.
+        declaresRow: new RegExp(String.raw`(?<![\w$.])(?:type|interface|class|enum)\s+(${ROW_NAME})\s*(?:[<={]|extends\b|implements\b)`, "g"),
+        // Code. An exported value built on Row: `readRunRow`, `fooRowSchema`, `rowTruthOf`. A local is no name anyone meets.
+        exportsRow: new RegExp(String.raw`(?<![\w$.])export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|enum)\s+(${ROW_NAME}|rows?[A-Z]\w*)`, "g"),
+        // Code. A Row name exported through a list: `export { readTaskRow }`, or an alias `export { x as fooRow }` (a re-export too).
+        // A plain re-export (`export { FooRow } from`) is left: its declaration is where the name counts.
+        exportsRowInList: rowNamesInExportLists,
+        // Code. A Row name an exported destructuring declaration binds: `export const { readTaskRow } = helpers`.
+        exportsRowInPattern: rowNamesInExportedPatterns,
+        // Code. Any name built on CollectionItem, a use as well as a declaration: always a resource, wherever it sits.
+        namesItem: /(?<![\w$])([\w$]*[Cc]ollectionItems?[\w$]*)/g,
+        // Code. A lifecycle named State: a string-literal union (on one line or several) or a z.enum. State is scope or resource state only.
+        declaresState: /(?<![\w$.])type\s+(\w*State)\s*=\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*\|?\s*["'`]|(?<![\w$.])(?:const|let|var)\s+(\w*State(?:Schema)?)\s*=\s*z\s*\.\s*enum\(|(?<![\w$.])enum\s+(\w*State)\s*\{/g,
         // Docs calling a resource in a collection a row: "collection row", "collection's row", "the row of the collection".
         prose: /\bcollection\s+rows?\b|\bcollection(?:'s|s')\s+rows?\b|\brows?\s+(?:in|of|from|inside|on)\s+(?:the\s+|a\s+|an\s+)?(?:[\w'-]+\s+){0,4}collection\b/i,
       },
@@ -701,7 +828,8 @@ const PROJECT_MODULES = /^packages\/workforce\/src\/projects\/|^packages\/workfo
  *   line still counts. `where` narrows it to the files it covers. One that strips nothing fails the run.
  *   They apply in order.
  * - **side-chain** (`rules`, `files`): the tests whose subject is the retired spelling, closed by assertion.
- * - **added-lines** (`rules`): where a `…Row` is a rendered table row, not a resource.
+ * - **tree** (`rules`, `id`): a `path` keeps a file's `…Row` names (a store adapter, a UI list); the
+ *   quote rule strips a released message's text (`quotes`) on the `pages` it names, never the line.
  */
 const EXEMPTIONS = [
   // ---- sweep ----
@@ -1176,16 +1304,32 @@ const EXEMPTIONS = [
     why: "FIX-766: the two rename-boundary tests, whose subject is the retired spelling",
   },
 
-  // ---- added-lines ----
+  // ---- tree ----
+  // The resource entry keeps only these (FIX-2479). Its goal fails on any other: never widen one to reach zero.
   {
+    id: "store-adapter-rows",
     rules: ["collection-row"],
-    // Panels and the flow navigator draw board and session rows; BoardColumns is one of those components.
-    path: /(?:^|\/)components\/(?:panels|flow-navigator)\/|BoardColumns|(?:^|\/)(?:table|grid)s?(?:\/|$)|\.(?:table|grid)\.[cm]?[jt]sx?$/i,
-    // Type names that are table rows. `WidgetRow` does not match. `DataTableRow` does.
-    name: /(?:Table|Grid|BoardCard|BoardColumn|RosterWorker|FlowNavigator|Panel)Row$/,
-    // A line that is itself a rendered table row.
-    line: /<tr\b|<\/tr>|\b(?:table|grid)\s+rows?\b/i,
-    why: "a rendered table row (a panel, the flow navigator, BoardColumns, a table or grid, a DOM `<tr>`): a row, not a resource",
+    // The store adapters, the engine's own stores, and the versioned-row helper they share (`VersionedRow`).
+    path: /^packages\/(?:store-[^/]+|engine\/src\/stores)\/|^packages\/contracts\/src\/helpers\/write-version\.ts$/,
+    why: "a store adapter: a row is its word for what it stores (owner, 2026-11-06)",
+  },
+  {
+    id: "ui-list-rows",
+    rules: ["collection-row"],
+    path: /(?:^|\/)(?:components|surfaces)\//,
+    why: "a UI list module under components/ or surfaces/: a rendered row is a row (owner, 2026-11-06; FIX-2479, a path rule)",
+  },
+  {
+    id: "released-quotes",
+    rules: ["collection-row"],
+    pages: /^(?:apps\/docs\/(?:docs|guides)\/.*\.mdx?|packages\/[^/]+\/README\.md)$/,
+    // The owner-private refusal, the owner-writes refusal, and the first line of the startup overlap error.
+    quotes: [
+      /A row of an owner-private collection is readable only by the user it belongs to\./g,
+      /A row of an owner-writes collection is written only by the user it belongs to\./g,
+      /Collection pattern "[^"]*" can reach the rows of owner-(?:private|writes) collection/g,
+    ],
+    why: "FIX-2479 D4: a published page may quote a released message until /release-docs rewrites it, and deletes this in the same PR",
   },
 ];
 
@@ -1305,8 +1449,8 @@ export const GUARD_TERMS = RETIREMENTS.filter((r) => textChecksOf(r).includes("g
   r.check === "guard" ? r : { ...r, re: new RegExp(`(?<![\\w$])${escapeRe(r.name)}(?![\\w$])`, "g"), say: r.term },
 );
 
-/** The guard's added-lines rules. One today: the resource entry's. */
-export const ADDED_LINE_RULES = RETIREMENTS.filter((r) => r.check === "added-lines");
+/** The guard's whole-tree rules. One today: the resource entry's. */
+export const TREE_RULES = RETIREMENTS.filter((r) => r.check === "tree");
 
 /** The side-chain check's names by position: `any`, `called`, `contract-field`, `path-op`, `tier-value`. */
 export const SIDE_CHAIN = RETIREMENTS.filter((r) => r.check === "side-chain").reduce((by, r) => {
@@ -1343,7 +1487,7 @@ const SHARED_GUARD_EXEMPTIONS = SWEEP_EXEMPTIONS.filter((e) => e.rules.some((id)
 });
 export const GUARD_EXEMPTIONS = [...byCheck("guard"), ...SHARED_GUARD_EXEMPTIONS];
 export const SIDE_CHAIN_EXEMPT_FILES = byCheck("side-chain").flatMap((e) => e.files);
-export const ADDED_LINE_EXEMPTIONS = byCheck("added-lines");
+export const TREE_EXEMPTIONS = byCheck("tree");
 
 /** The terms the published glossary page defines, each by exactly one row. */
 export const PUBLISHED_TERMS = ENTRIES.filter((e) => e.published === true).map((e) => e.term);
@@ -1353,7 +1497,7 @@ export const PUBLISHED_TERMS = ENTRIES.filter((e) => e.published === true).map((
 // ---------------------------------------------------------------------------------------------
 
 {
-  const CHECKS = new Set(["sweep", "guard", "side-chain", "added-lines"]);
+  const CHECKS = new Set(["sweep", "guard", "side-chain", "tree"]);
   const fail = (why) => {
     throw new Error(`docs/contributing/glossary.mjs: ${why}`);
   };
@@ -1394,6 +1538,6 @@ export const PUBLISHED_TERMS = ENTRIES.filter((e) => e.published === true).map((
   if (!(SIDE_CHAIN.any?.length > 0)) fail("the side-chain check would read no retired names");
   // The side-chain check has no escape hatch: it keeps exactly the two rename-boundary tests.
   if (SIDE_CHAIN_EXEMPT_FILES.length !== 2) fail(`the side-chain exemptions must hold exactly the two rename-boundary tests; found ${SIDE_CHAIN_EXEMPT_FILES.length}`);
-  const placed = SWEEP_EXEMPTIONS.length + byCheck("guard").length + byCheck("side-chain").length + ADDED_LINE_EXEMPTIONS.length;
+  const placed = SWEEP_EXEMPTIONS.length + byCheck("guard").length + byCheck("side-chain").length + TREE_EXEMPTIONS.length;
   if (placed !== EXEMPTIONS.length) fail("an exemption keeps retirements from more than one check, or in the wrong shape for its check");
 }

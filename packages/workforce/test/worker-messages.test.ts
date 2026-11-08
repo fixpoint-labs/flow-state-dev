@@ -1029,7 +1029,7 @@ describe("who can be messaged", () => {
         flow: { kind: "agent", id: "agent" },
         state: { workerId: "otto" },
         via: "dispatch",
-        readCollectionItem: async () => undefined
+        readCollectionResource: async () => undefined
       });
       expect(verdict).toMatchObject({ ok: false, status: 403 });
     } finally {

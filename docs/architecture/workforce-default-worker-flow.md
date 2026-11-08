@@ -112,8 +112,8 @@ than re-spelling. Those five are both; `instructions` is the one key that is imp
 the same — as the file's body.
 
 `workerId` is the worker's logical id, the one a worker file's `delegates:` lists (FIX-1589). A file
-record's `id` is that id; a runtime-hired record's `id` is its org-qualified address, so the roster
-row carries the logical id on the record's `workerId` field and the hire stamps that. It exists because a worker that files or posts must
+record's `id` is that id; a runtime-hired record's `id` is its org-qualified address, so the roster's
+resource carries the logical id on the record's `workerId` field and the hire stamps that. It exists because a worker that files or posts must
 name itself, and a block cannot see which worker it runs in: core keeps the flow's id off the block
 context, so the worker's settings are the one per-worker fact a block can read, and only the hire writes
 them. Every mint path (files, the runtime `hire` tool, the boot reload) stamps it, so no worker is
@@ -241,7 +241,7 @@ resource with `writtenBy` through `sharedResource()`, which owns the field (judg
 mark only the helper's output carries, not by sampling what the schema accepts). One problem refuses the whole call, once per flow, so the
 refusal does not depend on a worker naming the flow. Then each record resolves: the `agent` default
 first, then standard-only (an entry `{ flow, standardOnly: true }` refuses a record that has an
-owner, which every runtime hire and stored row has and no `WORKER.md` has). The complete rule
+owner, which every runtime hire and stored worker has and no `WORKER.md` has). The complete rule
 for a record:
 
 | Worker file says | Result |
@@ -250,7 +250,7 @@ for a record:
 | `flow: agent` | the built-in worker flow — same flow, named explicitly |
 | `flow: <registered>` | that worker flow, exactly as today |
 | `flow: <not registered>` | **refused by name**, listing the worker flows that were passed |
-| a hired record (one with an owner: a runtime hire or a reloaded roster row) naming a flow kept for declared workers (or naming none, when `agent` is kept) | **refused**, naming the flow and saying it is kept for declared workers |
+| a hired record (one with an owner: a runtime hire or a reloaded roster worker) naming a flow kept for declared workers (or naming none, when `agent` is kept) | **refused**, naming the flow and saying it is kept for declared workers |
 | roster passes `workerFlows: { agent: … }` | the app's flow wins; the built-in is merged *underneath* whatever the caller supplied |
 
 The existing refusal for a flow filed under someone else's kind name still applies to the

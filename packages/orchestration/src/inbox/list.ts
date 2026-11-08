@@ -2,8 +2,8 @@
  * The Inbox list: the only place an Inbox item is built (the task-surface
  * sweep fails one built anywhere else).
  */
-import { holdOfSuspension, isOpenRow, openUserHolds, taskItemId } from "./holds";
-import type { InboxHold, InboxItem, InboxRow, InboxSuspension, InboxTask } from "./types";
+import { holdOfSuspension, isOpenTask, openUserHolds, taskItemId } from "./holds";
+import type { InboxHold, InboxItem, InboxTaskInput, InboxSuspension, InboxTask } from "./types";
 
 /** An item over `holds`, oldest first, answerable when any hold is. */
 function itemOf<TDetail>(id: string, task: InboxTask | null, questions: readonly InboxHold<TDetail>[]): InboxItem<TDetail> {
@@ -31,16 +31,16 @@ function itemOf<TDetail>(id: string, task: InboxTask | null, questions: readonly
  * names the flow that owns a session, where a row's run is.
  */
 export function inboxItems<TDetail = unknown>(input: {
-  readonly rows: readonly InboxRow[];
+  readonly rows: readonly InboxTaskInput[];
   readonly suspensions: readonly InboxSuspension<TDetail>[];
   readonly flowOf: (sessionId: string) => string | null | undefined;
 }): InboxItem<TDetail>[] {
   const found = new Map(input.suspensions.map((s) => [s.suspensionId, s]));
-  const byRow = new Map<InboxRow, InboxHold<TDetail>[]>();
+  const byRow = new Map<InboxTaskInput, InboxHold<TDetail>[]>();
   const claimed = new Set<string>();
-  const runOwner = new Map<string, InboxRow>();
+  const runOwner = new Map<string, InboxTaskInput>();
   for (const row of input.rows) {
-    if (isOpenRow(row) && row.run != null) runOwner.set(row.run.requestId, row);
+    if (isOpenTask(row) && row.run != null) runOwner.set(row.run.requestId, row);
     const holds = openUserHolds<TDetail>(row, input.flowOf, (id) => found.get(id));
     for (const hold of holds) claimed.add(hold.id);
     if (holds.length > 0) byRow.set(row, holds);

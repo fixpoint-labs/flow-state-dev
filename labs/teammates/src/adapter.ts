@@ -27,7 +27,7 @@
  * |                     | and the board's `listTasks` read (`taskActionName`), on each notice of the     |
  * |                     | conversation's board                                                          |
  * |                     | and each linked run's session, where the run writes its row (its holds)      |
- * |                     | and `taskRowView` with the Inbox's holds (`inboxItems`), for what it waits on |
+ * |                     | and `taskView` with the Inbox's holds (`inboxItems`), for what it waits on |
  * |                     | you for, and what its runs spent (the harness and model they reported)       |
  * | `answerOpenHold`        | the Inbox client's `answerOne`, on the task's open question or review         |
  * | `taskActions`       | the Inbox client's `board(at)` on the conversation that filed the task, its   |
@@ -57,7 +57,7 @@ import {
   readEveryCollectionPage,
   topic,
   type Client,
-  type SessionConnectionState,
+  type SessionConnectionStatus,
   type SessionRequestSummary,
   type WireNotice,
   type WireTopic,
@@ -72,7 +72,7 @@ import {
   RECEIVED_MESSAGE_COMPONENT,
   SEND_MESSAGE_TOOL,
   WORKER_MESSAGES_RESOURCE,
-  workerMessageRowSchema,
+  workerMessageResourceStateSchema,
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
@@ -81,15 +81,15 @@ import {
   createInboxClient,
   inboxItems,
   taskActionName,
-  taskRowView,
+  taskView,
   type InboxAnswer,
   type InboxHold,
-  type InboxRow,
+  type InboxTaskInput,
   type RefileOverrides,
-  type RefileRow,
-  type TaskRowView,
+  type RefiledTask,
+  type TaskView,
 } from "@flow-state-dev/orchestration/inbox";
-import { pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitRow, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitInput, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
@@ -100,7 +100,7 @@ import {
   toolStepState,
   withToolState,
   type ToolCallStatus,
-  type ToolStepState,
+  type ToolStepStatus,
 } from "./components/flow-state/tool-grouping";
 import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/flow-state/working-status";
 import { harnessName } from "./lib/harness";
@@ -112,7 +112,7 @@ import type { HarnessReadinessChipRow } from "./components/flow-state/harness-re
 export type Unsubscribe = () => void;
 
 /** One worker on the roster. */
-export interface WorkerRow {
+export interface LabWorker {
   /** The worker's address on the roster, e.g. `teammates.chief-of-staff`. */
   id: string;
   /** The name the user reads. */
@@ -172,7 +172,7 @@ export interface BoardTask {
   harness?: string;
   /** The model its run reported, when it reported one; never guessed. */
   model?: string;
-  /** What its runs spent, as orchestration's task-row view folds it (`taskRowView`); absent before any ran. */
+  /** What its runs spent, as orchestration's task view folds it (`taskView`); absent before any ran. */
   spend?: TaskSpendView;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
@@ -184,8 +184,8 @@ export interface BoardTask {
    * is done and its work is not, so it stays open. Absent while it waits on none.
    */
   pullRequests?: { number: number | null }[];
-  /** The row as orchestration's `taskRowView` reads it, once per read: its state and times, for its time signal and the panel's counts. */
-  view?: TaskRowView;
+  /** The row as orchestration's `taskView` reads it, once per read: its state and times, for its time signal and the panel's counts. */
+  view?: TaskView;
   /**
    * What the view doesn't carry, for the time signal: when this attempt's run started (its run link's
    * `startedAt`), and the row's lease deadline, which a live run keeps renewing. Each absent until the row has it.
@@ -263,7 +263,7 @@ export interface SessionStep {
   /** For `tool`, the step is a shell command, shown as code. */
   code?: boolean;
   /** For `tool`, how it stands: running, waiting, done, or failed (thrown, or a result that says so). */
-  state?: ToolStepState;
+  state?: ToolStepStatus;
   /** For `said`, while it is still being written. */
   streaming?: boolean;
 }
@@ -300,7 +300,7 @@ export type ConversationEntry =
  */
 export interface StepRun {
   label: string;
-  state: ToolStepState;
+  state: ToolStepStatus;
   open: boolean;
 }
 
@@ -330,7 +330,7 @@ export interface ConversationView {
 }
 
 /** One row of the message log: one message from one worker to another. */
-export interface TalkRow {
+export interface LabTalk {
   id: string;
   from: string;
   to: string;
@@ -366,7 +366,7 @@ export interface WindowMark {
 }
 
 /** One coding harness's readiness, as harness-manager's readiness action answers it. */
-export type HarnessRow = HarnessReadinessChipRow;
+export type LabHarness = HarnessReadinessChipRow;
 
 /** What the lab works on and with, from its `lab-context` flow: the context strip and the first run read it. */
 export interface LabContext {
@@ -388,29 +388,29 @@ export interface LabAdapter {
    * any tab or any worker's turn, changes them. `onError` hears a failed read;
    * the next read that lands reports the rows.
    */
-  watchWorkers(onChange: (workers: WorkerRow[]) => void, onError?: (error: unknown) => void): Unsubscribe;
-  listWorkers(): Promise<WorkerRow[]>;
+  watchWorkers(onChange: (workers: LabWorker[]) => void, onError?: (error: unknown) => void): Unsubscribe;
+  listWorkers(): Promise<LabWorker[]>;
   /** What the lab works on and with, read once for the context strip. */
   readContext(): Promise<LabContext>;
   /** Which coding harnesses can run on this machine; `refresh` checks them again (Re-check). */
-  readHarnesses(refresh?: boolean): Promise<HarnessRow[]>;
+  readHarnesses(refresh?: boolean): Promise<LabHarness[]>;
   /** The worker's one conversation; the same id every time. */
   openConversation(worker: string): Promise<string>;
   send(sessionId: string, text: string): Promise<void>;
   watchConversation(sessionId: string, onChange: (view: ConversationView) => void): Unsubscribe;
   /** Whether the conversation's feed still hears the server, in the session feed's words. */
-  watchConnection(sessionId: string, onChange: (state: SessionConnectionState) => void): Unsubscribe;
+  watchConnection(sessionId: string, onChange: (state: SessionConnectionStatus) => void): Unsubscribe;
   /** Say yes or no to what an approval entry asks; the worker's turn carries on. */
   answerApproval(sessionId: string, approval: { requestId: string; suspensionId: string }, approve: boolean): Promise<void>;
   /** Run a failed turn of the conversation again, as a new request the engine links to `requestId`. */
   retry(sessionId: string, requestId: string): Promise<void>;
   /** Every message to or from `worker`, oldest first. */
-  watchTalk(worker: string, onChange: (rows: TalkRow[]) => void): Unsubscribe;
+  watchTalk(worker: string, onChange: (rows: LabTalk[]) => void): Unsubscribe;
   watchActivity(worker: string, onChange: (activity: Activity) => void): Unsubscribe;
   /** `undefined` while the whole conversation is inside the window. */
   watchWindow(sessionId: string, onChange: (mark: WindowMark | undefined) => void): Unsubscribe;
   /** Hire a teammate onto the user's roster, on the built-in agent flow. */
-  hire(teammate: NewTeammate): Promise<WorkerRow>;
+  hire(teammate: NewTeammate): Promise<LabWorker>;
   /** Replace one of the user's own teammates' instructions, from its next turn on. */
   editInstructions(worker: string, instructions: string): Promise<void>;
   /** Fire one of the user's own teammates: it leaves the roster, and its conversation stays readable. */
@@ -782,8 +782,8 @@ export function toBoardTask(
     row.status === "completed" ? "done" : row.status === "errored" ? "failed" : row.status === "cancelled" ? "cancelled" : "running";
   // A teammate's answer is the output as is; a coding run's is its output's `answer`. Blank is none.
   const answer = answerTextOf(row.output);
-  // One read of the row as orchestration's task-row view: its folded spend, and its oldest open hold.
-  const view = typeof row.id === "string" && typeof row.status === "string" ? taskRowView({ ...row, board: row.board ?? "" } as InboxRow, holds) : null;
+  // One read of the row as orchestration's task view: its folded spend, and its oldest open hold.
+  const view = typeof row.id === "string" && typeof row.status === "string" ? taskView({ ...row, board: row.board ?? "" } as InboxTaskInput, holds) : null;
   const spend = view?.spend ?? null;
   return {
     id: row.id,
@@ -813,7 +813,7 @@ export function toBoardTask(
 
 /** A row's open pull-request wait, as harness-manager's browser reader reads it: the pull requests by number, or nothing. */
 function pullRequestsOf(row: Record<string, any>): Pick<BoardTask, "pullRequests"> {
-  const wait = pullRequestWait(row as PullRequestWaitRow);
+  const wait = pullRequestWait(row as PullRequestWaitInput);
   return wait === null ? {} : { pullRequests: wait.pullRequests.map(({ number }) => ({ number })) };
 }
 
@@ -847,7 +847,7 @@ function startedAtOf(row: Record<string, any>): { startedAt?: number } {
 }
 
 /** The fields a re-file copies from a task, as the board's `refile` takes them. */
-function refileRowOf(task: BoardTask): RefileRow {
+function refileRowOf(task: BoardTask): RefiledTask {
   return { goal: task.goal, title: task.title, context: task.context ?? null, assignee: task.to, labels: task.labels ?? null, priority: task.priority ?? null };
 }
 
@@ -862,8 +862,8 @@ export function rerunOverrides(task: BoardTask, worker: string): RefileOverrides
   return { assignee: worker, context: task.context === undefined || task.context === "" ? line : `${task.context}\n\n${line}` };
 }
 
-/** What a row waits on you for, as `taskRowView` reads it: its oldest open hold, or nothing. */
-function waitingOf(view: TaskRowView | null): { waiting?: TaskWaiting } {
+/** What a row waits on you for, as `taskView` reads it: its oldest open hold, or nothing. */
+function waitingOf(view: TaskView | null): { waiting?: TaskWaiting } {
   const hold = view?.hold ?? null;
   if (hold === null) return {};
   const kind = hold.ask.kind === "question" || hold.ask.kind === "review" ? hold.ask.kind : "other";
@@ -877,9 +877,9 @@ function waitingOf(view: TaskRowView | null): { waiting?: TaskWaiting } {
  *
  * @param flowOf The flow that owns a session: the conversation's, or a run's.
  */
-export function holdsOfRows(sessionId: string, rows: readonly Record<string, any>[], flowOf: (sessionId: string) => string | undefined): Map<string, InboxHold[]> {
-  const inboxRows: InboxRow[] = rows.map((row) => ({
-    ...(row as InboxRow),
+export function holdsOfTasks(sessionId: string, rows: readonly Record<string, any>[], flowOf: (sessionId: string) => string | undefined): Map<string, InboxHold[]> {
+  const inboxRows: InboxTaskInput[] = rows.map((row) => ({
+    ...(row as InboxTaskInput),
     board: sessionId,
     holder: { sessionId, action: UPDATE_TASK },
   }));
@@ -1096,7 +1096,7 @@ export function runSteps(items: readonly Item[]): SessionStep[] {
 /** The session a message was delivered to, from the message log; undefined while the log doesn't hold it. */
 export function destinationOf(rows: readonly unknown[], messageId: string): string | undefined {
   for (const row of rows) {
-    const parsed = workerMessageRowSchema.safeParse(row);
+    const parsed = workerMessageResourceStateSchema.safeParse(row);
     if (parsed.success && parsed.data.id === messageId) return parsed.data.toSession;
   }
   return undefined;
@@ -1113,7 +1113,7 @@ export function exchangeOf(items: readonly Item[], messageId: string): SessionSt
 }
 
 /** A roster entry as the screen lists it. */
-function toWorkerRow(w: RosterEntry): WorkerRow {
+function toWorkerRow(w: RosterEntry): LabWorker {
   return {
     id: w.id,
     name: w.name ?? w.id.slice(w.id.lastIndexOf(".") + 1),
@@ -1213,7 +1213,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       return (await runLab("lab-context", "read", {})) as LabContext;
     },
     async readHarnesses(refresh = false) {
-      return ((await runLab("harness-readiness", "read", { refresh })) as { harnesses: HarnessRow[] }).harnesses;
+      return ((await runLab("harness-readiness", "read", { refresh })) as { harnesses: LabHarness[] }).harnesses;
     },
     async listWorkers() {
       const roster = await workforce.roster();
@@ -1297,7 +1297,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           const { sessionId } = await anyConversation();
           const rows = await readEveryCollectionPage(client.resources, sessionId, WORKER_MESSAGES_RESOURCE);
           return rows
-            .map((row) => workerMessageRowSchema.safeParse(row.clientData))
+            .map((row) => workerMessageResourceStateSchema.safeParse(row.clientData))
             .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
             .filter((m) => m.from === worker || m.to === worker)
             .sort((a, b) => a.at - b.at)
@@ -1455,7 +1455,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         if (stopped) return;
         const current = merged();
         const flowOf = (id: string) => (id === sessionId ? flowOfSession.get(sessionId) : runFlows.get(id));
-        const holds = holdsOfRows(sessionId, current, flowOf);
+        const holds = holdsOfTasks(sessionId, current, flowOf);
         openHolds.set(sessionId, holds);
         show(current.map((row) => toBoardTask(row, (worker) => harnesses.get(worker), holds.get(row.id) ?? [])));
         learnFlows(current);

@@ -30,7 +30,7 @@ import {
   type SuspensionHold,
   type Task,
 } from "@flow-state-dev/orchestration/tasks";
-import { cancelAndResume, openRowHolds } from "@flow-state-dev/orchestration/internal";
+import { cancelAndResume, openOwnHolds } from "@flow-state-dev/orchestration/internal";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,
@@ -601,7 +601,7 @@ describe("a judged run on a board read from the claim, with review on", () => {
     await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
     const row = await lab.row(CONVERSATIONS, "t1", "conv-a");
     expect(row.status).toBe("in_progress");
-    expect(openRowHolds(row).map((h) => h.ask.prompt)).toEqual(["which repository did you mean?"]);
+    expect(openOwnHolds(row).map((h) => h.ask.prompt)).toEqual(["which repository did you mean?"]);
     expect(row.holds?.some((h) => h.source.kind === "suspension")).toBe(false);
   }, 60_000);
 });

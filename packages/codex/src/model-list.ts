@@ -28,7 +28,7 @@ export interface ListCodexModelsOptions {
 }
 
 /** A row of `model/list`, as far as this reads it. */
-interface ModelRow {
+interface ListedModel {
   id?: unknown;
   model?: unknown;
   displayName?: unknown;
@@ -65,11 +65,11 @@ export async function listCodexModels(options: ListCodexModelsOptions): Promise<
   try {
     await session.request("initialize", { clientInfo: { name: "flow-state-dev", title: null, version: "0" }, capabilities: null });
     session.notify("initialized");
-    const rows: ModelRow[] = [];
+    const rows: ListedModel[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < MAX_PAGES; page++) {
       const answer = (await session.request("model/list", cursor === null ? {} : { cursor })) as ModelPage;
-      if (Array.isArray(answer.data)) rows.push(...(answer.data as ModelRow[]));
+      if (Array.isArray(answer.data)) rows.push(...(answer.data as ListedModel[]));
       cursor = typeof answer.nextCursor === "string" && answer.nextCursor !== "" ? answer.nextCursor : null;
       if (cursor === null) break;
     }
@@ -85,7 +85,7 @@ export async function listCodexModels(options: ListCodexModelsOptions): Promise<
 }
 
 /** Codex's rows as models: the ones its picker shows, one per id, the default first. */
-function toModels(rows: readonly ModelRow[]): HarnessModelInfo[] {
+function toModels(rows: readonly ListedModel[]): HarnessModelInfo[] {
   const text = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
   const byId = new Map<string, HarnessModelInfo>();
   for (const row of rows) {

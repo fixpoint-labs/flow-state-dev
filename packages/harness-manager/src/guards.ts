@@ -213,7 +213,7 @@ export function assertBaseRefExists(
     throw new Error(
       `[harness-manager] ${variable} "${baseRef}" does not resolve to a commit in ${repo}. ` +
         "A fresh checkout is cut from it with `git worktree add`, so every attempt would " +
-        "fail there and spend the row's whole retry budget on a name no retry can fix.",
+        "fail there and spend the task's whole retry budget on a name no retry can fix.",
     );
   }
 }

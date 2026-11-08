@@ -339,7 +339,7 @@ const remotes = new Map<string, { url: string }>();
 const reviewOf = (task: Record<string, any> | undefined) =>
   task?.status === "in_progress" ? (task.holds ?? []).find((hold: any) => hold.source?.kind === "suspension" && hold.ask?.kind === "review") : undefined;
 const questionOf = (task: Record<string, any> | undefined) =>
-  task?.status === "in_progress" ? (task.holds ?? []).find((hold: any) => hold.source?.kind === "row" && hold.ask?.kind === "question") : undefined;
+  task?.status === "in_progress" ? (task.holds ?? []).find((hold: any) => hold.source?.kind === "task" && hold.ask?.kind === "question") : undefined;
 const isSettled = (task: Record<string, any> | undefined) => ["completed", "errored", "cancelled", "pending"].includes(task?.status);
 const isWaiting = (task: Record<string, any> | undefined) => reviewOf(task) !== undefined || questionOf(task) !== undefined || isSettled(task);
 const lockFree = (cwd: string | undefined) => cwd !== undefined && !existsSync(`${cwd}.lock`);

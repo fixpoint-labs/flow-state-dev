@@ -65,7 +65,7 @@ import {
   messageLogOf,
   newMessageId,
   type MessageAddress,
-  type WorkerMessageRow
+  type WorkerMessageResourceState
 } from "./message-log";
 
 /** What a send asks for: the tool's input. */
@@ -124,7 +124,7 @@ export function recipientRefusal(
 export async function recheckRecipient(
   ctx: BlockContext,
   installation: WorkerInstallation,
-  row: Pick<WorkerMessageRow, "from" | "to" | "addressedBy" | "toTask" | "toSession" | "inReplyTo">
+  row: Pick<WorkerMessageResourceState, "from" | "to" | "addressedBy" | "toTask" | "toSession" | "inReplyTo">
 ): Promise<string | undefined> {
   if (row.addressedBy === "task" || row.addressedBy === "session") {
     const checked =
@@ -438,7 +438,7 @@ interface Resolved {
   readonly recipientId: string;
   readonly destination: MessageAddress;
   readonly exchange?: string;
-  readonly addressed: Pick<WorkerMessageRow, "addressedBy" | "toTask">;
+  readonly addressed: Pick<WorkerMessageResourceState, "addressedBy" | "toTask">;
 }
 
 /** Every send's tail, once its recipient is checked: the budget, the owed id, the row, then one dispatch. */
@@ -461,7 +461,7 @@ async function sendTo(
   // ---- owed, the row, then one dispatch ------------------------------------
   const resends = carriesPass(installation, flowKind);
   if (resends) await oweMessage(ctx, id);
-  const row: WorkerMessageRow = {
+  const row: WorkerMessageResourceState = {
     id,
     from: resolved.sender,
     to: resolved.recipientId,
@@ -500,7 +500,7 @@ async function sendTo(
  * waiting sender's end of the wait writes `waitEndedAt` only while this is
  * unset, so a claimed answer is either that wait's or a message.
  */
-async function claimAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">): Promise<void> {
+async function claimAnswer(ctx: BlockContext, row: Pick<WorkerMessageResourceState, "id" | "inReplyTo">): Promise<void> {
   if (row.inReplyTo === undefined) return;
   const asked = await messageLogOf(ctx).getOptional(row.inReplyTo);
   if (asked?.state.replyRequested === true && asked.state.answeredBy === undefined) {
@@ -509,7 +509,7 @@ async function claimAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" |
 }
 
 /** Give back {@link claimAnswer}'s claim when `row`'s send was refused: a refused answer answers nothing. */
-async function releaseAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">): Promise<void> {
+async function releaseAnswer(ctx: BlockContext, row: Pick<WorkerMessageResourceState, "id" | "inReplyTo">): Promise<void> {
   if (row.inReplyTo === undefined) return;
   const asked = await messageLogOf(ctx).getOptional(row.inReplyTo);
   if (asked?.state.answeredBy === row.id) {
@@ -522,7 +522,7 @@ async function releaseAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id"
 }
 
 /** {@link claimAnswer} for a repeat of a send that went out: the first send's claim, if its process ended before it. */
-async function markAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | "inReplyTo">, outcome: SendOutcome): Promise<SendOutcome> {
+async function markAnswer(ctx: BlockContext, row: Pick<WorkerMessageResourceState, "id" | "inReplyTo">, outcome: SendOutcome): Promise<SendOutcome> {
   if (outcome.ok) await claimAnswer(ctx, row);
   return outcome;
 }
@@ -536,8 +536,8 @@ async function markAnswer(ctx: BlockContext, row: Pick<WorkerMessageRow, "id" | 
  */
 async function dispatchOnce(
   ctx: BlockContext,
-  ref: ResourceRef<WorkerMessageRow>,
-  row: WorkerMessageRow,
+  ref: ResourceRef<WorkerMessageResourceState>,
+  row: WorkerMessageResourceState,
   from: string,
   resends: boolean
 ): Promise<SendOutcome> {

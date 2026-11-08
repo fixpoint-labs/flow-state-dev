@@ -77,7 +77,7 @@ import {
 } from "../projects/workstream-collections";
 import { parseProjectRef, parseWorkstreamRef } from "../projects/workstream-ref";
 import { defineStandardWorkerCollection, standardWorkerFlow, workerDisplayName } from "./standard-workers";
-import { defineWorkerCollection, parseWorkerRow, type WorkerRow } from "./worker-row";
+import { defineWorkerCollection, parseWorkerResourceState, type WorkerResourceState } from "./worker-row";
 import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
 import { ALL_DELEGATES } from "../delegates/delegate-keys";
 import { WORKER_USAGE_RESOURCE, workerSpendHook, workerUsageCollection } from "./worker-usage";
@@ -347,7 +347,7 @@ export interface WorkerInstallation extends WorkerGrants {
    *
    * @returns The reasons it would be refused; empty when it would run.
    */
-  configurationProblems(id: string, row: WorkerRow): string[];
+  configurationProblems(id: string, row: WorkerResourceState): string[];
   /**
    * Check every standard worker the same way, as its file declares it. Used by
    * `hireWorkforce`, which refuses to register anything while one would be
@@ -366,7 +366,7 @@ function declaredDelegates(declared: Readonly<Record<string, unknown>>): string[
 }
 
 /** The settings a row hands its flow: its own settings, keyed as a `WORKER.md` frontmatter. */
-function declaredOf(row: WorkerRow): Record<string, unknown> {
+function declaredOf(row: WorkerResourceState): Record<string, unknown> {
   const declared: Record<string, unknown> = { ...row.settings, flow: row.flow };
   delete declared.description;
   return declared;
@@ -534,7 +534,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
    */
   const manifestOfRow = (
     id: string,
-    row: WorkerRow
+    row: WorkerResourceState
   ): { ok: true; manifest: WorkerManifest } | { ok: false; problems: string[] } => {
     const missing = row.skills.filter((name) => !skillCatalog.has(name));
     if (missing.length > 0) {
@@ -572,22 +572,22 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     workerId: string,
     stored: unknown
   ):
-    | { found: "own"; row: WorkerRow; flow: string; standardOnly: boolean }
+    | { found: "own"; row: WorkerResourceState; flow: string; standardOnly: boolean }
     | { found: "standard"; manifest: WorkerManifest; flow: string }
     | { found: "unreadable"; problem: string }
     | { found: "none" } => {
     if (stored !== undefined) {
-      const parsed = parseWorkerRow(stored);
+      const parsed = parseWorkerResourceState(stored);
       if ("problem" in parsed) return { found: "unreadable", problem: parsed.problem };
-      const flow = parsed.row.flow;
-      return { found: "own", row: parsed.row, flow, standardOnly: workerFlows()[flow]?.standardOnly === true };
+      const flow = parsed.worker.flow;
+      return { found: "own", row: parsed.worker, flow, standardOnly: workerFlows()[flow]?.standardOnly === true };
     }
     const file = standard.get(workerId);
     if (file === undefined) return { found: "none" };
     return { found: "standard", manifest: file, flow: standardWorkerFlow(file, AGENT_FLOW)! };
   };
 
-  const configurationProblems = (id: string, row: WorkerRow): string[] => {
+  const configurationProblems = (id: string, row: WorkerResourceState): string[] => {
     const flows = workerFlows();
     const entry = Object.hasOwn(flows, row.flow) ? flows[row.flow] : undefined;
     if (entry === undefined) {
@@ -674,7 +674,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     // The caller's own worker, read at their scope: another user's row is
     // simply not there, so it is refused exactly as a worker that doesn't
     // exist is.
-    const found = lookupWorker(workerId, await input.readCollectionItem(WORKERS_RESOURCE, workerId));
+    const found = lookupWorker(workerId, await input.readCollectionResource(WORKERS_RESOURCE, workerId));
     if (found.found === "none") return { ok: false, status: 404, message: `No worker "${workerId}".` };
     if (found.found === "unreadable") {
       return { ok: false, message: `Worker "${workerId}" can't be used: ${found.problem}.` };
@@ -732,11 +732,11 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     const accessor = address.visibility === "private" ? PRIVATE_PROJECTS_RESOURCE : PROJECTS_RESOURCE;
     let row: Record<string, unknown> | undefined;
     try {
-      row = await input.readCollectionItem(accessor, address.id);
+      row = await input.readCollectionResource(accessor, address.id);
     } catch {
       return {
         ok: false,
-        message: `Flow "${input.flow.kind}" declares no project rows, so a session of it can't be linked to project "${address.id}".`
+        message: `Flow "${input.flow.kind}" declares no project resources, so a session of it can't be linked to project "${address.id}".`
       };
     }
     if (row === undefined) {
@@ -767,7 +767,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (address === undefined) {
       return { ok: false, message: `"${WORKSTREAM_STATE_KEY}" "${ref}" names no workstream: it is <visibility>/<project>/<workstream>.` };
     }
-    const entry = await input.readCollectionItem(
+    const entry = await input.readCollectionResource(
       workstreamsAccessor(address.project.visibility),
       workstreamEntryKey(address.project.id, input.principal.userId, address.id)
     );

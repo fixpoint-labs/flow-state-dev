@@ -199,7 +199,7 @@ import {
   type ClosedRound,
   type RoundTask,
   type RoundRead,
-  type RoundRows,
+  type RoundTasks,
   type RouteOn
 } from "./coordinator-rounds";
 import { routedBriefOf, routedTaskHistory, type RoutedBrief } from "./routed-brief";
@@ -452,7 +452,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * can't close on it. An answer is a reply only when it says something, as
    * `routedEnded` reads it: an empty one is no answer, and holds no round.
    */
-  const roundRowsOf = async (ctx: BlockContext): Promise<RoundRows> => {
+  const roundTasksOf = async (ctx: BlockContext): Promise<RoundTasks> => {
     const open = roundsIn(ctx.session.state);
     const ref = open.length === 0 ? undefined : await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
     const byRound = new Map<string, Task[]>();
@@ -1405,7 +1405,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   /** Close each open round past its deadline, in one versioned write: the rounds closed, and the earliest deadline still open. */
   const closeOverdueRounds = async (ctx: BlockContext): Promise<{ closed: ClosedRound[]; nextDue?: number }> => {
     const now = Date.now();
-    const rows = await roundRowsOf(ctx);
+    const rows = await roundTasksOf(ctx);
     const swept = await withOutcome(
       (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
         ctx.session.atomicState(mutator as never),
@@ -1483,7 +1483,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // gone, and nothing is overdue: nothing to write.
       const open = ctx.session.state[ROUNDS_STATE] as OpenRound[];
       if (!open.some(isThisRound) && !anyOverdue(open, now)) return {};
-      const rows = await roundRowsOf(ctx);
+      const rows = await roundTasksOf(ctx);
       const closed = await withOutcome(
         (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
           ctx.session.atomicState(mutator as never),
@@ -1597,7 +1597,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       }
       const posted: RoundTask = { messageRequestId: post.messageRequestId, round: post.round, delegate: post.delegate };
       const now = Date.now();
-      const rows = await roundRowsOf(ctx);
+      const rows = await roundTasksOf(ctx);
       type Ended = { kept: boolean; again?: true; closed: ClosedRound[] };
       const outcome = await withOutcome(
         (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>

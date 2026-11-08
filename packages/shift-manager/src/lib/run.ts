@@ -15,7 +15,7 @@
  * What the run recorded (its plan, files and pull requests) is the one read
  * that is not here: `readRecordedWork` from `@flow-state-dev/harness-manager/browser`.
  */
-import { ClientHttpError, compareItemOrder, sessionFeed, type RequestHandle, type SessionConnectionState } from "@flow-state-dev/client";
+import { ClientHttpError, compareItemOrder, sessionFeed, type RequestHandle, type SessionConnectionStatus } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { Client } from "@flow-state-dev/client";
@@ -134,7 +134,7 @@ export type SessionItemsFollower = {
   /** The first read failed. Said only until one succeeds: a lapse after that keeps what was read. */
   onFailure(failure: Failure): void;
   /** The feed's connection moved (`sessionFeed`'s `state`), for the page's connection bar. */
-  onState?(state: SessionConnectionState): void;
+  onState?(state: SessionConnectionStatus): void;
 };
 
 /**
@@ -150,7 +150,7 @@ export function followSessionItems(client: Pick<Client, "sessions">, sessionId: 
   const feed = sessionFeed(client, sessionId);
   let last: readonly OutputItem[] | undefined;
   let read = false;
-  let lastState: SessionConnectionState | undefined;
+  let lastState: SessionConnectionStatus | undefined;
   const stop = feed.subscribe(({ items, hasEarlier, state, error }) => {
     if (state !== lastState) {
       lastState = state;

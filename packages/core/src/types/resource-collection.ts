@@ -397,7 +397,7 @@ export function defineResourceCollection<
     // Every user's create sees every owner's rows, so its eviction would pick
     // a row its caller may not delete.
     if (config.eviction !== undefined && config.eviction !== "none") {
-      throw new Error(`${named} must not evict: an eviction would delete another user's row.`);
+      throw new Error(`${named} must not evict: an eviction would delete another user's resource.`);
     }
   }
 

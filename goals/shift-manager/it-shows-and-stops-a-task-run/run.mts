@@ -78,7 +78,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { compareItemOrder, createClient } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, planRowsPrefix, readPlanTarget } from "@flow-state-dev/core/harness";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, planResourcesPrefix, readPlanTarget } from "@flow-state-dev/core/harness";
 import { DEFAULT_LEASE_DURATION_MS, RENEWAL_DIVISOR } from "@flow-state-dev/orchestration/internal";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
@@ -312,9 +312,9 @@ function labApi(origin: string) {
    * request, so the pointer is followed by core's one reader rule.
    */
   const recordedPlan = async (run: NonNullable<Row["run"]>): Promise<string[] | null> => {
-    const markers = await recordedRows(run, `${OBSERVED_PLAN_LIST}/**`, planRowsPrefix(run.requestId, OBSERVED_PLAN_LIST));
+    const markers = await recordedRows(run, `${OBSERVED_PLAN_LIST}/**`, planResourcesPrefix(run.requestId, OBSERVED_PLAN_LIST));
     const pointers = (markers ?? []).map((m) => ({ topic: m.topic, conversation: m.clientData?.conversation as string | null | undefined }));
-    const rows = await recordedRows(run, `${OBSERVED_PLAN}/**`, readPlanTarget(run.requestId, pointers).rowsPrefix);
+    const rows = await recordedRows(run, `${OBSERVED_PLAN}/**`, readPlanTarget(run.requestId, pointers).resourcesPrefix);
     return rows?.map((i) => keyOf(i.topic)) ?? null;
   };
   return { board, rows, ownerOf, requestStatus, sessionItems, recordedPlan, recordedFiles };

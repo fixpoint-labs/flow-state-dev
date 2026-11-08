@@ -37,7 +37,7 @@ export type CancelOptions = TaskTransitionOptions & {
   // FIX-2133.
   /**
    * The cancel is a confirm's No (owner 2026-10-25): it lands only
-   * while this row hold is open, decided on the committed row in the cancel's
+   * while this own hold is open, decided on the committed row in the cancel's
    * own write, as an answer is. Declines `answered` once the hold has an
    * answer (a yes first, say), and `no-such-question` for an id that isn't a
    * question or a confirm on the row.
@@ -425,11 +425,11 @@ export interface TaskTransitionOptions {
   // FIX-2133.
   /**
    * @internal Refuse the write `held` while the row is held:
-   * `"any"` hold (a lease renewal), or an open `"row"` hold (the claim gate's
+   * `"any"` hold (a lease renewal), or an open `"task"` hold (the claim gate's
    * mirror of its run's stop, one source at a time). Decided on the committed
    * row inside the write. Set by the backings' own verbs, never by a caller.
    */
-  refuseWithOpenHold?: "any" | "row";
+  refuseWithOpenHold?: "any" | "task";
 }
 
 /**
@@ -878,7 +878,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *   is given. `options.answer` is that
    *   request's result, kept as the output (unless this attempt reported a
    *   checkpoint, which stays the output), for the settle that follows.
-   * - `null`: the field clears and the row holds a lease again, to
+   * - `null`: the field clears and the task holds a lease again, to
    *   `options.leaseUntil` (required then). The committed span
    *   (`leaseDurationMs`) is the claim's, unchanged.
    *
@@ -905,7 +905,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
       /**
        * With a wait: the task run's stop for a person, mirrored on the row as
        * a suspension hold in the same write. Refused `held` while a
-       * row hold is open: the stop arm then cancels the stop.
+       * own hold is open: the stop arm then cancels the stop.
        */
       hold?: SuspensionHold;
       /**
@@ -924,7 +924,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   // FIX-2133; BP-030.
   /**
    * Ask questions midway: the turn holding the task's claim opens
-   * row holds (`Task.holds`), drops the lease and ends its turn unsettled, in
+   * own holds (`Task.holds`), drops the lease and ends its turn unsettled, in
    * one write. The row stays `in_progress` on its attempt with no lease until
    * every question is answered (or a deadline the host set passes), then owes
    * one more turn on that attempt (`turnOwed`), which the claim takes.
@@ -969,7 +969,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /**
    * Answer one of the row's questions or confirms: the answer is
    * kept as a steer carrying the hold's id, from `answer.from`, and joins the
-   * brief. The last open row hold's answer lets the work go on in the same
+   * brief. The last open own hold's answer lets the work go on in the same
    * write: a task that hasn't started becomes claimable, its first attempt a
    * start; a running one owes one more turn on its same attempt (`turnOwed`).
    *

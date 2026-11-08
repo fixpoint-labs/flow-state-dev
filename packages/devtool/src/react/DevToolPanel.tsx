@@ -917,7 +917,7 @@ function PanelContent({ className }: { className?: string }) {
           workspace visit and remounts with it, and that remount is the ONLY
           thing retiring the readers inside it. `use-session-state`,
           `use-debug-resources`, `use-debug-resource-content`,
-          `use-debug-collection-items` and `use-list-suspensions` carry no fence
+          `use-debug-collection-resources` and `use-list-suspensions` carry no fence
           of their own precisely because this key unmounts them, so a response
           from the copy just left writes to a component that no longer exists.
           Delete the key and every one of them silently starts committing the

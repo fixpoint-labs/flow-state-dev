@@ -32,7 +32,7 @@
  * applies to the second.
  */
 
-import type { LooseBlockContext } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import type { HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import {
   createMcpManager,
@@ -127,7 +127,7 @@ const ENV_NAME = /^[A-Z_][A-Z0-9_]*$/;
 export function projectMcpTools(servers: ProjectMcpServers, options: ProjectMcpToolsOptions = {}): ProjectMcpToolsResolver {
   checkProjectMcpServers(servers, "projectMcpTools");
   const resolve = async (ctx: HarnessCallbackContext): Promise<Record<string, RelayedMcpServer>> => {
-    const plan = await planProjectMcp(servers, options, ctx as unknown as LooseBlockContext, missingKeys);
+    const plan = await planProjectMcp(servers, options, ctx, missingKeys);
     if (plan === undefined) return {};
     const say = (message: string) => ctx.emit.status(message, { transient: false });
     for (const { name, why } of plan.skipped) {
@@ -161,7 +161,7 @@ export function projectMcpTools(servers: ProjectMcpServers, options: ProjectMcpT
   };
   return Object.assign(resolve, {
     named: async (ctx: HarnessCallbackContext) => {
-      const found = await runProjectOf(ctx as unknown as LooseBlockContext);
+      const found = await runProjectOf(ctx);
       return found.kind === "refused" ? [] : [...(found.project.mcpServers ?? [])];
     }
   });
@@ -202,7 +202,7 @@ export interface ProjectMcpPlan {
 export async function planProjectMcp(
   servers: ProjectMcpServers,
   options: Pick<ProjectMcpToolsOptions, "operator" | "env">,
-  ctx: LooseBlockContext,
+  ctx: BlockContext,
   missing: MissingCollection
 ): Promise<ProjectMcpPlan | undefined> {
   const found = await runProjectOf(ctx);

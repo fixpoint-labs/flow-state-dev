@@ -162,10 +162,10 @@ function referenceScopeId(orgId: string, installedOn: ReferenceInstallFlow): str
   ];
   if (offending.length > 0) {
     throw new Error(
-      `Cannot address this org's reference rows: ${offending.join(" and ")} contains ":" or a ` +
+      `Cannot address this org's reference resources: ${offending.join(" and ")} contains ":" or a ` +
         `backslash, which the engine escapes when it builds a storage bucket — with a rule this ` +
         `package cannot reproduce without keeping a second copy of it. Refusing rather than ` +
-        `reading the wrong cell and reporting nothing to clear. Clear these rows with the ` +
+        `reading the wrong cell and reporting nothing to clear. Clear these resources with the ` +
         `engine's own store helpers, or migrate this org by hand.`,
     );
   }

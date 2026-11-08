@@ -51,12 +51,12 @@ import { handleGetSessionState } from "./state-routes";
 import { handleSessionStream } from "./session-stream-routes";
 import {
   handleGetResourceContent,
-  handleGetCollectionItemContent,
-  handleCreateCollectionItem,
+  handleGetCollectionResourceContent,
+  handleCreateCollectionResource,
   handleUpdateResourceContent,
-  handleDeleteCollectionItem,
+  handleDeleteCollectionResource,
   handleListCollectionState,
-  handleGetCollectionItemState,
+  handleGetCollectionResourceState,
   handleGetResourceManifest
 } from "./resource-routes";
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
@@ -64,9 +64,9 @@ import { authorizeManagementRoute } from "./route-auth";
 import {
   handleDebugListResources,
   handleDebugListSuspensions,
-  handleDebugListCollectionItems,
+  handleDebugListCollectionResources,
   handleDebugGetResourceContent,
-  handleDebugGetCollectionItemContent,
+  handleDebugGetCollectionResourceContent,
   assertDebugAllowed,
   resolveDebugConfig,
   type ResolvedDebugConfig
@@ -759,7 +759,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "get_collection_item_content") {
-        return await handleGetCollectionItemContent(request, route, {
+        return await handleGetCollectionResourceContent(request, route, {
           registry: options.registry,
           stores,
           tenantId,
@@ -768,7 +768,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "create_collection_item") {
-        return await handleCreateCollectionItem(request, route, {
+        return await handleCreateCollectionResource(request, route, {
           registry: options.registry,
           stores,
           tenantId,
@@ -786,7 +786,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "delete_collection_item") {
-        return await handleDeleteCollectionItem(request, route, {
+        return await handleDeleteCollectionResource(request, route, {
           registry: options.registry,
           stores,
           tenantId,
@@ -804,7 +804,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "get_collection_item_state") {
-        return await handleGetCollectionItemState(request, route, {
+        return await handleGetCollectionResourceState(request, route, {
           registry: options.registry,
           stores,
           tenantId,
@@ -842,7 +842,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "debug_list_collection_items") {
-        return await handleDebugListCollectionItems(request, route, {
+        return await handleDebugListCollectionResources(request, route, {
           registry: options.registry,
           stores,
           debug: debugConfig,
@@ -862,7 +862,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "debug_get_collection_item_content") {
-        return await handleDebugGetCollectionItemContent(request, route, {
+        return await handleDebugGetCollectionResourceContent(request, route, {
           registry: options.registry,
           stores,
           debug: debugConfig,

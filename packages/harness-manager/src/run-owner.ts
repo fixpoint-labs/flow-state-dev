@@ -86,7 +86,7 @@ export function foreignRunMessage(taskId: string, owner: RunOwner): string {
   return (
     `[harness-manager] task ${taskId} is "${owner.userId}"${tenant}'s coding run: they started ` +
     `it, and its checkout, branch, run record and agent session are theirs. Only their drain ` +
-    `continues it; this drain leaves the row as it is.`
+    `continues it; this drain leaves the task as it is.`
   );
 }
 

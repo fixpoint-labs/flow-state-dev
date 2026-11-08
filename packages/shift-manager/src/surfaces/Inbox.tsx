@@ -203,7 +203,7 @@ export function Inbox({ snapshot, itemId, gaps }: { snapshot: LoadedSnapshot; it
       <section className="flex min-w-0 flex-1 flex-col bg-inspector" data-testid="inbox-detail">
         {selected === null ? (
           <EmptyState title="Pick an ask">Choose an ask on the left to answer it.</EmptyState>
-        ) : selected.holds[0]!.source.kind === "row" ? (
+        ) : selected.holds[0]!.source.kind === "task" ? (
           <HeldQuestions item={selected} />
         ) : (
           <AskDetail

@@ -118,9 +118,9 @@ export {
   PULL_REQUEST_EVENT,
   pullRequestWait,
   readSessionPullRequests,
-  type PullRequestRecordRow,
+  type PullRequestRecordResourceState,
   type PullRequestWait,
-  type PullRequestWaitRow,
+  type PullRequestWaitInput,
   type SessionPullRequest,
   type WaitedPullRequest,
 } from "./pull-request-wait";
@@ -263,22 +263,22 @@ export {
 
 // ── The run record ──────────────────────────────────────────────────────────
 //
-// **Read, not write.** `openRunRow`, `writeRunRow` and `collectionRef` are the
+// **Read, not write.** `openRunRecord`, `writeRunRecord` and `collectionRef` are the
 // manager's own — every one of them writes through the attempt fence, and a
 // caller outside a claimed attempt either gets refused or corrupts a ledger the
 // board is the authority on. A host builds its status surface from
-// `readRunRow` and the collection; the writes stay internal.
+// `readRunRecord` and the collection; the writes stay internal.
 export {
-  readRunRow,
+  readRunRecord,
   runRecordCollection,
   runRecordStateSchema,
   heldSchema,
-  placeStateSchema,
+  placeStatusSchema,
   runTopic,
   runTopicPrefix,
   type RunRecordState,
   type HeldRecord,
-  type PlaceState,
+  type PlaceStatus,
   type CollectionHoldingContext,
 } from "./run-record";
 /**
@@ -315,9 +315,9 @@ export {
   readHarnessUsage,
   recordHarnessUsage,
   type HarnessUsageActionOptions,
-  type HarnessUsageRow,
+  type HarnessUsageView,
   type HarnessUsageState,
-  type HarnessUsageWindowRow,
+  type HarnessUsageWindowView,
   type UsageWrite,
 } from "./harness-usage";
 
@@ -326,13 +326,13 @@ export {
   harnessReadiness,
   harnessReadinessAction,
   harnessReadinessCapability,
-  harnessReadinessRowSchema,
+  harnessReadinessViewSchema,
   formatHarnessReadiness,
   READINESS_CHECK_TIMEOUT_MS,
   READINESS_GUIDANCE,
   type HarnessReadinessOptions,
   type HarnessReadinessRead,
-  type HarnessReadinessRow,
+  type HarnessReadinessView,
   type HarnessReadinessSlot,
   type ReadReadinessOptions,
 } from "./readiness";

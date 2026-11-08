@@ -15,9 +15,9 @@ import { OBSERVED_PULL_REQUESTS, pullRequestKey } from "@flow-state-dev/core/har
 import { describe, expect, it } from "vitest";
 import { pullRequestWait, readSessionPullRequests, type RecordedWorkClient } from "../src/browser";
 
-type Row = { topic: string; clientData?: unknown };
+type Listed = { topic: string; clientData?: unknown };
 
-function fakeClient(rows: Row[] | null, options: { readable?: boolean; failWith?: Error } = {}): RecordedWorkClient & { asked: string[] } {
+function fakeClient(rows: Listed[] | null, options: { readable?: boolean; failWith?: Error } = {}): RecordedWorkClient & { asked: string[] } {
   const asked: string[] = [];
   const manifest: ResourceManifest = {
     flowKind: "coding",
@@ -43,7 +43,7 @@ function fakeClient(rows: Row[] | null, options: { readable?: boolean; failWith?
         if (options.failWith) throw options.failWith;
         return manifest;
       },
-      async listCollectionItems(_sessionId, _ref, list): Promise<CollectionListPage> {
+      async listCollectionResources(_sessionId, _ref, list): Promise<CollectionListPage> {
         const items = (rows ?? [])
           .filter((r) => r.topic.startsWith(list?.topicPrefix ?? ""))
           .map((r) => ({ ...r, topic: r.topic.slice(`${OBSERVED_PULL_REQUESTS}/`.length) }));
@@ -53,7 +53,7 @@ function fakeClient(rows: Row[] | null, options: { readable?: boolean; failWith?
   } as RecordedWorkClient & { asked: string[] };
 }
 
-const row = (n: number, data: Record<string, unknown>): Row => ({ topic: `${OBSERVED_PULL_REQUESTS}/github.com/acme/app/${n}`, clientData: data });
+const row = (n: number, data: Record<string, unknown>): Listed => ({ topic: `${OBSERVED_PULL_REQUESTS}/github.com/acme/app/${n}`, clientData: data });
 const pr = (n: number, extra: Record<string, unknown> = {}) => ({
   host: "github.com",
   repository: "acme/app",
@@ -98,7 +98,7 @@ describe("readSessionPullRequests", () => {
         {
           id: "h1",
           openedAt: 1,
-          source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key: pullRequestKey({ host: "github.com", owner: "acme", name: "app", number: 7 }) }] },
+          source: { kind: "task", closedBy: [{ by: "event", event: "pull-request", key: pullRequestKey({ host: "github.com", owner: "acme", name: "app", number: 7 }) }] },
           ask: { kind: "external", prompt: "Waiting on pull request #7 to merge or close." },
         },
       ],
@@ -107,5 +107,24 @@ describe("readSessionPullRequests", () => {
     expect(pullRequestWait(task, records)?.pullRequests).toEqual([
       { key: pullRequestKey({ host: "github.com", owner: "acme", name: "app", number: 7 }), number: 7, url: "https://github.com/acme/app/pull/7", title: "Fix the bug" },
     ]);
+  });
+
+  // FIX-2479 D1 (BP-030): a screen hands pullRequestWait rows it never parsed (a replayed
+  // stream item from before the upgrade). A wait stored under the retired `"row"` marker is
+  // still the task's own, so the PR-open line stays.
+  it("reads a wait a caller hands it under the retired row marker as the task's own", () => {
+    const key = pullRequestKey({ host: "github.com", owner: "acme", name: "app", number: 7 });
+    const task = {
+      status: "in_progress",
+      holds: [
+        {
+          id: "h1",
+          openedAt: 1,
+          source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key }] },
+          ask: { kind: "external", prompt: "Waiting on pull request #7 to merge or close." },
+        },
+      ],
+    };
+    expect(pullRequestWait(task)).toMatchObject({ holdId: "h1", pullRequests: [{ key, number: 7 }] });
   });
 });

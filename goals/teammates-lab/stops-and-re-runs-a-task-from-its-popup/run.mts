@@ -19,7 +19,7 @@ import { join } from "node:path";
 import type { Page } from "playwright";
 import { createClient } from "@flow-state-dev/client";
 import { STEER_POLL_MS } from "@flow-state-dev/harness-manager";
-import { createInboxClient, inboxItems, taskActionName, type InboxHold, type InboxRow } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskActionName, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice } from "@flow-state-dev/orchestration/tasks";
 import { createWorkforceClient, WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { goalTmpDir, loadFixture, REPO_ROOT, repoPath, runGoal, stopProcessGroup } from "../../lib/index.mts";
@@ -101,7 +101,7 @@ function buildPages(scratch: string, patches: readonly Patch[]): string {
   return pages;
 }
 
-type Row = InboxRow & { goal: string; title?: string; assignee?: string; attempts?: number; error?: string };
+type Row = InboxTaskInput & { goal: string; title?: string; assignee?: string; attempts?: number; error?: string };
 /** A row as `getTask` answers it: its brief and its steers too. */
 type WholeRow = { status?: string; goal?: string; title?: string; context?: string; assignee?: string; attempts?: number; error?: string; steers?: { message: string }[] };
 type Board = { flow: string; sessionId: string };
