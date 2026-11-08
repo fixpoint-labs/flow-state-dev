@@ -13,7 +13,7 @@ import {
   harnessRunEnvelopeSchema,
   harnessRunHandleSchema,
   harnessRunInputSchema,
-} from "@flow-state-dev/core";
+} from "@flow-state-dev/core/harness";
 
 describe("the harness contract", () => {
   it("accepts a handle from a harness that reports nothing but the run itself", () => {

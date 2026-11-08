@@ -1,15 +1,13 @@
 /**
  * Shift Manager's small shared pieces: the named empty state, a failed section with
  * Retry, tabs whose selection lives in the URL, a worker's status mark, a feed's
- * jump-to-latest arrow and Load earlier, and the parts of design v2's look every screen draws with: a screen's title,
+ * Load earlier, and the parts of design v2's look every screen draws with: a screen's title,
  * mono meta text, a task's state square, and the snapshot's *as of* line with
  * the dimming its counts take while a read the user asked for runs.
  *
  * Every piece is square (v2 draws no rounded corner) and paints only tokens.
  */
 import { useState, type ReactNode } from "react";
-import { ArrowDownIcon } from "lucide-react";
-import type { JumpToLatest } from "@flow-state-dev/react";
 import type { Column } from "../lib/columns";
 import type { ShiftStatus } from "../lib/derive";
 import { clockTime } from "../lib/shell";
@@ -25,30 +23,6 @@ export function EmptyState({ title, children, testId }: { title: string; childre
     <div className="mx-auto max-w-md px-6 py-12 text-center" data-testid={testId ?? "empty-state"}>
       <p className="text-sm font-medium">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">{children}</p>
-    </div>
-  );
-}
-
-/**
- * The arrow at the foot of a scrolling feed while there is more below: new content never moves
- * the view ({@link JumpToLatest}), so this is how the user gets to it. The last child of the
- * scrolling element; it takes no height, so showing it never moves the feed either.
- */
-export function JumpToLatestButton({ feed }: { feed: JumpToLatest }) {
-  return (
-    <div className="pointer-events-none sticky bottom-0 flex h-0 justify-center">
-      {feed.atEnd ? null : (
-        <button
-          type="button"
-          aria-label="Jump to latest"
-          title="Jump to latest"
-          onClick={feed.jump}
-          className="pointer-events-auto flex size-8 translate-y-[calc(-100%-0.75rem)] items-center justify-center border border-border bg-card text-foreground shadow-sm hover:bg-accent"
-          data-testid="jump-to-latest"
-        >
-          <ArrowDownIcon className="size-4" />
-        </button>
-      )}
     </div>
   );
 }
@@ -243,10 +217,10 @@ export function AsOf({ readAt, onRefresh, testId }: { readAt: number; onRefresh:
 }
 
 /** v2's state square states (`NODE`, v2:893-896). */
-export type TaskState = "needs" | "run" | "review" | "queued" | "done";
+export type SquareStatus = "needs" | "run" | "review" | "queued" | "done";
 
 /** The state square a board column draws its rows with. */
-export const STATE_OF_COLUMN: Record<Column, TaskState> = {
+export const STATE_OF_COLUMN: Record<Column, SquareStatus> = {
   QUEUED: "queued",
   RUNNING: "run",
   "NEEDS YOU": "needs",
@@ -254,7 +228,7 @@ export const STATE_OF_COLUMN: Record<Column, TaskState> = {
   DONE: "done",
 };
 
-const STATE_SQUARE: Record<TaskState, string> = {
+const STATE_SQUARE: Record<SquareStatus, string> = {
   // The highlighter, only because the row waits on a user.
   needs: "border-solid border-foreground bg-attention",
   run: "border-solid border-info bg-info",
@@ -264,7 +238,7 @@ const STATE_SQUARE: Record<TaskState, string> = {
 };
 
 /** A task's state as v2's 8px square (v2:893-896): needs, run, review, queued or done. */
-export function StateSquare({ state, className }: { state: TaskState; className?: string }) {
+export function StateSquare({ state, className }: { state: SquareStatus; className?: string }) {
   return <span className={cn("inline-block size-2 shrink-0 border", STATE_SQUARE[state], className)} data-state-square={state} aria-hidden />;
 }
 

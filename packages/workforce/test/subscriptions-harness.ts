@@ -10,7 +10,9 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext, FlowInstance, SubscriptionEvent } from "@flow-state-dev/core/types";
-import { routeServiceEvent, runAction, type InboundTransportHost } from "@flow-state-dev/engine";
+import { routeServiceEvent } from "@flow-state-dev/engine/internal";
+import { runAction } from "@flow-state-dev/engine";
+import { type InboundTransportHost } from "@flow-state-dev/engine/host";
 import { z } from "zod";
 import { MESSAGE_RECEIVED_ENTRY } from "../src/messages/keys";
 import { WORKER_MESSAGES_PATTERN } from "../src/messages/log-row";
@@ -19,7 +21,6 @@ import { messageReceivedEntry } from "../src/messages/message-received-entry";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import {
   SUBSCRIPTION_CURSORS_PATTERN,
-  SUBSCRIPTION_ROUTE_ENTRY,
   SUBSCRIPTIONS_PATTERN,
   defineSubscriptionServiceFlow,
   subscribe,
@@ -166,7 +167,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const route = async (event: SubscriptionEvent) => {
     const routed = await routeServiceEvent(await hostOf(), {
       flowKind: "github-service",
-      entry: SUBSCRIPTION_ROUTE_ENTRY,
+      entry: "routeSubscriptionEvent",
       input: event,
       principal: { userId: "service:github", orgId: ORG }
     });
@@ -183,7 +184,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const routeBeside = async (event: SubscriptionEvent) => {
     const routed = await routeServiceEvent(await hostOf(), {
       flowKind: "github-service",
-      entry: SUBSCRIPTION_ROUTE_ENTRY,
+      entry: "routeSubscriptionEvent",
       input: event,
       principal: { userId: "service:github", orgId: ORG }
     });

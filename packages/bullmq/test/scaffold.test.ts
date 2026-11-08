@@ -31,7 +31,7 @@ describe("@flow-state-dev/bullmq exports", () => {
     expect(typeof mod.bullmqWorker).toBe("function");
   });
 
-  it("exports dispatcher factory", async () => {
+  it("exports the flow runner factory", async () => {
     const mod = await import("../src/index");
     expect(typeof mod.createWorkerRunner).toBe("function");
   });

@@ -1,100 +1,70 @@
 /**
- * Decision 1's enforcement: the block refuses to be BUILT against any installed
- * Codex SDK but the exact version this package was tested against.
+ * The block refuses to be BUILT against an installed @openai/codex-sdk outside the
+ * range this package tested (FIX-2458 D2), through core's one SDK gate.
  *
- * The wire sits behind `--experimental-json` and can change in a lockstep
- * CLI+SDK release, so a host must not be able to run an untested wire without a
- * release from us. There is no override option — that is the point — so the
- * only seam here is how the installed version is READ, and it is keyed by a
- * symbol the package root does not export. A host that could substitute a reader
- * could answer with the tested version and defeat the whole guarantee, which is
- * why these specs reach for the module's own internals rather than an option.
+ * The package translates its vendor's wire, so an untested SDK would produce
+ * malformed items, not an error. There is no override option: the seam here
+ * is how the installed version is READ, keyed by a symbol no public entry
+ * exports. A host that could substitute a reader could answer with a tested
+ * version and defeat the guarantee, which is why these specs reach for the
+ * module's own internals rather than an option. A host's readiness check does
+ * take a reader: a check told the wrong version only misreports, while the
+ * block still reads the installed one.
  *
- * The gate FAILS CLOSED. Three answers, not two: nothing installed is safe, the
- * tested version is safe, and "I cannot tell" is refused — because an SDK the
- * walk cannot see is still an SDK the dynamic import will happily load and run.
+ * The gate FAILS CLOSED: nothing installed is safe, a tested version is safe,
+ * and "I cannot tell" is refused.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
-import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
-import { CodexSdkVersionMismatchError } from "../src/errors";
-import { TESTED_SDK_VERSION, type InstalledSdkVersion } from "../src/types";
+import { HarnessSdkVersionMismatchError, type InstalledSdkVersion } from "@flow-state-dev/core/internal";
+import { codexAgent, INTERNAL_CODEX_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
+import { checkCodexReadiness } from "../src/index";
 
 /** Build against a stated installed-SDK answer, through the private seam. */
 const withInstalled = (installed: InstalledSdkVersion): CodexAgentOptions =>
-  ({ [INTERNAL_SDK_VERSION_READER]: () => installed }) as CodexAgentOptions;
+  ({ [INTERNAL_CODEX_SDK_VERSION_READER]: () => installed }) as CodexAgentOptions;
+
+/** The range this package peers its SDK at: the range it tested. */
+const PEER_RANGE = (JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as {
+  peerDependencies: Record<string, string>;
+}).peerDependencies["@openai/codex-sdk"]!;
 
 describe("the installed-SDK version gate", () => {
-  it("refuses at build time when the installed SDK is not the tested version", () => {
-    expect(() => codexAgent(withInstalled({ kind: "version", version: "0.153.4" }))).toThrow(
-      CodexSdkVersionMismatchError,
-    );
+  it("peers its SDK at a bounded range", () => {
+    expect(PEER_RANGE).toBe("0.164.0");
   });
 
-  it("names BOTH versions and the upgrade path, so the error is actionable", () => {
-    let message = "";
+  it.each([
+    ["one step below", "0.163.0"],
+    ["one step above", "0.164.1"],
+  ])("refuses at build time an SDK %s the tested range, naming both versions", (_side, version) => {
+    let thrown: unknown;
     try {
-      codexAgent(withInstalled({ kind: "version", version: "0.153.4" }));
-    } catch (err) {
-      message = (err as Error).message;
+      codexAgent(withInstalled({ kind: "version", version }));
+    } catch (error) {
+      thrown = error;
     }
-    expect(message).toContain("0.153.4");
-    expect(message).toContain(TESTED_SDK_VERSION);
-    expect(message).toMatch(/release/i);
+    expect(thrown).toBeInstanceOf(HarnessSdkVersionMismatchError);
+    expect(thrown).toMatchObject({ sdk: "@openai/codex-sdk", installed: version, tested: PEER_RANGE });
+    expect((thrown as Error).message).toContain(version);
+    expect((thrown as Error).message).toContain(PEER_RANGE);
   });
 
-  it("builds when the installed SDK is exactly the tested version", () => {
-    expect(() =>
-      codexAgent(withInstalled({ kind: "version", version: TESTED_SDK_VERSION })),
-    ).not.toThrow();
+  it("builds against a version inside the range", () => {
+    expect(() => codexAgent(withInstalled({ kind: "version", version: "0.164.0" }))).not.toThrow();
   });
 
-  it("builds when no SDK is installed — a missing SDK has no version to check", () => {
-    // §9: absence stays the first-RUN install hint, not a build-time refusal,
-    // because a block can legitimately be constructed on a host that never runs it.
+  it("builds when no SDK is installed: its absence surfaces on the first run", () => {
     expect(() => codexAgent(withInstalled({ kind: "absent" }))).not.toThrow();
   });
 
-  it("REFUSES when an SDK is present but its version cannot be read", () => {
-    // The fail-open hole: a layout the manifest walk cannot see (Yarn PnP, a
-    // custom loader) once read as "absent" and passed the gate, while the
-    // dynamic import went on loading and running the very SDK we failed to
-    // check. "Nothing is installed" is safe; "I cannot tell" is not.
-    expect(() =>
-      codexAgent(withInstalled({ kind: "unreadable", reason: "a custom loader" })),
-    ).toThrow(CodexSdkVersionMismatchError);
+  it("refuses an SDK whose version can't be read", () => {
+    expect(() => codexAgent(withInstalled({ kind: "unreadable", reason: "no manifest on the walk" }))).toThrow(HarnessSdkVersionMismatchError);
   });
 
-  it("says WHY it could not read the version, so the host can fix the layout", () => {
-    let message = "";
-    try {
-      codexAgent(withInstalled({ kind: "unreadable", reason: "a custom loader" }));
-    } catch (err) {
-      message = (err as Error).message;
-    }
-    expect(message).toContain("a custom loader");
-    expect(message).toContain(TESTED_SDK_VERSION);
-  });
-
-  it("the version reader is NOT reachable from the public options", () => {
-    // The guarantee this package sells is that a host cannot run an unvalidated
-    // wire. A public seam would make that a claim rather than a guarantee, so
-    // the option must not exist under any plausible spelling.
-    const publicOptions: CodexAgentOptions = {};
-    expect(Object.keys(publicOptions)).not.toContain("readInstalledSdkVersion");
-    expect(() =>
-      // A host passing the old option name gets the REAL gate, not their answer.
-      codexAgent({ readInstalledSdkVersion: () => ({ kind: "absent" }) } as CodexAgentOptions),
-    ).not.toThrow();
-  });
-
-  it("reads the version off the SDK actually installed in this workspace", async () => {
-    const { readInstalledCodexSdkVersion } = await import("../src/codex-client");
-    // The devDependency is pinned to the tested version, so the default reader
-    // must find exactly it — proving the reader works against the real layout
-    // and not only against a stub.
-    expect(readInstalledCodexSdkVersion()).toEqual({
-      kind: "version",
-      version: TESTED_SDK_VERSION,
-    });
+  it("readiness refuses the same SDK before a host builds the block", async () => {
+    const answer = await checkCodexReadiness({ env: {}, readInstalledSdkVersion: () => ({ kind: "version", version: "0.164.1" }) });
+    expect(answer).toMatchObject({ ready: false, remedy: `npm install @openai/codex-sdk@${PEER_RANGE}` });
   });
 });

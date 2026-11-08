@@ -1,5 +1,6 @@
+// FIX-2286.
 /**
- * The read route (FIX-2286): `POST /:flowKind/:sessionId/reads/:readName`.
+ * The read route: `POST /:flowKind/:sessionId/reads/:readName`.
  *
  * Runs one of the flow's reads on the session for its caller and answers
  * `200 { output }`. Nothing is stored (`execution/runRead.ts`). The caller is
@@ -30,7 +31,8 @@ type ReadRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
   runtimeConfig: RuntimeConfig;
-  /** Header carrying the tenant id; defaults to `x-tenant-id` (FIX-406 6D). */
+  // FIX-406 6D.
+  /** Header carrying the tenant id; defaults to `x-tenant-id`. */
   tenantIdHeader?: string;
 };
 

@@ -1,15 +1,23 @@
+// FIX-2086; BP-031.
 /**
- * A line in a worker's task session, and the turn a late steer is owed
- * (FIX-2086). Every choice reads server-set state (BP-031).
+ * A line in a worker's task session, and the turn a late steer is owed.
+ * Every choice reads server-set state.
  */
 import { handler, router, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig } from "@flow-state-dev/core/types";
-import { renderSteers, runningTaskOf, takeRunningSteers, type ShownSteer } from "@flow-state-dev/orchestration";
-import { afterTaskCheck, noteTaskAnswer, packWorkerInput } from "@flow-state-dev/orchestration/task-board";
 import {
-  isTerminalStatus,
+  renderSteers,
+  runningTaskOf,
+  takeRunningSteers,
+  afterTaskCheck,
+  packWorkerInput,
   LINE_STEER_REFUSALS,
   steerFromLine,
+  type ShownSteer,
+} from "@flow-state-dev/orchestration/internal";
+import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
+import {
+  isTerminalStatus,
   type Task,
   type TaskCollectionRef
 } from "@flow-state-dev/orchestration/tasks";
@@ -20,8 +28,8 @@ import { conversationLedgerResources, ledgerAboveOf } from "./ledger";
 import { admitOwnTask, markAdmittedTask } from "./task-admission";
 import { AFTER_REPLY_CONCURRENCY } from "./task-settled";
 import { sessionTaskOf } from "./task-entry";
-
-export { STEER_TURN_ENTRY } from "./board-entries";
+import { requestHostOf } from "@flow-state-dev/core/internal";
+import { markEntryPiece } from "../worker-roles";
 
 /** The lead the turn a late steer is owed opens with. */
 const STEERED_AFTER_ANSWER =
@@ -47,8 +55,9 @@ async function sessionOpenTask(ctx: BlockContext): Promise<{ ledger: TaskCollect
   return { ledger, row: latest(here.length > 0 ? here : open) };
 }
 
+// FIX-2238.
 /**
- * Whether every task in this task session's chain has finished (FIX-2238):
+ * Whether every task in this task session's chain has finished:
  * a line here no longer steers. `false` outside a task session and with no
  * board to read, where nothing says the task ended.
  */
@@ -79,14 +88,14 @@ const steerSessionTask = handler({
   outputSchema: steeredSchema,
   resources: { ...conversationLedgerResources },
   execute: async (input, ctx) => {
-    const open = await sessionOpenTask(ctx as never);
+    const open = await sessionOpenTask(ctx);
     if (open === undefined) throw new SteerRefused(LINE_STEER_REFUSALS.finished);
-    const refused = await steerFromLine(open.ledger, open.row.id, input.message, ctx as never);
+    const refused = await steerFromLine(open.ledger, open.row.id, input.message, ctx);
     if (refused !== undefined) throw new SteerRefused(LINE_STEER_REFUSALS[refused]);
     const row = open.ledger.get(open.row.id);
     // In this session already: the turn runs on this flow. A line that answered
     // the task's last open question owes it its turn too (FIX-2133).
-    if (row?.keptOpenBy === "steer" || row?.turnOwed === true) await startOwedSteerTurn(ctx as never, row);
+    if (row?.keptOpenBy === "steer" || row?.turnOwed === true) await startOwedSteerTurn(ctx, row);
     return { steered: open.row.id };
   }
 });
@@ -128,16 +137,17 @@ export type SteerTurnEntryOptions = {
   | { readonly block: BlockDefinition<any, any>; readonly turn?: never }
 );
 
+// FIX-2113.
 /**
  * The internal entry for the turn a late steer is owed (D2). Spread it as
- * `internal: { actions: { [STEER_TURN_ENTRY]: steerTurnEntry({ ... }) } }`
+ * `internal: { actions: { onTaskSteered: steerTurnEntry({ ... }) } }`
  * on every flow whose `work` entry is a `workerTaskEntry`, with the same
  * `turn` or `block`.
  *
  * A `turn` is handed the steers as its message; a `block` is handed the task
  * as the board packs it, with the claim. The steers it takes are shown in
  * the session as lines from their senders, so a later turn there reads them
- * too (FIX-2113). A start that finds nothing to do
+ * too. A start that finds nothing to do
  * runs nothing. The wake is cleared once the task no longer waits on a steer.
  * `concurrency` defaults to the session's notices, so this runs once the
  * request working the task has ended.
@@ -151,7 +161,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     resources: { ...conversationLedgerResources },
     execute: async (_input, ctx): Promise<Taken> => {
       // Admitted, the claim is stamped and names the row; otherwise there is nothing to run.
-      const running = await runningTaskOf(ledgerAboveOf, ctx as never);
+      const running = await runningTaskOf(ledgerAboveOf, ctx);
       if (running === undefined) return SKIP;
       // Shown in the session as it takes them, as a model call's take shows
       // them (FIX-2113): the turn's own message isn't kept, so a later turn
@@ -170,7 +180,7 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     execute: async (value, ctx) => {
       const taken = value as Exclude<Taken, { skip: true }>;
       if (options.turn !== undefined) return { message: renderSteers(taken.steers, STEERED_AFTER_ANSWER) };
-      const running = await runningTaskOf(ledgerAboveOf, ctx as never);
+      const running = await runningTaskOf(ledgerAboveOf, ctx);
       if (running === undefined) throw new Error(`"${name}" lost the claim it was admitted with before its block ran.`);
       const { claim, ledger } = running;
       const row = ledger.get(taken.taskId) ?? running.row;
@@ -195,19 +205,19 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     inputSchema: z.unknown(),
     resources: { ...conversationLedgerResources },
     execute: async (_input, ctx) => {
-      await afterTaskCheck(ctx as never, async () => {
-        const ledger = await ledgerAboveOf(ctx as never);
+      await afterTaskCheck(ctx, async () => {
+        const ledger = await ledgerAboveOf(ctx);
         const sessionId = ctx.session.identity.id;
         const row = ledger?.list({ status: "in_progress" }).find((task) => task.run?.sessionId === sessionId);
         if (row?.keptOpenBy === "steer" || row?.turnOwed === true) return;
-        const wakes = ctx.requestHost?.wakes;
+        const wakes = requestHostOf(ctx)?.wakes;
         const read = await wakes?.read(STEER_TURN_ENTRY);
         if (wakes !== undefined && read !== undefined) await wakes.settle(STEER_TURN_ENTRY, read, null);
       });
     }
   });
 
-  return {
+  return markEntryPiece({
     inputSchema: z.object({}).passthrough(),
     block: sequencer({ name, inputSchema: z.unknown() })
       // One turn of a task at a time in its session (FIX-2113): while another
@@ -223,5 +233,5 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
       .tapIf((answer: unknown) => !skipped(answer), noteTaskAnswer)
       .tap(settleWake),
     concurrency: options.concurrency ?? AFTER_REPLY_CONCURRENCY
-  };
+  }, "steerTurnEntry");
 }

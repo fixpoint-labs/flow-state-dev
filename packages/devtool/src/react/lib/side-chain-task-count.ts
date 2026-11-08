@@ -1,8 +1,9 @@
+// FIX-766; BP-030.
 /**
  * Read the pending side-chain count off a status item, in either spelling.
  *
  * The sequencer emits structural `status` items carrying only a count of
- * side-chain tasks still draining. FIX-766 renamed that field
+ * side-chain tasks still draining. That field was renamed
  * `backgroundTasks` → `sideChainTasks`, and the field is **persisted**: it
  * rides on a `StatusItem`, which is stored in the request's durable item log
  * whenever the emit is not transient. So a reader that knows only the new name
@@ -17,15 +18,16 @@
  * draining is happening at all.
  *
  * Dual-reading here costs nothing at runtime and touches no write path — new
- * items are written under the new name only. This is BP-030 applied where it
- * actually applies: tolerate the old shape on read.
+ * items are written under the new name only. Tolerating the old shape on read
+ * is all it takes.
  */
 import type { StatusItem } from "@flow-state-dev/core/items";
 
 /** A status item as it may arrive: either spelling of the count, or neither. */
 type StatusItemWithCount = StatusItem & {
   sideChainTasks?: number;
-  /** Pre-FIX-766 spelling. Read-only — never written by current code. */
+  // FIX-766.
+  /** The field's former spelling. Read-only — never written by current code. */
   backgroundTasks?: number;
 };
 

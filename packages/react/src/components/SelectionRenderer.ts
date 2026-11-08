@@ -1,5 +1,6 @@
+// FIX-849.
 /**
- * Built-in default card for a selection suspension (FIX-849).
+ * Built-in default card for a selection suspension.
  *
  * Chosen by `ItemRenderer` for a `user_input` suspension whose `resumeSchema` is
  * a top-level enum (single choice → radio buttons) or an array of an enum (multi

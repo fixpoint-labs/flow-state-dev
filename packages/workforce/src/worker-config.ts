@@ -190,9 +190,10 @@ export function workerConfigSchema() {
      */
     [WORKER_ID_KEY]: z.string().min(1).optional(),
 
+    // FIX-1802 D1; FIX-2081; FIX-2081 D2.
     /**
-     * The workers this worker hands work to, by id: its **delegates**
-     * (FIX-1802 D1). Authored, unlike the keys above, and the defaults each
+     * The workers this worker hands work to, by id: its **delegates**.
+     * Authored, unlike the keys above, and the defaults each
      * of its sessions starts from: a session's list is copied from it the
      * first time it is read or changed, and changes there without writing
      * back.
@@ -200,10 +201,10 @@ export function workerConfigSchema() {
      * One list, read two ways. A flow that routes posts (the coordinator)
      * posts to the ones that take a post; any worker whose flow carries the
      * task tools files tasks for the ones that take a task, and that is the
-     * whole grant (FIX-2081): a task goes to no one else. A list nothing uses
+     * whole grant: a task goes to no one else. A list nothing uses
      * is accepted. A standard worker may name only standard workers here.
      *
-     * `all` (FIX-2081 D2) is the whole roster, the worker itself included,
+     * `all` is the whole roster, the worker itself included,
      * read on every call, so a worker hired mid-conversation is reachable at
      * once. The cap bounds a written list, not `all`. Only the user's worker
      * file sets it: no tool switches a list to `all`.

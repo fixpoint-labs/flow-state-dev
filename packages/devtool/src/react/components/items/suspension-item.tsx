@@ -1,5 +1,6 @@
+// FIX-141.
 /**
- * Inline renderer for `suspension` items (FIX-141).
+ * Inline renderer for `suspension` items.
  *
  * A suspension item is emitted when a durable action calls `ctx.suspend()`.
  * It carries the human-facing `message`, the `suspensionStatus`, and the

@@ -1,5 +1,6 @@
+// FIX-999; BP-031.
 /**
- * Transport sources stamped by the runtime, in one place (FIX-999), and the
+ * Transport sources stamped by the runtime, in one place, and the
  * rule that turns a source into a dispatch type.
  *
  * Importing these from `transports/*` would create an `execution → transports`
@@ -10,7 +11,7 @@
  * A source is trusted precisely because a caller cannot set it: it is stamped by
  * the adapter (or, for the framework-stamped sources below, by the seam that
  * dispatches) and persisted on the request record. Every authorization branch
- * that reads one depends on that (BP-031).
+ * that reads one depends on that.
  */
 import type { DispatchType } from "@flow-state-dev/core/types";
 
@@ -36,9 +37,10 @@ export const TASK_SOURCE = "task";
  */
 export const INTERNAL_SOURCE = "internal";
 
+// FIX-1551.
 /**
  * Stamped only by the engine's in-process principal entry point, which
- * `fsdev run` and `fsdev chat` use (FIX-1551). Reserved: the host refuses it on
+ * `fsdev run` and `fsdev chat` use. Reserved: the host refuses it on
  * any context that entry point did not build, so a transport adapter can never
  * resolve a network request under it. It delivers `public` dispatches like any
  * caller-facing source.

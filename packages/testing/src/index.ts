@@ -4,27 +4,20 @@
 export { createTestContext, type CreateTestContextOptions } from "./runtime/createTestContext";
 
 export { testBlock } from "./test-utilities/testBlock";
-export { testSequencer } from "./test-utilities/testSequencer";
-export { testRouter } from "./test-utilities/testRouter";
 export { testFlow } from "./test-utilities/testFlow";
+export { StopRefusedError } from "./test-utilities/answerThroughRoute";
 export { testItems } from "./test-utilities/testItems";
 export { runForTest } from "./test-utilities/runForTest";
 export { createReplayingRef, type ReplayingRef } from "./test-utilities/replayingRef";
-export {
-  findImportsFromEntry,
-  findNodeBuiltinsFromEntry,
-  type FindNodeBuiltinsOptions
-} from "./test-utilities/findNodeBuiltinsFromEntry";
 
 export type {
   StateChange,
   StepTrace,
   TestBlockOptions,
   TestBlockResult,
+  TestFlowAnswer,
   TestFlowOptions,
   TestFlowResult,
-  TestRouterResult,
-  TestSequencerResult,
   TestSequencerSeed,
   TestStateSeed,
   TestTargetSeed,
@@ -86,45 +79,11 @@ export type {
   ScoreMapping,
 } from "./eval";
 
-// Cross-pattern benchmark harness: sweeps a task suite across
-// multiple subjects (patterns + baseline) and produces a comparative scorecard.
-export {
-  runBenchmark,
-  comparePatterns,
-  baselineSubject,
-  defineBenchmark,
-  buildBenchmarkReport,
-  renderScorecard,
-  estimateCostUsd,
-} from "./benchmark";
-
-export type {
-  RunBenchmarkConfig,
-  ComparePatternsConfig,
-  SubjectCategoryStat,
-  BenchmarkRanking,
-  BenchmarkReport,
-  BenchmarkRunResult,
-  BenchmarkDefinition,
-  BuildBenchmarkReportMeta,
-} from "./benchmark";
-
-// Benchmark contract types are defined in @flow-state-dev/core (shared with
-// pattern adapters); re-exported here for single-import ergonomics.
-export type {
-  BenchmarkCategory,
-  BenchmarkTask,
-  BenchmarkSubject,
-  BenchmarkAdapter,
-  BenchmarkAdapterOptions,
-  BenchmarkRegistry,
-} from "@flow-state-dev/core";
-
+// The cross-pattern benchmark harness is on `@flow-state-dev/testing/benchmark`.
+//
 // Note: conformance helpers (`createInboundTransportConformanceTests`,
 // `createMockTransportHost`, etc.) live in `./transports/conformance` and
 // import `vitest` at the top level. Re-exporting them from this index would
 // make `import "@flow-state-dev/testing"` fail for non-test consumers
 // (e.g. the CLI loading at runtime). They're available via the
 // `@flow-state-dev/testing/conformance` subpath export instead.
-
-export const testingPackageMarker = "@flow-state-dev/testing";

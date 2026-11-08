@@ -1,5 +1,6 @@
+// FIX-1068; BP-030.
 /**
- * Where a session-scoped resource STORES, for execution and the HTTP routes alike (FIX-1068).
+ * Where a session-scoped resource STORES, for execution and the HTTP routes alike.
  *
  * A resource declaring `sharedToLineage: true` has one identity across a
  * session lineage: it resolves against the lineage ROOT rather than the running
@@ -14,7 +15,7 @@
  * read, never reconstructed, and a parent and a child cannot compute their way
  * to different answers. A record written before the field existed has no
  * `lineageId` and falls back to a value derived from its session key, prefixed
- * so it can never equal that key (BP-030).
+ * so it can never equal that key.
  */
 import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { isCollectionConfig } from "./is-collection-config";
@@ -29,9 +30,10 @@ export type LineageSession = {
   id: string;
   /** The session's owner. Authoritative — it is the stored record's own field. */
   userId: string;
+  // FIX-1068; BP-030.
   /**
-   * The lineage this session belongs to (FIX-1068). Absent on a record written
-   * before the field existed, read as its own lineage keyed by `id` (BP-030).
+   * The lineage this session belongs to. Absent on a record written
+   * before the field existed, read as its own lineage keyed by `id`.
    */
   lineageId?: string | null;
 };
@@ -100,8 +102,9 @@ function lineageScopeId(session: LineageSession): string {
   return resolveLineageId(session);
 }
 
+// FIX-1068.
 /**
- * The scope kind a resolved session-scope address stores under (FIX-1068).
+ * The scope kind a resolved session-scope address stores under.
  *
  * The lineage bucket is not in the session namespace: session scope ids are
  * caller-chosen and nothing validates them, so a lineage address sharing that

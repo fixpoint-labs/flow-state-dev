@@ -1,11 +1,12 @@
+// FIX-2083; BP-031.
 /**
  * The board above a worker session: the conversation board its tasks are on.
  *
  * A task session and a delegate's ongoing session were opened for one
  * conversation, and name it in their readonly `filingSessionId`. A session a
- * routed task targets by id (a workstream's, FIX-2083) wasn't: the `work`
+ * routed task targets by id (a workstream's) wasn't: the `work`
  * entry names the routing conversation in its server-owned `routedFrom` when
- * it starts such a task. Server-set state only, either way (BP-031), and a
+ * it starts such a task. Server-set state only, either way, and a
  * caller still reaches only rows whose run link names this session.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";

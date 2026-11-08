@@ -1,6 +1,6 @@
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
-import type { LabAdapter, TaskRow } from "../adapter";
+import type { LabAdapter, LabTask } from "../adapter";
 import { COLUMNS, columnOf, dismissalKey, type Column } from "../lib/columns";
 import { taskSignalTone } from "../lib/task-status";
 import { useMissing, useNow, useWatch } from "../lib/use-watch";
@@ -34,7 +34,7 @@ export function ThreadsBoard({
   adapter: LabAdapter;
   sessionId: string;
   /** The session's task rows, as the app reads them; `undefined` until read. */
-  tasks: TaskRow[] | undefined;
+  tasks: LabTask[] | undefined;
   /** The app's last read of the rows failed: they may be old. */
   stale?: boolean;
   openId: string | undefined;
@@ -46,7 +46,7 @@ export function ThreadsBoard({
   useMissing(listed, openId, onMissing);
   const pins = useWatch((emit: (ids: string[]) => void) => adapter.watchPins(emit), [adapter]) ?? [];
   const dismissed = useWatch((emit: (keys: string[]) => void) => adapter.watchDismissed(emit), [adapter]) ?? [];
-  const isDismissed = (task: TaskRow) => dismissed.includes(dismissalKey(task));
+  const isDismissed = (task: LabTask) => dismissed.includes(dismissalKey(task));
   const [collapsed, setCollapsed] = useState<Partial<Record<Column, boolean>>>({ resolved: true });
   const now = useNow(tasks.length > 0);
 

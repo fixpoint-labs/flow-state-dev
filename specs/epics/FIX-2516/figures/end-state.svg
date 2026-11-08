@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 486" role="img" aria-label="What's in the box. In the box, the framework: attachments beside the input, one limits set checked by the server, file parts on the user line live and after reload, file parts to a generator with a history rule, and a task brief that keeps its files. In the box, harnesses and composer: a turn's files reach Claude Code, Codex and Cursor; the plus picker, paste, drop, a preview strip with remove; downscaling and plain refusals. A fence across the box: bytes travel inside the request, at most 10 images and 3 MB of files per message; past it is FIX-824's upload boundary, only if the kill line trips. Composed in by the app: its composer's look, and which actions write a user line. Replaced in one line: Kitchen Sink's text-only submit, and sendTurn's string. Not built: files in replies, audio and video, a file library, drive pickers, Word and Excel, upload once."
+<svg viewBox="0 0 940 510" role="img" aria-label="What's in the box. In the box, blob storage: a blob storage adapter with a local-disk default, and upload and read routes. The framework: attachments beside the input as references, one limits set checked by the server, file parts on the user line after a reload and a restart, file parts to a generator. Harnesses and documents: a turn's files reach Claude Code, Codex and Cursor; a task's brief keeps its files. The composer: the plus picker, paste, drop, previews, remove, downscaling, refusals and upload. A fence: bytes live in the blob store and a message carries only references; a serverless deploy configures a hosted adapter. Composed in by the app: its composer's look, which actions write a user line, and which blob adapter it runs. Replaced in one line: Kitchen Sink's text-only submit and sendTurn's string. Not built: files in model replies, audio and video, a file library, drive pickers, Word and Excel, upload once, hosted adapters."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -23,20 +23,23 @@
     .c-acc  { fill:var(--accent); }
     .c-gone { fill:var(--gone); }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="486"/>
+  <rect class="bg" x="0" y="0" width="940" height="510"/>
 
   <g id="in-the-box">
-    <rect class="box" x="16" y="16" width="612" height="318" rx="8"/>
+    <rect class="box" x="16" y="16" width="612" height="342" rx="8"/>
     <text class="t-tag c-code" x="32" y="38">IN THE BOX · WHAT EVERY CHAT GETS</text>
-    <text class="t-lbl" x="32" y="62">THE FRAMEWORK · FIX-2517</text>
+    <text class="t-lbl" x="32" y="62">BLOB STORAGE · FIX-824</text>
     <rect class="chip" x="32" y="70" width="282" height="34" rx="4"/>
-    <text class="t-b" x="44" y="92">Attachments beside the input (Q2)</text>
+    <text class="t-b" x="44" y="92">Blob storage adapter, local disk default</text>
     <rect class="chip" x="32" y="110" width="282" height="34" rx="4"/>
-    <text class="t-b" x="44" y="132">One limits set, checked by the server</text>
-    <rect class="chip" x="32" y="150" width="282" height="34" rx="4"/>
-    <text class="t-b" x="44" y="172">File parts on the user line, after reload</text>
-    <rect class="chip" x="32" y="190" width="282" height="34" rx="4"/>
-    <text class="t-b" x="44" y="212">File parts to a generator, with history</text>
+    <text class="t-b" x="44" y="132">Upload and read routes, owner-checked</text>
+    <text class="t-lbl" x="32" y="166">THE FRAMEWORK · FIX-2517</text>
+    <rect class="chip" x="32" y="174" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="196">Attachments beside the input (D3)</text>
+    <rect class="chip" x="32" y="214" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="236">One limits set, checked by the server</text>
+    <rect class="chip" x="32" y="254" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="276">File parts on the user line, to a model</text>
     <text class="t-lbl" x="330" y="62">HARNESSES · FIX-2519 · DOCUMENTS · FIX-2520</text>
     <rect class="chip" x="330" y="70" width="282" height="34" rx="4"/>
     <text class="t-b" x="342" y="92">A turn's files to Claude Code, Codex, Cursor</text>
@@ -46,47 +49,47 @@
     <rect class="chip" x="330" y="174" width="282" height="34" rx="4"/>
     <text class="t-b" x="342" y="196">+ picker, paste, drop, previews, remove</text>
     <rect class="chip" x="330" y="214" width="282" height="34" rx="4"/>
-    <text class="t-b" x="342" y="236">Downscaling and plain refusals</text>
+    <text class="t-b" x="342" y="236">Downscaling, plain refusals, upload</text>
   </g>
 
   <g id="the-fence">
-    <line class="fence" x1="16" y1="268" x2="628" y2="268"/>
-    <text class="t-tag c-gone" x="32" y="290">FENCE · Q1</text>
-    <text class="t-b" x="32" y="308">Bytes travel inside the request: at most 10 images and 3 MB of files a message</text>
-    <text class="t-s" x="32" y="324">past it, FIX-824's upload boundary, and only if the kill line trips</text>
+    <line class="fence" x1="16" y1="302" x2="628" y2="302"/>
+    <text class="t-tag c-gone" x="32" y="324">FENCE · D2</text>
+    <text class="t-b" x="32" y="342">Bytes live in the blob store; a message, a session read and a hand-off carry references</text>
   </g>
 
   <g id="composed-in">
-    <rect class="app" x="644" y="16" width="280" height="150" rx="8"/>
+    <rect class="app" x="644" y="16" width="280" height="166" rx="8"/>
     <text class="t-tag c-acc" x="660" y="38">COMPOSED IN BY THE APP</text>
-    <text class="t-b" x="660" y="66">Its composer's look</text>
-    <text class="t-s" x="660" y="84">the pieces come from fsdev ui add</text>
-    <text class="t-b" x="660" y="114">Which actions write a user line</text>
-    <text class="t-s" x="660" y="132">an action with userMessage takes files;</text>
-    <text class="t-s" x="660" y="148">one without refuses them</text>
+    <text class="t-b" x="660" y="64">Its composer's look</text>
+    <text class="t-s" x="660" y="80">the pieces come from fsdev ui add</text>
+    <text class="t-b" x="660" y="106">Which actions write a user line</text>
+    <text class="t-s" x="660" y="122">one without userMessage refuses files</text>
+    <text class="t-b" x="660" y="148">Which blob adapter it runs</text>
+    <text class="t-s" x="660" y="164">local disk, or hosted when serverless</text>
   </g>
 
   <g id="replaced">
-    <rect class="one" x="644" y="182" width="280" height="152" rx="8"/>
-    <text class="t-lbl" x="660" y="204">REPLACED IN ONE LINE</text>
-    <text class="t-b" x="660" y="232">Kitchen Sink's text-only submit</text>
-    <text class="t-s" x="660" y="250">sends msg.files with msg.text</text>
-    <text class="t-b" x="660" y="282">sendTurn(message)</text>
-    <text class="t-s" x="660" y="300">takes the composer's files too</text>
+    <rect class="one" x="644" y="198" width="280" height="160" rx="8"/>
+    <text class="t-lbl" x="660" y="220">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="660" y="248">Kitchen Sink's text-only submit</text>
+    <text class="t-s" x="660" y="266">sends msg.files with msg.text</text>
+    <text class="t-b" x="660" y="298">sendTurn(message)</text>
+    <text class="t-s" x="660" y="316">takes the composer's files too</text>
   </g>
 
   <g id="not-built">
-    <rect class="none" x="16" y="352" width="908" height="118" rx="8"/>
-    <text class="t-tag c-gone" x="32" y="374">NOT BUILT</text>
-    <text class="t-b" x="32" y="404">Files in model replies</text>
-    <text class="t-b" x="252" y="404">Audio and video</text>
-    <text class="t-b" x="472" y="404">A file library, or reuse</text>
-    <text class="t-b" x="692" y="404">Cloud drive pickers</text>
-    <text class="t-b" x="32" y="440">Word and Excel</text>
-    <text class="t-s" x="32" y="456">cut on 2026-11-05, a later issue</text>
-    <text class="t-b" x="252" y="440">Upload once, reference many</text>
-    <text class="t-s" x="252" y="456">FIX-891</text>
-    <text class="t-b" x="472" y="440">A blob store</text>
-    <text class="t-s" x="472" y="456">FIX-824 and FIX-367</text>
+    <rect class="none" x="16" y="376" width="908" height="118" rx="8"/>
+    <text class="t-tag c-gone" x="32" y="398">NOT BUILT</text>
+    <text class="t-b" x="32" y="428">Files in model replies</text>
+    <text class="t-b" x="252" y="428">Audio and video</text>
+    <text class="t-b" x="472" y="428">A file library, or reuse</text>
+    <text class="t-b" x="692" y="428">Cloud drive pickers</text>
+    <text class="t-b" x="32" y="464">Word and Excel</text>
+    <text class="t-s" x="32" y="480">cut on 2026-11-05, a later issue</text>
+    <text class="t-b" x="252" y="464">Upload once, reference many</text>
+    <text class="t-s" x="252" y="480">FIX-891</text>
+    <text class="t-b" x="472" y="464">Hosted blob adapters</text>
+    <text class="t-s" x="472" y="480">S3, Vercel Blob: a serverless deploy needs one</text>
   </g>
 </svg>

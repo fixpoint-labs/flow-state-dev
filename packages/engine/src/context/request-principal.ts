@@ -38,10 +38,11 @@ export type RequestPrincipal = {
 /** The identity facts a request record or an in-flight entry carries. */
 type PrincipalOwnedRecord = Pick<RequestRecord, "userId" | "orgId" | "tenantId">;
 
+// BP-030.
 /**
  * Whether `record` belongs to `principal`: the same user, in the same tenant
  * and, when the record carries one, the same organization. A record written
- * before organizations were stamped is decided by user and tenant (BP-030).
+ * before organizations were stamped is decided by user and tenant.
  */
 export function principalOwnsRequest(
   record: PrincipalOwnedRecord,

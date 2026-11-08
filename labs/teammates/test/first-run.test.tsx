@@ -8,7 +8,7 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { WorkerRow } from "../src/adapter";
+import type { LabWorker } from "../src/adapter";
 import { App } from "../src/App";
 import { delegatesOf, emptyLine, starterLines } from "../src/lib/first-run";
 import { createFixtureLab } from "./fake-lab";
@@ -19,7 +19,7 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-const row = (id: string, name: string, extra: Partial<WorkerRow> = {}): WorkerRow => ({ id, name, role: "", ...extra });
+const row = (id: string, name: string, extra: Partial<LabWorker> = {}): LabWorker => ({ id, name, role: "", ...extra });
 const context = (delegates: Record<string, "all" | string[]>) => ({ folder: "/x", folderProblem: null, model: "m", harness: "cursor", delegates });
 
 describe("the first run's lines", () => {

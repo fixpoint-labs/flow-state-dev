@@ -1,11 +1,12 @@
 import type { BlockDefinition, RescueHandlerSpec, ResponseEmitterHandle } from "../../types/block";
 
+// FIX-742.
 /**
  * Whether a rescue handler applies to `error`. A handler with no `when` (or an
  * empty `when`) matches any error; otherwise it matches only when the error is
  * an instance of one of the listed error types. Shared by the sequencer's
  * chain-level rescue path and the block-level `.rescue()` honoring in
- * build-block (FIX-742).
+ * build-block.
  */
 export function matchesRescueHandler(error: Error, handler: RescueHandlerSpec): boolean {
   if (handler.when === undefined || handler.when.length === 0) {
@@ -23,13 +24,14 @@ export function matchesRescueHandler(error: Error, handler: RescueHandlerSpec): 
 
 export { toError } from "../../helpers/to-error";
 
+// FIX-406 6G.
 /**
  * Returns the number of items already emitted on the given response object.
  * Used by block code in this package to assign sequential `itemIndex` values
  * to newly emitted items.
  *
  * Prefers the O(1) `getItemCount()` so this stays cheap on the per-emit hot
- * path (FIX-406 6G). Tolerates partially-implemented mocks (test fixtures
+ * path. Tolerates partially-implemented mocks (test fixtures
  * that supply only `emit`/`getItems`) by falling back to `getItems().length`,
  * then to 0 when neither is present. Production responses always provide
  * `getItemCount` via `ResponseEmitterHandle`.

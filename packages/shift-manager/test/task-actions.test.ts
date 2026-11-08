@@ -11,7 +11,7 @@ import type { Client } from "@flow-state-dev/client";
 import { taskActionName } from "@flow-state-dev/orchestration/inbox";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 import { connect } from "../src/lib/connection";
-import { CONVERSATION_BOARD_COLLECTION, createLabReader, type BoardRow } from "../src/lib/reads";
+import { CONVERSATION_BOARD_COLLECTION, createLabReader, type BoardTaskView } from "../src/lib/reads";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { ASKER_FLOW } from "./fixtures/ask-lab/asker.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -31,7 +31,7 @@ async function lab(): Promise<Client> {
 }
 
 /** File a row on the conversation's board directly, as a worker would, and wait for it to show. */
-async function file(client: Client, goal: string, context: string): Promise<BoardRow> {
+async function file(client: Client, goal: string, context: string): Promise<BoardTaskView> {
   await client.flow(COORDINATOR_FLOW).send(taskActionName("createTask", CONVERSATION_BOARD_COLLECTION), { goal, context }, { sessionId: CONVERSATION });
   const reader = createLabReader(client);
   return eventually(async () => (await reader.readBoard(CONVERSATION)).find((row) => row.goal === goal), `the row "${goal}"`);

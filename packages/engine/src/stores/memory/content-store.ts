@@ -1,3 +1,4 @@
+// FIX-1323.
 /**
  * In-memory content store implementation.
  *
@@ -9,8 +10,8 @@
  *
  * It used to be one flat map keyed `scopeType:scopeId:resourceKey`, scanned by
  * string prefix. Concatenating three caller-supplied strings and then
- * re-splitting them by position is ambiguous, and FIX-1323 makes the ambiguity
- * reachable: instance ids are now part of the `scopeId`, so a scope
+ * re-splitting them by position is ambiguous, and instance-keyed scopes make the
+ * ambiguity reachable: instance ids are now part of the `scopeId`, so a scope
  * `user:reviewer-a` and a scope `user:reviewer-a:b` share a string prefix. A
  * `getAll` / `deleteAll` / `getByPrefix` on the first would have listed and
  * deleted the second's rows. Nesting removes the encoding rather than escaping

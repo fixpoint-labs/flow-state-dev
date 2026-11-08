@@ -1,14 +1,15 @@
+// FIX-1989.
 /**
- * The user's message log (FIX-1989): Workforce's `workforce/messages/*`,
+ * The user's message log: Workforce's `workforce/messages/*`,
  * read through the user's roster session. Another user's messages are not in it.
  */
 import { useCallback, useEffect, useState } from "react";
 import { readEveryCollectionPage } from "@flow-state-dev/client";
-import { WORKER_MESSAGES_RESOURCE, workerMessageRowSchema, type WorkerMessageRow } from "@flow-state-dev/workforce/browser";
+import { WORKER_MESSAGES_RESOURCE, workerMessageResourceStateSchema, type WorkerMessageResourceState } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
 import { describeFailure, type Failure } from "./reads";
 
-export type { WorkerMessageRow };
+export type { WorkerMessageResourceState };
 
 /** How often the view reads the log again while it is open. */
 const MESSAGES_POLL_MS = 5_000;
@@ -16,23 +17,23 @@ const MESSAGES_POLL_MS = 5_000;
 /** One exchange: a first message and every answer to it, newest first. */
 export type MessageExchange = {
   id: string;
-  messages: WorkerMessageRow[];
+  messages: WorkerMessageResourceState[];
   latest: number;
 };
 
-/** The rows a log read returned, each parsed by Workforce's own schema: a row that doesn't parse is left out. */
-export function toMessageRows(items: readonly { clientData?: unknown }[]): WorkerMessageRow[] {
-  const rows: WorkerMessageRow[] = [];
+/** The messages a log read returned, each parsed by Workforce's own schema: one that doesn't parse is left out. */
+export function toMessages(items: readonly { clientData?: unknown }[]): WorkerMessageResourceState[] {
+  const rows: WorkerMessageResourceState[] = [];
   for (const item of items) {
-    const parsed = workerMessageRowSchema.safeParse(item.clientData);
+    const parsed = workerMessageResourceStateSchema.safeParse(item.clientData);
     if (parsed.success) rows.push(parsed.data);
   }
   return rows;
 }
 
 /** The log as exchanges, the exchange with the newest message first, and each exchange's messages newest first. */
-export function exchangesOf(rows: readonly WorkerMessageRow[]): MessageExchange[] {
-  const byExchange = new Map<string, WorkerMessageRow[]>();
+export function exchangesOf(rows: readonly WorkerMessageResourceState[]): MessageExchange[] {
+  const byExchange = new Map<string, WorkerMessageResourceState[]>();
   for (const row of rows) {
     const bucket = byExchange.get(row.exchange);
     if (bucket === undefined) byExchange.set(row.exchange, [row]);
@@ -60,9 +61,9 @@ export function firstLine(text: string): string {
 export function useMessages(
   readerSessionId: string | null,
   readAt: number,
-): { rows: WorkerMessageRow[] | undefined; failure: Failure | undefined; reread: () => void } {
+): { rows: WorkerMessageResourceState[] | undefined; failure: Failure | undefined; reread: () => void } {
   const { client } = useLab();
-  const [rows, setRows] = useState<WorkerMessageRow[] | undefined>(undefined);
+  const [rows, setRows] = useState<WorkerMessageResourceState[] | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
   useEffect(() => {
@@ -70,7 +71,7 @@ export function useMessages(
     let closed = false;
     let next: ReturnType<typeof setTimeout> | undefined;
     readEveryCollectionPage(client.resources, readerSessionId, WORKER_MESSAGES_RESOURCE)
-      .then(toMessageRows)
+      .then(toMessages)
       .then((value) => {
         if (closed) return;
         setRows(value);

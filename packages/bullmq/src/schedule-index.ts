@@ -6,7 +6,7 @@
  * scheduler, so there is no polling tick to claim.
  */
 import type { Queue } from "bullmq";
-import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
+import type { ScheduleIndex, ScheduleIndexEntry } from "@flow-state-dev/scheduled";
 
 export interface CreateBullmqScheduleIndexOptions {
   /** Prefix for BullMQ scheduler ids. Default "fsd-sched". */
@@ -48,7 +48,7 @@ export function createBullmqScheduleIndex(
   }
 
   return {
-    async upsert(row: ScheduleIndexRow): Promise<void> {
+    async upsert(row: ScheduleIndexEntry): Promise<void> {
       await queue.upsertJobScheduler(
         schedulerId(row.cell, row.key),
         {
@@ -72,7 +72,7 @@ export function createBullmqScheduleIndex(
     async claimDue(
       _now: number,
       _limit?: number
-    ): Promise<ScheduleIndexRow[]> {
+    ): Promise<ScheduleIndexEntry[]> {
       // BullMQ fires jobs natively — no polling tick needed.
       return [];
     },

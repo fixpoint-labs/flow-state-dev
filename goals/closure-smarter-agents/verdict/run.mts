@@ -16,13 +16,15 @@
  * hold exactly 3 runs (`asks.mts` → `coverageProblems`), and each result must
  * have run on the pass's own tree; a result with no commit, from another
  * commit, or sheets that mix commits fail the verdict (`sheetCommitProblems`).
+ * The same for models: a result with no model recorded, or sheets that mix
+ * each app's own models and Haiku, fail it (`sheetModelProblems`).
  *
  * Run:  GOAL_PASS=wrap pnpm tsx goals/closure-smarter-agents/verdict/run.mts
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { runGoal } from "../../lib/index.mts";
-import { ALL_APPS, ASKS, cellsFor, controlFails, coverageProblems, passesEverywhere, RUNS, sheetCommitProblems, sweepGuidance, type App, type Sheet, type SheetStamp } from "../asks.mts";
+import { ALL_APPS, ASKS, cellsFor, controlFails, coverageProblems, passesEverywhere, RUNS, sheetCommitProblems, sheetModelProblems, sweepGuidance, type App, type Sheet, type SheetStamp } from "../asks.mts";
 import { closurePass, sheetFile, type SheetFile } from "../closure.mts";
 
 /** Each app's workers' tree, under the served root. */
@@ -61,12 +63,20 @@ await runGoal((failures, tell) => {
       const runs = written.sheet?.[ask]?.[app];
       if (runs === undefined) continue;
       (sheet[ask] ??= {})[app] = runs;
-      stamps.push({ app, ask, ...(written.commits?.[ask] === undefined ? {} : { commit: written.commits[ask] }) });
+      stamps.push({
+        app,
+        ask,
+        ...(written.commits?.[ask] === undefined ? {} : { commit: written.commits[ask] }),
+        ...(written.models?.[ask] === undefined ? {} : { model: written.models[ask] }),
+      });
     }
   }
   for (const app of missing) failures.push(`${app}: no ${p.pass} sheet (run ${app}/run.mts with GOAL_PASS=${p.pass})`);
   // Every result must have run on the pass's own tree (the control's is 0df5c85, resolved).
   for (const line of sheetCommitProblems(stamps, p.commit)) failures.push(`sheets: ${line}`);
+  // And on one model: each app's own throughout, or Haiku throughout.
+  for (const line of sheetModelProblems(stamps)) failures.push(`sheets: ${line}`);
+  const models = [...new Set(stamps.map((s) => s.model ?? "(none)"))].join(", ");
   // Before any pass's own rule: every cell the pass counts, with exactly its runs.
   for (const line of coverageProblems(sheet, p.pass)) failures.push(`coverage: ${line}`);
 
@@ -92,7 +102,7 @@ await runGoal((failures, tell) => {
   }
   const cut = p.pass === "cut" ? ASKS.filter((ask) => passesEverywhere(sheet, ask, "cut")) : [];
   const evidence = [
-    `${p.pass} pass on ${p.describe}: ${cells.length} cells`,
+    `${p.pass} pass on ${p.describe}, models ${models || "(no sheets)"}: ${cells.length} cells`,
     ...rows.map((r) => `${r.ask}: ${r.per}${p.pass === "cut" ? (cut.includes(r.ask) ? " → passes everywhere (its layer may be cut)" : " → keeps its layer") : ""}`),
     `sweep: ${swept.length === 0 ? "no app-written date, done or length guidance" : swept.join("; ")}`,
   ];

@@ -1,5 +1,6 @@
+// FIX-1945 S6.
 /**
- * A worker's standing rules for the user (FIX-1945 S6): each rule with when
+ * A worker's standing rules for the user: each rule with when
  * it was added and the conversation it came from, and add, edit and delete.
  * Drawn as the Rules section of a roster worker's settings page.
  *

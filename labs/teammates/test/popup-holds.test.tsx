@@ -24,7 +24,7 @@ const conversation = () => screen.getByRole("main", { name: "Conversation" });
 const TASK = "Coding task: Fix the typo in the README's first line";
 
 async function fileCodingTask() {
-  const box = await screen.findByLabelText("Message Chief of Staff");
+  const box = await screen.findByLabelText("Message Lead");
   await act(async () => {
     fireEvent.change(box, { target: { value: "Fix the typo in the README's first line." } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -65,7 +65,7 @@ describe("a coding task's popup answers what its run waits on you for", () => {
   it("a pending question or review sits below the scrolling feed, the header says so, and your verdict stays in the log", async () => {
     render(<App adapter={fast({ asks: true, review: true })} />);
     const popup = await fileCodingTask();
-    const status = () => popup.querySelector("[data-popup-status]")?.textContent;
+    const status = () => popup.querySelector("[data-overlay-status]")?.textContent;
     const feedOf = () => popup.querySelector('[data-step="said"]')!.parentElement!;
     const belowFeed = (panel: HTMLElement) => {
       const feed = feedOf();

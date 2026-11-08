@@ -286,7 +286,9 @@ describe("a delivery into an existing session", () => {
       await seedSession(runtime, "s_r", "guard-external", "lin_original");
 
       const sent = await run(runtime, flow, "deliver", { to: "s_r", note: "hi" });
-      expect(sent.error?.message).toMatch(/external-dispatcher/);
+      expect(sent.error?.message).toMatch(/external-flow-runner/);
+      // The retired value is gone, not kept beside the new one.
+      expect(sent.error?.message).not.toMatch(/external-dispatcher/);
       expect(enqueued).toEqual([]);
       expect(observed.runs).toEqual([]);
 

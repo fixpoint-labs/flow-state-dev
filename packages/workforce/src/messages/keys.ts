@@ -1,5 +1,6 @@
+// FIX-1989, FIX-2238.
 /**
- * The pinned names of worker messages (FIX-1989, FIX-2238). A leaf module with
+ * The pinned names of worker messages. A leaf module with
  * no imports, so the browser entry, the tool and the entry share one spelling.
  */
 
@@ -9,9 +10,10 @@ export const MESSAGE_RECEIVED_ENTRY = "onMessageReceived";
 /** The tool a worker's model sends a message with. **Pinned**: an app draws its calls by name. */
 export const SEND_MESSAGE_TOOL = "sendMessage";
 
+// FIX-2271.
 /**
  * The mark on the capability that offers {@link SEND_MESSAGE_TOOL}, read by
- * the hire (FIX-2271). A registered symbol, so two installed copies of this
+ * the hire. A registered symbol, so two installed copies of this
  * package read each other's mark.
  */
 export const SENDS_MESSAGES_MARK = Symbol.for("@flow-state-dev/workforce/sends-messages");
@@ -19,13 +21,15 @@ export const SENDS_MESSAGES_MARK = Symbol.for("@flow-state-dev/workforce/sends-m
 /** The client-only component a received message is drawn by. **Pinned**: an app's renderer is keyed by it. */
 export const RECEIVED_MESSAGE_COMPONENT = "workforce:received";
 
-/** Server-written session state: the messages a session sent that haven't landed or ended yet, with the request that sent each (FIX-2240). */
+// FIX-2240.
+/** Server-written session state: the messages a session sent that haven't landed or ended yet, with the request that sent each. */
 export const WORKER_MESSAGES_OWED_STATE = "workerMessagesOwed";
 
+// FIX-2310.
 /**
  * Server-written session state: the reply-requested messages this session
- * landed and hasn't answered yet, with the request that landed each
- * (FIX-2310). The pass answers "no answer" for one whose request ended
+ * landed and hasn't answered yet, with the request that landed each.
+ * The pass answers "no answer" for one whose request ended
  * without answering it.
  */
 export const WORKER_REPLIES_OWED_STATE = "workerRepliesOwed";

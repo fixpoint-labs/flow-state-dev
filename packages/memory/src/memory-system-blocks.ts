@@ -1,4 +1,5 @@
-import { assertEvaluatorBlock, generator, handler, sequencer } from '@flow-state-dev/core'
+import { generator, handler, sequencer } from '@flow-state-dev/core'
+import { assertEvaluatorBlock } from '@flow-state-dev/core/internal'
 import { z } from 'zod'
 import { workingMemoryResource } from './working-memory'
 import type { WorkingMemoryHelperConfig } from './working-memory-helpers'
@@ -76,8 +77,9 @@ export interface MemorySystemBlocksConfig {
     }
     /** Prune when fact count reaches this threshold. Default: 20. 0 to disable. */
     pruneThreshold?: number
+    // FIX-745.
     /**
-     * Resolved relations (typed-edge graph) config (FIX-745). Present only when
+     * Resolved relations (typed-edge graph) config. Present only when
      * the relations tier is enabled; absent disables all edge behaviour.
      */
     relations?: ResolvedRelationsConfig
@@ -89,8 +91,9 @@ export interface MemorySystemBlocksConfig {
   /** Shared digest resource reference — must be the same instance across blocks. */
   _digestResource?: ReturnType<typeof createDigestMemoryResource>
   source?: (input: unknown, ctx: any) => string
+  // FIX-411.
   /**
-   * Resolved hygiene configuration (FIX-411). When set, the consolidation
+   * Resolved hygiene configuration. When set, the consolidation
    * and capture pipelines auto-wire the janitor block per `hygiene.schedule`.
    * `undefined` means hygiene is disabled — janitor is neither built nor wired.
    */
@@ -133,9 +136,10 @@ const consolidationFactObjectSchema = z.object({
   targetFactId: z.string().default(''),
 })
 
+// FIX-745.
 /**
- * A single typed directed relation-edge proposal between named entities
- * (FIX-745). Endpoints are subject strings (e.g. 'user', 'moni') reusing the
+ * A single typed directed relation-edge proposal between named entities.
+ * Endpoints are subject strings (e.g. 'user', 'moni') reusing the
  * same subject namespace as facts. `type` is an active-voice relation
  * ('married to', 'works at'). `action` mirrors the fact actions:
  *  - 'new'       — record a new edge (deduped to a reinforce if one matches).
@@ -165,9 +169,10 @@ export const consolidationFactsOnlySchema = z.object({
   facts: z.array(consolidationFactObjectSchema),
 })
 
+// BP-016.
 /**
  * Output schema for the consolidation generator with the relations tier on:
- * facts plus typed relation edges. Strict-mode safe (BP-016 — all fields fixed
+ * facts plus typed relation edges. Strict-mode safe (all fields fixed
  * shape). Used as the generator's `outputSchema` only when relations is enabled.
  */
 export const consolidationOutputSchema = z.object({
@@ -180,13 +185,14 @@ export type ConsolidationOutput = z.infer<typeof consolidationOutputSchema>
 /** A single edge proposal from the consolidation generator. */
 export type ConsolidationEdge = ConsolidationOutput['edges'][number]
 
+// FIX-745; BP-016.
 /**
  * Input schema for the consolidation persist handler. Looser than the generator
  * output schema: `edges` is optional, and per-edge `sourceEpisodeIds` is optional
- * (the persist body defaults a missing one to `[]`), so callers and pre-FIX-745
+ * (the persist body defaults a missing one to `[]`), so callers and older
  * inputs that omit them still validate. This is intentionally NOT the generator
  * output schema — that one keeps `edges` and `sourceEpisodeIds` required for
- * OpenAI strict mode (BP-016).
+ * OpenAI strict mode.
  */
 export const consolidationPersistInputSchema = consolidationOutputSchema.extend({
   edges: z.array(consolidationEdgeObjectSchema.partial({ sourceEpisodeIds: true })).optional(),
@@ -1037,9 +1043,10 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
   })
 }
 
+// FIX-745.
 /**
  * Build the relation-extraction lines appended to the consolidation prompt when
- * the relations tier is enabled (FIX-745). Kept short so the prompt does not
+ * the relations tier is enabled. Kept short so the prompt does not
  * bloat; when a `vocabulary` is configured, the model is constrained to it.
  */
 function buildRelationsPromptSection(relations: ResolvedRelationsConfig): string[] {
@@ -1795,12 +1802,13 @@ function evaluatedCapture(config: MemorySystemBlocksConfig, gate: CaptureEvaluat
     .stepIf((v: JudgedWindow) => v.window !== null, judge)
 }
 
+// FIX-408.
 /**
  * Assembles the full capture pipeline: observe → reflect → tick.
  * When semantic is configured, adds consolidation and prune as .sideChain() steps.
  * Digest regeneration is appended to the consolidation and prune chains
  * (see `withDigestRegenerate`) rather than scheduled per-turn, matching
- * FIX-408's "consolidation completion + sourceSignature delta" trigger. A
+ * the "consolidation completion + sourceSignature delta" trigger. A
  * per-turn run was structurally redundant — the digest's own staleness
  * guard already no-ops when sources haven't drifted — and widened the
  * failure surface of a background-only chain into the user-visible turn.

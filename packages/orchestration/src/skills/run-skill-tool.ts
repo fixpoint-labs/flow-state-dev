@@ -1,3 +1,4 @@
+// FIX-918.
 /**
  * The `runSkill` tool — the agent's mid-flow entry point into the skills
  * system (the legacy session-global surface).
@@ -8,7 +9,7 @@
  * which patches `activeSkills` so the next generator step renders the
  * substituted body in its system prompt.
  *
- * After FIX-918 there is only one mode (`inline`) — the `fork` and `pattern`
+ * There is only one mode (`inline`) — the `fork` and `pattern`
  * dispatch routes were removed. The router shell is kept for the mid-flow
  * activation path; the per-generator binding surface (`createSkillsLibrary`) is
  * the modern home for inline activation.
@@ -22,8 +23,9 @@ import { router } from "@flow-state-dev/core";
 import type {
   BlockDefinition,
   ResourceCollectionRef,
+  InitialSkill,
+  SkillState,
 } from "@flow-state-dev/core/types";
-import type { InitialSkill, SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
 import { resolveSkillsCollection } from "./partition";
 import { listEnabledSkills } from "./internal/list-enabled-skills";
@@ -159,18 +161,6 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
       if (state.disableModelInvocation) {
         throw new Error(
           `Skill "${input.name}" has \`disable-model-invocation: true\` and cannot be invoked by the agent`,
-        );
-      }
-
-      // A manifest persisted before FIX-918 can still carry a non-inline
-      // contextMode. Activating it inline would ack success while the reader
-      // skips the body — fail loud with the same migration guidance a fresh
-      // SKILL.md parse gets, instead of silently doing nothing.
-      if (state.contextMode !== undefined && state.contextMode !== "inline") {
-        throw new Error(
-          `Skill "${input.name}" was stored with \`context: ${state.contextMode}\`, ` +
-            `which was removed (FIX-918). Re-import the skill without it, or expose a ` +
-            `task-board/goalSeekLoop block as an allowed tool.`,
         );
       }
 

@@ -3,7 +3,7 @@ import type {
   UserListOptions,
   UserRecord,
   UserStore
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
 import { createSQLiteRecordStore } from "./sqlite-store";
 
 export function createSQLiteUserStore(db: Database.Database): UserStore {

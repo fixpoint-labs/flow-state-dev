@@ -15,7 +15,7 @@ vi.mock("../src/durability/resume-wait-gate", () => ({
   }
 }));
 
-const { createInMemoryStores } = await import("../src");
+const { createInMemoryStores } = await import("../src/host");
 const { recordRequestStop } = await import("../src/execution/record-request-stop");
 const { INTERNAL_SOURCE } = await import("../src/execution/transport-sources");
 

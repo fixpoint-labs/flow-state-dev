@@ -736,7 +736,8 @@ function MetadataRow({ label, value, mono, children }: { label: string; value?: 
   );
 }
 
-/** Serialized error node as produced by core's `serializeError` (FIX-723). */
+// FIX-723.
+/** Serialized error node as produced by core's `serializeError`. */
 type SerializedErrorNode = {
   name: string;
   message: string;
@@ -774,6 +775,7 @@ function CauseChain({ cause }: { cause: SerializedErrorNode }) {
   );
 }
 
+// FIX-723.
 /**
  * Shared render for `{ message, code?, details? }` shaped errors used by the
  * block-trace, block-output, and tool-output detail panels. When `details` is
@@ -783,7 +785,7 @@ function CauseChain({ cause }: { cause: SerializedErrorNode }) {
  * the raw model text and a typed Zod-issues list without traversing JSON.
  *
  * The fetch tool's well-known keys (`errorType`, `httpStatus`, `responseBody`,
- * and the serialized `cause` chain — FIX-723) likewise render as dedicated
+ * and the serialized `cause` chain) likewise render as dedicated
  * sections so a failed fetch is diagnosable without reading raw JSON.
  */
 function ErrorPanel({

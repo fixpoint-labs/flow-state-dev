@@ -2,14 +2,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { createFilesystemStores, createInMemoryStores } from "../src/host";
 import {
-  createFilesystemStores,
-  createInMemoryStores,
   type OrgRecord,
   type RequestRecord,
   type SessionRecord,
   type UserRecord
-} from "../src";
+} from "../src/host";
 
 function now() {
   return Date.now();

@@ -23,22 +23,24 @@
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
 import { parseNextFireAt } from "./parseNextFireAt";
-import type { ScheduleIndex, ScheduleIndexRow } from "./scheduleIndex";
+import type { ScheduleIndex, ScheduleIndexEntry } from "./scheduleIndex";
 
+// FIX-838.
 /**
  * Schema for the state stored under each schedule resource. Mirrors the
  * shape consumed by `createResourceCollectionScheduleResolver` /
  * `ScheduleResourceState`.
  *
- * `kind` is a handler discriminator, not a flow-action name (FIX-838): a
+ * `kind` is a handler discriminator, not a flow-action name: a
  * block cannot be serialized into resource state, so the persisted row stores
  * a string key that the resolver maps to a real block via its host-provided
  * `blocks` map. This replaces the former `action` field — a breaking change to
  * the persisted record shape.
  */
 const SCHEDULE_RESOURCE_SCHEMA = z.object({
+  // FIX-1442; BP-030.
   /**
-   * The organization this schedule fires into (FIX-1442).
+   * The organization this schedule fires into.
    *
    * Not a caller's choice. `create` writes the creating execution's own
    * (server-derived) organization here when the caller names none, which is
@@ -49,7 +51,7 @@ const SCHEDULE_RESOURCE_SCHEMA = z.object({
    * organization) is refused from the index below and therefore never fires.
    * Optional on the schema
    * because callers omit it and because a pre-attribution row has to stay
-   * readable to be diagnosed (BP-030).
+   * readable to be diagnosed.
    */
   orgId: z.string().optional(),
   cron: z.string(),
@@ -164,7 +166,7 @@ function stripPrefix(storageKey: string, pattern: string): string {
 }
 
 /**
- * Compute a `ScheduleIndexRow` from a freshly persisted schedule state.
+ * Compute a `ScheduleIndexEntry` from a freshly persisted schedule state.
  * Returns `null` and logs a warning if the cron expression fails to
  * parse — the write succeeds (the resource is durable), but no index
  * row is mirrored, so a broken row never fires.
@@ -183,6 +185,7 @@ function stripPrefix(storageKey: string, pattern: string): string {
  * falls out of it rather than being named: `undefined` is never an execution's
  * org, so such a row is refused by construction and needs no clause of its own.
  */
+// BR-19.
 /**
  * The organization to index this row under, or `null` to refuse it.
  *
@@ -200,7 +203,7 @@ function stripPrefix(storageKey: string, pattern: string): string {
  *  - **Stores a DIFFERENT organization.** That is a claim, and it disagrees
  *    with the execution writing it. Indexing under either organization would
  *    point a standing instruction somewhere nobody authorised, so the row stays
- *    out until it is written from the organization it names (BR-19).
+ *    out until it is written from the organization it names.
  *
  * This stamp lives on the index row only, because this runs in a lifecycle
  * hook, which fires after the write has already committed. The state's own
@@ -218,8 +221,8 @@ function indexOrgFor(
   console.warn(
     `[flow-state/scheduled] schedule ${userId}/${key} is not indexed: its stored organization ` +
       `does not match the organization of the execution that wrote it. A schedule fires into ` +
-      `the organization that created it; write the row from that organization, or attribute a ` +
-      `pre-existing row with the upgrade recipe in the persistence guide.`
+      `the organization that created it; write the resource from that organization, or attribute a ` +
+      `pre-existing resource with the upgrade recipe in the persistence guide.`
   );
   return null;
 }
@@ -230,7 +233,7 @@ function rowFromState(
   orgId: string,
   key: string,
   state: ScheduleCollectionState
-): ScheduleIndexRow | null {
+): ScheduleIndexEntry | null {
   const nextFireAt = parseNextFireAt(state.cron, state.timezone);
   if (nextFireAt === null) {
     // eslint-disable-next-line no-console

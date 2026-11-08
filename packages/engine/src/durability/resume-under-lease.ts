@@ -54,10 +54,11 @@ export function latestGateIdOf(record: { readonly items?: readonly unknown[] }):
 /** How long a resume holds the request's lease before the run takes over. */
 export const RESUME_LEASE_MS = 60_000;
 
+// FIX-1846.
 /**
  * Write a pending gate `expired`, fenced under its request's lease: the one
  * way every expiry writer (the durability sweep, the resume route) records an
- * expiry (FIX-1846). Every other resolution of a gate (a person's resume, an
+ * expiry. Every other resolution of a gate (a person's resume, an
  * wait's answer, a stop) is written under that lease, so the gate re-read while
  * holding it is current: a resolution that landed after the caller's own read
  * is never overwritten. `gate` names the gate; its fields are not written.

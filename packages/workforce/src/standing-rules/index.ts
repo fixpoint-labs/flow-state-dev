@@ -1,4 +1,5 @@
-/** Standing rules (FIX-1945): one list per worker, per user. */
+// FIX-1945.
+/** Standing rules: one list per worker, per user. */
 export {
   MAX_RULES,
   MAX_RULE_CHARS,

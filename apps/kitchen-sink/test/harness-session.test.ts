@@ -22,9 +22,9 @@ import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { testFlow } from "@flow-state-dev/testing";
-import type { ClaudeAgentQueryOptions, ResolveClaudeAgent } from "@flow-state-dev/claude-code/sdk";
+import type { ClaudeCodeQueryOptions, ResolveClaudeCodeAgent } from "@flow-state-dev/claude-code";
 
 import { claudeCodeSessionFlow, CLAUDE_CODE_SESSION } from "@/lib/claude-code-mode";
 import { availableHarnessFlows, resetModeAvailabilityForTests } from "@/lib/harness-gate";
@@ -77,14 +77,14 @@ afterEach(() => {
 });
 
 /** The scripted Claude Code, recording what each run was handed. */
-function recorded(onRun?: (options: ClaudeAgentQueryOptions) => void) {
-  const runs: ClaudeAgentQueryOptions[] = [];
+function recorded(onRun?: (options: ClaudeCodeQueryOptions) => void) {
+  const runs: ClaudeCodeQueryOptions[] = [];
   const scripted = scriptedClaudeCode();
-  const resolve: ResolveClaudeAgent = async (...args) => {
+  const resolve: ResolveClaudeCodeAgent = async (...args) => {
     const agent = await scripted(...args);
     return {
       query: (query) => {
-        const options = query.options ?? ({} as ClaudeAgentQueryOptions);
+        const options = query.options ?? ({} as ClaudeCodeQueryOptions);
         runs.push(options);
         onRun?.(options);
         return agent.query(query);

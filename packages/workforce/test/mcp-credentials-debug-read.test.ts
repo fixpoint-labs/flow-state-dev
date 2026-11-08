@@ -13,9 +13,11 @@ import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  resolveUserStorageKey,
+  resolveUserStorageKey
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { defineMcpCredentialsCollection, MCP_CREDENTIALS_RESOURCE } from "../src/projects/mcp-credentials";
 
 const FLOW = "keys-desk";

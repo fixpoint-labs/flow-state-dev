@@ -3,7 +3,7 @@
  * module: each mode's file imports it, and the gate imports each mode's file,
  * so it can't live in `harness-gate.ts`.
  */
-import type { HarnessReadiness } from "@flow-state-dev/core/types";
+import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 
 import type { ModeAvailability } from "./harness-gate";
 

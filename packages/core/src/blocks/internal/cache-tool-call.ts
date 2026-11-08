@@ -1,5 +1,6 @@
+// FIX-610 Wave 1.
 /**
- * Tool-call memoization wrapping (FIX-610 Wave 1).
+ * Tool-call memoization wrapping.
  *
  * `compileToolsWithExecute` (in `../generator.ts`) wraps each tool's
  * `execute` closure with the caching path defined in this module,

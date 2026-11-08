@@ -13,8 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { generator } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { BlockContext, InitialSkill } from "@flow-state-dev/core/types";
 import { createSkillsLibrary } from "../../src/skills/library";
 import { defineSkillsCollection } from "../../src/skills/collection";
 import { resolveInitialSkills } from "../../src/skills/initial-skills";

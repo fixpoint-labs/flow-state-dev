@@ -1,5 +1,6 @@
+// FIX-2145; FIX-2288.
 /**
- * A request's spend ledger (FIX-2145): the one count of what a request spent.
+ * A request's spend ledger: the one count of what a request spent.
  *
  * Built once per request beside the request-end registry. Two things feed it:
  *
@@ -9,7 +10,7 @@
  *   `countsIn: "trace"` is a multi-step run's aggregate whose steps were
  *   already added, and is skipped;
  * - every harness report through core's `reportHarnessSpend`: a report with a
- *   `runId` replaces that run's earlier one (FIX-2288), so a harness that
+ *   `runId` replaces that run's earlier one, so a harness that
  *   reports as it goes counts each run once, at its latest report; a report
  *   without one is a settled run of its own.
  *
@@ -18,12 +19,13 @@
  * development; a trace row's `modelUsage` is DevTool's and no longer read for
  * it. A request-end hook is handed {@link RequestSpendLedger.takeSinceLastEnding},
  * and core's `readRequestSpend` reads {@link RequestSpendLedger.pending}, the
- * same slice, without taking it (FIX-2288).
+ * same slice, without taking it.
  */
-import { cacheTokensOf } from "@flow-state-dev/core";
+import { cacheTokensOf } from "@flow-state-dev/core/internal";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
-import type { GeneratorModelResultPayload, HarnessRunSpend, ModelUsageEntry, RequestSpend } from "@flow-state-dev/core/types";
+import type { RuntimeItem, RequestSpend } from "@flow-state-dev/core/internal";
+import type { GeneratorModelResultPayload, ModelUsageEntry } from "@flow-state-dev/core/types";
+import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { storeIdentity } from "../bus/publish-writes";
 
 /** One request's ledger. */
@@ -39,7 +41,8 @@ export interface RequestSpendLedger {
    * first), so a request that ends more than once hands each part on once.
    */
   takeSinceLastEnding(): RequestSpend;
-  /** What {@link takeSinceLastEnding} would hand on now, without taking it (FIX-2288). */
+  // FIX-2288.
+  /** What {@link takeSinceLastEnding} would hand on now, without taking it. */
   pending(): RequestSpend;
 }
 

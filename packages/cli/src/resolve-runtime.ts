@@ -1,3 +1,4 @@
+// BP-024.
 /**
  * Shared runtime-resolution prelude for `fsdev run`, `fsdev dev`, and `fsdev chat`.
  *
@@ -6,7 +7,7 @@
  * surface flow import failures. What genuinely diverges per command — store
  * backend, `--model` handling, the `getRuntime()` error attribution, dispose
  * ownership, and the *ordering* of the `--flow-dir`+config guard relative to
- * other guards — stays in the command (BP-024: extract a helper only for the
+ * other guards — stays in the command (extract a helper only for the
  * parts whose body doesn't vary). The guard's shared message is factored into
  * {@link assertNoFlowDirWithConfig}, which each command calls at its own site.
  *
@@ -15,7 +16,8 @@
  * engine logging.
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import type { FlowState, RuntimeLogger, RuntimeLoggerLevel } from "@flow-state-dev/engine";
+import type { FlowState } from "@flow-state-dev/engine";
+import type { RuntimeLogger, RuntimeLoggerLevel } from "@flow-state-dev/engine/host";
 import {
   discoverFlows,
   getSearchedDirs,

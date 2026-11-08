@@ -21,16 +21,6 @@ export function createRequestEventId(
 }
 
 /**
- * Builds a stable stream event id for user-scoped events.
- */
-export function createUserEventId(
-  userId: string,
-  sequenceNumber: number
-): string {
-  return `${userId}:${sequenceNumber}`;
-}
-
-/**
  * Resolves the canonical stream event id for any stream event.
  */
 export function createStreamEventId(event: StreamEvent): string {

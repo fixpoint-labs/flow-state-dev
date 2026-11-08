@@ -1,0 +1,18 @@
+{
+  "typos": [
+    {
+      "work": "wrk",
+      "onTaskSteered": "onTaskSteerd",
+      "onMessageReceived": "onMessageRecieved",
+      "onWorkstreamOpened": "onWorkstreamOpend",
+      "onTaskSettled": "onTaskSetled"
+    },
+    {
+      "work": "Work",
+      "onTaskSteered": "onTaskSteer",
+      "onMessageReceived": "onMesageReceived",
+      "onWorkstreamOpened": "onWorkStreamOpened",
+      "onTaskSettled": "onTaskSettle"
+    }
+  ]
+}

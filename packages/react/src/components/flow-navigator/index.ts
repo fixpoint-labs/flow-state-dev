@@ -1,6 +1,7 @@
+// FIX-2411.
 /**
  * One module, one component, and the row helpers a host drawing its own
- * session rows shares with it (FIX-2411).
+ * session rows shares with it.
  *
  * The flow inventory, the grouping and the fenced leaf read are the
  * navigator's internals and stay unexported: three public hooks would let

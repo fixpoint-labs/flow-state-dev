@@ -4,7 +4,7 @@
 
 **Outcome:** A worker on the built-in worker flow finds what it can before it asks the user anything. It never asks the user to paste something the system holds or a teammate can find. Asked to review work it can't see, it gets a teammate to read the files, reviews what they found, and says what it couldn't see. All of this comes from the workforce package's default prompt layer, not from any app text.
 
-**Input:** `fixtures/input.json`. The working folder is a git checkout whose last commit changed `docs/pricing.md` and wrote a wrong saving (40%). There are two wordings of the review ask and two of the ask to Chief of Staff, and one of each is drawn per run. **Held out**: no worker file, prompt or flow names the PR, the file or the figure.
+**Input:** `fixtures/input.json`. The working folder is a git checkout whose last commit changed `docs/pricing.md` and wrote a wrong saving (40%). There are two wordings of the review ask and two of the ask to Lead, and one of each is drawn per run. **Held out**: no worker file, prompt or flow names the PR, the file or the figure.
 
 **Signal:** `fsdev dev --app @flow-state-dev/teammates` on a fresh store over the seeded checkout, driven over HTTP. A conversation is graded once no request in any of the user's conversations has been open for 20s, so a reply that arrives in a later turn, after a teammate's, counts.
 
@@ -12,11 +12,11 @@
   - *looked*: it called a tool. Asking a teammate counts.
   - *no paste*: no reply asks the user to paste, share or send the diff, link or copy.
   - Reported, not graded: whether a reply names the 40% claim, which it can only learn through a teammate who reads the file. The issue asks that the worker look and never ask for the diff; how far it gets depends on which teammate it asks and what they find (until FIX-2361, nobody can see a PR's diff).
-- **Leg 2** (FIX-2336's check, kept as a regression): Chief of Staff, asked what researcher and writer are working on, messages them or reads their conversations (`sendMessage` or `consultSessionHistory`), and no reply offers to do it instead ("if you want, I can…").
+- **Leg 2** (FIX-2336's check, kept as a regression): Lead, asked what researcher and writer are working on, messages them or reads their conversations (`sendMessage` or `consultSessionHistory`), and no reply offers to do it instead ("if you want, I can…").
 
 Each leg passes in 3 runs of 3 (`GOAL_RUNS`, default 3).
 
-**Anti-game:** Graded on the conversation's replies and tool outputs, read through the public client. `reviewer` has no instructions, so nothing but the default layer tells it how to ask. The 40% is in the checkout only, so naming it means something read the file. Leg 2 is not a proof of the rule: Chief of Staff's own `WORKER.md` says the same, so the control isn't asked to fail it.
+**Anti-game:** Graded on the conversation's replies and tool outputs, read through the public client. `reviewer` has no instructions, so nothing but the default layer tells it how to ask. The 40% is in the checkout only, so naming it means something read the file. Leg 2 is not a proof of the rule: Lead's own `WORKER.md` says the same, so the control isn't asked to fail it.
 
 **Model:** real: `openai/gpt-6-luna` (the lab's default).
 

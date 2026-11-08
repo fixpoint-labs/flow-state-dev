@@ -6,7 +6,7 @@
  * Leg 1: a hired worker with a description and no instructions or file tools
  * is asked to review "PR #42". It must call a tool, and no reply asks the
  * user to paste the diff.
- * Leg 2: Chief of Staff, asked what its teammates are doing, messages them or
+ * Leg 2: Lead, asked what its teammates are doing, messages them or
  * reads their conversations, and offers nothing it could have done.
  *
  * Control (`GOAL_CONTROL=old-rule`, same command): the layer's rule is
@@ -157,11 +157,11 @@ await runGoal(async (failures, tell) => {
       console.error(`run ${n}: tools [${toolCalls.join(", ")}]\n${reply}\n---`);
       notes.push(`run ${n}: tools [${toolCalls.join(", ")}], reviewed ${reviewed}, ${JSON.stringify(reply.slice(0, 160))}`);
 
-      // ── Leg 2 (FIX-2336's check, kept): asked about its teammates, Chief of Staff acts, unpushed.
+      // ── Leg 2 (FIX-2336's check, kept): asked about its teammates, Lead acts, unpushed.
       const lead = await ask(me, fixture.lead.id, pick(fixture.lead.asks));
-      if (lead.reply.trim() === "") throw new Error(`run ${n}: Chief of Staff gave no reply, nothing to grade`);
+      if (lead.reply.trim() === "") throw new Error(`run ${n}: Lead gave no reply, nothing to grade`);
       const reached = lead.toolCalls.filter((name) => /sendMessage|consultSessionHistory/.test(name));
-      if (reached.length === 0) fail(`leg 2 · acted: Chief of Staff neither messaged a teammate nor read their conversation: tools [${lead.toolCalls.join(", ")}]`);
+      if (reached.length === 0) fail(`leg 2 · acted: Lead neither messaged a teammate nor read their conversation: tools [${lead.toolCalls.join(", ")}]`);
       const offer = lead.reply.match(OFFERS);
       if (offer !== null) fail(`leg 2 · no offer: "${offer[0]}": ${JSON.stringify(lead.reply.slice(0, 400))}`);
       console.error(`run ${n} leg 2: tools [${lead.toolCalls.join(", ")}]\n${lead.reply}\n---`);

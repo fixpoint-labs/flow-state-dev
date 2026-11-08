@@ -1,8 +1,9 @@
+// FIX-413; FIX-480 §3.2.
 /**
  * BlockValue construction, resolution, and type-guard helpers.
  *
- * `BlockValue<T>` is the discriminated union carried on `BlockTraceItem.output`
- * (FIX-413). This module owns the pure functions that:
+ * `BlockValue<T>` is the discriminated union carried on `BlockTraceItem.output`.
+ * This module owns the pure functions that:
  *  - construct the three cases (`inline`, `ref`, `structure`),
  *  - resolve a `BlockValue` to its typed payload `T` via an item-id lookup,
  *  - discriminate at runtime without depending on the core `zod` surface.
@@ -10,7 +11,7 @@
  * Resolution is O(1) per ref because the executor enforces flatten-at-emit:
  * every `ref` points directly to a content-bearing item, never another ref.
  *
- * FIX-480 §3.2: refs may now point at `MessageItem` ids (in addition to
+ * Refs may now point at `MessageItem` ids (in addition to
  * `BlockTraceItem` ids), so a streaming-text generator's `block_trace.output`
  * can carry a ref to its own emitted message instead of duplicating the
  * text. Resolution returns the joined `output_text` content. Refs may also
@@ -60,6 +61,7 @@ export function isBlockValue(candidate: unknown): candidate is BlockValue {
  */
 export type ItemLookup = (itemId: string) => OutputItem | BlockTraceItem | undefined;
 
+// FIX-480.
 /**
  * Resolve a BlockValue to its typed payload `T`.
  *
@@ -67,7 +69,7 @@ export type ItemLookup = (itemId: string) => OutputItem | BlockTraceItem | undef
  * - `ref` → looks up the target item:
  *     - `block_trace` → recurse into its own BlockValue.
  *     - `message` → returns the joined `output_text` content cast to `T`
- *       (FIX-480: streaming-text generators emit refs to their own message).
+ *       (streaming-text generators emit refs to their own message).
  *     - `tool_output` → returns its `output` (a block run as a tool, or an
  *       `.asTool()` step, refs the tool result it recorded).
  *   Returns `undefined` if the target is missing (e.g., evicted).

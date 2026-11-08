@@ -10,27 +10,9 @@
  * **Local only**, like the usage read: OpenAI permits the app-server's ChatGPT
  * sign-in on a person's own machine, not in a hosted service.
  */
+import type { HarnessModelInfo, HarnessModelList } from "@flow-state-dev/core/harness";
 import { ReadStopped, startAppServer } from "./app-server";
 import { findCodexProgram, type CodexProgram } from "./usage";
-
-/** One model Codex offers. */
-export interface CodexModelInfo {
-  /** The id a run takes. Pass it as the block's `model`. */
-  id: string;
-  /** Codex's name for it. */
-  label: string;
-  /** Codex's description of it, when it gave one. */
-  description?: string;
-  /** Whether this is the model Codex runs when none is named. */
-  isDefault: boolean;
-}
-
-/** What {@link listCodexModels} found. */
-export type CodexModelList =
-  /** The models Codex's picker shows, its default first. */
-  | { status: "models"; models: CodexModelInfo[] }
-  /** No list: Codex missing, an error, no answer in time, or an empty list. `reason` is for a person. */
-  | { status: "failed"; reason: string };
 
 /** Options for {@link listCodexModels}. */
 export interface ListCodexModelsOptions {
@@ -46,7 +28,7 @@ export interface ListCodexModelsOptions {
 }
 
 /** A row of `model/list`, as far as this reads it. */
-interface ModelRow {
+interface ListedModel {
   id?: unknown;
   model?: unknown;
   displayName?: unknown;
@@ -69,7 +51,7 @@ const MAX_PAGES = 10;
  *
  * @returns `models`, the default first, or `failed` with a reason. Never throws.
  */
-export async function listCodexModels(options: ListCodexModelsOptions): Promise<CodexModelList> {
+export async function listCodexModels(options: ListCodexModelsOptions): Promise<HarnessModelList> {
   const timeoutMs = options.timeoutMs ?? 10_000;
   let program: CodexProgram;
   try {
@@ -83,11 +65,11 @@ export async function listCodexModels(options: ListCodexModelsOptions): Promise<
   try {
     await session.request("initialize", { clientInfo: { name: "flow-state-dev", title: null, version: "0" }, capabilities: null });
     session.notify("initialized");
-    const rows: ModelRow[] = [];
+    const rows: ListedModel[] = [];
     let cursor: string | null = null;
     for (let page = 0; page < MAX_PAGES; page++) {
       const answer = (await session.request("model/list", cursor === null ? {} : { cursor })) as ModelPage;
-      if (Array.isArray(answer.data)) rows.push(...(answer.data as ModelRow[]));
+      if (Array.isArray(answer.data)) rows.push(...(answer.data as ListedModel[]));
       cursor = typeof answer.nextCursor === "string" && answer.nextCursor !== "" ? answer.nextCursor : null;
       if (cursor === null) break;
     }
@@ -103,9 +85,9 @@ export async function listCodexModels(options: ListCodexModelsOptions): Promise<
 }
 
 /** Codex's rows as models: the ones its picker shows, one per id, the default first. */
-function toModels(rows: readonly ModelRow[]): CodexModelInfo[] {
+function toModels(rows: readonly ListedModel[]): HarnessModelInfo[] {
   const text = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
-  const byId = new Map<string, CodexModelInfo>();
+  const byId = new Map<string, HarnessModelInfo>();
   for (const row of rows) {
     if (row.hidden === true) continue;
     const id = text(row.model) ?? text(row.id);

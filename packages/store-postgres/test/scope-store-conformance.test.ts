@@ -11,7 +11,7 @@
  */
 import type { PGlite } from "@electric-sql/pglite";
 import { createScopeStoreConformanceTests } from "@flow-state-dev/engine/testing";
-import { createPostgresStores, type QueryExecutor } from "../src";
+import { createPostgresStores, type QueryExecutor } from "../src/host";
 import { freshPglite } from "./shared-pglite";
 
 // Every case, the shared pair included, runs on this file's one PGlite with

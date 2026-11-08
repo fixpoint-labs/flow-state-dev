@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
-import { createPostgresResourceStateStore, initializeSchema, type QueryExecutor } from "../src";
+import { createPostgresResourceStateStore, initializeSchema, type QueryExecutor } from "../src/host";
 
 const POSTGRES_URL = process.env.FSD_TEST_POSTGRES_URL;
 

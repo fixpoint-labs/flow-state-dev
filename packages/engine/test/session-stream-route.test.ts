@@ -8,17 +8,20 @@ import v8 from "node:v8";
 import vm from "node:vm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { buildBlockInstanceId, DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { buildBlockInstanceId } from "@flow-state-dev/core/internal";
 import type { OutputItem, SessionStreamEvent } from "@flow-state-dev/core/items";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  disposeFlowApiRouter,
-  parseFlowRoute,
-  withChangeBus
+  disposeFlowApiRouter
 } from "../src";
-import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import { parseFlowRoute, withChangeBus } from "../src/host";
+import type { RequestRecord, SessionRecord } from "../src/host";
+import type { StoreRegistry } from "../src";
 import { SESSION_STREAM_TIMINGS } from "../src/routes/session-stream-routes";
 
 type Router = ReturnType<typeof createFlowApiRouter>;

@@ -18,7 +18,7 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import type { FlowStateRuntime } from "@flow-state-dev/engine";
+import type { FlowStateRuntime } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineTaskCollection, type Task, type TaskWorkerInput } from "../../src/tasks";

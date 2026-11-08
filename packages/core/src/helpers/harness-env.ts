@@ -11,6 +11,34 @@
  * not.
  */
 
+/**
+ * The variables every harness's child process needs, whatever the vendor: the
+ * shell's own (`PATH`, `HOME`, `USER`, `SHELL`, `TMPDIR`) and the proxy
+ * settings a proxied network needs, in upper and lower case, since the tools
+ * a run shells out to disagree on which they read. No credential: each
+ * harness package's pass-list is this base plus its own keys and
+ * certificates, and a host adds its own after it:
+ *
+ * ```ts
+ * env: harnessEnv({ pass: [...HARNESS_BASE_PASS, "MY_KEY"] }),
+ * ```
+ */
+export const HARNESS_BASE_PASS = [
+  "PATH",
+  "HOME",
+  "USER",
+  "SHELL",
+  "TMPDIR",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "HTTP_PROXY",
+  "http_proxy",
+  "ALL_PROXY",
+  "all_proxy",
+  "NO_PROXY",
+  "no_proxy",
+] as const;
+
 /** Options for {@link harnessEnv}. */
 export interface HarnessEnvOptions {
   /**

@@ -20,9 +20,9 @@ import fs from "node:fs";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
-import type { SessionRecord } from "@flow-state-dev/engine";
+import type { SessionRecord } from "@flow-state-dev/engine/host";
 import { gateNextStateRead } from "@flow-state-dev/engine/testing";
-import { createSQLiteStores } from "../src";
+import { createSQLiteStores } from "../src/host";
 
 const notes = defineResourceCollection({
   scope: "session",

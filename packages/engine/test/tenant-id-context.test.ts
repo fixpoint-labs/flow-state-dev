@@ -11,10 +11,12 @@ import { z } from "zod";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  createResponseEmitter,
   runAction
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import { createResponseEmitter } from "../src/host";
 
 function buildCapturingFlow(capture: { tenantId?: string; sessionTenantId?: string }) {
   const probe = handler({

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SuspensionRecord } from "@flow-state-dev/core/types";
-import type { SuspensionStore } from "../src";
+import type { SuspensionStore } from "../src/host";
 import { createFilesystemSuspensionStore } from "../src/stores/filesystem/suspension-store";
 
 function makeRecord(overrides?: Partial<SuspensionRecord>): SuspensionRecord {

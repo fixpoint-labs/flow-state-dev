@@ -14,7 +14,7 @@ import { crashAndRestart } from "../../lib/server.mts";
 import type { Shipped } from "../workers-message-each-other/legs.mts";
 import { CAST } from "./cast.mts";
 import { checkSix, fileSix, legB, untilWaiting, waiting, type Context, type Filed } from "./legs.mts";
-import { aliceIn, proofsOf, rowHolds, serveLab, show, sleep, TERMINAL, type Row, type Serving } from "./world.mts";
+import { aliceIn, proofsOf, ownHolds, serveLab, show, sleep, TERMINAL, type Row, type Serving } from "./world.mts";
 
 type Contextual = (alice: Context["alice"], files: { proof: string; store: string }) => Context;
 
@@ -32,7 +32,7 @@ async function receivedFrom(c: Context, from: string): Promise<Array<{ text: str
 }
 
 /** The midway questions a row has ever had, answered or not: a question's id outlives its answer. */
-const everAsked = (row: Row | undefined): Row[] => ((row?.holds ?? []) as Row[]).filter((h) => h.source?.kind === "row" && h.midway === true);
+const everAsked = (row: Row | undefined): Row[] => ((row?.holds ?? []) as Row[]).filter((h) => h.source?.kind === "task" && h.midway === true);
 
 /**
  * j1: `desk.front`'s model files work and answers for it.
@@ -97,7 +97,7 @@ export async function journeyFiles(c: Context): Promise<void> {
     return;
   }
   const coderAsked = await c.alice.until(() => c.alice.row(coding.id), (r) => waiting("midway", r) || TERMINAL.has(r?.status), 480_000);
-  const coderQuestion = rowHolds(coderAsked)[0];
+  const coderQuestion = ownHolds(coderAsked)[0];
   if (coderQuestion === undefined) {
     c.fail("j1b:coder-heard", `the coder's task never asked: ${coderAsked?.status}, holds ${show(coderAsked?.holds)}`);
   } else {
@@ -117,12 +117,12 @@ export async function journeyFiles(c: Context): Promise<void> {
   const heldTurn = await c.alice.say(
     `File one task for ${CAST.doer} with the goal "Sort the ${c.words.topic} photos." It must not start until I answer this question: "Which album should they go in?" Put that question, word for word, in the task's questions. File nothing else.`,
   );
-  const held = (await c.alice.rows()).find((r) => !heldBefore.has(r.id) && r.assignee === CAST.doer && rowHolds(r).length > 0);
+  const held = (await c.alice.rows()).find((r) => !heldBefore.has(r.id) && r.assignee === CAST.doer && ownHolds(r).length > 0);
   if (heldTurn.status !== "completed" || held === undefined) {
     c.fail("j1:filer-files", `desk.front's turn ${heldTurn.status} filed no task held on the album question`);
     return;
   }
-  const hold = rowHolds(held)[0]!;
+  const hold = ownHolds(held)[0]!;
   const tried = await c.alice.say(
     `Task ${held.id} is waiting on a question. Answer it yourself now: read it with getTask, then call updateTask with the task's id, the question's id as question, and the message "The spring album." Tell me what the tool answered.`,
   );
@@ -134,7 +134,7 @@ export async function journeyFiles(c: Context): Promise<void> {
   }
   const still = await c.alice.row(held.id);
   c.note(`j1: desk.front's turn on the user's question ended ${tried.status}, its updateTask refused ${calls.length} time(s); the row reads ${show({ status: still?.status, holds: still?.holds?.map((h: Row) => h.id), steers: still?.steers })}`);
-  if (still?.status !== "pending" || !rowHolds(still).some((h) => h.id === hold.id) || (await c.alice.itemOf(held.id)) === undefined) {
+  if (still?.status !== "pending" || !ownHolds(still).some((h) => h.id === hold.id) || (await c.alice.itemOf(held.id)) === undefined) {
     c.fail("j1:routed-answers-nothing", `the filer's steer answered the user's question: ${show({ status: still?.status, holds: still?.holds, steers: still?.steers })}`);
   }
   // Tidy: the user answers it, so the leg leaves nothing waiting.

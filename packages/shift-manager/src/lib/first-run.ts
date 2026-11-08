@@ -1,6 +1,7 @@
+// FIX-2403.
 /**
- * What the Shift Coordinator's empty conversation offers to start with
- * (FIX-2403): lines built from the delegates its coordinator answered for the
+ * What the Shift Coordinator's empty conversation offers to start with:
+ * lines built from the delegates its coordinator answered for the
  * conversation, by the names the roster gives them. Shift Manager runs any
  * Lab, so no worker is named here; every name comes from what was read.
  */

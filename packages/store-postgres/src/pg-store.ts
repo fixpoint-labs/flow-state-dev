@@ -1,16 +1,18 @@
+// FIX-405.
 /**
  * Generic PostgreSQL record store abstraction.
  * All 4 record stores (session, request, user, org) use this base
  * with store-specific column mappings and filter builders.
  *
- * Implements FIX-405 delta verbs (`patchField` / `incField` / `pushToArray`)
+ * Implements the delta verbs (`patchField` / `incField` / `pushToArray`)
  * using JSONB native ops (`jsonb_set`, `||`) wrapped in CAS-predicated
  * UPDATEs. Each verb mutates only the targeted path inside `data->state`
  * while keeping the `version` and `updated_at` columns and their mirrored
  * top-level entries in `data` in lockstep.
  */
 
-import type { ExpectedVersion, SetResult } from "@flow-state-dev/engine";
+import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
+import type { SetResult } from "@flow-state-dev/engine/host";
 import type { QueryExecutor, QueryResultRow } from "./types";
 
 /**
@@ -59,10 +61,11 @@ export type PgRecordStoreConfig<TRecord, TListOptions> = {
   toRow: (record: TRecord) => unknown[];
   /** Build WHERE clause fragments from list options. Uses $N numbered params starting at nextParam. */
   toWhere: (options?: TListOptions, nextParam?: number) => { clause: string; params: unknown[] };
+  // FIX-1010.
   /**
    * Resolve the ORDER BY clause (column + direction) from list options.
    * Returns `undefined` for the `updated_at DESC` default, or **`null` to emit
-   * no `ORDER BY` at all** (FIX-1010). Must return a trusted,
+   * no `ORDER BY` at all**. Must return a trusted,
    * non-parameterized SQL fragment.
    *
    * The unordered mode is a correctness bound, not a nicety: a `LIMIT 1`
@@ -73,8 +76,9 @@ export type PgRecordStoreConfig<TRecord, TListOptions> = {
    * read grows with the history it sits on.
    */
   resolveOrderBy?: (options?: TListOptions) => string | null | undefined;
+  // FIX-1026.
   /**
-   * Top-level `data` keys that `set` must not write (FIX-1026).
+   * Top-level `data` keys that `set` must not write.
    *
    * The stored value wins in both directions: a written record that omits the
    * key keeps the stored one, and a written record that carries it cannot

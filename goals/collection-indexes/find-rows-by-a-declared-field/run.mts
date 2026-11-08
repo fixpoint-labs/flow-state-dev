@@ -43,16 +43,16 @@ import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { encodeUserSegment, type ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import type { ResourceStateSetOptions, StoreRegistry } from "@flow-state-dev/engine";
+import type { ResourceStateSetOptions } from "@flow-state-dev/engine/host";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
-  findTaskPartitions,
   getOrCreateTaskCollection,
-  taskLedgerResources,
   taskSchema
 } from "@flow-state-dev/orchestration/tasks";
-import { createPostgresStores } from "@flow-state-dev/store-postgres";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { findTaskPartitions, taskLedgerResources } from "@flow-state-dev/orchestration/internal";
+import { createPostgresStores } from "@flow-state-dev/store-postgres/host";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { resolveTaskPartition } from "../../../packages/orchestration/src/tasks/collection/partition.ts";
 import { goalTmpDir, loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 

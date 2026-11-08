@@ -13,16 +13,13 @@ import {
   createPostgresResourceStateStore,
   initializeSchema,
   type QueryExecutor
-} from "../src";
+} from "../src/host";
 import {
   createContentStoreConformanceTests,
   createResourceStateStoreConformanceTests
 } from "@flow-state-dev/engine/testing";
-import type {
-  ExpectedVersion,
-  SetResult,
-  VersionedResourceState
-} from "@flow-state-dev/engine";
+import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
+import type { SetResult, VersionedResourceState } from "@flow-state-dev/engine/host";
 import type { JsonObject } from "@flow-state-dev/core/types";
 
 function pgliteExecutor(pglite: PGlite): QueryExecutor {

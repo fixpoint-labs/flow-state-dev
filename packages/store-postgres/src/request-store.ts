@@ -17,7 +17,7 @@
  */
 
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import {
   abortableSleep,
   endsRequestStream,
@@ -29,15 +29,15 @@ import {
   withStoredAbortRequested,
   type ConditionalRequestFields,
   type ConditionalWriteResult,
-  type ExpectedVersion,
   type ReadEventsFn,
   type RequestListOptions,
   type RequestRecord,
-  type RequestStatus,
   type RequestStore,
   type SetResult,
   type SubscribeToEventsOptions
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
+import { type ExpectedVersion } from "@flow-state-dev/core/helpers";
+import { type RequestStatus } from "@flow-state-dev/core/types";
 import type { Pool } from "pg";
 import type { QueryExecutor } from "./types";
 import { openListen, reconnectDelay, type ListenConnection } from "./listen";
@@ -63,9 +63,10 @@ function parseItemData(data: unknown): RuntimeItem {
   return data as RuntimeItem;
 }
 
+// FIX-1619.
 /**
  * A request row's `request_items`, as one JSONB array in sequence order,
- * selected beside the row in the same statement (FIX-1619). One statement
+ * selected beside the row in the same statement. One statement
  * reads one snapshot, so the row and its items always belong to the same
  * request. Read apart, a request deleted and a new one written under its id
  * in between would hand back the old row with the new request's items.
@@ -129,8 +130,9 @@ export type CreatePostgresRequestStoreOptions = {
   subscribePollIntervalMs?: number;
 };
 
+// FIX-438.
 /**
- * Backfill `source` on records persisted before FIX-438 added the field.
+ * Backfill `source` on records persisted before the field existed.
  * Records written by the new code path always carry it.
  */
 function withSourceDefault(record: RequestRecord | undefined): RequestRecord | undefined {
@@ -257,13 +259,14 @@ export function createPostgresRequestStore(
   const pendingItemWrites = new Map<string, Promise<void>>();
   /** Holds the most recent items so the queued write always uses the latest data. */
   const latestItemSnapshots = new Map<string, RuntimeItem[]>();
+  // FIX-839.
   /**
    * Per-request map of item id → the JSON last persisted to `request_items`.
    * Diffing by serialized content (not object reference) keeps persistence
    * incremental while still catching in-place field mutations: the runtime
    * mutates a block_trace item in place across in_progress → completed (same
    * reference, new content), so a reference compare would drop the completed
-   * write and leave the row in_progress, defeating resume memoization (FIX-839).
+   * write and leave the row in_progress, defeating resume memoization.
    * (`applyDelta`'s in-place text growth still rewrites the row at the store's
    * flush cadence, as before — the per-keystroke deltas live in the events log.)
    */
@@ -292,6 +295,7 @@ export function createPostgresRequestStore(
     });
   }
 
+  // FIX-839.
   /**
    * The items in `snapshot` whose content differs from what was last
    * persisted for the request, de-duplicated by id (ON CONFLICT errors on
@@ -302,7 +306,7 @@ export function createPostgresRequestStore(
    * a block_trace item in place across in_progress → completed (same
    * reference, new content), so a reference compare would drop the
    * completed write and leave the row in_progress, defeating resume
-   * memoization (FIX-839).
+   * memoization.
    */
   function itemDelta(
     requestId: string,

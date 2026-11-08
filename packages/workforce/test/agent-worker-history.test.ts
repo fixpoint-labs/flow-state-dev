@@ -25,7 +25,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import type { FlowStateRuntime } from "@flow-state-dev/engine";
+import type { FlowStateRuntime } from "@flow-state-dev/engine/host";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import { mintWorkers } from "../src/hire";
 

@@ -20,11 +20,12 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowRegistry,
-  createInMemoryStores,
-  createInboundTransportHost,
-  defaultBodyUserIdPrincipalResolver,
-  UserBindingMismatchError
+  defaultBodyUserIdPrincipalResolver
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import { createInboundTransportHost, UserBindingMismatchError } from "../src/host";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import type { FlowRunner } from "../src/transports/runner";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";

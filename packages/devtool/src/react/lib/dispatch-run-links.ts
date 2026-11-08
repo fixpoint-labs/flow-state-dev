@@ -1,6 +1,7 @@
+// FIX-1088; FIX-1071.
 /**
  * Reading a dispatch run's two server-stamped labels, and matching a dispatch run
- * to the board tasks it is doing (FIX-1071).
+ * to the board tasks it is doing.
  *
  * A dispatch run is a session first. It carries a `topic` and a `coordinate`, both
  * display-only, both optional, and neither of them a task reference — a
@@ -87,7 +88,7 @@
  * Refusing to link without verified attribution is not an option that leaves the
  * feature standing — attribution is not merely absent from the payload, it is
  * inexpressible from it, so that rule would draw no link ever. The fix belongs
- * in the substrate: **FIX-1088** tracks emitting the owning board's id on task
+ * in the substrate: a later change tracks emitting the owning board's id on task
  * events. Once attribution is verifiable the rules here get SIMPLER, and the
  * contention pass is retired rather than extended.
  */
@@ -199,12 +200,13 @@ export type LinkedTask = {
   task: Task;
 };
 
+// BP-030.
 /**
  * Does this task fit the decoded key?
  *
  * A `per-task` key names one row by id. A `per-worker` key names an assignee, and a
  * task sits on it when its `assignee` is that assignee — `== null`-guarded, since a
- * store that writes absent keys as `null` hands one back (BP-030). An
+ * store that writes absent keys as `null` hands one back. An
  * unassigned row fits no assignee: the board routes a row to an assignee's dispatcher
  * only once it is assigned there, so the absence is a statement about where
  * the row has not gone, not a gap in what is known.

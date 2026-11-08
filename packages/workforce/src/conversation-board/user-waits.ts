@@ -1,5 +1,6 @@
+// FIX-2131.
 /**
- * The two ways a worker's model waits on the user (FIX-2131): `holdTaskForUser`,
+ * The two ways a worker's model waits on the user: `holdTaskForUser`,
  * which holds its task on a question, and `suspendForUser`, which stops the turn
  * for the user's approval, review or (on a turn with no task row) input, as
  * one capability a worker turn composes.
@@ -35,7 +36,7 @@ export const userWaits = defineCapability({
   presets: {
     tools: {
       controlTools: async (ctx) => {
-        const [asks, waits] = await Promise.all([ask.offered(ctx as never), wait.offered(ctx as never)]);
+        const [asks, waits] = await Promise.all([ask.offered(ctx), wait.offered(ctx)]);
         return [...(asks ? [ask.tool] : []), ...(waits ? [wait.tool] : [])];
       }
     },

@@ -9,7 +9,7 @@
  * `board`, through the same end-of-turn queue (`publishNotices`) as the store writes' notices
  * (`publish-writes.ts`), so a failed publish never fails the write it follows.
  */
-import type { BoardNoticeSeam } from "@flow-state-dev/core/types";
+import type { BoardNoticeSeam } from "@flow-state-dev/core/internal";
 import { publishNotices } from "./publish-writes";
 import type { ChangeBus } from "./types";
 

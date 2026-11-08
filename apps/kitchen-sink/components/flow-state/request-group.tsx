@@ -17,6 +17,7 @@
 import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { buildItemRenderStream, ItemsRenderer, useFlowContext, type RendererRegistry } from "@flow-state-dev/react";
+import { useConversationFeed } from "./conversation";
 import { SourcesGroup } from "./sources";
 import { StreamingIndicator, WorkedFor } from "./streaming-indicator";
 import { collectTaskOwnedItemIds } from "./task-plan-state";
@@ -78,11 +79,9 @@ type RequestGroupRendererProps = {
 };
 
 /**
- * Renders items grouped by request. The last request group gets
- * `min-height: 100dvh` so that when a new user message is sent,
- * it sits at the top of the viewport while streaming content fills
- * in below. As the content grows past the viewport, the min-height
- * becomes irrelevant and scrolling works normally.
+ * Renders items grouped by request. Inside a `<Conversation>`, a segment that
+ * holds the user's message is marked as their line, by that message's id,
+ * so a send the app reports with `feed.sent()` rises to near the top.
  */
 export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFinishing = false, showWorkedFor = false, latestCompletedAtMs }: RequestGroupRendererProps) {
   const groups = useMemo(() => groupItemsByRequest(items), [items]);
@@ -183,11 +182,18 @@ function RequestGroup({
     [showWorkedFor, live, completedAtMs, group.items],
   );
 
+  // The user's line: only the segment holding their message is marked, however many segments its
+  // request owns. It is named by that message's request, not its id: a sent line is drawn first as an
+  // optimistic message and replaced by the server's under another id, and the feed keeps its space
+  // under the line by this name. Outside a Conversation nothing is marked.
+  const feed = useConversationFeed();
+  const userItem = group.items.find((item) => item.type === "message" && item.role === "user");
+
   return (
     <div
       data-request-id={group.requestId}
       className="flex flex-col gap-2"
-      style={isLast ? { minHeight: "70dvh" } : undefined}
+      {...(feed && userItem ? feed.mine(userItem.requestId) : undefined)}
     >
       <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} live={isLast && isStreaming} />
       <SourcesGroup items={group.items} />

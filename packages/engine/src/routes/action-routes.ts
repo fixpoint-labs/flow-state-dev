@@ -56,7 +56,8 @@ type ActionRouteContext = {
   seams: InternalRouteSeams;
   bootstrapMetadata: Record<string, unknown>;
   requestContext: RequestContext;
-  /** Header carrying the tenant id; defaults to `x-tenant-id` (FIX-406 6D). */
+  // FIX-406 6D.
+  /** Header carrying the tenant id; defaults to `x-tenant-id`. */
   tenantIdHeader?: string;
 };
 
@@ -217,7 +218,7 @@ export async function handleExecuteAction(
   // Hold the ack until the request is accepted, so a 202 means "discoverable"
   // and a store-write or enqueue failure becomes a failed POST rather than an
   // ack for a request that never runs (FIX-828). What acceptance costs differs
-  // by dispatch path — see `DispatchHandle.accepted` — but the ack's meaning
+  // by dispatch path — see `InboundDispatchHandle.accepted` — but the ack's meaning
   // does not: in-process now waits for the run's own registration rather than
   // acking a request whose registry write could still fail (FIX-982).
   if (handle.accepted !== undefined) {

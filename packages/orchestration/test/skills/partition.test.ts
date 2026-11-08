@@ -13,11 +13,13 @@ import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   resolveUserStorageKey,
   runAction,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { z } from "zod";
 import { defineSkillsCollection } from "../../src/skills/collection";
 import { resolveSkillsCollection } from "../../src/skills/partition";

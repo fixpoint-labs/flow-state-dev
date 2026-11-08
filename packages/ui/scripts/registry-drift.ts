@@ -19,8 +19,13 @@
  * `compared` is returned so the caller can pin its count: deleting a source
  * file, or quietly excluding one, otherwise shrinks the comparison and passes
  * by comparing less.
+ *
+ * `refreshRegistryCopies` is the writer beside the checker: given the same
+ * options, it copies every file the comparison checks from its source, so an
+ * edit to the registry reaches the app with one command and what is copied is
+ * what is checked.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -60,16 +65,21 @@ function walk(dir: string): string[] {
   return out;
 }
 
-/** Compare `targetDir` against the registry's sources in both directions. */
-export function compareRegistryCopies(options: RegistryCopyOptions): RegistryCopyDrift {
-  const sourceDir = options.sourceDir ?? REGISTRY_SOURCE_DIR;
+/** The source files an app's copies are held to: stories and what it never installed left out. */
+function installedSources(sourceDir: string, options: RegistryCopyOptions): string[] {
   const notInstalled = options.notInstalled ?? (() => false);
-  const appOnly = options.appOnly ?? {};
-
-  const compared = walk(sourceDir)
+  return walk(sourceDir)
     .filter((file) => !file.endsWith(".stories.tsx"))
     .filter((file) => !notInstalled(file))
     .sort();
+}
+
+/** Compare `targetDir` against the registry's sources in both directions. */
+export function compareRegistryCopies(options: RegistryCopyOptions): RegistryCopyDrift {
+  const sourceDir = options.sourceDir ?? REGISTRY_SOURCE_DIR;
+  const appOnly = options.appOnly ?? {};
+
+  const compared = installedSources(sourceDir, options);
 
   const mismatches: string[] = [];
   for (const file of compared) {
@@ -86,4 +96,21 @@ export function compareRegistryCopies(options: RegistryCopyOptions): RegistryCop
     .filter((file) => !(file in appOnly) && !existsSync(join(sourceDir, file)));
 
   return { compared, mismatches, forks };
+}
+
+/**
+ * Copy every source file {@link compareRegistryCopies} checks into
+ * `targetDir`, overwriting the app's copy. Files the app never installed and
+ * its own files are left as they are. Returns the files written, relative and
+ * sorted: the comparison's `compared` for the same options.
+ */
+export function refreshRegistryCopies(options: RegistryCopyOptions): string[] {
+  const sourceDir = options.sourceDir ?? REGISTRY_SOURCE_DIR;
+  const files = installedSources(sourceDir, options);
+  for (const file of files) {
+    const target = join(options.targetDir, file);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(join(sourceDir, file), target);
+  }
+  return files;
 }

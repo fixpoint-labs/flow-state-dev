@@ -28,7 +28,8 @@ import type {
   SessionItemEvent,
   SessionMetadataChangedEvent,
   SessionRun,
-  StateChangeItem
+  StateChangeItem,
+  SuspensionItem
 } from "@flow-state-dev/core/items";
 import { followSession, mayReplaceItem, readSessionHistory } from "@flow-state-dev/client/internal";
 import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
@@ -37,6 +38,7 @@ import type { RequestStatus, ResumeAction } from "@flow-state-dev/core/types";
 import { resolveItemVisibility } from "@flow-state-dev/contracts";
 import { useFlowContext } from "../context/FlowContext";
 import { useClient } from "../internal/useClient";
+import { answerStop } from "../internal/answerStop";
 import { coalescedReads } from "../internal/coalescedReads";
 import { LIVE_POLL_MS, mayBelongTo } from "../internal/scopeNotices";
 import {
@@ -456,27 +458,35 @@ export type SessionView = {
    */
   resumeLatestRequest: () => Promise<void>;
   /**
-   * Resolve a pending durable-execution suspension (approve/reject) and stream
-   * the continuation back into this session's `items`. The resume POSTs with
-   * `Accept: text/event-stream`, so the resumed run streams from the POST
-   * response on the same instance that handled it — the post-suspension output
-   * renders live, with no page refresh, even on serverless (where a separate GET
-   * reconnect couldn't reach the in-flight continuation). Falls back to a GET
-   * re-attach + snapshot refresh when the server returns a 202 instead of SSE.
+   * Answer a pending stop (approve, reject, submit or skip) and stream the
+   * continuation back into this session's `items`. A user's stop
+   * (`ctx.suspendForUser`, or a raw `user_approval` / `user_input`) is
+   * answered through the client's `answer`, whatever started its run, a
+   * task's or a webhook's included; a developer's own `ctx.suspend` with a
+   * custom reason through `resume`. The reason is read off the suspension
+   * item in `items`; a stop not there is answered as a user's.
    *
-   * `requestId` is the suspended request's id (carried on the suspension item).
-   * The continuation re-enters that same id (FIX-811), so its items merge into
-   * the existing stream rather than creating a new request.
+   * The POST carries `Accept: text/event-stream`, so the continuation streams
+   * from the POST response on the same instance that handled it: the output
+   * after the stop renders live, with no page refresh, even on serverless
+   * (where a separate GET reconnect couldn't reach the in-flight
+   * continuation). Falls back to a GET re-attach and a snapshot refresh when
+   * the server returns a 202 instead of SSE.
+   *
+   * `requestId` is the stopped request's id (carried on the suspension item).
+   * The continuation re-enters that same id, so its items merge into the
+   * existing stream rather than creating a new request. Who answered is the
+   * signed-in caller, set by the server.
    */
-  resumeSuspension: (args: {
+  answerSuspension: (args: {
     suspensionId: string;
     requestId: string;
     action: ResumeAction;
     data?: unknown;
-    resumedBy?: string;
   }) => Promise<void>;
+  // FIX-865.
   /**
-   * Continue a crash-interrupted request under its OWN id (FIX-865) and stream
+   * Continue a crash-interrupted request under its OWN id and stream
    * the re-entry's items back into this session's `items`. Unlike
    * `resumeLatestRequest` (which re-dispatches the session's most recent
    * request via `/retry` under a NEW id), this targets a specific `requestId`
@@ -485,7 +495,7 @@ export type SessionView = {
    *
    * POSTs inline with `Accept: text/event-stream` so the continuation streams
    * from the same POST response on the instance that handled it (mirrors
-   * `resumeSuspension`'s inline-streaming rationale — essential on
+   * `answerSuspension`'s inline-streaming rationale — essential on
    * serverless). If the server instead returns a 202 (no inline streaming
    * support), the continuation has already been accepted server-side — this
    * does NOT re-POST `/continue` (the record has left `interrupted`, so a
@@ -520,8 +530,9 @@ export type SessionView = {
    * which settles its items.
    */
   refresh: (options?: SessionRefreshOptions) => Promise<void>;
+  // FIX-523.
   /**
-   * Subscribe to streaming TTS audio chunks (FIX-523). Chunks are live-only
+   * Subscribe to streaming TTS audio chunks. Chunks are live-only
    * and not retained in session item state — the durable representation is
    * the eventual `OutputAudioContent` snapshot delivered via `items`. The
    * returned function unsubscribes. Used by `useVoice` for gapless playback;
@@ -809,10 +820,11 @@ export function useSession(
    * with no intermediate transitions. Drained in `applySnapshot`.
    */
   const pendingStateChangesRef = useRef<StateChangeItem[]>([]);
+  // FIX-739.
   /**
    * Buffer for `live: true` `resource_change` items received before the initial
-   * snapshot lands — the resource-side twin of `pendingStateChangesRef`
-   * (FIX-739). `mergeResourceChangeIntoSnapshot` bails when `prev === null`, so
+   * snapshot lands — the resource-side twin of `pendingStateChangesRef`.
+   * `mergeResourceChangeIntoSnapshot` bails when `prev === null`, so
    * mid-stream resource deltas emitted before the snapshot resolves would be
    * lost without this buffer. Drained in `applySnapshot`.
    */
@@ -820,8 +832,9 @@ export function useSession(
   const flushHandleRef = useRef<number | null>(null);
   /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
   const resourceChangedDuringStreamRef = useRef(false);
+  // FIX-523.
   /**
-   * Subscribers attached via `subscribeAudioDelta` (FIX-523). The set lives
+   * Subscribers attached via `subscribeAudioDelta`. The set lives
    * on a ref so handler identities can mutate over the lifetime of a
    * subscriber without forcing re-renders. We dispatch synchronously inside
    * the SSE callback so downstream consumers (the audio player) get the
@@ -1404,7 +1417,7 @@ export function useSession(
           //   - LIVE (`client.live: true`, carries an inline `delta`, FIX-739):
           //     merge the projected delta into the cached snapshot mid-stream —
           //     same mechanism as state_change — and skip the refetch path so a
-          //     subscribed useResourceCollectionItem/useResource updates with no
+          //     subscribed useCollectionResource/useResource updates with no
           //     HTTP round-trip.
           //   - DEFAULT (no delta): resources have separate content endpoints,
           //     so flag a single batched snapshot refetch at completion rather
@@ -2514,7 +2527,7 @@ export function useSession(
     refreshChildSessions
   ]);
 
-  // Shared by resumeSuspension (FIX-811) and continueRequest (FIX-865): both
+  // Shared by answerSuspension (FIX-811) and continueRequest (FIX-865): both
   // re-enter an existing request's own id via a single inline-streaming POST,
   // never followed by a second POST — once the request has gone out, the
   // server has already accepted it (SSE or 202), so a fallback POST would
@@ -2522,7 +2535,7 @@ export function useSession(
   // reconnect via GET instead of re-posting.
   const performInlineReentry = useCallback(
     async (requestId: string, post: () => Promise<Response>): Promise<void> => {
-      // Discovery — the shared path behind `resumeSuspension` and
+      // Discovery — the shared path behind `answerSuspension` and
       // `continueRequest`. A parent that launches background work after a
       // human approval gate comes through here, not through `sendAction`.
       void refreshChildSessions();
@@ -2576,31 +2589,37 @@ export function useSession(
     ]
   );
 
-  const resumeSuspension = useCallback(
+  // The reason of each stop the view holds, read at call time so the
+  // callback keeps one identity while items stream in.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+
+  const answerSuspension = useCallback(
     async (args: {
       suspensionId: string;
       requestId: string;
       action: ResumeAction;
       data?: unknown;
-      resumedBy?: string;
     }): Promise<void> => {
-      // Stream the resume: POST with Accept: text/event-stream so the
-      // continuation streams back from the POST response on the same instance.
-      // Mirrors sendAction's inline-streaming path — essential on serverless
-      // where a separate GET stream can't reach the in-flight continuation.
+      // A suspension id is unique within its request only, so match both.
+      const stop = itemsRef.current.find(
+        (item): item is SuspensionItem =>
+          item.type === "suspension" &&
+          item.requestId === args.requestId &&
+          (item as SuspensionItem).suspensionId === args.suspensionId
+      );
+      // Streamed from the POST: essential on serverless, where a separate GET
+      // stream can't reach the in-flight continuation.
       await performInlineReentry(args.requestId, () =>
-        flow.request(args.requestId).resume(
-          {
-            suspensionId: args.suspensionId,
-            action: args.action,
-            data: args.data,
-            resumedBy: args.resumedBy ?? userId
-          },
+        answerStop(
+          flow.request(args.requestId),
+          stop?.reason,
+          { suspensionId: args.suspensionId, action: args.action, data: args.data },
           { stream: true }
         )
       );
     },
-    [flow, userId, performInlineReentry]
+    [flow, performInlineReentry]
   );
 
   const continueRequest = useCallback(
@@ -2650,7 +2669,7 @@ export function useSession(
     abortRequest,
     dismissRequest,
     resumeLatestRequest,
-    resumeSuspension,
+    answerSuspension,
     continueRequest,
     followRequest,
     refresh,

@@ -9,7 +9,7 @@
  * `WorkerManifest`; a file-declared document is a `ResourceDoc`.
  */
 
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { InitialSkill } from "@flow-state-dev/core/types";
 
 /**
  * One worker, as declared on disk or hand-built. Declared once, in this module; the loader
@@ -745,7 +745,7 @@ export function refusedReferenceDeclarationMessage(
       `where the file sits, not one a reference declares. A reference is read from its file ` +
       `and nothing can write it — the folder carries that, so no file has to ask for it and ` +
       `no file can turn it off. Drop the key, or move this document to \`resources/\`, where ` +
-      `it seeds a row and can be written.`
+      `it seeds a resource and can be written.`
     );
   }
 

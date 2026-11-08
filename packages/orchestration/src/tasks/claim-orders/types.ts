@@ -1,5 +1,6 @@
+// FIX-443 §4.
 /**
- * `ClaimOrder` interface (FIX-443 §4).
+ * `ClaimOrder` interface.
  *
  * A claim order's `claim` selects and commits as one call: it scans the
  * collection for an eligible task, then opens a conditional write that

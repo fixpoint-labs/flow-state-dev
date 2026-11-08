@@ -22,14 +22,12 @@ import type {
   MessageItem,
 } from "@flow-state-dev/core/items";
 import { buildItemLookup } from "@flow-state-dev/core/items";
-import { resolveBlockValueInternal, type BlockValueInternal, type RuntimeItem } from "@flow-state-dev/core/items/internal";
+import { resolveBlockValueInternal, type BlockValueInternal, type RuntimeItem } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import {
-  createInMemoryStores,
-  createResponseEmitter,
-  runAction,
-} from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
+import { createResponseEmitter } from "../src/host";
 
 function streamingModelResolver(chunks: string[]) {
   const resolver = ((modelId: string) => {

@@ -3,13 +3,13 @@
  * whose output it reads (a coordinator's delegate actions, a session's task
  * list, a project's workstream writes, a roster write).
  *
- * The action is sent on the session's flow, and its answer is read back from
- * the session's request list once the request ends. A refused request rejects
+ * The action is sent on the session's flow, and its answer is read back by
+ * the request's id once it ends (`result()`). A refused request rejects
  * with the Lab's own reason ({@link ActionRefused}); anything else (the Lab out
  * of reach, a 5xx) is thrown as it came, and is something to retry.
  */
 import { ClientHttpError } from "@flow-state-dev/client";
-import type { Client, SentRequest } from "@flow-state-dev/client";
+import type { Client, RequestResult, SentRequest } from "@flow-state-dev/client";
 import { newSessionId } from "./ids";
 import { describeFailure } from "./reads";
 
@@ -38,9 +38,6 @@ export class ActionAnswerUnread extends Error {
 
 const POLL_MS = 150;
 const TIMEOUT_MS = 30_000;
-/** Requests listed per page while looking for the one that just ended. */
-const REQUEST_PAGE = 100;
-const REQUEST_PAGES = 20;
 
 /**
  * Run one action on a session of flow `flow` (or, with no session, on a new
@@ -56,7 +53,7 @@ export async function runAction(
 ): Promise<{ output: unknown; sessionId: string }> {
   const actions = client.flow(flow);
   // A new session is named here: the Lab's answer to an action started with
-  // no session names none, and its requests are read back by session.
+  // no session names none, and the caller is told which session it ran in.
   const session = sessionId ?? newSessionId("act");
   let started: SentRequest;
   try {
@@ -68,41 +65,26 @@ export async function runAction(
     }
     throw error;
   }
-  const requestId = started.id;
-
-  const until = Date.now() + TIMEOUT_MS;
-  let status: Awaited<ReturnType<SentRequest["status"]>>["status"];
-  for (;;) {
-    status = (await actions.request(requestId).status()).status;
-    if (status !== "in_progress") break;
-    if (Date.now() > until) throw new Error(`The Lab did not finish ${action} in time.`);
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  let status: RequestResult["status"];
+  try {
+    status = (await started.wait({ pollMs: POLL_MS, timeoutMs: TIMEOUT_MS })).status;
+  } catch (error) {
+    if (error instanceof ClientHttpError && error.status === 0) throw new Error(`The Lab did not finish ${action} in time.`);
+    throw error;
   }
-  // Ended without the Lab's answer (aborted, interrupted, incomplete): not a refusal, so the view offers Retry.
+  // Ended without the Lab's answer (aborted, interrupted, incomplete, suspended): not a refusal, so the view offers Retry.
   if (status !== "completed" && status !== "failed") throw new Error(`The Lab's ${action} ended ${status} before it answered.`);
 
-  const findAnswer = async () => {
-    for (let page = 0; page < REQUEST_PAGES; page += 1) {
-      const listed = await client.sessions.requests(session, {
-        status,
-        includeResultOutput: true,
-        limit: REQUEST_PAGE,
-        offset: page * REQUEST_PAGE,
-      });
-      const found = listed.find((request) => request.id === requestId);
-      if (found !== undefined || listed.length < REQUEST_PAGE) return found;
-    }
-    return undefined;
-  };
-  let found: Awaited<ReturnType<typeof findAnswer>>;
+  // Settled, so `result()` reads the request once, by its id, with its answer.
+  let settled: RequestResult;
   try {
-    found = await findAnswer();
+    settled = await started.result({ pollMs: POLL_MS, timeoutMs: TIMEOUT_MS });
   } catch (error) {
     // The action is done; only reading its answer failed.
     if (status === "completed") throw new ActionAnswerUnread(action, error);
     throw error;
   }
-  if (status === "failed") throw new ActionRefused(found?.result?.error?.message ?? `${action} was refused.`);
-  if (found === undefined) throw new ActionAnswerUnread(action, new Error("its answer is not in the session's requests"));
-  return { output: found.result?.output, sessionId: session };
+  if (settled.status === "failed") throw new ActionRefused(settled.error?.message ?? `${action} was refused.`);
+  if (settled.outputNotRecorded === true) throw new ActionAnswerUnread(action, new Error("the Lab could not store it"));
+  return { output: settled.output, sessionId: session };
 }

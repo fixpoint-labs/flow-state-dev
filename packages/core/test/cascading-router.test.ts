@@ -20,7 +20,7 @@ import { cascadeGate, type CascadeGateDecision } from "../src/utility/cascading-
 import { cascadingRouter, type CascadeLevel } from "../src/utility/cascading-router";
 
 type Branches = Record<string, { minConfidence?: number }>;
-type Row = {
+type Case = {
   rule: string;
   answer: EvaluatorAnswer | undefined;
   branches: Branches;
@@ -29,7 +29,7 @@ type Row = {
 
 const routes: Branches = { billing: {}, technical: { minConfidence: 0.6 } };
 
-const rows: Row[] = [
+const rows: Case[] = [
   {
     rule: "BR-1: a matching choice with confidence opens a no-floor edge, however low",
     answer: { type: "choice", choice: "billing", confidence: 0.2 },

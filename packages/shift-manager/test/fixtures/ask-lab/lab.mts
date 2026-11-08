@@ -23,9 +23,9 @@ import {
   createFlowState,
   inMemoryStores,
   PrincipalResolutionError,
-  runAction,
-  type PrincipalResolver,
+  runAction
 } from "@flow-state-dev/engine";
+import { type PrincipalResolver } from "@flow-state-dev/engine/host";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   COORDINATOR_FLOW,

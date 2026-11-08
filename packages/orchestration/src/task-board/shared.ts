@@ -9,27 +9,22 @@
  */
 import {
   fifoClaimOrder,
-  hasOpenHold,
   isClaimable,
   leaseLapsed,
   priorityClaimOrder,
-  topologicalClaimOrder,
   type Task,
   type TaskCollectionRef,
   type ClaimOrder,
   type TaskStatus,
 } from "../tasks";
+import { hasOpenHold, holdActorOf } from "../tasks/collection/holds";
 
 /**
  * Accepted shapes for the Task Board's `claimOrder` config: either a
  * `ClaimOrder` instance, or a string naming one of the substrate's
  * standard claim orders.
  */
-export type TaskBoardClaimOrderInput =
-  | ClaimOrder
-  | "fifo"
-  | "topological"
-  | "priority";
+export type TaskBoardClaimOrderInput = ClaimOrder | "fifo" | "priority";
 
 /** Resolve a `TaskBoardClaimOrderInput` to a concrete claim order. */
 export function resolveClaimOrder(
@@ -39,8 +34,6 @@ export function resolveClaimOrder(
   switch (input) {
     case "fifo":
       return fifoClaimOrder;
-    case "topological":
-      return topologicalClaimOrder;
     case "priority":
       return priorityClaimOrder;
     default: {
@@ -52,9 +45,10 @@ export function resolveClaimOrder(
   }
 }
 
+// FIX-982.
 /**
  * Would this row's work be *routed* to a child session rather than run in the
- * drain that is asking (FIX-982)?
+ * drain that is asking?
  *
  * A board with a `dispatcher({ type: "task" })` assignee hands its claimed rows
  * to a child session, which settles them from its own session. The launching
@@ -73,6 +67,7 @@ export function resolveClaimOrder(
  */
 export type RunsElsewhere = (task: Task) => boolean;
 
+// FIX-1074; FIX-2076.
 /**
  * Is this row **dispatched** — routed to a child session, and still held by one?
  *
@@ -86,9 +81,9 @@ export type RunsElsewhere = (task: Task) => boolean;
  * board's completion meta asks "did this board finish, or hand its remaining
  * work over" — and a board that answered those with two spellings would report
  * a drain it correctly exited as a failure, or a genuinely stuck board as a
- * clean dispatch. One predicate, one answer (FIX-1074).
+ * clean dispatch. One predicate, one answer.
  *
- * `runsElsewhere` absent means a plan board (FIX-2076), whose rows all run in
+ * `runsElsewhere` absent means a plan board, whose rows all run in
  * the drain, so nothing is ever dispatched and every caller keeps its
  * pre-dispatch behaviour bit-for-bit.
  */
@@ -103,6 +98,7 @@ export function isDispatched(
   );
 }
 
+// FIX-1005.
 /**
  * Count rows in `statuses`, minus the `in_progress` ones `runsElsewhere`
  * places outside this drain, and, with `excuseWaitingOnUser`, minus the
@@ -154,7 +150,7 @@ export function isDispatched(
  * renewed from inside the child for as long as the child lives, so a live lease
  * means a live worker somewhere and a lapsed one means the row is recoverable —
  * the same reading `hasClaimableTask` and the substrate's own `claim` already
- * take (FIX-1005).
+ * take.
  *
  * **The clock comes from the collection** for the reason `hasClaimableTask`
  * names: the deadline was stamped against that clock by the claim write.
@@ -174,34 +170,50 @@ function countWaitable(
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
     if (isDispatched(row, now, runsElsewhere)) continue;
-    if (excuseWaitingOnUser && waitsOnUser(row)) continue;
+    // Any open hold: a row waiting on a person or on an event outside the board is moved by neither drain.
+    if (excuseWaitingOnUser && waitsOnHold(row)) continue;
     waiting += 1;
   }
   return waiting;
 }
 
+// FIX-2131; FIX-2578.
 /**
- * Whether a running row waits on a user (FIX-2131): it has an open hold,
- * a question it asked (a row hold, its lease dropped) or the mirror of its
- * run's stop for a user (a suspension hold). Read off the row's open holds
- * (ER-8), never off a status: no row is parked. Nothing in a drain moves such
- * a row; the user's answer does.
+ * Whether a running row waits on a user: it has an open hold
+ * whose actor is the user (`holdActorOf`), a question it asked (a row
+ * hold, its lease dropped) or the mirror of its run's stop for a user (a
+ * suspension hold). An external wait alone is not a user's. Read off the
+ * row's open holds (ER-8), never off a status: no row is parked. Nothing in a
+ * drain moves such a row; the user's answer does.
  */
 export function waitsOnUser(row: Task): boolean {
+  return row.status === "in_progress" && holdActorOf(row) === "user";
+}
+
+// FIX-2578.
+/**
+ * Whether a running row waits on anything a drain does not move: a person
+ * ({@link waitsOnUser}), or an event outside the board, an external wait
+ * (`actor: "system"`). Its lease is dropped and the release owes
+ * it a turn, so it is not abandoned, and no active worker holds it.
+ */
+export function waitsOnHold(row: Task): boolean {
   return row.status === "in_progress" && hasOpenHold(row);
 }
 
+// FIX-982.
 /**
  * Count tasks the loop must wait on: `pending` and `in_progress`, a running
  * row waiting on a user included. Terminal statuses don't count.
  *
- * `runsElsewhere` (FIX-982) drops the rows a child session is running. See
+ * `runsElsewhere` drops the rows a child session is running. See
  * {@link countWaitable}.
  */
 export function inFlightCount(collection: TaskCollectionRef, runsElsewhere?: RunsElsewhere): number {
   return countWaitable(collection, ["pending", "in_progress"], runsElsewhere);
 }
 
+// FIX-2131.
 /**
  * Count the rows an active worker is holding — `in_progress`, less the rows
  * waiting on a user. The `complete-or-blocked` arm reads this to ask
@@ -213,7 +225,7 @@ export function inFlightCount(collection: TaskCollectionRef, runsElsewhere?: Run
  * the other still seeing an active worker — which is the drift the quiescence
  * module exists to prevent.
  *
- * **A row waiting on a user is excused here, and only here** (FIX-2131).
+ * **A row waiting on a user is excused here, and only here**.
  * `inFlightCount` keeps it, so the board isn't drained; this count drops it,
  * so a board whose only open rows wait on a user, with nothing claimable,
  * reports `blocked` rather than spinning to its iteration limit, which with no
@@ -223,6 +235,7 @@ export function activeWorkerCount(collection: TaskCollectionRef, runsElsewhere?:
   return countWaitable(collection, ["in_progress"], runsElsewhere, true);
 }
 
+// FIX-1005.
 /**
  * Read-only probe: does the collection currently hold at least one task the
  * claim path would look at? Used by the worker idle-wait predicate to decide
@@ -230,7 +243,7 @@ export function activeWorkerCount(collection: TaskCollectionRef, runsElsewhere?:
  * by design — a sibling worker may win the race; the predicate's job is only
  * to gate the wake-up, not to guarantee dispatch.
  *
- * Reads the substrate's **shared** `isClaimable` (FIX-1005) rather than a
+ * Reads the substrate's **shared** `isClaimable` rather than a
  * second hand-written copy of it, which is what keeps this from drifting away
  * from what `claim` will actually take. That matters in both directions: a
  * probe narrower than `claim` leaves a board asleep on work it could recover,

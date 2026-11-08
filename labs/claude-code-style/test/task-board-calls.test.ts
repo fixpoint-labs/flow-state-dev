@@ -7,14 +7,14 @@
  */
 import { describe, expect, it } from "vitest";
 import type { Client } from "@flow-state-dev/client";
-import { createWiredLab, type TaskRow } from "../src/adapter";
+import { createWiredLab, type LabTask } from "../src/adapter";
 
 type Sent = { flow: string; action: string; input: Record<string, unknown>; sessionId: string };
 
 /**
  * A client whose board holds `rows`. A send is answered by `answer`; only the
- * board client's routine (`flow.request(id).wait`) can wait on it, so a send
- * through any other path fails.
+ * board client's routine (`flow.request(id).result`) can read its answer, by the
+ * request's id, so a send through any other path fails.
  */
 function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Record<string, unknown> = () => ({ ok: true })) {
   const sent: Sent[] = [];
@@ -23,7 +23,6 @@ function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Rec
     subscribe: () => ({ close: () => {} }),
     sessions: {
       get: async (id: string) => ({ id, flowKind: "agent", flowId: "agent", state: {} }),
-      requests: async () => [...outputs].map(([id, output]) => ({ id, result: { output } })),
     },
     flow: (flow: string) => ({
       read: async () => ({ ok: true, tasks: rows }),
@@ -32,10 +31,10 @@ function fakeClient(rows: Record<string, unknown>[], answer: (sent: Sent) => Rec
         sent.push(entry);
         const id = `r${sent.length}`;
         outputs.set(id, answer(entry));
-        // Only `getTask`, a read the adapter makes through its own `run`, waits on the started request.
-        return action.startsWith("getTask_") ? { id, wait: async () => ({ status: "completed" }) } : { id };
+        // Only `getTask`, a read the adapter makes through its own `run`, reads the started request's answer.
+        return action.startsWith("getTask_") ? { id, result: async () => ({ status: "completed", output: outputs.get(id) }) } : { id };
       },
-      request: () => ({ wait: async () => ({ status: "completed" }) }),
+      request: (id: string) => ({ result: async () => ({ status: "completed", output: outputs.get(id) }) }),
     }),
   } as unknown as Client;
   return { client, sent };
@@ -77,7 +76,7 @@ describe("the adapter's task actions", () => {
     );
     const wired = createWiredLab(lab.client);
     const read = () =>
-      new Promise<TaskRow[]>((resolve) => {
+      new Promise<LabTask[]>((resolve) => {
         const stop = wired.watchTasks("s1", (rows) => {
           stop();
           resolve(rows);
@@ -105,7 +104,7 @@ describe("the adapter's task actions", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     first();
     expect(reads).toBe(1);
-    const rows = await new Promise<TaskRow[]>((resolve) => {
+    const rows = await new Promise<LabTask[]>((resolve) => {
       const stop = wired.watchTasks("s1", (next) => {
         stop();
         resolve(next);

@@ -25,8 +25,9 @@ import {
   createPostgresRequestStore,
   initializeSchema,
   type QueryExecutor
-} from "../src";
-import type { RequestRecord, RequestStatus } from "@flow-state-dev/engine";
+} from "../src/host";
+import type { RequestRecord } from "@flow-state-dev/engine/host";
+import type { RequestStatus } from "@flow-state-dev/core/types";
 
 /**
  * A `QueryExecutor` that runs `afterQuery` once each statement has completed,

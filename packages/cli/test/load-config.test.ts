@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { isFlowState } from "@flow-state-dev/engine";
+import { isFlowState } from "@flow-state-dev/engine/host";
 import { loadFsdevConfig } from "../src/load-config";
 import { CliError } from "../src/resolve-block";
 import { EXIT_CONFIG_ERROR } from "../src/exit-codes";

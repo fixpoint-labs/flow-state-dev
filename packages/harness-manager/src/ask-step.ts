@@ -1,11 +1,12 @@
+// FIX-2132; FIX-2133.
 /**
  * The ask step: the one place a harness run's verdict becomes a stop for a
- * person (FIX-2132).
+ * person.
  *
  * Every ask the manager makes comes here: a run's own question (its marker),
  * the judge's *ask*, and held work that does not match its record. Each one is
  * a question, so each holds the run's task on it through the board's one ask
- * write (`askMidway`, FIX-2133): the question is kept on the task's row, the
+ * write (`askMidway`): the question is kept on the task's row, the
  * row's lease is dropped, and the turn ends without settling. The Inbox lists
  * the held task as a question, and its answer, from the Inbox or a line typed
  * in the run's session, owes the task one more turn on the same attempt. That
@@ -19,9 +20,9 @@
  * turn generation, never a ticket minted from the row as it stands now.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { currentLeaseRenewal } from "@flow-state-dev/orchestration";
+import { currentLeaseRenewal, MAX_QUESTION_PROMPT } from "@flow-state-dev/orchestration/internal";
 import { askMidway } from "@flow-state-dev/orchestration/task-board";
-import { MAX_QUESTION_PROMPT, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import type { TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 
 /** What the ask step did: the task is held on the question, or this turn no longer holds its row. */
 export type AskStepOutcome = "held" | "superseded";
@@ -62,10 +63,11 @@ export async function askStep(ctx: BlockContext, board: TaskCollectionRef, quest
   );
 }
 
+// BR-19, BR-29.
 /**
  * Thrown to stop the manager's chain before any harness runs, once the ask
- * step held the task on a question: held work that does not match its record
- * (BR-19, BR-29). Not a failed attempt: the claim gate's end-of-request check
+ * step held the task on a question: held work that does not match its record.
+ * Not a failed attempt: the claim gate's end-of-request check
  * sees the turn asked and records nothing, and the manager's rescue leaves the
  * run record's outcome at `running`, as on any question.
  */

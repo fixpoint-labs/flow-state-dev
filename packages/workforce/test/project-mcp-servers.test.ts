@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { defineProjectBlocks, mcpCredentialsCapability, projectRowSchema } from "../src/index";
+import { defineProjectBlocks, mcpCredentialsCapability, projectResourceStateSchema } from "../src/index";
 import { bootProjectsHost, ORG, refusal } from "./projects-harness";
 
 const OFFERED = ["linear", "github"];
@@ -125,7 +125,7 @@ describe("a project row read by a client", () => {
     expect((await h.runtime.stores.resourceState.set("org", ORG, "projects/old", legacy as never, "absent")).ok).toBe(true);
     expect(Object.keys((await h.row("old"))!)).not.toContain("mcpServers");
 
-    expect(projectRowSchema.parse(await h.row("old")).mcpServers).toEqual([]);
+    expect(projectResourceStateSchema.parse(await h.row("old")).mcpServers).toEqual([]);
     const [item] = (await h.listed("alice", await h.lab("alice"), "projects")).filter((i) => i.data.id === "old");
     expect(item!.data.mcpServers ?? []).toEqual([]);
     const set = await h.ok("alice", "lab", await h.lab("alice"), "setMcpServers", { project: { visibility: "shared", id: "old" }, mcpServers: ["linear"] });

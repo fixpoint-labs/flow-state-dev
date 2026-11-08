@@ -13,8 +13,8 @@
  */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { taskRowView } from "@flow-state-dev/orchestration/inbox";
-import type { LabAdapter, TaskRow, TaskStatus } from "../src/adapter";
+import { taskView } from "@flow-state-dev/orchestration/inbox";
+import type { LabAdapter, LabTask, TaskStatus } from "../src/adapter";
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadsBoard } from "../src/components/ThreadsBoard";
 
@@ -23,7 +23,7 @@ afterEach(cleanup);
 const MIN = 60_000;
 
 /** A pane row as the adapter reads one from the board's `listTasks` row. */
-function row(id: string, title: string, status: TaskStatus, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }): TaskRow {
+function row(id: string, title: string, status: TaskStatus, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }): LabTask {
   const { startedAt, leaseUntil, updatedAt } = times;
   return {
     id,
@@ -31,7 +31,7 @@ function row(id: string, title: string, status: TaskStatus, times: { updatedAt: 
     goal: title,
     status,
     updatedAt,
-    view: taskRowView({ id, title, goal: title, status, board: "s1", updatedAt }),
+    view: taskView({ id, title, goal: title, status, board: "s1", updatedAt }),
     ...(startedAt === undefined && leaseUntil === undefined ? {} : { run: { ...(startedAt === undefined ? {} : { startedAt }), ...(leaseUntil === undefined ? {} : { leaseUntil }) } }),
   };
 }

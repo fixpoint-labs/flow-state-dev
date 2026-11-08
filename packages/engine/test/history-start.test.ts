@@ -13,7 +13,8 @@ import type { MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createExecutionContext, createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
+import { createExecutionContext, createFlowApiRouter, createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 
 const noopHandler = handler({ name: "noop", execute: () => "ok" });

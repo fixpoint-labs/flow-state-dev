@@ -1,26 +1,27 @@
+// FIX-2078; FIX-2083; BP-030; FIX-2241.
 /**
- * How a session's board delivers each ending to the session that filed it
- * (FIX-2078): the conversation ledger's `delivery`, which orchestration's one
+ * How a session's board delivers each ending to the session that filed it:
+ * the conversation ledger's `delivery`, which orchestration's one
  * delivery runs around every ending's write.
  *
  * - **The pass** a wake runs in the filer's session is the board's run entry
  *   (`dispatch`): one pass at a time, which pays every debt and clears the
  *   wake (`./board`).
- * - **The notice** arrives on `onTaskSettled`, a routed task's too (FIX-2083).
+ * - **The notice** arrives on `onTaskSettled`, a routed task's too.
  * - **Reaching the filer** from the running request: its own session; or,
  *   from a task session, the session that filed its task, on the flow the
  *   hand-over named at the task session's birth (`filingFlow`), both readonly
  *   server-written state; or, from a workstream's session, the project
- *   coordinator whose routed task it worked (FIX-2083): a workstream's record
+ *   coordinator whose routed task it worked: a workstream's record
  *   is a coordinator's, and only a coordinator files for one. From anywhere
  *   else the wake delivers, its flow read from the filer's own session record
  *   by the engine.
- * - **A row filed before `Task.filer`** (BP-030) is heard by the conversation
+ * - **A row filed before `Task.filer`** is heard by the conversation
  *   its partition names.
  * - **A notice nobody can take** (the filer's session is gone) is said where
  *   its writer runs, and a final failure's report goes to the Error Reporter
  *   from there (epic decision (f)).
- * - **A midway question** (FIX-2241) is no ending and no notice: it reaches
+ * - **A midway question** is no ending and no notice: it reaches
  *   the filer as a message from the task's worker, sent by the running
  *   flow's `onMessageReceived` (`../messages/received-mark`).
  */

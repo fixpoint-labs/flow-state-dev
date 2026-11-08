@@ -15,7 +15,7 @@
  * was actually handed, never from an action's own say-so.
  */
 import { describe, expect, it } from "vitest";
-import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";

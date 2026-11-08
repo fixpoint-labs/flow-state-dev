@@ -1,3 +1,4 @@
+// FIX-140; FIX-2082; FIX-1816; FIX-1846; FIX-2078 D1; FIX-2082 D1; FIX-2269.
 /**
  * Server-internal retention sweeper for durable-execution artifacts.
  *
@@ -8,13 +9,13 @@
  *      time (reuses the existing LeaseStore to avoid a multi-host thundering
  *      herd against the same rows).
  *   2. Enforce suspension expiry: any `pending` suspension past its
- *      `expiresAt` is re-set to `expired` (closes the FIX-140 gap where
- *      expiry was recorded but never enforced, so the resume endpoint can
- *      reject stale gates). A **wait gate** parked before FIX-2082, whose
+ *      `expiresAt` is re-set to `expired` (expiry is enforced, not only
+ *      recorded, so the resume endpoint can
+ *      reject stale gates). A **wait gate** parked before gates carried a deadline, whose
  *      deadline was its expiry, is the exception: it is resumed with
- *      `wait_timed_out` instead (FIX-1816), because an `expired` wait gate
+ *      `wait_timed_out` instead, because an `expired` wait gate
  *      would strand its turn: nothing else may resume it. This branch goes
- *      once no gate parked before FIX-2082 is left: a wait's deadline is now a
+ *      once no such gate is left: a wait's deadline is now a
  *      wake (2c).
  *   2b. Re-drive a request left `suspended` or `interrupted` behind a gate that
  *      is already resolved (a wait's answer, failure, timeout or stop, any
@@ -23,20 +24,20 @@
  *      with the recorded outcome; and stop a parked request whose stop was
  *      recorded while it was still running (`abortRequested`), as a stop of a
  *      parked turn does. An approval step 2 just expired is continued here in
- *      the same tick (FIX-1846): the gated call does not run, it returns a
+ *      the same tick: the gated call does not run, it returns a
  *      result saying the approval is no longer valid, and the turn carries on.
  *      The `expired` record is the obligation, so a crash before the
  *      continuation runs is finished by the next sweep.
- *   2c. Fire every due wake (FIX-2078 D1): a debt's due time, kept by the
+ *   2c. Fire every due wake: a debt's due time, kept by the
  *      engine until a pass in its session clears it. Each is moved one
  *      {@link WAKE_RETRY_MS} out FIRST, then dispatched as the owner it names
  *      (`fireWake`, the host's dispatch of the internal entry it names), so a
  *      fire that dies, or a pass that dies, leaves the wake to fire again.
  *      The pass it runs clears it, or moves it to its next due time. A
- *      `waitDeadline` wake (FIX-2082 D1) is the sweep's own: it resumes every
+ *      `waitDeadline` wake is the sweep's own: it resumes every
  *      wait in that session past its deadline, cancelling nothing, and moves
  *      the wake to the next one (`resumeDueWaits`). A `parkOwed:` wake
- *      (FIX-2269) is the sweep's own as well: a request that died after its
+ *      is the sweep's own as well: a request that died after its
  *      wait started the work and before its gate was written is continued
  *      (`continueOwedPark`).
  *   3. Prune resolved (terminal) suspensions older than the retention window.
@@ -68,14 +69,15 @@
 
 import type { RequestRecord, StoreRegistry, WakeRecord } from "../stores/types";
 import { terminalAtMs } from "../stores/request-ended-at";
-import type { RequestStatus, SuspensionRecord, WaitOutcome } from "@flow-state-dev/core/types";
+import type { RequestStatus, SuspensionRecord } from "@flow-state-dev/core/types";
+import type { WaitOutcome } from "@flow-state-dev/core/internal";
 import {
   DEFAULT_RUNTIME_LOGGER,
   logRuntimeEvent,
   type RuntimeLogger
 } from "../execution/logging";
 import type { DurabilityProvider } from "./types";
-import { WAIT_DEADLINE_ENTRY, WAIT_DEADLINE_OUTCOME, isWaitGate, waitGateDataOf } from "@flow-state-dev/core/types";
+import { WAIT_DEADLINE_ENTRY, WAIT_DEADLINE_OUTCOME, isWaitGate, waitGateDataOf } from "@flow-state-dev/core/internal";
 import { resumeWaitGate } from "./resume-wait-gate";
 import { registerWaitSweeper } from "./wait-deadlines";
 import { outcomeOfRequest } from "./wait-chain";
@@ -136,8 +138,9 @@ export type CreateDurabilitySweeperOptions = {
    * nothing is pruned.
    */
   prune?: boolean;
+  // FIX-2078 D1.
   /**
-   * Fire a due wake (FIX-2078 D1): dispatch the internal entry it names, in
+   * Fire a due wake: dispatch the internal entry it names, in
    * its session, as its owner. Resolves once the host accepted the dispatch.
    * Absent, or with stores that keep no wakes, the wake step is off.
    */
@@ -357,8 +360,9 @@ const MIN_TICK_DELAY_MS = 1_000;
 /** How soon a wait still pending past its deadline is tried again. */
 const OVERDUE_WAIT_RETRY_MS = 5_000;
 
+// FIX-2078 D1.
 /**
- * How far a wake is moved out as it is fired (FIX-2078 D1): the pass it runs
+ * How far a wake is moved out as it is fired: the pass it runs
  * settles it within that time, so it fires again only when the fire or the
  * pass died.
  */
@@ -499,11 +503,12 @@ async function enforceSuspensionExpiry(
   }
 }
 
+// FIX-1816; FIX-1850.
 /**
  * Step 2b: re-drive a request left parked behind a gate that is already
- * resolved (FIX-1816, BR-11a, BR-16c). A wait gate answered, failed, timed out
+ * resolved (BR-11a, BR-16c). A wait gate answered, failed, timed out
  * or stopped, any gate stopped, an approval that expired, or any other gate a
- * person resolved (FIX-1850), whose request is still `suspended` or
+ * person resolved, whose request is still `suspended` or
  * `interrupted`: the process died after the gate's write and before the turn
  * moved on. It is driven on under its lease with the recorded outcome, never a
  * new one. A live resume holds that lease, so it is never raced.
@@ -590,8 +595,9 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
   }
 }
 
+// FIX-2078 D1.
 /**
- * Step 2c (FIX-2078 D1): fire every due wake. Each is moved one
+ * Step 2c: fire every due wake. Each is moved one
  * {@link WAKE_RETRY_MS} out, conditional on the version listed, and only then
  * dispatched: a wake written since (an earlier debt) is left as written, and
  * a fire or a pass that dies leaves the wake to fire again. A fire that throws
@@ -636,8 +642,9 @@ async function fireDueWakes(args: ResolvedTickArgs, now: number): Promise<void> 
   }
 }
 
+// FIX-2269.
 /**
- * Step 2c's owed-park branch (FIX-2269): a request owed a park, and the time
+ * Step 2c's owed-park branch: a request owed a park, and the time
  * until it would count as dead has passed. Still `interrupted` (its process
  * died after its wait started the work and before the gate was written), it
  * is continued under its lease as the continue route continues one, and its
@@ -696,8 +703,9 @@ async function continueOwedPark(args: ResolvedTickArgs, wake: WakeRecord, reques
 /** Statuses of a request that may still owe its park: running, or dead. */
 const OWING_STATUSES: RequestStatus[] = ["in_progress", "interrupted"];
 
+// FIX-2082 D1.
 /**
- * Step 2c's wait branch (FIX-2082 D1): a session's `waitDeadline` wake is due.
+ * Step 2c's wait branch: a session's `waitDeadline` wake is due.
  * Every wait gate pending in that session past its deadline is resumed with
  * the deadline outcome, nothing cancelled (a gate bound to a request that has
  * already ended is resumed with that request's result instead). Then the wake
@@ -738,11 +746,12 @@ async function resumeDueWaits(args: ResolvedTickArgs, wake: WakeRecord, now: num
   else await wakes.move(wake, wake.version, dueAt);
 }
 
+// FIX-2082.
 /**
  * Resume one overdue wait gate, through the same resume every wait takes
  * (fenced on the gate still being pending, under the request's lease): with
  * the deadline outcome at a wait's deadline (step 2c), or with
- * `wait_timed_out` for a gate parked before FIX-2082 past its expiry (step 2,
+ * `wait_timed_out` for a gate parked before gates carried a deadline, past its expiry (step 2,
  * which goes once no such gate is left). Per-gate failures are logged and the
  * sweep moves on, and the caller re-reads the gate: one left pending (the
  * request busy, or not yet written parked) is tried again shortly.

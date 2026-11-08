@@ -4,9 +4,11 @@ import type { ModelResolver, GeneratorModel, ResourceRef } from "@flow-state-dev
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
-  createExecutionContext,
-  createInMemoryStores
+  createExecutionContext
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 
 function createStubModelResolver(): ModelResolver {
   const resolver = ((modelId: string): GeneratorModel => ({

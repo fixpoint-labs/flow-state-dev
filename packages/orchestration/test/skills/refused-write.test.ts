@@ -8,7 +8,8 @@ import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { getOrCreateTaskCollection, TaskWriteRefusedError, type TaskCollectionRef } from "../../src/tasks";
+import { getOrCreateTaskCollection, type TaskCollectionRef } from "../../src/tasks";
+import { TaskWriteRefusedError } from "../../src/tasks/collection/refused-write";
 import { taskToolsForTurn, type AssigneeRoster } from "../../src/skills/task-tools-capability";
 import { createFakeSequencerState } from "../helpers";
 

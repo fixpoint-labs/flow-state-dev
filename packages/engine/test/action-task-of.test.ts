@@ -7,10 +7,11 @@
  * Trace items stay unstamped, as they are under `_markTaskScope`.
  */
 import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { StoreRegistry } from "../src/stores/types";
 

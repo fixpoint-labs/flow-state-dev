@@ -18,11 +18,13 @@ import {
 import {
   createExecutionContext,
   createFlowRegistry,
-  createInMemoryStores,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { ValidationError } from "../src/errors/flow-error";
-import { handleCreateCollectionItem } from "../src/routes/resource-routes";
+import { handleCreateCollectionResource } from "../src/routes/resource-routes";
 import type { SessionRecord } from "../src/stores/types";
 
 /** `{}` (no `phase`) parses to `null`; `{ phase: 1 }` parses to an object. */
@@ -135,7 +137,7 @@ describe("a write the state schema parses to null", () => {
     };
     await stores.session.set("sess_1", session, "any");
 
-    const response = await handleCreateCollectionItem(
+    const response = await handleCreateCollectionResource(
       new Request("http://x/sessions/sess_1/resources/items", {
         method: "POST",
         body: JSON.stringify({ topic: "a" })

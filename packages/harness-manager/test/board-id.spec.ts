@@ -27,14 +27,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { harnessManager } from "../src";
 import { branchFor, checkoutPathFor, type RunLocation } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 
-interface SnapshotRow {
+interface SnapshotResource {
   epic: string;
   principal: Omit<RunLocation["principal"], "orgId">;
   checkout: string;
@@ -44,7 +44,7 @@ interface SnapshotRow {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const snapshot = JSON.parse(
   readFileSync(join(HERE, "derivation-snapshot.json"), "utf8"),
-) as SnapshotRow[];
+) as SnapshotResource[];
 const CONFIG = { root: "/ws", sourceRepo: "/src", baseRef: "main" };
 const ALICE = { orgId: "org_devforce_lab", userId: "u_devforce_lab" };
 

@@ -11,7 +11,7 @@
  */
 import type { PGlite } from "@electric-sql/pglite";
 import { createLeaseStoreConformanceTests } from "@flow-state-dev/engine/testing";
-import { createPostgresLeaseStore, initializeSchema, type QueryExecutor, type TxClient } from "../src";
+import { createPostgresLeaseStore, initializeSchema, type QueryExecutor, type TxClient } from "../src/host";
 import { freshPglite } from "./shared-pglite";
 
 function pgliteExecutor(pg: PGlite): QueryExecutor {

@@ -1,30 +1,29 @@
 /**
  * Claude Code's side of the shared plan record.
  *
- * The shape lives in `@flow-state-dev/core` now. Code that imported it from
- * this package before the move must get the very same objects, or two
- * definitions would be two storage slots that look like one. And when a plan
+ * The shape lives in `@flow-state-dev/core/harness`, and only there: a second
+ * public home would be a second name for one record. The block declares core's
+ * very objects, or two definitions would be two storage slots that look like
+ * one. And when a plan
  * row fails to write, the run's list marker must say the plan is incomplete,
  * so a reader never shows the rows that did land as the plan.
  */
 import { describe, expect, it } from "vitest";
-import * as core from "@flow-state-dev/core";
+import * as core from "@flow-state-dev/core/harness";
 import * as sdk from "../../src/sdk";
-import { createWorkRecorder, type UpsertableCollection } from "../../src/sdk/work-recorder";
+import { createClaudeCodeWorkRecorder, type UpsertableCollection } from "../../src/sdk/work-recorder";
 import type { TranslatedEvent } from "../../src/sdk/types";
 
-describe("the plan record, imported from Claude Code", () => {
-  it("is core's record, the same objects", () => {
-    expect(sdk.OBSERVED_PLAN).toBe(core.OBSERVED_PLAN);
-    expect(sdk.observedPlanCollection).toBe(core.observedPlanCollection);
-    expect(sdk.observedPlanItemStateSchema).toBe(core.observedPlanItemStateSchema);
-    expect(sdk.OBSERVED_PLAN_LIST).toBe(core.OBSERVED_PLAN_LIST);
-    expect(sdk.observedPlanListCollection).toBe(core.observedPlanListCollection);
+describe("the plan record, in Claude Code", () => {
+  it("is core's alone: the package's entry doesn't export it again", () => {
+    for (const name of ["OBSERVED_PLAN", "OBSERVED_PLAN_LIST", "observedPlanCollection", "observedPlanListCollection", "observedPlanItemStateSchema"]) {
+      expect(Object.keys(sdk), name).not.toContain(name);
+    }
   });
 
   it("is declared, with its list marker, wherever recordWork declares its records", () => {
-    expect(sdk.workRecorderResources[core.OBSERVED_PLAN]).toBe(core.observedPlanCollection);
-    expect(sdk.workRecorderResources[core.OBSERVED_PLAN_LIST]).toBe(core.observedPlanListCollection);
+    expect(sdk.claudeCodeWorkRecorderResources[core.OBSERVED_PLAN]).toBe(core.observedPlanCollection);
+    expect(sdk.claudeCodeWorkRecorderResources[core.OBSERVED_PLAN_LIST]).toBe(core.observedPlanListCollection);
   });
 });
 
@@ -52,7 +51,7 @@ describe("a plan row that fails to write", () => {
   it("marks the run's plan incomplete, with the reason, beside its gap row", async () => {
     const planList = collection();
     const gaps = collection();
-    const recorder = createWorkRecorder({
+    const recorder = createClaudeCodeWorkRecorder({
       runId: "req_1/agent#0",
       files: collection(),
       plan: collection(true),
@@ -74,7 +73,7 @@ describe("a plan row that fails to write", () => {
     // Claude Code's plan arrives item by item, so there is no "complete"
     // moment to mark; a marker here could only be one a reader misreads.
     const planList = collection();
-    const recorder = createWorkRecorder({
+    const recorder = createClaudeCodeWorkRecorder({
       runId: "req_1/agent#0",
       files: collection(),
       plan: collection(),

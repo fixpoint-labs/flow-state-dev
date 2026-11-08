@@ -19,15 +19,16 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handler } from "@flow-state-dev/core";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
+import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
+import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   harnessSessionFlow,
   resolveHarnessSessionStart,
   type HarnessSessionFeeds,
   type HarnessSessionWorkspace,
 } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost, type WorktreeRow } from "@flow-state-dev/workspace";
+import { localWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 
@@ -185,14 +186,14 @@ async function act(sessionId: string, action: string, input: unknown): Promise<s
 }
 
 /** The rows a page in `sessionId` sees, through the flow's resource route. */
-async function rows(sessionId: string, userId = USER, orgId = ORG): Promise<WorktreeRow[]> {
+async function rows(sessionId: string, userId = USER, orgId = ORG): Promise<WorktreeResourceState[]> {
   const res = await router.GET(
     new Request(`http://goal/api/flows/sessions/${sessionId}/resources/worktrees?userId=${userId}`, { headers: as(userId, orgId) }),
     { params: { path: ["sessions", sessionId, "resources", "worktrees"] } },
   );
-  const body = (await res.json()) as { items?: Array<{ clientData?: WorktreeRow }> };
+  const body = (await res.json()) as { items?: Array<{ clientData?: WorktreeResourceState }> };
   if (process.env.GOAL_DEBUG) console.error("rows", res.status, JSON.stringify(body).slice(0, 400));
-  return (body.items ?? []).map((item) => item.clientData).filter((row): row is WorktreeRow => row !== undefined);
+  return (body.items ?? []).map((item) => item.clientData).filter((row): row is WorktreeResourceState => row !== undefined);
 }
 
 const stateOf = async (sessionId: string) =>

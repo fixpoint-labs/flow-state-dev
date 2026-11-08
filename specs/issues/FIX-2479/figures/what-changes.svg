@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="Before and after for someone building on the packages. Before: a worker&#x27;s stored data is a WorkerRow, a project&#x27;s a ProjectRow, the client&#x27;s handle a CollectionItemHandle, a worktree&#x27;s lifecycle a WorktreeState, a question on a task a RowHold stored as kind row. After: WorkerResourceState, ProjectResourceState, a collection resource handle, WorktreeStatus, and a hold stored as kind task, where an old row hold still reads. Store-adapter rows, UI list rows and stream items are the same in both."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; --gone-soft:#F2E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .box    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .keep   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .gonebox{ fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow  { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-m    { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+  <g id="before">
+    <text class="t-lbl" x="16" y="30">TODAY</text>
+    <text class="t-h" style="fill:var(--ink)" x="16" y="52">What a consumer imports</text>
+    <rect class="gonebox" x="16" y="70" width="438" height="44" rx="5"/>
+    <text class="t-b" x="30" y="89">WorkerRow · ProjectRow · WorktreeRow</text>
+    <text class="t-s c-gone" x="30" y="105">about 80 exported names say row or item</text>
+    <text class="t-tag c-gone" x="440" y="89" text-anchor="end">ROW</text>
+    <rect class="gonebox" x="16" y="124" width="438" height="44" rx="5"/>
+    <text class="t-b" x="30" y="143">CollectionItemHandle · listCollectionItems</text>
+    <text class="t-s c-gone" x="30" y="159">item, which also names a stream item</text>
+    <text class="t-tag c-gone" x="440" y="143" text-anchor="end">ITEM</text>
+    <rect class="gonebox" x="16" y="178" width="438" height="44" rx="5"/>
+    <text class="t-b" x="30" y="197">WorktreeState · PlaceState · TaskRowState</text>
+    <text class="t-s c-gone" x="30" y="213">a lifecycle enum named state</text>
+    <text class="t-tag c-gone" x="440" y="197" text-anchor="end">STATE</text>
+    <rect class="gonebox" x="16" y="232" width="438" height="44" rx="5"/>
+    <text class="t-b" x="30" y="251">RowHold · source.kind: &quot;row&quot;</text>
+    <text class="t-s c-gone" x="30" y="267">a question kept on the task</text>
+    <text class="t-tag c-gone" x="440" y="251" text-anchor="end">STORED</text>
+    <rect class="keep" x="16" y="286" width="438" height="44" rx="5"/>
+    <text class="t-b" x="30" y="305">VersionedRow · ToolRow · OutputItem</text>
+    <text class="t-s" x="30" y="321">store rows, UI list rows, stream items</text>
+    <text class="t-tag c-mute" x="440" y="305" text-anchor="end">SAME</text>
+  </g>
+  <g id="after">
+    <text class="t-lbl" x="486" y="30">AFTER FIX-2479</text>
+    <text class="t-h" style="fill:var(--ink)" x="486" y="52">One word for a stored thing</text>
+    <rect class="new" x="486" y="70" width="438" height="44" rx="5"/>
+    <text class="t-b" x="500" y="89">WorkerResourceState · ProjectResourceState</text>
+    <text class="t-s" x="500" y="105">the owner&#x27;s 2026-11-06 convention</text>
+    <text class="t-tag c-code" x="910" y="89" text-anchor="end">RESOURCE</text>
+    <rect class="new" x="486" y="124" width="438" height="44" rx="5"/>
+    <text class="t-b" x="500" y="143">CollectionResourceHandle · listCollectionResources</text>
+    <text class="t-s" x="500" y="159">item keeps its one meaning</text>
+    <text class="t-tag c-code" x="910" y="143" text-anchor="end">RESOURCE</text>
+    <rect class="new" x="486" y="178" width="438" height="44" rx="5"/>
+    <text class="t-b" x="500" y="197">WorktreeStatus · PlaceStatus · TaskViewStatus</text>
+    <text class="t-s" x="500" y="213">state means scope or resource state</text>
+    <text class="t-tag c-code" x="910" y="197" text-anchor="end">STATUS</text>
+    <rect class="new" x="486" y="232" width="438" height="44" rx="5"/>
+    <text class="t-b" x="500" y="251">source.kind: &quot;task&quot; · &quot;row&quot; still reads</text>
+    <text class="t-s" x="500" y="267">an old stored hold is answered</text>
+    <text class="t-tag c-code" x="910" y="251" text-anchor="end">STORED</text>
+    <rect class="keep" x="486" y="286" width="438" height="44" rx="5"/>
+    <text class="t-b" x="500" y="305">VersionedRow · ToolRow · OutputItem</text>
+    <text class="t-s" x="500" y="321">unchanged</text>
+    <text class="t-tag c-mute" x="910" y="305" text-anchor="end">SAME</text>
+  </g>
+</svg>

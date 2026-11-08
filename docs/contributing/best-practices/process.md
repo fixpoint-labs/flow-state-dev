@@ -40,12 +40,13 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 ### BP-006: Keep planning/tracking labels out of code and tests
 
 - Status: Active
-- Date: 2026-02-16 (updated 2026-06-28: generalized to all tracking labels)
+- Date: 2026-02-16 (updated 2026-06-28: generalized to all tracking labels; 2026-11-07: a pointer's one home is a `//` comment)
 - Scope: Code & test hygiene.
 - Rule:
   - Don't use planning/tracking labels (milestone names, spec IDs, Linear refs) as **identifiers in code or test logic** — no variable, type, function, or test title named after a milestone or ticket.
-  - A `FIX-NNN` reference is fine as a **provenance or TODO pointer in a comment** (e.g. a dual-read cleanup marker per BP-030). The ban is on labels driving code/test structure, not on citing a ticket in a comment.
-- Why: Tracking labels as identifiers couple runtime artifacts to transient planning state and rot; as comment pointers they add useful provenance.
+  - A `FIX-NNN` reference is fine as a **provenance or TODO pointer in a `//` or `/* */` comment** (e.g. a dual-read cleanup marker per BP-030). Never in JSDoc (`/**` becomes the adopter's editor hover), a string, template or JSX text (errors, logs, UI copy, conformance test titles), or a file an adopter copies whole (`packages/ui/registry/**`, `examples/**`), comments included. Write what the code does there, and put the pointer on a `//` line above the block.
+  - `pnpm lint` enforces this in every published package's `src` (`fsd/no-tracker-ids`, `scripts/eslint-rules/no-tracker-ids.mjs`) for `FIX`, `LAB`, `FLC`, `TL`, `BP` and `BR` ids. A sample key in public text uses a neutral one (`ENG-142`).
+- Why: Tracking labels as identifiers couple runtime artifacts to transient planning state and rot; as comment pointers they add useful provenance. An adopter reads hovers, errors and copied files, and cannot open our tracker.
 
 ### BP-008: Keep README onboarding-first and current
 

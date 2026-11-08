@@ -153,7 +153,11 @@ board's rows carry the same time, and the pane's heading counts the tasks runnin
 and done.
 
 Both modes are wired. The screen tests run on a test double, `test/fake-lab.ts`, which the app
-never imports.
+never imports. The contract tests in `test/contract/` keep the two honest: five scenarios (a result
+that lands mid-turn, a failed turn, a held question and its answer, a stop, a lapsed connection)
+run against the double and against the real adapter over the lab's own server (`host.mts`), in
+process, with only the model scripted. A scenario the real adapter can't show yet is marked to fail
+with the issue that adds it.
 
 ## How the screen reaches the package
 
@@ -169,7 +173,7 @@ a package call:
 | Sending and the thread | the `respond` action, and the session's message and tool items |
 | A result card inside a running turn | `answerAgain: true` on the main worker's flow: the settled task's notice, taken into the turn |
 | The main session reading the project's files | `projectSourceCapability({ workspace })` on the `agent` flow, over the coding runs' host; `desk.main` and `desk.researcher` name its `read` preset in their `WORKER.md` |
-| Interrupting | aborting the session's running turn; its tasks keep running |
+| Interrupting | aborting the turns running when you press Stop; the thread then shows the registry's `request-recovery` stopped line after that turn, read from its `aborted` request, with the count of background work still running from the session stream's runs |
 | A failed turn and *Retry* | the engine's `error` item for the turn, drawn by the UI registry's `request-recovery` (installed in `src/components/flow-state/`); Retry is the client's `request(id).retry()`, on the newest turn only |
 | The tasks pane and a task's work | the `listTasks_tasks` read (stores nothing per poll), and the items of the task's run session |
 | Threads mode's sessions | the same, with `desk.lead`, a `coordinator`, as the main worker |
@@ -178,7 +182,7 @@ a package call:
 | A coding thread's tag | the `harness` action of the coding flow, asked in the thread's run session |
 | A coding thread's review card | the `data` of the review stop (`suspension` item) in the thread's run session: branch, commits, subjects and the judge's verdict |
 | *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
-| Answering in a thread | the Inbox client's `answerHold` on its open question; with none, `updateTask_tasks` with your line as a steer |
+| Answering in a thread | the Inbox client's `answerOne` on its open question; with none, `updateTask_tasks` with your line as a steer |
 | Pins | the `pins` flow's `listPins` read, so reading them stores nothing |
 | Dismissed failures | the `dismissals` flow's `listDismissed` read, the same way |
 
@@ -188,7 +192,7 @@ change, a resource), the thread's running turn on a request notice, and pins on 
 user state. A session you open in another tab joins the list at the next reload. On a host whose
 push can miss a change, such as the SQLite store the lab runs on, each also reads at its old pace:
 the list and pins every 3 seconds, the running turn every 1.5.
-| *Resolve* and *Request changes* | the Inbox client's `answerHold` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
+| *Resolve* and *Request changes* | the Inbox client's `answerOne` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
 | *Pin* and *Unpin* | the lab's `pins` flow (`workforce/flows/pins.mts`), your own user state |
 | *Dismiss* | the lab's `dismissals` flow (`workforce/flows/dismissals.mts`), your own user state, kept per task attempt |
 

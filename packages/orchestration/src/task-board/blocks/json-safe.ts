@@ -1,5 +1,6 @@
+// FIX-982 P3a §7.5.
 /**
- * Recursive JSON-value validation for a dispatched payload (FIX-982 P3a §7.5).
+ * Recursive JSON-value validation for a dispatched payload.
  *
  * A dispatched worker's input crosses a process boundary and a durable store, so
  * it has to be a JSON value. The obvious check is not one:

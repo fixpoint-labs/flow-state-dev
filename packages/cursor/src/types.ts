@@ -11,7 +11,7 @@
  *   Declared here rather than imported so this package never type-depends on
  *   the optional peer, exactly as `codex/types.ts` does for the Codex SDK and
  *   `claude-code/sdk/types.ts` for the Agent SDK. The declarations mirror
- *   `@cursor/sdk` {@link TESTED_SDK_VERSION}; the version gate is what keeps
+ *   `@cursor/sdk` {@link TESTED_CURSOR_SDK}; the version gate is what keeps
  *   them true (see `./cursor-client`).
  * - The **seam types** the block calls the SDK through, so a scripted client
  *   satisfies them in tests with no runtime and no network.
@@ -20,28 +20,27 @@
  * fields (tenet 4).
  */
 import { z } from "zod";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
-import type { BlockContext, HarnessRunHandle, PlanListItem } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import type { TestedSdk } from "@flow-state-dev/core/internal";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { HarnessRunHandle, PlanListItem } from "@flow-state-dev/core/harness";
 
+// LAB-152.
 /**
  * This harness's `<package>/<door>` name — the convention every writer of a
- * harness handle's `source` owes (LAB-152). The suffix names the door we drive
+ * harness handle's `source` owes. The suffix names the door we drive
  * Cursor through, and this package has exactly one: Cursor's own SDK, on its
  * local runtime.
  */
 export const CURSOR_SOURCE = "cursor/sdk" as const;
 
 /**
- * The one `@cursor/sdk` version this package has been tested against.
- *
- * The SDK ships its local runtime as a platform-specific native binary and
- * moves fast — a `SDKMessage` variant or a `Run` method can change between
- * patch releases — so a Cursor upgrade is a deliberate, tested bump of ours
- * rather than something a host can take on its own. `cursorAgent` refuses to
- * build against any other installed version, and the escape is a release of
- * this package; there is no override option.
+ * The `@cursor/sdk` this package is tested against: its `peerDependencies`
+ * range, one version wide. Its wire can change in any release, so a new
+ * version is a tested bump of ours. `cursorAgent` refuses to build against
+ * another, and the readiness check says so first (core's SDK gate).
  */
-export const TESTED_SDK_VERSION = "1.0.40" as const;
+export const TESTED_CURSOR_SDK: TestedSdk = { harness: "Cursor", sdk: "@cursor/sdk", range: "1.0.40" };
 
 /**
  * Cursor's full token breakdown for a run.
@@ -64,6 +63,7 @@ export interface CursorRunUsage {
   reasoningTokens: number;
 }
 
+// LAB-152.
 /**
  * Handle for a single Cursor run.
  *
@@ -74,7 +74,7 @@ export interface CursorRunUsage {
  * `outcome` is `"finished"` on a run the SDK reports as finished and `"failed"`
  * on one it reports as errored or cancelled. Cursor reports no turn or budget
  * cap, so `"stopped-at-limit"` is never produced here — and a run stopped by the
- * CALLER's deadline is a throw, not a handle (LAB-152's abort contract).
+ * CALLER's deadline is a throw, not a handle (the harness abort contract).
  *
  * `sessionId` is the agent id, not the run id. That is the thing `resume` takes:
  * a Cursor agent is the durable conversation, and each `send` is one run inside
@@ -89,12 +89,12 @@ export interface CursorAgentHandle extends HarnessRunHandle {
   failureMessage: string | null;
 }
 
+// BP-030.
 /**
  * Runtime validator for {@link CursorAgentHandle}.
  *
  * The extension's own two fields default to `null` for the same reason the
- * neutral schema's four do: a handle persisted before they existed still parses
- * (BP-030).
+ * neutral schema's four do: a handle persisted before they existed still parses.
  */
 export const cursorAgentHandleSchema = harnessRunHandleSchema.extend({
   source: z.literal(CURSOR_SOURCE),
@@ -200,12 +200,13 @@ export interface CursorRunResult {
 // Forwarded option groups
 // ---------------------------------------------------------------------------
 
+// BP-031.
 /**
  * The SDK's `AgentOptions`, forwarded verbatim to `Agent.create` /
  * `Agent.resume` and typed locally.
  *
  * Three things are deliberately ABSENT, and each is refused at build time
- * rather than merged, because each has exactly one owner (BP-031):
+ * rather than merged, because each has exactly one owner:
  *
  * - `agentId` — the `resume` resolver decides which conversation continues.
  * - `local.cwd` — the `cwd` resolver decides where a run works. The rest of
@@ -311,32 +312,6 @@ export type ResolveCursorClient = (
   ctx: BlockContext<any, any, any, any, any, any, any, any, any>,
 ) => ResolvedCursorClient | Promise<ResolvedCursorClient>;
 
-/**
- * What the version gate could learn about the installed SDK.
- *
- * Three answers, not two, and the third is the one that matters. A layout the
- * manifest walk cannot see (Yarn PnP, a custom loader) is not the same fact as
- * "there is nothing installed", and treating it as such would let an
- * unvalidated SDK through the very gate that exists to refuse one, while the
- * dynamic import went on resolving and running it. A safety gate must fail
- * closed: "there is nothing installed" is safe, "I cannot tell" is not.
- */
-export type InstalledSdkVersion =
-  | { kind: "absent" }
-  | { kind: "version"; version: string }
-  | { kind: "unreadable"; reason: string };
-
-/**
- * How the version gate learns which SDK is installed.
- *
- * A seam only so the refusal is testable against versions other than the one on
- * this disk. It is deliberately NOT reachable from `CursorAgentOptions`: a host
- * that could substitute its own reader could answer with the tested version and
- * run an unvalidated wire, which would make the package's exact-version refusal
- * a claim rather than a guarantee.
- */
-export type InstalledSdkVersionReader = () => InstalledSdkVersion;
-
 // ---------------------------------------------------------------------------
 // The pure translation layer's output
 // ---------------------------------------------------------------------------
@@ -351,7 +326,7 @@ export type InstalledSdkVersionReader = () => InstalledSdkVersion;
  * which the block writes to the plan record when `recordPlan` is on. The tool
  * step it came from is emitted as its own `tool_result`.
  */
-export type TranslatedEvent =
+export type CursorTranslatedEvent =
   | { kind: "message"; text: string }
   | { kind: "reasoning"; text: string }
   | { kind: "tool_call"; callId: string; name: string; arguments: string }

@@ -1,5 +1,6 @@
+// FIX-811.
 /**
- * Canonical item-log view (FIX-811).
+ * Canonical item-log view.
  *
  * The physical item log of a resumed request can carry superseded copies of a
  * block's emissions. When a request continues under its own id, the suspending
@@ -45,6 +46,7 @@ function suspensionLogicalId(item: RuntimeItem): string | undefined {
   return logicalIdOf(carried ?? item.provenance?.blockInstanceId);
 }
 
+// FIX-811; FIX-814.
 /**
  * Collapse a request's physical item log to its canonical view.
  *
@@ -62,7 +64,7 @@ function suspensionLogicalId(item: RuntimeItem): string | undefined {
  *    keep only the canonical one — the `completed` trace with the highest
  *    `itemIndex` (or, absent any completed, the highest-index trace) — and drop
  *    the run-1 partial(s).
- * 3. **Crash-recovery re-run emissions.** The `continue` path (FIX-811 crash
+ * 3. **Crash-recovery re-run emissions.** The `continue` path (crash
  *    recovery) re-runs the interrupted in-flight block with NO `suspension` /
  *    `suspension_resume` marker, so Rule 1 never fires for it — its run-1
  *    emissions would otherwise survive next to the re-emitted run-2 copies. A
@@ -72,7 +74,7 @@ function suspensionLogicalId(item: RuntimeItem): string | undefined {
  *    boundary, merged with Rule 1's so the later boundary wins. A block that ran
  *    once (one trace) — including a completed block injected from the log on
  *    replay — has no boundary and is left untouched.
- * 4. **Generator tool-call de-duplication (FIX-814).** A generator that suspends
+ * 4. **Generator tool-call de-duplication.** A generator that suspends
  *    inside its tool loop re-runs on resume, setting a Rule-1/3 boundary on the
  *    generator's own logical path. But a `tool_output` carries its parent
  *    generator's `blockInstanceId` as provenance, so a completed *sibling* tool

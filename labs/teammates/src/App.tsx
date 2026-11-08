@@ -1,6 +1,6 @@
 import { ClientHttpError } from "@flow-state-dev/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { HarnessRow, LabAdapter, LabContext, NewTeammate, WorkerRow } from "./adapter";
+import type { LabHarness, LabAdapter, LabContext, NewTeammate, LabWorker } from "./adapter";
 import { Conversation } from "./components/Conversation";
 import { KeysSheet } from "./components/KeysSheet";
 import { PopupView, type Popup } from "./components/Popups";
@@ -53,7 +53,7 @@ function failureOf(error: unknown): ConnectionFailure {
 }
 
 export function App({ adapter }: { adapter: LabAdapter }) {
-  const [workers, setWorkers] = useState<WorkerRow[]>([]);
+  const [workers, setWorkers] = useState<LabWorker[]>([]);
   const [sessions, setSessions] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string>();
   // A task or a message, open in a popup over the thread.
@@ -78,9 +78,9 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   const addressed = useRef<Popup | undefined>(undefined);
   // The teammates the last landed roster drew, and a pick waiting for a roster: a hire picks its
   // teammate once its row lands; a fire picks from the roster that no longer has the fired one.
-  const landedTalking = useRef<WorkerRow[]>([]);
-  const waitingPick = useRef<((talking: WorkerRow[]) => boolean) | null>(null);
-  const pickWhenLanded = (pick: (talking: WorkerRow[]) => boolean) => {
+  const landedTalking = useRef<LabWorker[]>([]);
+  const waitingPick = useRef<((talking: LabWorker[]) => boolean) | null>(null);
+  const pickWhenLanded = (pick: (talking: LabWorker[]) => boolean) => {
     waitingPick.current = pick(landedTalking.current) ? null : pick;
   };
   const fromAddress = (named: Address) => {
@@ -137,7 +137,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   // The watch brings the new row and its conversation; the pick waits for them.
   // What the lab works on and with, and which harnesses can run: read once, the chips again on Re-check.
   const [context, setContext] = useState<LabContext>();
-  const [harnesses, setHarnesses] = useState<HarnessRow[]>();
+  const [harnesses, setHarnesses] = useState<LabHarness[]>();
   useEffect(() => {
     let on = true;
     void adapter.readContext().then((read) => on && setContext(read), () => undefined);
@@ -293,6 +293,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           context={context}
           harnesses={harnesses}
           onRecheck={recheck}
+          // The panel beside the conversation lists its tasks: View brings that list into sight.
+          onViewTasks={() => document.getElementById("tasks-heading")?.scrollIntoView({ block: "start" })}
         />
       ) : (
         <main aria-label="Conversation" />

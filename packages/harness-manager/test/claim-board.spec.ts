@@ -132,7 +132,7 @@ describe("a manager reading its board from the claim", () => {
     const { result } = await lab.runAttempt(CONVERSATIONS, "task_review", "conv-a");
     expect(lab.seen).toHaveLength(0);
     const row = await lab.row(CONVERSATIONS, "task_review", "conv-a");
-    expect(`${row.feedback} ${messageOf(result.error)}`).toContain(`is a "review" row on a manager configured for "${PHASE}"`);
+    expect(`${row.feedback} ${messageOf(result.error)}`).toContain(`is a "review" task on a manager configured for "${PHASE}"`);
   }, 60_000);
 });
 

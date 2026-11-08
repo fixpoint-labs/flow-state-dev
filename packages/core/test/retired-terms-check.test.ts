@@ -14,12 +14,11 @@ import {
   census,
   checkGlossary,
   control,
-  parseUnifiedAddedLines,
-  scanCollectionRows,
+  scanTreeRules,
   // @ts-expect-error — root check script, plain .mjs with no type declarations.
 } from "../../../scripts/check-retired-terms.mjs";
-// @ts-expect-error — vocabulary rule module, plain .mjs with no type declarations.
-import { COLLECTION_ITEM, RETIRED } from "../../../goals/vocabulary/one-word-per-thing/rules.mjs";
+// @ts-expect-error — the vocabulary glossary, plain .mjs with no type declarations.
+import { SWEEP_RULES, TREE_EXEMPTIONS, TREE_RULES } from "../../../docs/contributing/glossary.mjs";
 
 type Hit = { path: string; area: string; term: string; line: number; text: string };
 type Tree = { files: Map<string, string>; paths: string[] };
@@ -138,6 +137,55 @@ describe("words with live meanings elsewhere count on Workforce's ground only", 
   });
 });
 
+describe("contributor docs and skills are read for retired names, not English meanings", () => {
+  // A skill author writing plain English shouldn't fight CI; a retired name in a skill misleads an agent.
+  it("counts a retired name in a skill and a contributor doc, and leaves the English 'room' alone there", () => {
+    const r = run({
+      ".agents/skills/zz/SKILL.md": "Each seat runs on its own branch.\nKeep the room tidy.\n",
+      "docs/contributing/zz.md": "Locality is decided by `isInProcessDispatcher`.\n", // retired-name-refusal: a planted name
+    });
+    expect(counted(r)).toEqual([".agents/skills/zz/SKILL.md:1:seat", "docs/contributing/zz.md:1:isInProcessDispatcher"]); // retired-name-refusal: the planted name
+  });
+
+  it("still counts the meaning in code, where the same line is refused", () => {
+    const r = run({ "packages/workforce/src/zz.ts": "// Keep the room tidy.\n" });
+    expect(counted(r)).toEqual(["packages/workforce/src/zz.ts:1:room"]);
+  });
+
+  // A name rule keeps its encoding in the contributor trees: a code rule reads their scripts, a page
+  // rule their markdown. If the two swapped, a retired symbol in a skill's prose would be refused as code.
+  const PATHS = [
+    ".agents/workflows/zz.js",
+    ".agents/skills/zz/SKILL.md",
+    "CLAUDE.md",
+    "docs/contributing/zz.md",
+    "labs/zz/NOTES.md",
+    "labs/zz/src/zz.ts",
+  ];
+  const reads = (id: string): string[] => {
+    const rule = (SWEEP_RULES as { id: string; files: RegExp }[]).find((r) => r.id === id);
+    if (rule === undefined) throw new Error(`no sweep rule ${id}`);
+    return PATHS.filter((p) => rule.files.test(p));
+  };
+
+  it("reads a code name rule in the contributor trees' scripts, not their markdown", () => {
+    expect(reads("ask-symbol")).toEqual([".agents/workflows/zz.js", "labs/zz/src/zz.ts"]);
+  });
+
+  it("reads a page name rule in the contributor trees' markdown, not their scripts", () => {
+    expect(reads("ask-symbol-in-docs")).toEqual([
+      ".agents/skills/zz/SKILL.md",
+      "CLAUDE.md",
+      "docs/contributing/zz.md",
+      "labs/zz/NOTES.md",
+    ]);
+  });
+
+  it("keeps a meaning rule out of the contributor trees", () => {
+    expect(reads("ask-prose")).toEqual(["labs/zz/src/zz.ts"]);
+  });
+});
+
 describe("totality: every file has an area, every exception earns its place", () => {
   it("passes a fixture with nothing retired in it", () => {
     const r = run({ "packages/workforce/src/zz.ts": "// a coordinator hands each post to a delegate\n" });
@@ -180,109 +228,183 @@ describe("the glossary defines each shipped term exactly once", () => {
   });
 });
 
-const collectionHits = (path: string, text: string, added?: number[]): string[] => {
-  const lines = added ?? text.split("\n").map((_, i) => i + 1);
-  return (scanCollectionRows as (path: string, text: string, added: Set<number>) => Hit[])(path, text, new Set(lines)).map(
-    (h) => `${h.line}:${h.text}`,
-  );
-};
+const resourceHits = (path: string, text: string): string[] =>
+  (scanTreeRules as (path: string, text: string) => Hit[])(path, text).map((h) => `${h.line}:${h.text}`);
 
-describe("stored collection data added on this change is an item, not a row", () => {
-  const collectionFile = "packages/orchestration/src/tasks/collection/zz.ts";
+/** The three released messages a published page may still quote (FIX-2479 D4). */
+const OWNER_PRIVATE = "A row of an owner-private collection is readable only by the user it belongs to.";
+const OWNER_WRITES = "A row of an owner-writes collection is written only by the user it belongs to.";
+const OVERLAP = 'Collection pattern "[tenant]/**" can reach the rows of owner-private collection';
 
-  it("keeps the rule out of the whole-tree sweep", () => {
-    // The sweep fails on every match. Collection rows already fill the tree, so this rule
-    // stays off that list and the added-line check is what enforces it.
-    expect((RETIRED as Array<{ id: string }>).map((r) => r.id)).not.toContain((COLLECTION_ITEM as { id: string }).id);
-    expect((COLLECTION_ITEM as { scope: string; say: string }).scope).toBe("added-lines");
-    expect((COLLECTION_ITEM as { say: string }).say).toBe("collection item");
+describe("the resource entry reads the whole tree: a stored thing is a resource, a lifecycle a Status", () => {
+  const rule = (TREE_RULES as Array<{ id: string; term: string; say: string }>).find((r) => r.id === "collection-row");
+
+  it("is the guard's whole-tree rule under the Resource entry, not a sweep rule", () => {
+    expect((SWEEP_RULES as Array<{ id: string }>).map((r) => r.id)).not.toContain("collection-row");
+    expect(rule?.term).toBe("Resource");
+    expect(rule?.say).toMatch(/ResourceState/);
+    expect(rule?.say).not.toMatch(/collection item/);
   });
 
-  it("counts a new collection Row type and docs prose, and leaves what is already there", () => {
-    expect(collectionHits(collectionFile, "export type WidgetRow = { id: string };\n")).toEqual([
-      "1:export type WidgetRow = { id: string };",
-    ]);
-    expect(collectionHits(collectionFile, "export interface WidgetRow { id: string }\n")).toEqual([
-      "1:export interface WidgetRow { id: string }",
-    ]);
-    // The declaration is on line 2. Line 1 is the existing name, and it is not part of the change.
-    expect(collectionHits(collectionFile, "export type OldRow = { id: string };\nexport type WidgetRow = { id: string };\n", [2])).toEqual([
-      "2:export type WidgetRow = { id: string };",
-    ]);
-    expect(
-      collectionHits("apps/docs/docs/resources/overview.md", "Each collection row stores the topic.\nRead the row of the collection.\nA collection's row keeps its topic.\n"),
-    ).toEqual([
-      "1:Each collection row stores the topic.",
-      "2:Read the row of the collection.",
-      "3:A collection's row keeps its topic.",
+  it("counts a name already in the tree, not only a line a change adds", () => {
+    // Line 1 was there before any change: at whole-tree scope it counts like a new one.
+    expect(resourceHits("packages/orchestration/src/tasks/collection/zz.ts", "export type OldRow = { id: string };\nconst id = 1;\n")).toEqual([
+      "1:export type OldRow = { id: string };",
     ]);
   });
 
-  it("counts a Row type whose name or line says collection, wherever the file sits", () => {
-    expect(collectionHits("packages/engine/src/zz.ts", "export interface CollectionRow { id: string }\n")).toEqual([
-      "1:export interface CollectionRow { id: string }",
+  it("refuses a Row type in any package, wherever the file sits and whatever it says", () => {
+    // No collection in the path, the line or the name: a Row type is a store's word above the stores.
+    expect(resourceHits("packages/workforce/src/zz.ts", "export type FooRow = { id: string };\n")).toEqual(["1:export type FooRow = { id: string };"]);
+    expect(resourceHits("packages/engine/src/zz.ts", "interface StoredRow extends Base {\n")).toEqual(["1:interface StoredRow extends Base {"]);
+    expect(resourceHits("packages/core/test/zz.test.ts", "type Row = readonly [label: string, expected: string];\n")).toEqual([
+      "1:type Row = readonly [label: string, expected: string];",
     ]);
-    expect(collectionHits("packages/engine/src/zz.ts", "export type WidgetRow = { id: string }; // one collection item\n")).toEqual([
-      "1:export type WidgetRow = { id: string }; // one collection item",
-    ]);
+    expect(resourceHits("labs/zz/src/adapter.ts", "export interface TaskRowView<T> {\n")).toEqual(["1:export interface TaskRowView<T> {"]);
   });
 
-  it("leaves response items, record, entry, a non-collection Row type, and UI table rows alone", () => {
-    const untouched = [
-      "export type OutputItem = { type: string };",
-      "function getItems() { return []; }",
-      "recordHarnessUsage();",
-      "export type CollectionSnapshotEntry = { topic: string };",
-      "type TraceRow = { type: string };",
-      "type Row = readonly [label: string, expected: string];",
+  it("refuses an exported value built on Row, and leaves a local, an import and a re-export", () => {
+    expect(resourceHits("packages/harness-manager/src/zz.ts", "export async function readRunRow(id: string) {}\n")).toEqual([
+      "1:export async function readRunRow(id: string) {}",
+    ]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const fooRowSchema = z.object({});\n")).toEqual(["1:export const fooRowSchema = z.object({});"]);
+    expect(resourceHits("packages/orchestration/src/zz.ts", "export function rowTruthOf() {}\n")).toEqual(["1:export function rowTruthOf() {}"]);
+    const kept = [
+      "const taskRow = rows[0];",
+      'import { type VersionedRow } from "@flow-state-dev/contracts";',
+      'export { type ScheduleIndexRow } from "./scheduleIndex";',
+      "  type ResourceStateRow,",
+      "export function throwArrow() {}",
     ].join("\n");
-    expect(collectionHits("packages/engine/src/zz.ts", untouched)).toEqual([]);
-    expect(collectionHits("apps/docs/docs/resources/overview.md", "response.getItems() returns an OutputItem.\nrecordHarnessUsage writes a run record.\n")).toEqual([]);
-    expect(collectionHits("apps/docs/docs/resources/overview.md", "Each table row is a grid row.\n<tr><td>n</td></tr>\n")).toEqual([]);
-    // Same collection file, but the names and the line are a rendered table.
-    expect(collectionHits(collectionFile, "export type BoardCardRow = { id: string };\nexport type TableRow = { id: string };\nexport type DataTableRow = { id: string };\n")).toEqual([]);
-    expect(collectionHits("packages/react/src/components/panels/BoardColumns.tsx", "export type WidgetRow = { id: string };\n")).toEqual([]);
-    expect(collectionHits("packages/react/src/components/flow-navigator/rows.tsx", "export type SessionRow = { id: string };\n")).toEqual([]);
+    expect(resourceHits("packages/engine/src/zz.ts", kept)).toEqual([]);
+  });
+
+  it("refuses a Row name exported through an export list or an alias, and leaves a re-export of an existing name", () => {
+    // Changing the export syntax must not let a retired public name through.
+    expect(resourceHits("packages/workforce/src/zz.ts", "const loadWidgetRow = () => null;\nexport { loadWidgetRow };\n")).toEqual(["2:export { loadWidgetRow };"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export {\n  loadWidget,\n  type WidgetRowPage,\n};\n")).toEqual(["3:type WidgetRowPage,"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", 'export { loadWidget as loadWidgetRow } from "./read";\n')).toEqual([
+      '1:export { loadWidget as loadWidgetRow } from "./read";',
+    ]);
+    // The exported name is what a consumer meets: a Row local exported under another name is fine.
+    expect(resourceHits("packages/workforce/src/zz.ts", "export { widgetRow as widget };\n")).toEqual([]);
+  });
+
+  it("refuses a Row name a destructuring export binds, and leaves the names it only reads", () => {
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const { loadWidgetRow } = helpers;\n")).toEqual(["1:export const { loadWidgetRow } = helpers;"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const {\n  widget: loadWidgetRow,\n} = helpers;\n")).toEqual(["2:widget: loadWidgetRow,"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const [first, { rows: widgetRows = [] }] = pair;\n")).toEqual([
+      "1:export const [first, { rows: widgetRows = [] }] = pair;",
+    ]);
+    // `widgetRow:` is the property read; `widget` is the name a consumer meets.
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const { widgetRow: widget, GET } = helpers;\n")).toEqual([]);
+  });
+
+  it("reads an export list or pattern member that a comment sits in front of", () => {
+    // A commented barrel export is ordinary; the comment must not hide the name, or shift its line.
+    expect(resourceHits("packages/workforce/src/zz.ts", "export {\n  // reads one, then the rest\n  loadWidgetRow,\n  other,\n};\n")).toEqual(["3:loadWidgetRow,"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export { loadWidget, /** doc, with a comma */ fooRow };\n")).toEqual([
+      "1:export { loadWidget, /** doc, with a comma */ fooRow };",
+    ]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const {\n  /* the list */ loadWidgetRow,\n} = helpers;\n")).toEqual(["2:/* the list */ loadWidgetRow,"]);
+  });
+
+  it("reads a long file with no export list in linear time", () => {
+    // A matcher that looks behind for `export {` at every character is quadratic on exactly this.
+    const long = `const markup = \`${"<div class=\"a\">x</div>\n".repeat(8000)}\`;\n`;
+    const started = performance.now();
+    expect(resourceHits("packages/workforce/src/zz.ts", long)).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  it("refuses a plural Row word part followed by another word part", () => {
+    expect(resourceHits("packages/workforce/src/zz.ts", "export type WidgetRowsPage = { widgets: unknown[] };\n")).toEqual([
+      "1:export type WidgetRowsPage = { widgets: unknown[] };",
+    ]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export function loadWidgetRowsPage() {}\n")).toEqual(["1:export function loadWidgetRowsPage() {}"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export function rowsetOf() {}\nexport type Rowan = string;\n")).toEqual([]);
+  });
+
+  it("refuses any CollectionItem name in code, a use as well as a declaration, and leaves a page's prose to the release", () => {
+    expect(resourceHits("packages/react/src/zz.ts", "export function useFooCollectionItem() {}\n")).toEqual(["1:export function useFooCollectionItem() {}"]);
+    expect(resourceHits("apps/kitchen-sink/lib/zz.ts", "const page = await client.resources.listCollectionItems(id, ref);\n")).toEqual([
+      "1:const page = await client.resources.listCollectionItems(id, ref);",
+    ]);
+    // A published page names the released API until /release-docs rewrites it.
+    expect(resourceHits("apps/docs/guides/zz.md", "Call `resources.listCollectionItems` to page.\n")).toEqual([]);
+  });
+
+  it("refuses a lifecycle named State, on one line or several, and leaves a state shape", () => {
+    expect(resourceHits("packages/react/src/zz.ts", 'export type FooState = "idle" | "playing";\n')).toEqual(['1:export type FooState = "idle" | "playing";']);
+    expect(resourceHits("packages/ui/registry/components/zz.tsx", 'export type FooState =\n  /** not yet */\n  | "pending"\n  | "done";\n')).toEqual([
+      "1:export type FooState =",
+    ]);
+    expect(resourceHits("packages/workspace/src/zz.ts", 'export const fooStateSchema = z.enum(["a", "b"]);\n')).toEqual([
+      '1:export const fooStateSchema = z.enum(["a", "b"]);',
+    ]);
+    const shapes = [
+      "export type FooState = { value: string };",
+      "export type WorkerResourceState = z.infer<typeof workerResourceStateSchema>;",
+      'export type RunState =\n  | { kind: "none" }',
+      'export type FooStatus = "a" | "b";',
+    ].join("\n");
+    expect(resourceHits("packages/workforce/src/zz.ts", shapes)).toEqual([]);
+  });
+
+  it("keeps Row in a store adapter and a UI list module, by path alone", () => {
+    expect(resourceHits("packages/store-sqlite/src/zz.ts", "type ResourceRow = { key: string };\n")).toEqual([]);
+    expect(resourceHits("packages/engine/src/stores/zz.ts", "export type ResourceStateRow = VersionedRow<JsonObject>;\n")).toEqual([]);
+    expect(resourceHits("packages/react/src/components/panels/cards.ts", "export type BoardCardRow = { id: string };\n")).toEqual([]);
+    expect(resourceHits("packages/shift-manager/src/surfaces/roster/list.tsx", "export function WorkerRow() {}\n")).toEqual([]);
+    // The same names one folder over are a read model, not a rendered row.
+    expect(resourceHits("packages/shift-manager/src/lib/zz.ts", "export type WorkerRow = { id: string };\n")).toEqual(["1:export type WorkerRow = { id: string };"]);
+    // The path keeps Row only: a CollectionItem name and a lifecycle State still count there.
+    expect(resourceHits("packages/react/src/components/panels/zz.ts", "export type FooCollectionItem = { id: string };\n")).toHaveLength(1);
+    expect(resourceHits("packages/store-sqlite/src/zz.ts", 'export type FooState = "a" | "b";\n')).toHaveLength(1);
+  });
+
+  it("counts a page calling a resource in a collection a row", () => {
+    expect(
+      resourceHits("apps/docs/docs/resources/overview.md", "Each collection row stores the topic.\nRead the row of the collection.\nA collection's row keeps its topic.\n"),
+    ).toEqual(["1:Each collection row stores the topic.", "2:Read the row of the collection.", "3:A collection's row keeps its topic."]);
+    expect(resourceHits("docs/architecture/zz.md", "Each collection row stores the topic.\n")).toHaveLength(1);
+    expect(resourceHits("apps/docs/docs/resources/overview.md", "response.getItems() returns an OutputItem.\nEach table row is a grid row.\n")).toEqual([]);
+  });
+
+  it("lets a published page quote the three released messages, stripping the quote and not the line", () => {
+    const page = "apps/docs/docs/resources/collections.md";
+    expect(resourceHits(page, `Anyone else's write throws "${OWNER_WRITES}" and changes nothing.\n`)).toEqual([]);
+    expect(resourceHits(page, `\`get\` throws "${OWNER_PRIVATE}"\n`)).toEqual([]);
+    expect(resourceHits(page, `${OVERLAP}\n`)).toEqual([]);
+    expect(resourceHits("packages/workforce/README.md", `  \`${OWNER_WRITES}\`, whichever flow\n`)).toEqual([]);
+    // A second use on the quoting line still counts.
+    expect(resourceHits(page, `It throws "${OWNER_WRITES}" for each row of the owner-writes collection.\n`)).toHaveLength(1);
+    // Only published pages: a contributor doc says the new words now.
+    expect(resourceHits("docs/architecture/resources-and-client-data.md", `(\`${OWNER_WRITES}\`)\n`)).toHaveLength(1);
+    // Only the released text: a paraphrase is not a quote.
+    expect(resourceHits(page, "It throws: a row of an owner-writes collection is written only by its user.\n")).toHaveLength(1);
+  });
+
+  it("carries no exemption beyond the store-adapter and UI-list paths and the released quotes", () => {
+    const kept = (TREE_EXEMPTIONS as Array<Record<string, unknown>>).map((e) => [e.id, Object.keys(e).sort().join(",")]);
+    expect(kept).toEqual([
+      ["store-adapter-rows", "id,path,rules,why"],
+      ["ui-list-rows", "id,path,rules,why"],
+      ["released-quotes", "id,pages,quotes,rules,why"],
+    ]);
   });
 
   it("does not read the guard's own lines, which name the pattern on purpose", () => {
-    const guard = "packages/core/test/retired-terms-check.test.ts";
-    expect(collectionHits(guard, "export type WidgetRow = { id: string };\nEach collection row is stored.\n")).toEqual([]);
-    expect(collectionHits("scripts/check-retired-terms.mjs", "Each collection row is stored beside the worker.\n")).toEqual([]);
-    expect(collectionHits("goals/vocabulary/one-word-per-thing/rules.mjs", "Each collection row is stored.\n")).toEqual([]);
-  });
-});
-
-describe("added lines come from the diff, not from the lines around them", () => {
-  const parse = parseUnifiedAddedLines as (diff: string) => Map<string, Set<number>>;
-
-  it("counts a new file's lines and an inserted line, and skips a deletion", () => {
-    const diff = [
-      "diff --git a/packages/orchestration/src/tasks/collection/widget.ts b/packages/orchestration/src/tasks/collection/widget.ts",
-      "new file mode 100644",
-      "--- /dev/null",
-      "+++ b/packages/orchestration/src/tasks/collection/widget.ts",
-      "@@ -0,0 +1,2 @@",
-      "+export type WidgetRow = { id: string };",
-      "+const id = 1;",
-      "diff --git a/packages/engine/src/zz.ts b/packages/engine/src/zz.ts",
-      "--- a/packages/engine/src/zz.ts",
-      "+++ b/packages/engine/src/zz.ts",
-      "@@ -4,0 +5 @@",
-      "+export type WidgetRow = { id: string };",
-      "@@ -9 +10 @@",
-      "-const old = 1;",
-      "+const next = 2;",
-      "@@ -12 +12,0 @@",
-      "-const gone = 1;",
-    ].join("\n");
-    const added = parse(diff);
-    expect([...(added.get("packages/orchestration/src/tasks/collection/widget.ts") ?? [])]).toEqual([1, 2]);
-    expect([...(added.get("packages/engine/src/zz.ts") ?? [])].sort((a, b) => a - b)).toEqual([5, 10]);
+    expect(resourceHits("packages/core/test/retired-terms-check.test.ts", "export type WidgetRow = { id: string };\nEach collection row is stored.\n")).toEqual([]);
+    expect(resourceHits("scripts/check-retired-terms.mjs", "export type WidgetRow = { id: string };\n")).toEqual([]);
+    expect(resourceHits("docs/contributing/glossary.mjs", "Each collection row is stored.\n")).toEqual([]);
   });
 
-  it("counts an added line whose text starts with ++", () => {
-    const diff = ["diff --git a/p.ts b/p.ts", "--- a/p.ts", "+++ b/p.ts", "@@ -1 +1,2 @@", " kept", "+++ still added"].join("\n");
-    expect([...(parse(diff).get("p.ts") ?? [])]).toEqual([2]);
+  it("fails the census on a hit and on a quote exemption nothing needs any more", () => {
+    const hit = run({ "packages/workforce/src/zz.ts": "export type FooRow = { id: string };\n" });
+    expect(hit.ok).toBe(false);
+    expect(counted(hit)).toContain("packages/workforce/src/zz.ts:1:collection-row");
+    // A fixture with no quote: the released-quote exemption strips nothing, so it is stale.
+    expect(run({}).stale).toContain("released-quotes");
   });
 });

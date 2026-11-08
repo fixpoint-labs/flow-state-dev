@@ -5,7 +5,7 @@
  */
 import { handler } from "@flow-state-dev/core";
 import type { DefinedResource } from "@flow-state-dev/core/types";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { debateInputSchema } from "../schemas";
 
 export function createInitTranscript(opts: {

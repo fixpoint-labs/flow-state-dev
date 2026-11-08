@@ -19,11 +19,12 @@ type RequestSeparatorProps = {
   totalTokens?: number;
   /** Inbound transport that produced the request. Undefined for legacy data. */
   source?: string;
+  // FIX-838.
   /**
    * Adapter-stamped provenance bag. Event transports namespace their
    * coordinate under a single slot — scheduled requests carry
    * `metadata.schedule.{scheduleId, origin, …}`, webhooks
-   * `metadata.webhook.{provider, eventType}` (FIX-838). Other sources
+   * `metadata.webhook.{provider, eventType}`. Other sources
    * may carry their own keys without affecting rendering here.
    */
   metadata?: Record<string, unknown>;
@@ -31,7 +32,8 @@ type RequestSeparatorProps = {
   onReplayFromCursor?: () => void;
   onReconnect?: () => void;
   onContinue?: () => void;
-  /** True while a continuation is already streaming for this request (FIX-865). */
+  // FIX-865.
+  /** True while a continuation is already streaming for this request. */
   isContinuing?: boolean;
 };
 
@@ -80,10 +82,11 @@ function truncateMiddle(value: string, max: number): string {
   return `${value.slice(0, half)}…${value.slice(-half)}`;
 }
 
+// FIX-438 §3.5.
 /**
  * Visual treatment per known transport source. Unknown values render as
  * a generic badge so custom transports still surface — the framework does
- * not police namespacing (FIX-438 §3.5).
+ * not police namespacing.
  */
 const SOURCE_LABELS: Record<string, { label: string }> = {
   mcp: { label: "MCP" },

@@ -5,115 +5,73 @@ import type { ComponentProps } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import { createContext, useCallback, useContext } from "react";
+import { useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 
 // ---------------------------------------------------------------------------
-// Scroll context (replaces use-stick-to-bottom)
+// The feed: `useJumpToLatest`'s return, carried to the Conversation's children
 // ---------------------------------------------------------------------------
 
-type ConversationScrollContextValue = {
-  isAtBottom: boolean;
-  /** Whether the scroll container is in the page yet, so a scroll can land. */
-  ready: boolean;
-  /** Smooth by default; `"instant"` for a conversation that is opening, not growing. */
-  scrollToBottom: (behavior?: "smooth" | "instant") => void;
-};
+const ConversationFeedContext = createContext<JumpToLatest | null>(null);
 
-const ConversationScrollContext =
-  createContext<ConversationScrollContextValue | null>(null);
-
-export function useConversationScroll() {
-  const ctx = useContext(ConversationScrollContext);
-  if (!ctx) {
-    throw new Error("useConversationScroll must be used inside <Conversation>");
-  }
-  return ctx;
+/**
+ * The feed of the `<Conversation>` around this component: what marks the
+ * person's line (`mine`) and what the jump button reads (`atEnd`, `jump`).
+ * `null` outside a Conversation.
+ */
+export function useConversationFeed(): JumpToLatest | null {
+  return useContext(ConversationFeedContext);
 }
 
 // ---------------------------------------------------------------------------
-// Conversation (scroll container + context provider)
+// Conversation (the scrolling element + the feed's provider)
 // ---------------------------------------------------------------------------
 
-export type ConversationProps = ComponentProps<"div">;
+/** No `ref`: the scrolling element's ref is the feed's. */
+export type ConversationProps = Omit<ComponentProps<"div">, "ref"> & {
+  /**
+   * The feed from `useJumpToLatest`, made by the app so its composer can call
+   * `feed.sent()` as the user's line goes out: that line then rises to near
+   * the top, and its reply streams in below it. Without it the Conversation
+   * makes its own feed, for a view that never sends.
+   */
+  feed?: JumpToLatest;
+  /**
+   * What the Conversation shows, such as a session id, for the feed it makes
+   * when there is no `feed`: when it changes, the view opens at its end again.
+   * When you make the feed, pass the key to `useJumpToLatest` instead.
+   */
+  resetKey?: string | null;
+};
 
+/**
+ * The scrolling element of a conversation, on `useJumpToLatest`'s rule: it
+ * opens at its end, a line the app says the user sent rises to near the
+ * top, and nothing else moves the view. New content below shows the jump
+ * button instead.
+ */
 export const Conversation = ({
   className,
   children,
+  feed,
+  resetKey,
   ...props
 }: ConversationProps) => {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [ready, setReady] = useState(false);
-  const [isAtBottom, setIsAtBottom] = useState(true);
-  // A child's layout effect runs before this element's ref is set: `ready`
-  // re-renders it once the container is there, still before paint.
-  const attach = useCallback((node: HTMLDivElement | null) => {
-    scrollRef.current = node;
-    setReady(node !== null);
-  }, []);
-
-  const checkIsAtBottom = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const threshold = 50;
-    setIsAtBottom(
-      el.scrollHeight - el.scrollTop - el.clientHeight < threshold
-    );
-  }, []);
-
-  // Re-check on any layout or content change, so a message that grows
-  // while the user is scrolled up (e.g. streaming text, or a new item
-  // appended anywhere in the tree) always updates the scroll-to-bottom
-  // affordance. A ResizeObserver on only the children present at mount
-  // misses a node added as a later sibling; watching all mutations under
-  // the container catches every case without assuming which child is
-  // "the" content wrapper.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    // Catches size changes on the container itself (e.g. viewport resize).
-    const resizeObserver = new ResizeObserver(checkIsAtBottom);
-    resizeObserver.observe(el);
-    // Catches content growth anywhere inside — new items, and text that
-    // grows in place as it streams in.
-    const mutationObserver = new MutationObserver(checkIsAtBottom);
-    mutationObserver.observe(el, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-    return () => {
-      resizeObserver.disconnect();
-      mutationObserver.disconnect();
-    };
-  }, [checkIsAtBottom]);
-
-  const scrollToBottom = useCallback((behavior: "smooth" | "instant" = "smooth") => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior });
-  }, []);
+  // Always called, so the hooks keep their order; left unattached when the app passes a feed.
+  const own = useJumpToLatest({ resetKey });
+  const shown = feed ?? own;
 
   return (
-    <ConversationScrollContext.Provider value={{ isAtBottom, ready, scrollToBottom }}>
+    <ConversationFeedContext.Provider value={shown}>
       <div
-        ref={attach}
-        onScroll={checkIsAtBottom}
         className={cn("relative flex-1 overflow-y-auto", className)}
         role="log"
         {...props}
+        ref={shown.ref}
       >
         {children}
       </div>
-    </ConversationScrollContext.Provider>
+    </ConversationFeedContext.Provider>
   );
 };
 
@@ -170,63 +128,40 @@ export const ConversationEmptyState = ({
 );
 
 // ---------------------------------------------------------------------------
-// ScrollOnNewRequest — scrolls to bottom once per new request
+// ConversationScrollButton (jump to latest)
 // ---------------------------------------------------------------------------
+
+export type ConversationScrollButtonProps = ComponentProps<typeof Button> & {
+  /** The feed it jumps. Inside a `<Conversation>` it reads the Conversation's. */
+  feed?: JumpToLatest;
+};
 
 /**
- * Place inside <Conversation> to auto-scroll to bottom when a new request
- * appears (e.g. user sends a message). Does NOT auto-scroll during streaming.
- *
- * A conversation that opens (its first load, or a switch to another session,
- * where the last request shown is no longer among the items) lands at the
- * bottom at once, before paint. Only a request that follows one already on
- * screen scrolls smoothly.
+ * Jump to latest: shown while there is more below the view. It takes no
+ * height when it shows, so showing it never moves the feed.
  */
-export function ScrollOnNewRequest({ items }: { items: OutputItem[] }) {
-  const { ready, scrollToBottom } = useConversationScroll();
-  const lastRequestIdRef = useRef<string | null>(null);
-
-  // Before paint, so an opening conversation is never seen at the top.
-  useLayoutEffect(() => {
-    if (!ready) return;
-    if (items.length === 0) {
-      lastRequestIdRef.current = null;
-      return;
-    }
-    const shown = lastRequestIdRef.current;
-    const lastRequestId = items[items.length - 1].requestId;
-    if (lastRequestId !== shown) {
-      lastRequestIdRef.current = lastRequestId;
-      const continued = shown !== null && items.some((item) => item.requestId === shown);
-      scrollToBottom(continued ? "smooth" : "instant");
-    }
-  }, [items, ready, scrollToBottom]);
-
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// ConversationScrollButton (sticky bottom, uses scroll context)
-// ---------------------------------------------------------------------------
-
-export type ConversationScrollButtonProps = ComponentProps<typeof Button>;
-
 export const ConversationScrollButton = ({
   className,
+  feed,
   ...props
 }: ConversationScrollButtonProps) => {
-  const { isAtBottom, scrollToBottom } = useConversationScroll();
+  const around = useConversationFeed();
+  const shown = feed ?? around;
+  if (!shown) {
+    throw new Error("ConversationScrollButton needs a feed, or to be inside <Conversation>");
+  }
 
-  if (isAtBottom) return null;
+  if (shown.atEnd) return null;
 
   return (
-    <div className="sticky bottom-4 z-10 flex justify-center pointer-events-none">
+    <div className="pointer-events-none sticky bottom-0 z-10 flex h-0 items-end justify-center">
       <Button
+        aria-label="Jump to latest"
         className={cn(
-          "rounded-full pointer-events-auto dark:bg-background dark:hover:bg-muted",
+          "mb-4 rounded-full pointer-events-auto dark:bg-background dark:hover:bg-muted",
           className
         )}
-        onClick={() => scrollToBottom()}
+        onClick={shown.jump}
         size="icon"
         type="button"
         variant="outline"

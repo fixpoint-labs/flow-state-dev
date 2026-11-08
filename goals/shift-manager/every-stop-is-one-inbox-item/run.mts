@@ -13,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { probeClaudeAccount } from "@flow-state-dev/claude-code/sdk";
+import { probeClaudeCodeAccount } from "@flow-state-dev/claude-code";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, loadFixture, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv } from "../../lib/module-patch.mts";
 import { buildShiftManagerPages, type ServedShiftManager } from "../../lib/shift-manager.mts";
@@ -99,7 +99,7 @@ await runGoal(async (failures, tell) => {
   }
   if (harness === "claude-code") {
     // A cold Claude Code start on a busy machine can take past the probe's 10 s default.
-    const probe = await probeClaudeAccount({ env: claudeCodeEnv(), timeoutMs: 60_000 } as never);
+    const probe = await probeClaudeCodeAccount({ env: claudeCodeEnv(), timeoutMs: 60_000 } as never);
     if (probe.status !== "account") return { failures: [`blocked: no Claude Code account for the coding run (${show(probe)})`], evidence: "" };
   }
   mkdirSync(SCRATCH, { recursive: true });

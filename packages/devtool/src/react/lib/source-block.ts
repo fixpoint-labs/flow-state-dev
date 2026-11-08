@@ -1,9 +1,10 @@
+// FIX-480; FIX-413.
 /**
  * Resolve a `BlockValue.ref`'s `sourceItemId` to the human-readable source
  * block name and a handle on the source item itself. The flatten-at-emit
- * invariant (FIX-413) guarantees a ref points one hop directly at a
+ * invariant guarantees a ref points one hop directly at a
  * content-bearing item — either a `BlockTraceItem` or a `MessageItem`
- * (FIX-480 streaming-text generators emit refs to their own message).
+ * (streaming-text generators emit refs to their own message).
  *
  * Returns `null` when the source item is no longer in the live trace
  * (retention eviction). Callers should degrade the visual gracefully.

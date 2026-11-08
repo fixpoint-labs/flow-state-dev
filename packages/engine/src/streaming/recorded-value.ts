@@ -1,5 +1,6 @@
+// FIX-1772.
 /**
- * The record limit (FIX-1772): what the response emitter records in place of a
+ * The record limit: what the response emitter records in place of a
  * block output or tool result that is too large to keep.
  *
  * A step's return value and a tool's result are recorded on their items, which
@@ -14,7 +15,7 @@
  * characters are ever built.
  */
 import type { OmittedValue, StructureShape } from "@flow-state-dev/core/items";
-import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
+import type { BlockValueInternal } from "@flow-state-dev/core/internal";
 
 /** The limit an emitter applies when none is passed: 256 KiB. */
 export const DEFAULT_MAX_RECORDED_VALUE_BYTES = 256 * 1024;

@@ -2,7 +2,8 @@ import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/
 import type { FlowInstance, ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import type { DurabilityProvider } from "../src/durability/types";
 import type { StoreRegistry } from "../src/stores/types";

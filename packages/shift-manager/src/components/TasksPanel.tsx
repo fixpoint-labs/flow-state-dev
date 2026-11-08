@@ -1,13 +1,14 @@
+// FIX-1794 S11; FIX-2286; FIX-2429.
 /**
- * TASKS, at Shift Coordinator (FIX-1794 S11): the tasks the user's
+ * TASKS, at Shift Coordinator: the tasks the user's
  * conversation filed for its delegates, as the conversation's own
  * `listTasks` read answers them (`lib/conversation-tasks.ts`), which stores
- * nothing, so a poll costs no request (FIX-2286). Each conversation
+ * nothing, so a poll costs no request. Each conversation
  * keeps a board of its own, so this reads that one board and nothing else.
  *
  * It reads when it opens, again each time the Lab is read again (`readAt`),
- * which is after each turn the user sends, and on every board notice
- * (FIX-2429): a task filed, moved or settled in any session, on any process,
+ * which is after each turn the user sends, and on every board notice:
+ * a task filed, moved or settled in any session, on any process,
  * on the conversation's board or its plan ledger. Wherever push can miss a
  * change (no push, the socket down, a bus that doesn't cross, as the SQLite
  * store's) it reads every {@link TASKS_POLL_MS} instead, but only while a task
@@ -21,7 +22,13 @@ import { ChevronRightIcon } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { columnFor, isDone } from "../lib/columns";
 import { workerLabel } from "../lib/derive";
-import { conversationBoardTopics, readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
+import {
+  conversationBoardTopics,
+  pullRequestsWaitedOn,
+  readConversationTasks,
+  readPullRequestLinks,
+  type ConversationTask,
+} from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
 import { conversationBoardRef, describeFailure, type Worker } from "../lib/reads";
 import { RouteLink } from "./RouteLink";
@@ -163,6 +170,52 @@ function TaskGroup({ tasks, name, boardRef }: { tasks: readonly ConversationTask
   );
 }
 
+/** The line a task waiting on its pull request offers, while nothing tells it of a merge. */
+const PULL_REQUEST_HINT = "Merged? Say so here and I'll check.";
+
+/**
+ * A task waiting on its pull request: *PR open · #7*, each number linked once
+ * its run session's record is read, and how to wake it (a line in its session).
+ */
+function PullRequestOpen({ task }: { task: ConversationTask }) {
+  const { client } = useLab();
+  const waited = pullRequestsWaitedOn(task);
+  const runSessionId = waited?.runSessionId ?? null;
+  const [links, setLinks] = useState<ReadonlyMap<number, string>>(new Map());
+  useEffect(() => {
+    if (runSessionId === null) return;
+    let current = true;
+    void readPullRequestLinks(client, runSessionId).then((read) => {
+      if (current) setLinks(read);
+    });
+    return () => {
+      current = false;
+    };
+  }, [client, runSessionId, waited?.numbers.join(",")]);
+  return (
+    <span className="ml-auto shrink-0 text-right text-xs text-muted-foreground" data-testid="shift-coordinator-task-pull-request">
+      <span data-testid="pull-request-wait">
+        PR open
+        {(waited?.numbers ?? []).map((n, i) => (
+          <span key={n}>
+            {i === 0 ? " · " : ", "}
+            {links.has(n) ? (
+              <a href={links.get(n)} target="_blank" rel="noreferrer" className="underline hover:text-foreground">
+                #{n}
+              </a>
+            ) : (
+              `#${n}`
+            )}
+          </span>
+        ))}
+      </span>
+      <span className="block" data-testid="pull-request-hint">
+        {PULL_REQUEST_HINT}
+      </span>
+    </span>
+  );
+}
+
 /** Each task opens its session on the conversation's board. */
 function TaskList({ tasks, boardRef }: { tasks: readonly ConversationTask[]; boardRef: string }) {
   return (
@@ -186,6 +239,7 @@ function TaskList({ tasks, boardRef }: { tasks: readonly ConversationTask[]; boa
               {task.status} · {task.assignee == null ? "unassigned" : workerLabel(task.assignee)}
             </span>
           </RouteLink>
+          {pullRequestsWaitedOn(task) === undefined ? null : <PullRequestOpen task={task} />}
         </li>
       ))}
     </ul>

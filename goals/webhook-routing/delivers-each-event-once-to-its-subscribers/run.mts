@@ -6,12 +6,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, SubscriptionEvent } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, routeServiceEvent, runAction, type InboundTransportHost } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { routeServiceEvent } from "@flow-state-dev/engine/internal";
+import { type InboundTransportHost } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import {
-  MESSAGE_RECEIVED_ENTRY,
   ROSTER_FLOW,
-  SUBSCRIPTION_ROUTE_ENTRY,
   WORKER_MESSAGES_PATTERN,
   createWorkerInstallation,
   defineSubscriptionServiceFlow,
@@ -141,7 +141,7 @@ installationFlows.follower = {
       unsubscribe: { inputSchema: tools.unsubscribe.inputSchema, block: tools.unsubscribe }
     },
     // No turn: a message lands as its items and nothing runs.
-    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "follower" }) } },
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
     task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: door }) } }
   })
 };
@@ -264,7 +264,7 @@ let unlabelled = 0;
 const route = async (event: SubscriptionEvent) => {
   const routed = await routeServiceEvent(host, {
     flowKind: "github-service",
-    entry: SUBSCRIPTION_ROUTE_ENTRY,
+    entry: "routeSubscriptionEvent",
     input: event,
     principal: { userId: "service:github", orgId: ORG }
   });

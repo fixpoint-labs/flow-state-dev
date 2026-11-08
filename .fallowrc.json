@@ -30,6 +30,8 @@
     "packages/cli/test/fixtures*/**/*.{ts,mjs}",
     // Fake Codex programs the codex specs spawn by path.
     "packages/codex/test/fake-*.mjs",
+    // Scripts the Cursor package runs in a child process by path.
+    "packages/cursor/runtime/*.mjs",
     // A fake Claude Code CLI the claude-code settings spec spawns by path.
     "packages/claude-code/test/sdk/fake-*.mjs",
 
@@ -53,6 +55,8 @@
 
     // Loaded by `fsdev dev --config`, which no import reaches.
     "labs/claude-code-style/fsdev.config.mts",
+    // Loaded by `fsdev serve --config` when a closure pass runs on one model.
+    "goals/closure-smarter-agents/haiku.config.mts",
 
     "plugins/flow-state-dev/test/**/*.test.mjs",
     "plugins/flow-state-dev/skills/install-fsd/detect/detect.mjs",
@@ -129,6 +133,13 @@
     // The Teammates lab's byte copy of the registry's connection screen; its
     // backoff export is for apps that time their own retries.
     "labs/teammates/src/components/flow-state/connection-screen.tsx",
+    // Both labs' byte copies of the registry's conversation, installed with session-overlay:
+    // the overlay draws its ConversationScrollButton; the rest is for apps that draw a conversation.
+    "labs/claude-code-style/src/components/flow-state/conversation.tsx",
+    "labs/teammates/src/components/flow-state/conversation.tsx",
+    // The Teammates lab's byte copy of the registry's session-overlay: it draws the modal only,
+    // so the sheet's provider and area are for apps like the Claude Code-style lab.
+    "labs/teammates/src/components/flow-state/session-overlay.tsx",
     // Kitchen Sink's byte copy of the registry's request-recovery: its failed-turn
     // line draws `RequestRecovery`; `INTERRUPTED_REASON` is for apps that word their own.
     "apps/kitchen-sink/components/flow-state/request-recovery.tsx",
@@ -162,7 +173,13 @@
     "packages/shift-manager/src/components/flow-state/review-hold.tsx",
     // Shift Manager's byte copy of the registry's spend: it draws the line and the
     // charge; the copy's other formatters are for apps that show them apart.
-    "packages/shift-manager/src/components/flow-state/spend.tsx"
+    "packages/shift-manager/src/components/flow-state/spend.tsx",
+    // Shift Manager's and the labs' byte copies of the registry's conversation: they
+    // draw `ConversationScrollButton` on their own feeds; the scrolling element,
+    // its content and the download are for apps that take the whole item.
+    "packages/shift-manager/src/components/flow-state/conversation.tsx",
+    "labs/claude-code-style/src/components/flow-state/conversation.tsx",
+    "labs/teammates/src/components/flow-state/conversation.tsx"
   ],
 
   // One named export, not a whole file. Kitchen Sink's and Shift Manager's byte
@@ -196,7 +213,12 @@
     { "file": "labs/claude-code-style/src/components/flow-state/streaming-indicator.tsx", "exports": ["WorkedFor"] },
     { "file": "labs/teammates/src/components/flow-state/streaming-indicator.tsx", "exports": ["WorkedFor"] },
     { "file": "labs/claude-code-style/src/components/flow-state/shimmer.tsx", "exports": ["TextShimmerProps"] },
-    { "file": "labs/teammates/src/components/flow-state/shimmer.tsx", "exports": ["TextShimmerProps"] }
+    { "file": "labs/teammates/src/components/flow-state/shimmer.tsx", "exports": ["TextShimmerProps"] },
+    // Shift Manager's and the Teammates lab's byte copies of the registry's conversation:
+    // each app draws only `ConversationScrollButton` from it, and its own `Conversation`
+    // view is a different component that keeps the app's name.
+    { "file": "packages/shift-manager/src/components/flow-state/conversation.tsx", "exports": ["Conversation"] },
+    { "file": "labs/teammates/src/components/flow-state/conversation.tsx", "exports": ["Conversation"] }
   ],
 
   // Dead code fails `fallow audit` at its default severity. Complexity reports
@@ -212,5 +234,15 @@
   },
 
   // The host API the .omp extensions import; OMP supplies it at run time.
-  "ignoreDependencies": ["@oh-my-pi/pi-coding-agent"]
+  // The Cursor SDK's platform packages are never imported: the SDK finds its
+  // sandbox helper in one by walking node_modules up from the running script
+  // (packages/cursor/test/sandbox-probe.spec.ts proves the walk finds it).
+  "ignoreDependencies": [
+    "@oh-my-pi/pi-coding-agent",
+    "@cursor/sdk-darwin-arm64",
+    "@cursor/sdk-darwin-x64",
+    "@cursor/sdk-linux-arm64",
+    "@cursor/sdk-linux-x64",
+    "@cursor/sdk-win32-x64"
+  ]
 }

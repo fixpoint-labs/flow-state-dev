@@ -6,7 +6,8 @@
  *   serves: this checkout, or `GOAL_COMMIT`'s own tree and install (the
  *   control defaults to `0df5c85`, main when the epic merged).
  * - {@link serveFsdev}: an app's `fsdev serve` (its flow API, no pages to build) on a free port, its whole
- *   process group stopped after.
+ *   process group stopped after; on the pass's models (`model.mts`: each app's own, or Haiku on
+ *   `GOAL_HAIKU=1`).
  * - {@link planted}: files written into the served tree for one run and put
  *   back after, including a worker's skill and its `skills.activateTool`
  *   switch, which is set only on the control and the cut run.
@@ -52,6 +53,7 @@ import {
   type Turn,
 } from "./asks.mts";
 import { draw, type Draw } from "./fixtures.mts";
+import { closureModel, servedModel, type ClosureModel } from "./model.mts";
 
 export type Fsd = ReturnType<typeof createClient>;
 
@@ -73,6 +75,8 @@ export interface ClosurePass {
   commit: string;
   /** Whether the run sets the switches `main` leaves off (the control and the cut run), or nothing (the wrap). */
   switches: boolean;
+  /** The models the apps answer on (`GOAL_HAIKU`): what each result is stamped with beside its commit. */
+  model: ClosureModel;
 }
 
 /** `GOAL_PASS` (`control`, `cut` or `wrap`, required) and the tree it serves. */
@@ -82,8 +86,15 @@ export function closurePass(): ClosurePass {
     console.error(`GOAL_PASS must be control, cut or wrap (got ${JSON.stringify(pass ?? "")})`);
     process.exit(2);
   }
+  let model: ClosureModel;
+  try {
+    model = closureModel();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(2);
+  }
   const commit = process.env.GOAL_COMMIT ?? (pass === "control" ? CONTROL_COMMIT : "");
-  return { pass, switches: pass !== "wrap", ...treeFor(commit) };
+  return { pass, switches: pass !== "wrap", model, ...treeFor(commit) };
 }
 
 /** This checkout, or a commit's own tree and install, kept across runs (a commit's tree doesn't change). */
@@ -121,22 +132,25 @@ export interface Served {
 
 /**
  * `fsdev serve` from `cwd` in the tree at `root`, on loopback and a free port, with `args`
- * (`--config`, `--app`) and `env`. Ready once its flow API answers at all
+ * (`--config`, `--app`) and `env`, on `model` (`servedModel`: on Haiku, the app's `--config`
+ * through `haiku.config.mts`). Ready once its flow API answers at all
  * (a host with a bearer door answers 401, which is still an answer).
  */
-export async function serveFsdev(options: { root: string; cwd: string; args?: string[]; env: Record<string, string>; logTo: string }): Promise<Served> {
+export async function serveFsdev(options: { root: string; cwd: string; args?: string[]; env: Record<string, string>; logTo: string; model: ClosureModel }): Promise<Served> {
   const port = 47_000 + Math.floor(Math.random() * 9_000);
   const origin = `http://127.0.0.1:${port}`;
   await refuseIfAnswering(origin);
   let log = "";
+  // The model's env carries the key on Haiku: it goes to the child's environment only, never a log line.
+  const model = servedModel(options.model, options.args ?? []);
   const child = spawn(
     join(options.root, "node_modules", ".bin", "tsx"),
-    [join(options.root, "packages", "cli", "src", "bin.ts"), "serve", ...(options.args ?? []), "--host", "127.0.0.1", "--port", String(port)],
+    [join(options.root, "packages", "cli", "src", "bin.ts"), "serve", ...model.args, "--host", "127.0.0.1", "--port", String(port)],
     {
       cwd: options.cwd,
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
-      env: intentFreeEnv(process.env, { GOAL_CONTROL: "", ...options.env }),
+      env: intentFreeEnv(process.env, { GOAL_CONTROL: "", ...options.env, ...model.env }),
     },
   );
   const keep = (chunk: Buffer) => {
@@ -571,13 +585,14 @@ function asksFor(app: App, pass: Pass): Ask[] {
 /** Where each pass's sheets are kept between the four scripts and `verdict/run.mts`: `GOAL_SHEETS`, or one folder under the system's temp. */
 const SHEETS = process.env.GOAL_SHEETS ?? join(tmpdir(), "fsd-goal-closure-sheets");
 
-/** One app's sheet for a pass, as written: each ask's results and the commit they ran on. */
+/** One app's sheet for a pass, as written: each ask's results, and the commit and models they ran on. */
 export interface SheetFile {
   app: App;
   pass: Pass;
   tree: string;
   at: string;
   commits?: Partial<Record<Ask, string>>;
+  models?: Partial<Record<Ask, ClosureModel>>;
   sheet?: Sheet;
 }
 
@@ -597,7 +612,7 @@ export async function runClosure(driver: AppDriver): Promise<void> {
   const p = closurePass();
   const runs = Number(process.env.GOAL_RUNS ?? RUNS);
   const asks = asksFor(driver.app, p.pass);
-  console.error(`closure · ${driver.app} · ${p.pass} pass · ${p.describe} · asks ${asks.join(", ")} · ${runs} run(s)`);
+  console.error(`closure · ${driver.app} · ${p.pass} pass · ${p.describe} · models ${p.model} · asks ${asks.join(", ")} · ${runs} run(s)`);
   await runGoal(async (failures, tell) => {
     const sheet: Sheet = {};
     const notes: string[] = [];
@@ -621,23 +636,29 @@ export async function runClosure(driver: AppDriver): Promise<void> {
     }
     tell.over("asks graded", asks.flatMap((ask) => sheet[ask]?.[driver.app] ?? []));
     // A run of a subset (`GOAL_ASKS`) replaces only the asks it graded in the pass's sheet.
-    // Each ask's results are stamped with the commit they ran on; an earlier
-    // result is kept only when it ran on this run's commit, so a sheet never
-    // carries another tree's results under this tree's name.
+    // Each ask's results are stamped with the commit and models they ran on;
+    // an earlier result is kept only when it ran on this run's commit and
+    // models, so a sheet never carries another tree's or model's results
+    // under this run's name.
     const file = sheetFile(p.pass, driver.app);
     const before = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as SheetFile) : undefined;
     const kept: Sheet = {};
     const commits: Partial<Record<Ask, string>> = {};
+    const models: Partial<Record<Ask, ClosureModel>> = {};
     for (const ask of ASKS) {
-      if (before?.sheet?.[ask] !== undefined && before.commits?.[ask] === p.commit) {
+      if (before?.sheet?.[ask] !== undefined && before.commits?.[ask] === p.commit && before.models?.[ask] === p.model) {
         kept[ask] = before.sheet[ask];
         commits[ask] = p.commit;
+        models[ask] = p.model;
       }
     }
-    for (const ask of asks) commits[ask] = p.commit;
-    const written: SheetFile = { app: driver.app, pass: p.pass, tree: p.describe, at: new Date().toISOString(), commits, sheet: { ...kept, ...sheet } };
+    for (const ask of asks) {
+      commits[ask] = p.commit;
+      models[ask] = p.model;
+    }
+    const written: SheetFile = { app: driver.app, pass: p.pass, tree: p.describe, at: new Date().toISOString(), commits, models, sheet: { ...kept, ...sheet } };
     writeFileSync(file, JSON.stringify(written, null, 2));
     const cells = asks.map((ask) => `${ask} ${(sheet[ask]?.[driver.app] ?? []).filter((r) => r.length === 0).length}/${runs}`);
-    return { failures, evidence: `${driver.app}, ${p.pass} pass on ${p.describe}: ${cells.join(", ")} (sheet ${sheetFile(p.pass, driver.app)})` };
+    return { failures, evidence: `${driver.app}, ${p.pass} pass on ${p.describe}, models ${p.model}: ${cells.join(", ")} (sheet ${sheetFile(p.pass, driver.app)})` };
   });
 }

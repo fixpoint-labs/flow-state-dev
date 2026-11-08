@@ -55,7 +55,6 @@ import {
   workerConfigSchema,
   workerTaskEntry,
   type WorkerInstallation,
-  MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   workerMessagesResources,
 } from "@flow-state-dev/workforce";
@@ -207,7 +206,7 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     actions: { ...hearingDoor },
-    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: WORKER_FLOW }) } },
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: WORKER_FLOW }) } },
     task: { actions: { [WORK_ENTRY]: workerTaskEntry({ name: "worker-task", turn }) } },
   } as never);
 }

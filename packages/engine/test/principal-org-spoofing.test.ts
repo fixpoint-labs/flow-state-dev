@@ -29,9 +29,11 @@ import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowApiRouter,
-  createFlowRegistry,
-  createInMemoryStores
+  createFlowRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 
 /** Flow whose principal comes from a verified header, not the body. */
 function buildAuthenticatedFlow(capture: { orgId?: string }) {

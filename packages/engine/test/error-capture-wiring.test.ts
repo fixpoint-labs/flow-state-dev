@@ -4,11 +4,13 @@ import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import {
   createExecutionContext,
-  createInMemoryStores,
-  createResponseEmitter,
   executeBlock,
   runAction
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import { createResponseEmitter } from "../src/host";
 import { FlowError } from "../src/errors/flow-error";
 import type { ErrorCaptureEvent, ErrorCaptureHandler } from "../src/errors/error-capture";
 

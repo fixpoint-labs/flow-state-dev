@@ -35,21 +35,20 @@
  * does so its controls apply to a real run.
  */
 import { mkdirSync } from "node:fs";
-import { harnessEnv } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import {
   CLAUDE_CODE_PASS,
   checkClaudeCodeReadiness,
   claudeCodeAgent,
-  listClaudeModels,
-  type ClaudeModelList,
-  type ResolveClaudeAgent,
-} from "@flow-state-dev/claude-code/sdk";
+  listClaudeCodeModels,
+  type ResolveClaudeCodeAgent,
+} from "@flow-state-dev/claude-code";
 
 import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessModelList, HarnessReadiness } from "@flow-state-dev/core/harness";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import { flowKindOf, modeById } from "./modes";
@@ -118,7 +117,7 @@ export const PRE_ALLOWED_TOOLS = ["Read", "Glob", "Grep"] as const;
 /** Test seams for the block: a stand-in for the Agent SDK. */
 export interface ClaudeCodeSeams {
   /** Replaces the SDK (and the scripted one test mode picks). */
-  readonly resolveClaudeAgent?: ResolveClaudeAgent;
+  readonly resolveClaudeAgent?: ResolveClaudeCodeAgent;
   /**
    * `false` builds the session flow without tool approvals, for a test of
    * something else on a host without durable execution (a turn with approvals
@@ -196,11 +195,11 @@ const MODEL_LIST_TIMEOUT_MS = 60_000;
  * can't list its models is unlikely to run a turn either.
  */
 export async function claudeCodeModelChoices(
-  list: (env: Record<string, string>) => Promise<ClaudeModelList> = (env) => listClaudeModels({ env, timeoutMs: MODEL_LIST_TIMEOUT_MS }),
+  list: (env: Record<string, string>) => Promise<HarnessModelList> = (env) => listClaudeCodeModels({ env, timeoutMs: MODEL_LIST_TIMEOUT_MS }),
 ): Promise<ModelChoices> {
   if (claudeCodeIsScripted()) {
     return {
-      models: [{ id: SCRIPTED_CLAUDE_MODEL, label: "Scripted Claude Code" }],
+      models: [{ id: SCRIPTED_CLAUDE_MODEL, label: "Scripted Claude Code", isDefault: true }],
       defaultId: SCRIPTED_CLAUDE_MODEL,
       reason: null,
       fallbackId: null,
@@ -217,7 +216,7 @@ export async function claudeCodeModelChoices(
   }
   const preselected = found.models.find((model) => model.isDefault) ?? found.models[0]!;
   return {
-    models: found.models.map(({ id, label }) => ({ id, label })),
+    models: found.models,
     defaultId: preselected.id,
     reason: null,
     fallbackId: null,

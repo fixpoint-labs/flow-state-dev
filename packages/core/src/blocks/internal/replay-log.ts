@@ -1,6 +1,6 @@
+// FIX-811.
 /**
- * The ReplayLog — log-as-source-of-truth read model for single-request resume
- * (FIX-811).
+ * The ReplayLog — log-as-source-of-truth read model for single-request resume.
  *
  * When a suspended or interrupted request continues under its own id, the
  * runtime must decide, for each block it re-enters, whether that block already
@@ -40,10 +40,12 @@ export interface ResolvedResume {
   rejected: boolean;
   /** True when the rejection was an expiry, not a person's answer. */
   expired: boolean;
-  /** True when the suspension was cancelled, not answered (FIX-2129): read as a rejection marked cancelled. */
+  // FIX-2129.
+  /** True when the suspension was cancelled, not answered: read as a rejection marked cancelled. */
   cancelled: boolean;
+  // FIX-2129.
   /**
-   * True when the request was stopped at the suspension (FIX-2129). A user's
+   * True when the request was stopped at the suspension. A user's
    * stop replays as the stop, never as an answer: the run ends there. A wait
    * gate's stop continues as recorded.
    */
@@ -69,13 +71,14 @@ export interface ResolvedResume {
  * re-entry by {@link buildReplayLog}.
  */
 export interface ReplayLog {
+  // FIX-1772.
   /**
    * The canonical committed output for a logical block path
    * (`${requestId}:${path}`), or `undefined` when no committed `completed`
    * trace exists for it (→ the block must execute). The returned BlockValue is
    * fully materialised to `inline` so callers never receive a `ref` into a
-   * shadowed run-1 partial — except when the record left the value out
-   * (FIX-1772): then it is the `omitted` placeholder, which the replay site
+   * shadowed run-1 partial — except when the record left the value out:
+   * then it is the `omitted` placeholder, which the replay site
    * must refuse, never inject.
    */
   getCompletedOutput(blockLogicalId: string): BlockValueInternal<unknown> | undefined;
@@ -103,21 +106,23 @@ export interface ReplayLog {
    * names no resolution of its own (a crash's) reads its ending from.
    */
   resolvedInOrder(): readonly ResolvedResume[];
+  // FIX-814.
   /**
    * The durably recorded `router_decision` for a router's logical path, or
    * `undefined` when the router never decided before the interruption. On
    * re-entry the router re-runs its `execute` selector (preserving any
    * per-call route wrapper it returns) and VALIDATES the fresh selection
    * against this record — a mismatch is fatal (`RouteUnavailableError`),
-   * never a silent branch switch (FIX-814).
+   * never a silent branch switch.
    */
   recordedRouterDecision(blockLogicalId: string): { selectedRoute: string } | undefined;
+  // FIX-413; FIX-814.
   /**
    * The canonical completed `block_trace` item id for a logical path, or
    * `undefined` when none exists. Lets a resuming router restore its
-   * pass-through `ref` output descriptor (FIX-413) when its selected child
+   * pass-through `ref` output descriptor when its selected child
    * completed via the replay short-circuit — which deliberately emits no
-   * fresh `block_trace` into the current response (FIX-814).
+   * fresh `block_trace` into the current response.
    */
   recordedBlockTraceId(blockLogicalId: string): string | undefined;
   /**
@@ -126,9 +131,10 @@ export interface ReplayLog {
    * `ctx.wasRescued()` answer it had when it ran. `false` when none exists.
    */
   completedRescued(blockLogicalId: string): boolean;
+  // FIX-814.
   /**
    * The raw prior item log this ReplayLog was built from. Used by generator
-   * resume (FIX-814) to reconstruct the conversation from the durable
+   * resume to reconstruct the conversation from the durable
    * `generator_step` / `tool_output` items — a read the accessor-based summary
    * above cannot serve. These are the pre-resume items only; items emitted
    * during the resumed run go to the response, not here.
@@ -196,7 +202,8 @@ export function buildReplayLog(
     string,
     { itemIndex: number; output: BlockValueInternal<unknown>; traceId: string; rescued: boolean }
   >();
-  /** Latest recorded `router_decision` per router logical path (FIX-814). */
+  // FIX-814.
+  /** Latest recorded `router_decision` per router logical path. */
   const routerDecisions = new Map<string, { itemIndex: number; selectedRoute: string }>();
   const suspensions: Array<{ logicalId: string; suspensionId: string; itemIndex: number; reason: string | undefined }> = [];
   const resumedIds = new Set<string>();

@@ -12,7 +12,8 @@ import { z } from "zod";
 import pg from "pg";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { SessionStreamEvent } from "@flow-state-dev/core/items";
-import { createFlowState, type FlowApiRouter, type StoreRegistry } from "@flow-state-dev/engine";
+import { createFlowState, type StoreRegistry } from "@flow-state-dev/engine";
+import { type FlowApiRouter } from "@flow-state-dev/engine/host";
 import { postgresStores } from "@flow-state-dev/store-postgres";
 import { servePeer } from "../../lib/peers.mts";
 

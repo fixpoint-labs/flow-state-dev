@@ -1,3 +1,4 @@
+// BR-3.
 /**
  * One open task: its row, the run the row's link names, and that run's state.
  * Held once for the task screen and its inspector, so the centre and the right
@@ -5,7 +6,7 @@
  *
  * **The row.** From the snapshot, then from one board's re-read. While the row
  * is not on the board yet, or is `in_progress` with no run linked, it is
- * re-read every 2 s, at most 30 times (BR-3): the run writes its link as it
+ * re-read every 2 s, at most 30 times: the run writes its link as it
  * starts, and nothing pushes that to a view following another session. Once
  * the linked run settles on a row still queued or running, it is re-read the
  * same way, in a fresh window, until the row links the next attempt; the
@@ -24,9 +25,9 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { RequestStatus } from "@flow-state-dev/core/types";
-import { allRows, type LoadedSnapshot } from "./derive";
+import { allTasks, type LoadedSnapshot } from "./derive";
 import { useLab } from "./lab-data";
-import { conversationBoardRef, describeFailure, type BoardRow, type Failure } from "./reads";
+import { conversationBoardRef, describeFailure, type BoardTaskView, type Failure } from "./reads";
 import { interruptRun, readRunRecord, resolveRunFlow, RunReadError, type OpenRun } from "./run";
 
 /** How often, and how many times, a task screen re-reads its row. */
@@ -58,9 +59,9 @@ export type InterruptState = { kind: "idle" } | { kind: "pending" } | { kind: "r
 export type TaskView = {
   boardRef: string;
   taskId: string;
-  row: BoardRow | undefined;
+  row: BoardTaskView | undefined;
   /** Every row on this task's board, from the same read as `row`. */
-  boardRows: BoardRow[];
+  boardRows: BoardTaskView[];
   rowFailure: Failure | undefined;
   /** The row is being re-read while its link is awaited. */
   waiting: boolean;
@@ -78,7 +79,8 @@ export type TaskView = {
   /** When an aborted run stopped, by its request record; `undefined` when the record has no end time. */
   stoppedAt: number | undefined;
   devtoolUrl: string | undefined;
-  /** Request ids this composer started, newest last, for this open task only (FIX-2009): the Session follows each. */
+  // FIX-2009.
+  /** Request ids this composer started, newest last, for this open task only: the Session follows each. */
   sent: readonly string[];
   /**
    * The ones among `sent` whose door keeps no task id, so their items carry no
@@ -99,13 +101,14 @@ export function useTask(): TaskView {
   return value;
 }
 
-/** Whether the row should be re-read while the screen waits (BR-3). */
-function awaitingLink(row: BoardRow | undefined): boolean {
+// BR-3.
+/** Whether the row should be re-read while the screen waits. */
+function awaitingLink(row: BoardTaskView | undefined): boolean {
   return row === undefined || (row.status === "in_progress" && row.run === null);
 }
 
 /** A row the board may still hand to a run: queued or running, not finished or failed. */
-function isOpen(row: BoardRow): boolean {
+function isOpen(row: BoardTaskView): boolean {
   return row.status === "pending" || row.status === "in_progress";
 }
 
@@ -124,8 +127,8 @@ export function TaskProvider({
   children: ReactNode;
 }) {
   const { client, reader } = useLab();
-  const fromSnapshot = useMemo(() => allRows(snapshot).filter((r) => r.boardRef === boardRef), [snapshot, boardRef]);
-  const [boardRows, setBoardRows] = useState<BoardRow[]>(fromSnapshot);
+  const fromSnapshot = useMemo(() => allTasks(snapshot).filter((r) => r.boardRef === boardRef), [snapshot, boardRef]);
+  const [boardRows, setBoardRows] = useState<BoardTaskView[]>(fromSnapshot);
   const [rowFailure, setRowFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
   // Set by a re-read someone asked for (a board action in the frame, or Retry):

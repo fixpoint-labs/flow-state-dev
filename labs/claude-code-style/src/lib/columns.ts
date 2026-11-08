@@ -1,4 +1,4 @@
-import type { TaskRow } from "../adapter";
+import type { LabTask } from "../adapter";
 
 /**
  * The threads board's columns, read from the task row alone (spec, "The
@@ -20,10 +20,10 @@ export const COLUMNS: readonly { id: Column; label: string }[] = [
  * The key your dismissal of a failed task is kept under: its id and attempt, so a retry
  * that fails again waits on you again.
  */
-export const dismissalKey = (task: Pick<TaskRow, "id" | "attempts">) => `${task.id}#${task.attempts ?? 0}`;
+export const dismissalKey = (task: Pick<LabTask, "id" | "attempts">) => `${task.id}#${task.attempts ?? 0}`;
 
 /** How many of a session's tasks wait on you: those under *Waiting on you* or *Ready for review*, pins aside. */
-export function waitingOnYou(tasks: readonly TaskRow[], dismissed: ReadonlySet<string> = new Set()): number {
+export function waitingOnYou(tasks: readonly LabTask[], dismissed: ReadonlySet<string> = new Set()): number {
   return tasks.filter((task) => {
     const column = columnOf(task, false, dismissed.has(dismissalKey(task)));
     return column === "waiting" || column === "review";
@@ -34,11 +34,11 @@ export function waitingOnYou(tasks: readonly TaskRow[], dismissed: ReadonlySet<s
  * The column a task row lands in. A pinned task shows only under *Pinned*. A failure waits on
  * you until you retry or dismiss it; a dismissed one is resolved.
  */
-export function columnOf(task: TaskRow, pinned: boolean, dismissed = false): Column {
+export function columnOf(task: LabTask, pinned: boolean, dismissed = false): Column {
   if (pinned) return "pinned";
   if (task.status === "completed" || task.status === "cancelled") return "resolved";
   if (task.status === "errored") return dismissed ? "resolved" : "waiting";
-  if (task.waitingOn?.kind === "review") return "review";
-  if (task.waitingOn) return "waiting";
+  if (task.openHold?.kind === "review") return "review";
+  if (task.openHold) return "waiting";
   return "working";
 }

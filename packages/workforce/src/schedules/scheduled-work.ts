@@ -1,5 +1,6 @@
+// FIX-2085; BP-031.
 /**
- * Recurring work (FIX-2085): a schedule that files an ordinary task.
+ * Recurring work: a schedule that files an ordinary task.
  *
  * - **The row.** One per schedule in the user's schedule collection
  *   ({@link SCHEDULES_PATTERN}, at user scope in their organization):
@@ -12,7 +13,7 @@
  *   row's user: it finds the filer on their roster, then dispatches the
  *   filer's flow's {@link FILE_SCHEDULED_TASK_ENTRY} into the user's own
  *   conversation with the filer, the address their own message reaches
- *   (derived on the server, BP-031), opening it when absent. That entry files
+ *   (derived on the server), opening it when absent. That entry files
  *   through the board's own filing. No model turn decides what lands (D1).
  * - **The list.** `listSchedules` reads the collection and works each
  *   schedule's next run out from its cron and time zone at read (D3), so it
@@ -27,7 +28,8 @@
  * a row is written.
  */
 import { defineResourceCollection, handler } from "@flow-state-dev/core";
-import { dispatchThroughSeam, isFiveFieldCron, isKnownTimeZone, type ActionConfig, type BlockContext, type SchedulesConfig } from "@flow-state-dev/core/types";
+import { isKnownTimeZone, type ActionConfig, type SchedulesConfig } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, isFiveFieldCron } from "@flow-state-dev/core/internal";
 import {
   FIRED_RECORDS_PATTERN,
   createResourceCollectionScheduleResolver,
@@ -98,7 +100,7 @@ const saveScheduleOutputSchema = z.union([
   z.object({ ok: z.literal(false), error: z.string() })
 ]);
 
-type ScheduleRow = {
+type StoredSchedule = {
   cron: string;
   kind: string;
   timezone?: string;
@@ -108,7 +110,7 @@ type ScheduleRow = {
 };
 
 /** A schedule row as the list shows it, its next run worked out from `now`. */
-function listed(key: string, row: ScheduleRow): ListedSchedule {
+function listed(key: string, row: StoredSchedule): ListedSchedule {
   const timezone = row.timezone ?? "UTC";
   const enabled = row.enabled !== false;
   const next = enabled ? parseNextFireAt(row.cron, timezone) : null;
@@ -141,7 +143,7 @@ function scheduledTaskBlock(installation: WorkerInstallation) {
       if (task.assignee === filer) {
         throw new Error(`The scheduled task wasn't filed: its assignee is its filer, "${filer}". Name one of "${filer}"'s delegates.`);
       }
-      const worker = await installation.rosterWorker(ctx as never, filer);
+      const worker = await installation.rosterWorker(ctx, filer);
       if (worker === undefined) throw new Error(`The scheduled task wasn't filed: no worker "${filer}" on your roster.`);
       if (worker.problem !== undefined) throw new Error(`The scheduled task wasn't filed: worker "${filer}" can't run: ${worker.problem}.`);
       const entries = (installation.workerFlows()[worker.flow]?.flow as { internal?: { actions?: Record<string, unknown> } } | undefined)
@@ -157,7 +159,7 @@ function scheduledTaskBlock(installation: WorkerInstallation) {
       }
       const criteria = { worker: filer };
       const sessionId = await deriveWorkerSessionId({ userId: identity.userId, orgId: identity.orgId, flow: worker.flow, criteria });
-      const outcome = await dispatchThroughSeam(ctx as BlockContext, {
+      const outcome = await dispatchThroughSeam(ctx, {
         type: "internal",
         action: FILE_SCHEDULED_TASK_ENTRY,
         flowKind: worker.flow,
@@ -209,7 +211,7 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
       const due = (s: ListedSchedule) => (s.nextRunAt === null ? Number.POSITIVE_INFINITY : Date.parse(s.nextRunAt));
       return {
         schedules: rows
-          .map((ref) => listed(keyOf(ref.path), ref.state as ScheduleRow))
+          .map((ref) => listed(keyOf(ref.path), ref.state as StoredSchedule))
           .sort((a, b) => due(a) - due(b) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
       };
     }
@@ -239,7 +241,7 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
             "Use exactly five fields (minute hour day-of-month month day-of-week) and an IANA time zone. Nothing was saved."
         };
       }
-      const row: ScheduleRow = {
+      const row: StoredSchedule = {
         cron: input.cron,
         kind: TASK_SCHEDULE_HANDLER,
         input: input.input,

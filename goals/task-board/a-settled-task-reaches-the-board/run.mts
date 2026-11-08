@@ -5,7 +5,7 @@
  * views as the apps run them: the Teammates lab adapter's `watchTasks`, the
  * claude-code-style lab adapter's `watchTasks` (a view of the merged
  * `listTasks_tasks` read and nothing else), and a live `BoardList`'s read
- * (`client.subscribe` on the board's narrowed topic, `listCollectionItems` on
+ * (`client.subscribe` on the board's narrowed topic, `listCollectionResources` on
  * each wake). Every assertion reads what a view showed, timed against when the
  * row's change could be read from the store, and counts the board reads each
  * view made.
@@ -36,7 +36,8 @@ import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { createClient, topic, type Client, type ClientFetch } from "@flow-state-dev/client";
-import { createFlowState, createInMemoryStores, type FlowState, type StoreAdapter } from "@flow-state-dev/engine";
+import { createFlowState, type FlowState, type StoreAdapter } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { postgresStores } from "@flow-state-dev/store-postgres";
 import type { Task, TaskInit } from "@flow-state-dev/orchestration/tasks";
@@ -326,7 +327,7 @@ function viewsOn(on: Host, conversation: string): View[] {
     }
     running = true;
     try {
-      const page = await list.client.resources.listCollectionItems(conversation, "tasks", {});
+      const page = await list.client.resources.listCollectionResources(conversation, "tasks", {});
       lShown.push({ at: Date.now(), rows: new Map(page.items.map((item) => [(item.clientData as Task).id, { status: (item.clientData as Task).status }])) });
     } catch {
       // A failed read shows nothing new.

@@ -29,10 +29,12 @@ import { dispatchableFlow, spawnChild as dispatchChild } from "./context/seam-ha
 import type { JsonObject } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
-  createInMemoryStores,
-  ResourceDeletedError,
   type StoreRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import { ResourceDeletedError } from "../src/errors/flow-error";
 
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 const spine = defineResource({

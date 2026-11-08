@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { claudeCodeAgent, type ResolveClaudeAgent, type SdkMessageLike } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent, type ResolveClaudeCodeAgent, type ClaudeCodeSdkMessage } from "@flow-state-dev/claude-code";
 import {
   harnessManager,
   harnessTaskInputSchema,
@@ -67,11 +67,11 @@ function seedRepo(dir: string): void {
  * until its abort controller fires, then ends, as the SDK's stream does once
  * its process exits. Every later run names the same session and finishes.
  */
-function fakeClaude(calls: Array<{ prompt: string; resume: string | undefined }>, firstRunning: () => void): ResolveClaudeAgent {
+function fakeClaude(calls: Array<{ prompt: string; resume: string | undefined }>, firstRunning: () => void): ResolveClaudeCodeAgent {
   return () => ({
     query: async function* (args) {
       calls.push({ prompt: String(args.prompt), resume: args.options?.resume });
-      yield { type: "system", subtype: "init", session_id: SESSION } as SdkMessageLike;
+      yield { type: "system", subtype: "init", session_id: SESSION } as ClaudeCodeSdkMessage;
       if (calls.length === 1) {
         firstRunning();
         const signal = args.options?.abortController?.signal;
@@ -81,7 +81,7 @@ function fakeClaude(calls: Array<{ prompt: string; resume: string | undefined }>
         });
         return;
       }
-      yield { type: "result", subtype: "success", result: "done", session_id: SESSION } as SdkMessageLike;
+      yield { type: "result", subtype: "success", result: "done", session_id: SESSION } as ClaudeCodeSdkMessage;
     },
   });
 }
@@ -138,10 +138,10 @@ function host() {
     uses: [board.capability],
     execute: async (input, ctx) => {
       const tasks = await getOrCreateTaskCollection({
-        ctx: ctx as never,
+        ctx: ctx,
         backing: "resource",
         collectionId: BOARD_ID,
-        collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
+        collection: resolveResourceCollection(ctx, BOARD_ID)!,
       });
       return tasks.steer!(TASK_ID, { message: input.message, from: "user", by: USER });
     },

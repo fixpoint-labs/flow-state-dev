@@ -20,14 +20,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  ConcurrentModificationError,
-  createFilesystemSessionStore,
-  createInMemorySessionStore,
-  runWithCAS,
-  createStateContainer,
-  type SessionRecord,
-  type SessionStore
+  ConcurrentModificationError
 } from "../src";
+import {
+  createFilesystemSessionStore,
+  createInMemorySessionStore
+} from "../src/host";
+import { runWithCAS } from "../src/stores/cas";
+import { createStateContainer } from "../src/stores/state-container";
+import { type SessionRecord, type SessionStore } from "../src/host";
 import type { CASPersist } from "../src/stores/cas";
 import type { JsonObject } from "@flow-state-dev/core/types";
 

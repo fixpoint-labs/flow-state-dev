@@ -1,7 +1,8 @@
+// FIX-447.
 /**
  * Schemas for the plan-and-execute pattern.
  *
- * After the FIX-447 migration onto the taskBoard substrate, the pattern's
+ * After the migration onto the taskBoard substrate, the pattern's
  * own state is intentionally minimal — task storage lives on the request-
  * scoped TaskCollection (see `getOrCreateTaskCollection({ backing: "state" })` with no `state`)
  * and the outer sequencer only tracks the original goal, an optional

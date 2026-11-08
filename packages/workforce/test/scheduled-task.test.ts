@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CronExpressionParser } from "cron-parser";
-import { createScheduledTransportAdapter, formatScheduleId, type ScheduleIndex, type ScheduleIndexRow } from "@flow-state-dev/scheduled";
+import { createScheduledTransportAdapter, formatScheduleId, type ScheduleIndex, type ScheduleIndexEntry } from "@flow-state-dev/scheduled";
 import { bootBoardHost, ORG, type BoardHost } from "./conversation-board-harness";
 import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import { ROSTER_FLOW } from "../src/workers/keys";
@@ -261,7 +261,7 @@ describe("the user's list of schedules", () => {
   });
 
   it("mirrors each saved schedule into the index the host configured", async () => {
-    const upserts: ScheduleIndexRow[] = [];
+    const upserts: ScheduleIndexEntry[] = [];
     const removed: string[] = [];
     const index: ScheduleIndex = {
       upsert: async (row) => void upserts.push(row),

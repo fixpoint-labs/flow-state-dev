@@ -6,11 +6,11 @@
  * app that runs it on its real folder (kitchen-sink today) pins its own count
  * and scope; this pins what the comparison sees.
  */
-import { appendFileSync, cpSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { compareRegistryCopies, REGISTRY_SOURCE_DIR } from "../scripts/registry-drift";
+import { compareRegistryCopies, REGISTRY_SOURCE_DIR, refreshRegistryCopies } from "../scripts/registry-drift";
 
 let target: string;
 
@@ -53,5 +53,31 @@ describe("compareRegistryCopies", () => {
     writeFileSync(join(dir, "my-fork.tsx"), "export {};\n");
     expect(compareRegistryCopies({ targetDir: dir }).forks).toEqual(["my-fork.tsx"]);
     expect(compareRegistryCopies({ targetDir: dir, appOnly: { "my-fork.tsx": "ours" } }).forks).toEqual([]);
+  });
+});
+
+describe("refreshRegistryCopies", () => {
+  it("rewrites every copy the comparison checks, so the same options then report nothing", () => {
+    const dir = freshCopies();
+    appendFileSync(join(dir, "tool.tsx"), " ");
+    unlinkSync(join(dir, "message.tsx"));
+    const options = { targetDir: dir, notInstalled: (file: string) => file.startsWith("generative/") };
+    expect(compareRegistryCopies(options).mismatches).toEqual(["message.tsx (not installed)", "tool.tsx"]);
+
+    const written = refreshRegistryCopies(options);
+
+    expect(written).toEqual(compareRegistryCopies(options).compared);
+    expect(compareRegistryCopies(options).mismatches).toEqual([]);
+  });
+
+  it("copies nothing the app says it never installed, and leaves the app's own files alone", () => {
+    const dir = freshCopies();
+    unlinkSync(join(dir, "generative/info-card.tsx"));
+    writeFileSync(join(dir, "my-fork.tsx"), "export {};\n");
+
+    refreshRegistryCopies({ targetDir: dir, notInstalled: (file) => file.startsWith("generative/"), appOnly: { "my-fork.tsx": "ours" } });
+
+    expect(existsSync(join(dir, "generative/info-card.tsx"))).toBe(false);
+    expect(existsSync(join(dir, "my-fork.tsx"))).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
+// FIX-1945.
 /**
- * The names standing rules pin (FIX-1945): the rule tools, the rules action,
+ * The names standing rules pin: the rule tools, the rules action,
  * and the `agentName` a rule write's line carries. A leaf with no imports, so
  * the browser entry, the client and the server half share one spelling.
  */

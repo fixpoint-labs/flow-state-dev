@@ -1,5 +1,6 @@
+// FIX-2239, epic ER-4 and D3; FIX-2058 ER-2; FIX-2578.
 /**
- * A message queues behind the user (FIX-2239, epic ER-4 and D3): one to a
+ * A message queues behind the user: one to a
  * session stopped for the user, or to a task held on one, lands only once
  * nothing holds it. Checked at `onMessageReceived`'s admission, after the take
  * and before the items, the one point every send, call and resend passes.
@@ -10,8 +11,7 @@
  *   The message parks on the wait gate bound to that request, and the engine
  *   resumes it when that request ends: it waits for the stopped request to
  *   end, not merely resume, since the session is busy until then.
- * - **in a task's session, an open hold on its task** (`hasOpenHold`, FIX-2058
- *   ER-2): a stop for the user and a question both hold. A question has no
+ * - **in a task's session, an open hold on its task** (`hasOpenHold`): a stop for the user and a question both hold. A question has no
  *   request to wait on, so the message parks bound to the task row, with a
  *   short deadline, and looks again.
  *
@@ -20,20 +20,28 @@
  * message is a wait, never the user's stop: nothing the user answers counts it.
  * A message whose park would pass `MAX_WAIT_DEPTH` isn't admitted: its request
  * ends without landing it, and the sending session's pass sends it again.
+ *
+ * One hold never queues a message: a task's wait on something outside the
+ * board (an `external` hold, such as a coding task's wait on its
+ * pull request). The system holds it, not the user, and a message is news it
+ * waits for, so {@link answerExternalWait} answers it with the message's words
+ * before the queue is reached.
  */
-import { canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "@flow-state-dev/core";
-import type { BlockContext, WaitGateBinding } from "@flow-state-dev/core/types";
-import { findTaskPartitions, hasOpenHold, rowsInSession } from "@flow-state-dev/orchestration/tasks";
+import { requestHostOf, canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "@flow-state-dev/core/internal";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { WaitGateBinding } from "@flow-state-dev/core/internal";
+import { findTaskPartitions, hasOpenHold, tasksInSession } from "@flow-state-dev/orchestration/internal";
+import { externalHoldOf } from "@flow-state-dev/orchestration/tasks";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-board/ledger";
 import { TASK_ID_STATE_KEY } from "../workers/keys";
-import { messageLogOf, type WorkerMessageRow } from "./message-log";
+import { messageLogOf, type WorkerMessageResourceState } from "./message-log";
 
 /** How often a message queued behind a task's question looks again, at most. */
 export const QUESTION_RECHECK_MS = 30_000;
 
 /** What holds the running session for the user now, as a wait binds to it; `null` when nothing does. */
 async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
-  const stop = await ctx.requestHost?.waits?.userStop?.();
+  const stop = await requestHostOf(ctx)?.waits?.userStop?.();
   if (stop !== undefined) return { requestId: stop.requestId };
   const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
   if (typeof taskId !== "string" || taskId.length === 0) return null;
@@ -41,10 +49,47 @@ async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
   for (const partition of await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId)) {
     const ledger = await conversationLedgerAt(ctx, partition);
     if (ledger === undefined) continue;
-    const held = rowsInSession(ledger, sessionId).find(hasOpenHold);
+    const held = tasksInSession(ledger, sessionId).find(hasOpenHold);
     if (held !== undefined) return { board: ledger.collectionId, taskId: held.id };
   }
   return null;
+}
+
+// FIX-2578.
+/**
+ * Answer the open `external` hold of the running task session's task with
+ * message `row`: its words, as `"service"`, by its sender's
+ * handle, so the run reads them quoted as the sender's, never as the user's.
+ * The answer owes the task one more turn on the same attempt, which reads
+ * them. Keyed by the message, so a copy sent again answers once.
+ *
+ * A message whose steer is on the task already (an earlier take answered the
+ * wait, then died before it marked the message delivered) counts as taken
+ * whether or not a wait is open now: the retry finishes its delivery, and
+ * never runs it as an ordinary turn, nor answers a wait opened since.
+ *
+ * @returns `true` once the hold took it, now or on an earlier take; `false`
+ *   when the session runs no task, the task holds no open external wait, or
+ *   the write was declined (an answer landed first), and the message goes on
+ *   as any other.
+ */
+export async function answerExternalWait(ctx: BlockContext, row: Pick<WorkerMessageResourceState, "id" | "from" | "text">): Promise<boolean> {
+  const taskId = (ctx.session.state as Record<string, unknown> | undefined)?.[TASK_ID_STATE_KEY];
+  if (typeof taskId !== "string" || taskId.length === 0) return false;
+  const sessionId = ctx.session.identity.id;
+  const key = `message:${row.id}`;
+  for (const partition of await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId)) {
+    const ledger = await conversationLedgerAt(ctx, partition);
+    if (ledger?.answer === undefined) continue;
+    for (const task of tasksInSession(ledger, sessionId)) {
+      if ((task.steers ?? []).some((steer) => steer.id === key)) return true;
+      const hold = externalHoldOf(task);
+      if (hold === undefined) continue;
+      const outcome = await ledger.answer(task.id, { questionId: hold.id, message: row.text, from: "service", by: row.from, key });
+      return outcome.outcome === "recorded";
+    }
+  }
+  return false;
 }
 
 /**
@@ -53,8 +98,8 @@ async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
  * @returns `"admitted"` once nothing holds it; `"not_admitted"` when its wait
  *   would be too deep, or the request was stopped while it waited.
  */
-export async function queueBehindUser(ctx: BlockContext, row: Pick<WorkerMessageRow, "id">): Promise<"admitted" | "not_admitted"> {
-  const waits = ctx.requestHost?.waits;
+export async function queueBehindUser(ctx: BlockContext, row: Pick<WorkerMessageResourceState, "id">): Promise<"admitted" | "not_admitted"> {
+  const waits = requestHostOf(ctx)?.waits;
   // A host that can't hold a wait can't queue a message: it lands as before. That includes a host
   // with no sweeper, since a question's park looks again only when its deadline resumes it.
   if (waits === undefined || !canHoldWait(ctx) || ctx.runOnce === undefined || ctx.suspend === undefined) return "admitted";

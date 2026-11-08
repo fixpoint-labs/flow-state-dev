@@ -1,5 +1,6 @@
+// FIX-2535; FIX-2534, epic D1.
 /**
- * A provider's service flow (FIX-2534, epic D1): routes each normalized event
+ * A provider's service flow: routes each normalized event
  * to the sessions that subscribed to one of its threads, in code, with no model.
  *
  * Two internal entries, on either side of a fence (D2):
@@ -33,13 +34,13 @@
  * doesn't redeliver loses it).
  *
  * An ingestion (a verified webhook, a poll) normalizes each event and calls
- * `routeServiceEvent` with the routing entry. FIX-2535 wires GitHub's.
+ * `routeServiceEvent` with the routing entry, as GitHub's does.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
 import { subscriptionEventSchema, type BlockContext, type SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { WorkerMessageRow } from "../messages/log-row";
+import type { WorkerMessageResourceState } from "../messages/log-row";
 import { messageLogOf, workerMessagesResources } from "../messages/message-log";
 import { sendServiceMessage } from "../messages/send-message";
 import { retryOnConflict } from "../projects/cas-retry";
@@ -51,10 +52,10 @@ import {
   subscriptionCursorsOf,
   subscriptionIndexOf,
   subscriptionResources,
-  subscriptionRowKey,
+  subscriptionResourceKey,
   subscriptionsOf,
   type SubscriptionCursor,
-  type SubscriptionRow
+  type SubscriptionResourceState
 } from "./rows";
 import { configScreenChain, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
 import { unsubscribe, type SubscriptionProvider } from "./subscribe";
@@ -165,7 +166,7 @@ function withoutInFlight(cursor: SubscriptionCursor, object: SubscriptionEvent["
 }
 
 /** Whether a delivery's message reached its recipient: taken by its request, or delivered. */
-function takenRow(row: WorkerMessageRow | undefined): boolean {
+function takenRow(row: WorkerMessageResourceState | undefined): boolean {
   return row !== undefined && (row.takenBy !== undefined || row.status === "delivered");
 }
 
@@ -192,8 +193,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     inputSchema: subscriptionEventSchema,
     outputSchema: screeningSchema,
     resources: subscriptionResources,
-    execute: async (event, rawCtx): Promise<Screening> => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (event, ctx): Promise<Screening> => {
       const index = subscriptionIndexOf(ctx);
       const closed = closedThreadOf(event);
       const pending: Screening["pending"] = [];
@@ -230,7 +230,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           orgId: candidate.entry.orgId,
           ...(candidate.entry.tenantId === undefined ? {} : { tenantId: candidate.entry.tenantId })
         },
-        rowKey: subscriptionRowKey(candidate.subscription)
+        rowKey: subscriptionResourceKey(candidate.subscription)
       });
       for (const candidate of nominated) {
         // A subscription with no verdict is refused.
@@ -259,7 +259,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
   // ---- delivery, as the subscriber -----------------------------------------
 
   /** Deliver `event` on `row`, past its kinds, its private thread's read check, its cursor and its cap. */
-  const deliverToRow = async (ctx: BlockContext, subscription: string, row: SubscriptionRow, event: SubscriptionEvent): Promise<Delivered> => {
+  const deliverToRow = async (ctx: BlockContext, subscription: string, row: SubscriptionResourceState, event: SubscriptionEvent): Promise<Delivered> => {
     if (row.kinds !== undefined && !row.kinds.includes(event.kind)) return { act: "refused", reason: "not a kind it hears" };
     // A private thread is read again as this user before anything of it reaches them (ER-4).
     if (event.audience === "private" && !(await provider.canRead(row.thread, ctx))) {
@@ -361,11 +361,10 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     inputSchema: deliverInputSchema,
     outputSchema: deliveredSchema,
     resources: { ...subscriptionResources, ...workerMessagesResources },
-    execute: async ({ subscription, event, endOnly }, rawCtx): Promise<Delivered> => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async ({ subscription, event, endOnly }, ctx): Promise<Delivered> => {
       const identity = ctx.session.identity as { userId?: string; orgId?: string };
       // The row decides: this user's, this org's, on, and on this event's thread.
-      const row: SubscriptionRow | undefined = (await subscriptionsOf(ctx).getOptional(subscription))?.state;
+      const row: SubscriptionResourceState | undefined = (await subscriptionsOf(ctx).getOptional(subscription))?.state;
       if (row === undefined || !row.enabled) return { act: "ended" };
       if (row.userId !== identity.userId || row.orgId !== identity.orgId) return { act: "refused", reason: "another user's subscription" };
       if (row.provider !== event.provider || row.provider !== provider.provider || !event.threads.includes(row.thread)) {

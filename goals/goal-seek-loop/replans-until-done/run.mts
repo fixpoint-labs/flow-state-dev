@@ -25,15 +25,17 @@
  */
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { runAction, createInMemoryStores, createModelResolver } from "@flow-state-dev/engine";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { createModelResolver } from "@flow-state-dev/core";
 import {
   goalSeekLoop,
   taskBoard,
   taskWorkerInputSchema,
-  GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
   type TaskBoardHandle,
   type Verdict,
 } from "@flow-state-dev/orchestration/task-board";
+import { GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
 import type { TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { z } from "zod";

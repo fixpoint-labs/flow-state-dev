@@ -1,6 +1,6 @@
 /** Claim order for tasks filed in the same millisecond (FIX-2219). */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createStateBackedTaskCollection } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { generateId } from "../../src/tasks/generate-id";
 import { createFakeSequencerState } from "../helpers";
 

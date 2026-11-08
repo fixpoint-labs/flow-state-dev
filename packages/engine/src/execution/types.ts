@@ -76,8 +76,9 @@ export type RunActionOptions<
   input: unknown;
   userId: string;
   sessionId?: string;
+  // FIX-1442.
   /**
-   * The organization this run belongs to. **Required** (FIX-1442).
+   * The organization this run belongs to. **Required**.
    *
    * `runAction` is the trusted direct-execution seam: it runs BELOW principal
    * resolution, so there is no resolver here to validate a caller and no
@@ -92,16 +93,18 @@ export type RunActionOptions<
   orgId: string;
   tenantId?: string;
   requestId?: string;
+  // FIX-438.
   /**
    * Inbound transport provenance, propagated to `RequestRecord.source` and
    * `ActiveRequestEntry.source`. Defaults to `"http"` to preserve behavior
-   * for callers that pre-date the transport adapter contract (FIX-438).
+   * for callers that pre-date the transport adapter contract.
    */
   source?: string;
+  // FIX-1707.
   /**
    * Caller-supplied request metadata. Treated as caller-controlled: the
    * `resumeContext` and `resumeOf` keys are stripped before the run starts and
-   * never resolve a suspension (FIX-1707). Resuming goes through
+   * never resolve a suspension. Resuming goes through
    * {@link RunActionOptions.resumeContext}.
    */
   metadata?: Record<string, unknown>;
@@ -138,10 +141,11 @@ export type RunActionOptions<
    * caller's emitter owns numbering.
    */
   startSequenceNumber?: number;
+  // FIX-811.
   /**
    * Starting item index for the internally-created `ResponseEmitter` — the next
    * emitted item gets `startItemIndex + (items so far)`. A same-request
-   * continuation (FIX-811) passes the suspended request's last persisted item
+   * continuation passes the suspended request's last persisted item
    * index so re-entry items continue after the prior log instead of restarting
    * at `0` (which would mis-order them on stores that sort by item index).
    * Ignored when `responseEmitter` is provided — the caller's emitter owns
@@ -158,10 +162,11 @@ export type RunActionOptions<
    * are isolated and never break the run.
    */
   onItem?: (item: OutputItem, kind: "added" | "updated" | "done") => void;
+  // FIX-982.
   /**
    * Fired once this run's `activeRequests` entry has committed — the point the
    * request becomes discoverable to a stream read, the stale-request sweeper
-   * and recovery (FIX-982).
+   * and recovery.
    *
    * Exists because starting a run and having a run are different facts, and
    * only `runAction` knows when the second one becomes true. `runAction` is
@@ -184,8 +189,9 @@ export type RunActionOptions<
    * caller has no other way to learn.
    */
   onRegistered?: () => void;
+  // FIX-811.
   /**
-   * Same-request continuation flag (FIX-811). Set by `continueRequest` when a
+   * Same-request continuation flag. Set by `continueRequest` when a
    * suspended/interrupted request re-enters under its OWN id. Triggers replay
    * mode: prior persisted items are loaded into a `ReplayLog` so completed
    * blocks are injected (not re-run), a `suspension_resume` audit item is
@@ -194,11 +200,12 @@ export type RunActionOptions<
    * existing record is `suspended`.
    */
   replayMode?: boolean;
+  // BP-031, FIX-1707.
   /**
    * The suspension resolution a same-request continuation injects — which
    * gate, approve/reject/skip, payload, resolver. Set by `continueRequest`
    * after the resume endpoint has validated the suspension; never derived from
-   * `metadata`, which callers control (BP-031, FIX-1707).
+   * `metadata`, which callers control.
    *
    * Honoured only in replay mode, and only at the gate the replay log names as
    * pending: the runtime overwrites `pendingBlockLogicalId` from the log, so a

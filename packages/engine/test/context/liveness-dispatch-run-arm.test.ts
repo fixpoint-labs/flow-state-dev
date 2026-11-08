@@ -18,7 +18,7 @@
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "../../src";
+import { createInMemoryStores } from "../../src/host";
 import type {
   ActiveRequestEntry,
   SessionRecord,

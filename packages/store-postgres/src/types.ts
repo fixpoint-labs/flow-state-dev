@@ -47,6 +47,7 @@ export type CommonPostgresStoreOptions = {
    *  serverless platforms this removes ~30 idempotent DDL roundtrips and the
    *  advisory-lock dance from every cold start. */
   skipSchemaInit?: boolean;
+  // See FIX-569 §3.4.
   /**
    * Dedicated `pg.Pool` for cross-process live tail (`LISTEN flow_events`).
    * Supplied separately from the main query executor because LISTEN
@@ -63,7 +64,6 @@ export type CommonPostgresStoreOptions = {
    * - Provided: the supplied Pool is used as-is. Caller manages lifecycle.
    * - `null`: explicitly disable LISTEN; `subscribeToEvents` polls instead.
    *
-   * See FIX-569 §3.4.
    */
   liveTailPool?: Pool | null;
 };

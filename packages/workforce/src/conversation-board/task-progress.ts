@@ -1,5 +1,6 @@
+// FIX-2081 D3.
 /**
- * `reportProgress` on a worker's task turn (FIX-2081 D3): the worker's one
+ * `reportProgress` on a worker's task turn: the worker's one
  * task tool, as one capability a worker turn composes beside the question park.
  *
  * Orchestration owns the tool and the rule for offering it
@@ -40,7 +41,7 @@ export const taskProgress = defineCapability({
   name: "taskProgress",
   resources: { ...conversationLedgerResources, ...planLedgerResources },
   presets: {
-    tools: { controlTools: async (ctx) => ((await progress.offered(ctx as never)) ? [progress.tool] : []) },
+    tools: { controlTools: async (ctx) => ((await progress.offered(ctx)) ? [progress.tool] : []) },
     default: ["tools"]
   }
 });

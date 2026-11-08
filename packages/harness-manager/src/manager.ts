@@ -33,25 +33,23 @@
 import { existsSync } from "node:fs";
 import { setTimeout as sleepFor } from "node:timers/promises";
 import {
-  OBSERVED_PULL_REQUESTS,
   SuspensionTimeoutError,
   defineCapability,
   handler,
-  observedPullRequestsCollection,
-  pullRequestRefFromUrl,
   sequencer,
-  writePullRequests,
-  type PullRequestCollection,
   type DefinedCapability,
   type PresetDef,
   type UsesSlot,
 } from "@flow-state-dev/core";
-import type { HarnessRunOutcome } from "@flow-state-dev/core/types";
-import { withTimeout } from "@flow-state-dev/core/helpers";
+import {
+  OBSERVED_PULL_REQUESTS,
+  observedPullRequestsCollection,
+  pullRequestRefFromUrl,
+  writePullRequests,
+  type PullRequestCollection,
+} from "@flow-state-dev/core/harness";
 import type {
-  BlockContext,
-  BlockDefinition,
-  DeclaredResourceEntry,
+  HarnessRunOutcome,
   HarnessActivityHook,
   HarnessBlock,
   HarnessResolver,
@@ -59,26 +57,35 @@ import type {
   HarnessSteer,
   HarnessSteerHook,
   HarnessUsageHook,
-} from "@flow-state-dev/core/types";
-import { renderSteers, showTakenSteers, STEERED_WHILE_RUNNING } from "@flow-state-dev/orchestration";
-import { TaskEndsForGoodError, currentWorkerClaim, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+} from "@flow-state-dev/core/harness";
+import { withTimeout } from "@flow-state-dev/core/helpers";
+import type { BlockContext, BlockDefinition, DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import {
+  currentLeaseRenewal,
+  renderSteers,
+  showTakenSteers,
+  STEERED_WHILE_RUNNING,
   answerOf,
-  getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
-  isRowHold,
+  isOwnHold,
   MAX_STEERS,
   readCommittedTask,
-  resolveResourceCollection,
   shownSteer,
   steersTakenIn,
   taskClaimTicketSchema,
-  ticketForClaim,
   untakenSteers,
-  type DefinedTaskCollection,
   type ShownSteer,
+} from "@flow-state-dev/orchestration/internal";
+import { TaskEndsForGoodError, cancelFromTurn, currentWorkerClaim, taskWorkerInputSchema, waitExternally } from "@flow-state-dev/orchestration/task-board";
+import {
+  getOrCreateTaskCollection,
+  isExternalHold,
+  resolveResourceCollection,
+  ticketForClaim,
+  type DefinedTaskCollection,
   type Task,
   type TaskClaimTicket,
+  type OwnHold,
   type TaskCollectionRef,
   type TaskSteer,
   type TaskWorker,
@@ -107,17 +114,17 @@ import {
   RUNS,
   assertPlaceAndHeld,
   heldSchema,
-  placeStateSchema,
-  openRunRow,
+  placeStatusSchema,
+  openRunRecord,
   readConfirmedSession,
-  readRunRow,
+  readRunRecord,
   runRecordCollection,
   runTopic,
-  writeRunRow,
+  writeRunRecord,
   type AttemptIdentity,
   type HeldRecord,
-  type PlaceState,
-  type RunRowWrite,
+  type PlaceStatus,
+  type RunRecordWrite,
 } from "./run-record";
 import {
   failedHeldRecord,
@@ -129,6 +136,17 @@ import {
 } from "./held";
 import { askMarkerPath, readAskMarker } from "./ask";
 import { HeldOnQuestion, askStep } from "./ask-step";
+import {
+  CLOSED_WITHOUT_MERGING,
+  pullRequestsVerdict,
+  pullRequestWaitPrompt,
+  readPullRequestStates,
+  taskPullRequests,
+  waitedPullRequests,
+  type PullRequestRead,
+  type TaskPullRequest,
+} from "./await-pull-requests";
+import { PULL_REQUEST_EVENT } from "./pull-request-wait";
 import { HARNESS_USAGE, harnessUsageCollection, recordHarnessUsage } from "./harness-usage";
 import { readRunCommits, readRunDiff, runDiffSchema, type RunCommits, type RunDiff } from "./commits";
 import { commandCheckResultSchema, commandChecksSummary, readVerdict, type CommandCheckResult } from "./command-check";
@@ -177,6 +195,7 @@ import {
   type OwnershipBounds,
   type WorkspaceConfig,
 } from "./workspace";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** What a phase's prompt builder and done-condition are handed. */
 export interface PhaseRunContext {
@@ -189,7 +208,7 @@ export interface PhaseRunContext {
   issue: string;
   phase: string;
   /**
-   * The tracker issue the task names (`FIX-2165`), or `null` when it names
+   * The tracker issue the task names (`ENG-142`), or `null` when it names
    * none. On a fixed board it is {@link issue}. On a board read from the
    * claim, `issue` is the row's own id and this is the issue its
    * `harnessFeature` key names, so a prompt can say what the work is for.
@@ -538,9 +557,10 @@ export interface ManagerOptions {
    * shutdown with `harnessDrainBudgetMs({ ..., judge: true })` when given.
    */
   judge?: HarnessJudge;
+  // FIX-2163; FIX-2384.
   /**
    * Hold a run that ends with commits on its branch for a person's review
-   * before its task completes (FIX-2163). Off by default: every run settles
+   * before its task completes. Off by default: every run settles
    * on its verdict, as without it.
    *
    * On, a run the phase's check passed (and the {@link judge}, when one read
@@ -548,7 +568,7 @@ export interface ManagerOptions {
    * waits through `ctx.suspendForUser({ kind: "review" })`, its prompt naming the
    * commits, the files they changed and the judge's verdict as information.
    * The stop's `data` carries each changed file's added and removed lines
-   * (`files`, FIX-2384); a screen reads one file's patch through
+   * (`files`); a screen reads one file's patch through
    * `harnessRunChangesRead`. The answer is
    * `{ verdict: "accepted" }`, which completes the task with no further
    * harness run, or `{ verdict: "revise", words }`, whose words become the
@@ -560,15 +580,42 @@ export interface ManagerOptions {
    * request starts, before any harness run.
    */
   reviewChanges?: boolean;
+  // FIX-2578.
+  /**
+   * Keep a task whose run opened a pull request open until that pull
+   * request merges or closes. Off by default: such a task
+   * completes when its run passes, as without it.
+   *
+   * On, the settle (after the {@link judge} and the review) takes every pull
+   * request on the session's record stamped with one of this task's
+   * requests, whatever state it was seen in, and reads each from GitHub
+   * through the host's `gh`. Any still open, or any it can't read, holds the
+   * task on one external wait listing them (`actor: "system"`): the row stays
+   * `in_progress` with no lease, and a line typed in the task's session, or a
+   * message delivered to it, wakes it. A wake reads the pull requests first:
+   * all merged completes the task with them on its output (`pullRequests`),
+   * with no harness run; none open and some merged completes it the same way,
+   * the closed ones noted there; all closed without merging cancels it,
+   * *its pull request was closed without merging*; any open runs the wake's
+   * words as one more step of the same coding session, on the same attempt,
+   * and the run's end comes back to the same check; unreadable runs them
+   * too, with a status note, and never settles the task. A run that opened no
+   * pull request settles as without it.
+   *
+   * Only a host with a way to wake a waiting task should turn it on: until
+   * one does, the task stays open.
+   */
+  awaitPullRequests?: boolean;
   /**
    * Open the brief of a task that names an issue with the issue's spec, read
    * from the run's checkout once it is provisioned (`./issue-spec`). Off by
    * default: the brief is the phase's prompt alone.
    */
   issueSpec?: IssueSpecOption;
+  // FIX-2389.
   /**
-   * Ask a person before each tool call the harness hasn't pre-allowed
-   * (FIX-2389). Off by default: the feed is absent, and the harness's own
+   * Ask a person before each tool call the harness hasn't pre-allowed.
+   * Off by default: the feed is absent, and the harness's own
    * permission settings decide, as without it.
    *
    * On, the manager hands the harness an `onToolApproval` feed among its
@@ -642,14 +689,14 @@ export interface ManagerOptions {
    * block does not.
    */
   harness: HarnessSlot;
+  // FIX-2086; FIX-2312.
   /**
    * Stop a running step for a steer only when the harness's abort waits for
-   * its process to exit (FIX-2086). Otherwise two processes could share one
+   * its process to exit. Otherwise two processes could share one
    * checkout. Off: the steer waits for the step's own end. The row is polled
    * ({@link STEER_POLL_MS}) while a step runs.
    *
-   * Absent: what the harness block declares (`HarnessBlock.stopsOnAbort`,
-   * FIX-2312), so Claude Code's runs are stopped and other harnesses' aren't.
+   * Absent: what the harness block declares (`HarnessBlock.stopsOnAbort`), so Claude Code's runs are stopped and other harnesses' aren't.
    * Set it to override the harness either way.
    *
    * A run that offers a live steer (`onSteerable`) takes the line into its
@@ -713,9 +760,10 @@ export interface HarnessFeeds {
    * no usage ignores it.
    */
   onUsage: HarnessUsageHook;
+  // FIX-2254.
   /**
-   * Called by a harness whose run can take a line into its turn in flight
-   * (FIX-2254), with the steer that does it, and with `null` once it can't.
+   * Called by a harness whose run can take a line into its turn in flight,
+   * with the steer that does it, and with `null` once it can't.
    * While a run offers one, the manager hands it each steer as it lands
    * instead of stopping the step; a line the run refuses takes the step's
    * end (or the stop, with `stopsOnAbort`). A harness that can't steer
@@ -725,9 +773,10 @@ export interface HarnessFeeds {
    * own keeps compiling; the manager always hands one.
    */
   onSteerable?: HarnessSteerHook;
+  // FIX-2290.
   /**
    * Called by the harness with each assistant message and tool call of its
-   * run (FIX-2290). The manager keeps the task's `statusNote` from it: the
+   * run. The manager keeps the task's `statusNote` from it: the
    * first at once, then the latest at most once per `PROGRESS_NOTE_MS`,
    * fenced by the run's claim. A harness that reports none ignores it.
    *
@@ -735,9 +784,10 @@ export interface HarnessFeeds {
    * own keeps compiling; the manager always hands one.
    */
   onActivity?: HarnessActivityHook;
+  // FIX-2389.
   /**
-   * Called by a harness that asks about each tool call before it runs
-   * (FIX-2389), with the call; it answers allow, deny or held. Handed only
+   * Called by a harness that asks about each tool call before it runs,
+   * with the call; it answers allow, deny or held. Handed only
    * when the manager is built with `approveTools`; absent otherwise. A held
    * call stops the run, waits for a person, and the session resumes with the
    * answer. Shaped as `@flow-state-dev/claude-code`'s `onToolApproval`, so a
@@ -766,16 +816,17 @@ export const harnessTaskInputSchema = z.object({
 /**
  * What a task names under {@link HARNESS_FEATURE_KEY} on a board read from the
  * claim: the issue, and optionally the phase. A key naming only the issue runs
- * as the manager's own phase, so a lead filing "implement FIX-2165" names the
+ * as the manager's own phase, so a lead filing "implement ENG-142" names the
  * issue and nothing it would have to know about the manager.
  */
 export const harnessFeatureSchema = z.object({
-  /** The tracker issue the task is for (`FIX-2165`). */
+  /** The tracker issue the task is for (`ENG-142`). */
   issue: z.string(),
   /** Which phase of it. Absent: the manager's own. */
   phase: z.string().optional(),
 });
 
+// FIX-2282.
 /**
  * The key a task's `input` names feature work under on a board read from the
  * claim: `{ [HARNESS_FEATURE_KEY]: { issue, phase? } }`.
@@ -783,7 +834,7 @@ export const harnessFeatureSchema = z.object({
  * **Namespaced, because the rest of `input` is the filer's.** A model filing
  * from a conversation picks its own field names, and `issue` ("the problem")
  * is one it picks. Read from the plain fields, such a task was refused as half
- * a feature payload (FIX-2282). Nothing but this key makes a task feature
+ * a feature payload. Nothing but this key makes a task feature
  * work there; a fixed board's rows are feature rows by the board, and carry
  * the payload as {@link harnessTaskInputSchema} at the top of `input`.
  */
@@ -811,12 +862,13 @@ export function harnessFeatureOf(input: unknown): { issue: string; phase?: strin
   return parsed?.success === true ? parsed.data : undefined;
 }
 
+// BP-031.
 /**
  * The board a task was claimed on, as the trusted entry adapter hands it to
  * the manager: the gate's verified ticket's ledger id and partition, and its
  * incarnation when the adapter passes it.
  *
- * **Server-supplied, and still never trusted by itself** (BP-031). The adapter
+ * **Server-supplied, and still never trusted by itself**. The adapter
  * copies it from the gate's ticket, never from the task. The manager resolves
  * the board through its `ledgers` resolver at the running user's scope, and
  * then requires the row there to be this task, on this attempt, still running
@@ -872,42 +924,66 @@ const managerOutputSchema = z.object({
   branch: z.string().nullable(),
   /** How many commits the run's branch has that its base does not. */
   commits: z.number().int().nonnegative(),
+  // BP-030.
   /**
    * Whether git read `commits` against the run's base. `false` when it
    * couldn't, and `commits` is a fallback zero: show the count as unknown.
-   * `null` on an output kept before it existed (BP-030).
+   * `null` on an output kept before it existed.
    */
   commitsVerified: z.boolean().nullable().default(null),
+  // BP-030.
   /**
    * The commit the run's branch was cut at, so `git log <baseCommit>..<branch>`
    * lists the run's commits. `null` for a run with no repository, or one whose
-   * record names no base. Defaulted so an output kept before it parses (BP-030).
+   * record names no base. Defaulted so an output kept before it parses.
    */
   baseCommit: z.string().nullable().default(null),
-  /** The run's checkout, where its branch is checked out. `null` for a run with no repository. Defaulted (BP-030). */
+  // BP-030.
+  /** The run's checkout, where its branch is checked out. `null` for a run with no repository. Defaulted. */
   path: z.string().nullable().default(null),
   /** Whether the host's judge read the run before it settled. */
   judged: z.boolean(),
+  // BP-030.
   /**
    * How a person's review of the run's changes ended (`reviewChanges`):
    * `"accepted"` is the only value meaning a person accepted them;
    * `"deadline"` means nobody reviewed them before the host's deadline. `null`
-   * when no review was asked. Defaulted so a decision kept before it parses (BP-030).
+   * when no review was asked. Defaulted so a decision kept before it parses.
    */
   review: z.enum(["accepted", "deadline"]).nullable().default(null),
+  // FIX-2543; BP-030.
   /**
-   * Where an accepted run's work went (FIX-2543), when the person chose a
+   * Where an accepted run's work went, when the person chose a
    * way to land it: the pull request opened from its branch, or the base
    * branch it was merged into and the commit that branch is at. `null` when
-   * none was chosen. Defaulted so an output kept before it parses (BP-030).
+   * none was chosen. Defaulted so an output kept before it parses.
    */
   landed: landedSchema.nullable().default(null),
+  // FIX-2578; BP-030.
+  /**
+   * The pull requests the task waited on (`awaitPullRequests`), as
+   * last read when it settled: merged ones, and closed ones noted beside
+   * them. `null` when it waited on none. Defaulted so an output kept before
+   * it parses.
+   */
+  pullRequests: z
+    .array(
+      z.object({
+        url: z.string().nullable(),
+        number: z.number().int(),
+        title: z.string().nullable(),
+        state: z.enum(["open", "merged", "closed"]),
+      }),
+    )
+    .nullable()
+    .default(null),
 });
 type ManagerOutput = z.infer<typeof managerOutputSchema>;
 
+// FIX-2543.
 /**
  * A person's answer to the review of a run's changes: accept them, or ask for
- * changes in words. An accept may name how the work lands (`land`, FIX-2543):
+ * changes in words. An accept may name how the work lands (`land`):
  * `pull-request` pushes the run's branch and opens a pull request; `merge`
  * merges it into the base branch of the person's checkout. Offered only on a
  * host that can land (`WorkspaceHost.land`), as the review's `data.lands`.
@@ -949,10 +1025,11 @@ const managerStateSchema = z.object({
   topic: z.string().nullable().default(null),
   taskId: z.string().nullable().default(null),
   attempt: z.number().nullable().default(null),
+  // FIX-2133 D3.
   /**
    * The claim this run holds, as the claim gate (or the board's drain) stamped
    * it when it claimed the turn: the task, its attempt, and its turn
-   * generation (FIX-2133 D3). Every write this run makes to the task presents
+   * generation. Every write this run makes to the task presents
    * it, never a ticket minted from the row as it stands later. Two turns can
    * share an attempt (an answered question owes one more), so a write is this
    * run's only while the row is still on the ticket's turn.
@@ -979,10 +1056,18 @@ const managerStateSchema = z.object({
   previousSessionId: z.string().nullable().default(null),
   /** The task's goal, as handed to this attempt: what a judge reads the answer against. */
   goal: z.string().nullable().default(null),
-  /** How many more harness steps this request ran for a steer (FIX-2086). Each names that read. */
-  steerSteps: z.number().nullable().default(null),
+  // FIX-2578.
   /**
-   * This try's tool approvals (`approveTools`, FIX-2389): the call the run
+   * The external wait this turn is the wake of (`awaitPullRequests`): its answer reaches the run as news on its pull request.
+   * `null` on any other turn.
+   */
+  wake: z.string().nullable().default(null),
+  // FIX-2086.
+  /** How many more harness steps this request ran for a steer. Each names that read. */
+  steerSteps: z.number().nullable().default(null),
+  // FIX-2389.
+  /**
+   * This try's tool approvals (`approveTools`): the call the run
    * is stopped on, waiting for a person (`null` while none is), the grants
    * the answers left (per try, never on the task row), and how many steps
    * an answer resumed. `null` until the first call is held.
@@ -1013,25 +1098,29 @@ const managerStateSchema = z.object({
         .object({ count: z.number().int().nonnegative(), subjects: z.array(z.string()), verified: z.boolean() })
         .nullable()
         .default(null),
+      // FIX-2384; BP-030.
       /**
        * What those commits changed, file by file, read once by `decide` when
-       * the run will be reviewed (FIX-2384), for the review's prompt and its
+       * the run will be reviewed, for the review's prompt and its
        * data. `null` when no review reads it, and on a decision kept before
-       * it was read (BP-030).
+       * it was read.
        */
       diff: runDiffSchema.nullable().default(null),
+      // FIX-2163.
       /**
-       * How this decision's review ended (FIX-2163): `accepted` or `deadline`
+       * How this decision's review ended: `accepted` or `deadline`
        * settle on it; `revise` and `cancelled` must not complete the run.
        */
       reviewed: z.enum(["accepted", "deadline", "revise", "cancelled"]).nullable().default(null),
-      /** Where an accept that named a way to land sent the work (FIX-2543). `null` otherwise. */
+      // FIX-2543.
+      /** Where an accept that named a way to land sent the work. `null` otherwise. */
       landed: landedSchema.nullable().default(null),
       /** The checks the phase's `isDone` ran (`commandCheck`), for the review's `data`. `null` when it ran none. */
       checks: z.array(commandCheckResultSchema).nullable().default(null),
     })
     .nullable()
     .default(null),
+  // BP-030.
   /**
    * The checkout lease this attempt holds, as a VALUE — see
    * `CheckoutLease.token`.
@@ -1043,14 +1132,15 @@ const managerStateSchema = z.object({
    * keyed by request; a value has the run's own state.
    *
    * `.nullable().default(null)` on both, so a run row persisted before this
-   * change still parses (BP-030).
+   * change still parses.
    */
   lockPath: z.string().nullable().default(null),
   leaseToken: z.string().nullable().default(null),
+  // BR-19.
   /**
    * The repository and base this run was first provisioned from, read off its
    * run record when the attempt opened. A retry provisions from these rather
-   * than from whatever its source answers now (BR-19). `null` before the
+   * than from whatever its source answers now. `null` before the
    * first provision, and on a record written before they were kept.
    */
   remote: z.string().nullable().default(null),
@@ -1068,7 +1158,7 @@ const managerStateSchema = z.object({
    * The run record's `place` when this attempt opened: the host the run was
    * last ready on. Handed to `provision` and never written back from here.
    */
-  recordedPlace: z.object({ host: z.string(), state: placeStateSchema }).nullable().default(null),
+  recordedPlace: z.object({ host: z.string(), state: placeStatusSchema }).nullable().default(null),
   /**
    * The run record's `held`, read when the attempt opened and kept current by
    * every hold this attempt writes: the key a new hold replaces.
@@ -1113,7 +1203,7 @@ export class HarnessAttemptSuperseded extends Error {
   constructor(where: string) {
     super(
       `[harness-manager] this attempt was superseded before ${where}; stopping rather than ` +
-        `continuing to work a row another attempt now holds.`,
+        `continuing to work a task another attempt now holds.`,
     );
     this.name = "HarnessAttemptSuperseded";
   }
@@ -1134,7 +1224,7 @@ export class HarnessAttemptSuperseded extends Error {
  * own fence.
  */
 async function fenced(
-  write: Promise<RunRowWrite>,
+  write: Promise<RunRecordWrite>,
   where: string,
 ): Promise<void> {
   if ((await write) === "refused") throw new HarnessAttemptSuperseded(where);
@@ -1220,7 +1310,7 @@ function identityFrom(
   if (state?.topic == null || state.taskId == null || state.attempt == null) {
     throw new Error(
       "[harness-manager] the manager's sequencer state is empty — this block ran outside the " +
-        "manager, or before the row was opened.",
+        "manager, or before the run record was opened.",
     );
   }
   return {
@@ -1263,8 +1353,9 @@ function runRefused(ctx: { sequencer?: { state?: unknown } | undefined }, messag
   });
 }
 
+// FIX-2163.
 /**
- * What a person reviewing a run's changes reads (FIX-2163): the commits, or
+ * What a person reviewing a run's changes reads: the commits, or
  * that they couldn't be read, and the judge's verdict as information.
  */
 function reviewPrompt(
@@ -1336,9 +1427,10 @@ function pullRequestText(
   return { title, body: body.join("\n") };
 }
 
+// FIX-2268.
 /**
  * The pull request an accept opened, written to the run session's record
- * (FIX-2268's `observed-pull-requests`) so every reader of the record shows
+ * (`observed-pull-requests`) so every reader of the record shows
  * it. Never throws: a record that can't be written is a status note.
  */
 async function recordLandedPullRequest(ctx: BlockContext, landed: Extract<Landed, { kind: "pull-request" }>): Promise<void> {
@@ -1613,7 +1705,7 @@ export function resolveOwnership(options: {
  * inference, the capability's resources are a literal object type, which
  * narrows `ctx.resources` AND `ctx.targets` on every block that lists it — and
  * a narrowed `BlockContext` is not assignable to a plain one, so all fourteen
- * helper calls in this file would need `ctx as BlockContext` back. That is the
+ * helper calls in this file would need a cast to `BlockContext` back. That is the
  * invariance trap {@link RequestIdentityContext} describes, reached from the
  * `uses` side. The accessor set is genuinely open here (a phase brings its
  * own), so declaring it open is the honest type as well as the usable one.
@@ -1697,11 +1789,12 @@ function branchIssue(claimBoard: boolean, trackerIssue: string | null | undefine
   return claimBoard && trackerIssue != null ? { trackerIssue } : {};
 }
 
+// FIX-2086.
 /**
  * Build the manager: one dispatched worker for one phase.
  *
  * A steer on the task is in the attempt's first prompt, and one that arrives
- * while a step runs is the next step of the same request (FIX-2086).
+ * while a step runs is the next step of the same request.
  */
 export function harnessManager(options: ManagerOptions): TaskWorker {
   const {
@@ -1710,6 +1803,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     ledgers,
     judge,
     reviewChanges = false,
+    awaitPullRequests = false,
     issueSpec,
     approveTools = false,
     tenant,
@@ -1722,15 +1816,6 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   } = options;
   const specOptions = issueSpecOptions(issueSpec);
 
-  // **A removed option, refused by name** (BP-030). A host that still passes
-  // it expects to be told of each question; dropping it silently would leave
-  // that host waiting on a call that never comes.
-  if ("announce" in (options as object)) {
-    throw new Error(
-      "[harness-manager] `announce` was removed: a run's question now keeps its task waiting on the board, " +
-        "where the Inbox lists it. Read held tasks from the board (`openRowHolds`) instead of being told.",
-    );
-  }
 
   // **A board to read, named one way or the other.** A fixed board needs both
   // halves; without one, the resolver is the only way to a board.
@@ -1918,7 +2003,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (collection === undefined) {
       throw new Error(
         `[harness-manager] the board ledger "${boardCollectionId}" is not registered on this ` +
-          `worker, so its rows cannot be read or asked a question on.`,
+          `worker, so its tasks cannot be read or asked a question on.`,
       );
     }
     return getOrCreateTaskCollection({
@@ -1944,7 +2029,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return resolved;
   };
 
-  /** The run's row as stored now: a steer is another request's write (FIX-2086). */
+  // FIX-2086.
+  /** The run's row as stored now: a steer is another request's write. */
   const committedRow = async (ctx: BlockContext): Promise<Task | undefined> => {
     const taskId = managerState(harnessCtxState(ctx)).taskId;
     if (taskId === null) return undefined;
@@ -1999,12 +2085,11 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * read from the claim, the fence reads the row through the resolver at the
    * claim's ledger and partition, and compares its incarnation too.
    *
-   * Typed by what it reads, like {@link harnessCtxState}: a harness feed is
-   * handed a narrower context than a block, and the resolver needs only what
-   * every block context carries.
+   * Every caller holds a block or harness-callback context, both a
+   * `BlockContext`, which is what the row resolver reads through.
    */
   const identityOf = (
-    ctx: { sequencer?: { state?: unknown } | undefined },
+    ctx: BlockContext,
     state: ManagerState | undefined,
   ): AttemptIdentity => {
     const claim = state?.claim ?? null;
@@ -2014,7 +2099,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     if (claim === null) return incarnationId === undefined ? base : { ...base, incarnationId };
     return {
       ...base,
-      readBoardRow: async () => (await claimLedger(ctx as BlockContext, claim))?.get(base.taskId),
+      readBoardRow: async () => (await claimLedger(ctx, claim))?.get(base.taskId),
       ...(claim.incarnationId !== null ? { incarnationId: claim.incarnationId } : {}),
     };
   };
@@ -2073,7 +2158,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     }
     if (state?.topic != null && state.taskId != null && state.attempt != null) {
       await fenced(
-        writeRunRow(ctx, identityOf(ctx, state), {
+        writeRunRecord(ctx, identityOf(ctx, state), {
           lastSave: { at: Date.now(), conflicts: leftAlone, error },
         }),
         "the run's kept files were saved",
@@ -2085,16 +2170,17 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return true;
   };
 
+  // BR-6; BR-7; BR-8; BR-9.
   /**
    * Hold the run's repository work, where the host holds it: write the pack,
-   * then switch the record to it, then drop the pack the record named before
-   * (BR-6). Beside every save point: turn end, a question, failure.
+   * then switch the record to it, then drop the pack the record named before.
+   * Beside every save point: turn end, a question, failure.
    *
    * Answers `false` when the hold failed, after recording why and keeping the
-   * last good hold on the record (BR-7); the caller decides whether that fails
-   * the attempt (BR-8). The pack and the record write are each tried a few
+   * last good hold on the record; the caller decides whether that fails
+   * the attempt. The pack and the record write are each tried a few
    * times first. A displaced attempt's record write is refused like every
-   * other one (BR-9), and nothing is dropped. With holding off, nothing runs.
+   * other one, and nothing is dropped. With holding off, nothing runs.
    */
   const holdWork = async (ctx: BlockContext): Promise<boolean> => {
     const state = harnessCtxState(ctx);
@@ -2105,7 +2191,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const recorded = recordedHoldOf(previous);
     const writeHeld = (held: HeldRecord, where: string) =>
       withHoldRetries(
-        () => fenced(writeRunRow(ctx, identity, { held }), where),
+        () => fenced(writeRunRecord(ctx, identity, { held }), where),
         (error) => !(error instanceof HarnessAttemptSuperseded),
       );
 
@@ -2142,20 +2228,21 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * Write where the run's place stands, where the host holds work. With
    * holding off this is never called and the record gains no `place`.
    */
-  const recordPlace = async (ctx: BlockContext, placeHost: string, placeState: PlaceState): Promise<void> => {
+  const recordPlace = async (ctx: BlockContext, placeHost: string, placeState: PlaceStatus): Promise<void> => {
     await fenced(
-      writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), {
+      writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), {
         place: { host: placeHost, state: placeState },
       }),
       `the place was recorded ${placeState}`,
     );
   };
 
+  // BR-25.
   /**
    * Provision the run's place through the host, handing it what the record
    * says, and write `place.state` around it in the order the rules give:
    * `provisioning`, then `lost` and `restoring` when the host reports them,
-   * then `ready` naming this host (BR-25). Until it is ready the record keeps
+   * then `ready` naming this host. Until it is ready the record keeps
    * naming the host the place was last ready on, so a machine that dies mid-
    * rebuild never reads as the run's live place.
    *
@@ -2226,11 +2313,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     }
   };
 
+  // BR-19, BR-29, D2.
   /**
    * Ask the run's owner: its held work cannot be used here. The place goes
    * `lost`, the pack is marked so nothing ever drops it, the task is held on
    * the owner's question through the ask step, and the operator's log names
-   * the run and the field, never the work's contents (BR-19, BR-29, D2).
+   * the run and the field, never the work's contents.
    */
   const holdOnMismatch = async (
     ctx: BlockContext,
@@ -2241,7 +2329,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const identity = identityOf(ctx, state);
     const held = state.held === null ? null : { ...state.held, parked: true };
     await fenced(
-      writeRunRow(ctx, identity, {
+      writeRunRecord(ctx, identity, {
         ...(placeHost !== null ? { place: { host: placeHost, state: "lost" as const } } : {}),
         held,
       }),
@@ -2301,7 +2389,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         const sameIncarnation =
           claim.incarnationId === null || row?.incarnationId === undefined || row.incarnationId === claim.incarnationId;
         if (row === undefined || row.attempts !== input.attempts || row.status !== "in_progress" || !sameIncarnation) {
-          throw new HarnessAttemptSuperseded("the run was opened (its claim names no live row of this attempt)");
+          throw new HarnessAttemptSuperseded("the run was opened (its claim names no live task of this attempt)");
         }
         claim = { ...claim, incarnationId: claim.incarnationId ?? row.incarnationId ?? null };
         assertDerivedIdentity("the claim's ledger id", claim.collectionId);
@@ -2317,6 +2405,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         ticket,
         goal: input.goal,
         decided: null,
+        wake: null,
         openedAt: Date.now(),
       });
 
@@ -2365,7 +2454,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // before any coding run: a run whose changes it couldn't hold for review
       // would otherwise be spent, or completed unreviewed. A host with durable
       // execution offers `resumeWait`; one without leaves it absent.
-      if (reviewChanges && ctx.requestHost?.resumeWait === undefined) {
+      if (reviewChanges && requestHostOf(ctx)?.resumeWait === undefined) {
         throw runRefused(
           ctx,
           `[harness-manager] this manager reviews a run's changes (\`reviewChanges\`), which waits for ` +
@@ -2374,7 +2463,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         );
       }
       // **Nor can an approval** (FIX-2389): a held call waits for a person the same way.
-      if (approveTools && ctx.requestHost?.resumeWait === undefined) {
+      if (approveTools && requestHostOf(ctx)?.resumeWait === undefined) {
         throw runRefused(
           ctx,
           `[harness-manager] this manager asks a person before a run's tool calls (\`approveTools\`), ` +
@@ -2428,7 +2517,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // the prompt before anything is provisioned. A run already provisioned
       // keeps the repository its record names (see `pinnedAnswer`). With a
       // fixed `sourceRepo` this is the path `checkoutPathFor` derives.
-      const recorded = await readRunRow(ctx, topic);
+      const recorded = await readRunRecord(ctx, topic);
       try {
         assertPlaceAndHeld(recorded);
       } catch (corrupt) {
@@ -2461,7 +2550,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
 
       // **Read the session the LAST attempt confirmed, before opening clears it.**
       //
-      // `openRunRow` applies the attempt-scoped clear, which sets `sessionId` to
+      // `openRunRecord` applies the attempt-scoped clear, which sets `sessionId` to
       // null — correctly, since the field describes the attempt now running and
       // this one has not reported yet. So the read has to happen here: after the
       // open, it is always `null`.
@@ -2493,13 +2582,26 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // known-stale worker walk on into checkout preparation and paid agent
       // execution — taking the tree ahead of its replacement for roughly a
       // lease-renewal interval.
+      // **This task's requests, kept across its turns** (FIX-2578): a pull
+      // request on the session's record is the task's when one of them opened
+      // it. A record of another task under the same id starts the list over.
+      const requestIds = awaitPullRequests
+        ? [
+            ...(recorded !== undefined &&
+            recorded.taskId === input.taskId &&
+            (recorded.incarnationId == null || ticket.incarnationId == null || recorded.incarnationId === ticket.incarnationId)
+              ? (recorded.requestIds ?? []).filter((id) => id !== ctx.request.identity.id)
+              : []),
+            ctx.request.identity.id,
+          ].slice(-MAX_TASK_REQUESTS)
+        : undefined;
       await fenced(
-        openRunRow(
+        openRunRecord(
           ctx,
           identityOf(ctx, harnessCtxState(ctx)),
-          { workspacePath, branch, childSessionId: ctx.session.identity.id, run, runKey },
+          { workspacePath, branch, childSessionId: ctx.session.identity.id, run, runKey, ...(requestIds !== undefined ? { requestIds } : {}) },
         ),
-        "the run row was opened",
+        "the run record was opened",
       );
     },
   });
@@ -2559,7 +2661,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // A null read means the place has no row.
       return read === null ? null : worktreeKey(host.hostId(), place);
     } catch (error) {
-      ctx.emit.status(`The run's worktree row was not updated: ${error instanceof Error ? error.message : String(error)}`, {
+      ctx.emit.status(`The run's worktree resource was not updated: ${error instanceof Error ? error.message : String(error)}`, {
         transient: false,
       });
       return null;
@@ -2701,7 +2803,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               }
             : { filesOnly: true };
         await fenced(
-          writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), pin),
+          writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), pin),
           "the run's source was recorded",
         );
         await ctx.sequencer!.patchState(pin);
@@ -2711,11 +2813,16 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // a third channel beside `feedback` and `answers`, so a failure and a
       // person's answer stay their own sections. An answer is the phase's
       // (`answers`), so it is not shown here a second time.
+      let news: ShownSteer[] = [];
       const steers =
         (
-          await takeSteersFor(ctx, `brief:${ctx.request.identity.id}`, (row) =>
-            (row.steers ?? []).filter((steer) => steer.takenBy === row.attempts && !isAnswer(row, steer)),
-          )
+          await takeSteersFor(ctx, `brief:${ctx.request.identity.id}`, (row) => {
+            const mine = (row.steers ?? []).filter((steer) => steer.takenBy === row.attempts && !isAnswer(row, steer));
+            // What woke this turn's pull-request wait (FIX-2578) is news on the pull request, under its own lead.
+            const woke = (steer: TaskSteer) => state.wake !== null && steer.answers === state.wake;
+            news = mine.filter(woke).map((steer) => shownSteer(row, steer));
+            return mine.filter((steer) => !woke(steer));
+          })
         )?.steers ?? [];
       const restored = heldPromptSection(place, state.held);
       const withRestored = restored === undefined ? prompt : `${prompt}\n\n${restored}`;
@@ -2727,8 +2834,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           ? undefined
           : await readIssueSpecSection(place.cwd, state.trackerIssue, specOptions);
       const briefed = specSection === undefined ? withRestored : `${specSection}\n\n${withRestored}`;
+      const withSteers = steers.length === 0 ? briefed : `${briefed}\n\n${renderSteers(steers, STEERS_IN_BRIEF)}`;
       return {
-        prompt: steers.length === 0 ? briefed : `${briefed}\n\n${renderSteers(steers, STEERS_IN_BRIEF)}`,
+        prompt: news.length === 0 ? withSteers : `${withSteers}\n\n${renderSteers(news, PULL_REQUEST_NEWS)}`,
       };
     },
   });
@@ -2860,6 +2968,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           judged: false,
           review: null,
           landed: null,
+          pullRequests: null,
         };
         // Read once here, so the review's prompt and data come from state alone.
         const diff: RunDiff | null =
@@ -2887,7 +2996,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // recording that makes the next attempt resume it again, forever.
       // Leaving it to the opening clear is what makes the retry self-heal.
       await fenced(
-        writeRunRow(ctx, identity, {
+        writeRunRecord(ctx, identity, {
         source: handle.source,
         finalMessage: handle.finalMessage,
         usage: handle.usage,
@@ -2956,7 +3065,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // reclaim or a cancel: a replacement's checkout must not get this
         // attempt's commands. Read from the committed row, as the steer watch
         // does, since the request's own reads can be older than the wait.
-        const rowNow = await committedRow(ctx as BlockContext);
+        const rowNow = await committedRow(ctx);
         if (
           rowNow === undefined ||
           rowNow.status !== "in_progress" ||
@@ -3015,7 +3124,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // **The checks it ran go on the run record, whatever the verdict**, so
         // a failed attempt's row says which command was red and how.
         if (verdict.checks !== undefined) {
-          await fenced(writeRunRow(ctx, identity, { checks: verdict.checks }), "the checks were recorded");
+          await fenced(writeRunRecord(ctx, identity, { checks: verdict.checks }), "the checks were recorded");
         }
         notDoneReason = verdict.done ? undefined : verdict.reason;
         if (verdict.done) {
@@ -3153,10 +3262,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // the error this handler is unwinding.
       // Its repository work is held the same way, first, while the place is
       // in hand; a hold `decide` already wrote is unchanged and writes nothing.
-      await holdWork(ctx as BlockContext).catch(() => undefined);
+      await holdWork(ctx).catch(() => undefined);
       await saveKeptFiles(ctx).catch(() => undefined);
       // A failed run's pull requests are still its own.
-      await checkBranchPullRequests(ctx as BlockContext, await recordRunCheckout(ctx as BlockContext));
+      await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state;
@@ -3171,7 +3280,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         // already unwinding and re-throws below whatever happens, so a refusal
         // means only that a superseded attempt recorded nothing — which is the
         // correct outcome. Every other call site stops on refusal.
-        await writeRunRow(
+        await writeRunRecord(
           ctx,
           identityOf(ctx, state),
           { outcome: "failed", reason },
@@ -3183,9 +3292,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     },
   });
 
+  // FIX-2389.
   /**
-   * The calls each running step was stopped on for a person's approval
-   * (FIX-2389), by request, until the approval step moves it onto the
+   * The calls each running step was stopped on for a person's approval,
+   * by request, until the approval step moves it onto the
    * sequencer's state; and the `once` grants a step spent, by their index in
    * that state's grants, dropped there by the next approval step.
    */
@@ -3231,11 +3341,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return heldToolDecision(call);
   };
 
+  // BP-031.
   /**
    * **The slot, called once.**
    *
-   * Every feed reads or writes MANAGER state — never the block's input
-   * (BP-031). A model holding the harness as a tool can choose neither where
+   * Every feed reads or writes MANAGER state — never the block's input.
+   * A model holding the harness as a tool can choose neither where
    * the run writes nor what conversation it continues, and that is structural
    * rather than a convention this manager keeps: a resolver is handed the
    * context alone, so the caller's prompt is not reachable from here at all.
@@ -3258,7 +3369,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // itself: it is mid-stream in paid model work on a row it no longer owns.
     onSession: async (sessionId, ctx) => {
       await fenced(
-        writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), {
+        writeRunRecord(ctx, identityOf(ctx, harnessCtxState(ctx)), {
           sessionId,
         }),
         "the harness named its session",
@@ -3286,11 +3397,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     // covers runs; any other is held, and the step is stopped for it.
     ...(approveTools ? { onToolApproval: askAboutToolCall } : {}),
   });
-  /** The host's word, else what the harness declares (FIX-2312). */
+  // FIX-2312.
+  /** The host's word, else what the harness declares. */
   const stopsOnAbort = options.stopsOnAbort ?? harnessBlock.stopsOnAbort === true;
 
+  // FIX-2290.
   /**
-   * Each running step's progress notes (FIX-2290), by request. Written through
+   * Each running step's progress notes, by request. Written through
    * the board's `reportProgress` with the claim this run holds, so a replaced
    * attempt's note declines rather than land on its replacement's row; a
    * decline stops that step's notes. Dropped when the step ends, so a step a
@@ -3362,6 +3475,154 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             },
           ]);
 
+  /** Read the task's pull requests from GitHub, in the run's checkout when it still has one, inside the one network-call bound. */
+  const readTaskPullRequests = (ctx: BlockContext, prs: readonly TaskPullRequest[]) => {
+    const path = managerState(harnessCtxState(ctx)).workspacePath;
+    return readPullRequestStates(ctx, prs, {
+      cwd: path != null && existsSync(path) ? path : process.cwd(),
+      timeoutMs: NETWORK_CALL_TIMEOUT_MS,
+    });
+  };
+
+  // FIX-2578.
+  /**
+   * **The one place a task's pull requests settle it**, at the
+   * settle and on the wake its wait owes: each is read from GitHub, and
+   *
+   * - **all merged**, or **none open and some merged**: completes, with the
+   *   pull requests on the output (a closed one noted by its state);
+   * - **all closed without merging**: cancels, with {@link CLOSED_WITHOUT_MERGING};
+   * - **any open**, or **unreadable**: holds the task on one external wait
+   *   naming them all (a status note says why when it couldn't read them).
+   *
+   * Returns the output to end the request with. A wake that settles has run
+   * no harness: `woken` says so, and the caller ends the chain on it.
+   */
+  const settleOnPullRequests = async (
+    ctx: BlockContext,
+    prs: readonly TaskPullRequest[],
+    output: ManagerOutput,
+    woken?: { readonly reads: Awaited<ReturnType<typeof readPullRequestStates>> },
+  ): Promise<ManagerOutput> => {
+    const state = managerState(harnessCtxState(ctx));
+    const identity = identityOf(ctx, state);
+    // Read once per settle: a wake hands over the read it already made.
+    const reads = woken?.reads ?? (await readTaskPullRequests(ctx, prs));
+    const verdict = "unreadable" in reads ? "hold" : pullRequestsVerdict(reads.read);
+    if ("unreadable" in reads) {
+      ctx.emit.status(
+        `The task's pull request${prs.length === 1 ? "" : "s"} couldn't be read from GitHub, so it waits on ${prs.length === 1 ? "it" : "them"}: ${reads.unreadable}`,
+        { transient: false },
+      );
+    }
+    const settled = { ...output, pullRequests: "unreadable" in reads ? null : reads.read.map(outputPullRequest) };
+    // A wake that settles runs no harness, and its open cleared the session the run confirmed:
+    // put it back, so a later message to the finished task still resumes it.
+    const confirmed = woken !== undefined ? { sessionId: state.previousSessionId } : {};
+    if (verdict === "complete") {
+      // A wake's own words go with it: the task is done, and nothing is left owed.
+      if (woken !== undefined) await takeSteersFor(ctx, `pull-request-wake:${ctx.request.identity.id}`, () => []);
+      await fenced(writeRunRecord(ctx, identity, { outcome: "succeeded", reason: null, ...confirmed }), "the run record was completed");
+      return settled;
+    }
+    const board = await runBoard(ctx);
+    if (verdict === "cancel") {
+      if (woken !== undefined) await fenced(writeRunRecord(ctx, identity, confirmed), "the run's session was kept");
+      // A person closed the work (D2): a cancel, by the claim holder, which reaches the filer through the task notice.
+      const cancelled = await cancelFromTurn(ctx, board, CLOSED_WITHOUT_MERGING);
+      if (cancelled.outcome === "declined" && cancelled.reason !== "terminal") {
+        throw new HarnessAttemptSuperseded("its pull request was closed without merging");
+      }
+      ctx.emit.status(`The task was cancelled: ${CLOSED_WITHOUT_MERGING}.`, { transient: false });
+      return settled;
+    }
+    // Kept before the wait drops the lease: what a wake that finds them merged completes with.
+    await fenced(
+      writeRunRecord(ctx, identity, { waitOutput: { attempt: state.attempt!, output: { ...output, pullRequests: null } } }),
+      "the task's output was kept for its pull requests",
+    );
+    const waited = await waitExternally(ctx, board, {
+      prompt: pullRequestWaitPrompt(prs),
+      title: prs.length === 1 ? "Waiting on its pull request" : "Waiting on its pull requests",
+      events: prs.map((pr) => ({ event: PULL_REQUEST_EVENT, key: pr.key })),
+    });
+    if (!waited.ok) {
+      if (waited.reason === "lost-claim" || waited.reason === "not-my-task" || waited.reason === "terminal") {
+        throw new HarnessAttemptSuperseded("the task's wait on its pull requests was opened");
+      }
+      if (waited.reason === "steer-limit") {
+        throw new HarnessAttemptFailed(
+          `the task's pull request is still open, and the task has taken the most messages it can (${MAX_STEERS}) to wake it again`,
+        );
+      }
+      throw new Error(
+        `[harness-manager] the task couldn't wait on its pull requests (${waited.reason}). ` +
+          (waited.reason === "no-claim"
+            ? "The manager must run as a board's worker, behind its claim gate or drain, so its request holds the task's claim."
+            : `The board "${board.collectionId}" keeps no external waits.`),
+      );
+    }
+    // The turn is over and its lease is gone, as after a question.
+    currentLeaseRenewal()?.stop();
+    ctx.emit.status(pullRequestWaitPrompt(prs), { transient: false });
+    return settled;
+  };
+
+  // FIX-2578.
+  /**
+   * **The wake a task's pull-request wait owes**, before anything
+   * else runs: the turn the wait's release owes reads its pull requests
+   * first. Merged or closed settles the task here, with no harness run, by
+   * ending the chain on {@link SettledOnPullRequests}; open or unreadable
+   * goes on, and the wake's words reach the run as its brief. A pass-through
+   * unless `awaitPullRequests` is on and this turn is that wake: the row's
+   * newest external wait is answered, by a steer this attempt has not taken.
+   */
+  const pullRequestWake = handler({
+    name: `${name}-pull-request-wake`,
+    inputSchema: harnessManagerInputSchema,
+    outputSchema: z.void(),
+    sequencerStateSchema: managerStateSchema,
+    uses: [managerCapability],
+    execute: async (_input, ctx: BlockContext) => {
+      if (!awaitPullRequests) return;
+      const row = await committedRow(ctx);
+      const state = managerState(harnessCtxState(ctx));
+      const recorded = await readRunRecord(ctx, state.topic!);
+      const wait = row === undefined ? undefined : wokenWait(row);
+      // Each wait is woken once: a later turn of the task (a retry, a question's answer) is not its wake.
+      if (wait === undefined || recorded?.wokeFor === wait.id) return;
+      await fenced(writeRunRecord(ctx, identityOf(ctx, state), { wokeFor: wait.id }), "the wake was recorded");
+      await ctx.sequencer!.patchState({ wake: wait.id });
+      const keys = wait.source.closedBy.flatMap((releaser) =>
+        releaser.by === "event" && releaser.event === PULL_REQUEST_EVENT ? [releaser.key] : [],
+      );
+      const prs = await waitedPullRequests(ctx, keys);
+      if (prs.length === 0) return;
+      const kept = recorded?.waitOutput;
+      const parsed = kept != null && kept.attempt === state.attempt ? managerOutputSchema.safeParse(kept.output) : undefined;
+      const output: ManagerOutput = parsed?.success === true ? parsed.data : outputWithoutRun(state);
+      const reads = await readTaskPullRequests(ctx, prs);
+      // Open, or unreadable: the wake's words run, and the run's end comes back to the settle's read.
+      if ("unreadable" in reads) {
+        ctx.emit.status(`The task's pull request couldn't be read from GitHub, so its message goes to the run: ${reads.unreadable}`, {
+          transient: false,
+        });
+        return;
+      }
+      if (pullRequestsVerdict(reads.read) === "hold") return;
+      throw new SettledOnPullRequests(await settleOnPullRequests(ctx, prs, output, { reads }));
+    },
+  });
+
+  /** Ends the chain with the output the wake settled on: the rescue below returns it. */
+  const settledOnPullRequests = handler({
+    name: `${name}-settled-on-pull-requests`,
+    inputSchema: z.unknown(),
+    outputSchema: managerOutputSchema,
+    execute: (error: unknown) => (error as SettledOnPullRequests).output,
+  });
+
   /**
    * Settle what `decide` decided. A task held on the run's question has
    * nothing left to settle. A run that passed its check completes, unless a
@@ -3397,17 +3658,24 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         await holdOnQuestion(ctx, read.reason);
         return { ...decision.output, judged: true };
       }
-      await fenced(
-        writeRunRow(ctx, identity, { outcome: "succeeded", reason: null }),
-        "the row was completed",
-      );
       const review = decision.reviewed === "accepted" || decision.reviewed === "deadline" ? decision.reviewed : null;
-      return { ...decision.output, judged: read !== null, review, landed: decision.landed ?? null };
+      const output: ManagerOutput = { ...decision.output, judged: read !== null, review, landed: decision.landed ?? null };
+      // **A task whose work is a pull request is done when it merges** (FIX-2578).
+      if (awaitPullRequests) {
+        const prs = await taskPullRequests(ctx, (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id]);
+        if (prs.length > 0) return settleOnPullRequests(ctx, prs, output);
+      }
+      await fenced(
+        writeRunRecord(ctx, identity, { outcome: "succeeded", reason: null }),
+        "the run record was completed",
+      );
+      return output;
     },
   });
 
+  // FIX-2163; FIX-2543.
   /**
-   * **The review of a run's changes** (FIX-2163), between the judge and the
+   * **The review of a run's changes**, between the judge and the
    * steer check before the settle; a pass-through unless `reviewChanges` is
    * on. A run that passed its check (and that a judge found done, or read
    * under its floor, or that no judge read) waits for a person's review when
@@ -3415,7 +3683,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * a verified zero skips it. The manager's one suspension; questions hold.
    *
    * - **accepted**: the settle completes the task, with no harness run.
-   *   An accept that names how the work lands (`land`, FIX-2543) first
+   *   An accept that names how the work lands (`land`) first
    *   lands it through the host: `pull-request` pushes the run's branch and
    *   opens a pull request (recorded in the session's `observed-pull-requests`),
    *   `merge` merges it into the base branch of the person's checkout. Where
@@ -3452,8 +3720,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const reviewed = async (outcome: "accepted" | "deadline" | "revise" | "cancelled", landed: Landed | null = null) =>
         ctx.sequencer!.patchState({ decided: { ...decision, reviewed: outcome, landed } });
 
-      // The ways this host can land an accept; none on a host without `land`.
-      const lands: LandHow[] = host.land === undefined || decision.output.branch === null ? [] : ["pull-request", "merge"];
+      // The ways this host can land this run, as the host says (`landWays`): none where landing
+      // can't work, and then the review offers the plain accept. Asked once, so a replay offers the same.
+      const probe = async (): Promise<LandHow[]> =>
+        host.land === undefined || host.landWays === undefined || decision.output.branch === null || state.workspacePath == null || state.branch == null
+          ? []
+          : await host.landWays({ cwd: state.workspacePath, branch: state.branch, baseRef: state.baseRef }).catch(() => []);
+      const lands: LandHow[] = ctx.runOnce === undefined ? await probe() : await ctx.runOnce(`review:lands:${state.steerSteps ?? 0}`, probe);
       // The last landing that failed, shown on the review asked again, with a retry.
       let failed: { land: LandHow; message: string } | null = null;
       for (let round = 0; ; round++) {
@@ -3670,9 +3943,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return controller.signal;
   };
 
+  // FIX-2254 D2.
   /**
-   * Lines a request took for its run that the run didn't take into its turn
-   * (FIX-2254 D2), owed to its next step. The row has no untake, so these are
+   * Lines a request took for its run that the run didn't take into its turn,
+   * owed to its next step. The row has no untake, so these are
    * kept here, beside the row's taken mark: refused lines, and lines still
    * waiting on the run's answer when its step ended.
    */
@@ -3777,8 +4051,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       },
     ]);
 
+  // FIX-2086.
   /**
-   * One more step for a steer (FIX-2086), when this attempt still has an
+   * One more step for a steer, when this attempt still has an
    * untaken steer or the step was stopped for one: it resumes the session
    * this attempt confirmed, with the checkout taken again. None when a step
    * that ended on its own took nothing (the gate's check owes the turn), or
@@ -3840,8 +4115,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     return { prompt: steers.length === 0 ? CONTINUE_AFTER_STOP : renderSteers(steers, lead), again: true };
   };
 
+  // FIX-2389.
   /**
-   * **A run's tool call, waiting for a person** (FIX-2389), after a harness
+   * **A run's tool call, waiting for a person**, after a harness
    * step; a pass-through unless `approveTools` is on and the step was stopped
    * on a held call. The call moves onto the sequencer's state, so a resume
    * after a restart (which runs this step's code again up to the wait) reads
@@ -3993,6 +4269,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     stateSchema: managerStateSchema,
   })
     .tap(openRun)
+    .tap(pullRequestWake)
     .step(prepare)
     .step(harnessStep)
     .step(heldCallStep)
@@ -4016,7 +4293,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .step(steerBeforeSettle)
     .loopBack(harnessStep.name, steerLoop)
     .step(settle)
-    .rescue([{ block: recordFailure }]);
+    .rescue([{ when: [SettledOnPullRequests], block: settledOnPullRequests }, { block: recordFailure }]);
 
   worker.validate();
   return worker;
@@ -4057,7 +4334,7 @@ function assertFeatureRowIdentity(
   // own identity says does not exist.
   if (!sameSegment(phaseName, configuredPhase)) {
     throw new HarnessAttemptFailed(
-      `[harness-manager] task ${taskId} is a "${phaseName}" row on a manager ` +
+      `[harness-manager] task ${taskId} is a "${phaseName}" task on a manager ` +
         `configured for "${configuredPhase}". Refusing rather than running ` +
         `${configuredPhase}'s prompt and completion check against it.`,
     );
@@ -4082,7 +4359,7 @@ function assertFeatureRowIdentity(
     throw new HarnessAttemptFailed(
       `[harness-manager] task ${taskId} carries the payload for ${canonicalId}. ` +
         `Refusing: the checkout, the branch and the run record are all derived from ` +
-        `that payload, so a second row under a different id would run the same work ` +
+        `that payload, so a second task under a different id would run the same work ` +
         `in the same tree.`,
     );
   }
@@ -4114,11 +4391,66 @@ function heldTicket(
   return ticketForClaim(board.collectionId, row, board.partition);
 }
 
-/** Whether `steer` answers one of `row`'s questions for a person: a steer a deadline wrote is a message, not an answer. */
+// FIX-2578.
+/**
+ * Whether `steer` answers one of `row`'s questions for a person: a steer a
+ * deadline wrote is a message, not an answer, and so is the one that woke an
+ * external wait, which answers no question.
+ */
 function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
   if (steer.answers === undefined || steer.from === "board") return false;
   const hold = row.holds?.find((h) => h.id === steer.answers);
-  return hold !== undefined && isRowHold(hold);
+  return hold !== undefined && isOwnHold(hold) && !isExternalHold(hold);
+}
+
+// FIX-2578.
+/**
+ * The external wait `row`'s release owes this turn for: the
+ * newest of its own holds, when that is an external wait a steer answered. A
+ * question asked after it is newer, and its answer's turn is the question's.
+ */
+function wokenWait(row: Task): OwnHold | undefined {
+  const newest = (row.holds ?? []).filter(isOwnHold).at(-1);
+  return newest !== undefined && isExternalHold(newest) && answerOf(row, newest.id) !== undefined ? newest : undefined;
+}
+
+/** The most requests a run record keeps for its task (`requestIds`): the oldest go first. */
+const MAX_TASK_REQUESTS = 64;
+
+// FIX-2578.
+/**
+ * Ends the manager's chain once a wake settled its task on its pull requests,
+ * with no harness run: the chain's rescue returns `output`.
+ */
+class SettledOnPullRequests extends Error {
+  constructor(readonly output: ManagerOutput) {
+    super("[harness-manager] the task settled on its pull requests, with no harness run");
+    this.name = "SettledOnPullRequests";
+  }
+}
+
+/** A pull request as the output carries it. */
+function outputPullRequest(read: PullRequestRead): NonNullable<ManagerOutput["pullRequests"]>[number] {
+  return { url: read.url, number: read.number, title: read.title, state: read.state };
+}
+
+/**
+ * The output a wake settles with when the turn that held kept none (a record
+ * from before it was kept): the run's place, and nothing it reported.
+ */
+function outputWithoutRun(state: ManagerState): ManagerOutput {
+  return managerOutputSchema.parse({
+    issue: state.issue,
+    phase: state.phase,
+    sessionId: state.previousSessionId,
+    answer: null,
+    branch: state.branch,
+    commits: 0,
+    commitsVerified: false,
+    baseCommit: state.baseCommit,
+    path: state.workspacePath,
+    judged: false,
+  });
 }
 
 /**
@@ -4130,7 +4462,7 @@ function answeredQuestions(row: Task | undefined): AnsweredQuestion[] {
   if (row === undefined) return [];
   const answered: AnsweredQuestion[] = [];
   for (const hold of row.holds ?? []) {
-    if (!isRowHold(hold)) continue;
+    if (!isOwnHold(hold)) continue;
     const steer = answerOf(row, hold.id);
     if (steer === undefined || !isAnswer(row, steer)) continue;
     answered.push({ question: hold.ask.prompt, answer: steer.message });
@@ -4143,9 +4475,10 @@ function isWorkspaceHost(workspace: WorkspaceConfig | WorkspaceHost): workspace 
   return typeof (workspace as WorkspaceHost).provision === "function";
 }
 
+// BR-19.
 /**
  * What a run provisions from: its source's answer, except that a run already
- * provisioned keeps the repository and base its record names (BR-19), and a
+ * provisioned keeps the repository and base its record names, and a
  * run first provisioned with no repository stays on its kept files alone. The
  * answer's kept files still come from the source, which is the only thing
  * that can hand back a collection bound to this context.
@@ -4190,7 +4523,8 @@ function refusedMessage(by: "source" | "host", refusal: { reason: string; messag
   return `[harness-manager] the workspace ${by} refused this run (${refusal.reason}): ${refusal.message}`;
 }
 
-/** How often a running step's row is read for a steer (FIX-2086). */
+// FIX-2086.
+/** How often a running step's row is read for a steer. */
 export const STEER_POLL_MS = 1_000;
 
 /** What a harness step stopped for a steer hands on, in place of a handle. */
@@ -4201,7 +4535,8 @@ interface SteerWatch {
   /** Set when the watch stopped the step for a steer. */
   stopped: boolean;
   timer: ReturnType<typeof setTimeout> | undefined;
-  /** The run's live steer while it offers one (FIX-2254), else `null`. */
+  // FIX-2254.
+  /** The run's live steer while it offers one, else `null`. */
   steer: HarnessSteer | null;
   /** How many takes this step handed live: each names its read. */
   handed: number;
@@ -4218,7 +4553,8 @@ interface PendingLine {
   readonly steers: ShownSteer[];
 }
 
-/** What a request owes its run's next step (FIX-2254 D2). */
+// FIX-2254 D2.
+/** What a request owes its run's next step. */
 interface OwedLines {
   /**
    * Lines owed, in the order they were taken: refused, or handed over with
@@ -4232,6 +4568,12 @@ interface OwedLines {
 /** The lead a run's first prompt shows the task's steers under. */
 const STEERS_IN_BRIEF =
   "Since this task was filed, you were also sent the messages below about it, oldest first. They are part of the task: follow them.";
+
+// FIX-2578.
+/** The lead a wake's words open with while the task's pull request is still open. */
+const PULL_REQUEST_NEWS =
+  "News on your pull request, which is still open. Your checkout and your earlier work are as you left them. " +
+  "Act on what it says, then push your changes to the pull request's branch:";
 
 /** The lead the step after a stop for a steer opens with. */
 const STOPPED_LEAD =

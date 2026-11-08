@@ -15,7 +15,7 @@ import type {
   RequestSideChainPoolDrainToQuiescenceOptions,
   RequestSideChainPoolResult,
   RequestSideChainTaskMeta
-} from "@flow-state-dev/core";
+} from "@flow-state-dev/core/internal";
 
 interface PoolEntry {
   meta: RequestSideChainTaskMeta;

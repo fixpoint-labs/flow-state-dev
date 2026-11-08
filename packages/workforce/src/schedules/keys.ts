@@ -1,5 +1,6 @@
+// FIX-2085.
 /**
- * The names recurring work pins (FIX-2085): where a user's schedules are
+ * The names recurring work pins: where a user's schedules are
  * stored, the accessor the roster flow declares them under, the one schedule
  * handler Workforce keeps (a row's `kind: "task"`), and the internal entry a
  * fire files its task through. A leaf module with no imports, so the session

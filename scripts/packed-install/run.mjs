@@ -38,7 +38,7 @@
  * `--goal` is the epic's adopter goal, not a gate: the same pack and install,
  * then {@link GOAL_CHECKS} (one entry per assertion in `goal-manifest.json`)
  * through the same `runChecks`, judged by `goal.mjs` against the manifest's
- * expectations. It prints how many of the six rows hold, and exits 0 when every
+ * expectations. It prints how many of the rows (the epic's six, then the closure's) hold, and exits 0 when every
  * outcome matches its expectation and none is an `error`. It runs in its own
  * workflow (`adopter-goal.yml`), on pushes to `main` and by dispatch, never on a
  * PR, because most assertions are expected to fail until their child lands.
@@ -49,6 +49,13 @@
  * commit. It exits 0 only when every admitted assertion reports `fail`; a
  * `pending` ratchet cell is listed, not red, until its check is wired.
  *
+ * The closure row's upgrade journey (`closure.j5:moved-name-named`) installs
+ * those same pinned tarballs beside the project and walks every name a package
+ * root dropped since. Under `--control=adopter-goal` it walks none, which is a
+ * fail. `--control=moved-name` is its planted control: this checkout's
+ * tarballs, with every changelog line naming one dropped name removed. It
+ * exits 0 only when the journey then fails on that name.
+ *
  * **Adding a check.** Append to {@link CHECKS}: `{ name, run(project) }`, where
  * `run` returns a list of failure strings (empty on pass). `project` carries the
  * consumer directory and the packed packages with their manifests. Checks run
@@ -57,7 +64,7 @@
  * reads `project.tree` (the repository tree under test) for a ratchet. A check
  * that throws reports `error`.
  *
- * Usage: `node scripts/packed-install/run.mjs [--control | --control=workspace-link | --goal | --control=adopter-goal] [--keep]`.
+ * Usage: `node scripts/packed-install/run.mjs [--control | --control=workspace-link | --goal | --control=adopter-goal | --control=moved-name] [--keep]`.
  * `--keep` leaves the temporary project on disk and prints its path.
  * Needs network access to the npm registry for third-party dependencies, and
  * `REDIS_URL` pointing at a live Redis for the suite's queue case.
@@ -78,19 +85,24 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { publishableDists } from "../add-esm-extensions.mjs";
 import {
+  MOVED_RENAMES,
+  changelogLines,
   formatVerdict,
+  gradeMovedNames,
   judge,
   judgeControl,
   outcomeOf,
+  plantLineRemoval,
   probeNeverPublished,
   ratchetFailures,
   readManifest,
   runRatchet,
 } from "./goal.mjs";
+import { copyOutRecipe, EXAMPLES_README, exampleCells, exampleRun, QUICKSTART_PAGE, runQuickstart } from "./first-hour.mjs";
 import { runSuite } from "./suite.mjs";
 import { runVitestJson } from "./vitest-json.mjs";
 
@@ -286,6 +298,18 @@ export const CHECKS = [
     },
   },
   {
+    // Benchmarking is reached only through its two subpaths; the testing and
+    // patterns roots carry none of it, and the repo-only scanners aren't published.
+    name: "benchmarking is on testing/benchmark and patterns/benchmark, not on either root",
+    run: (project) => runFixture(project, "benchmark-subpaths.mjs", "benchmark-subpaths"),
+  },
+  {
+    // An adopter unit-tests a step that waits for a person with the installed
+    // testing package alone, answering it through the engine's own routes.
+    name: "the installed testFlow stops on a step that waits for a person, and answers it through the engine's route",
+    run: (project) => runFixture(project, "test-a-stop.mjs", "test-a-stop"),
+  },
+  {
     name: "a server starts and answers an action",
     run: (project) => runFixture(project, "serve.mjs", "serve"),
   },
@@ -400,8 +424,65 @@ const RATCHET_CELLS = [
   },
 ];
 
+/**
+ * The examples that run with no model key: their README's `fsdev run` blocks
+ * are a `run` cell each. The others name a key their runs need.
+ */
+const KEYLESS_EXAMPLES = new Set(["board-lifecycle", "custom-pattern", "research-team"]);
+
+/**
+ * The `first-hour.example.<name>.<step>` cells: each example under
+ * `examples/`, found by a folder walk, copied out and run by the copy-out
+ * recipe (`first-hour.mjs`), one cell per step. An example added later
+ * reports cells the manifest does not list, which the judge refuses until
+ * they are admitted. `install` is every step's prerequisite, not a cell.
+ */
+const FIRST_HOUR_EXAMPLE_CELLS = exampleCells(join(ROOT, "examples"), KEYLESS_EXAMPLES).map(({ name, dir, step }) => ({
+  name,
+  path: relative(ROOT, dir),
+  step,
+}));
+
+/**
+ * The copy-out recipe, read from this checkout's `examples/README.md`: the
+ * reader's procedure, which the control applies to the pinned commit's
+ * examples too.
+ */
+function recipe() {
+  const readme = join(ROOT, EXAMPLES_README);
+  return existsSync(readme) ? copyOutRecipe(readFileSync(readme, "utf8")) : null;
+}
+
+/** One copy-out run per example per goal run, shared by its cells. */
+function exampleCopy(project, { name, path }) {
+  if (!project.exampleRuns.has(name)) {
+    const dir = mkdtempSync(join(tmpdir(), `fsd-first-hour-${name}-`));
+    mkdirSync(join(dir, name));
+    project.cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+    project.exampleRuns.set(
+      name,
+      exampleRun({
+        src: join(project.tree, path),
+        dir: join(dir, name),
+        recipe: recipe(),
+        repoRoot: ROOT,
+        tarballs: project.tarballs,
+        log,
+      }),
+    );
+  }
+  return project.exampleRuns.get(name);
+}
+
 /** The TypeScript the consumer project reads core's `.d.ts` with: the workspace's own. */
 const TYPESCRIPT_SPEC = "typescript@npm:@typescript/typescript6@6.0.2";
+
+/**
+ * What leg c's React fixture renders with: React and a DOM, at the versions the
+ * workspace builds and tests React against. An adopter's app brings its own
+ * React; the installed `@flow-state-dev/react` only peers on it.
+ */
+const REACT_SPECS = ["react@19.2.4", "react-dom@19.2.4", "jsdom@27.4.0"];
 
 /** The export census's frozen list of moved core names. */
 const MOVED_TSV = join(ROOT, "specs/issues/FIX-2448/poc/export-census/moved.tsv");
@@ -436,7 +517,7 @@ export const GOAL_CHECKS = [
   })),
   {
     id: "surface.core-installed-dts",
-    name: "installed core's .d.ts: no moved name on the root or core/types, each on its entry, no requestHost on BlockContext",
+    name: "installed core's .d.ts: no moved name on the root or core/types, each on its entry, no requestHost or symbol-keyed member on BlockContext, no compiled test file in the tarball",
     run(project) {
       npmInstall(project.dir, [TYPESCRIPT_SPEC]);
       const installed = join(project.dir, "node_modules", "@flow-state-dev/core");
@@ -444,10 +525,35 @@ export const GOAL_CHECKS = [
       const { specs } = importSpecifiers(manifest, packageFiles(installed));
       return goalFixture(project, "goal-core-dts.mjs", "core-dts", {
         FSD_MOVED_TSV: MOVED_TSV,
+        FSD_MOVED_RENAMES: JSON.stringify(MOVED_RENAMES),
         FSD_CORE_SPECS: JSON.stringify(specs),
       });
     },
   },
+  {
+    id: "first-hour.quickstart",
+    name: "the quick start's own blocks, in order, in an empty folder, then its fsdev run returns an answer",
+    run(project) {
+      const dir = mkdtempSync(join(tmpdir(), "fsd-first-hour-quickstart-"));
+      mkdirSync(join(dir, "app"));
+      try {
+        return runQuickstart({
+          markdown: readFileSync(join(project.tree, QUICKSTART_PAGE), "utf8"),
+          dir: join(dir, "app"),
+          repoRoot: ROOT,
+          tarballs: project.tarballs,
+          log,
+        });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  },
+  ...FIRST_HOUR_EXAMPLE_CELLS.map((cell) => ({
+    id: `first-hour.example.${cell.name}.${cell.step}`,
+    name: `${cell.path}, copied to an empty folder by the copy-out recipe: ${cell.step}`,
+    run: (project) => exampleCopy(project, cell).step(cell.step),
+  })),
   {
     id: "shims.never-published",
     name: "the installed packages read or refuse none of the 19 names no published version accepted",
@@ -463,7 +569,133 @@ export const GOAL_CHECKS = [
     name: "a stored human_approval suspension reads as a user's stop",
     run: (project) => goalFixture(project, "goal-stored-approval.mjs", "stored-approval"),
   },
+  {
+    id: "onepath.output-read",
+    name: "the installed client's request(firstId).result(), under 101 newer requests, returns the computed output; a failing action resolves failed with its error.code",
+    run: (project) => goalFixture(project, "goal-output-read.mjs", "output-read"),
+  },
+  {
+    id: "types.typed-handler",
+    name: "a uses: [cap] handler passes its ctx to orchestration/tasks' getOrCreateTaskCollection and compiles against the installed .d.ts with no cast",
+    run(project) {
+      npmInstall(project.dir, [TYPESCRIPT_SPEC]);
+      return goalFixture(project, "goal-typed-handler.mjs", "typed-handler");
+    },
+  },
+  {
+    id: "types.fresh-session-default",
+    name: "a fresh session reads the flow's, a block's and a capability's defaults; conflicting declarations are refused at defineFlow, naming the field and both blocks",
+    run: (project) => goalFixture(project, "goal-fresh-default.mjs", "fresh-default"),
+  },
+  {
+    id: "onepath.answer-task-stop",
+    name: "installed React's useApproval, under jsdom, answers a user_approval stop raised in a task-board run",
+    run(project) {
+      npmInstall(project.dir, REACT_SPECS);
+      return goalFixture(project, "goal-answer-task-stop.mjs", "answer-task-stop");
+    },
+  },
+  {
+    id: "closure.j5:moved-name-named",
+    name: "an app importing every name a root dropped since the pinned published tarballs compiles there, fails on these name by name, and its package's changelog names each with its new home",
+    run(project) {
+      const { names, lines } = movedNameJourney(project);
+      return gradeMovedNames(names, lines);
+    },
+  },
 ];
+
+/**
+ * The upgrade journey's input, once per goal run: the pinned published
+ * tarballs (the manifest's control pins, by integrity) installed into a
+ * folder of their own; the names each package root dropped between that
+ * install and `project.dir`, from `goal-moved-names.mjs`; and each such
+ * package's changelog lines, read from `project.tree` as the quick start is.
+ *
+ * @returns {{ names: { pkg: string, name: string, homes: string[], failsOnNew: boolean }[], lines: Map<string, string[]> }}
+ */
+function movedNameJourney(project) {
+  if (project.movedNames) return project.movedNames;
+  const pins = project.manifest.control.packages;
+  const work = mkdtempSync(join(tmpdir(), "fsd-moved-names-tarballs-"));
+  const old = mkdtempSync(join(tmpdir(), "fsd-moved-names-"));
+  project.cleanup.push(() => rmSync(work, { recursive: true, force: true }), () => rmSync(old, { recursive: true, force: true }));
+  writeFileSync(join(old, "package.json"), JSON.stringify({ name: "fsd-moved-names", private: true, type: "module" }, null, 2));
+  log(`    installing the ${pins.length} pinned published tarball(s) to upgrade from…`);
+  npmInstall(old, fetchPinned(work, pins));
+  npmInstall(project.dir, [TYPESCRIPT_SPEC]);
+  const specsIn = (dir, names) =>
+    Object.fromEntries(
+      names.map((name) => {
+        const installed = join(dir, "node_modules", name);
+        const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
+        return [name, importSpecifiers(manifest, packageFiles(installed)).specs];
+      }),
+    );
+  const specs = {
+    old: specsIn(old, pins.map((p) => p.name)),
+    new: specsIn(project.dir, project.packages.map((p) => p.name)),
+  };
+  const { names } = goalFixtureData(project, "goal-moved-names.mjs", "moved-names", {
+    FSD_J5_OLD: old,
+    FSD_J5_SPECS: JSON.stringify(specs),
+  });
+  log(`    ${names.length} name(s) dropped from ${new Set(names.map((n) => n.pkg)).size} root(s)`);
+  const dirs = packageDirs(project.tree);
+  const changesetDir = join(project.tree, ".changeset");
+  const changesets = existsSync(changesetDir)
+    ? readdirSync(changesetDir)
+        .filter((f) => f.endsWith(".md") && f !== "README.md")
+        .map((f) => readFileSync(join(changesetDir, f), "utf8"))
+    : [];
+  const lines = new Map();
+  for (const pkg of new Set(names.map((n) => n.pkg))) {
+    const changelog = dirs.has(pkg) ? join(project.tree, "packages", dirs.get(pkg), "CHANGELOG.md") : null;
+    lines.set(
+      pkg,
+      changelogLines(pkg, {
+        changesets,
+        changelog: changelog && existsSync(changelog) ? readFileSync(changelog, "utf8") : null,
+        since: pins.find((p) => p.name === pkg).version,
+      }),
+    );
+  }
+  project.movedNames = { names, lines };
+  return project.movedNames;
+}
+
+/** Package name → its folder under `<tree>/packages`. */
+function packageDirs(tree) {
+  const out = new Map();
+  for (const e of readdirSync(join(tree, "packages"), { withFileTypes: true })) {
+    const manifest = join(tree, "packages", e.name, "package.json");
+    if (e.isDirectory() && existsSync(manifest)) out.set(JSON.parse(readFileSync(manifest, "utf8")).name, e.name);
+  }
+  return out;
+}
+
+/**
+ * Run a fact-gathering fixture: its `<stem>: data <json>` line is the
+ * result. Its `<stem>: FAIL …` line (with the indented lines after it) or no
+ * verdict at all throws, which `runChecks` reports as `error`: a journey whose
+ * own app is broken has graded nothing.
+ */
+function goalFixtureData(project, file, stem, env = {}) {
+  copyFileSync(join(FIXTURES, file), join(project.dir, file));
+  const res = spawnSync(process.execPath, [file], {
+    cwd: project.dir,
+    encoding: "utf8",
+    timeout: 300_000,
+    maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, ...env },
+  });
+  const lines = (res.stdout ?? "").split("\n");
+  const data = lines.find((l) => l.startsWith(`${stem}: data `));
+  if (data) return JSON.parse(data.slice(`${stem}: data `.length));
+  const at = lines.findIndex((l) => l.startsWith(`${stem}: FAIL`));
+  const detail = at >= 0 ? lines.slice(at, at + 41).join("\n") : `${res.stderr ?? ""}\n${res.stdout ?? ""}`.trim().slice(-800);
+  throw new Error(`${file} gave no data (exit ${res.status ?? res.signal}): ${detail}`);
+}
 
 /**
  * Import again, with their optional peers now installed, the subpaths the first
@@ -615,10 +847,11 @@ function npmInstall(dir, specs) {
 }
 
 /**
- * Pack every publishable workspace package into `dest`.
+ * Pack every publishable workspace package into `dest`. Exported for the
+ * tarball scan (`scan-tracker-ids-in-tarballs.mjs --all`).
  * @returns {{ name: string, dir: string, tarball: string, manifest: object }[]}
  */
-function packAll(dest) {
+export function packAll(dest) {
   const dirs = readdirSync(PACKAGES, { withFileTypes: true })
     .filter((e) => e.isDirectory() && existsSync(join(PACKAGES, e.name, "package.json")))
     .map((e) => e.name);
@@ -673,6 +906,7 @@ function main() {
   const linkControl = process.argv.includes("--control=workspace-link");
   const goal = process.argv.includes("--goal");
   const goalControl = process.argv.includes("--control=adopter-goal");
+  const movedNameControl = process.argv.includes("--control=moved-name");
   const keep = process.argv.includes("--keep");
   const work = mkdtempSync(join(tmpdir(), "fsd-packed-tarballs-"));
   const dir = emptyProject();
@@ -681,6 +915,7 @@ function main() {
     if (linkControl) return runLinkControl(work, dir);
     if (goal) return runGoal(work, dir);
     if (goalControl) return runGoalControl(work, dir);
+    if (movedNameControl) return runMovedNameControl(work, dir);
 
     log("packing publishable packages…");
     const packed = packAll(work);
@@ -776,6 +1011,27 @@ function runLinkControl(work, dir) {
   return 1;
 }
 
+/**
+ * A goal run's project: the consumer install plus what goal checks read. The
+ * tree under test, the manifest, a cache of ratchet runs and example copies,
+ * and each tarball with its version by package name, for legs that install
+ * into a folder of their own.
+ *
+ * @param {{ tarballs: { name: string, tarball: string, version: string }[] }} opts
+ */
+function goalProject({ dir, packages, tree, manifest, tarballs }) {
+  return {
+    dir,
+    packages,
+    tree,
+    manifest,
+    ratchetRuns: new Map(),
+    exampleRuns: new Map(),
+    cleanup: [],
+    tarballs: new Map(tarballs.map(({ name, tarball, version }) => [name, { tarball, version }])),
+  };
+}
+
 /** Write lines to the log and, under GitHub Actions, to the job summary. */
 function report(lines) {
   for (const l of lines) log(l);
@@ -795,11 +1051,38 @@ function runGoal(work, dir) {
   log("installing into an empty ESM project…");
   npmInstall(dir, packed.map((p) => p.tarball));
   const outcomes = new Map();
-  runChecks({ dir, packages: packed, tree: ROOT, manifest, ratchetRuns: new Map() }, GOAL_CHECKS, outcomes);
+  const tarballs = packed.map((p) => ({ name: p.name, tarball: p.tarball, version: p.manifest.version }));
+  const project = goalProject({ dir, packages: packed, tree: ROOT, manifest, tarballs });
+  try {
+    runChecks(project, GOAL_CHECKS, outcomes);
+  } finally {
+    for (const done of project.cleanup) done();
+  }
   const verdict = judge(manifest, outcomes);
   log("");
   report([`adopter goal: ${verdict.ok ? "outcomes match the manifest" : "OUTCOMES DO NOT MATCH THE MANIFEST"}`, ...formatVerdict(verdict)]);
   return verdict.ok ? 0 : 1;
+}
+
+/**
+ * Fetch each pinned published tarball into `work` and check its bytes against
+ * the pinned integrity. Throws naming the first tarball that differs.
+ *
+ * @param {{ name: string, version: string, integrity: string }[]} pins
+ * @returns {string[]} tarball paths, in pin order
+ */
+function fetchPinned(work, pins) {
+  return pins.map((pin) => {
+    const file = sh("npm", ["pack", `${pin.name}@${pin.version}`, "--pack-destination", work, "--silent"], work)
+      .trim()
+      .split("\n")
+      .pop();
+    const tarball = join(work, file);
+    const integrity = `sha512-${createHash("sha512").update(readFileSync(tarball)).digest("base64")}`;
+    if (integrity !== pin.integrity)
+      throw new Error(`control tarball ${pin.name}@${pin.version} is not the pinned bytes (got ${integrity})`);
+    return tarball;
+  });
 }
 
 /**
@@ -811,19 +1094,12 @@ function runGoalControl(work, dir) {
   const manifest = readManifest();
   const pins = manifest.control.packages;
   log(`control: fetching ${pins.length} pinned tarball(s)…`);
-  const tarballs = [];
-  for (const pin of pins) {
-    const file = sh("npm", ["pack", `${pin.name}@${pin.version}`, "--pack-destination", work, "--silent"], work)
-      .trim()
-      .split("\n")
-      .pop();
-    const tarball = join(work, file);
-    const integrity = `sha512-${createHash("sha512").update(readFileSync(tarball)).digest("base64")}`;
-    if (integrity !== pin.integrity) {
-      log(`✗ control tarball ${pin.name}@${pin.version} is not the pinned bytes (got ${integrity})`);
-      return 1;
-    }
-    tarballs.push(tarball);
+  let tarballs;
+  try {
+    tarballs = fetchPinned(work, pins);
+  } catch (err) {
+    log(`✗ ${err.message}`);
+    return 1;
   }
   log("installing into an empty ESM project…");
   npmInstall(dir, tarballs);
@@ -831,19 +1107,22 @@ function runGoalControl(work, dir) {
     name: pin.name,
     manifest: JSON.parse(readFileSync(join(dir, "node_modules", pin.name, "package.json"), "utf8")),
   }));
-  // Ratchets read the tree as it was at the pinned commit; only materialised
-  // once a ratchet is wired, since an unwired cell reads nothing.
-  let tree = ROOT;
-  if (Object.values(manifest.ratchets ?? {}).some((s) => s != null)) {
-    tree = join(work, "control-tree");
-    const archive = join(work, "control-tree.tar");
-    sh("git", ["archive", "--format=tar", "-o", archive, manifest.control.commit], ROOT);
-    mkdirSync(tree);
-    sh("tar", ["xf", archive, "-C", tree], ROOT);
-    log(`ratchets read a checkout of ${manifest.control.commit.slice(0, 8)}`);
-  }
+  // Ratchets and the First hour leg read the tree as it was at the pinned
+  // commit: its ratchet scripts' input, its quick start page, its examples.
+  const tree = join(work, "control-tree");
+  const archive = join(work, "control-tree.tar");
+  sh("git", ["archive", "--format=tar", "-o", archive, manifest.control.commit], ROOT);
+  mkdirSync(tree);
+  sh("tar", ["xf", archive, "-C", tree], ROOT);
+  log(`the tree under test is a checkout of ${manifest.control.commit.slice(0, 8)}`);
   const outcomes = new Map();
-  runChecks({ dir, packages, tree, manifest, ratchetRuns: new Map() }, GOAL_CHECKS, outcomes);
+  const pinned = pins.map((pin, i) => ({ name: pin.name, tarball: tarballs[i], version: pin.version }));
+  const project = goalProject({ dir, packages, tree, manifest, tarballs: pinned });
+  try {
+    runChecks(project, GOAL_CHECKS, outcomes);
+  } finally {
+    for (const done of project.cleanup) done();
+  }
   const v = judgeControl(manifest, outcomes);
   const lines = [
     v.ok
@@ -859,6 +1138,43 @@ function runGoalControl(work, dir) {
   log("");
   report(lines);
   return v.ok ? 0 : 1;
+}
+
+/**
+ * The upgrade journey's planted control. The pinned published tarballs have
+ * dropped no root name against themselves, so the goal control cannot show
+ * this journey failing on a missing line; this does. Pack and install this
+ * checkout as `--goal` does, gather the journey's input, and remove every
+ * changelog line naming one dropped name that passes. Returns 0 only when the
+ * journey then fails on that name, for its missing line.
+ */
+function runMovedNameControl(work, dir) {
+  const manifest = readManifest();
+  log("packing publishable packages…");
+  const packed = packAll(work);
+  log("installing into an empty ESM project…");
+  npmInstall(dir, packed.map((p) => p.tarball));
+  const tarballs = packed.map((p) => ({ name: p.name, tarball: p.tarball, version: p.manifest.version }));
+  const project = goalProject({ dir, packages: packed, tree: ROOT, manifest, tarballs });
+  try {
+    const { names, lines } = movedNameJourney(project);
+    const target = names.find((n) => n.homes.length > 0 && gradeMovedNames([n], lines).length === 0);
+    if (!target) {
+      report(["✗ control: no dropped name with a home passes on this checkout, so there is no line to remove"]);
+      return 1;
+    }
+    const failures = gradeMovedNames(names, plantLineRemoval(lines, target));
+    const named = failures.find((f) => f === `${target.pkg} ${target.name}: no changelog line names it`);
+    log("");
+    report(
+      named
+        ? [`✓ control failed as it must: with ${target.pkg}'s lines naming ${target.name} removed, the journey reports "${named}"`]
+        : [`✗ control: with ${target.pkg}'s lines naming ${target.name} removed, the journey did not name it`, ...failures.slice(0, 20)],
+    );
+    return named ? 0 : 1;
+  } finally {
+    for (const done of project.cleanup) done();
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

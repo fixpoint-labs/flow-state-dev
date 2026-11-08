@@ -177,9 +177,10 @@ export type SessionSummary = {
  * Session detail shape returned from session read/create endpoints.
  */
 export type SessionDetail = SessionSummary & {
+  // FIX-1442.
   /**
    * The organization this session is bound to. Always present on a session the
-   * server admitted (FIX-1442) — the server decides it from the verified
+   * server admitted — the server decides it from the verified
    * principal, and a client never sends one.
    */
   orgId: string;
@@ -199,55 +200,10 @@ export type SessionDetail = SessionSummary & {
 };
 
 /**
- * How a ChildSession's runs ended, or that they have not ended. `"active"`
- * asserts only *not finished*. In a list read once, never gloss it as
- * "running" or "live": the read may be stale. A view that follows its session
- * (`useSession(id, { live: true })`) re-reads the list as runs start and
- * finish, so there `"active"` may read as "working", which clears when the run
- * ends. A paused or stopped run reads the same.
- *
- * See `docs/architecture/server-and-client.md` § Background work (ChildSessions)
- * for the full semantics, including why this is not `RequestStatus`.
+ * The wire shape of `GET /sessions/:sessionId/children`, which this client
+ * reads: declared once, in contracts.
  */
-export type ChildSessionStatus =
-  | "active"
-  | "completed"
-  | "failed"
-  | "incomplete"
-  | "aborted";
-
-/**
- * One body of background work running under a conversation.
- *
- * A ChildSession is a child session that outlives the turn that started it, so
- * its history is read with `sessions.requests` — the
- * same call a conversation's own turns are read with.
- *
- * The wire sends a named field set rather than a whole session record, so this
- * stands on its own instead of extending {@link SessionSummary}: the listing
- * carries no `flowKind`, `userId`, `title` or `metadata`, and declaring them
- * here would type fields the server never sends.
- */
-export type ChildSessionSummary = {
-  /** Bare child session id — the address for reading this ChildSession's requests. */
-  id: string;
-  /** Bare id of the conversation this work hangs off. */
-  parentSessionId: string;
-  createdAt: number;
-  updatedAt: number;
-  /**
-   * The flow instance that owns the child — the address to read it through
-   * when it was dispatched into another instance. Absent on a child written
-   * before owners were recorded; guard with `== null` (BP-030).
-   */
-  flowId?: string;
-  /** Display-only label for what body of work this is; guard with `== null` (BP-030). */
-  topic?: string;
-  /** Display-only label for which worker within the work; same absence rule as `topic`. */
-  coordinate?: string;
-  /** Absent when nothing has run yet — not a status to render a placeholder for. */
-  status?: ChildSessionStatus;
-};
+export type { ChildSessionStatus, ChildSessionSummary } from "@flow-state-dev/contracts/types/child-session";
 
 /**
  * Request record fields consumed by client/session views.
@@ -265,21 +221,23 @@ export type SessionRequestSummary = {
   sessionId?: string;
   /** The organization the request ran in. Absent only on a legacy record. */
   orgId?: string;
+  // FIX-438.
   /**
    * Inbound transport provenance — see server `RequestRecord.source`.
-   * Records summarized from a server that pre-dates FIX-438 may omit the
+   * Records summarized from an older server may omit the
    * field; clients should default missing values to `"http"`.
    */
   source?: string;
   status: RequestStatus;
   startedAtMs?: number;
+  // BP-030.
   /**
    * Where the turns this request read begin: the first past turn its history
    * window held, when earlier turns had fallen out of it. Draw a divider
    * before that request; the turns above it are out of the model's view (or,
    * on a flow with a history summary, in the summary). Absent when every
    * earlier turn was in the window, and on servers that predate the field.
-   * Guard with `== null` (BP-030).
+   * Guard with `== null`.
    */
   historyStart?: { requestId: string };
   completedAtMs?: number;
@@ -293,6 +251,7 @@ export type SessionRequestSummary = {
    * via the state endpoint. Present on responses that carry full records.
    */
   items?: OutputItem[];
+  // BP-030.
   /**
    * What the action came to, once the request has ended. See
    * {@link SessionRequestResult}.
@@ -300,7 +259,7 @@ export type SessionRequestSummary = {
    * Absent while the request runs or is suspended, and on `aborted` or
    * `interrupted` requests. Absent on a `completed`, `incomplete` or `failed`
    * request means no result was recorded (a server, or history, from before
-   * results were stored). Guard with `== null` (BP-030).
+   * results were stored). Guard with `== null`.
    */
   result?: SessionRequestResult;
   createdAt: number;
@@ -357,10 +316,11 @@ export type CollectionSnapshotPrefetchedItem = {
   content?: string;
 };
 
+// FIX-427.
 /**
  * Client-visible metadata for a collection resource in the snapshot.
  *
- * As of FIX-427 the per-item `items` map is no longer materialized by default.
+ * The per-item `items` map is not materialized by default.
  * `count` is always emitted for client-visible collections; `prefetched` is
  * populated only when the collection declares a non-zero `prefetchWindow`.
  */
@@ -376,10 +336,11 @@ export type CollectionSnapshotEntry = {
    * included only when `client.state.read: true`.
    */
   prefetched?: CollectionSnapshotPrefetchedItem[];
+  // FIX-739.
   /**
-   * Per-topic live overlay (FIX-739). Populated client-side by
+   * Per-topic live overlay. Populated client-side by
    * `mergeResourceChangeIntoSnapshot` from `live: true` resource_change deltas
-   * and read by `useResourceCollectionItem` as an overlay on the fetched
+   * and read by `useCollectionResource` as an overlay on the fetched
    * baseline. A created/updated entry carries `clientData`; a deleted entry is
    * a tombstone (`deleted: true`) so the hook can show the item as gone without
    * waiting for a refetch. Never emitted by the server — purely a client-merge
@@ -388,12 +349,13 @@ export type CollectionSnapshotEntry = {
   live?: Record<string, { clientData?: unknown; deleted?: boolean }>;
 };
 
+// FIX-858.
 /**
  * One page of collection state returned by `GET /sessions/:id/resources/:ref`.
  * Cursor-paged: `nextCursor` is an opaque token present only when more rows
  * remain (its absence means the last page). Pass it back as `cursor` to fetch
  * the next page. Store-backed collections page by keyset; projected collections
- * (FIX-858) return the app store's own cursor.
+ * return the app store's own cursor.
  */
 export type CollectionListPage = {
   items: Array<{ topic: string; clientData?: unknown }>;
@@ -401,25 +363,26 @@ export type CollectionListPage = {
 };
 
 /**
- * Single collection item state returned by `GET /sessions/:id/resources/:ref/:topic`.
+ * One collection resource's state, returned by `GET /sessions/:id/resources/:ref/:topic`.
  */
-export type CollectionItemState = {
+export type CollectionResourceState = {
   topic: string;
   clientData?: unknown;
 };
 
+// FIX-296; FIX-741.
 /**
- * React-layer wrapper around a collection item. Augments the server's
- * `{ topic, clientData? }` payload with the FIX-296 lazy-content ergonomic
+ * React-layer wrapper around a collection resource. Augments the server's
+ * `{ topic, clientData? }` payload with the lazy-content ergonomic
  * (`fetchContent()`) so consumers don't have to plumb the client themselves.
  *
- * `TClient` (FIX-741) is the projected client-data shape — supplied by the
+ * `TClient` is the projected client-data shape — supplied by the
  * React hook generic, typically via `ClientDataOf<typeof collection>`. Defaults
  * to `unknown` so untyped call sites are unaffected. The runtime payload is the
  * `JsonValue` produced by the server projection; the type is a hook-boundary
  * assertion backed by the projection contract.
  */
-export type CollectionItemHandle<TClient = unknown> = {
+export type CollectionResourceHandle<TClient = unknown> = {
   topic: string;
   clientData?: TClient;
   fetchContent(): Promise<string | null>;
@@ -527,8 +490,9 @@ export type RequestSSECallbacks = {
   onContentAdded?: (event: ContentPartAddedEvent) => void;
   onContentDelta?: (event: ContentPartDeltaEvent) => void;
   onContentDone?: (event: ContentPartDoneEvent) => void;
+  // FIX-523.
   /**
-   * Fires for each chunk of streaming TTS audio (FIX-523). Live-only —
+   * Fires for each chunk of streaming TTS audio. Live-only —
    * these events are NOT delivered via `Last-Event-ID` resume; on
    * reconnect, the durable representation arrives as an
    * `OutputAudioContent` snapshot via `onContentAdded` / `onContentDone`.
@@ -643,7 +607,7 @@ export type ListDebugSuspensionsOptions = {
 };
 
 /** One item in a paginated collection debug listing. */
-export type DebugCollectionItem = {
+export type DebugCollectionResource = {
   topic: string;
   storageKey: string;
   state: Record<string, unknown> | null;
@@ -654,13 +618,13 @@ export type DebugCollectionItem = {
   contentVisibleToClient: boolean;
 };
 
-export type DebugCollectionItemsResponse = {
-  items: DebugCollectionItem[];
+export type DebugCollectionResourcesResponse = {
+  items: DebugCollectionResource[];
   nextCursor: string | null;
 };
 
 /** Query options for the debug items endpoint. */
-export type ListDebugCollectionItemsOptions = {
+export type ListDebugCollectionResourcesOptions = {
   limit?: number;
   cursor?: string | null;
   /** Case-sensitive substring filter on the bare topic. */

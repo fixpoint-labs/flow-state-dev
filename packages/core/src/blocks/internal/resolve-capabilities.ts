@@ -28,7 +28,8 @@ interface HasResources {
   resources?: Record<string, any>;
   uses?: readonly UsesEntry[];
   itemVisibility?: ItemVisibility;
-  /** This block's own declared `stateSchema` (FIX-914 PR2). */
+  // FIX-914 PR2.
+  /** This block's own declared `stateSchema`. */
   stateSchema?: ZodTypeAny;
 }
 
@@ -58,8 +59,9 @@ export interface ResolveResult {
   mergedSurface: MergedCapabilitySurface | undefined;
   /** Dynamic uses entries collected from the block's uses AND nested capabilities. */
   dynamicUses: DynamicUsesResolver[];
+  // FIX-914 PR2.
   /**
-   * This block's effective own-state schema (FIX-914 PR2): the block's own
+   * This block's effective own-state schema: the block's own
    * `stateSchema` merged with any capability-contributed `stateSchema`, with
    * explicit duplicate-field collision detection (see
    * `mergeCapabilityOwnStateWithBlock`). Consumed by each block factory to

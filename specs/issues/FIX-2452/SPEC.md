@@ -8,7 +8,7 @@
 |---|---|---|
 | **writes their first runtime file** | Writes `stores: { default: { primary: inMemoryStores() } }` and its import, for a store that keeps nothing | Writes no store line. Startup says the app runs in memory |
 | **adds persistence** | Wraps one adapter in a profile and a slot | Writes `stores: sqliteStores({ filename })`. Named profiles stay, for an app that picks a store per environment |
-| **names `scheduler` or `queue` in a profile** | Accepted, and nothing happens. Three docs pages explain the no-op | Refused at construction. The error names where the job lives and the version the refusal goes in. `blobs` stays reserved: FIX-824's attachments back it ([D2](DECISIONS.md#d2)) |
+| **names `scheduler` or `queue` in a profile** | Accepted, and nothing happens. Three docs pages explain the no-op | Fails to compile: the slot is gone from the type, and the changeset names where the job lives. No runtime refusal ([epic D4](../../epics/FIX-2447/DECISIONS.md#d4)). `blobs` stays reserved: FIX-824's attachments back it ([D2](DECISIONS.md#d2)) |
 | **mounts a generator as a chat action and forgets `itemVisibility`** | The chat renders empty, with no error | One dev warning when the flow is built, naming the action and both fixes |
 | **autocompletes a store package** | 20 names in store-sqlite, 22 in store-postgres: two factory families and 10 or 11 per-store constructors | The adapter factory and the schedule index. The rest is under `./host` |
 | **copies the quick start's flow** | Copies an empty `session: { stateSchema: z.object({}) }` that nothing needs | No `session` block |
@@ -50,7 +50,7 @@ module's keys. Under the control, every signal fails.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/first-hour/runs-without-store-ceremony/` · model-free · `node goals/first-hour/runs-without-store-ceremony/check.mjs [--control d6a38c09]`, printing PASS or FAIL per signal · packs engine, core, cli and the two store packages (at the control commit under `--control`) with `scripts/packed-install/run.mjs`'s pack step and installs them into an empty project · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | (a) A runtime with no `stores` and a flow with no `session` block answers a handler action through `fsdev run`, and stderr says it runs in memory; with `stores` set, stderr says nothing about memory. (b) With `stores: sqliteStores({ filename })`, `fsdev run --session <id>` twice: the second reads the first run's state, and the session row is in `filename`; pointed at a fresh `filename`, the second run does not see it. (c) Each of `queue` and `scheduler` in a profile makes `createFlowState` throw with that slot's name, its replacement and a version: 2 of 2; a profile with `primary`, `bus` and `blobs` constructs. (d) A caller action on a generator with no `itemVisibility` gives exactly one warning naming the flow, the action and both fixes. Set `itemVisibility`, put it on an internal, task, webhook or schedule action, or set `NODE_ENV=production`: none. (e) The installed roots export only `sqliteStores` and `createSQLiteScheduleIndex`, or `postgresStores` and `createPostgresScheduleIndex`, as runtime values, and every runtime name removed from a root is exported from its `./host`. Importing the store-postgres module needs no database. (f) The census reports 0 store lines and 0 empty `session` blocks in teaching files, and 0 docs pages naming a retired slot (`queue` or `scheduler`; `blobs` is not retired and is not counted) |
+| **Signal** | (a) A runtime with no `stores` and a flow with no `session` block answers a handler action through `fsdev run`, and stderr says it runs in memory; with `stores` set, stderr says nothing about memory. (b) With `stores: sqliteStores({ filename })`, `fsdev run --session <id>` twice: the second reads the first run's state, and the session row is in `filename`; pointed at a fresh `filename`, the second run does not see it. (c) Each of `queue` and `scheduler` in a typed profile fails to typecheck, naming the slot: 2 of 2; a profile with `primary`, `bus` and `blobs` constructs. (d) A caller action on a generator with no `itemVisibility` gives exactly one warning naming the flow, the action and both fixes. Set `itemVisibility`, put it on an internal, task, webhook or schedule action, or set `NODE_ENV=production`: none. (e) The installed roots export only `sqliteStores` and `createSQLiteScheduleIndex`, or `postgresStores` and `createPostgresScheduleIndex`, as runtime values, and every runtime name removed from a root is exported from its `./host`. Importing the store-postgres module needs no database. (f) The census reports 0 store lines and 0 empty `session` blocks in teaching files, and 0 docs pages naming a retired slot (`queue` or `scheduler`; `blobs` is not retired and is not counted) |
 | **Input** | A flow whose handler computes a value from the input. A different flow kind, action name or value must pass too; the warning names whatever it is on |
 | **Anti-game** | Don't assert on the normalising helper, `meta.profileKeys` or workspace `src`, and don't let (b) pass through the CLI's own no-config SQLite store: the app has a config, and the row is read from `filename`. Assert on the answer, the stored row, stderr text, the error and the installed module's keys |
 | **Control that must fail** | `main` at `d6a38c09`: (a) throws a `TypeError` at construction, (b) throws, since a bare adapter has no profile, (c) constructs, (d) warns nothing, (e) lists 20 and 22 names, (f) counts 54 store lines. The PR shows those FAILs before the PASS |
@@ -63,7 +63,7 @@ passing.
 
 ## What changes
 
-![Before and after. The runtime file: today a store import and a stores line, after neither, and startup says it runs in memory. A profile: today primary, bus, blobs, queue and scheduler, after primary, bus and blobs, reserved for attachments, with queue and scheduler refused. The store-sqlite root: today 20 names in two families, after 3 names, with the other 17 under ./host](figures/what-changes.svg)
+![Before and after. The runtime file: today a store import and a stores line, after neither, and startup says it runs in memory. A profile: today primary, bus, blobs, queue and scheduler, after primary, bus and blobs, reserved for attachments, with queue and scheduler removed. The store-sqlite root: today 20 names in two families, after 3 names, with the other 17 under ./host](figures/what-changes.svg)
 
 Each row is one thing an adopter types or reads, today on the left and after on the right. The
 middle row's two red slots go and `blobs` stays reserved: [D2](DECISIONS.md#d2).
@@ -87,7 +87,7 @@ middle row's two red slots go and `blobs` stays reserved: [D2](DECISIONS.md#d2).
 + stores: sqliteStores({ filename: "./data/flowstate.db" }),
 
   stores: { prod: { primary: pgStores }, dev: { primary: localSqliteStores() } },  // unchanged
-- stores: { prod: { primary: pgStores, scheduler: pgStores }, … },  // now refused
+- stores: { prod: { primary: pgStores, scheduler: pgStores }, … },  // now a type error
 ```
 
 **A store package's other half:**
@@ -117,7 +117,6 @@ FIX-2461 lands after it.
 ```mermaid
 flowchart LR
   O["stores · an adapter, a profile map, or nothing"] --> N["normalise once · in createFlowState"]
-  N -->|"a retired slot key"| R["refused · the shared refusal helper"]
   N -->|"one profile map"| K["profile keys · defaultProfile · FSD_ENV"]
   N --> D["dispose · meta"]
   N --> S["resolve the active profile"]
@@ -143,7 +142,7 @@ asked](DECISIONS.md#decided-not-asked).
 |---|---|
 | `store` · the `stores` profile map on `createFlowState` | **Extends**: one entry with two more accepted shapes. Searched `stores:`, `StoresConfig`, `profile` across `packages/`: no other entry configures `createFlowState`'s store. Two lower entries already default omitted stores to memory, silently: `createFlowApiRouter`'s `stores` (`http-handlers.ts`) and `testFlow`'s. D1 follows them and adds the notice. The CLI's no-config SQLite store (`cli/src/local-store.ts`) serves runs with no app config, and stays |
 | `CapabilitySlotMap`, `FORWARD_COMPATIBLE_SLOTS` in `resolve-slots.ts` | **Removes** `queue` and `scheduler`. `blobs` and the skip branch stay until FIX-824 backs it |
-| `refuseRetiredDispatcherOption` in `createFlowState`; FIX-2454's `refuseRetired` | **Builds on** `refuseRetired` (`@flow-state-dev/contracts/internal`, with engine's retired table) for the slot refusals ([D3 of the epic](../../epics/FIX-2447/DECISIONS.md#d3)). Today's helper carries no version, so the refusals' PR is blocked by FIX-2454 |
+| `refuseRetiredDispatcherOption` in `createFlowState` | **Leaves to FIX-2454**, which deletes it under [epic D4](../../epics/FIX-2447/DECISIONS.md#d4). The slot removal adds no refusal of its own (amended Nov 6; it once built on FIX-2454's `refuseRetired`) |
 | `warnOnceDev` (`core/src/helpers/deprecation.ts`); defineFlow's definition-time checks | **Builds on** `warnOnceDev` for the generator warning. One more definition-time check, after `mergeActions` so instance-override actions are covered. `warnOnceDev` returns early in production by design, so D1's production warning can't use it |
 | `xStores` beside `createXStores` in engine, store-sqlite and store-postgres | **Moves** the registry factory and the per-store constructors off each root ([D3](DECISIONS.md#d3)) |
 | `docs/architecture/generator-identity.md` → *No position-inferred defaults* | **Kept.** The warning respects it |
@@ -161,7 +160,7 @@ asked](DECISIONS.md#decided-not-asked).
 | The debt | |
 |---|---|
 | **Removes** | Two no-op slots and the docs paragraphs about them; the store line from 54 teaching files; a second factory family on three roots; the empty `session` blocks |
-| **Adds** | Two more accepted shapes for `stores`, a second way to say one thing: permanent by design, normalised at one point. Two `./host` entries to keep. Two refusals, until the version FIX-2454's retired-name check enforces. One dev warning, one production warning and its helper |
+| **Adds** | Two more accepted shapes for `stores`, a second way to say one thing: permanent by design, normalised at one point. Two `./host` entries to keep. One dev warning, one production warning and its helper |
 | **Leaves** | `blobs` as a reserved no-op until FIX-824 backs it. A sequencer action whose generators are all silent isn't warned: a handler can emit, so silence can't be proved statically. A real scheduler store (R-11, unfiled, the epic's *bigger* row) |
 
 **Net: down.** Two slots, a family on three roots and the line in 54 files go; two input
@@ -181,15 +180,15 @@ drift apart.
 1. **[D1](DECISIONS.md#d1) · An app that names no store runs in memory, and says so at startup;
    production warns.** If wrong: a deploy that forgot its store loses data on restart, with only
    a log line.
-2. **[D2](DECISIONS.md#d2) · `queue` and `scheduler` leave the profile; naming one is
-   refused. `blobs` stays reserved for FIX-824.** If wrong: Kitchen Sink's kind of `scheduler`
+2. **[D2](DECISIONS.md#d2) · `queue` and `scheduler` leave the profile; naming one fails to
+   compile (amended Nov 6: no runtime refusal). `blobs` stays reserved for FIX-824.** If wrong: Kitchen Sink's kind of `scheduler`
    line breaks an upgrade for a slot that did nothing.
 3. **[D3](DECISIONS.md#d3) · A store package's root carries its adapter factory and schedule
    index; the rest moves to `./host`, nothing deleted.** If wrong: 21 unused constructors
    stay published, semver-covered.
 
-**Open: none.** D1 is the one to weigh. Each move off a root reaches adopters per ER-3 and
-Q1's answer.
+**Open: none.** D1 is the one to weigh. Each move off a root reaches adopters with no alias
+(ER-3; Q1 answered break).
 
 Improvement · `engine`, `core`, `store-sqlite`, `store-postgres`, `vercel` · medium: one option
 widened, two slots and two families off three roots, one warning · epic FIX-2447

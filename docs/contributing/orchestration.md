@@ -367,7 +367,7 @@ refresh remains limited to the epic-level transitions above.
 
 ### Two epics under one project: skip, don't queue
 
-The cap allows two active epics, and both may serve the same project — with five epics under
+More than one active epic may serve the same project — with five epics under
 `Workforce: Layer 2 Abstraction` alone, that is routine rather than exotic. They collide on
 `project/<slug>`, so the second dispatch **skips**; it does not queue and it does not wait.
 
@@ -377,27 +377,6 @@ re-derives the whole table from source. A refresh that is skipped, raced, or los
 because the next one is correct regardless of how many were dropped. The artifact therefore needs
 no lock, no lease, and no lifecycle — which is the same property that lets it stay true in the long
 gaps when no session is running at all.
-
-## How many epics run at once (the cap is two)
-
-**At most two epics are active at a time.** A third is held, not cancelled.
-
-**The cap is on objectives, not work items** — the part that gets misread. Eight issues in
-parallel under one epic is *one* objective with throughput, and issue concurrency is a
-different axis (`epic-lifecycle` → "Sizing to the VM"). Four epics under four objectives is
-the violation. Why two: an objective is only worth having if something is tested against it,
-and past two nothing is — gates queue, attention splits, every epic reads "in progress"
-forever.
-
-**There is no queue, and that is the honest cost.** The work items are already Linear issues,
-so holding an epic just leaves them unparented on the board; nothing auto-starts one when a
-slot frees, and re-invoking the lifecycle is the only trigger. Say so plainly when you hold
-something, and name it again at the wrap that frees the slot.
-
-**Enforced at epic setup** (`epic-lifecycle` → "Epic setup") as a question, not a refusal.
-Resolve the requested epic before counting (a resumed epic is not a third one).
-Count active epics from Linear lifecycle state and their implementation work, not whether
-the original spec PR is open: approval-time merge does not mean the epic is finished.
 
 ## Which issues get a spec (the two routes)
 

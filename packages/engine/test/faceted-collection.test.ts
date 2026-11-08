@@ -39,7 +39,8 @@ import {
 } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores, type StoreRegistry } from "../src";
+import { type StoreRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -172,10 +173,10 @@ async function turn(flow: AnyFlow, stores: StoreRegistry, action: string, input:
   return testFlow({ flow, stores, action, input, userId: USER, sessionId });
 }
 
-type TraceRow = { type: string; blockKind?: string; blockName?: string; status?: string };
+type TraceEntry = { type: string; blockKind?: string; blockName?: string; status?: string };
 
-function modelRows(items: unknown[]): TraceRow[] {
-  return (items as TraceRow[]).filter(
+function modelRows(items: unknown[]): TraceEntry[] {
+  return (items as TraceEntry[]).filter(
     (i) => i.type === "block_trace" && (i.blockKind === "evaluator" || i.blockKind === "generator")
   );
 }

@@ -351,7 +351,7 @@ Reads and writes a session's resources. Every method takes the session id and th
 
 ### `readEveryCollectionPage(source, sessionId, ref, options?)`
 
-Reads every row of one collection, following `nextCursor` to the end. `source` is any object with `listCollectionItems`, such as `fsd.resources`.
+Reads every resource of one collection, following `nextCursor` to the end. `source` is any object with `listCollectionItems`, such as `fsd.resources`.
 
 ```ts
 import { readEveryCollectionPage } from "@flow-state-dev/client";

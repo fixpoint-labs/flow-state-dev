@@ -148,6 +148,7 @@ names a UI selection. This is the **fourth way into one selection**, not a secon
 |---|---|---|
 | *Open task* on result and start lines | `ThreadCard`'s *View task* | Same call (`openTaskOf`), new place; no new state |
 | Live dot on those lines | `TASK_STATUS`, the pane's card dot | Same tokens, read from the rows the pane already reads |
+| One `rows` prop on `Thread`, `TasksPane` and `ThreadsBoard`, read once in `App` ([E1](DECISIONS.md#e1)) | A ref-counted per-session feed inside `adapter.watchTasks` | The app already holds the per-session open task (FIX-2400) that is judged against these rows; an adapter cache would add a replay-and-teardown lifetime for the same saving |
 
 No package change: everything the lines need is already in the lab.
 

@@ -48,6 +48,7 @@ export type RunChildResult = {
   descriptor: BlockOutputHint;
 };
 
+// FIX-1005.
 /**
  * Run one child block and resolve its output descriptor.
  *
@@ -58,7 +59,7 @@ export type RunChildResult = {
  *
  * Does not touch `runtime` bookkeeping — see the file header.
  *
- * `extraSignal` (FIX-1005) runs the child — and its whole descendant tree —
+ * `extraSignal` runs the child — and its whole descendant tree —
  * under an **additional** abort signal, composed with the request's rather
  * than replacing it. Three assignments are needed and none is sufficient
  * alone:
@@ -126,12 +127,13 @@ export type RunSideChainResult = {
   value: unknown;
 };
 
+// FIX-663.
 /**
  * Dispatch one child block as fire-and-forget side-chain work.
  *
  * Applies the connector, stashes the sequential input hint, runs the block in
  * the `"sideChain"` phase under the side-chain signal (so the task tree survives
- * transport teardown — FIX-663), and registers the in-flight promise with the
+ * transport teardown), and registers the in-flight promise with the
  * side-chain pool via `dispatchSideChainTask`. Returns the upstream value unchanged;
  * side-chain dispatch never rewrites the running output descriptor.
  */

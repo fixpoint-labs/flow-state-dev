@@ -13,9 +13,10 @@ import { z } from 'zod'
 import type { BlockDefinition } from '@flow-state-dev/core/types'
 import type { Edge } from '@flow-state-dev/core/graph'
 
+// FIX-745.
 /**
  * Source store of a recalled memory item. `relation` items originate from the
- * semantic resource's typed-edge graph (relations tier, FIX-745) rather than a
+ * semantic resource's typed-edge graph (relations tier) rather than a
  * fact/episode store.
  */
 export type MemoryItemSource = 'semantic' | 'episodic' | 'relation'
@@ -130,13 +131,14 @@ export type PrepareEnvelope = {
   perItemCharCap: number
 }
 
+// BP-011.
 /**
  * Pluggable retrieval backend.
  *
  * Strategies expose blocks rather than a single `rank()` method so the recall
  * tool can compose them as a sequencer (prepare → optional filter → format)
- * without any handler reaching into `asRuntime()` to invoke a generator
- * (BP-011). V1 ships `llm-filter` (prepare + filter); future backends
+ * without any handler reaching into `asRuntime()` to invoke a generator.
+ * V1 ships `llm-filter` (prepare + filter); future backends
  * (vector, keyword) supply only `prepareBlock`.
  */
 export interface RetrievalStrategy {

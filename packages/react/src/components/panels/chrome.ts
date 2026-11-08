@@ -1,5 +1,6 @@
+// FIX-1477 S5, S6.
 /**
- * The bits of presentation both panels share (FIX-1477 S5, S6).
+ * The bits of presentation both panels share.
  *
  * Nothing here publishes a class name, and the package brings no CSS framework
  * and no icon set — a host themes by setting the `--fsd-panel-*` custom

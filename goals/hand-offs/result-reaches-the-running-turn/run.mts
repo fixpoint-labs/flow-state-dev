@@ -28,7 +28,8 @@ import { createModelResolver, handler } from "@flow-state-dev/core";
 import type { BlockContext, FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { defineFlow } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
-import { isTerminalStatus, noticeText, readCommittedTask, type Task } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, noticeText, type Task } from "@flow-state-dev/orchestration/tasks";
+import { readCommittedTask } from "@flow-state-dev/orchestration/internal";
 import {
   createWorkerInstallation,
   defineAgentWorkerFlow,

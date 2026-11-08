@@ -6,17 +6,17 @@
  */
 import { describe, expect, it } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
-import { harnessFailureKind } from "@flow-state-dev/core";
+import { harnessFailureKind } from "@flow-state-dev/core/harness";
 import { claudeCodeAgent } from "../../src/sdk/agent";
-import { ClaudeAgentRunError } from "../../src/sdk/errors";
-import type { ResolveClaudeAgent, SdkMessageLike } from "../../src/sdk/types";
+import { ClaudeCodeAgentRunError } from "../../src/sdk/errors";
+import type { ResolveClaudeCodeAgent, ClaudeCodeSdkMessage } from "../../src/sdk/types";
 
 /**
  * What Claude Code 2.1.296 and the Agent SDK 0.3.234 do on a resume of an id
  * they have no transcript for, as measured: one error `result` carrying the
  * requested id, then a throw naming it.
  */
-function refusesToResume(id: string): ResolveClaudeAgent {
+function refusesToResume(id: string): ResolveClaudeCodeAgent {
   return () => ({
     query: async function* () {
       yield {
@@ -25,7 +25,7 @@ function refusesToResume(id: string): ResolveClaudeAgent {
         is_error: true,
         session_id: id,
         errors: [`No conversation found with session ID: ${id}`],
-      } as SdkMessageLike;
+      } as ClaudeCodeSdkMessage;
       throw new Error(
         `Claude Code returned an error result: No conversation found with session ID: ${id}`,
       );
@@ -42,23 +42,23 @@ describe("classifying a refused continuation", () => {
     });
     const { error } = await testBlock(block, { input: { prompt: "go on" } });
 
-    expect(error?.cause).toBeInstanceOf(ClaudeAgentRunError);
-    expect((error?.cause as ClaudeAgentRunError).harnessFailure).toBe("unknown-conversation");
+    expect(error?.cause).toBeInstanceOf(ClaudeCodeAgentRunError);
+    expect((error?.cause as ClaudeCodeAgentRunError).harnessFailure).toBe("unknown-conversation");
     // Read the way a host reads it: through core, past the framework's wrapper.
     expect(harnessFailureKind(error)).toBe("unknown-conversation");
   });
 
   it("does not classify any other failure of a resumed run", async () => {
-    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+    const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
       query: async function* () {
-        yield { type: "system", subtype: "init", session_id: "sess_prev" } as SdkMessageLike;
+        yield { type: "system", subtype: "init", session_id: "sess_prev" } as ClaudeCodeSdkMessage;
         throw new Error("Claude Code process exited with code 1");
       },
     });
     const block = claudeCodeAgent({ resolveClaudeAgent, detached: true, resume: () => "sess_prev" });
     const { error } = await testBlock(block, { input: { prompt: "go on" } });
 
-    expect(error?.cause).toBeInstanceOf(ClaudeAgentRunError);
+    expect(error?.cause).toBeInstanceOf(ClaudeCodeAgentRunError);
     expect(harnessFailureKind(error)).toBeNull();
   });
 
@@ -70,7 +70,7 @@ describe("classifying a refused continuation", () => {
     });
     const { error } = await testBlock(block, { input: { prompt: "go on" } });
 
-    expect(error?.cause).toBeInstanceOf(ClaudeAgentRunError);
+    expect(error?.cause).toBeInstanceOf(ClaudeCodeAgentRunError);
     expect(harnessFailureKind(error)).toBeNull();
   });
 
@@ -82,7 +82,7 @@ describe("classifying a refused continuation", () => {
     });
     const { error } = await testBlock(block, { input: { prompt: "go on" } });
 
-    expect(error?.cause).toBeInstanceOf(ClaudeAgentRunError);
+    expect(error?.cause).toBeInstanceOf(ClaudeCodeAgentRunError);
     expect(harnessFailureKind(error)).toBeNull();
   });
 
@@ -90,7 +90,7 @@ describe("classifying a refused continuation", () => {
     const block = claudeCodeAgent({ resolveClaudeAgent: refusesToResume("sess_gone") });
     const { error } = await testBlock(block, { input: { prompt: "start" } });
 
-    expect(error?.cause).toBeInstanceOf(ClaudeAgentRunError);
+    expect(error?.cause).toBeInstanceOf(ClaudeCodeAgentRunError);
     expect(harnessFailureKind(error)).toBeNull();
   });
 });

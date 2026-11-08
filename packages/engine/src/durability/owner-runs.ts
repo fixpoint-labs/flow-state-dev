@@ -1,5 +1,6 @@
+// FIX-2534 D2; BP-031.
 /**
- * A run as a row's owner, fired host-side (FIX-2534 D2): the sibling of
+ * A run as a row's owner, fired host-side: the sibling of
  * {@link fireWakeThrough} that starts an internal entry as the user whose
  * storage cell holds a row, and the routing call that fires one per run a
  * service flow nominates.
@@ -11,7 +12,7 @@
  * resolver reads ({@link resolveSharedUserCellKey}): the nomination picks a
  * cell and grants nothing. The row must be there, in that user's cell, name
  * the same organization and tenant, and not be switched off
- * (`enabled: false`). Never from the event (BP-031).
+ * (`enabled: false`). Never from the event.
  *
  * Each row's runs share one session, and each service's routings another, so
  * a busy thread doesn't store a new session per event.
@@ -37,7 +38,7 @@ export interface OwnerRun {
 }
 
 /** Why a run did not start. */
-export type OwnerRunRefusal = "no_row" | "other_org" | "other_tenant" | "disabled";
+export type OwnerRunRefusal = "no_resource" | "other_org" | "other_tenant" | "disabled";
 
 /** What a fire came to. */
 export type OwnerRunFired =
@@ -60,7 +61,7 @@ export async function fireOwnerRunThrough(
 ): Promise<OwnerRunFired> {
   const { userId, orgId, tenantId } = run.owner;
   const stored = await host.stores.resourceState.get("user", resolveSharedUserCellKey(userId, orgId, run.flowKind), run.rowKey);
-  if (stored === undefined) return { fired: false, refused: "no_row" };
+  if (stored === undefined) return { fired: false, refused: "no_resource" };
   const state = stored.state as { orgId?: unknown; tenantId?: unknown; enabled?: unknown };
   // The row's stored organization and tenant, which must be the ones the nomination names.
   if (state.orgId !== orgId) return { fired: false, refused: "other_org" };
@@ -110,7 +111,7 @@ function parseOwnerRun(value: unknown, flowKind: string, orgId: string): OwnerRu
   const run = value as Record<string, unknown>;
   const owner = run.owner as Record<string, unknown> | undefined;
   if (run.flowKind !== flowKind) return `names flow "${String(run.flowKind)}", not the service's own "${flowKind}"`;
-  if (!isString(run.entry) || !isString(run.rowKey)) return "names no entry or row";
+  if (!isString(run.entry) || !isString(run.rowKey)) return "names no entry or task";
   if (typeof owner !== "object" || owner === null || !isString(owner.userId)) return "names no owner";
   if (owner.orgId !== orgId) return "names an owner in another org";
   if (owner.tenantId !== undefined && !isString(owner.tenantId)) return "names a malformed tenant";

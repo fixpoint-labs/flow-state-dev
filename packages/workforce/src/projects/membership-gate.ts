@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * The membership gate: is this session's owner one of a shared project's
  * members, who may change its workstream list and open workstreams in it?
@@ -9,10 +10,10 @@
  * It reads exactly two things: the row's `members`, and the session's owner as
  * the engine recorded it when the session was created (from the verified
  * principal, never from the request body). It never reads session state or a
- * caller's input (BP-031).
+ * caller's input.
  */
 
-import type { ProjectRow } from "./collections";
+import type { ProjectResourceState } from "./collections";
 
 /**
  * Whether `sessionOwner` is one of the project's members.
@@ -21,6 +22,6 @@ import type { ProjectRow } from "./collections";
  * @param sessionOwner The session's owner from the engine's session record:
  *   `ctx.session.identity.userId`. A session with no owner is never a member.
  */
-export function isMember(row: Pick<ProjectRow, "members">, sessionOwner: string | undefined): boolean {
+export function isMember(row: Pick<ProjectResourceState, "members">, sessionOwner: string | undefined): boolean {
   return sessionOwner !== undefined && sessionOwner.length > 0 && row.members.includes(sessionOwner);
 }

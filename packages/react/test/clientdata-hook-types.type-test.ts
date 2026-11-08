@@ -6,7 +6,7 @@
  */
 import type { ClientDataOf, DefinedResourceCollection } from "@flow-state-dev/core";
 import { useResource } from "../src/hooks/useResource";
-import { useResourceCollectionItem } from "../src/hooks/useResourceCollectionItem";
+import { useCollectionResource } from "../src/hooks/useCollectionResource";
 import { useResourceCollectionList } from "../src/hooks/useResourceCollectionList";
 
 type Equals<A, B> =
@@ -28,9 +28,9 @@ type _ResDefault = Assert<
   Equals<ReturnType<typeof useResource>["clientData"], unknown>
 >;
 
-// useResourceCollectionItem threads TClient onto item.clientData (optional field).
+// useCollectionResource threads TClient onto item.clientData (optional field).
 type _ItemHandle = NonNullable<
-  ReturnType<typeof useResourceCollectionItem<Client>>["item"]
+  ReturnType<typeof useCollectionResource<Client>>["item"]
 >;
 type _Item = Assert<Equals<_ItemHandle["clientData"], Client | undefined>>;
 
@@ -41,7 +41,7 @@ type _List = Assert<Equals<_ListItem["clientData"], Client | undefined>>;
 // ClientDataOf composes: a definition's projected ClientType flows to the hook.
 type _DefnClient = ClientDataOf<DefinedResourceCollection<Client, Client>>;
 type _FromDefnHandle = NonNullable<
-  ReturnType<typeof useResourceCollectionItem<_DefnClient>>["item"]
+  ReturnType<typeof useCollectionResource<_DefnClient>>["item"]
 >;
 type _FromDefn = Assert<Equals<_FromDefnHandle["clientData"], Client | undefined>>;
 

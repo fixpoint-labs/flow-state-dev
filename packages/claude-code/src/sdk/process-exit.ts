@@ -20,7 +20,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 
 /** What the SDK hands `spawnClaudeCodeProcess`. Declared here so the SDK stays an optional peer. */
-export interface ClaudeAgentSpawnOptions {
+export interface ClaudeCodeSpawnOptions {
   command: string;
   args: string[];
   cwd?: string;
@@ -34,17 +34,18 @@ const STDERR_TAIL_CHARS = 4_000;
 /** One run's spawned process, observed. */
 export interface TrackedProcess {
   /** The hook to pass as the SDK's `spawnClaudeCodeProcess`. */
-  spawn: (options: ClaudeAgentSpawnOptions) => ChildProcess;
+  spawn: (options: ClaudeCodeSpawnOptions) => ChildProcess;
   /**
    * Resolves once the spawned process has exited. `null` when nothing was
    * spawned through {@link TrackedProcess.spawn} — a scripted `query`, or an
    * SDK that never reached its spawn.
    */
   exited: () => Promise<void> | null;
+  // FIX-2312.
   /**
    * Send the spawned process `SIGKILL` if it has not exited, and resolve once
    * it has. Resolves at once when nothing was spawned, the process never
-   * started, or it has already exited (FIX-2312).
+   * started, or it has already exited.
    */
   kill: () => Promise<void>;
   /** The end of what the process wrote to stderr, trimmed; `""` when nothing. */

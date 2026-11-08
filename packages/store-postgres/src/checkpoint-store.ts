@@ -1,12 +1,13 @@
+// FIX-401.
 /**
- * PostgreSQL-backed sequencer checkpoint store (FIX-401).
+ * PostgreSQL-backed sequencer checkpoint store.
  *
  * Latest-only persistence keyed by `(request_id, block_instance_id)`.
  * Writes use `INSERT ... ON CONFLICT DO UPDATE` so each step boundary either
  * inserts the first record or overwrites the prior one in a single round
  * trip. Storage is constant per sequencer regardless of step count.
  */
-import type { CheckpointStore } from "@flow-state-dev/engine";
+import type { CheckpointStore } from "@flow-state-dev/engine/host";
 import type { SequencerCheckpoint } from "@flow-state-dev/core/types";
 import type { QueryExecutor } from "./types";
 

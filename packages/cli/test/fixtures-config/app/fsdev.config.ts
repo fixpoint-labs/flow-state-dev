@@ -6,10 +6,12 @@
  */
 import {
   createFlowState,
-  createInMemoryStores,
   type StoreAdapter,
-  type StoreRegistry,
+  type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import { defineFlow, generator, type ModelResolver } from "@flow-state-dev/core";
 import { z } from "zod";

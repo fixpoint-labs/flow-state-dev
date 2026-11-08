@@ -1,5 +1,44 @@
 # @flow-state-dev/fsdev
 
+## 0.5.0
+
+### Minor Changes
+
+- 7871b26: `fsdev` now loads `fsdev.config.ts` / `fsdev.config.mts` itself on any Node 22, so the config and the files it imports use extensionless relative imports (`./src/flows/chat/flow`) and your `tsconfig` path aliases (`@/...`) like the rest of the app, with no tsx, no `allowImportingTsExtensions` and no Node 22.18 requirement; `jiti` is now a runtime dependency, and `fsdev.config.js` / `.mjs` load with a plain Node import as before (FIX-2451). The app's runtime lives in one file: default-export `createFlowState(...)` from `fsdev.config.ts`, which both `fsdev` and the app's route import, and mount it in Next.js with one optional catch-all route, `src/app/api/flows/[[...path]]/route.ts` exporting `GET, POST, PATCH, DELETE` from `createNextHandler`, which also answers the bare `/api/flows`.
+
+  Docs: apps/docs/docs/getting-started/quick-start.md, apps/docs/docs/getting-started/your-first-flow.md, apps/docs/docs/getting-started/installation.md, apps/docs/docs/getting-started/project-structure.md, apps/docs/docs/getting-started/setting-up-models.md, apps/docs/docs/getting-started/existing-project.md, apps/docs/docs/cli/configuration.md, packages/cli/README.md, packages/next/README.md
+
+### Patch Changes
+
+- c67aa49: `fsdev run` says why an `intent/*` model has nothing to resolve to when no `fsdev.config.*` is found (FIX-2451). After the run's error, stderr names the directory searched, says that the file which calls `createFlowState` is not read, and points at default-exporting `createFlowState(...)` from `fsdev.config.ts` or passing `--config <path>`. `--quiet` suppresses it. Runs that load a config, and failures of any other kind, are unchanged.
+
+  `@flow-state-dev/core` now throws that resolver failure as `UnresolvedIntentError`, a `FlowError` with `code: UNRESOLVED_INTENT_CODE` (`"unresolved_intent"`) and `details.intent`, so callers can recognise it without matching the message. Both are exported from the `@flow-state-dev/core/errors/unresolved-intent-error` subpath, not the package root. The message is unchanged.
+
+- Updated dependencies [73f8352]
+- Updated dependencies [531bf32]
+- Updated dependencies [a124a8e]
+- Updated dependencies [05a7022]
+- Updated dependencies [c67aa49]
+- Updated dependencies [4d3f49e]
+- Updated dependencies [a1386ea]
+- Updated dependencies [46e4297]
+- Updated dependencies [d3eaa00]
+- Updated dependencies [f1e6315]
+- Updated dependencies [45c158b]
+- Updated dependencies [bc65135]
+- Updated dependencies [65ee4c5]
+- Updated dependencies [dabee4a]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/workspace@0.4.0
+  - @flow-state-dev/engine@0.5.0
+  - @flow-state-dev/core@0.5.0
+  - @flow-state-dev/store-sqlite@0.4.0
+  - @flow-state-dev/devtool@0.3.2
+  - @flow-state-dev/node@0.3.0
+  - @flow-state-dev/testing@0.3.2
+
 ## 0.4.0
 
 ### Minor Changes

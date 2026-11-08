@@ -1,5 +1,5 @@
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type {
   ConditionalRequestFields,
   ConditionalWriteResult,
@@ -42,9 +42,10 @@ export type FilesystemRequestStoreOptions = {
    * Poll interval for `subscribeToEvents` in milliseconds. Default 100ms.
    */
   subscribePollIntervalMs?: number;
+  // FIX-406 6B.
   /**
    * Fired on a background write failure before the safety-net log, so
-   * operators can alert on persistence loss (FIX-406 6B).
+   * operators can alert on persistence loss.
    */
   onPersistError?: PersistErrorHandler;
 };
@@ -53,8 +54,9 @@ function toEventsPath(rootDir: string, requestId: string): string {
   return toRecordPath(rootDir, requestId).replace(/\.json$/, ".events.json");
 }
 
+// FIX-1026.
 /**
- * Path of the abort-intent marker beside a request's record file (FIX-1026).
+ * Path of the abort-intent marker beside a request's record file.
  *
  * Existence *is* the flag, so the narrow read is a `stat` rather than a parse.
  * This adapter keeps items inline on the record, so any read that goes through
@@ -126,6 +128,7 @@ function runOnceKeyPrefix(requestId: string): string {
 // trace store).
 const corruptionWarned = new Set<string>();
 
+// FIX-399; FIX-1026.
 /**
  * Filesystem-backed `RequestStore`.
  *
@@ -134,7 +137,7 @@ const corruptionWarned = new Set<string>();
  * `SerializedWriteQueue`, so persistence cost is O(new events) rather than
  * O(total log) per write.
  *
- * Abort intent diverges from the other adapters on purpose (FIX-1026). Items
+ * Abort intent diverges from the other adapters on purpose. Items
  * live inline on the record here, so `get()` is O(items) and keeping the flag
  * on the record would put that cost on every heartbeat poll. It lives in an
  * `.abort` marker file beside the record instead, making the poll a `stat`.
@@ -143,7 +146,7 @@ const corruptionWarned = new Set<string>();
  * touches a request's files takes the per-id lock.
  *
  * Multi-process disclaimer: this store assumes a single writer per request.
- * Ordering and the FIX-399 durability barrier are enforced within one process
+ * Ordering and the durability barrier are enforced within one process
  * by the per-request queue and the per-id write lock. There is NO inter-process
  * locking — running multiple processes against the same `rootDir` for the same
  * request is not a supported topology. Use SQLite or Postgres for any
@@ -163,10 +166,11 @@ export class FilesystemRequestStore implements RequestStore {
   private readonly eventWriteQueued = new Set<string>();
   /** Accumulates new events between coalesced writes for incremental persistence. */
   private readonly pendingNewEvents = new Map<string, RequestStreamEvent[]>();
+  // FIX-399.
   /**
    * Tracks the most recent persistence error per request. flushEvents drains
    * the queue then throws (and clears) any captured error so callers can
-   * propagate persist failures instead of silently swallowing them (FIX-399).
+   * propagate persist failures instead of silently swallowing them.
    */
   private readonly lastEventError = new Map<string, Error>();
   /** The same for item writes: `flushItems` throws (and clears) it. */
@@ -232,8 +236,9 @@ export class FilesystemRequestStore implements RequestStore {
     });
   }
 
+  // FIX-1026.
   /**
-   * Whether the abort marker exists for a request (FIX-1026).
+   * Whether the abort marker exists for a request.
    * `stat` rather than a read — the file's contents are never consulted.
    */
   private async hasAbortMarker(id: string): Promise<boolean> {

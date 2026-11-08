@@ -58,7 +58,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { askMidway, taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { getOrCreateTaskCollection, openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, type InboxHold, type InboxItem } from "@flow-state-dev/orchestration/inbox";
-import { reconcileInbox, rowTruthOf, suspensionTruthOf, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
+import { reconcileInbox, taskTruthOf, suspensionTruthOf, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../packages/workforce/src/conversation-board/steer.ts";
 import {
@@ -502,7 +502,7 @@ async function truthOf(run: Run): Promise<InboxTruth> {
   for (const sessionId of sessions) {
     suspensions.push(...suspensionTruthOf(sessionId, await run.h.http.client.sessions.requests(sessionId, { status: "suspended", includeItems: true })));
   }
-  return { rows: rowTruthOf(rows), suspensions, closed: run.closed };
+  return { rows: taskTruthOf(rows), suspensions, closed: run.closed };
 }
 async function reconciled(run: Run, leg: string): Promise<void> {
   const result = reconcileInbox(await inbox(run), await truthOf(run));
@@ -523,7 +523,7 @@ async function legA(run: Run): Promise<void> {
   const askedRead = await getTask(run, asked);
   const reviewRead = await getTask(run, reviewed);
   const askedHolds = (askedRead?.holds ?? []) as Array<{ source: { kind: string }; ask: { kind: string; prompt: string } }>;
-  if (!heldOk || askedRead?.status !== "in_progress" || askedRead.leaseUntil != null || askedHolds.length !== 1 || askedHolds[0]?.source.kind !== "row" || askedHolds[0]?.ask.kind !== "question" || askedHolds[0]?.ask.prompt !== REGION) {
+  if (!heldOk || askedRead?.status !== "in_progress" || askedRead.leaseUntil != null || askedHolds.length !== 1 || askedHolds[0]?.source.kind !== "task" || askedHolds[0]?.ask.kind !== "question" || askedHolds[0]?.ask.prompt !== REGION) {
     run.failures.push(`a:question-holds — wanted the asking task running with no lease and one open row hold, a question "${REGION}"; getTask shows ${show(askedRead && { status: askedRead.status, lease: askedRead.leaseUntil, holds: askedRead.holds })}`);
   }
   const reviewHolds = (reviewRead?.holds ?? []) as Array<{ source: { kind: string }; ask: { kind: string; prompt: string } }>;
@@ -730,7 +730,7 @@ async function legG(run: Run): Promise<void> {
   const turnRequests = proofsOf(bothId, "turn").map((t) => t.requestId!);
   const sessionId = both?.run?.sessionId;
   const stillSuspendedBoth = sessionId === undefined ? [] : (await run.h.http.client.sessions.requests(sessionId, { status: "suspended" })).filter((r) => turnRequests.includes(r.id));
-  if (sources.length !== 1 || sources[0] !== "row" || !/one_wait_per_turn/.test(results) || stillSuspendedBoth.length !== 0) {
+  if (sources.length !== 1 || sources[0] !== "task" || !/one_wait_per_turn/.test(results) || stillSuspendedBoth.length !== 0) {
     run.failures.push(`g:one-wait-per-step — wanted one wait opened (the question, first to commit), the sibling refused naming it, and no stop; holds ${show(sources)}, suspended ${stillSuspendedBoth.length}, the model read ${show(results.slice(0, 500))}`);
   }
   await run.h.http.act("desk", run.conversation, "updateTask_tasks", { id: bothId, status: "cancelled" }).catch(() => undefined);

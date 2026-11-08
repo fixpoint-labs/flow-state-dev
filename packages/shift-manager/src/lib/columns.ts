@@ -1,12 +1,13 @@
+// FIX-1651; BR-12; FIX-2131.
 /**
- * Where a board row sits in the design's five columns (BR-12).
+ * Where a board row sits in the design's five columns.
  *
  * The task substrate has six statuses and the design draws five columns, so
  * several statuses share one. The row keeps its own status word on its card;
  * the column only groups. IN REVIEW is drawn and stays empty: no shipped
- * status means "in review" yet, and what does is FIX-1651's call. A task
+ * status means "in review" yet, and what does is not decided yet. A task
  * waiting on you is running: it shows through its open holds and its Inbox
- * item, not a column of its own (FIX-2131). An unknown word is QUEUED with
+ * item, not a column of its own. An unknown word is QUEUED with
  * the word on the card, never hidden.
  */
 
@@ -36,7 +37,8 @@ export function isHeld(stored: string): boolean {
   return stored === "held";
 }
 
-/** Whether a row is done: Tasks leaves these out (BR-15). */
+// BR-15.
+/** Whether a row is done: Tasks leaves these out. */
 export function isDone(stored: string): boolean {
   return columnFor(stored) === "DONE";
 }

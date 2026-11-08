@@ -6,7 +6,8 @@
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 const input = z.object({ message: z.string() });
 type Input = z.infer<typeof input>;

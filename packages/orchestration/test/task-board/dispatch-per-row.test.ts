@@ -15,7 +15,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { TaskTargetQuery } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import type { FlowStateRuntime, StoreRegistry } from "@flow-state-dev/engine";
+import type { FlowStateRuntime } from "@flow-state-dev/engine/host";
+import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineTaskCollection, type Task, type TaskWorkerInput } from "../../src/tasks";
@@ -29,8 +30,8 @@ const LEDGER_ID = "per-row-tasks";
 type Ran = { entry: string; taskId: string; session: string };
 
 /** What a row carries: which entry, and optionally which existing session. */
-type RowInput = { entry?: string; sessionId?: string };
-const rowOf = (task: TaskTargetQuery) => ((task.input as TaskWorkerInput).input ?? {}) as RowInput;
+type TaskEntryInput = { entry?: string; sessionId?: string };
+const rowOf = (task: TaskTargetQuery) => ((task.input as TaskWorkerInput).input ?? {}) as TaskEntryInput;
 
 function entry(name: string, ran: Ran[]) {
   return handler({
@@ -44,7 +45,7 @@ function entry(name: string, ran: Ran[]) {
   });
 }
 
-function boardFlow(ran: Ran[], rows: Array<{ id: string; input: RowInput }>, among = ["work", "post"]) {
+function boardFlow(ran: Ran[], rows: Array<{ id: string; input: TaskEntryInput }>, among = ["work", "post"]) {
   const board = taskBoard({
     name: "per-row",
     boardId: LEDGER_ID,
@@ -94,7 +95,7 @@ async function until(predicate: () => Promise<boolean>, label: string): Promise<
   throw new Error(`timed out waiting for ${label}`);
 }
 
-async function boot(ran: Ran[], rows: Array<{ id: string; input: RowInput }>) {
+async function boot(ran: Ran[], rows: Array<{ id: string; input: TaskEntryInput }>) {
   const flow = boardFlow(ran, rows);
   const state = createFlowState({
     flows: { [flow.id]: flow },

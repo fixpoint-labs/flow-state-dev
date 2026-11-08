@@ -1,6 +1,7 @@
+// FIX-1802 D1.
 /**
  * A worker's delegates: the workers it hands work to, which any worker's
- * file may list as `delegates:` (FIX-1802 D1).
+ * file may list as `delegates:`.
  *
  * - The pinned names: the four delegate actions an app sends
  *   (`addDelegate`, `removeDelegate`, `setFallback`, `listDelegates`) and the

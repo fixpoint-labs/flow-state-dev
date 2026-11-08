@@ -13,7 +13,6 @@
  */
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
 import {
-  MESSAGE_RECEIVED_ENTRY,
   messageReceivedEntry,
   workerConfigSchema,
   workerMessagesResources,
@@ -77,6 +76,6 @@ export function defineAskerFlow(installation: WorkerInstallation) {
         description: "A person's line into this seat's session.",
       },
     },
-    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: ASKER_FLOW }) } },
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: ASKER_FLOW }) } },
   } as never);
 }

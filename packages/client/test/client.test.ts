@@ -79,17 +79,17 @@ function brokenBody(status: number): Response {
 
 describe("a body that fails to read", () => {
   it("rejects a successful call instead of resolving it as an absent record", async () => {
-    // `getCollectionItemState` answers `null` for an absent topic; a 200 whose
+    // `getCollectionResourceState` answers `null` for an absent topic; a 200 whose
     // body never arrived must not read as one.
     const fetcher = routed({ "GET /resources/notes/a": () => brokenBody(200) });
-    const read = createClient({ userId: "u1", fetcher }).resources.getCollectionItemState("sess_1", "notes", "a");
+    const read = createClient({ userId: "u1", fetcher }).resources.getCollectionResourceState("sess_1", "notes", "a");
     await expect(read).rejects.toThrow("connection reset");
   });
 
   it("still reports a refusal with its status when the refusal's body is unreadable", async () => {
     const fetcher = routed({ "GET /resources/notes/a": () => brokenBody(503) });
     const refused = await createClient({ userId: "u1", fetcher })
-      .resources.getCollectionItemState("sess_1", "notes", "a")
+      .resources.getCollectionResourceState("sess_1", "notes", "a")
       .catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(ClientHttpError);
     expect((refused as ClientHttpError).status).toBe(503);
@@ -264,6 +264,27 @@ describe("request handle", () => {
 
     expect(await request.answer({ suspensionId: "sus_1", action: "submit", data: "eu-west" })).toBe(request);
     expect(calls(fetcher)).toEqual(["POST /api/flows/demo/requests/req_1/answer"]);
+  });
+
+  it("answers with { stream: true } by returning the answer route's SSE response, so the continuation streams from the POST", async () => {
+    const sse = new Response("data: {}\n\n", { status: 200, headers: { "content-type": "text/event-stream" } });
+    const fetcher = routed({
+      "POST /answer": (init) => {
+        expect(new Headers(init?.headers).get("accept")).toContain("text/event-stream");
+        expect(JSON.parse(String(init?.body))).toEqual({ suspensionId: "sus_1", action: "approve" });
+        return sse;
+      }
+    });
+    const request = createClient({ userId: "u1", baseUrl: "", fetcher }).flow("demo").request("req_1");
+
+    expect(await request.answer({ suspensionId: "sus_1", action: "approve" }, { stream: true })).toBe(sse);
+    expect(calls(fetcher)).toEqual(["POST /api/flows/demo/requests/req_1/answer"]);
+  });
+
+  it("no longer types resumedBy on a resume body: who answered is set by the server", () => {
+    const request = createClient({ userId: "u1", baseUrl: "", fetcher: routed({}) }).flow("demo").request("req_1");
+    // @ts-expect-error resumedBy is gone from the resume body
+    void (() => request.resume({ suspensionId: "sus_1", action: "approve", resumedBy: "u1" }));
   });
 
   it("waits past the status a request was carried on from while the server still holds its run", async () => {

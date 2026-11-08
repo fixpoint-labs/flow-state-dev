@@ -9,7 +9,7 @@
 import v8 from "node:v8";
 import vm from "node:vm";
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import type { ParsedFlowRoute } from "../src/routes/parseFlowRoute";
 import { handleRequestStream } from "../src/routes/stream-routes";

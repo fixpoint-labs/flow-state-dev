@@ -9,10 +9,10 @@
 import type { Queue } from "bullmq";
 import type {
   FlowRunner,
-  FlowDispatchHandle,
+  RunnerHandle,
   DispatchEnvelope,
-  StreamBridge,
-} from "@flow-state-dev/engine";
+  StreamBridge
+} from "@flow-state-dev/engine/host";
 import { toJobOptions } from "./retry";
 import { leaseJobId } from "./lease-backend";
 import type { RetryConfig } from "./types";
@@ -37,7 +37,7 @@ export function createWorkerRunner(
     async dispatch(
       envelope: DispatchEnvelope,
       _bridge?: StreamBridge
-    ): Promise<FlowDispatchHandle> {
+    ): Promise<RunnerHandle> {
       const activeBridge = _bridge ?? bridge;
 
       // Subscribe before enqueuing so we don't miss early events

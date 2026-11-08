@@ -1,13 +1,14 @@
+// FIX-1802 S3; FIX-2083; FIX-2081; FIX-2081, rule 13.
 /**
- * A worker's delegates on the flow it runs on (FIX-1802 S3): the four
+ * A worker's delegates on the flow it runs on: the four
  * actions that read and change a session's list, the same four as tools, and
  * the list as a task sees it.
  *
  * Any worker whose file lists `delegates:` has them, on any flow that carries
  * this module: the built-in `agent` flow, the coordinator, and an app's own
  * worker flow through `defineSessionBoard`. A coordinator routes its users'
- * messages to them as tasks (FIX-2083); any worker files tasks for the ones
- * that take one, and for no one else (FIX-2081). Every add and every use runs the one check
+ * messages to them as tasks; any worker files tasks for the ones
+ * that take one, and for no one else. Every add and every use runs the one check
  * (`./delegate-check`).
  *
  * The list is server-written session state (`./delegate-list`): copied from
@@ -16,7 +17,7 @@
  * `delegates: all` is the user's roster as it stands, read on every call and
  * never copied by a read (D2).
  *
- * **Who changes the list** (FIX-2081, rule 13): the user, through the
+ * **Who changes the list**: the user, through the
  * actions. A model gets `listDelegates` on every worker with a board, and
  * `addDelegate`, `removeDelegate` and `setFallback` only on a coordinator
  * whose file sets `editsOwnDelegates: true` ({@link
@@ -51,10 +52,11 @@ export interface TaskDelegates {
   readonly available: ReadonlyMap<string, string>;
   /** Each delegate on the list that can't take a task now, by worker id, with why. */
   readonly unavailable: ReadonlyMap<string, string>;
+  // FIX-2083.
   /**
    * The list's records, as read now: a worker with a target on its record
    * leads that workstream here, and a task for that record names it
-   * (`target`, FIX-2083).
+   * (`target`).
    */
   readonly records: readonly DelegateRecord[];
 }
@@ -132,14 +134,16 @@ export function delegateDefaultsOf(config: Readonly<Record<string, unknown>>): D
   };
 }
 
-/** Whether the running turn's worker may change its own delegates: a coordinator set so at hire (FIX-2081). */
+// FIX-2081.
+/** Whether the running turn's worker may change its own delegates: a coordinator set so at hire. */
 function editsOwnDelegates(config: Readonly<Record<string, unknown>>): boolean {
   return config.editsOwnDelegates === true;
 }
 
+// FIX-2081 D2.
 /**
  * `defaults` with `delegates: all` read as the user's roster now, the worker
- * itself included (FIX-2081 D2): read per call, never memoized, so a hire
+ * itself included: read per call, never memoized, so a hire
  * counts on the next call and a fired worker drops off it.
  */
 export async function withRoster(
@@ -148,7 +152,7 @@ export async function withRoster(
   defaults: DelegateDefaults
 ): Promise<DelegateDefaults> {
   if (defaults.all !== true) return defaults;
-  const roster = await installation.roster(ctx as never);
+  const roster = await installation.roster(ctx);
   return { ...defaults, delegates: roster.map((worker) => worker.id) };
 }
 
@@ -191,7 +195,8 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     return typeof named === "string" ? ownerDefaults(ctx) : withRoster(installation, ctx, delegateDefaultsOf(turnConfigOf(ctx)));
   };
 
-  /** Whether this turn's worker was set at hire to change its own delegates (FIX-2081, rule 13). */
+  // FIX-2081, rule 13.
+  /** Whether this turn's worker was set at hire to change its own delegates. */
   const turnEditsOwn = (ctx: BlockContext): boolean =>
     editsOwnDelegates(verifiedWorkerOf(ctx.session) !== undefined ? workerConfigOf(ctx) : turnConfigOf(ctx));
 
@@ -237,7 +242,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     const listed = listOutput(await list(ctx));
     const delegates: Array<DelegateRecord & { description: string | null; takes: DelegateTakes }> = [];
     for (const record of listed.delegates) {
-      const checked = await check(ctx as never, record.worker, "add");
+      const checked = await check(ctx, record.worker, "add");
       delegates.push(
         checked.ok
           ? { ...record, description: checked.worker.description, takes: flowTakes(installation, checked.worker.flow) }
@@ -263,14 +268,14 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     inputSchema: addInputSchema,
     outputSchema: delegateListOutputSchema,
     ...blockBase,
-    execute: async (input, ctx) => orRefuse(await add(ctx as never, input))
+    execute: async (input, ctx) => orRefuse(await add(ctx, input))
   });
   const removeDelegateAction = handler({
     name: "delegates-remove",
     inputSchema: nameInputSchema,
     outputSchema: delegateListOutputSchema,
     ...blockBase,
-    execute: async (input, ctx) => orRefuse(await change(ctx as never, { remove: { worker: input.worker } }))
+    execute: async (input, ctx) => orRefuse(await change(ctx, { remove: { worker: input.worker } }))
   });
   const setFallbackAction = handler({
     name: "delegates-set-fallback",
@@ -278,14 +283,14 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     outputSchema: delegateListOutputSchema,
     ...blockBase,
     execute: async (input, ctx) =>
-      orRefuse(await change(ctx as never, { fallback: input.worker === null ? null : { worker: input.worker } }))
+      orRefuse(await change(ctx, { fallback: input.worker === null ? null : { worker: input.worker } }))
   });
   const listDelegatesAction = handler({
     name: "delegates-list",
     inputSchema: z.object({}).strict(),
     outputSchema: delegateReadOutputSchema,
     ...blockBase,
-    execute: async (_input, ctx) => read(ctx as never)
+    execute: async (_input, ctx) => read(ctx)
   });
 
   const addDelegateTool = handler({
@@ -295,7 +300,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     inputSchema: addInputSchema,
     outputSchema: toolOutputSchema,
     ...blockBase,
-    execute: async (input, ctx) => (turnEditsOwn(ctx as never) ? orTell(await add(ctx as never, input)) : notOwnToChange)
+    execute: async (input, ctx) => (turnEditsOwn(ctx) ? orTell(await add(ctx, input)) : notOwnToChange)
   });
   const removeDelegateTool = handler({
     name: REMOVE_DELEGATE,
@@ -304,7 +309,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     outputSchema: toolOutputSchema,
     ...blockBase,
     execute: async (input, ctx) =>
-      turnEditsOwn(ctx as never) ? orTell(await change(ctx as never, { remove: { worker: input.worker } })) : notOwnToChange
+      turnEditsOwn(ctx) ? orTell(await change(ctx, { remove: { worker: input.worker } })) : notOwnToChange
   });
   const setFallbackTool = handler({
     name: SET_FALLBACK,
@@ -314,8 +319,8 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     outputSchema: toolOutputSchema,
     ...blockBase,
     execute: async (input, ctx) =>
-      turnEditsOwn(ctx as never)
-        ? orTell(await change(ctx as never, { fallback: input.worker === null ? null : { worker: input.worker } }))
+      turnEditsOwn(ctx)
+        ? orTell(await change(ctx, { fallback: input.worker === null ? null : { worker: input.worker } }))
         : notOwnToChange
   });
   const listDelegatesTool = handler({
@@ -325,14 +330,15 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     inputSchema: z.object({}).strict(),
     outputSchema: delegateReadOutputSchema,
     ...blockBase,
-    execute: async (_input, ctx) => read(ctx as never)
+    execute: async (_input, ctx) => read(ctx)
   });
 
+  // FIX-2083.
   /**
    * The session's delegates as a task sees them, read now: each that takes a
    * task, with its flow, and why each other one can't, beside the records
    * themselves. A record with a target is a workstream its worker leads: a
-   * task for it names that target (FIX-2083), which the board checks. Read
+   * task for it names that target, which the board checks. Read
    * per call, from the list the session holds now, so an add or a remove
    * counts on the next one.
    */
@@ -342,15 +348,16 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     const unavailable = new Map<string, string>();
     for (const record of listed.delegates) {
       if (available.has(record.worker) || unavailable.has(record.worker)) continue;
-      const checked = await check(ctx as never, record.worker, "task");
+      const checked = await check(ctx, record.worker, "task");
       if (checked.ok) available.set(record.worker, checked.worker.flow);
       else unavailable.set(record.worker, checked.message);
     }
     return { available, unavailable, records: listed.delegates };
   };
 
+  // FIX-2081, rule 13.
   /**
-   * The delegate tools on a model's turn (FIX-2081, rule 13): `listDelegates`
+   * The delegate tools on a model's turn: `listDelegates`
    * on every turn, and `addDelegate`, `removeDelegate` and `setFallback` only
    * on a coordinator set at hire to change its own (`editsOwnDelegates`),
    * read per call. `controlTools`, so a worker's `tools:` line doesn't fence
@@ -361,7 +368,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     presets: {
       tools: {
         controlTools: async (ctx) =>
-          turnEditsOwn(ctx as never)
+          turnEditsOwn(ctx)
             ? [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool]
             : [listDelegatesTool]
       },

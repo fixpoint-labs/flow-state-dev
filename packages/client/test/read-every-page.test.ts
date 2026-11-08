@@ -17,7 +17,7 @@ type ListOptions = { limit?: number; cursor?: string };
 /** A source whose pages are `pages[i]`, keyed by the cursor that asked for them. */
 function pagedSource(pages: Record<string, CollectionListPage>) {
   return {
-    listCollectionItems: vi.fn(async (_session: string, _ref: string, options?: ListOptions) => {
+    listCollectionResources: vi.fn(async (_session: string, _ref: string, options?: ListOptions) => {
       const page = pages[options?.cursor ?? ""];
       if (page === undefined) throw new Error(`no page for cursor ${options?.cursor}`);
       return page;
@@ -38,7 +38,7 @@ describe("readEveryCollectionPage", () => {
     const rows = await readEveryCollectionPage(source, "s1", "roster", { limit: 2 });
 
     expect(rows.map((r) => r.topic)).toEqual(["a", "b", "c", "d"]);
-    expect(source.listCollectionItems.mock.calls.map((call) => call[2])).toEqual([
+    expect(source.listCollectionResources.mock.calls.map((call) => call[2])).toEqual([
       { limit: 2 },
       { limit: 2, cursor: "b" },
       { limit: 2, cursor: "c" }
@@ -49,14 +49,14 @@ describe("readEveryCollectionPage", () => {
     // A transport that hands back the cursor it was just given. Without the
     // check, this reads 1,000 pages before failing.
     const source = {
-      listCollectionItems: vi.fn(async () => ({ items: [row("x")], nextCursor: "stuck" }))
+      listCollectionResources: vi.fn(async () => ({ items: [row("x")], nextCursor: "stuck" }))
     };
 
     const read = readEveryCollectionPage(source, "s1", "roster");
 
     await expect(read).rejects.toBeInstanceOf(CollectionReadStoppedError);
     await expect(read).rejects.toMatchObject({ reason: "repeated-cursor", pagesRead: 2, rowsRead: 2 });
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(2);
   });
 
   it("treats a cursor seen earlier in the read as repeated, not only the one before", async () => {
@@ -70,13 +70,13 @@ describe("readEveryCollectionPage", () => {
       reason: "repeated-cursor",
       message: expect.stringMatching(/same page cursor twice/)
     });
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(3);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(3);
   });
 
   it("fails after the page ceiling when every cursor is new, rather than returning part of the list", async () => {
     let n = 0;
     const source = {
-      listCollectionItems: vi.fn(async () => {
+      listCollectionResources: vi.fn(async () => {
         n += 1;
         return { items: [row(`t${n}`)], nextCursor: `c${n}` };
       })
@@ -88,13 +88,13 @@ describe("readEveryCollectionPage", () => {
       rowsRead: COLLECTION_READ_MAX_PAGES,
       message: expect.stringMatching(/after 1000 pages with more still to read/)
     });
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(COLLECTION_READ_MAX_PAGES);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(COLLECTION_READ_MAX_PAGES);
   });
 
   it("returns a collection that ends exactly on the last page the ceiling allows", async () => {
     let n = 0;
     const source = {
-      listCollectionItems: vi.fn(async () => {
+      listCollectionResources: vi.fn(async () => {
         n += 1;
         return n === COLLECTION_READ_MAX_PAGES
           ? { items: [row(`t${n}`)] }
@@ -114,20 +114,20 @@ describe("readEveryCollectionPage", () => {
       p1: { items: [row("b")], nextCursor: "p2" },
       p2: { items: [row("c")] }
     });
-    source.listCollectionItems.mockImplementationOnce(async () => {
+    source.listCollectionResources.mockImplementationOnce(async () => {
       current = false;
       return { items: [row("a")], nextCursor: "p1" };
     });
 
     await readEveryCollectionPage(source, "s1", "roster", { keepReading: () => current });
 
-    expect(source.listCollectionItems).toHaveBeenCalledTimes(1);
+    expect(source.listCollectionResources).toHaveBeenCalledTimes(1);
   });
 
   it("rejects with the page's own error when a page fails", async () => {
     const refused = new Error("403 forbidden");
     const source = {
-      listCollectionItems: vi
+      listCollectionResources: vi
         .fn()
         .mockResolvedValueOnce({ items: [row("a")], nextCursor: "p1" })
         .mockRejectedValueOnce(refused)

@@ -17,7 +17,7 @@
  * can overlap.) **other-user**:
  * bob's delivery naming alice's session is refused `session-not-found`, and
  * alice's requests are unchanged. **refusal-kept**: an adapter that cannot
- * arbitrate across processes still refuses `external-dispatcher`.
+ * arbitrate across processes still refuses `external-flow-runner`.
  *
  * Controls, which must fail: the commit before the fix fails **delivers**
  * and **one-at-a-time**; setting `LEASES` below to `"local"`, where each
@@ -234,7 +234,7 @@ describeWithRedis("a delivery into an existing session, on a BullMQ host", () =>
     expect(JSON.stringify(sender.result?.error)).toContain("dispatch-rejected");
   });
 
-  it("still refuses `external-dispatcher` when the adapter cannot arbitrate across processes", async () => {
+  it("still refuses `external-flow-runner` when the adapter cannot arbitrate across processes", async () => {
     deployment = await startQueueDeployment([inboxFlow("inbox", "queue")], { leases: "none" });
     const alice = deployment.as("alice");
     const seed = await post(alice, "inbox", "s_alice", "work", { tag: "seed" });
@@ -244,7 +244,7 @@ describeWithRedis("a delivery into an existing session, on a BullMQ host", () =>
     const sender = await settledIn(alice, "inbox", "s_alice_outbox", sent.requestId!);
     // **refusal-kept**
     expect(sender.status).toBe("failed");
-    expect(JSON.stringify(sender.result?.error), "refusal-kept").toContain("external-dispatcher");
+    expect(JSON.stringify(sender.result?.error), "refusal-kept").toContain("external-flow-runner");
     expect((await requestsOf(alice, "inbox", "s_alice")).length).toBe(1);
   });
 });

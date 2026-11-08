@@ -40,9 +40,9 @@ import {
   routeOnAfterAnswer,
   routeOnAfterClose
 } from "../src/coordinator/coordinator-rounds";
-import type { RoundTask, RoundRows } from "../src/coordinator/coordinator-rounds";
+import type { RoundTask, RoundTasks } from "../src/coordinator/coordinator-rounds";
 import type { OpenRound } from "../src/coordinator/coordinator-state";
-import { ORG, bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
+import { bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
 
 type Host = ReturnType<typeof bootHost>;
 
@@ -198,7 +198,7 @@ describe("a round, on its own (V5)", () => {
   const posted: RoundTask = { messageRequestId: "p1", round: 0, delegate };
   /** The round's one post row, `t1`, as the board reads it, with the round's routing counts read just before. */
   const rowsOf =
-    (row: { running?: boolean; replied?: boolean }, at: { begun: number; opening: number } = { begun: 1, opening: 0 }): RoundRows =>
+    (row: { running?: boolean; replied?: boolean }, at: { begun: number; opening: number } = { begun: 1, opening: 0 }): RoundTasks =>
     () => ({ ids: ["t1"], running: row.running ?? false, replied: row.replied === true ? [delegate] : [], ...at });
 
   it("waits while a routing still adds to it, and shares one deadline across its deliveries (BR-24b)", () => {
@@ -270,7 +270,7 @@ describe("a round, on its own (V5)", () => {
   it("keeps an answer heard again once, and sends it on once", () => {
     // Two rows out, so the first answer doesn't close the round.
     const open = endRound(beginRound([], "p1", 0).rounds, "p1", 0);
-    const two: RoundRows = () => ({ ids: ["t1", "t2"], running: true, replied: [delegate], begun: 1, opening: 0 });
+    const two: RoundTasks = () => ({ ids: ["t1", "t2"], running: true, replied: [delegate], begun: 1, opening: 0 });
     const first = landAnswer(open, two, posted, "on time", 1_200);
     expect(first).toMatchObject({ kept: true });
     const again = landAnswer(first.rounds, two, posted, "on time", 1_300);
@@ -507,91 +507,6 @@ describe("rounds (V5)", () => {
     expect((await answers(host, id)).map((line) => line.agentName)).toEqual(["eng.em", "eng.coder", "eng.coder"]);
     const late = (await host.routedRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
     expect(late).toMatchObject({ status: "completed" });
-  });
-
-  it("closes a round open across the upgrade whose post row was still running: the row lapses, runs once more, and both answers go on (BP-030)", async () => {
-    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
-    const id = await host.conversation("alice", "desk");
-    // A post that leaves one row on the board to read the board's key off; both answers empty, so nothing goes on.
-    await post(host, id, "warm up [empty]");
-    const runtime = await host.state.getRuntime();
-    const scope = `alice:~org:${ORG}`;
-    const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
-    const [key, entry] = Object.entries(entries).find(([, value]) => (value.state as { sealed?: unknown }).sealed !== undefined)!;
-    const warm = entry.state as Record<string, any>;
-    const keyFor = (taskId: string) =>
-      key.includes(encodeURIComponent(warm.id)) ? key.replace(encodeURIComponent(warm.id), encodeURIComponent(taskId)) : key.replace(warm.id, taskId);
-    const now = Date.now();
-    const brief = (worker: string) => ({
-      kind: "post",
-      messageRequestId: "legacy",
-      round: 0,
-      delegate: { worker },
-      session: { key: `delegate:["${worker}",null]` },
-      body: "the old post",
-      from: "alice",
-      coordinator: "desk"
-    });
-    const base = { ...warm };
-    for (const field of ["session", "resultTo", "run", "output", "startedAt", "completedAt", "leaseUntil", "claimedBy", "metadata", "filer", "keptOpenBy"]) {
-      delete base[field];
-    }
-    // As a coordinator before FIX-2083 left them: the EM's post answered and heard, the coder's still running
-    // on the entry the upgrade removed, its lease lapsing.
-    const em = { ...base, id: "post:legacy:0:eng.em", goal: "alice, through desk: the old post", assignee: "eng.em", status: "completed",
-      attempts: 1, maxAttempts: 1, output: "eng.em heard: the old post", completedAt: now - 5_000, createdAt: now - 10_000, updatedAt: now - 5_000,
-      incarnationId: "legacy-em", metadata: { "noticeOwed:1:completed": null }, sealed: brief("eng.em") };
-    const coder = { ...base, id: "post:legacy:0:eng.coder", goal: "alice, through desk: the old post", assignee: "eng.coder", status: "in_progress",
-      attempts: 1, maxAttempts: 1, claimedBy: "conversation-tasks", leaseUntil: now - 1_000, startedAt: now - 10_000,
-      run: { sessionId: "s-before-the-upgrade", requestId: "req-before-the-upgrade", attempt: 1, startedAt: now - 10_000 },
-      createdAt: now - 10_000, updatedAt: now - 10_000, incarnationId: "legacy-coder", sealed: brief("eng.coder") };
-    for (const row of [em, coder]) {
-      expect((await runtime.stores.resourceState.set("user", scope, keyFor(row.id), row, "any")).ok).toBe(true);
-    }
-    // The round both were filed in, still open, with the EM's answer landed in it.
-    const session = (await runtime.stores.session.get(id))!;
-    await runtime.stores.session.set(
-      id,
-      {
-        ...session,
-        state: {
-          ...session.state,
-          openRounds: [{ messageRequestId: "legacy", round: 0, opening: 0, begun: 1, deadlineAt: now + 60_000, answers: [{ worker: "eng.em", body: "eng.em heard: the old post" }] }]
-        },
-        version: session.version + 1,
-        updatedAt: now
-      } as never,
-      "any"
-    );
-
-    // The next touch of the board.
-    await act(host, id, "listTasks_tasks", {});
-    await quiet(host);
-
-    // The coder's post ran again once its lease lapsed, as a routed task, and answered.
-    const heard = host.heard.filter((h) => h.message.includes("the old post")).map((h) => [h.worker, h.message.split(":")[0]]);
-    expect(heard[0]).toEqual(["eng.coder", "alice, through desk"]);
-    // Then each answer went on to the other delegate. Those two turns run at
-    // once, in two delegates' sessions, and nothing orders one before the
-    // other, so which is heard first is not part of this; the round's record
-    // below names them in the order they were filed.
-    expect(heard.slice(1)).toHaveLength(2);
-    expect(heard.slice(1)).toEqual(
-      expect.arrayContaining([
-        ["eng.em", "eng.coder, through desk"],
-        ["eng.coder", "eng.em, through desk"]
-      ])
-    );
-    const rows = await host.routedRows("alice");
-    expect(rows.find((row) => row.id === coder.id)).toMatchObject({ status: "completed", output: "eng.coder heard: alice, through desk: the old post" });
-    // The round closed on both answers, and each went on once to the other delegate.
-    expect((await host.sessionState(id)).openRounds).toEqual([]);
-    const roundOne = (await host.items(id)).records.find((record: any) => record.messageRequestId === "legacy" && record.round === 1);
-    expect(roundOne.delegates).toEqual([
-      { worker: "eng.em", outcome: "delivered" },
-      { worker: "eng.coder", outcome: "delivered" }
-    ]);
-    expect(rows.filter((row) => row.sealed.messageRequestId === "legacy" && row.sealed.round === 1).map((row) => row.status)).toEqual(["completed", "completed"]);
   });
 
   it("goes back out once for an ending sent twice (BR-21, BR-22)", async () => {

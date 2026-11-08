@@ -4,7 +4,7 @@ import type {
   GeneratorModelStreamChunk,
   GeneratorSearchConfig,
 } from "../types";
-import type { ModelGroupDefaults, RetryPolicy } from "./types";
+import type { ModelGroupDefaults, ModelRetryPolicy } from "./types";
 import { deepMerge } from "../helpers/deep-merge";
 
 // ---------------------------------------------------------------------------
@@ -22,7 +22,7 @@ interface FallbackModelConfig {
   groupName: string;
   models: FallbackModelEntry[];
   defaults?: ModelGroupDefaults;
-  retryPolicy: Required<RetryPolicy>;
+  retryPolicy: Required<ModelRetryPolicy>;
   /**
    * Fires when a candidate succeeds — once per `generate` call, and once
    * per `stream` call (after the candidate's stream yielded a first chunk
@@ -127,7 +127,7 @@ function mergeDefaults<T extends Record<string, unknown>>(
 
 async function executeWithFallback<T>(
   models: FallbackModelEntry[],
-  retryPolicy: Required<RetryPolicy>,
+  retryPolicy: Required<ModelRetryPolicy>,
   groupName: string,
   fn: (model: GeneratorModel, entry: FallbackModelEntry) => Promise<T>,
   onResolved?: (entry: FallbackModelEntry) => void
@@ -247,12 +247,13 @@ async function* executeStreamWithFallback(
 // Public API
 // ---------------------------------------------------------------------------
 
+// FIX-814.
 /**
  * Creates a GeneratorModel that tries models in order with retry-per-model.
  * On retryable errors, retries the current model up to `maxAttemptsPerModel`,
  * then falls back to the next model in the list.
  *
- * Exposes the single-step `generateStep`/`streamStep` (FIX-814) — but only
+ * Exposes the single-step `generateStep`/`streamStep` — but only
  * over the subset of candidates that implement them — so a generator using a
  * fallback model group can drive the framework-owned per-step loop (and the
  * in-loop suspension built on it). Each step call runs the same

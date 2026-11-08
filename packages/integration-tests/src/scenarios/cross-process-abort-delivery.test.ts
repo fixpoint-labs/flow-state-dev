@@ -32,7 +32,7 @@
 import { describe, expect, it } from "vitest";
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";

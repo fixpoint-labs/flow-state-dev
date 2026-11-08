@@ -362,7 +362,7 @@ describe("a worker writer flow that does not carry the writer", () => {
       const result = await bind(off, { workerWriterKind: SILENT_FLOW });
       expect(result.workers).toBe(0);
       expect(result.problems).toHaveLength(1);
-      expect(result.problems[0]).toContain("the worker rows could not be written");
+      expect(result.problems[0]).toContain("the worker resources could not be written");
       expect(await off.keys()).toEqual([]);
     } finally {
       await off.dispose();

@@ -1,5 +1,6 @@
+// FIX-140.
 /**
- * Suspension and resume types for durable execution (FIX-140).
+ * Suspension and resume types for durable execution.
  *
  * A suspension occurs when a block calls `ctx.suspend()` inside a durable
  * action. The sequencer catches the resulting SuspensionError, persists a
@@ -34,11 +35,12 @@ export interface SuspensionRecord {
   suspensionId: string;
   requestId: string;
   flowKind: string;
+  // BP-030.
   /**
    * The flow instance that owns the suspended run — the address a resume must
    * re-enter it through. Two copies of one kind suspend independently, so the
    * kind alone does not say which one is waiting. Absent on a record persisted
-   * before owners were recorded; guard with `== null` (BP-030), falling back to
+   * before owners were recorded; guard with `== null`, falling back to
    * `flowKind`, which is the correct address for a singleton and the only one
    * such a record ever had.
    */
@@ -48,17 +50,19 @@ export interface SuspensionRecord {
   userId: string;
 
   reason: SuspensionReason;
+  // FIX-2129.
   /**
-   * What a user's suspension asks for, when `ctx.suspendForUser` set it
-   * (FIX-2129). Absent on a raw `ctx.suspend` and on every other
+   * What a user's suspension asks for, when `ctx.suspendForUser` set it.
+   * Absent on a raw `ctx.suspend` and on every other
    * suspension: read it with `suspendForUserKindOf`, which falls back to the
    * reason.
    */
   kind?: SuspendForUserKind;
+  // BP-030.
   /**
    * The suspension's short heading; `message` is then its body. Absent when the
    * suspension gave none, including every record persisted before it existed:
-   * a reader falls back to `message` (BP-030).
+   * a reader falls back to `message`.
    */
   title?: string;
   message: string;
@@ -169,6 +173,7 @@ export interface ResumeContext {
    * resolution without it matches no gate.
    */
   pendingBlockLogicalId?: string;
+  // FIX-2129.
   /**
    * How this resume resolves the gate, when that is not the action's own
    * status; the `suspension_resume` audit item records it. Set by the server
@@ -178,7 +183,7 @@ export interface ResumeContext {
    * durability sweep's re-drive, or a stop of a turn behind one). Only that
    * continuation can name an expiry, never the gate's status, which an expiry
    * write can race. With `expired`, `ctx.suspend()` throws a
-   * `SuspensionRejectedError` marked `expired`. `cancelled` (FIX-2129) is
+   * `SuspensionRejectedError` marked `expired`. `cancelled` is
    * read from the gate's recorded status: `ctx.suspend()` throws a
    * `SuspensionRejectedError` marked `cancelled`.
    */

@@ -11,9 +11,9 @@
  */
 import { defineResource } from "@flow-state-dev/core";
 import {
-  taskClaimTicketSchema,
   type TaskClaimTicket,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/tasks";
+import { taskClaimTicketSchema } from "@flow-state-dev/orchestration/internal";
 import { z, type ZodTypeAny } from "zod";
 
 /**
@@ -36,6 +36,7 @@ const tasksRecordSchema: ZodTypeAny = z
   .record(z.string(), z.unknown())
   .default({});
 
+// BP-030.
 /**
  * Sequencer control state for a routedSpecialists instance.
  *
@@ -55,7 +56,7 @@ const tasksRecordSchema: ZodTypeAny = z
  * existed still completes its tasks.
  *
  * `currentAttempt` is that earlier checkpoint's shape, **read, never
- * set** (BP-030). Before the ticket, the step stored the claim's
+ * set**. Before the ticket, the step stored the claim's
  * `attempts` here and the write-back fenced on it. A legacy record has no
  * ticket and cannot rebuild one from its own state — the ticket also needs
  * the task's `createdAt` — so the write-back reads that one field off the

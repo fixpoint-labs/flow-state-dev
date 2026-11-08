@@ -45,7 +45,8 @@ import { createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createClient, type Client } from "@flow-state-dev/client";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, createInProcessFetch, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createFlowApiRouter, createFlowRegistry, createInProcessFetch, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { COORDINATOR_FLOW, createWorkerInstallation, defineAgentWorkerFlow, defineCoordinatorFlow, hireWorkforce } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
@@ -58,7 +59,7 @@ import { railSessions } from "../../../apps/kitchen-sink/lib/rail-sessions.ts";
 import { ROUTE_MODEL } from "../../../apps/kitchen-sink/lib/models.ts";
 import { LabProvider } from "../../../packages/shift-manager/src/lib/lab-data.tsx";
 import { useRoster } from "../../../packages/shift-manager/src/lib/roster.ts";
-import { createLabAdapter, type WorkerRow } from "../../../labs/teammates/src/adapter.ts";
+import { createLabAdapter, type LabWorker } from "../../../labs/teammates/src/adapter.ts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("realtime-roster-follows");
@@ -228,7 +229,7 @@ function mountViews(on: Host, user: "alice" | "bob"): Views {
   smRoot.render(createElement(LabProvider, { connection: { userId: user, bearerToken: tokens.sm, baseUrl: on.base }, children: createElement(Probe) }));
 
   // Teammates: the adapter's watch, read off the rows it reports.
-  const stopTm = createLabAdapter(clientOf(on, tokens.tm)).watchWorkers((rows: WorkerRow[]) =>
+  const stopTm = createLabAdapter(clientOf(on, tokens.tm)).watchWorkers((rows: LabWorker[]) =>
     record(tm, new Map(rows.map((row) => [row.id, row.role === "" ? null : row.role]))),
   );
 

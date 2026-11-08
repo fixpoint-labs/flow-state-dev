@@ -46,8 +46,20 @@ import type {
   StateSnapshotItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import type { BlockValueInternal, RuntimeItem } from "@flow-state-dev/core/items/internal";
-import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
+import type { BlockValueInternal, RuntimeItem, ReplayLog } from "@flow-state-dev/core/internal";
+import {
+  resolveAllowedActions,
+  BOARD_NOTICE_SEAM,
+  DISPATCH_SEAM,
+  REQUEST_RESUME_SEAM,
+  REQUEST_SPEND_SEAM,
+  type RequestResume,
+  type RequestSpendSeam,
+  isTraceObservabilityEnabled,
+  errorDetailsWithCause,
+  buildBlockInstanceId,
+  ROOT_BLOCK_PATH
+} from "@flow-state-dev/core/internal";
 import type { BlockContext, BlockOutputHint, EmitMessageOptions, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import {
@@ -71,12 +83,12 @@ import type {
   UserRecord
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
-import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
+import type { ModelResolver } from "@flow-state-dev/core";
 import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
-import { ownRowOf, waitedByOf } from "../durability/wait-chain";
+import { ownTaskOf, waitedByOf } from "../durability/wait-chain";
 
 /** The waiter a dispatched request was born with, as an optional field. */
 function waitedByStamp(source: string | undefined, metadata: unknown) {
@@ -84,10 +96,10 @@ function waitedByStamp(source: string | undefined, metadata: unknown) {
   return waitedBy === undefined ? {} : { waitedBy };
 }
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
-import { applyScopeStateDefaults } from "./scope-state-defaults";
+import { applyScopeStateDefaults, scopeStateSchema } from "./scope-state-defaults";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
-import { isTraceObservabilityEnabled, errorDetailsWithCause, estimateTokenCounter, isValidOrgId, buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
+import { estimateTokenCounter, isValidOrgId } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
 import { cloneValue, getTransientKeys, getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
@@ -99,20 +111,14 @@ import {
   type ErrorCaptureBlockInfo,
   type ErrorCaptureIdentity
 } from "../errors/error-capture";
-import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, resolveAllowedActions, type SuspendOptions } from "@flow-state-dev/core";
+import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError, type SuspendOptions } from "@flow-state-dev/core";
 import {
-  BOARD_NOTICE_SEAM,
-  DISPATCH_SEAM,
-  REQUEST_RESUME_SEAM,
-  REQUEST_SPEND_SEAM,
   SUSPENSION_SKIPPED,
   isUserSuspension,
   suspendForUserOn,
-  type HarnessRunSpend,
-  type RequestResume,
-  type RequestSpendSeam,
   type SuspendForUser
 } from "@flow-state-dev/core/types";
+import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { matchesPattern } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
@@ -184,8 +190,9 @@ import { PAST_TURN_STATUSES } from "../execution/past-turns";
 import { readSettledTurns } from "./settled-turns";
 import { cancelledWithTask } from "../durability/cancel-user-suspension";
 
+// FIX-2063.
 /**
- * Why `ctx.suspend()` refused, and what to change (FIX-2063): the rule
+ * Why `ctx.suspend()` refused, and what to change: the rule
  * (durable execution is on wherever stores persist) and the host setting.
  */
 const SUSPEND_NEEDS_DURABILITY =
@@ -201,8 +208,9 @@ function leanModelUsageOf(usage: BlockTraceItem["modelUsage"]): BlockTraceItem["
   return counts;
 }
 
+// FIX-2129.
 /**
- * Whether the run's task was cancelled with one of its stops (FIX-2129):
+ * Whether the run's task was cancelled with one of its stops:
  * this continuation's own resolution, or, for a crash's continuation that
  * names none, a user's stop the log records cancelled with its task.
  */
@@ -213,13 +221,14 @@ function taskCancelledInRun(resumeCtx: ResumeContext | undefined, replayLog: Rep
   );
 }
 
+// FIX-2129 D1; FIX-1846.
 /**
  * What `ctx.suspend()` throws for a gate resolved without an answer (a
  * rejection, an expiry or a cancel), on the live continuation and on replay
  * alike. An expiry of a suspension that is not an approval (one that allows
  * no `reject`, or a review's or an input's `suspendForUser`) throws
- * `SuspensionTimeoutError` (FIX-2129 D1); an approval's reads as a rejection
- * marked expired (FIX-1846).
+ * `SuspensionTimeoutError`; an approval's reads as a rejection
+ * marked expired.
  */
 function rejectionOf(
   suspendOpts: SuspendOptions,
@@ -275,8 +284,9 @@ type EmissionContext = {
   nextItemIndex: () => number;
   /** Container ownership tag — set when emitting inside a container scope. */
   ownedBy?: string;
+  // FIX-658.
   /**
-   * Task attribution (FIX-658) — id of the task this scope is running, inherited
+   * Task attribution — id of the task this scope is running, inherited
    * from the nearest enclosing scope marked via `ctx._markTaskScope`. Stamped
    * onto every item this scope emits.
    */
@@ -336,9 +346,10 @@ type EmitComponentOptions = {
   transient?: boolean;
 };
 
+// FIX-963.
 /**
  * Build the `ComponentItem` both component emitters send. Shared so the
- * fire-and-forget emitter and the awaited one (FIX-963) cannot drift on item
+ * fire-and-forget emitter and the awaited one cannot drift on item
  * shape, index reservation, or keying — only on how they treat the emitter
  * promises.
  */
@@ -399,8 +410,9 @@ function createEmitComponent(
   };
 }
 
+// FIX-963.
 /**
- * The awaited component emitter behind `ctx._emitComponentAwaited` (FIX-963).
+ * The awaited component emitter behind `ctx._emitComponentAwaited`.
  *
  * Identical to {@link createEmitComponent} except that it settles on the
  * emission instead of discarding it: the returned promise resolves once the
@@ -462,10 +474,11 @@ function createEmitMessageAwaited(
   };
 }
 
+// FIX-387.
 /**
  * Request-scoped status slot. Shared across every `createEmitStatus` call
  * within a single request so nested scopes see the same "current message"
- * value — implements the single-slot semantics from FIX-387.
+ * value — implements the single-slot semantics.
  */
 type StatusSlot = { message: string };
 
@@ -512,6 +525,7 @@ function createEmitStatus(
   };
 }
 
+// FIX-814.
 /**
  * Build the three `ctx.emit.trace.*` impls. Each:
  *   - emits item.added then item.done via the response emitter,
@@ -519,7 +533,7 @@ function createEmitStatus(
  *
  * `blockTrace`/`stateSnapshot` are fire-and-forget end to end; `routerDecision`
  * returns its emit chain so the router can await the decision anchor before
- * dispatching the selected branch (FIX-814).
+ * dispatching the selected branch.
  *
  * Trace types (`block_trace`, `router_decision`, `state_snapshot`) resolve
  * to `{ client: false, history: false }` by `item.type` in
@@ -1186,7 +1200,7 @@ export async function createExecutionContext<
                   deadlines: options.requestHost.waits.deadlines,
                   requestId: options.requestId,
                   // The row a task dispatch started this request for (FIX-2082).
-                  own: ownRowOf(options.source, options.metadata, options.input),
+                  own: ownTaskOf(options.source, options.metadata, options.input),
                   ...waitedByStamp(options.source, options.metadata),
                   readRequest: (requestId: string) => stores.request.get(requestId)
                 }
@@ -1291,11 +1305,12 @@ export async function createExecutionContext<
     list.push({ ...rec, count: 1 });
   };
 
+  // FIX-701 §11 Q3.
   /**
    * Resolve the `source` for an eager collection cache-hit read. Callers pass
    * the collection's pattern prefix (all instances of a collection share the
    * wave that loaded the prefix), so an exact token lookup suffices. Defaults
-   * to `action-eager` when the origin is unknown (FIX-701 §11 Q3).
+   * to `action-eager` when the origin is unknown.
    */
   const resolveEagerSource = (
     scope: ContentScopeType,
@@ -1406,7 +1421,7 @@ export async function createExecutionContext<
       `Flow "${flow.kind}": ${scope}-scoped collections sharing storage prefix ` +
         `"${keyPrefix || "(whole scope)"}" declare conflicting ${flagName}. ` +
         `Collections that share a storage prefix must share a storage bucket — ` +
-        `give them distinct static prefixes or matching ${flagName} (FIX-735).`
+        `give them distinct static prefixes or matching ${flagName}.`
     );
   // User and org buckets route on `flowIsolation` and are built here.
   const buildScopeBuckets = (
@@ -1494,8 +1509,9 @@ export async function createExecutionContext<
   const resolveBucketFlag = (scope: ContentScopeType, storageKey: string): boolean | undefined =>
     resolveOwnershipFlag(scopeBuckets[scope], storageKey);
 
+  // FIX-1068.
   /**
-   * The scope kind a resolved address STORES under (FIX-1068).
+   * The scope kind a resolved address STORES under.
    *
    * The lineage bucket is not a session bucket: session scope ids are
    * caller-chosen, so a lineage address sharing that space is one a caller can
@@ -1575,9 +1591,10 @@ export async function createExecutionContext<
     return owned;
   };
 
+  // FIX-1068.
   /**
    * Rows a session-scoped resource held BEFORE it was marked
-   * `sharedToLineage` (FIX-1068).
+   * `sharedToLineage`.
    *
    * Turning the flag on moves a resource from this session's own key to the
    * lineage address. A resource already carrying data in a deployed app would
@@ -2090,15 +2107,16 @@ export async function createExecutionContext<
   const userLazyLoad = makeLazyLoad("user");
   const orgLazyLoad = makeLazyLoad("org");
 
+  // FIX-688 Waves 2 & 3; FIX-701.
   /**
-   * FIX-688 Waves 2 & 3 loader. Loads the eager, not-yet-cached entries from a
+   * The dispatch-time loader. Loads the eager, not-yet-cached entries from a
    * declared-resources map into the per-scope caches. With `loadLazySingles`
    * it also loads `prefetchMode: 'lazy'` single resources (block dispatch).
    * Lazy collections are always skipped — the async accessor fetches them.
    * Cache wins over the store snapshot on conflict, so a concurrent mutation
    * is never clobbered by an in-flight read.
    *
-   * FIX-701: each entry records a resource-load — `cacheHit: true` when the
+   * Each entry records a resource-load — `cacheHit: true` when the
    * key/prefix is already cached (a benign cross-wave dedupe), `cacheHit:
    * false` timed around the store round-trip otherwise. The load source is
    * derived from `loadLazySingles`: the action-dispatch caller (Wave 2) passes
@@ -2273,8 +2291,9 @@ export async function createExecutionContext<
     const versionRef = scopeVersionRef(scope);
     const contentRef = scopeContentRef(scope);
     return {
+      // FIX-663; FIX-992 (D10).
       /**
-       * FIX-992 (D10): the CAS boundary for resource state.
+       * The CAS boundary for resource state.
        *
        * The driver owns the retry, because only here does the caller's intent
        * still exist as a mutator — one layer down, at the store call, the next
@@ -2290,7 +2309,7 @@ export async function createExecutionContext<
        * the code. `options.signal` is the composed transport signal and fires
        * on client disconnect / SSE teardown, so threading it would abandon the
        * resource writes of a `.sideChain()` background task the request is still
-       * running — the exact failure FIX-663 exists to prevent. And there is no
+       * running — the exact failure the background signal exists to prevent. And there is no
        * per-scope signal available at this seam anyway: persisters and
        * `ResourceRef`s are built once per context, while `ctx.signal` is
        * per-execution-scope, so one ref serves foreground and background
@@ -2496,15 +2515,16 @@ export async function createExecutionContext<
   );
   // Scope state reads with its schema's defaults filled in, so a
   // defaulted field is present on a fresh or older record, as the state's
-  // type promises. Nothing else of the stored blob changes. Every read of a
+  // type promises. The schema is the flow's merged one, so a default a block
+  // or capability declares fills too. Nothing else of the stored blob changes. Every read of a
   // stored record goes through these: the load here, and the records a write
   // or a conflict hands back (`createScopePersist`, `createScopeReread`).
   const readUserState = (state: unknown) =>
-    applyScopeStateDefaults(flow.user?.stateSchema, state) as TUserState;
+    applyScopeStateDefaults(scopeStateSchema(flow, "user"), state) as TUserState;
   const readSessionState = (state: unknown) =>
-    applyScopeStateDefaults(flow.session?.stateSchema, state) as TSessionState;
+    applyScopeStateDefaults(scopeStateSchema(flow, "session"), state) as TSessionState;
   const readOrgState = (state: unknown) =>
-    applyScopeStateDefaults(flow.org?.stateSchema, state) as TOrgState;
+    applyScopeStateDefaults(scopeStateSchema(flow, "org"), state) as TOrgState;
   const userContainer = createStateContainer<TUserState>(
     readUserState(userRef.current.state),
     userRef.current.version
@@ -2605,7 +2625,8 @@ export async function createExecutionContext<
   // The session's readonly state fields, as it was created with them. A
   // mutation that would change one is refused before anything is written,
   // whichever path proposed it: a block, a tool, an action.
-  const readonlyFields = getReadonlyStateKeys(flow.session?.stateSchema);
+  // Off the merged schema, so a readonly field a block declares is guarded too.
+  const readonlyFields = getReadonlyStateKeys(scopeStateSchema(flow, "session"));
   const createdWith = sessionContainer.read() as Record<string, unknown>;
   const sessionOps = createScopeStateOps(sessionContainer, {
     cas: flow.session?.cas,
@@ -2676,8 +2697,9 @@ export async function createExecutionContext<
   const cascadeController = createCascadeController();
   const reactiveCtxRef: { current: ExecutionContext | undefined } = { current: undefined };
 
+  // FIX-1506.
   /**
-   * Publish that `scope` changed, naming this request (FIX-1506). The topic's
+   * Publish that `scope` changed, naming this request. The topic's
    * id is the bare session id, the user id or the org id, under the tenant.
    */
   function publishScopeNotice(scope: "session" | "user" | "org", kind: "state" | "resource", resource?: string): void {
@@ -4145,6 +4167,12 @@ export async function createExecutionContext<
             return resumeCtx.data;
           }
         }
+        // A new stop under an old `human_*` reason is refused before it is written;
+        // a stop core 0.2.0 stored under one was answered above.
+        if (suspendOpts.reason === "human_approval" || suspendOpts.reason === "human_input") { // retired-name-refusal: the old reasons
+          const renamed = suspendOpts.reason === "human_approval" ? "user_approval" : "user_input"; // retired-name-refusal: the old reasons
+          throw new Error(`ctx.suspend: reason "${suspendOpts.reason}" was renamed. Use "${renamed}".`);
+        }
         // A run whose task was cancelled asks nobody again (FIX-2129): a
         // later wait for a user resolves `cancelled` at once and opens no
         // item. Read off this continuation's resolution, or off the log when
@@ -4167,14 +4195,14 @@ export async function createExecutionContext<
       // FIX-2129: built on this scope's `suspend`, with the host's deadline
       // for a user's stop: the request host's, else the runtime config's, so
       // a caller that runs the action with no request host keeps the one it set.
-      suspendForUser: ((waitOptions: Parameters<SuspendForUser>[0]) =>
-        suspendForUserOn(
-          {
-            suspend: context.suspend,
-            requestHost: { userDeadlineMs: context.requestHost?.userDeadlineMs ?? options.effectiveRuntimeConfig?.userDeadlineMs }
-          },
-          waitOptions
-        )) as SuspendForUser,
+      suspendForUser: ((waitOptions: Parameters<SuspendForUser>[0]) => {
+        // `suspendForUserOn` reads the deadline with `requestHostOf`, as off any context.
+        const waitCtx = {
+          suspend: context.suspend,
+          requestHost: { userDeadlineMs: context.requestHost?.userDeadlineMs ?? options.effectiveRuntimeConfig?.userDeadlineMs }
+        };
+        return suspendForUserOn(waitCtx, waitOptions);
+      }) as SuspendForUser,
       saveCheckpoint: undefined,
       // Task attribution (FIX-658): mark the nearest enclosing sequencer scope
       // as running `taskId`. The task-board worker body calls this once per

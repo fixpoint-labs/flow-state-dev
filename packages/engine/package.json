@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/engine",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Execution runtime, stores, SSE streaming, and HTTP routes for flow-state-dev.",
   "keywords": [
     "ai",
@@ -32,6 +32,14 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "default": "./src/host.ts"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "default": "./src/internal.ts"
+    },
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./src/testing.ts"
@@ -58,6 +66,14 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./host": {
+        "types": "./dist/host.d.ts",
+        "default": "./dist/host.js"
+      },
+      "./internal": {
+        "types": "./dist/internal.d.ts",
+        "default": "./dist/internal.js"
       },
       "./testing": {
         "types": "./dist/testing.d.ts",

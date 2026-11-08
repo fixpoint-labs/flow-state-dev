@@ -1,13 +1,14 @@
+// FIX-1945 S5; BP-031.
 /**
- * The rules action (FIX-1945 S5): how a page reads and edits a worker's
+ * The rules action: how a page reads and edits a worker's
  * standing rules for the signed-in user, on the worker's own flow.
  *
  * Declared on the `agent` and `coordinator` flows and run in the user's own
  * session with that worker, because the record's storage belongs to the
  * worker's flow copy: the roster flow can't open it. The worker is the one the
  * session was verified to run as, and the user is the request's own; the
- * input names neither, and a key it doesn't declare is refused
- * (BP-031). Writes go through the same validator as the rule tools, and a
+ * input names neither, and a key it doesn't declare is refused.
+ * Writes go through the same validator as the rule tools, and a
  * refusal fails the request with its reason, storing nothing.
  */
 import { handler } from "@flow-state-dev/core";
@@ -60,10 +61,10 @@ export const standingRulesActionBlock = handler({
   outputSchema: standingRulesActionOutputSchema,
   resources: { [STANDING_RULES_RESOURCE]: standingRulesCollection },
   execute: async (input, ctx) => {
-    if (input.op === "read") return answer(await readStandingRules(ctx as never));
+    if (input.op === "read") return answer(await readStandingRules(ctx));
     const { version, ...edit } = input;
     // Added here, not in a conversation: the page shows it as "added here".
-    const outcome = await writeStandingRules(ctx as never, version, edit, null);
+    const outcome = await writeStandingRules(ctx, version, edit, null);
     if (!outcome.ok) throw new Error(`Refused: ${outcome.reason}.`);
     return answer(outcome.list, outcome.line);
   }

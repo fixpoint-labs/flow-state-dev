@@ -30,50 +30,6 @@ export type {
 export { asRuntime, itemScope } from "./block";
 
 export type {
-  LivenessAnswers,
-  ParentTaskOutcome,
-  RequestHost,
-  ResumeWaitInput,
-  ResumeWaitResult,
-  RequestWaits,
-  RequestSessions,
-  SessionHistory,
-  SessionHistoryQuery,
-  SessionView,
-  RequestWakes,
-  SettleParentTaskInput,
-  SettleParentTaskResult,
-  SuspensionAddress,
-  WaitDeadlines,
-  WakeSettleResult,
-  WakeView
-} from "./request-host";
-
-export { NoRequestHostError, requireRequestHost } from "./request-host";
-
-export type {
-  WaitEndingErrorCode,
-  WaitGateBinding,
-  WaitGateData,
-  WaitOutcome,
-  WaitRow,
-  ParkOnWaitInput
-} from "./wait-gate";
-export {
-  MAX_WAIT_DEPTH,
-  WAIT_DEADLINE_ENTRY,
-  WAIT_DEADLINE_OUTCOME,
-  WAIT_GATE_REASON,
-  isWaitGate,
-  continuesAtExpiry,
-  parkOnWait,
-  canHoldWait,
-  parseWaitOutcome,
-  recordedWaitOutcome,
-  waitGateDataOf
-} from "./wait-gate";
-
-export type {
   SessionCreateCheck,
   SessionCreateCheckInput,
   SessionCreateCheckResult,
@@ -86,7 +42,6 @@ export type {
   DispatchAddress,
   DispatchOutcome,
   DispatchRefusal,
-  DispatchSeam,
   DispatchSpec,
   DispatchType,
   InternalEntry,
@@ -103,49 +58,15 @@ export type {
   TaskTargetQuery
 } from "./dispatch";
 
-/** How the running request resumed (FIX-2129): read where a resumed request is admitted. */
-export { REQUEST_RESUME_SEAM, requestResumeOf } from "./request-resume";
-export type { RequestResume } from "./request-resume";
-
-/** Waiting for a user (FIX-2129): `ctx.suspendForUser`, its options and what it returns. */
+// FIX-2129.
+/** Waiting for a user: `ctx.suspendForUser`, its options and what it returns. */
 export { suspendForUserOn } from "./suspend-for-user";
 export type { ApprovalAnswer, UserAnswer, SuspendForUser, SuspendForUserCancelled, SuspendForUserContext, SuspendForUserOptions } from "./suspend-for-user";
 
-/** The board-notice seam: a task board's change reaches the change bus. */
-export { BOARD_NOTICE_SEAM, publishBoardChange } from "./board-notice";
-export type { BoardChange, BoardNoticeSeam } from "./board-notice";
-
-/** The request-end seam (FIX-2077): a framework package's hook after a request's last drain. */
 export {
-  REQUEST_END_SEAM,
-  REQUEST_SPEND_SEAM,
-  SESSION_REQUEST_END_HOOK,
-  addRequestSpendSource,
-  onRequestEnded,
-  readRequestSpend,
-  readRequestTotalSpend,
-  requestSpendSources
-} from "./request-end";
-export type {
-  BackgroundFailure,
-  RequestEndHook,
-  RequestEndSeam,
-  RequestEndStatus,
-  RequestEndVerdict,
-  RequestEnding,
-  RequestSpend,
-  RequestSpendSeam,
-  RequestSpendSource,
-  SessionRequestEndHook
-} from "./request-end";
-
-export {
-  DISPATCH_SEAM,
   DISPATCH_TYPES,
   DispatchRefusedError,
-  NoDispatchSeamError,
   bindTaskDispatcher,
-  dispatchThroughSeam,
   markDispatcher,
   taskBindingOf,
   framed,
@@ -219,7 +140,6 @@ export type {
 
 export {
   defineScheduleBinding,
-  isFiveFieldCron,
   isKnownTimeZone,
   validateScheduleConfig,
   validateSchedulesConfig
@@ -496,67 +416,3 @@ export type {
 } from "../schema/action-schema";
 
 export { applyGetOrPatchState, defineResource, resource } from "./resource";
-
-/**
- * The run's plan record, also exported here (it is on the package root too)
- * so browser code can read its keys without importing the root, which pulls
- * in server-only modules.
- */
-export {
-  OBSERVED_PLAN,
-  OBSERVED_PLAN_LIST,
-  observedPlanCollection,
-  observedPlanItemStateSchema,
-  observedPlanListCollection,
-  observedPlanListStateSchema,
-  harnessConversationNamespace,
-  planConversationPrefix,
-  planKeySegment,
-  planRowsPrefix,
-  readPlanTarget,
-} from "./harness-plan";
-export type { ObservedOutcome, ObservedPlanListStatus, PlanListItem, PlanMarkerRead } from "./harness-plan";
-
-/** The session's pull-request record's key, rows and key builder (FIX-2268). Isomorphic: a page reads them. */
-export { OBSERVED_PULL_REQUESTS, observedPullRequestsCollection, observedPullRequestStateSchema, pullRequestKey } from "./pull-requests";
-export type { ObservedPullRequestState, PullRequestRef, PullRequestSource } from "./pull-requests";
-
-/**
- * The coding-harness contract (LAB-152) — what a harness block is handed and
- * what it hands back, plus the signatures a host feeds it configuration
- * through. The matching runtime schemas are exported from the package root.
- * `reportHarnessSpend` is how a harness counts a run's spend in the request
- * (FIX-2145).
- */
-export { reportHarnessSpend } from "./harness";
-export type {
-  ClassifiedHarnessError,
-  HarnessActivity,
-  HarnessActivityHook,
-  HarnessBilling,
-  HarnessBlock,
-  HarnessCallbackContext,
-  HarnessCostBasis,
-  HarnessFailureKind,
-  HarnessReadiness,
-  HarnessReadinessCheck,
-  HarnessResolver,
-  HarnessRunCost,
-  HarnessRunEnvelope,
-  HarnessRunHandle,
-  HarnessRunInput,
-  HarnessRunOutcome,
-  HarnessRunSpend,
-  HarnessRunStatus,
-  HarnessRunUsage,
-  HarnessSessionHook,
-  HarnessSource,
-  HarnessSteer,
-  HarnessSteerHook,
-  HarnessUsageHook,
-  HarnessUsageLevel,
-  HarnessUsageReader,
-  HarnessUsageReading,
-  HarnessUsageReport,
-  HarnessUsageWindow,
-} from "./harness";

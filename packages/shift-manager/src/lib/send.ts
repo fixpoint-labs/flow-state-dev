@@ -1,3 +1,4 @@
+// BR-4.
 /**
  * The one way Shift Manager sends a user's line into a worker's session (S10).
  *
@@ -7,7 +8,7 @@
  * declares: the worker inventory row for the flow the session records as its
  * owner names it. Shift Manager knows no flow name and no action name of its own.
  *
- * **Delivered means the session holds it (BR-4).** The door's request is
+ * **Delivered means the session holds it.** The door's request is
  * followed until it ends or stops. A line counts as delivered only when that
  * request is `completed` or `suspended` **and** the target session holds the
  * request's user item. The HTTP answer alone never says so: it only says the
@@ -39,7 +40,8 @@
  * module's own reading is thrown as it is.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { Client, FlowHandle } from "@flow-state-dev/client";
+import { ClientHttpError, type Client, type FlowHandle, type RequestResult } from "@flow-state-dev/client";
+import { pause } from "@flow-state-dev/client/internal";
 import { isUserSuspension } from "@flow-state-dev/core/types";
 import { deriveSuspensions } from "@flow-state-dev/react";
 import { describeFailure } from "./reads";
@@ -129,6 +131,23 @@ async function sessionHoldsLine(client: Client, sessionId: string, requestId: st
 }
 
 /**
+ * While the door's request runs, look every {@link HELD_POLL_MS} for the line
+ * in the session, and call `onHeld` once it is there. A read that fails only
+ * means "not yet": the read after the request ends decides. Stops when
+ * `ended` aborts, and never calls `onHeld` after that.
+ */
+async function watchHeld(client: Client, sessionId: string, requestId: string, onHeld: () => void, ended: AbortSignal): Promise<void> {
+  while (!ended.aborted) {
+    if (await sessionHoldsLine(client, sessionId, requestId).catch(() => false)) {
+      if (!ended.aborted) onHeld();
+      return;
+    }
+    // The client's pause lets go of its abort listener each time; an abort just ends the loop.
+    await pause(HELD_POLL_MS, ended).catch(() => undefined);
+  }
+}
+
+/**
  * What a suspended request is still stopped on, read from that request alone:
  * the session's suspended requests with their own item logs, so the read is
  * one call however much history the session holds. Only its still-pending suspensions count
@@ -189,16 +208,10 @@ async function stopWithin(until: number, stop: Promise<TurnStop>): Promise<TurnS
   }
 }
 
-/** The door's own reason for a failed request, in its words. */
-async function refusalOf(client: Client, sessionId: string, requestId: string): Promise<string> {
-  const failed = await call(() => client.sessions.requests(sessionId, { status: "failed" }));
-  const said = failed.find((request) => request.id === requestId)?.result?.error?.message;
-  return said ?? "The worker refused the message and gave no reason.";
-}
-
+// BR-4.
 /**
  * Send `message` through the target's door, and resolve only once it is
- * delivered (BR-4). Rejects with {@link TurnNotDelivered} otherwise.
+ * delivered. Rejects with {@link TurnNotDelivered} otherwise.
  *
  * @param options.onHeld called once, while the request is still running, when
  * the session first holds the line. A request that ends before a poll sees it
@@ -224,32 +237,37 @@ export async function sendTurn(
   }
   options.onStarted?.(requestId);
 
-  const until = Date.now() + (options.timeoutMs ?? SEND_TIMEOUT_MS);
+  const timeoutMs = options.timeoutMs ?? SEND_TIMEOUT_MS;
+  const until = Date.now() + timeoutMs;
   let suspended = false;
-  let held = false;
-  let nextHeldLook = 0;
   const unconfirmed = (why: string) => new TurnNotDelivered("unconfirmed", `${why} Check the worker's session before sending it again.`);
   try {
-    for (;;) {
-      const { status } = await call(() => actions.request(requestId).status());
-      if (status === "completed" || status === "suspended") {
-        suspended = status === "suspended";
-        break;
-      }
-      if (status === "failed") throw new TurnNotDelivered("refused", await refusalOf(client, target.sessionId, requestId));
-      if (status !== "in_progress") throw new TurnNotDelivered("not-sent", `The message's request ended ${status}.`);
-      if (Date.now() > until) throw unconfirmed("The worker did not answer in time; the message may still arrive.");
-      // Still running: say so once the session holds the line. A read that
-      // fails here only means "not yet"; the read after the request ends decides.
-      if (!held && options.onHeld !== undefined && Date.now() >= nextHeldLook) {
-        nextHeldLook = Date.now() + HELD_POLL_MS;
-        if (await sessionHoldsLine(client, target.sessionId, requestId).catch(() => false)) {
-          held = true;
-          options.onHeld();
-        }
-      }
-      await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? SEND_POLL_MS));
+    // The request's one wait, with the door's answer; while it runs, look for the line for `onHeld`.
+    // Not awaited: a look still in flight when the request settles must not hold up its answer.
+    const ended = new AbortController();
+    let held = false;
+    const onHeld = options.onHeld;
+    if (onHeld !== undefined) {
+      void watchHeld(client, target.sessionId, requestId, () => ((held = true), onHeld()), ended.signal);
     }
+    let settled: RequestResult;
+    try {
+      settled = await call(() => actions.request(requestId).result({ pollMs: options.pollMs ?? SEND_POLL_MS, timeoutMs }));
+    } catch (error) {
+      if (error instanceof ClientCallFailed && error.failure instanceof ClientHttpError && error.failure.status === 0) {
+        throw unconfirmed("The worker did not answer in time; the message may still arrive.");
+      }
+      throw error;
+    } finally {
+      ended.abort();
+    }
+    if (settled.status === "failed") {
+      throw new TurnNotDelivered("refused", settled.error?.message ?? "The worker refused the message and gave no reason.");
+    }
+    if (settled.status !== "completed" && settled.status !== "suspended") {
+      throw new TurnNotDelivered("not-sent", `The message's request ended ${settled.status}.`);
+    }
+    suspended = settled.status === "suspended";
     const holds = held || (await sessionHoldsLine(client, target.sessionId, requestId));
     if (holds === false) throw unconfirmed("The worker answered, but its session doesn't hold your message.");
     if (holds === undefined) throw unconfirmed("The worker answered, but its session is too long to find your message in.");

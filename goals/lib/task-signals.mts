@@ -38,7 +38,7 @@
 import type { ChildProcess } from "node:child_process";
 import type { Page } from "playwright";
 import { leaseLapsed } from "@flow-state-dev/orchestration/tasks";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { plant, type Plant } from "./plant.mts";
 import { crashAndRestart, stopProcessGroup } from "./server.mts";
 import { goalTmpDir } from "./paths.mts";

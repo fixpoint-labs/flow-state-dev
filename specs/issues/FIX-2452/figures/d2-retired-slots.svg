@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D2, what happens to queue and scheduler, the two profile slots that back nothing and have no store coming. Chosen: removed, and naming one is refused. Instead of: kept as reserved no-ops. It comes down to the first row: every slot a reader can name does something or has its store coming, primary and bus, and blobs reserved for attachments, where reserved queue and scheduler are two promises nothing keeps. The price is the second row: code that names one fails at construction with the replacement and a version named, where reserved slots keep running because they did nothing. The third row is a tie: when a real store ships, adding its slot is the same work either way. Locks in: a slot arrives with the store that backs it, reserved only while that store is in flight. Flips if: a store for one of them is in the next minor, already taken for blobs, which attachments back."
+<svg viewBox="0 0 940 418" role="img" aria-label="D2, what happens to queue and scheduler, the two profile slots that back nothing and have no store coming. Chosen: removed from the type, so naming one fails to compile. Instead of: kept as reserved no-ops. It comes down to the first row: every slot a reader can name does something or has its store coming, primary and bus, and blobs reserved for attachments, where reserved queue and scheduler are two promises nothing keeps. The price is the second row: code that names one fails to compile, the slot gone from the type, where reserved slots keep running because they did nothing. The third row is a tie: when a real store ships, adding its slot is the same work either way. Locks in: a slot arrives with the store that backs it, reserved only while that store is in flight. Flips if: a store for one of them is in the next minor, already taken for blobs, which attachments back."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -40,7 +40,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Removed, and refused</text>
+    <text class="t-h c-code" x="228" y="112">Removed from the type</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Kept as reserved no-ops</text>
@@ -62,8 +62,8 @@
     <text class="t-lbl" x="32" y="218">CODE THAT NAMES</text>
     <text class="t-lbl" x="32" y="231">ONE TODAY</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Fails at construction</text>
-    <text class="t-s" x="248" y="241">the error names the replacement and a version</text>
+    <text class="t-b" x="248" y="223">Fails to compile</text>
+    <text class="t-s" x="248" y="241">the slot is gone from the type</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Keeps running</text>
     <text class="t-s" x="612" y="241">it did nothing anyway</text>

@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * `cursorAgent` — handler block running Cursor's coding agent through the
  * Cursor SDK's local runtime.
@@ -10,7 +11,7 @@
  * Two things are configuration and never block input — the directory a run
  * writes in and the conversation it continues — because this block is exposed
  * to models as a tool through its capability, and a field on the input is a
- * field a model can set (BP-031). Both arrive through resolvers the host writes.
+ * field a model can set. Both arrive through resolvers the host writes.
  * The write side of the second one is `onSession`: the moment the SDK opens an
  * agent, the id goes to the host's durable state, BEFORE the prompt is sent. A
  * cancelled run returns no handle, so the hook is the only carrier that survives
@@ -34,12 +35,13 @@
  * pull-request record. It is a session resource, not session state, so a task
  * board still dispatches the block.
  */
+import { assertTestedSdkVersion, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
+import { handler } from "@flow-state-dev/core";
 import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
   OBSERVED_PULL_REQUESTS,
   formatRunDuration,
-  handler,
   harnessConversationNamespace,
   harnessRunInputSchema,
   harnessRunNamespace,
@@ -50,11 +52,11 @@ import {
   replacePlanList,
   reportHarnessActivity,
   type PlanListCollection,
-} from "@flow-state-dev/core";
+  reportHarnessSpend,
+} from "@flow-state-dev/core/harness";
 import { randomUUID } from "node:crypto";
-import { reportHarnessSpend } from "@flow-state-dev/core/types";
+import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import type {
-  DeclaredResourceEntry,
   HarnessActivityHook,
   HarnessCallbackContext,
   HarnessResolver,
@@ -63,10 +65,9 @@ import type {
   HarnessSteer,
   HarnessSteerHook,
   PlanListItem,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/harness";
 import type { UsesSlot } from "@flow-state-dev/core";
 import {
-  assertTestedSdkVersion,
   createDefaultResolveCursorClient,
   readInstalledCursorSdkVersion,
 } from "./cursor-client";
@@ -83,6 +84,7 @@ import {
   isUnknownAgentFailure,
 } from "./errors";
 import {
+  TESTED_CURSOR_SDK,
   CURSOR_SOURCE,
   cursorAgentHandleSchema,
   type CursorAgentHandle,
@@ -93,7 +95,6 @@ import {
   type CursorRunResult,
   type CursorRunUsage,
   type CursorSendOptions,
-  type InstalledSdkVersionReader,
   type ResolveCursorClient,
   type ResolvedCursorClient,
 } from "./types";
@@ -124,6 +125,7 @@ const CURSOR_HARNESS = "cursor";
 
 /** Options for {@link cursorAgent}. */
 export interface CursorAgentOptions {
+  // BP-031.
   /**
    * Where the run works. Called once per invocation, before anything is
    * created, and its answer becomes the agent's `local.cwd`.
@@ -131,7 +133,7 @@ export interface CursorAgentOptions {
    * **A resolver, never a field on the block's input** — a correctness
    * constraint, not a style preference. The same block is a model-facing tool
    * through the capability, so a directory reachable from the input is one the
-   * model could choose (BP-031). Omit it and the SDK picks its own default,
+   * model could choose. Omit it and the SDK picks its own default,
    * which is almost never what a host wants.
    */
   cwd?: HarnessResolver<string>;
@@ -143,12 +145,13 @@ export interface CursorAgentOptions {
    * model resuming any conversation it has seen into the current checkout.
    */
   resume?: HarnessResolver<string | null | undefined>;
+  // LAB-152 §9.
   /**
    * The write side of {@link resume}: called once, with the agent id, the
    * moment the SDK opens one — and before the prompt is sent.
    *
    * This is the only carrier that survives a cancelled run. A throw returns no
-   * handle (LAB-152 §9) and a status item is transient by contract, so a host
+   * handle and a status item is transient by contract, so a host
    * whose deadline fired would otherwise have nothing to resume from. The hook
    * fires on a successful `create` / `resume` and on nothing else, which is why
    * a REFUSED resume never reaches it: the SDK throws instead of opening an
@@ -169,8 +172,9 @@ export interface CursorAgentOptions {
    * unanswered.
    */
   onSteerable?: HarnessSteerHook;
+  // FIX-2290.
   /**
-   * Called with each tool call the run starts (FIX-2290), so a host can say
+   * Called with each tool call the run starts, so a host can say
    * how the run is doing. Not awaited, and a throw is logged and swallowed.
    * Assistant text is not reported: Cursor streams it in pieces, and a piece
    * is not a line a person can read.
@@ -191,7 +195,7 @@ export interface CursorAgentOptions {
    * `agent.model`. Setting this beside `agent.model` or `send.model` is
    * refused when the block is built: one owner per value.
    */
-  model?: ModelChoice | HarnessResolver<ModelChoice | null | undefined>;
+  model?: string | CursorModelSelection | HarnessResolver<string | CursorModelSelection | null | undefined>;
   /**
    * The SDK's agent options, forwarded verbatim to `Agent.create` /
    * `Agent.resume` (model, api key, mode, tools, MCP servers, the rest of
@@ -288,18 +292,18 @@ export interface CursorAgentOptions {
  * import this symbol from the module directly; a consumer of the package cannot
  * name it, so the only reachable behaviour is the real gate.
  */
-export const INTERNAL_SDK_VERSION_READER = Symbol("cursor.internal.readInstalledSdkVersion");
+export const INTERNAL_CURSOR_SDK_VERSION_READER = Symbol("cursor.internal.readInstalledSdkVersion");
 
 /**
  * The module the `env` child process loads the SDK from, keyed
- * by a symbol for the same reason as {@link INTERNAL_SDK_VERSION_READER}: the
+ * by a symbol for the same reason as {@link INTERNAL_CURSOR_SDK_VERSION_READER}: the
  * specs point the child at a scripted SDK, and no host can.
  */
 export const INTERNAL_CHILD_SDK_MODULE = Symbol("cursor.internal.childSdkModule");
 
 /** The shape the specs pass through the symbols above. */
 interface InternalTestSeams {
-  [INTERNAL_SDK_VERSION_READER]?: InstalledSdkVersionReader;
+  [INTERNAL_CURSOR_SDK_VERSION_READER]?: InstalledSdkVersionReader;
   [INTERNAL_CHILD_SDK_MODULE]?: string;
 }
 
@@ -340,13 +344,14 @@ interface SettledRun {
   resultText: string | null;
 }
 
+// BP-031.
 /**
  * Refuse a forwarded option group carrying something the block owns.
  *
  * A runtime check rather than a type-level one because the types this package
  * declares for the two groups already omit these keys — so the only way one
  * arrives is a caller spreading an untyped bag, which is exactly the case a
- * type cannot catch and the case that matters (BP-031).
+ * type cannot catch and the case that matters.
  *
  * `agent.local.cwd` is nested. Checking the group as a flat bag would miss it,
  * and a host that put the directory there expecting it to be forwarded would
@@ -437,7 +442,8 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
   } = options;
 
   assertTestedSdkVersion(
-    (options as InternalTestSeams)[INTERNAL_SDK_VERSION_READER] ?? readInstalledCursorSdkVersion,
+    TESTED_CURSOR_SDK,
+    (options as InternalTestSeams)[INTERNAL_CURSOR_SDK_VERSION_READER] ?? readInstalledCursorSdkVersion,
   );
   assertNoOwnedKeys(agentOptions, sendOptions);
   if (model !== undefined && (agentOptions?.model !== undefined || sendOptions?.model !== undefined)) {
@@ -481,7 +487,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       }
       // A deadline that has already fired must not start a runtime it will
       // immediately have to kill.
-      if (ctx.signal?.aborted) throw new CursorAgentAbortedError(null);
+      if (ctx.signal?.aborted) throw new CursorAgentAbortedError(null, ctx.signal.reason);
       if (recordPullRequests) startPullRequestRecorder(ctx);
 
       const emitState = createEmitState();
@@ -515,7 +521,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
         // have to cancel — the resolvers, the client, create/resume and
         // `onSession` all await before this, and a signal that is already
         // aborted never fires `abort` again.
-        if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId);
+        if (ctx.signal?.aborted) throw new CursorAgentAbortedError(agent.agentId, ctx.signal.reason);
         const run = await agent.send(prompt, sendOptions);
         // Reported from here on as the run goes (FIX-2288), under one id for
         // the run: its configured model and no tokens at once, then each
@@ -574,7 +580,8 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
   });
 }
 
-/** What a run has spent so far, and how to report it (FIX-2145, FIX-2288). */
+// FIX-2145, FIX-2288.
+/** What a run has spent so far, and how to report it. */
 interface RunSpent {
   usage: CursorRunUsage | null;
   /** The model the run uses: the configured one, then the one the stream names. */
@@ -654,6 +661,7 @@ function offerSteer(
   };
 }
 
+// BP-031.
 /**
  * Open (or resume) the agent, fire {@link CursorAgentOptions.onSession}, and
  * hand the live agent back. The prompt is not sent here — the hook must run
@@ -666,7 +674,7 @@ function offerSteer(
  * Neither is handed the run's input, and that is the contract's guarantee
  * rather than an omission here: the prompt is the one thing a model controls,
  * so a directory or a session id derived from it is a decision made from
- * caller-controllable input (BP-031). The resolver signature takes the
+ * caller-controllable input. The resolver signature takes the
  * context alone, which makes that unavailable rather than merely discouraged.
  */
 async function openAgent(args: {
@@ -887,6 +895,7 @@ async function mirrorRun(
   }
 }
 
+// LAB-152's contract.
 /**
  * Read the run's outcome from `run.wait()` — the sole authority.
  *
@@ -898,7 +907,7 @@ async function mirrorRun(
  * `supports("wait") === false` is the scripted-double escape and the one
  * honest answer when the SDK cannot settle: `outcome` stays `null` — "we do
  * not know how it ended" — rather than `failed`. A manager settles runs on
- * that difference (LAB-152's contract). Absent `supports` means every
+ * that difference. Absent `supports` means every
  * operation is assumed supported, which is what a scripted double that does
  * implement `wait` wants.
  *
@@ -1024,7 +1033,7 @@ function toRunFailure(err: unknown, sessionId: string | null): CursorAgentError 
   // Re-minted rather than passed through: the abort raised inside the race
   // knows no agent id, and the id is the whole point of the error — it is what
   // lets a manager resume the run its own deadline killed.
-  if (err instanceof CursorAgentAbortedError) return new CursorAgentAbortedError(sessionId);
+  if (err instanceof CursorAgentAbortedError) return new CursorAgentAbortedError(sessionId, err.reason);
   // Already ours. Wrapping again buries the class under a second
   // "Cursor run failed:" prefix and tells a caller nothing new.
   if (err instanceof CursorSdkNotInstalledError) return err;
@@ -1103,13 +1112,13 @@ function abortRace(signal: AbortSignal | undefined): {
   // would leave the block waiting on the vendor's stream — the exact hang the
   // race exists to prevent, arrived at by the one path the race did not cover.
   if (signal.aborted) {
-    const rejected = Promise.reject(new CursorAgentAbortedError(null));
+    const rejected = Promise.reject(new CursorAgentAbortedError(null, signal.reason));
     rejected.catch(() => {});
     return { promise: rejected, dispose: () => {} };
   }
   let onAbort: () => void = () => {};
   const promise = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(new CursorAgentAbortedError(null));
+    onAbort = () => reject(new CursorAgentAbortedError(null, signal.reason));
     signal.addEventListener("abort", onAbort, { once: true });
   });
   // Claimed here so the loser of the race is never an unhandled rejection. The

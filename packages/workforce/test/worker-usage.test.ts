@@ -11,12 +11,14 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
-import { reportHarnessSpend, type FlowInstance, type HarnessRunSpend } from "@flow-state-dev/core/types";
-import { abortRequest, createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import type { FlowInstance } from "@flow-state-dev/core/types";
+import { reportHarnessSpend, type HarnessRunSpend } from "@flow-state-dev/core/harness";
+import { abortRequest } from "@flow-state-dev/engine/host";
+import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
 import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerInstallation } from "../src/workers/installation";
-import { WORKER_USAGE_ACTION, workerUsageAction, type WorkerUsageRow } from "../src/workers/worker-usage";
+import { WORKER_USAGE_ACTION, workerUsageAction, type WorkerUsageView } from "../src/workers/worker-usage";
 
 const input = z.object({ message: z.string(), harness: z.any().optional(), waitForAbort: z.boolean().optional() });
 const DAY = 24 * 60 * 60 * 1000;
@@ -141,7 +143,7 @@ async function harnessOf(h: ReturnType<typeof host>) {
     expect((await runtime.stores.request.get(requestId))?.status).toBe("aborted");
   };
   const usage = async (userId: string, days?: number) =>
-    ((await act(userId, "em", WORKER_USAGE_ACTION, days === undefined ? {} : { days })) as { workers: WorkerUsageRow[] }).workers;
+    ((await act(userId, "em", WORKER_USAGE_ACTION, days === undefined ? {} : { days })) as { workers: WorkerUsageView[] }).workers;
   return { turn, stoppedTurn, usage };
 }
 

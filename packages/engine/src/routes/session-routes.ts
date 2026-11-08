@@ -5,7 +5,6 @@ import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type {
-  RequestActionResult,
   RequestRecord,
   SessionParentage,
   SessionRecord,
@@ -35,6 +34,8 @@ import {
   loadTenantSession,
   unknownSessionResponse,
   parseJsonBody,
+  projectRequestResult,
+  type ProjectedRequestResult,
   refuseUnattributedRecord,
   sessionCreateRefusedResponse
 } from "./route-utils";
@@ -60,8 +61,9 @@ const STATUS_READS_IN_FLIGHT = 8;
 type SessionRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
+  // FIX-682.
   /**
-   * Tenant id from the request header (FIX-682). Namespaces every session
+   * Tenant id from the request header. Namespaces every session
    * storage key so a route resolves only the calling tenant's session.
    * Undefined for single-tenant requests.
    */
@@ -85,9 +87,10 @@ type SessionRouteContext = {
   checkedSession?: SessionRecord | null;
 };
 
+// FIX-1440.
 /**
  * The one include this listing accepts, spelled for callers rather than for
- * the store (FIX-1440).
+ * the store.
  *
  * `parentage` is a storage concept with three modes; a caller has one question
  * — *do I also want the sessions a dispatcher ran work in?* — so that is what
@@ -99,13 +102,14 @@ const DISPATCH_RUNS_INCLUDE = "dispatch-runs";
 /** The include that adds each row's latest request status. */
 const STATUS_INCLUDE = "status";
 
+// FIX-1009.
 /**
  * Map the `include` query parameter onto a store parentage.
  *
  * `undefined` — no include — leaves the option **off**, so the listing narrows
  * to top-level sessions exactly as it always has. That is the rule, not an
  * implementation detail: a caller that did not ask gets today's result set,
- * unchanged (FIX-1009, and `SessionListOptions.parentage`).
+ * unchanged (and `SessionListOptions.parentage`).
  *
  * An unrecognised token is a **400 naming what is accepted**, never a silent
  * ignore: a caller that misspells the include would otherwise be told nothing
@@ -194,6 +198,9 @@ function resolveStateFilter(
         "the flowKind of a registered flow."
     };
   }
+  // The flow's own schema, not the merged one: the store filters the state it
+  // holds, and a field only a block declares is filled at read time, never
+  // stored at birth, so filtering on it would answer an empty list.
   const readonly = new Set(getReadonlyStateKeys(flow.session?.stateSchema));
   const state: Record<string, string> = {};
   for (const [name, value] of entries) {
@@ -658,21 +665,15 @@ export async function handleListSessionRequests(
 }
 
 /**
- * A request as the session list sends it: its stored `result` plus
- * `hasOutput`, with `result.output` only when the caller asked for it. A
- * record with no `result` (unfinished, or written before results were
- * stored) is sent as it is.
+ * A request as the session list sends it: its stored `result` through
+ * `projectRequestResult`. A record with no `result` (unfinished, or written
+ * before results were stored) is sent as it is.
  */
 function withListedResult(
   record: RequestRecord,
   includeOutput: boolean
-): RequestRecord | (Omit<RequestRecord, "result"> & { result: ListedRequestActionResult }) {
+): RequestRecord | (Omit<RequestRecord, "result"> & { result: ProjectedRequestResult }) {
   const result = record.result;
   if (result == null) return record;
-  const hasOutput = Object.prototype.hasOwnProperty.call(result, "output");
-  const { output: _output, ...summary } = result;
-  return { ...record, result: { ...(includeOutput ? result : summary), hasOutput } };
+  return { ...record, result: projectRequestResult(result, includeOutput) };
 }
-
-/** A stored action result as the session list sends it. */
-type ListedRequestActionResult = RequestActionResult & { hasOutput: boolean };

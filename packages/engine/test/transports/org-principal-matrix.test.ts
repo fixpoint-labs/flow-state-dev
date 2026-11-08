@@ -19,11 +19,13 @@ import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowRegistry,
-  createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver,
   PrincipalResolutionError
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
+import { createInboundTransportHost } from "../../src/host";
 import type { PrincipalResolver } from "../../src/transports/types";
 import type { PrincipalResolutionContext } from "@flow-state-dev/core/types";
 

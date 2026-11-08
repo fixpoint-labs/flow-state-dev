@@ -68,8 +68,9 @@ const REQUESTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at)"
 ];
 
+// FIX-1010.
 /**
- * FIX-1010 — the two composite indexes the parent-to-child read adds, built
+ * The two composite indexes the parent-to-child read adds, built
  * **concurrently**.
  *
  * They are the only indexes in this file that can land on an already-populated
@@ -218,8 +219,9 @@ CREATE TABLE IF NOT EXISTS active_requests (
 );
 `;
 
+// FIX-438.
 /**
- * Add `source` column to pre-FIX-438 `active_requests` tables.
+ * Add `source` column to older `active_requests` tables.
  * Idempotent — wrapped in a DO block so absence of the column on a fresh
  * database is a no-op.
  */
@@ -238,14 +240,15 @@ BEGIN
 END $$;
 `;
 
+// FIX-999; BP-030.
 /**
- * Add the `queued_at` column to pre-FIX-999 `active_requests` tables.
+ * Add the `queued_at` column to older `active_requests` tables.
  *
  * Nullable with no default, and **no backfill is possible or wanted**: the
  * column marks a request registered at enqueue time and not yet claimed by a
  * worker, which cannot be reconstructed after the fact. NULL reads back as
  * "claimed", which is how every existing row already behaves — swept on
- * `last_heartbeat_at` exactly as before (BP-030). Idempotent.
+ * `last_heartbeat_at` exactly as before. Idempotent.
  */
 const ADD_ACTIVE_REQUESTS_QUEUED_AT_MIGRATION = `
 DO $$
@@ -262,8 +265,9 @@ BEGIN
 END $$;
 `;
 
+// FIX-682.
 /**
- * Add the `tenant_id` column to pre-FIX-682 `sessions`, `requests`, and
+ * Add the `tenant_id` column to older `sessions`, `requests`, and
  * `active_requests` tables. Idempotent — wrapped in a DO block so absence of
  * the column adds it and presence is a no-op. Must run BEFORE the index DDL so
  * `idx_sessions_user_tenant` / `idx_requests_session_tenant` find the column.
@@ -288,6 +292,7 @@ BEGIN
 END $$;
 `;
 
+// BP-030.
 /**
  * Add the nullable `flow_id` column — the owning flow instance — to
  * `sessions`, `requests` and `active_requests` tables created before instance
@@ -299,10 +304,11 @@ END $$;
  * registered instance. A blanket `flow_id = flow_kind` would silently assign a
  * collection's history to whichever member happens to share the kind's name.
  * Known singleton rows need no backfill to keep working — the runtime reads a
- * NULL owner on a singleton kind compatibly (BP-030).
+ * NULL owner on a singleton kind compatibly.
  */
+// FIX-1442.
 /**
- * FIX-1442: add the nullable `org_id` column to a `schedule_index` created
+ * Add the nullable `org_id` column to a `schedule_index` created
  * before schedules carried an organization.
  *
  * Nullable with **no backfill**: the organization a standing instruction fires
@@ -314,13 +320,14 @@ const ADD_SCHEDULE_INDEX_ORG_ID_MIGRATION = `
 ALTER TABLE IF EXISTS schedule_index ADD COLUMN IF NOT EXISTS org_id TEXT;
 `;
 
+// FIX-1546; BP-030.
 /**
- * FIX-1546: re-key a `schedule_index` created before rows carried their
+ * Re-key a `schedule_index` created before rows carried their
  * storage cell from `(user_id, key)` to `(cell, key)`.
  *
  * Every existing row is adopted as the person's own app-wide cell: every
  * released version wrote index rows only from that cell, so the value is known,
- * not guessed (BP-030). The cell is the engine's storage key for it — the user
+ * not guessed. The cell is the engine's storage key for it — the user
  * id with `\` and `:` escaped — so the next write from that cell updates the
  * same row rather than adding a second one.
  *
@@ -378,8 +385,9 @@ BEGIN
 END $$;
 `;
 
+// FIX-1009.
 /**
- * Add the `parent_session_id` column to a pre-FIX-1009 `sessions` table.
+ * Add the `parent_session_id` column to an older `sessions` table.
  * Idempotent — wrapped in a DO block so absence of the column adds it and
  * presence is a no-op. Must run BEFORE the index DDL so
  * `idx_sessions_parent_session_id` finds the column.
@@ -684,8 +692,9 @@ CREATE TABLE IF NOT EXISTS wakes (
 
 const WAKES_INDEXES = ["CREATE INDEX IF NOT EXISTS idx_wakes_due_at ON wakes(due_at)"];
 
+// FIX-428.
 /**
- * One-shot rename migrations for deployments that ran the pre-FIX-428 schema
+ * One-shot rename migrations for deployments that ran the older schema
  * (project scope). Idempotent: each statement no-ops once the new name is in
  * place, so subsequent boots are cheap. Must run BEFORE the CREATE TABLE / INDEX
  * DDL so the create steps see the renamed columns and don't try to add an

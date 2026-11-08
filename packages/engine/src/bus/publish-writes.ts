@@ -1,5 +1,6 @@
+// FIX-2426.
 /**
- * The one publish point (FIX-2426): every write to the request and session
+ * The one publish point: every write to the request and session
  * stores publishes a notice on its session's topic, once the write can be
  * read.
  *
@@ -46,7 +47,7 @@ import { createInMemoryBus } from "./in-memory-bus";
 import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
 import { FlowStateConfigError } from "../errors/flow-error";
 import type { BusTopic, ChangeBus, ChangeNotice } from "./types";
-import type { ChangeKind } from "@flow-state-dev/core";
+import type { ChangeKind } from "@flow-state-dev/core/internal";
 import type { RequestRecord, RequestStore, SessionRecord, SessionStore, StoreRegistry } from "../stores/types";
 import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 
@@ -129,12 +130,13 @@ function noticeKey(notice: ChangeNotice): string {
   return `${scope}\u0000${tenantId}\u0000${id}\u0000${resource ?? ""}\u0000${notice.kind}\u0000${notice.origin?.requestId ?? ""}`;
 }
 
+// FIX-1506.
 /**
  * Queue `notices` for `bus`, to go out at the end of this microtask turn,
  * folded by topic, kind and origin. Never throws, and a failed publish never
  * fails the write that raised it. Every publisher goes through this one:
  * the request and session store wrappers here, and the run's resource and
- * scope-state seams and the client's resource routes (FIX-1506), and the
+ * scope-state seams and the client's resource routes, and the
  * board-notice seam.
  */
 export function publishNotices(bus: ChangeBus, notices: readonly ChangeNotice[]): void {

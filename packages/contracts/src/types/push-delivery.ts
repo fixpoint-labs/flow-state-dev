@@ -1,5 +1,6 @@
+// FIX-2428.
 /**
- * The push-delivery wire (FIX-2428): what a client and a server say to each
+ * The push-delivery wire: what a client and a server say to each
  * other to carry change notices to a browser.
  *
  * A client asks the server which push it has (`GET /capabilities` →

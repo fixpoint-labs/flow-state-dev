@@ -34,14 +34,14 @@ import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { runAction } from "@flow-state-dev/engine";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import {
   defineTaskCollection,
   ticketForClaim,
   type Task,
   type TaskCollectionRef,
   type TaskWriteOutcome,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/tasks";
 import {
   taskBoard,
   taskWorkerInputSchema,

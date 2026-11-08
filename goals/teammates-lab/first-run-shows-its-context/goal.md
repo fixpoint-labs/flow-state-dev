@@ -21,8 +21,8 @@ working folder, the pages built from a scratch copy of the lab's source. Cursor 
 - **codex-chip**: the Codex chip reads not ready and names `codex login`. The run then logs Codex
   in through the SDK's own program into that `CODEX_HOME` and presses Re-check; the chip reads
   ready within 30s.
-- **starter**: clicking the first starter line in Chief of Staff's empty conversation puts it in
-  the composer, and Chief of Staff's session gets no request within 3s.
+- **starter**: clicking the first starter line in Lead's empty conversation puts it in
+  the composer, and Lead's session gets no request within 3s.
 
 **Anti-game:** the folder and model are random per run, so a strip that doesn't read the lab
 can't show them. The Codex sign-in really changes between the two reads, through Codex's own

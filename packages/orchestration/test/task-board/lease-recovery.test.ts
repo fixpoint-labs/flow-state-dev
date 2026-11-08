@@ -29,13 +29,13 @@ import { handler, SuspensionError } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createStateBackedTaskCollection,
   leaseLapsed,
-  MIN_LEASE_DURATION_MS,
   type TaskCollectionRef,
   type ClaimOrder,
   type TaskWorker,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { MIN_LEASE_DURATION_MS } from "../../src/tasks/collection/internal";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 import { createFakeSequencerState } from "../helpers";
 

@@ -5,7 +5,7 @@
  * Two moments, deliberately separate:
  *
  * - **When the block is built** (synchronous): read the installed SDK's version
- *   and refuse anything but the tested pin. A refusal here is a configuration
+ *   and refuse one outside the tested range (core's SDK gate). A refusal here is a configuration
  *   error a host sees at wiring time rather than mid-run.
  * - **On the first run** (asynchronous): lazily `import()` the SDK and take its
  *   `Agent` entry point. The SDK is an optional peer, so importing this package
@@ -15,17 +15,11 @@
  * Tests inject a scripted client through their own resolver and never touch the
  * real SDK — the shape `codex/codex-client.ts` already uses.
  */
-import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
-import { dirname, join, parse } from "node:path";
-import { fileURLToPath } from "node:url";
-import { CursorSdkNotInstalledError, CursorSdkVersionMismatchError } from "./errors";
-import { TESTED_SDK_VERSION } from "./types";
+import { CursorSdkNotInstalledError } from "./errors";
+import { readInstalledSdkVersion, type InstalledSdkVersion } from "@flow-state-dev/core/internal";
 import type {
   CursorAgentLike,
   CursorCreateOptions,
-  InstalledSdkVersion,
-  InstalledSdkVersionReader,
   ResolveCursorClient,
   ResolvedCursorClient,
 } from "./types";
@@ -46,77 +40,11 @@ const defaultImporter: CursorSdkImporter = () =>
   import(/* @vite-ignore */ SDK_MODULE) as Promise<{ Agent?: unknown }>;
 
 /**
- * What can be established about the `@cursor/sdk` installed beside this
- * package: its version, that there is none, or that we cannot tell.
- *
- * The version comes from walking `node_modules` upward for the SDK's manifest,
- * rather than asking the module resolver, because the resolver cannot answer
- * this question: the SDK's `exports` map publishes no `./package.json` entry, so
- * `require.resolve("@cursor/sdk/package.json")` throws
- * `ERR_PACKAGE_PATH_NOT_EXPORTED` on a package that is installed and perfectly
- * usable. The walk is the same one Node performs for a bare specifier, minus the
- * `exports` enforcement, which is not relevant to reading a manifest.
- *
- * **The third answer is the one that matters.** A layout the walk cannot see —
- * Yarn PnP, a custom loader — is not the same fact as "nothing is installed",
- * and reporting it as such would let an unvalidated SDK through the very gate
- * that exists to refuse one, while the dynamic import went on loading and
- * running it. So when the walk comes up empty the resolver is asked to
- * distinguish the two, using its failure mode: `MODULE_NOT_FOUND` means there is
- * genuinely nothing there; anything else means the SDK is present and only its
- * version is unknown, which the gate refuses.
+ * Which `@cursor/sdk` is installed beside this package, read the way core's
+ * SDK gate reads every harness's (`readInstalledSdkVersion`).
  */
 export function readInstalledCursorSdkVersion(): InstalledSdkVersion {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  const { root } = parse(dir);
-  for (;;) {
-    try {
-      const manifest = JSON.parse(
-        readFileSync(join(dir, "node_modules", ...SDK_MODULE.split("/"), "package.json"), "utf8"),
-      ) as { version?: string };
-      if (typeof manifest.version === "string") {
-        return { kind: "version", version: manifest.version };
-      }
-    } catch {
-      // Not installed at this level, or an unreadable manifest — keep walking.
-    }
-    if (dir === root) break;
-    dir = dirname(dir);
-  }
-
-  // The walk found nothing. That is only safe if the SDK is genuinely not
-  // installed, so ASK THE RESOLVER rather than assuming it.
-  try {
-    createRequire(import.meta.url).resolve(SDK_MODULE);
-    return { kind: "unreadable", reason: "its manifest could not be located" };
-  } catch (err) {
-    const code = (err as { code?: string }).code;
-    if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
-      return { kind: "absent" };
-    }
-    return {
-      kind: "unreadable",
-      reason: `its manifest could not be located and resolving it failed with ${code ?? "an unknown error"}`,
-    };
-  }
-}
-
-/**
- * The version gate's enforcement. Throws {@link CursorSdkVersionMismatchError}
- * when an SDK is installed at any version but the tested pin; returns quietly
- * when the version matches, and when nothing is installed at all — a missing SDK
- * has no version to check, and its absence surfaces on the first run as an
- * install hint instead.
- */
-export function assertTestedSdkVersion(read: InstalledSdkVersionReader): void {
-  const installed = read();
-  if (installed.kind === "absent") return;
-  if (installed.kind === "version" && installed.version === TESTED_SDK_VERSION) return;
-  throw new CursorSdkVersionMismatchError(
-    installed.kind === "version" ? installed.version : null,
-    TESTED_SDK_VERSION,
-    installed.kind === "unreadable" ? installed.reason : undefined,
-  );
+  return readInstalledSdkVersion(SDK_MODULE, import.meta.url);
 }
 
 /**

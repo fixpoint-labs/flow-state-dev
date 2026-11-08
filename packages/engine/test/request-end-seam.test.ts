@@ -9,10 +9,11 @@
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { onRequestEnded, type RequestEnding } from "@flow-state-dev/core/types";
+import { onRequestEnded, type RequestEnding } from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -13,7 +13,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { askSessionOf } from "../src/lib/ask-session";
 import { elapsed, emptyInboxSentence, isQueued, tasksSummary } from "../src/lib/tasks";
 import { inboxItemAt, type LoadedSnapshot } from "../src/lib/derive";
-import { inboxSection, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
+import { inboxSection, type Ask, type BoardTaskView, type Worker } from "../src/lib/reads";
 
 let index = 0;
 function item(fields: Record<string, unknown>): OutputItem {
@@ -56,7 +56,7 @@ describe("FROM THE SESSION and the replies (BR-18, I17, I18)", () => {
   });
 });
 
-const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRow => ({
+const row = (id: string, status: string, extra: Partial<BoardTaskView> = {}): BoardTaskView => ({
   boardRef: `${extra.ownerSessionId ?? "s_feature"}.tasks`,
   ownerSessionId: extra.ownerSessionId ?? "s_feature",
   id,
@@ -80,8 +80,8 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
   ...extra,
 });
 
-function snapshot(rows: BoardRow[], asks: Ask[] = [], workers: Worker[] = []): LoadedSnapshot {
-  const byHolder = new Map<string, BoardRow[]>();
+function snapshot(rows: BoardTaskView[], asks: Ask[] = [], workers: Worker[] = []): LoadedSnapshot {
+  const byHolder = new Map<string, BoardTaskView[]>();
   for (const r of rows) byHolder.set(r.ownerSessionId, [...(byHolder.get(r.ownerSessionId) ?? []), r]);
   const boards: LoadedSnapshot["boards"] = Object.fromEntries([...byHolder].map(([id, rs]) => [id, { ok: true, value: { refs: [rs[0]!.boardRef], rows: rs } }]));
   return {
@@ -121,7 +121,7 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
         // Held on a question for you: running, and one Inbox item of its own (FIX-2131).
         row("B", "in_progress", {
           ownerSessionId: "s_desk",
-          holds: [{ id: "q-B", actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
+          holds: [{ id: "q-B", actor: "user", openedAt: 1, source: { kind: "task", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
         }),
         row("C", "pending"),
         row("D", "completed", { ownerSessionId: "s_other" }),

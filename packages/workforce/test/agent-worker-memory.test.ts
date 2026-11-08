@@ -28,7 +28,7 @@ import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext, mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { system } from "@flow-state-dev/memory";

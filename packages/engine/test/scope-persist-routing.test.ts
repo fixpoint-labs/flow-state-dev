@@ -11,11 +11,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import {
-  createScopeStateOps,
-  createStateContainer,
-  type SessionRecord
-} from "../src";
+import { createScopeStateOps, createStateContainer } from "../src/stores/state-container";
+import { type SessionRecord } from "../src/host";
 import { createScopePersist } from "../src/stores/scope-persist";
 import type {
   DeltaStoreOps,

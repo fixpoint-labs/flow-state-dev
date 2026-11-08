@@ -1,5 +1,5 @@
 /**
- * The Teammates lab's goal page: its real `Conversation` and `SessionPopup`,
+ * The Teammates lab's goal page: its real `Conversation` and the `SessionOverlay` modal its popups open in,
  * with the lab's stylesheet, on a scripted adapter (`script.ts`) in place of
  * the server. Copied to the lab's scratch copy as `src/goal/teammates.tsx`.
  *
@@ -8,9 +8,9 @@
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import type { ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
+import type { ConversationEntry, LabAdapter, LabWorker } from "../adapter";
 import { Conversation } from "../components/Conversation";
-import { SessionPopup } from "../components/SessionPopup";
+import { SessionOverlay } from "../components/flow-state/session-overlay";
 import "../styles.css";
 import { exposeGoal, script, useConversation, useOpen, type Line } from "./script";
 
@@ -50,7 +50,7 @@ const adapter = new Proxy({} as LabAdapter, {
   },
 });
 
-const worker: WorkerRow = { id: "helper", name: "Helper", role: "helps out" };
+const worker: LabWorker = { id: "helper", name: "Helper", role: "helps out" };
 
 function Page() {
   const open = useOpen();
@@ -72,13 +72,13 @@ function Page() {
         onToggleTalk={() => undefined}
       />
       {surface === "popup" ? (
-        <SessionPopup key={open} label="Exchange" title={`Conversation ${open}`} onClose={() => undefined}>
+        <SessionOverlay key={open} variant="modal" label="Exchange" title={`Conversation ${open}`} onClose={() => undefined}>
           {conversation.lines.map((line) => (
             <div key={line.id} className="text-sm whitespace-pre-wrap" data-entry={line.who}>
               {line.text}
             </div>
           ))}
-        </SessionPopup>
+        </SessionOverlay>
       ) : null}
     </div>
   );

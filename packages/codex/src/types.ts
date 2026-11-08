@@ -10,7 +10,7 @@
  *   `ThreadItem` kinds `codex exec --experimental-json` emits. Declared here
  *   rather than imported so this package never type-depends on the optional
  *   peer, exactly as `claude-code/sdk/types.ts` does for the Agent SDK. The
- *   declarations mirror `@openai/codex-sdk` {@link TESTED_SDK_VERSION}; the
+ *   declarations mirror `@openai/codex-sdk` {@link TESTED_CODEX_SDK}; the
  *   version gate is what keeps them true (see `./codex-client`).
  * - The **seam types** the block calls the SDK through, so a scripted client
  *   satisfies them in tests with no subprocess.
@@ -19,26 +19,26 @@
  * fields (tenet 4).
  */
 import { z } from "zod";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
-import type { BlockContext, HarnessRunHandle } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import type { TestedSdk } from "@flow-state-dev/core/internal";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { HarnessRunHandle } from "@flow-state-dev/core/harness";
 
+// LAB-152.
 /**
  * This harness's `<package>/<door>` name — the convention every writer of a
- * harness handle's `source` owes (LAB-152). The suffix names the door we drive
+ * harness handle's `source` owes. The suffix names the door we drive
  * Codex through, and this package has exactly one: OpenAI's own SDK.
  */
 export const CODEX_SOURCE = "codex/sdk" as const;
 
 /**
- * The one `@openai/codex-sdk` version this package has been tested against.
- *
- * The JSONL wire the SDK speaks sits behind the CLI's `--experimental-json`
- * flag and can change in a lockstep CLI+SDK release, so a Codex upgrade is a
- * deliberate, tested bump of ours rather than something a host can take on its
- * own. `codexAgent` refuses to build against any other installed version, and
- * the escape is a release of this package — there is no override option.
+ * The `@openai/codex-sdk` this package is tested against: its `peerDependencies`
+ * range, one version wide. Its wire can change in any release, so a new
+ * version is a tested bump of ours. `codexAgent` refuses to build against
+ * another, and the readiness check says so first (core's SDK gate).
  */
-export const TESTED_SDK_VERSION = "0.164.0" as const;
+export const TESTED_CODEX_SDK: TestedSdk = { harness: "Codex", sdk: "@openai/codex-sdk", range: "0.164.0" };
 
 /**
  * Codex's full token breakdown for a turn.
@@ -59,6 +59,7 @@ export interface CodexRunUsage {
   reasoningOutputTokens: number;
 }
 
+// LAB-152.
 /**
  * Handle for a single Codex run.
  *
@@ -69,7 +70,7 @@ export interface CodexRunUsage {
  * `outcome` is `"finished"` on a completed turn and `"failed"` on a failed one.
  * Codex reports no turn or budget cap, so `"stopped-at-limit"` is never
  * produced here — a run stopped by the CALLER's deadline is a throw, not a
- * handle (LAB-152's abort contract).
+ * handle (the harness abort contract).
  */
 export interface CodexAgentHandle extends HarnessRunHandle {
   source: typeof CODEX_SOURCE;
@@ -80,12 +81,12 @@ export interface CodexAgentHandle extends HarnessRunHandle {
   failureMessage: string | null;
 }
 
+// BP-030.
 /**
  * Runtime validator for {@link CodexAgentHandle}.
  *
  * The extension's own two fields default to `null` for the same reason the
- * neutral schema's four do: a handle persisted before they existed still parses
- * (BP-030).
+ * neutral schema's four do: a handle persisted before they existed still parses.
  */
 export const codexAgentHandleSchema = harnessRunHandleSchema.extend({
   source: z.literal(CODEX_SOURCE),
@@ -182,12 +183,13 @@ export type CodexThreadEvent =
 // Forwarded option groups
 // ---------------------------------------------------------------------------
 
+// BP-031.
 /**
  * The SDK's `ThreadOptions`, forwarded verbatim and typed locally.
  *
  * `workingDirectory` is deliberately ABSENT: the `cwd` resolver owns it, and
  * passing one here is refused when the block is built rather than merged
- * (BP-031 — one owner). The refusal is a runtime check, because a caller
+ * (one owner). The refusal is a runtime check, because a caller
  * spreading an untyped bag would otherwise slip past the type.
  */
 export interface CodexThreadOptions {
@@ -217,7 +219,7 @@ export interface CodexThreadOptions {
  * Leave `env` unset and the CLI process inherits the server's **entire**
  * `process.env`, every secret in it included. Setting it REPLACES that
  * environment rather than adding to it — the SDK's own rule. To pass only
- * named variables, use `harnessEnv` from `@flow-state-dev/core`, exactly as
+ * named variables, use `harnessEnv` from `@flow-state-dev/core/harness`, exactly as
  * for the Claude Code adapter's `env`.
  */
 export interface CodexClientOptions {
@@ -256,37 +258,11 @@ export interface ResolvedCodexClient {
  * Host hook resolving the Codex client for a block invocation.
  *
  * Accepts the block context loosely so a fully parameterized `execute` context
- * passes without a cast — the same reason `ResolveClaudeAgent` does.
+ * passes without a cast — the same reason `ResolveClaudeCodeAgent` does.
  */
 export type ResolveCodexClient = (
   ctx: BlockContext<any, any, any, any, any, any, any, any, any>,
 ) => ResolvedCodexClient | Promise<ResolvedCodexClient>;
-
-/**
- * What the version gate could learn about the installed SDK.
- *
- * Three answers, not two, and the third is the one that matters. `absent` and
- * `unreadable` both used to be `null`, and the gate PASSED on `null` — so a
- * layout the manifest walk cannot see (Yarn PnP, a custom loader) let an
- * unvalidated SDK through a gate whose whole purpose is to refuse one, while the
- * dynamic import went on resolving and running it. A safety gate must fail
- * closed: "there is nothing installed" is safe, "I cannot tell" is not.
- */
-export type InstalledSdkVersion =
-  | { kind: "absent" }
-  | { kind: "version"; version: string }
-  | { kind: "unreadable"; reason: string };
-
-/**
- * How the version gate learns which SDK is installed.
- *
- * A seam only so the refusal is testable against versions other than the one on
- * this disk. It is deliberately NOT reachable from `CodexAgentOptions`: a host
- * that could substitute its own reader could answer with the tested version and
- * run an unvalidated wire, which would make the package's exact-version refusal
- * a claim rather than a guarantee.
- */
-export type InstalledSdkVersionReader = () => InstalledSdkVersion;
 
 // ---------------------------------------------------------------------------
 // The pure translation layer's output
@@ -302,7 +278,7 @@ export type InstalledSdkVersionReader = () => InstalledSdkVersion;
  * `stream_error` is the stream's own `error` event: shown as the in-flight
  * line, and the run's failure only when no terminal turn event follows.
  */
-export type TranslatedEvent =
+export type CodexTranslatedEvent =
   | { kind: "thread_started"; threadId: string }
   | { kind: "message"; text: string }
   | { kind: "reasoning"; text: string }

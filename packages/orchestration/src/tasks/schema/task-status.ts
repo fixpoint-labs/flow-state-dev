@@ -1,7 +1,8 @@
+// FIX-443 §2.
 /**
  * Task status enum + state-machine validators.
  *
- * The status set comes from FIX-443 §2. Transitions are enforced by
+ * Transitions are enforced by
  * `assertTransitionAllowed` so callers cannot drop a `completed` task
  * back into `in_progress`, etc. The substrate uses these helpers from
  * the lifecycle methods on TaskCollectionRef so both backings share
@@ -20,13 +21,15 @@ export const taskStatusSchema = z.enum([
 
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 
+// FIX-2080 D1.
 /**
- * The member `held` replaced (FIX-2080 D1). A row stored before then still
+ * The member `held` replaced. A row stored before then still
  * carries it; it reads as `held`, the same "filed, not started, until someone
  * says go". The cast-read half is the retired-shape map (`./retired-shapes`).
  */
 const LEGACY_BLOCKED_STATUS = "blocked";
 
+// FIX-2080.
 /**
  * The status as it is read back off a **persisted** row: `taskStatusSchema`,
  * plus the legacy member mapped forward.
@@ -42,7 +45,7 @@ const LEGACY_BLOCKED_STATUS = "blocked";
  * persisted schema at all: `assertStableResourceState` re-parses any value a
  * schema rewrote and rejects the write if the second parse moves it again.
  * Parsing `blocked` yields `held`, and `held` parses as itself, so the second
- * parse is a no-op (FIX-2080).
+ * parse is a no-op.
  *
  * This covers the parse paths only. A **task collection instance is never
  * parsed on read** — the engine skips collection configs when it normalizes
@@ -65,8 +68,9 @@ export function isTerminalStatus(status: TaskStatus): boolean {
   return TERMINAL_STATUSES.has(status);
 }
 
+// FIX-2080 D1.
 /**
- * `held` sits beside `pending`, before any start (FIX-2080 D1): a held row
+ * `held` sits beside `pending`, before any start: a held row
  * starts only once it is released back to `pending`, and may be cancelled.
  * Nothing after a start reaches it.
  */

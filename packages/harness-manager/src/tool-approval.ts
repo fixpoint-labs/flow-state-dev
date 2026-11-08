@@ -1,5 +1,6 @@
+// FIX-2389.
 /**
- * A coding run's tool calls, approved by a person (FIX-2389).
+ * A coding run's tool calls, approved by a person.
  *
  * With `approveTools` on, a manager hands its harness an `onToolApproval`
  * feed. A call the harness hasn't pre-allowed comes to it; one a grant of
@@ -26,7 +27,8 @@
  * The feed's types live here rather than in core's harness contract, because
  * the epic's ER-1 keeps new harness nouns out of core.
  */
-import type { ApprovalAnswer, HarnessCallbackContext, SuspendForUserOptions } from "@flow-state-dev/core/types";
+import type { ApprovalAnswer, SuspendForUserOptions } from "@flow-state-dev/core/types";
+import type { HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import { z } from "zod";
 import { toolCallDetail } from "./progress-note";
 

@@ -15,7 +15,7 @@
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { getStatusBadge, type ToolState } from "../../registry/components/tool";
+import { getStatusBadge } from "../../registry/components/tool";
 import { SessionItemsProvider } from "../../registry/components/session-items-context";
 import { TaskPlan } from "../../registry/components/task-plan";
 import { makeBoardMeta, makeTask, makeTaskChange } from "../../stories/fixtures/tasks";
@@ -36,7 +36,7 @@ function tokensOn(element: Element | null): string[] {
 }
 
 describe("tool card states", () => {
-  const expected: Array<[ToolState, string]> = [
+  const expected: Array<[Parameters<typeof getStatusBadge>[0], string]> = [
     ["awaiting", "attention"],
     ["denied", "warning"],
     ["completed", "success"],

@@ -1,5 +1,6 @@
+// FIX-865.
 /**
- * Per-row crash-recovery continuation (FIX-865). Unlike the legacy top-level
+ * Per-row crash-recovery continuation. Unlike the legacy top-level
  * Resume button (which dispatched the JSON `continue()` and
  * relied on the shared `useRequestStream` GET reconnect to pick the run back
  * up), this hook drives `continue({ stream: true })` directly: the POST

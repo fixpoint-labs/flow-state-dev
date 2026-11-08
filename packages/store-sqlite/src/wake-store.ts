@@ -1,5 +1,6 @@
+// FIX-2078 D1.
 /**
- * SQLite-backed wake store (FIX-2078 D1): a debt's due time, kept until a pass
+ * SQLite-backed wake store: a debt's due time, kept until a pass
  * in its session clears it.
  *
  * One row per (tenant, session, entry). `owe` coalesces in one statement
@@ -9,7 +10,7 @@
  * the version a pass read. `due_at` is indexed for the sweeper's due read.
  */
 import type Database from "better-sqlite3";
-import type { WakeInput, WakeKey, WakeRecord, WakeStore } from "@flow-state-dev/engine";
+import type { WakeInput, WakeKey, WakeRecord, WakeStore } from "@flow-state-dev/engine/host";
 
 type WakeRow = {
   tenant_key: string;

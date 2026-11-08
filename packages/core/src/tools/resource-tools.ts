@@ -53,8 +53,9 @@ function reachableEntries(ctx: BlockContext): Array<{ entry: AnyResourceRef; acc
   return out;
 }
 
+// FIX-858.
 /**
- * True for a projected resource collection ref (FIX-858) — carries the
+ * True for a projected resource collection ref — carries the
  * `projected: true` brand. Both `pattern`-bearing collection kinds (store-backed
  * and projected) are classified by this brand: store-backed CRUD/glob/grep paths
  * take `collectCollections` (projected excluded), while the search-pushdown and
@@ -112,6 +113,7 @@ function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
   return reachableStatics(ctx).map(({ ref }) => ref);
 }
 
+// FIX-817.
 /**
  * Generic resource CRUD tool blocks for LLM tool surface.
  * Returns handler blocks that work across all registered collections.
@@ -123,7 +125,7 @@ function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
  * - `updateResource({ path, state? })` — Update a resource instance
  * - `deleteResource({ path })` — Delete a resource instance
  *
- * **`listResources` was removed (FIX-817).** It enumerated every collection's
+ * **`listResources` was removed.** It enumerated every collection's
  * full stored state through `collectCollections`, ignoring the `llmReadable`
  * gate this module defines two functions below — so a collection nobody marked
  * readable was dumped to the model anyway. Enumeration is now the discovery
@@ -308,10 +310,11 @@ export function collectReadableProjectedCollections(ctx: BlockContext): Collecti
   return collectProjectedCollections(ctx).filter((ns) => isLlmReadable(ns.ref));
 }
 
+// FIX-842.
 /**
  * Resolve a scope-qualified resource `uri` (`${scope}/${path}`) to its
  * `ResourceRef` — static resource or collection instance, uniformly. Unlike
- * `resolveResourceByPath`, the uri is unique across scopes (FIX-842), so
+ * `resolveResourceByPath`, the uri is unique across scopes, so
  * resolution is unambiguous even when two collections share a pattern in
  * different scopes. Resolves the target directly — statics by uri, then a single
  * `getOptional` on the one collection whose scope+pattern matches — so reading

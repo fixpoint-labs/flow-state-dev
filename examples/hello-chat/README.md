@@ -1,23 +1,39 @@
 # Example: Hello Chat
 
-This example demonstrates the minimal chat flow shape:
+The minimal chat app: one flow, one action, and a Next.js page that talks to it.
 
-- `defineFlow` with explicit `session.stateSchema` and `client.expose`
-- one generator-backed action (`chat`)
-- emission API: silent-by-default blocks, explicit `ctx.emit.message()` / `ctx.emit.status()`
-- session state mutation via `ctx.session.patchState`
-- React usage with `FlowProvider`, `useSession`, `useClientData`, and `ItemsRenderer`
-- deterministic flow tests with `testFlow`
+- `defineFlow` with a session `stateSchema` and `client.expose`
+  (`src/flows/hello-chat/flow.ts`)
+- one action (`chat`): a `sequencer` that runs a text `generator`, which streams the
+  assistant's reply as message items with no emit call, then `.tap()`s a `handler`
+  that counts messages through `ctx.session.patchState`
+- `userMessage` on the action, so the user's text shows in the conversation too
+- the page (`app/page.tsx`): `FlowProvider`, `useFlow`, `useSession` and
+  `ItemsRenderer`, with its own renderers for message and reasoning items
+- the route handler (`app/api/flows/[[...path]]/route.ts`) serving the flow from
+  `fsdev.config.ts`, the same config the `fsdev` CLI loads
+- deterministic flow tests with `testFlow`, `testBlock` and `mockGenerator`
 
-Run verification:
+## Run it
+
+Inside this repository, run `pnpm install` at the root first. To run it outside the
+repository, copy it out with
+[the recipe](https://github.com/fixpoint-labs/flow-state-dev/blob/main/examples/README.md#copy-an-example-out)
+first. The chat calls `openai/gpt-6-luna`, so set `OPENAI_API_KEY`:
 
 ```bash
-pnpm --filter @flow-state-dev/example-hello-chat typecheck
-pnpm --filter @flow-state-dev/example-hello-chat test
+export OPENAI_API_KEY=sk-...
+npm run dev                                   # the chat page at http://localhost:3000
+npx fsdev run hello-chat chat -i '{"message":"hi"}'   # the same flow, no browser
 ```
 
-## Testing note
+## Test it
 
-The hello-chat tests intentionally mock generator responses and fail fast on any
-network access. This keeps the suite deterministic in CI and ensures no
-`OPENAI_API_KEY` is required for test runs.
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+The tests mock generator responses and fail fast on any network access, so they
+need no `OPENAI_API_KEY`.

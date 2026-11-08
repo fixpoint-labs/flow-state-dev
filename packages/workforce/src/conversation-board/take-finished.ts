@@ -1,11 +1,12 @@
+// FIX-2159; FIX-2123; FIX-2345.
 /**
- * What finished while a user's turn ran (FIX-2159): the take that hands a
+ * What finished while a user's turn ran: the take that hands a
  * running turn the endings of the tasks its conversation filed, so the worker
  * can answer again with them in the same request, rather than hear them after
  * the reply as a turn of their own.
  *
  * - **{@link takeFinishedTasks}** takes each ending through the take record
- *   `onTaskSettled` uses (orchestration's `takeOwedNotice`, FIX-2123), in the
+ *   `onTaskSettled` uses (orchestration's `takeOwedNotice`), in the
  *   running request's name, and handles it with the conversation's own
  *   handling of a notice (`settleTakenNotice`): its session freed, a final
  *   failure reported, deduped and acknowledged. It then says the line under
@@ -13,7 +14,7 @@
  *   `onTaskSettled` queued for after the turn finds the notice cleared and
  *   does nothing, so each ending is heard once. The answer again reads each
  *   ending as a `getTask` call and its result, the row in full
- *   (`./task-ending-read`, FIX-2345), as a turn a notice wakes does.
+ *   (`./task-ending-read`), as a turn a notice wakes does.
  * - **{@link finishedTasksAnswerAgain}** is the pre-built source for the
  *   answer-again step (`defineAgentWorkerFlow({ answerAgain: true })`): the
  *   take, then the lines as the message the worker answers again about.
@@ -36,16 +37,18 @@
  * same way.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
-import { takeOwedNotice } from "@flow-state-dev/orchestration";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import {
+  takeOwedNotice,
   decideNotice,
-  isTerminalStatus,
-  noticeMetadata,
-  noticeText,
   owedNotices,
   owesAnyNotice,
   readCommittedTask,
+} from "@flow-state-dev/orchestration/internal";
+import {
+  isTerminalStatus,
+  noticeMetadata,
+  noticeText,
   type TaskNotice
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -93,8 +96,7 @@ export const takeFinishedTasks = handler({
   requestStateSchema: taskEndingReadsStateSchema,
   // `settleTakenNotice` ends a failed task's subscriptions (FIX-2534).
   resources: { ...conversationLedgerResources, ...taskChainResources, ...subscriptionResources },
-  execute: async (_input, rawCtx): Promise<FinishedTask[]> => {
-    const ctx = rawCtx as unknown as BlockContext;
+  execute: async (_input, ctx): Promise<FinishedTask[]> => {
     if (!isUserTurn(ctx)) return [];
     const ref = await ownConversationLedger(ctx);
     if (ref === undefined) return [];

@@ -1,5 +1,6 @@
+// FIX-141.
 /**
- * Suspensions view (FIX-141 operator UI).
+ * Suspensions view (the operator UI for durable suspensions).
  *
  * Lists the durable-execution suspensions for the active session and lets an
  * operator approve or reject a pending one. A status filter narrows the list;
@@ -22,11 +23,12 @@ import { Button } from "../ui/button";
 
 type Props = {
   sessionId: string | null;
+  // FIX-811.
   /**
    * Called after a suspension is resolved (approve/reject), with the request id
    * that just resumed. The panel uses it to re-attach its live stream to the
    * continued (same-id) request so its progress to terminal shows without a
-   * manual page refresh (FIX-811).
+   * manual page refresh.
    */
   onResumed?: (requestId: string) => void;
 };
@@ -235,6 +237,7 @@ function SuspensionDetail({
         flowId: suspensionOwnerId(record),
         requestId: record.requestId,
         suspensionId: record.suspensionId,
+        reason: record.reason,
         action,
         data
       });

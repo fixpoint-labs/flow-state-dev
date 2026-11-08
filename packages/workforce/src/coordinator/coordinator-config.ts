@@ -1,3 +1,4 @@
+// FIX-2081, rule 13.
 /**
  * A coordinator's configuration: what its `WORKER.md` (or a user's row) may
  * set on top of the settings of the turn it runs (the built-in agent's: its
@@ -17,7 +18,7 @@
  *   1, at which a delegate pick is used. No default: without it, any pick is.
  * - `editsOwnDelegates`: whether the coordinator's model gets
  *   `addDelegate`, `removeDelegate` and `setFallback` and may change its own
- *   delegates (FIX-2081, rule 13). Default `false`: only the user changes them.
+ *   delegates. Default `false`: only the user changes them.
  * - `rounds`: how many times an answer goes back out. Zero by default, at most
  *   {@link MAX_ROUNDS}.
  * - `model`, `tools`, `skills` and the rest: the agent turn's own, read the
@@ -78,7 +79,8 @@ function coordinatorShape() {
 
 /** The keys every coordinator configuration carries, whatever its base. */
 export type CoordinatorConfig = z.infer<z.ZodObject<ReturnType<typeof coordinatorShape>>> & {
-  /** Its default delegates, or `"all"`: the whole roster, read per call (FIX-2081 D2). */
+  // FIX-2081 D2.
+  /** Its default delegates, or `"all"`: the whole roster, read per call. */
   delegates: string[] | "all";
   model?: string;
   instructions?: string;

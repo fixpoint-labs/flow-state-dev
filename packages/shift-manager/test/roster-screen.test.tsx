@@ -11,7 +11,7 @@ import { GAPS } from "../src/gaps";
 import type { Client } from "@flow-state-dev/client";
 import { spendAfterWrite } from "@flow-state-dev/orchestration/tasks";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import { GENERAL_TEAM, inboxSection, toBoardRow, toWorker, type Ask, type BoardRow, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
+import { GENERAL_TEAM, inboxSection, toBoardTaskView, toWorker, type Ask, type BoardTaskView, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
 
 let fixture: LabSnapshot;
 /** What the user's roster read answers: their own workers and the standard ones. */
@@ -49,16 +49,16 @@ vi.mock("../src/lib/reads", async (importOriginal) => {
 
 const ORG = "acme";
 const worker = (id: string, kind = "worker") => toWorker({ id, kind })!;
-const row = (holder: string, id: string, status: string, assignee: string): BoardRow =>
-  toBoardRow(`${holder}.tasks`, holder, id, { id, title: `${id} title`, status, assignee });
+const row = (holder: string, id: string, status: string, assignee: string): BoardTaskView =>
+  toBoardTaskView(`${holder}.tasks`, holder, id, { id, title: `${id} title`, status, assignee });
 /** A running row held on a question for you (FIX-2131): what a task waiting on you is. */
-const waiting = (holder: string, id: string, assignee: string): BoardRow =>
-  toBoardRow(`${holder}.tasks`, holder, id, {
+const waiting = (holder: string, id: string, assignee: string): BoardTaskView =>
+  toBoardTaskView(`${holder}.tasks`, holder, id, {
     id,
     title: `${id} title`,
     status: "in_progress",
     assignee,
-    holds: [{ id: `q-${id}`, actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
+    holds: [{ id: `q-${id}`, actor: "user", openedAt: 1, source: { kind: "task", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
   });
 const ask = (workerId: string, suspensionId: string, message: string): Ask =>
   ({
@@ -79,7 +79,7 @@ const ask = (workerId: string, suspensionId: string, message: string): Ask =>
  */
 function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "failed" } = {}): LabSnapshot {
   const workers = [worker("eng.coder", "coder"), worker("eng.reviewer"), worker("ops.asker", "asker"), worker("ops.idle"), worker("shift-coordinator", "shift-coordinator")];
-  const ok = (rows: BoardRow[]): Section<ConversationBoards> => ({ ok: true, value: { refs: [rows[0]!.boardRef], rows } });
+  const ok = (rows: BoardTaskView[]): Section<ConversationBoards> => ({ ok: true, value: { refs: [rows[0]!.boardRef], rows } });
   const read: Omit<LoadedSnapshot, "inbox"> = {
     readAt: Date.UTC(2026, 9, 1, 9, 30),
     sessions: [],
@@ -235,7 +235,7 @@ describe("Roster (V3)", () => {
     await open("/roster");
     expect((await screen.findByTestId("roster-gap-worker-match")).textContent).toBe(GAPS.roster.workerMatch);
     expect(screen.queryByTestId("roster-gap-watches")).toBeNull();
-    expect(GAPS.roster.workerMatch).toMatch(/FIX-1672/);
+    expect(GAPS.roster.workerMatch).toMatch(/A declared map arrives in a later release\./);
     expect(screen.getAllByTestId("roster-worker-harness")[0]!.getAttribute("title")).toBe(GAPS.harness);
   });
 
@@ -390,10 +390,10 @@ describe("Tasks (BR-14)", () => {
 
   it("reads COST from the charge the row's runs reported, and none for a run billed by subscription (FIX-2398)", async () => {
     // A row as the board stores it: what its one run spent, settled.
-    const spent = (id: string, costUsd: number | null, billing: "api-key" | "subscription"): BoardRow => {
+    const spent = (id: string, costUsd: number | null, billing: "api-key" | "subscription"): BoardTaskView => {
       const run = { runId: `r-${id}`, harness: "claude-code", model: "claude-sonnet-4-5", inputTokens: 12_400, outputTokens: 2_300, costUsd, billing };
       const spend = spendAfterWrite({ spend: null }, { requestId: `q-${id}`, part: "settle", spend: { byModel: {}, harnessRuns: [run] } });
-      return toBoardRow("s_eng.tasks", "s_eng", id, { id, title: `${id} title`, status: "in_progress", assignee: "eng.coder", spend });
+      return toBoardTaskView("s_eng.tasks", "s_eng", id, { id, title: `${id} title`, status: "in_progress", assignee: "eng.coder", spend });
     };
     const snapshot = lab();
     const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_eng"] : undefined;
@@ -413,7 +413,7 @@ describe("Tasks (BR-14)", () => {
 
   it("reads no spend off a stored ledger it can't fold, rather than failing the board's read (FIX-2398)", () => {
     // An older or damaged write: the row still reads, its COST as "—".
-    const unreadable = toBoardRow("s_eng.tasks", "s_eng", "E-7", { id: "E-7", title: "E-7", status: "completed", assignee: "eng.coder", spend: { requests: "not a list" } });
+    const unreadable = toBoardTaskView("s_eng.tasks", "s_eng", "E-7", { id: "E-7", title: "E-7", status: "completed", assignee: "eng.coder", spend: { requests: "not a list" } });
     expect(unreadable.spend).toBeNull();
     expect(unreadable.title).toBe("E-7");
   });
@@ -441,7 +441,7 @@ describe("Tasks (BR-14)", () => {
       session("s_search", { workerId: "eng.em", workstreamId: "shared/apollo/search" }),
       session("s_eng", { workerId: "eng.em" }),
     ];
-    const ok = (rows: BoardRow[]): Section<ConversationBoards> => ({ ok: true, value: { refs: [rows[0]!.boardRef], rows } });
+    const ok = (rows: BoardTaskView[]): Section<ConversationBoards> => ({ ok: true, value: { refs: [rows[0]!.boardRef], rows } });
     snapshot.boards = {
       s_checkout: ok([row("s_checkout", "C-1", "in_progress", "coder")]),
       s_search: ok([row("s_search", "S-1", "in_progress", "coder")]),

@@ -4,10 +4,9 @@
 import type { BlockContext, BlockDefinition, BlockOutputHint, GeneratorModelResultPayload, ModelIdentity } from "@flow-state-dev/core/types";
 import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
-import { SuspensionError, runRescue } from "@flow-state-dev/core";
-import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
-import { buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
-import { cacheTokensOf } from "@flow-state-dev/core";
+import { SuspensionError } from "@flow-state-dev/core";
+import { getBaseCapability } from "@flow-state-dev/core/capability";
+import { resolveActiveStatusMessage, cacheTokensOf, buildBlockInstanceId, ROOT_BLOCK_PATH, runRescue } from "@flow-state-dev/core/internal";
 import { normalizeError } from "../errors/normalize-error";
 import { getResponseItems } from "./internal/response";
 import {
@@ -250,7 +249,7 @@ export async function executeBlock(
       if (blockCaps && blockCaps.length > 0) {
         (options.ctx as any).cap = buildCapObject(
           options.block.config as any,
-          options.ctx as BlockContext
+          options.ctx
         );
       }
 

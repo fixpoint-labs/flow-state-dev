@@ -1,3 +1,4 @@
+// FIX-1405; BP-031.
 /**
  * `createWorkforceCapability` — the discovery door a workforce's workers read
  * through.
@@ -5,7 +6,7 @@
  * Compose it into a worker flow's `uses` and every worker on that flow gains one
  * tool: `discover`, which answers what is in scope for it right now. The
  * capability installs the workforce's own domain (workers, projected from the declared roster (files, and when asked the durable
- * roster) joined to FIX-1405's live inventory rows —
+ * roster) joined to the live inventory rows —
  * see `./manifest-sources`) and carries whatever other domains the app hands
  * it, so there is ONE registration point and one door rather than a second
  * registry per package.
@@ -14,7 +15,7 @@
  *
  * The **registry** is the fence, built once here from the sources the app
  * declared. It is the complete set of domains any worker on this flow can reach,
- * and a domain that is not in it cannot be reached by naming it (BP-031).
+ * and a domain that is not in it cannot be reached by naming it.
  *
  * A **worker's own file** narrows that with `discover:` — a choice, resolved per
  * turn, that can only subtract. See `./worker-discovery`.
@@ -23,15 +24,6 @@
  * because its worker flow composed this capability at all, so there is nothing for a
  * `tools:` fence to check, and fencing it would leave a worker advertising a tool
  * in its prompt it cannot call.
- *
- * ## What changed
- *
- * The `agents` option is **gone**. It took a pre-built `Agent[] | AgentRegistry`
- * for a DevTool listing that never shipped, and the function's whole body was a
- * duplicate-name check over it plus a standing `TODO`. An app passing it now
- * fails to type-check with a message naming the replacement, rather than having
- * its roster silently ignored (BP-030). Pass `roster` and `inventory` instead;
- * the capability reads both.
  */
 
 import { createManifestRegistry, defineCapability, discoveryTools } from "@flow-state-dev/core";
@@ -41,7 +33,6 @@ import type {
   ManifestDomain,
   ManifestRegistry,
 } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   workforceManifestSources,
   type DeclaredWorkforce,
@@ -77,27 +68,6 @@ export interface WorkforceCapabilityOptions {
    * naming both sites.
    */
   sources?: readonly BlockManifestSource[];
-  /**
-   * Removed (FIX-817). The pre-built roster this took never reached a caller —
-   * the capability validated duplicate names, returned an empty capability and
-   * carried a standing `TODO`.
-   *
-   * Typed as its own replacement message rather than deleted, so an app that
-   * still passes it is told what to pass instead. Deleting the key would rely
-   * on excess-property checking, which says only that the key is unknown —
-   * and says nothing at all when the options are built up in a variable
-   * (BP-030).
-   *
-   * @deprecated Pass `roster` and `inventory` instead.
-   */
-  agents?: "`agents` was removed: pass `roster` (the declared roster) and `inventory` (the live inventory collection keys) instead";
-  /**
-   * Removed (FIX-817). Nothing ever read it.
-   *
-   * @deprecated Tool catalogs reach a worker flow through
-   * `defineAgentWorkerFlow({ catalog })`.
-   */
-  catalog?: "`catalog` was removed: it was never read. A tool catalog reaches a worker flow through defineAgentWorkerFlow({ catalog })";
 }
 
 /**
@@ -167,7 +137,7 @@ export function createWorkforceCapability(
         // because its worker flow composed this capability, so there is nothing for a
         // `tools:` fence to check, and fencing it would leave the worker
         // advertising a tool in its prompt that it cannot call.
-        controlTools: (ctx) => [doorFor(workerDiscoverSelection(ctx as unknown as BlockContext))],
+        controlTools: (ctx) => [doorFor(workerDiscoverSelection(ctx))],
       },
       default: ["door"],
     },

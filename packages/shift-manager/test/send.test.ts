@@ -3,7 +3,8 @@
  * a refusal, a lost request and an answer it can't confirm each come back as.
  * Against stub client, so each answer the Lab can give is staged exactly.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { getEventListeners } from "node:events";
 import { ClientHttpError } from "@flow-state-dev/client";
 import { sendTurn, TurnNotDelivered } from "../src/lib/send";
 import type { Client } from "@flow-state-dev/client";
@@ -29,6 +30,8 @@ function stubClients(options: {
   stateFails?: unknown;
   /** The session read answers this instead of a page. */
   stateAnswers?: unknown;
+  /** The session read never answers. */
+  stateStalls?: boolean;
   /** Only the reads of suspensions reject; the line's read-back still answers. */
   suspensionsFail?: boolean;
 }): { client: Client; sent: unknown[]; reads: { sessionSuspensions: number; suspendedRequests: number } } {
@@ -50,10 +53,26 @@ function stubClients(options: {
         sent.push({ flowId, action, input, opts });
         return { id: "req_door", response: { request: { id: "req_door" } } };
       },
-      request: () => ({ status: async () => ({ status: nextStatus() }) }),
+      request: () => ({
+        status: async () => ({ status: nextStatus() }),
+        // As the client's: polls until the request settles, rejects past its timeout
+        // with a status-0 error, and carries a failed request's error.
+        result: async ({ pollMs = 1, timeoutMs = Infinity }: { pollMs?: number; timeoutMs?: number } = {}) => {
+          const until = Date.now() + timeoutMs;
+          for (;;) {
+            const status = nextStatus();
+            if (status !== "in_progress") {
+              return status === "failed" && options.failure !== undefined ? { status, error: { code: "refused", message: options.failure } } : { status };
+            }
+            if (Date.now() >= until) throw new ClientHttpError("did not finish", { status: 0, body: null });
+            await new Promise((resolve) => setTimeout(resolve, pollMs));
+          }
+        },
+      }),
     }),
     sessions: {
       state: async (_id: string, read: { offset?: number; limit?: number; itemTypes?: string[] } = {}) => {
+        if (options.stateStalls === true) await new Promise(() => {});
         if (options.stateFails !== undefined) throw options.stateFails;
         if (options.stateAnswers !== undefined) return options.stateAnswers;
         if (read.itemTypes?.includes("suspension") === true) reads.sessionSuspensions += 1;
@@ -75,7 +94,8 @@ function stubClients(options: {
           const own = items.filter((item) => item.requestId === "req_door" && item.type !== "message");
           return [{ id: "req_door", status, ...(list.includeItems === true ? { items: own } : {}) }];
         }
-        return options.failure === undefined ? [] : [{ id: "req_door", result: { error: { message: options.failure } } }];
+        // A refusal is read off the door's own request (`result()`), never by listing the session.
+        throw new Error(`unexpected listing of the session's ${list.status ?? "all"} requests`);
       },
     },
   } as unknown as Client;
@@ -97,6 +117,35 @@ describe("sendTurn", () => {
     await expect(sendTurn(client, TARGET, "hello", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: false, stopped: null });
     // Through the target's door, into its session, with the line as `{ message }`.
     expect(sent).toEqual([{ flowId: "eng.coder", action: "message", input: { message: "hello" }, opts: { sessionId: "s_run" } }]);
+  });
+
+  it("looks for the line on every poll of a long run without piling up listeners on its stop signal", async () => {
+    // A run that goes on for 15 held-line looks while the session never shows the line:
+    // each look's pause must let go of its abort listener, or the 11th trips Node's limit.
+    // Counted directly: the most abort listeners any one signal held at once.
+    let most = 0;
+    const add = AbortSignal.prototype.addEventListener;
+    const spy = vi.spyOn(AbortSignal.prototype, "addEventListener").mockImplementation(function (this: AbortSignal, ...args) {
+      add.apply(this, args as Parameters<typeof add>);
+      if (args[0] === "abort") most = Math.max(most, getEventListeners(this, "abort").length);
+    });
+    vi.useFakeTimers();
+    try {
+      const { client } = stubClients({
+        status: "in_progress",
+        later: [...Array.from({ length: 15 }, () => "in_progress"), "completed"],
+        items: [{ requestId: "req_other", role: "user", type: "message" }],
+      });
+      const sending = sendTurn(client, TARGET, "hello", { pollMs: 1_000, onHeld: () => {} }).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(await sending).toBeInstanceOf(TurnNotDelivered);
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      vi.useRealTimers();
+      spy.mockRestore();
+    }
+    expect(most).toBeGreaterThan(0);
+    expect(most).toBeLessThanOrEqual(2);
   });
 
   it("finds the line at the end of a long session, where a new line is", async () => {
@@ -234,6 +283,14 @@ describe("sendTurn", () => {
     const error = await workerFlowOf(sendTurn(client, TARGET, "fire eng.coder", { pollMs: 1 }));
     expect(error.kind).toBe("unconfirmed");
   });
+
+  it("says a refusal at once, even while its look for the line in the session hangs", async () => {
+    // The door's request failed; the held-line look that started beside it never answers.
+    const { client } = stubClients({ status: "failed", failure: "This task has finished.", stateStalls: true });
+    const error = await workerFlowOf(sendTurn(client, TARGET, "hello", { pollMs: 1, onHeld: () => {} }));
+    expect(error.kind).toBe("refused");
+    expect(error.message).toBe("This task has finished.");
+  }, 2_000);
 
   it("is refused, in the door's own words, when the door's request failed", async () => {
     const { client } = stubClients({ status: "failed", failure: "This task has finished and can't take a message here." });

@@ -1,4 +1,4 @@
-import type { TaskCapOptions } from "@flow-state-dev/orchestration";
+import type { TaskCapOptions } from "@flow-state-dev/orchestration/tasks";
 
 /**
  * Forward only the task-cap fields a pattern caller actually set.

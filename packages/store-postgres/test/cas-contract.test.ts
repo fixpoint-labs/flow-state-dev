@@ -10,9 +10,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { freshPglite } from "./shared-pglite";
 import type { JsonObject } from "@flow-state-dev/core/types";
-import type { SessionRecord } from "@flow-state-dev/engine";
-import { createPostgresStores, type PostgresStoreRegistry } from "../src";
-import type { QueryExecutor } from "../src";
+import type { SessionRecord } from "@flow-state-dev/engine/host";
+import { createPostgresStores, type PostgresStoreRegistry } from "../src/host";
+import type { QueryExecutor } from "../src/host";
 
 function pgliteExecutor(pglite: PGlite): QueryExecutor {
   return {

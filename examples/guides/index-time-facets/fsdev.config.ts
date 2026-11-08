@@ -10,7 +10,7 @@
  *   pnpm fsdev run index-time-facets search -i '{"topic":"billing"}'
  */
 import { evaluator } from "@flow-state-dev/core";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState } from "@flow-state-dev/engine";
 import { ticketQuestions } from "./src/facets";
 import { ticketsFlow } from "./src/flow";
 
@@ -22,7 +22,6 @@ const triage = evaluator({
 
 export default createFlowState({
   flows: { "index-time-facets": ticketsFlow(triage) },
-  stores: { default: { primary: inMemoryStores() } },
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
   },

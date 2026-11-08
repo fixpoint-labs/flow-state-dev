@@ -304,7 +304,7 @@ describe("V3 · a cursor that never ends is a failed read, not a hang (BR-9, BR-
     let calls = 0;
     const read = await readEveryPage(
       {
-        listCollectionItems: async () => {
+        listCollectionResources: async () => {
           calls += 1;
           if (calls > 5_000) throw new Error("the read never stopped");
           return { items: [{ topic: `t${calls}`, clientData: { id: `s${calls}` } }], nextCursor: "stuck" };
@@ -322,7 +322,7 @@ describe("V3 · a cursor that never ends is a failed read, not a hang (BR-9, BR-
     let calls = 0;
     const read = await readEveryPage(
       {
-        listCollectionItems: async () => {
+        listCollectionResources: async () => {
           calls += 1;
           if (calls > 5_000) throw new Error("the read never stopped");
           return { items: [], nextCursor: `c${calls}` };

@@ -1,6 +1,7 @@
+// FIX-1005.
 /**
  * The per-worker seam a *composed* worker reaches its lease-renewal driver
- * through (FIX-1005).
+ * through.
  *
  * Split from `./lease-renewal` for one concrete reason: this file needs
  * `node:async_hooks`, and `@flow-state-dev/orchestration/tasks` is published as
@@ -16,9 +17,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { LeaseRenewalDriver } from "./lease-renewal";
 
+// FIX-1005.
 /**
  * The running driver for the claim whose async chain this call is in
- * (FIX-1005) — the seam a *composed* worker reaches it through.
+ * — the seam a *composed* worker reaches it through.
  *
  * A seam whose work is a statically composed step cannot be handed the driver
  * as an argument, and cannot stash it on sequencer state either: that state is

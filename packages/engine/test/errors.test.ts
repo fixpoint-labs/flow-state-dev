@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { FlowError } from "@flow-state-dev/core";
 import {
-  FlowError,
   ModelError,
   NetworkError,
   RateLimitError,
   TimeoutError,
   ToolExecutionError,
-  ValidationError,
-  normalizeError
-} from "../src";
+  ValidationError
+} from "../src/errors/flow-error";
+import { normalizeError } from "../src/errors/normalize-error";
 
 describe("error model", () => {
   it("applies canonical defaults for typed error subclasses", () => {

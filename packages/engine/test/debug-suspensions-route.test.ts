@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { SuspensionRecord } from "@flow-state-dev/core/types";
-import { createInMemoryStores } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createFlowRegistry } from "../src";
 import type { StoreRegistry } from "../src/stores/types";
 import type { FlowRegistry } from "../src/registry/flow-registry";

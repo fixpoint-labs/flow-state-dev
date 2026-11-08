@@ -7,7 +7,7 @@
  * test that only checks "some note rendered", and that collapse is exactly
  * the silent-partial failure BR-30/BR-31 exist to rule out (V10).
  *
- * `getCollectionItemState` is called at most once per test and its call
+ * `getCollectionResourceState` is called at most once per test and its call
  * COUNT is asserted directly wherever a state promises zero reads — a
  * lingering call is invisible to every assertion on what rendered.
  */
@@ -19,18 +19,18 @@ import type { PanelItemSource } from "../src/components/panels/reads";
 
 afterEach(cleanup);
 
-/** A `getCollectionItemState` source that answers one fixed result. */
-function fakeSource(result: Awaited<ReturnType<PanelItemSource["resources"]["getCollectionItemState"]>>) {
-  return { getCollectionItemState: vi.fn(async () => result) };
+/** A `getCollectionResourceState` source that answers one fixed result. */
+function fakeSource(result: Awaited<ReturnType<PanelItemSource["resources"]["getCollectionResourceState"]>>) {
+  return { getCollectionResourceState: vi.fn(async () => result) };
 }
 
 function pendingSource() {
-  return { getCollectionItemState: vi.fn(() => new Promise<never>(() => {})) };
+  return { getCollectionResourceState: vi.fn(() => new Promise<never>(() => {})) };
 }
 
 function failingSource(message: string) {
   return {
-    getCollectionItemState: vi.fn(async () => {
+    getCollectionResourceState: vi.fn(async () => {
       throw new Error(message);
     })
   };
@@ -42,7 +42,7 @@ describe("WorkerDetail", () => {
     render(createElement(WorkerDetail, { sessionId: "s1", kind: "support-agent", workerId: "", client: { resources: source } }));
 
     expect(document.querySelector('[data-state="not-published"]')).toBeTruthy();
-    expect(source.getCollectionItemState).not.toHaveBeenCalled();
+    expect(source.getCollectionResourceState).not.toHaveBeenCalled();
   });
 
   it("shows the kind from the prop and makes no read when no workerId is given (BR-5, BR-31)", () => {
@@ -53,7 +53,7 @@ describe("WorkerDetail", () => {
     expect(document.querySelector('[data-state="not-published"]')).toBeTruthy();
     // Zero reads: the kind never needed one, and a worker with no roster
     // topic to look up (declared, or hired for a user) gets none either.
-    expect(source.getCollectionItemState).not.toHaveBeenCalled();
+    expect(source.getCollectionResourceState).not.toHaveBeenCalled();
   });
 
   it("reads through the host's own client, not the credential-less fallback (V9, BR-27)", async () => {
@@ -63,7 +63,7 @@ describe("WorkerDetail", () => {
     // or on any path that ignores the prop, reads through the fallback
     // (one built from `baseUrl` with no fetcher) and would 401 here.
     const source = {
-      getCollectionItemState: vi.fn(async (_sessionId: string, _ref: string, topic: string) => ({
+      getCollectionResourceState: vi.fn(async (_sessionId: string, _ref: string, topic: string) => ({
         topic,
         clientData: { workerId: topic, flow: "agent", instructions: "Answer billing questions." }
       }))
@@ -79,7 +79,7 @@ describe("WorkerDetail", () => {
     );
 
     await waitFor(() => expect(screen.getByText("Answer billing questions.")).toBeTruthy());
-    expect(source.getCollectionItemState).toHaveBeenCalledWith("s1", "roster", "support.ada");
+    expect(source.getCollectionResourceState).toHaveBeenCalledWith("s1", "roster", "support.ada");
   });
 
   it("keeps the instructions text, none-given, not-published, loading and error states apart (V10)", async () => {
@@ -116,7 +116,7 @@ describe("WorkerDetail", () => {
         sessionId: "s1",
         kind: "k",
         workerId: "c",
-        // The topic is not present in the collection — `getCollectionItemState`
+        // The topic is not present in the collection — `getCollectionResourceState`
         // returns `null` (per its own doc comment).
         client: { resources: fakeSource(null) }
       })
@@ -153,7 +153,7 @@ describe("WorkerDetail", () => {
     // the collection has no client projection configured. The item EXISTS;
     // it just can't be read through this surface. That is the distinct
     // "could not be read" state, not the "no such topic" state.
-    // The route's metadata keys are not on the client's `CollectionItemState` type.
+    // The route's metadata keys are not on the client's `CollectionResourceState` type.
     const metadataOnly = { topic: "f", storageKey: "roster/f", hint: "no client.data configured" };
     const source = fakeSource(metadataOnly);
     render(createElement(WorkerDetail, { sessionId: "s1", kind: "k", workerId: "f", client: { resources: source } }));
@@ -201,7 +201,7 @@ describe("WorkerDetail", () => {
 
       expect(document.querySelector('[data-state="not-published"]')).toBeTruthy();
       expect(screen.queryByText(/other org-visible worker/)).toBeNull();
-      expect(source.getCollectionItemState).not.toHaveBeenCalled();
+      expect(source.getCollectionResourceState).not.toHaveBeenCalled();
     }
   );
 });

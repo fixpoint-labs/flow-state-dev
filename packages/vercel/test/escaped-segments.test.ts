@@ -5,7 +5,8 @@
  * literal `%XX` (an escaped worker address) has to resolve as written.
  */
 import { describe, expect, it } from "vitest";
-import { parseFlowRoute, type FlowApiRouter, type FlowState } from "@flow-state-dev/engine";
+import { parseFlowRoute, type FlowApiRouter } from "@flow-state-dev/engine/host";
+import { type FlowState } from "@flow-state-dev/engine";
 import { createVercelNextHandler } from "../src/next";
 
 describe("createVercelNextHandler — a flow kind that carries percent escapes", () => {

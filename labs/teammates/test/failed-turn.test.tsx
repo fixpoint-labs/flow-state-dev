@@ -85,13 +85,13 @@ describe("the adapter reads a failed turn", () => {
 describe("the line a failed turn draws", () => {
   const failed = (retryable: boolean): ConversationEntry => ({ kind: "failed", id: "e1", requestId: "r1", reason: "The model refused the key.", retryable });
   const draw = (entry: ConversationEntry, onRetry?: () => Promise<void>) =>
-    render(<Entry entry={entry} workerName="Chief of Staff" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} {...(onRetry ? { onRetry } : {})} />);
+    render(<Entry entry={entry} workerName="Lead" nameOf={(id) => id} lookOf={(id) => lookOf({ id, name: id })} {...(onRetry ? { onRetry } : {})} />);
 
   it("names the worker and the reason, and Retry calls back", async () => {
     let retried = 0;
     draw(failed(true), async () => void (retried += 1));
     const line = screen.getByTestId("request-recovery");
-    expect(line.textContent).toMatch(/Chief of Staff couldn't finish this turn/);
+    expect(line.textContent).toMatch(/Lead couldn't finish this turn/);
     expect(line.textContent).toMatch(/The model refused the key\./);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: /Retry/ })));
     expect(retried).toBe(1);

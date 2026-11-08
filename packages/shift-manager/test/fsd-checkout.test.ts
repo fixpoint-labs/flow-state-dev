@@ -195,7 +195,10 @@ describe("a coding run on the fsd profile's projects", () => {
       expect(run!.prompt).not.toMatch(DEMO_BRIEF);
       const branch = expectWorktreeFromMain(user, run!.cwd);
       // The coder's commit is on the run's branch, in the user's checkout.
-      expect(git(user.repo, "show", `${branch}:SCRIPTED-RUN.md`)).toContain("A scripted run");
+      const written = git(user.repo, "show", `${branch}:SCRIPTED-RUN.md`);
+      expect(written).toContain("A scripted run");
+      // The file names its task, from the prompt's task line: a run that wrote "a task" would match the last one.
+      expect(written).toMatch(/\nTask \S+, phase \w+, attempt \d+\./);
       branches.push(branch);
     }
     expect(new Set(stub.runs.map((r) => r.cwd)).size).toBe(2);

@@ -1,5 +1,82 @@
 # @flow-state-dev/engine
 
+## 0.5.0
+
+### Minor Changes
+
+- 531bf32: A task board's change reaches every open view of the board, from whichever session or process settles the task (FIX-2429).
+
+  - **orchestration:** every change to a board built by `getOrCreateTaskCollection` also publishes a `board` change notice on the topic of the session that filed the row (`Task.filer`, else the ledger's legacy filer, else the running session), narrowed to the board's `collectionId`. A screen subscribes `topic.session(conversationId, { resource: "tasks" })` and reads again. Nothing to wire: the `task-change` item is unchanged. The board's `listTasks` action (a client's read, not the model's tool) also answers each row's `updatedAt`, so a client holding a row from two sources keeps the newer.
+  - **engine:** the block context carries the seam that publishes a board notice on the running request's bus, under its tenant, with the request as `origin`.
+  - **react:** **Breaking for a hand-built client slice:** a live `BoardList`'s `client` takes `subscribe` in place of `sessions.stream`. A client from `createClient` works as before. The list now hears a task that settles in another session or process, never wakes on a reply streaming in the session, and reads every 3 s where push can miss a change. `useSubscription` takes `client`, for an app that builds its own client, and hands `read` an `AbortSignal` that aborts when the subscription ends.
+  - **core / contracts:** `ChangeKind` gains `"board"`; `publishBoardChange` and `BOARD_NOTICE_SEAM` (framework-facing) in `@flow-state-dev/core/types`.
+  - **shift-manager:** the conversation's task panel and task cards read on board notices; they keep their 3 s timer only while a task is open, and only where push can miss a change.
+
+- a1386ea: A list of sessions stays current, and each row says whether its session needs you (FIX-2411).
+
+  - **engine:** every write to a session or a request, except items and state field deltas, also publishes a `run` change notice on the owner's user topic, so a screen subscribed to `topic.user()` hears a session it doesn't list yet: created in another tab, by a script, or by `fsdev run`. `GET /sessions?include=status` adds `requestStatus` to each row: the status of the session's latest request, where one still running or stopped wins over a later one that ended, and, for a stopped one, `requestWaitsForUser`: whether it waits for the user or on other work. `include` takes a comma-separated list, so `include=dispatch-runs,status` combines both.
+  - **client:** `sessions.list({ include })` takes `"status"`, or an array of includes. `SessionSummary` gains optional `requestStatus` and `requestWaitsForUser`.
+  - **react:** new `useSessionList({ flowKind | flowId, includeDispatchRuns?, includeStatus?, enabled?, client? })` reads a flow's sessions with their state, again on a `run` notice on the user's topic and when the page becomes visible. `FlowNavigator` reads its open leaves through it, so its session rows are live when the client passes `subscribe` (a narrowed client without it reads once per opening, as before), and each row draws a state mark (running, waiting on you, waiting on other work, interrupted, failed, incomplete) and how long ago it changed. `sessionLabel`, `sessionRowState` and `sessionAge` are exported for a host that draws its own rows.
+
+- f1e6315: Resource collections can declare field indexes and look rows up by them with `findBy` (FIX-2532).
+
+  - **core:** `defineResourceCollection` takes `indexes: { name: (key, state) => value }`, or `{ version, value }` to version an index. `ResourceCollectionRef` gains `findBy(index, value)`, which returns the matching instances in key order. New types `ResourceIndexDeclaration`, `ResourceIndexFunction`, `ResourceIndexValue`. `findBy` is a required member of `ResourceCollectionRef`, so a hand-written object typed as one (a test double, a partition view) needs it too.
+  - **engine:** the stores `createFlowState` resolves, and those a router built with `createFlowApiRouter` resolves, write every resource row with the entries of every registered index whose scope and pattern match it. On SQLite and Postgres `findBy` reads the index, building it from the collection's rows on the first lookup in each scope; on the memory and filesystem stores it scans. Registration refuses one index name at two versions on collections in one scope whose patterns can match the same keys. `FlowRegistry` gains `indexedCollections()`. `createFindByConformanceTests` in `@flow-state-dev/engine/testing` runs the shared `findBy` cases against a store registry.
+
+- 45c158b: Resource state stores can keep index entries, so a collection can later be looked up by a declared field without reading its rows (FIX-2532, first of three changes).
+
+  - **engine:** `ResourceStateStore.set` takes an optional sixth argument, `{ indexEntries }`, and the store may have an optional `indexes` member (`state`, `beginBuild`, `completeBuild`, `findKeys`). New types: `ResourceIndexEntry`, `ResourceStateSetOptions`, `ResourceIndexBuildState`, `ResourceIndexBuildEntry`, `ResourceStateIndexes`. Both are optional, so an existing adapter or test double still type-checks and behaves as before. `createResourceStateStoreConformanceTests` takes `indexes: true` to run the index cases against a store that implements them. The memory and filesystem stores implement no index verbs.
+  - **store-sqlite / store-postgres:** implement the index verbs, with two new tables, `resource_index` and `resource_index_built`, created on open like every other table. Every resource write now also maintains them in the same commit, so **a database opened with `skipSchemaInit: true` must have had `initializeSchema` run against this version first**, or resource writes fail. On Postgres a successful `set` then runs one more statement that clears build markers its write could not see, so it costs one extra round trip.
+
+- bc65135: A live view hears other sessions' changes to the user and org state and the resources it reads (FIX-1506).
+
+  - **engine:** a session, user or org state write, and a write to a resource a client can read, publishes a `state` or `resource` notice on its scope's topic once it lands, from any run, with or without a stream, naming the request that made it. The resource routes publish the session's topic too.
+  - **react:** `useSession(id, { live: true })` subscribes its session, user and org topics: a state notice reads state again without the item history, a resource notice makes the resource hooks read again, and a notice from the view's own request is skipped. `Roster` and `BoardColumns` take `live` and read their collection again on another session's change to it.
+  - **contracts:** `ChangeKind` gains `"state"` and `"resource"`; a `switch` over it that lists every kind needs the two new cases. `getPatternPrefix` is exported from `@flow-state-dev/contracts/helpers` (still re-exported from `@flow-state-dev/core/types`).
+
+- da4a4bb: A worker's conversation can follow a thread on an outside service, and hears each event on it once, as a message from `service:<provider>` (FIX-2534).
+
+  - **workforce:** `subscriptionTools({ providers })` gives the `subscribe` and `unsubscribe` tools; `defineSubscriptionServiceFlow({ kind, provider, installation, trustedBots?, capPerHour? })` builds a provider's service flow, which routes each event through five code screens (`sender`, `own`, `labels`, `words`, `allow`) and delivers once per conversation, under the subscribing session's tenant. A subscription ends on `unsubscribe`, when the thread it follows closes (a PR's closing leaves a subscription to its repository running), or when the task whose session made it fails or is cancelled. See the README's Subscriptions section.
+  - **engine:** `fireOwnerRunThrough(host, run)` starts an internal entry as the user whose stored row it names, only when the row is there, names the same org and tenant, and isn't `enabled: false`; `routeServiceEvent(host, …, { concurrency? })` runs a service flow's entry, reads the owner runs it names, and fires them a few at once, recording each one's failure. `resolveSharedUserCellKey(userId, orgId, flowKind)` is the storage key both read a user's shared rows at.
+  - **core:** `subscriptionEventSchema` / `SubscriptionEvent`, the normalized event a webhook or a poll maps into.
+
+- 5f569fd: A task's session tells what a person said from what the task was handed (FIX-2574, FIX-2575).
+
+  - **core / engine:** an action's `userMessage` can return `{ text, metadata }`. The echo is still the request's `user` line, and it carries `metadata` for a client to read. A plain string works as before.
+  - **orchestration:** a steer from a person (sent from a screen, or a coding review's request for changes) now shows in the task's session as a `user` line with their words alone, not as an assistant line reading "Message from the user: …". A filer's or the board's steer reads as before. **Breaking:** `showTakenSteers` is now async; await it.
+  - **workforce:** a task request's opening `user` line (the task as filed, or re-queued with its steers) is marked as the task's brief. Read it with `taskBriefOf(item)` from `@flow-state-dev/workforce/browser` to draw it as a brief, not as the person's line.
+
+- 844a4f9: Screens can read again when something they show changes, without polling on the Node host (FIX-2428).
+
+  - **client:** `fsd.subscribe(topics, { onChange, pollIntervalMs? })` calls `onChange` with the notice that woke it (`{ topic, kind, origin? }`), or `null` for a connect, a reconnect or a timer tick. Build topics with `topic.session(id)`, `topic.user()` and `topic.org()`, now exported from the client too. On a host with push, one WebSocket per client carries the notices, signed in through the client's fetcher; elsewhere `onChange(null)` runs every `pollIntervalMs`. `FlowCapabilities` gains `push`. **Breaking:** `fsd.stream()` is removed. It never worked (the server answered 501); use `fsd.subscribe()`. `UserStreamOptions`, `UserSSECallbacks` and `UserStreamHandle` are removed with it. Migration: replace `fsd.stream({ onResourceChanged, onScopeStateChanged, ... })` with `fsd.subscribe([topic.user(), topic.org()], { onChange: () => reread() })`, and read what you show in `onChange`. A notice carries no rows, so the read is what tells you what changed.
+  - **react:** `useSubscription(topics, read, { pollIntervalMs?, enabled? })` runs a screen's read again on a change, one read in flight and one waiting.
+  - **node:** `serve()` serves the change-notice WebSocket at `<basePath>/users/:userId/stream`. New options: `push` (default `true`) and `pushSecret` (default `FSD_PUSH_SECRET`, then a random key), which every process behind one address must share.
+  - **engine:** `GET /capabilities` answers `{ userStream: false, push }`. `POST /users/:userId/stream` checks each topic with its scope's read check and answers a short ticket for the granted ones; a refused topic is left out, as a missing session is. `GET /users/:userId/stream` answers 426 instead of 501. `enablePushDelivery(router, { secret? })` turns push on for a host that serves the socket.
+  - **contracts / core:** the push wire types (`PushCapability`, `PushMintAnswer`, `PushServerFrame`, `PushClientFrame`, `WireNotice`). **Breaking:** the user-stream event types `UserStreamEvent`, `UserEventBase`, `UserResourceChangedEvent`, `ResourceContentUpdatedEvent`, `ResourceContentCreatedEvent`, `ResourceContentDeletedEvent`, `ScopeStateChangedEvent`, `UserDebugEvent` and `UserPingEvent` are removed; `StreamEvent` is `RequestStreamEvent`.
+
+### Patch Changes
+
+- 05a7022: An action's optional `taskOf(input)` names the task a request is for, and the request's user message and items carry it as `taskId`; Workforce's built-in doors take an optional `taskId` through `doorTask`, and the inventory row says so as `doorTakesTask` (FIX-2422).
+- 4d3f49e: The default in-memory change bus now reports `crossesProcesses: true`. It is the bus for an app that runs as one process, where every change is made where its subscribers are. On it, an open session stream no longer reads the store once a second, and a client subscription with `pollIntervalMs` stops its fallback timer while its socket is open. Updates arrive on change notices instead. An app that writes its stores from several processes needs a bus that crosses, such as the Postgres bus that Postgres stores fill by default. On the in-memory bus, a change written by another process (a second server on the same SQLite file, or `fsdev run` / `fsdev chat` writing the file a running `fsdev dev` serves) reaches an open page only at its next read (FIX-2545).
+- 46e4297: A turn that runs while another request in its session waits on a call (`dispatcher({ wait: true })`) now reads that request's history as far as it got, its settled items plus a line naming what it still waits on; a request stopped for its user or waiting on a task stays out (FIX-2279).
+- d3eaa00: `postgresStores` now backs the `bus` slot, so on a host with more than one process over one Postgres a session view open on one process sees a change saved on another as soon as it is saved, and an idle view costs the database nothing. Each process with an open view holds one listening connection from `liveTailPool` and pings itself through it every 2 s; it reports `crossesProcesses: true` only while the ping comes back, so behind a transaction pooler (or after a silent drop) views keep the once-a-second read, and the process logs one warning naming the fix (a `liveTailPool` on a direct connection string). `createPostgresStores` returns the bus as `registry.bus`, and `close()` hands its connection back before ending the pools. Without a tail pool (`liveTailPool: null`, `{ pool }` without one, `{ executor }`) the bus stays in process. In `@flow-state-dev/engine`, `withChangeBus` now refuses stores that already publish to a different bus instead of publishing to both, a write's notice reaches subscribers one microtask sooner, and a notice that can't be assembled is debug-logged (FIX-2427).
+- 65ee4c5: Scope state reads with its schema's defaults (FIX-2554).
+
+  `ctx.session.state`, `ctx.user.state` and `ctx.org.state` now hold the default of every defaulted field of the flow's scope `stateSchema` that the stored record lacks, as their `z.infer` type already promised: on a fresh user or session, on a record stored before the field existed, and after a concurrent write. Only missing values are filled in; a stored value is read as stored, and keys the schema doesn't declare are kept, so another flow's fields on a shared user or org record survive. The `/state` projection's `clientData` and the session listing read the same way. A `?? default` fallback on a field the flow's schema defaults can go. A block's or capability's own `sessionStateSchema` still only types `ctx.session.state`.
+
+  An `incState` or `pushState` on a field the stored record lacks builds on the field's default (`count.default(10)` plus 1 is 11), not on the store's empty start.
+
+  `hireWorkforce` refuses a worker flow registered as a manager or coordinator whose session `stateSchema` doesn't default the fields its board and delegates read (`delegates`, `fallback`, `taskNotices`, and a coordinator's rounds). Declare `session: installation.session(board.sessionStateShape)`.
+
+- Updated dependencies [531bf32]
+- Updated dependencies [05a7022]
+- Updated dependencies [c67aa49]
+- Updated dependencies [f1e6315]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/core@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

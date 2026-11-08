@@ -43,7 +43,8 @@
  * read, names this step.
  */
 
-import { ensureSessionRecord, resolveUserStorageKey, runAction, type FlowState } from "@flow-state-dev/engine";
+import { ensureSessionRecord } from "@flow-state-dev/engine/host";
+import { resolveUserStorageKey, runAction, type FlowState } from "@flow-state-dev/engine";
 import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { ASK_ENTRY } from "./worker-config.mts";

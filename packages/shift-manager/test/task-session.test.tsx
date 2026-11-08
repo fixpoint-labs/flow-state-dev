@@ -53,6 +53,7 @@ vi.mock("../src/lib/run", async (original) => ({
   readRunRecord: (...args: unknown[]) => readRunRecord(...args),
 }));
 
+import { taskBriefMetadata } from "@flow-state-dev/workforce/browser";
 import { collectionOfBoard } from "../src/lib/reads";
 import { TaskSession } from "../src/surfaces/TaskSession";
 
@@ -153,5 +154,40 @@ describe("the run's status after its stream drops", () => {
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(reportStatus).toHaveBeenCalledWith("completed", 500);
     expect(requests).toHaveLength(1);
+  });
+});
+
+describe("the task's brief", () => {
+  const brief = {
+    id: "b1",
+    type: "message",
+    role: "user",
+    status: "completed",
+    requestId: "req_run",
+    itemIndex: 0,
+    ts: 100,
+    taskId: "t1",
+    metadata: taskBriefMetadata({ taskId: "t1" }),
+    content: [{ type: "output_text", text: "Since this task was filed, fix the flaky test." }],
+  };
+  const typed = { ...brief, id: "u1", itemIndex: 3, metadata: undefined, content: [{ type: "output_text", text: "Keep the old flag name." }] };
+
+  it("is one folded Task brief line, not a line the user typed, and opens to the brief", async () => {
+    render(<TaskSession />);
+    await act(async () => feeds.at(-1)!.onRead({ items: [claim, brief, step(1), typed], truncated: false }));
+
+    const [briefRow, , typedRow] = screen.getAllByTestId("session-item");
+    // The brief is what the session was handed: no user bubble, and not marked as the user's line.
+    expect(within(briefRow!).queryByTestId("message")).toBeNull();
+    expect(briefRow!.hasAttribute("data-sent-line")).toBe(false);
+    const line = within(briefRow!).getByTestId("task-brief");
+    expect(line.textContent).toContain("Task brief");
+    expect(line.textContent).not.toContain("fix the flaky test");
+    fireEvent.click(within(line).getByRole("button"));
+    expect(line.textContent).toContain("fix the flaky test");
+
+    // Words the user typed still read as theirs, and are still the user's line for jump-to-latest.
+    expect(within(typedRow!).getByTestId("message").getAttribute("data-message-role")).toBe("user");
+    expect(typedRow!.getAttribute("data-sent-line")).toBe("u1");
   });
 });

@@ -1,10 +1,11 @@
+// FIX-438; FIX-23.
 /**
  * Default body-userId principal resolver.
  *
  * Reads `body.userId` from the parsed request body — exactly the model the
- * pre-FIX-438 router used at `routes/action-routes.ts`. Returns `null` when
+ * earlier router used at `routes/action-routes.ts`. Returns `null` when
  * the body has no `userId`; the host then applies `authentication.defaultUserId`
- * fallback and enforces `authentication.requireUser` (FIX-23). Throwing is
+ * fallback and enforces `authentication.requireUser`. Throwing is
  * reserved for explicit auth failures (e.g., custom resolvers verifying a
  * signature); a missing field is not, by itself, an auth failure here.
  */

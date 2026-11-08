@@ -1,5 +1,6 @@
+// FIX-140.
 /**
- * Filesystem-backed lease store for durable execution (FIX-140).
+ * Filesystem-backed lease store for durable execution.
  *
  * Stores each lease as a JSON file: rootDir/{encodeURIComponent(requestId)}.json
  * One active lease per request at a time.

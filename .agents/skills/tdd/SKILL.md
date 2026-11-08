@@ -15,7 +15,7 @@ Tests verify behaviour through the public interface, not implementation details.
 
 **Prefer no new test over a bad test.** A test that cannot fail when the behaviour changes, or that fails when only the internals change, is worse than a gap — it is false confidence. Skip the cycle rather than add one.
 
-This skill is the **loop**. The vitest conventions — mock context, `mockGenerator`, `testBlock` / `testSequencer` / `testRouter`, coverage checklist — live in [`write-block-tests`](../write-block-tests/SKILL.md). Read that when you sit down to write the spec file; stay here for red-green-refactor. See [tests.md](tests.md) for FSD-flavoured good/bad examples, and [mocking.md](mocking.md) for where the mock seams actually are.
+This skill is the **loop**. The vitest conventions — mock context, `mockGenerator`, `testBlock`, coverage checklist — live in [`write-block-tests`](../write-block-tests/SKILL.md). Read that when you sit down to write the spec file; stay here for red-green-refactor. See [tests.md](tests.md) for FSD-flavoured good/bad examples, and [mocking.md](mocking.md) for where the mock seams actually are.
 
 ## Two kinds of test, two different jobs
 

@@ -69,14 +69,13 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readClaudeUsage } from "@flow-state-dev/claude-code/sdk";
+import { readClaudeCodeUsage } from "@flow-state-dev/claude-code";
 import { readCodexUsage } from "@flow-state-dev/codex";
-import { harnessEnv } from "@flow-state-dev/core";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { parseCheckoutCommand, type WorkspaceSetup } from "@flow-state-dev/workspace";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
-import { claudeCodeEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
+import { claudeCodeEnv, codexEnv, errorReporterHarness, startHarness, workerHarnesses } from "./harness.mts";
 import { CHECKOUT } from "./fsd-checkouts.mts";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
@@ -175,31 +174,6 @@ await setAsideLegacyOrgStore(STORE);
 
 const harness = await startHarness("stub");
 
-/**
- * What the Codex usage read is handed: what a Codex run gets, so the read sees
- * the account the runs use (`CODEX_HOME`'s sign-in, or `CODEX_API_KEY`) over
- * the same proxy and CA settings.
- */
-const CODEX_USAGE_PASS = [
-  "PATH",
-  "HOME",
-  "CODEX_HOME",
-  "USER",
-  "SHELL",
-  "TMPDIR",
-  "CODEX_API_KEY",
-  "HTTPS_PROXY",
-  "https_proxy",
-  "HTTP_PROXY",
-  "http_proxy",
-  "ALL_PROXY",
-  "all_proxy",
-  "NO_PROXY",
-  "no_proxy",
-  "CODEX_CA_CERTIFICATE",
-  "SSL_CERT_FILE",
-] as const;
-
 const lab = await openLab({
   stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
@@ -229,8 +203,8 @@ const lab = await openLab({
   // app-server sign-in in a hosted service.
   usage: {
     codex: ({ signal } = {}) =>
-      readCodexUsage({ env: harnessEnv({ pass: CODEX_USAGE_PASS }), ...(signal === undefined ? {} : { signal }) }),
-    "claude-code": ({ signal } = {}) => readClaudeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
+      readCodexUsage({ env: codexEnv(), ...(signal === undefined ? {} : { signal }) }),
+    "claude-code": ({ signal } = {}) => readClaudeCodeUsage({ env: claudeCodeEnv(), ...(signal === undefined ? {} : { signal }) }),
   },
   readiness: harness.readiness,
 });

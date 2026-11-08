@@ -1,5 +1,46 @@
 # @flow-state-dev/shift-manager
 
+## 0.2.1
+
+### Patch Changes
+
+- 531bf32: A task board's change reaches every open view of the board, from whichever session or process settles the task (FIX-2429).
+
+  - **orchestration:** every change to a board built by `getOrCreateTaskCollection` also publishes a `board` change notice on the topic of the session that filed the row (`Task.filer`, else the ledger's legacy filer, else the running session), narrowed to the board's `collectionId`. A screen subscribes `topic.session(conversationId, { resource: "tasks" })` and reads again. Nothing to wire: the `task-change` item is unchanged. The board's `listTasks` action (a client's read, not the model's tool) also answers each row's `updatedAt`, so a client holding a row from two sources keeps the newer.
+  - **engine:** the block context carries the seam that publishes a board notice on the running request's bus, under its tenant, with the request as `origin`.
+  - **react:** **Breaking for a hand-built client slice:** a live `BoardList`'s `client` takes `subscribe` in place of `sessions.stream`. A client from `createClient` works as before. The list now hears a task that settles in another session or process, never wakes on a reply streaming in the session, and reads every 3 s where push can miss a change. `useSubscription` takes `client`, for an app that builds its own client, and hands `read` an `AbortSignal` that aborts when the subscription ends.
+  - **core / contracts:** `ChangeKind` gains `"board"`; `publishBoardChange` and `BOARD_NOTICE_SEAM` (framework-facing) in `@flow-state-dev/core/types`.
+  - **shift-manager:** the conversation's task panel and task cards read on board notices; they keep their 3 s timer only while a task is open, and only where push can miss a change.
+
+- bfe8914: Shift Manager's review card and approval card draw their text as Markdown, the way chat messages do: a review's prompt, a coding run's commit subjects and an approval's message show bold, inline code and lists instead of literal `**` and backticks. A commit subject stays one line. HTML in the text shows as text (FIX-2544).
+- b9bde3f: A worker flow of your own can open its prompt with the same default layer as the built-in worker flow (FIX-2493).
+
+  - **workforce:** exports `workerIdentityPrompt(ctx, installation)`. Put `(_input, ctx) => workerIdentityPrompt(ctx, installation)` first in a model block's `prompt` and its workers are told who they are, who they can reach, and to work things out themselves first.
+  - **shift-manager:** the DevTeam's Engineering Manager now gets that layer ahead of its team's and its own instructions.
+
+- acfc5cb: The Researcher can now look things up: it holds web search, fetch, and reads of the files of the project its task works in, where before it had no tools and answered from the model's memory. Web search needs a search provider's key in the Lab's environment (FIX-2496).
+- bf6c622: A coding run's review card shows the project's checks the run passed or failed (FIX-2387).
+
+  - **harness-manager:** `reviewDetail` (browser entry) also reads the review stop's `checks` into `ReviewDetail.checks`, `null` when the phase ran none; `ReviewCheck` is exported beside it. **Breaking for code that builds a `ReviewDetail` by hand:** add `checks: null`.
+  - **shift-manager:** the review card in a task's thread shows "Checks n/m passed", open on a red check's output.
+
+- 79b03fc: A screen that lists workers can follow the roster instead of reading it once (FIX-2412).
+
+  - **workforce:** `WorkforceClient.watchRoster(onRoster, { onError })`, on `@flow-state-dev/workforce/browser`, hands the user's roster to `onRoster`, and again each time a hire, fork, edit or fire changes it, from any tab or any worker's turn. It listens on the client's `subscribe` (the user's topic) and reads every 3 s only where push can miss a change; it reports only a changed roster and returns its stop function. **Breaking for a hand-built source:** `WorkforceClientSource` now includes `subscribe`. A client from `createClient` works as before.
+  - **shift-manager:** Roster, TEAMS, a project's lead picker, worker settings and DELEGATES follow the roster through one watch per connection, so a worker hired elsewhere shows without a reload.
+
+- dabee4a: `useJumpToLatest` brings the person's line to near the top of the feed when they send, and never scrolls for content that arrives after it. Mark each of their lines with `{...feed.mine(line.id)}` and call `sent()` on send; without them the view stays where the reader put it and `atEnd` turns `false` when there is more below. DevTool's stream view and Shift Manager's conversation and task session scroll this way (FIX-2360).
+- aa198cd: When the Lab stops answering after Shift Manager has read it, the page you're on, an open task and anything you've typed now stay on screen. A bar across the top says how long ago the server went, task statuses grey out and their timers stop, and Shift Manager reads the Lab again on its own until it answers. A dropped conversation or task session feed shows the same bar. The full-screen _couldn't reach the Lab_ page is now only for a first read that fails, and it retries on its own too (FIX-2373).
+- eb78047: A conversation with a worker now follows its session's stream instead of reading the whole session every 5 seconds, so a message another worker sends, or a reply from another process, shows as soon as it is stored, and an open conversation reads nothing while nothing changes (FIX-2466).
+- bac9b5e: A task's Session tab now follows the run's session stream from its newest steps. A dropped connection reconnects and keeps what is shown, instead of blanking the transcript. A worker conversation or a Session that holds more than its first page shows _Load earlier_, which reaches back a page at a time to the first step (FIX-2374).
+- ad8375c: The Shift Coordinator's empty conversation offers a few lines to start with, built from the delegates of that conversation by their roster names. A click puts the line in the composer and sends nothing (FIX-2403).
+- 243a14a: Shift Manager's summary, Inbox, Tasks and sidebar counts change on their own when another session changes what they show: a delegate's ask, a task filed or moved, a project or worker added. A streamed reply doesn't trigger a read; its end does. Where the Lab can't push changes, Shift Manager reads every 30 seconds instead. The summary says when it was last read (_as of 14:02 · refresh_); _refresh_ or `R` reads it now, and the counts dim until that read lands (FIX-2409).
+- Updated dependencies [7871b26]
+- Updated dependencies [c67aa49]
+- Updated dependencies [dabee4a]
+  - @flow-state-dev/fsdev@0.5.0
+  - @flow-state-dev/devtool@0.3.2
+
 ## 0.2.0
 
 ### Minor Changes

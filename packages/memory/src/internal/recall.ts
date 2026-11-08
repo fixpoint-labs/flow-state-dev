@@ -31,10 +31,11 @@ import { effectiveConfidence } from '../janitor'
 export function createRecall(
   episodicConfig?: { scope: 'user' | 'org' },
   semanticConfig?: { scope: 'user' | 'org' },
+  // FIX-411.
   /**
    * When `confidenceDecay` is set, the semantic ranking branch uses
    * `effectiveConfidence` (decayed by elapsed days). When `false` or
-   * undefined, raw `fact.confidence` is used — pre-FIX-411 behaviour.
+   * undefined, raw `fact.confidence` is used, with no decay.
    */
   decayConfig?: false | { halfLife: number },
 ) {

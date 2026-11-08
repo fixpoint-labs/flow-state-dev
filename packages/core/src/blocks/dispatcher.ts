@@ -1,6 +1,7 @@
+// FIX-2082.
 /**
  * `dispatcher()` — a block that sends one dispatch to one declared entry, and
- * with `wait: true` waits for what it started (FIX-2082).
+ * with `wait: true` waits for what it started.
  *
  * A **router** picks a block to run *here*. A **dispatcher** names an entry to
  * run *elsewhere*: in a child session it derives, or in a session that already
@@ -86,7 +87,7 @@
  * only a board holds one. Run anywhere else it dispatches an envelope no board
  * minted, and the entry's gate refuses it against the ledger.
  *
- * ## Waiting for the result (FIX-2082)
+ * ## Waiting for the result
  *
  * An `internal` dispatcher with `wait: true` sends its dispatch, then parks its
  * request on the one wait gate, bound to the request it started, and outputs
@@ -100,6 +101,7 @@
 import { z, type ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition } from "../types/block";
 import { canHoldWait, MAX_WAIT_DEPTH } from "../types/wait-gate";
+import { requestHostOf } from "../types/request-host";
 import { waitOnRequest } from "./wait-on-request";
 import {
   DispatchRefusedError,
@@ -329,14 +331,14 @@ export function dispatcher(
         ? `[dispatcher] "${name}" must name a non-empty action entry, or a choice ` +
             `{ among: [...names], by: (task) => name } among declared ones`
         : `[dispatcher] "${name}" must name a non-empty action entry. Only a task ` +
-            `dispatcher chooses its entry per row.`
+            `dispatcher chooses its entry per task.`
     );
   }
   if (type !== "internal" && type !== "task") {
     throw new Error(
       `[dispatcher] "${name}" dispatches type "${String(type)}", which authored code cannot ` +
         `supply the trust for. A block may dispatch "internal" (its own request's authority) ` +
-        `or "task" (a claim on a durable row, minted by the task board that holds the dispatcher).`
+        `or "task" (a claim on a durable task, minted by the task board that holds the dispatcher).`
     );
   }
 
@@ -467,8 +469,9 @@ export function dispatcher(
   return markDispatcher(block, address);
 }
 
+// FIX-2082.
 /**
- * Send the dispatch once, then wait for the request it started (FIX-2082).
+ * Send the dispatch once, then wait for the request it started.
  *
  * Every check comes before anything is sent: a host that can hold the wait,
  * and a chain no deeper than {@link MAX_WAIT_DEPTH}. The dispatch and the
@@ -476,7 +479,7 @@ export function dispatcher(
  * after the park sends nothing again and parks on the same gate.
  */
 async function sendAndWait(name: string, ctx: BlockContext, send: () => Promise<DispatchHandle>): Promise<DispatchWaitResult> {
-  const waits = ctx.requestHost?.waits;
+  const waits = requestHostOf(ctx)?.waits;
   if (waits === undefined || !canHoldWait(ctx) || ctx.runOnce === undefined || ctx.suspend === undefined) {
     throw new Error(
       `[dispatcher] "${name}": wait_unavailable: this host can't hold a wait (it needs a durable ` +
@@ -539,9 +542,9 @@ function assertEntryChoice(name: string, choice: TaskEntryChoice): void {
     typeof choice.by === "function";
   if (!valid) {
     throw new Error(
-      `[dispatcher] "${name}" chooses its entry per row but declares ${JSON.stringify(among)} ` +
+      `[dispatcher] "${name}" chooses its entry per task but declares ${JSON.stringify(among)} ` +
         `as the entries it chooses among. Declare { among: ["entry", ...], by: (task) => entry }: ` +
-        `at least one entry, each named once, so every entry a row can land on is verified.`
+        `at least one entry, each named once, so every entry a task can land on is verified.`
     );
   }
 }

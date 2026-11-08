@@ -1,12 +1,13 @@
+// FIX-951; FIX-963.
 /**
- * The drain's tail check (FIX-963): if this run could not record a result it
+ * The drain's tail check: if this run could not record a result it
  * had saved, the run fails — but only once every task has finished.
  *
  * ## Why it is here and not where the failure is found
  *
  * Loud and contained pull against each other. Raising inside a worker rejects
  * the `forEach` and abandons every task that had not started, which is the bug
- * FIX-951 shipped to fix; reporting without failing leaves the drain's result
+ * advisory write-backs fixed; reporting without failing leaves the drain's result
  * saying the run was clean, which is the bug this issue is about. So the
  * recorders report and return, and the raise waits here, after the fan-out has
  * drained and after the board's completion entry has been written.

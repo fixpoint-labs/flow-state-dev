@@ -39,11 +39,12 @@ import {
   isProjectedResourceCollection,
   readProjectedRecord,
   searchProjectedRecords,
+  applyGetOrPatchState,
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
-import { OWNER_ROW_REFUSAL, ownerKeyAdmits, ownerWritesRefusalForKey } from "../resources/owner-private";
+import { OWNER_RESOURCE_REFUSAL, ownerKeyAdmits, ownerWritesRefusalForKey } from "../resources/owner-private";
 import { cloneValue, resolveClientData } from "@flow-state-dev/core/helpers";
-import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { isTraceObservabilityEnabled } from "@flow-state-dev/core/internal";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type {
   ContentScopeType,
@@ -104,8 +105,9 @@ function asJsonValue(value: unknown): JsonValue {
   return out;
 }
 
+// FIX-739.
 /**
- * The internal mutation-seam change vocabulary, also the FIX-739 client
+ * The internal mutation-seam change vocabulary, also the client
  * `resource_change` wire format. Distinct from the author-facing *reactive*
  * kinds (`created` / `deleted` / `stateUpdated` / `contentUpdated`): a content
  * write fires the seam as `"updated"` with a {@link ResourceChangeDelta.contentWrite}
@@ -115,12 +117,13 @@ function asJsonValue(value: unknown): JsonValue {
  */
 export type ResourceSeamChangeType = "created" | "updated" | "deleted";
 
+// FIX-751; FIX-843.
 /**
- * FIX-751: the change descriptor a mutation threads to `onResourceChanged` as
+ * The change descriptor a mutation threads to `onResourceChanged` as
  * its 4th arg, used by the reactive dispatcher to build the reactive payload.
  * `state` is the post-mutation state (omit for `deleted`); `prevState` the
  * pre-mutation state (omit for `created`); `evicted` is `true` only for a
- * capacity-driven removal. FIX-843: `contentWrite` is set by `writeContent()`
+ * capacity-driven removal. `contentWrite` is set by `writeContent()`
  * (which carries no state delta) so the dispatcher routes to
  * `reactTo.contentUpdated` rather than `reactTo.stateUpdated`. Declared once here
  * and imported type-only by the dispatcher and the execution context so the
@@ -193,8 +196,9 @@ function readOnlyRefusal(message: string): FlowError {
   return new FlowError(message, { code: "resource_read_only", retryable: false });
 }
 
+// FIX-965.
 /**
- * Read a state field as an OWN property (FIX-965's guard, applied here).
+ * Read a state field as an OWN property (the own-property guard, applied here).
  *
  * `current[field]` on a plain object falls through to `Object.prototype` for a
  * field the object does not own, so `constructor`, `toString`, `valueOf` and
@@ -229,12 +233,13 @@ function setOwnField(target: JsonObject, field: string, value: JsonValue): void 
   });
 }
 
+// BP-023.
 /**
  * `incState`'s mutator body: add each delta to its field.
  *
  * Builds a fresh object and returns it only once every field passed, so a
  * multi-field call with one wrong-typed field applies none of it. An absent or
- * `null` field is that field's empty state (BP-023 declares state fields
+ * `null` field is that field's empty state (state fields are declared
  * `.nullable().default(null)`, so an untouched counter reads as `null`), not a
  * wrong kind of value — it starts from `0`.
  */
@@ -419,9 +424,10 @@ async function runWriteMutator(
   }
 }
 
+// FIX-1545; BP-031.
 /**
- * The `orgId` a write to a `stampOrgId` collection instance may store (FIX-1545).
- * The organization is the server's to record, never the caller's (BP-031).
+ * The `orgId` a write to a `stampOrgId` collection instance may store.
+ * The organization is the server's to record, never the caller's.
  *
  *  - **New instance** (`basis` undefined): the executing run's org. Naming it is
  *    fine; naming any other throws.
@@ -460,17 +466,19 @@ function applyStampedOrgId(
   return next;
 }
 
+// FIX-701.
 /**
  * Outcome of a lazy on-demand load. `fetched` is true only when a real store
  * round-trip occurred (false for a cache short-circuit); `durationMs` is the
  * wall time of that round-trip. The lazy collection accessor wrapper uses this
  * to record a resource-load (`cacheHit = !fetched`) tagged with the accessor
- * that triggered it (FIX-701).
+ * that triggered it.
  */
 export type LazyLoadOutcome = { fetched: boolean; durationMs: number };
 
+// FIX-688.
 /**
- * FIX-688: on-demand loaders backing a scope's lazy collection accessors.
+ * On-demand loaders backing a scope's lazy collection accessors.
  * `getInstance` loads a single instance (state + content) into the per-scope
  * cache so the ref handed back reads synchronously; `getByPrefix` bulk-loads a
  * collection's prefix for `list`/`count`. Both single-flight and merge
@@ -680,8 +688,9 @@ export async function loadDeclaredScopeContent(
   return seed;
 }
 
+// FIX-689.
 /**
- * Load only the state a scope's declared resources reference (FIX-689), the
+ * Load only the state a scope's declared resources reference, the
  * state-layer twin of `loadDeclaredScopeContent`. Fixed resources resolve to a
  * single storage key (`resourceState.get`); collections resolve to their
  * pattern prefix (`resourceState.getByPrefix`, where an empty prefix loads
@@ -735,13 +744,14 @@ export async function loadDeclaredResourceState(
   return seed;
 }
 
+// FIX-688 Wave 1.
 /**
- * FIX-688 Wave 1: narrow a scope's declared resources to the flow-level,
+ * Narrow a scope's declared resources to the flow-level,
  * non-lazy subset that loads at request start. Resources declared inside an
  * action's block tree load at action/block dispatch (Waves 2 & 3); lazy
  * resources load on first access. When `flowLevelKeys` covers every accessor
  * (the back-compat default), this returns the full set — preserving the
- * pre-FIX-688 "load everything at request start" behaviour.
+ * "load everything at request start" behaviour.
  */
 export function filterFlowLevelEager(
   configs: Record<string, ResourceConfig | ResourceCollectionConfig>,
@@ -777,7 +787,7 @@ function fenceOwnerKeys(
   const own = (key: string | Record<string, string>): boolean =>
     admits(resolveCollectionKey(handle.pattern, key));
   const refuse = (): never => {
-    throw new Error(OWNER_ROW_REFUSAL);
+    throw new Error(OWNER_RESOURCE_REFUSAL);
   };
   return {
     ...handle,
@@ -841,16 +851,17 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
     readResourceContent: () => Record<string, string>;
+    // FIX-992, D10; FIX-744.
     /**
      * Drive one version-checked write to a single resource / collection-instance
-     * state key (FIX-992, D10).
+     * state key.
      *
      * The registry hands over the op's **real mutator** rather than a finished
      * value, because that is the only thing a retry can usefully re-run. The
      * provider seeds a per-key container from the version this context observed,
      * runs the resource CAS driver, and on commit updates the live scope cache
      * IN PLACE (`cache[key] = value`) — never snapshotting and replacing the
-     * whole map, so concurrent distinct-key writes still coexist (FIX-744).
+     * whole map, so concurrent distinct-key writes still coexist.
      *
      * Resolves `committed: false` only for a **verified** no-op: the mutator's
      * output equalled the stored value at a re-read, confirmed version. Callers
@@ -884,11 +895,12 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
        */
       previousState: JsonObject;
     }>;
+    // FIX-992, D7.
     /**
      * Remove a single state key: version-conditional durable delete plus
      * in-place live-cache delete. Carries the version this context observed, so
      * a delete chosen from a stale snapshot conflicts instead of tombstoning a
-     * newer generation (FIX-992, D7). Rejects terminally on conflict.
+     * newer generation. Rejects terminally on conflict.
      *
      * @returns `true` when a live row was tombstoned, `false` when there was
      * nothing to remove. Callers gate delete hooks and change events on it.
@@ -898,12 +910,13 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     persistResourceContentKey: (key: string, content: string) => Promise<void>;
     /** Remove a single resource's content body: durable per-key delete plus in-place live-cache delete. */
     deleteResourceContentKey: (key: string) => Promise<void>;
+    // FIX-739.
     /**
      * Called after any resource mutation so the streaming layer can push change
      * events to clients. The optional `projection` carries the mutated
      * instance's projected `clientData` slice — populated only for resources
      * declaring `client.live: true` — so the change event ships an inline delta
-     * the client merges without a refetch (FIX-739). Omitted for non-live
+     * the client merges without a refetch. Omitted for non-live
      * resources (the streaming layer falls back to a batched refetch) and for
      * `deleted` / content-only changes (nothing to project).
      */
@@ -915,16 +928,18 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       // Awaitable so reactive blocks run inline within the mutating turn.
       change?: ResourceChangeDelta
     ) => void | Promise<void>;
+    // FIX-688.
     /**
-     * FIX-688: on-demand loaders for `prefetchMode: 'lazy'` collections. When
+     * On-demand loaders for `prefetchMode: 'lazy'` collections. When
      * present, lazy collection accessors ensure the target instance/prefix is
      * loaded into the cache before delegating to the eager method body. Omitted
      * for scopes/contexts that don't support lazy loading (mock registries),
      * where a lazy collection falls back to the eager cache-only behaviour.
      */
     lazyLoad?: ScopeLazyLoad;
+    // FIX-2532.
     /**
-     * FIX-2532: the candidate keys for a collection's `findBy`, from the
+     * The candidate keys for a collection's `findBy`, from the
      * store's index (built first when the scope's index is not). A superset:
      * every key is re-checked against its row. Resolves `undefined` when the
      * store keeps no index entries, and is omitted for mock registries; in
@@ -935,8 +950,9 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       index: DeclaredResourceIndex,
       value: string
     ) => Promise<string[] | undefined>;
+    // FIX-701.
     /**
-     * FIX-701: trace observability. `recordResourceLoad` pushes one load record
+     * Trace observability. `recordResourceLoad` pushes one load record
      * (gating + aggregation happen in the execution context); `resolveEagerSource`
      * tells an eager cache-hit read which wave paid for the prefetch. Both omitted
      * in mock/unit contexts, where reads are not recorded.
@@ -945,19 +961,21 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     resolveEagerSource?: (keyOrPrefix: string) => ResourceLoadRecord["source"];
     /** Cross-scope template resolver, populated post-construction. */
     templateResolverRef?: { current: ((ref: string) => string | null) | null };
+    // FIX-858; BP-031.
     /**
-     * FIX-858: trusted, server-derived context handed to a projected
+     * Trusted, server-derived context handed to a projected
      * collection's `read` / `search` backing hooks. Built by
      * `createExecutionContext` from the loaded session / scope identity
      * (`userId`/`orgId`/`tenantId`/`flowKind`/`signal`), never from caller
-     * input (BP-031). Omitted for scopes with no projected collections and for
+     * input. Omitted for scopes with no projected collections and for
      * mock registries — a fallback context is synthesized from `scope`/`scopeId`
      * when a read is attempted without one.
      */
     projectedResourceContext?: ProjectedResourceContext;
+    // FIX-1442.
     /**
      * The organization this execution runs under, surfaced to collection
-     * lifecycle hooks as `CollectionHookContext.orgId` (FIX-1442). Server-derived.
+     * lifecycle hooks as `CollectionHookContext.orgId`. Server-derived.
      */
     orgId: string;
     /**
@@ -1057,13 +1075,14 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     return run;
   }
 
+  // FIX-739.
   /**
    * Compute the live projection payload for a mutation, or `undefined` when the
    * resource hasn't opted into `client.live`. Reuses `resolveClientData`
    * so the streamed delta is byte-identical to the slice the snapshot builder
    * would later send. A throwing `client.data` projection degrades to no delta
    * (the mutation already committed; the client falls back to a batched
-   * refetch) rather than failing the mutation (FIX-739).
+   * refetch) rather than failing the mutation.
    *
    * Ordering: callers `await` this between persist and emit. For the common
    * `expose`/`exclude` projection it resolves synchronously, so emit order
@@ -1435,7 +1454,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           );
         }
         if (!ownerKeyAdmits(extConfig, storageKey, options.actorUserId)) {
-          throw new Error(OWNER_ROW_REFUSAL);
+          throw new Error(OWNER_RESOURCE_REFUSAL);
         }
         const state = await readThrough(storageKey);
         if (state === undefined) {

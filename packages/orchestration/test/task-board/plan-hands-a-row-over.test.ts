@@ -127,7 +127,7 @@ function planFlow(): FlowInstance {
   } as never)({ id: "plan-hands-over" });
 }
 
-type Row = { id: string; status: string; output?: string; resumeOwed?: boolean };
+type StoredTask = { id: string; status: string; output?: string; resumeOwed?: boolean };
 
 describe("a plan board's row filed session: \"new\" (FIX-2082 D2)", () => {
   let state: ReturnType<typeof createFlowState> | undefined;
@@ -169,7 +169,7 @@ describe("a plan board's row filed session: \"new\" (FIX-2082 D2)", () => {
       }
       return check();
     };
-    const rowsNow = async () => (await act("rows")).output as Row[];
+    const rowsNow = async () => (await act("rows")).output as StoredTask[];
     /** How many times the request parked: each wait, and each wait again. */
     const parks = async (requestId: string) =>
       ((await runtime.stores.request.get(requestId)) as { items?: Array<{ type: string }> })?.items?.filter(

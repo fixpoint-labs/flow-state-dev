@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
+import type { LabAdapter, LabTask, TaskStatus } from "../adapter";
 import { FINISHED, TASK_STATUS } from "../lib/task-status";
 import { useMissing, useNow, useWatch } from "../lib/use-watch";
+import { Clamp } from "./Clamp";
 import { PANE_TITLE } from "../modes";
 import { cn } from "../lib/utils";
 import { Entry } from "./Entry";
 import { LoadEarlier } from "./LoadEarlier";
 import { PaneHeader } from "./PaneHeader";
-import { Sheet } from "./Sheet";
+import { SessionOverlay } from "./flow-state/session-overlay";
 import { WorkingLine } from "./WorkingLine";
 import { ErrorBody } from "./flow-state/error";
 import { Spend } from "./flow-state/spend";
 import { taskCounts } from "./flow-state/task-signals";
 import { TaskActions } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
-import { harnessLabelOf } from "./ThreadStatus";
+import { harnessLabelOf, PULL_REQUEST_HINT, PullRequestOpen, waitsOnPullRequest } from "./ThreadStatus";
 import { TaskCard, TaskDoneRow } from "./TaskCard";
 
 /**
@@ -42,7 +43,7 @@ export function TasksPane({
   adapter: LabAdapter;
   sessionId: string;
   /** The session's task rows, as the app reads them; `undefined` until read. */
-  tasks: TaskRow[] | undefined;
+  tasks: LabTask[] | undefined;
   /** The app's last read of the rows failed: they may be old. */
   stale?: boolean;
   /** The task whose sheet is open, kept by the app so the page's address can name it. */
@@ -117,9 +118,11 @@ export function TasksPane({
 /**
  * One task's work in a sheet over the main thread, live while it runs, with
  * its action row at the foot. The sheet has no composer, so the row carries
- * the Steer box. A failed task's error shows as an error.
+ * the Steer box. A task waiting on its pull request says *PR open · #7*, with
+ * the link, and that a line in the Steer box wakes it. A failed task's error
+ * shows as an error.
  */
-function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter; sessionId: string; task: TaskRow; onClose: () => void }) {
+function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter; sessionId: string; task: LabTask; onClose: () => void }) {
   const actions = useMemo(() => adapter.taskActions(sessionId), [adapter, sessionId]);
   const work = useWatch(
     (emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit),
@@ -127,7 +130,8 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
   );
   const status = TASK_STATUS[task.status];
   return (
-    <Sheet
+    <SessionOverlay
+      variant="sheet"
       label={`Work: ${task.title}`}
       title={
         <span className="flex items-center gap-2">
@@ -139,23 +143,38 @@ function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter;
           </span>
         </span>
       }
-      meta={<Spend spend={task.spend} split harnessLabel={harnessLabelOf(task)} />}
-      subtitle={task.goal}
+      meta={
+        <>
+          <Spend spend={task.spend} split harnessLabel={harnessLabelOf(task)} />
+          {/* The goal, held to a few lines and opened with *Show more*. */}
+          {task.goal ? <Clamp className="mt-1 text-sm text-muted-foreground">{task.goal}</Clamp> : null}
+        </>
+      }
       onClose={onClose}
-      footer={<TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer />}
+      footer={
+        <>
+          {waitsOnPullRequest(task) ? (
+            <p role="note" data-testid="pull-request-hint" className="mb-2 text-xs text-muted-foreground">
+              {PULL_REQUEST_HINT}
+            </p>
+          ) : null}
+          <TaskActions key={task.id} id={task.id} status={task.status} actions={actions} steer />
+        </>
+      }
     >
       {task.status === "errored" && task.error !== undefined ? (
         <div role="alert" className="mb-3 flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive [overflow-wrap:anywhere]">
           <ErrorBody message={task.error} />
         </div>
       ) : null}
+      {waitsOnPullRequest(task) ? <PullRequestOpen task={task} className="mb-3 block" /> : null}
       {work === undefined || work.entries.length === 0 ? <p className="text-sm text-muted-foreground">Nothing yet.</p> : null}
       <LoadEarlier load={work?.loadEarlier} />
       {work?.entries.map((entry) => <Entry key={entry.id} entry={entry} />)}
       {/* The live line: what it is doing now, else "Working...", and for how long. A task waiting on you isn't working. */}
-      {task.status === "in_progress" && task.waitingOn === undefined ? (
+      {task.status === "in_progress" && task.openHold === undefined && !waitsOnPullRequest(task) ? (
         <WorkingLine message={workingStatus({ ...work?.working, note: task.statusNote })} since={task.startedAt} />
       ) : null}
-    </Sheet>
+    </SessionOverlay>
   );
 }

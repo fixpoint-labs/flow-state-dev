@@ -19,7 +19,8 @@
  * block surfaces the claim outcome to the pattern layer; it adds no
  * arbitration of its own.
  */
-import { handler, logicalBlockIdOf } from "@flow-state-dev/core";
+import { handler } from "@flow-state-dev/core";
+import { logicalBlockIdOf } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef, ClaimOrder } from "../../tasks";
@@ -40,8 +41,6 @@ export interface ClaimTaskOptions {
    */
   workerId: (ctx: BlockContext) => string;
 }
-
-export type ClaimTaskOutput = ClaimResult;
 
 export function createClaimTask(options: ClaimTaskOptions) {
   const { name, collection: collectionFactory, claimOrder, workerId } = options;

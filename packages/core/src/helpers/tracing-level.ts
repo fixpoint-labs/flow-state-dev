@@ -1,6 +1,7 @@
+// FIX-406 6H.
 /**
  * Tracing verbosity for observability (non-durable) state snapshots and
- * related trace items (FIX-406 6H).
+ * related trace items.
  *
  *   - `verbose`: every snapshot, including per-step (DevTool observation).
  *   - `normal`:  block-boundary snapshots only (sequencer entry + exit), not

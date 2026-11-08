@@ -1,5 +1,6 @@
+// FIX-2534 D1; FIX-2537.
 /**
- * The config screens (FIX-2534 D1): five fixed kinds, code only, no model.
+ * The config screens: five fixed kinds, code only, no model.
  *
  * `sender` and `own` run on every subscription; `labels`, `words` and `allow`
  * run when a subscription lists them, and every one it lists must pass, two
@@ -17,7 +18,7 @@
  * while a subscription is still undecided, so the first refusal stops that
  * subscription. Its output is one verdict per subscription,
  * `{ subscription, pass, reason }`: the shape a custom screen and Jev answer
- * in too (FIX-2537). A subscription with no verdict is refused.
+ * in too. A subscription with no verdict is refused.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { subscriptionEventSchema, type SubscriptionEvent } from "@flow-state-dev/core/types";

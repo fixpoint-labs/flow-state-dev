@@ -1,4 +1,4 @@
-import type { ReviewDetail, TaskRow } from "../adapter";
+import type { ReviewDetail, LabTask } from "../adapter";
 import { ReviewHold } from "./flow-state/review-hold";
 
 /**
@@ -9,8 +9,8 @@ import { ReviewHold } from "./flow-state/review-hold";
  * coding thread whose review isn't read yet shows the headline alone rather
  * than the stop's raw prompt.
  */
-export function ReviewCard({ task, review }: { task: TaskRow; review: ReviewDetail | undefined }) {
-  const note = review === undefined && task.harness === undefined ? task.waitingOn?.prompt : undefined;
+export function ReviewCard({ task, review }: { task: LabTask; review: ReviewDetail | undefined }) {
+  const note = review === undefined && task.harness === undefined ? task.openHold?.prompt : undefined;
   return (
     <div className="min-w-0">
       <ReviewHold review={review} prompt={note} />

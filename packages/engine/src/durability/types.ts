@@ -1,10 +1,11 @@
+// FIX-711.
 /**
  * DurabilityProvider interface — the coordination layer between FSD's
  * checkpoint infrastructure and the resume runtime.
  *
  * Handles HOW resume works within a run: checkpoint save/load, suspension
  * records, lease management, and skip-and-inject resume. Orthogonal to
- * FlowRunner (FIX-711), which handles WHERE the flow runs and crash
+ * FlowRunner, which handles WHERE the flow runs and crash
  * detection/re-invocation.
  */
 

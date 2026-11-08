@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { matchesPattern } from "@flow-state-dev/core/types";
 import { freshPglite } from "./shared-pglite";
-import { createPostgresResourceStateStore, initializeSchema, type QueryExecutor } from "../src";
+import { createPostgresResourceStateStore, initializeSchema, type QueryExecutor } from "../src/host";
 import { collectionKeyRegex } from "../src/collection-key-regex";
 
 function pgliteExecutor(pglite: PGlite): QueryExecutor {

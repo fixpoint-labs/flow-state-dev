@@ -1,3 +1,4 @@
+// FIX-1390.
 /**
  * `createSkillsCapability()` — the LEGACY entry point for wiring a skills
  * system into a generator.
@@ -10,7 +11,7 @@
  * `refreshSeededSkills`. A caller reaching for the capability today gets a
  * quietly smaller object with no signal, which is what this note exists to
  * give. Reconciling the two — including whatever deprecation path this
- * surface gets — is FIX-1390's; nothing here is removed yet.
+ * surface gets — is a separate change; nothing here is removed yet.
  *
  * Returns a `DefinedCapability` exposing:
  *   - **Resources**: the skills collection, registered at the chosen scope
@@ -32,11 +33,11 @@ import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type {
   DeclaredResourceEntry,
   ResourceScope,
+  InitialSkill,
+  ToolCatalog,
 } from "@flow-state-dev/core/types";
 import type {
-  InitialSkill,
   ItemVisibility,
-  ToolCatalog,
 } from "@flow-state-dev/core";
 import {
   defineSkillsCollection,

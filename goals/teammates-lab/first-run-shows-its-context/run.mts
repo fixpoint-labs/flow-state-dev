@@ -37,9 +37,9 @@ const CONTROLS: Record<string, Patch[]> = {
   "fixed-chips": [
     {
       file: "src/adapter.ts",
-      from: 'return ((await runLab("harness-readiness", "read", { refresh })) as { harnesses: HarnessRow[] }).harnesses;',
+      from: 'return ((await runLab("harness-readiness", "read", { refresh })) as { harnesses: LabHarness[] }).harnesses;',
       to:
-        "void refresh; return [\"cursor\", \"codex\", \"claude-code\"].map((harness) => ({ harness, label: harness, ready: true, reason: null, remedy: null, unanswered: false, checkedAt: Date.now() })) as HarnessRow[];",
+        "void refresh; return [\"cursor\", \"codex\", \"claude-code\"].map((harness) => ({ harness, label: harness, ready: true, reason: null, remedy: null, unanswered: false, checkedAt: Date.now() })) as LabHarness[];",
       why: "the chips read a constant all-ready list, not harness-manager's readiness",
     },
   ],

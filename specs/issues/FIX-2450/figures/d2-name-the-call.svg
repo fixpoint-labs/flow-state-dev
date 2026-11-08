@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, what React's session call for answering a stop is named. Chosen: answerSuspension. Instead of: keeping resumeSuspension and changing only what it calls. It comes down to the first row: an adopter reading the React docs beside the client README sees one verb, answer, for a user's stop; keeping the name says resume, the verb the client reserves for a developer's own ctx.suspend. The price is the second row: one more moved name, met as the epic's Q1 decides, and five docs pages and two Kitchen Sink call sites change, where keeping the name moves nothing. The third row is a tie: the call takes the same arguments either way. Locks in: answerSuspension as React's public name for the job. Flips if the owner keeps the epic's renames to the package roots."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, what React's session call for answering a stop is named. Chosen: answerSuspension. Instead of: keeping resumeSuspension and changing only what it calls. It comes down to the first row: an adopter reading the React docs beside the client README sees one verb, answer, for a user's stop; keeping the name says resume, the verb the client reserves for a developer's own ctx.suspend. The price is the second row: one more moved name, met with no alias, as the epic's Q1 was answered, and five docs pages and two Kitchen Sink call sites change, where keeping the name moves nothing. The third row is a tie: the call takes the same arguments either way. Locks in: answerSuspension as React's public name for the job. Flips if the owner keeps the epic's renames to the package roots."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -67,7 +67,7 @@
     <text class="t-lbl" x="32" y="235">COSTS</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">One more moved name</text>
-    <text class="t-s" x="248" y="241">met as Q1 decides; 5 docs pages change</text>
+    <text class="t-s" x="248" y="241">no alias for it; 5 docs pages change</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Nothing moves</text>
     <text class="t-s" x="612" y="241">only the doc comment changes</text>
@@ -89,7 +89,7 @@
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
     <text class="t-b" x="32" y="371">answerSuspension is React's public name</text>
-    <text class="t-s" x="32" y="389">resumeSuspension leaves as ER-3 and Q1 say</text>
+    <text class="t-s" x="32" y="389">resumeSuspension leaves, with no alias</text>
   </g>
 
   <g id="flips-if">

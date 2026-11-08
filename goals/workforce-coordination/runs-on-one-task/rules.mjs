@@ -12,7 +12,10 @@
  * {@link TOOLS_ALLOWED}, and added the worker's `holdTaskForUser` and `suspendForUser`; FIX-2383
  * added `retryTask`, an action a turn is never offered.
  */
-import { REFUSAL_MARKER, ROOTS } from "../../vocabulary/one-word-per-thing/rules.mjs";
+import { REFUSAL_MARKER } from "../../../docs/contributing/glossary.mjs";
+
+/** The roots this sweep reads: the code, published docs, pending notes and goals the removed rule could reach. */
+const ROOTS = ["packages", "apps", "docs/architecture", ".changeset", "goals"];
 
 export { REFUSAL_MARKER, ROOTS };
 
@@ -292,6 +295,7 @@ export const RECORDERS = {
   "orchestration:checkTask": "the claim gate: a dispatched task's request-end check fails the attempt (FIX-2077, FIX-2088)",
   "orchestration:checkAnswered": "the claim gate: a dispatched task's request-end check settles it done (FIX-2077)",
   "orchestration:settleAtRequestEnd": "the claim gate: the settle every request-end and recorder write passes through",
+  "orchestration:cancelFromTurn": "the claim gate's turn: the turn holding a task's claim cancels it when a person closed what it worked toward, its pull requests closed without merging (FIX-2578 D2)",
   "orchestration:cancelForStop": "the claim gate: a stop of a task's run waiting on a user cancels the task where it would have failed the try (FIX-2129, rule 12)",
   "orchestration:createRecordSuccess": "the drain's recorder: an inline row's result",
   "orchestration:createRecordError": "the drain's recorder: an inline row's error (FIX-2090's refused run ends here)",

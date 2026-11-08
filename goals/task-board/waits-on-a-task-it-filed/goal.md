@@ -23,7 +23,7 @@
 **Controls:** a scratch patch to the code under test, applied as it loads (`goals/lib/module-patch.mts`), printed by the run, and refused when it never reached the code.
 
 - `GOAL_CONTROL=deadline-cancels`: the deadline cancels the waited-on task, as before FIX-2082 (`packages/orchestration/src/tasks/helpers/wait-on-task.ts`). Must FAIL leg `c` on *"at the deadline the task is in_progress on attempt 1"* and *"a second wait gets it completed"*.
-- `GOAL_CONTROL=drain-moves-on`: a plan drain takes its deadline as an ending and stops waiting on the row (`packages/orchestration/src/task-board/blocks/dispatch-row.ts`). Must FAIL leg `d`.
+- `GOAL_CONTROL=drain-moves-on`: a plan drain takes its deadline as an ending and stops waiting on the row (`packages/orchestration/src/task-board/blocks/dispatch-task.ts`). Must FAIL leg `d`.
 
 On `main` before FIX-2082 legs `a` and `b` fail: `getTask` takes no `wait`, a task session's request is refused any wait, and no dispatcher waits.
 

@@ -11,10 +11,11 @@ import {
 import type { SessionView } from "./useSession";
 import { useClient } from "../internal/useClient";
 
+// FIX-741.
 /**
  * Return type for useResource — metadata available immediately, content fetched on demand.
  *
- * `TClient` (FIX-741) is the resource's projected client-data type; pass it via
+ * `TClient` is the resource's projected client-data type; pass it via
  * the hook generic, e.g. `useResource<ClientDataOf<typeof doc>>(...)`. Defaults
  * to `unknown` so existing untyped call sites are unchanged.
  */

@@ -1,6 +1,6 @@
+// FIX-910; FIX-2131; FIX-2578; FIX-2210.
 /**
- * `goalSeekLoop` — a config-driven, judge-gated loop over a task board's drain
- * (FIX-910).
+ * `goalSeekLoop` — a config-driven, judge-gated loop over a task board's drain.
  *
  * Several built-in orchestration recipes are the same underlying loop: hand out
  * work, drain it, ask a judge "are we done?", and if not hand out more and
@@ -18,7 +18,7 @@
  *   loopBack(drainPass, when: decision !== "done") →
  *   emitTermination → projectBoard → [finalize?]
  *
- * A task waiting on a person (FIX-2131). A plan board's drain returns
+ * A task waiting on a person. A plan board's drain returns
  * `blocked` while a task waits on a person's answer: nobody is working it,
  * and only the answer moves it. The loop never judges that board: the judge
  * would rule on unfinished work, and on every later pass the same open
@@ -26,10 +26,12 @@
  * ends the loop's pass there: no judge, no replan, no finalize, and no
  * iteration spent, with the termination reason `"waiting-on-a-user"`. The
  * answer owes the task its next turn; run the loop again once it is answered,
- * and its drain takes that turn and the loop goes on.
+ * and its drain takes that turn and the loop goes on. A task waiting on an
+ * event outside the board (an external wait) ends the pass the same
+ * way, with `"waiting-on-an-event"` when no task waits on a person.
  *
  * An answer can land after the drain stops and before the loop reads the
- * board (FIX-2210). The question is closed then, but the task still owes the
+ * board. The question is closed then, but the task still owes the
  * turn the answer earned, and judging would rule on its partial work. So the
  * pass drains again while a task owes a turn and none waits on a person, at
  * most `maxIterations` times, and none of those drains counts as an iteration.
@@ -57,7 +59,8 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { hasOpenHold, owesTurn, type TaskCollectionRef, type TaskInit } from "../tasks";
+import type { TaskCollectionRef, TaskInit } from "../tasks";
+import { owesTurn, holdActorOf } from "../tasks/collection/holds";
 import type { TaskBoardHandle } from "./index";
 import { createApplyReplan, type TaskContextSupply } from "./apply-replan";
 import { setNextDrainUnseeded } from "./blocks/seed-collection";
@@ -104,10 +107,11 @@ export type JudgeSlot =
 export interface GoalSeekLoopConfig {
   /** Name for the loop's outer sequencer and its internal block-name prefix. */
   name: string;
+  // FIX-918.
   /**
    * Input schema forwarded to the OUTER sequencer verbatim, so a re-expressed
    * pattern keeps its public block metadata (and survives `GeneratorTool`
-   * wrapping — FIX-918 forward-compat). Omit for `z.unknown()`.
+   * wrapping). Omit for `z.unknown()`.
    */
   inputSchema?: ZodTypeAny;
   /**
@@ -239,12 +243,17 @@ const goalSeekLoopStateSchema = z.object({
   goalSeekLoopDrainResult: z.unknown().nullable().default(null),
   /** Whether the last drain left a task waiting on a person: the pass ends without a judge. */
   goalSeekLoopWaiting: z.boolean().default(false),
+  // FIX-2578.
+  /** Who the waiting task waits on: a person, or only an event outside the board. `null` when none waits. */
+  goalSeekLoopWaitingOn: z.enum(["user", "system"]).nullable().default(null),
   /** Whether the last drain left a task owing a turn, and none waiting on a person: the pass drains again. */
   goalSeekLoopOwed: z.boolean().default(false),
 });
 
 /** The termination reason of a pass a task waiting on a person ended. */
 const WAITING_ON_A_USER = "waiting-on-a-user";
+/** The termination reason of a pass a task waiting on an event outside the board ended, with none waiting on a person. */
+const WAITING_ON_AN_EVENT = "waiting-on-an-event";
 
 /** Whether the loop's last drain left a task waiting on a person. */
 const waitingNow = (_input: unknown, ctx: { sequencer?: { state: unknown } }): boolean =>
@@ -334,8 +343,8 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   if (board.mode === "delegation") {
     throw new Error(
       `[goalSeekLoop] "${name}" can't loop over "${board.capability.name}", a delegation board: ` +
-        `its drain returns while the rows it handed to other sessions still run, so the judge ` +
-        `would rule on unfinished work. Loop over a plan board, whose drain waits on every row.`,
+        `its drain returns while the tasks it handed to other sessions still run, so the judge ` +
+        `would rule on unfinished work. Loop over a plan board, whose drain waits on every task.`,
     );
   }
   if (maxIterations > 1 && board.hasIdlessInitialTasks) {
@@ -363,8 +372,14 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
     execute: async (_input, ctx) => {
       const ref = await resolveBoardRef(ctx, boardCapName);
       const rows = ref.list();
-      const waiting = rows.some((row) => hasOpenHold(row));
-      await ctx.sequencer!.patchState({ goalSeekLoopWaiting: waiting, goalSeekLoopOwed: !waiting && rows.some(owesTurn) } as any);
+      const on = rows.map((row) => holdActorOf(row));
+      const waitingOnWho = on.includes("user") ? "user" : on.includes("system") ? "system" : null;
+      const waiting = waitingOnWho !== null;
+      await ctx.sequencer!.patchState({
+        goalSeekLoopWaiting: waiting,
+        goalSeekLoopWaitingOn: waitingOnWho,
+        goalSeekLoopOwed: !waiting && rows.some(owesTurn),
+      } as any);
     },
   });
 
@@ -372,7 +387,14 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   const waitingVerdict = handler({
     name: `${name}-gsl-waiting-verdict`,
     inputSchema: z.unknown(),
-    execute: (): Verdict => ({ decision: "done", reason: WAITING_ON_A_USER }),
+    sequencerStateSchema: merged,
+    execute: (_input, ctx): Verdict => ({
+      decision: "done",
+      reason:
+        (ctx.sequencer?.state as { goalSeekLoopWaitingOn?: string | null } | undefined)?.goalSeekLoopWaitingOn === "system"
+          ? WAITING_ON_AN_EVENT
+          : WAITING_ON_A_USER,
+    }),
   });
 
   const incrementDrainCount = handler({

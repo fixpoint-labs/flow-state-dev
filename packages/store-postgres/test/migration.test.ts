@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { freshPglite } from "./shared-pglite";
 import { initializeSchema } from "../src/schema";
-import type { QueryExecutor } from "../src";
+import type { QueryExecutor } from "../src/host";
 
 function pgliteExecutor(pglite: PGlite): QueryExecutor {
   return {

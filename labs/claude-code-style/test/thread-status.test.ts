@@ -7,13 +7,13 @@
  * it failed, from the board's error, and never a running note.
  */
 import { describe, expect, it } from "vitest";
-import type { TaskRow } from "../src/adapter";
+import type { LabTask } from "../src/adapter";
 import { rowNote, statusLine } from "../src/components/ThreadStatus";
 
 /** The note a harness run leaves on the row: its last tool call. */
 const LAST_TOOL_CALL = "Bash: git push -u origin feat/claude-code-style-sheet";
 
-const taskRow = (patch: Partial<TaskRow>): TaskRow => ({
+const taskRow = (patch: Partial<LabTask>): LabTask => ({
   id: "t",
   title: "Align task info to flyout popup",
   goal: "g",

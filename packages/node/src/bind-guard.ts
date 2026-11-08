@@ -24,7 +24,7 @@
  * each hard-coding its own secret env var name.
  */
 import { isIP } from "node:net";
-import { isDefaultBodyUserIdPrincipalResolver } from "@flow-state-dev/engine";
+import { isDefaultBodyUserIdPrincipalResolver } from "@flow-state-dev/engine/host";
 import type { FlowState } from "@flow-state-dev/engine";
 
 /**

@@ -8,12 +8,12 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createObservationLedger,
   flowPolicy,
   type Observation,
   type Task,
   type TaskCollectionRef,
 } from "../src/tasks/index";
+import { createObservationLedger } from "../src/tasks/flow-policy/index";
 
 // ---------------------------------------------------------------------------
 // Helpers

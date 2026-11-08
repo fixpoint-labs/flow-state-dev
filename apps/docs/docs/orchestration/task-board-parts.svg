@@ -68,7 +68,7 @@
 <rect class="ground" x="418.3" y="419" width="111.4" height="15"/><text class="plate" x="474" y="430" text-anchor="middle">04 NAMES A KEY</text>
 <line class="hi" x1="0" y1="452" x2="920" y2="452"/>
 <text class="n" x="28" y="478">01</text>
-<text class="t" x="60" y="478">The board claims ready rows from the collection. It is a handle, not the storage: it holds no tasks itself.</text>
+<text class="t" x="60" y="478">The board claims ready tasks from the collection. It is a handle, not the storage: it holds no tasks itself.</text>
 <text class="n" x="28" y="503">02</text>
 <text class="t" x="60" y="503">It hands each row to a worker. The worker's input is built from the row, not the row itself.</text>
 <text class="n" x="28" y="528">03</text>

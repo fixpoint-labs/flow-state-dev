@@ -13,15 +13,17 @@ import { z } from "zod";
 
 import {
   askMidway,
+  waitExternally,
   taskBoard,
   goalSeekLoop,
   mapToVerdict,
   taskWorkerInputSchema,
-  GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
   type Verdict,
   type TaskBoardHandle,
 } from "../../src/task-board";
-import { getOrCreateTaskCollection, openRowHolds } from "../../src/tasks";
+import { GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE } from "../../src/task-board/goal-seek-loop";
+import { getOrCreateTaskCollection } from "../../src/tasks";
+import { openOwnHolds } from "../../src/tasks/collection/holds";
 import { setNextDrainUnseeded } from "../../src/task-board/blocks/seed-collection";
 
 // ---------------------------------------------------------------------------
@@ -640,6 +642,42 @@ describe("goalSeekLoop - a task waiting on a person", () => {
   });
 });
 
+describe("goalSeekLoop - a task waiting on an event outside the board", () => {
+  it("never judges while a task waits externally (FIX-2578), and ends the pass naming the event, not a user", async () => {
+    // A coding task waiting on its pull request: nobody is asked, and the
+    // judge would rule on work that isn't done until the pull request merges.
+    const name = "awaiting-merge";
+    const worker = handler({
+      name: `${name}-w`,
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        waitExternally(ctx, await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: name }), {
+          prompt: "Waiting on pull request #7.",
+          events: [{ event: "pull-request", key: "github.com/acme/app/7" }],
+        }),
+    });
+    const board = taskBoard({ name: `${name}-board`, collection: { collectionId: name }, workers: worker });
+    let judged = 0;
+    const loop = goalSeekLoop({
+      name,
+      board,
+      seed: seedTasks(name, board, ["a"]),
+      judge: (): Verdict => {
+        judged += 1;
+        return { decision: "continue", reason: "not yet" };
+      },
+      maxIterations: 3,
+    });
+
+    const result = await testBlock(loop, { input: undefined });
+
+    expect(result.error).toBeNull();
+    expect(judged).toBe(0);
+    expect(readTermination(result.items)).toMatchObject({ reason: "waiting-on-an-event", iterations: 0 });
+  });
+});
+
 describe("goalSeekLoop - an answer that lands as the drain returns", () => {
   it("leaves no drain input that skips a board's initial tasks", async () => {
     // The loop's owed-turn drain runs without the board's seed. That must stay
@@ -686,7 +724,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowHolds(collection.get("a")!);
+        const [hold] = openOwnHolds(collection.get("a")!);
         if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });
@@ -738,7 +776,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowHolds(collection.get("a")!);
+        const [hold] = openOwnHolds(collection.get("a")!);
         if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });
@@ -829,7 +867,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
         for (const row of collection.list()) {
-          const [hold] = openRowHolds(row);
+          const [hold] = openOwnHolds(row);
           if (hold !== undefined) await collection.answer!(row.id, { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
         }
       },
@@ -880,7 +918,7 @@ describe("goalSeekLoop - an answer that lands as the drain returns", () => {
       inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const collection = await collectionOf(ctx);
-        const [hold] = openRowHolds(collection.get("a")!);
+        const [hold] = openOwnHolds(collection.get("a")!);
         if (hold !== undefined) await collection.answer!("a", { questionId: hold.id, message: "eu-west", from: "user", by: "u1" });
       },
     });

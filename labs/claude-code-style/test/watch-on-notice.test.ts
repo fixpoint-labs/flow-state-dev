@@ -32,7 +32,7 @@ vi.mock("@flow-state-dev/workforce/browser", async (original) => {
   };
 });
 
-import { createWiredLab, type SessionRow, type ThreadView, type Unsubscribe } from "../src/adapter";
+import { createWiredLab, type LabSession, type ThreadView, type Unsubscribe } from "../src/adapter";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -161,7 +161,7 @@ describe("watchSessions", () => {
 
   it("subscribes even when the first listing holds no session, so the fallback timer still reads where push can miss one", async () => {
     const h = host();
-    const seen: SessionRow[][] = [];
+    const seen: LabSession[][] = [];
     stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
     await until(() => seen.length === 1);
     expect(seen[0]).toEqual([]);
@@ -183,7 +183,7 @@ describe("watchSessions", () => {
     // A task that failed waits on you to retry it.
     h.list([{ id: "t1", goal: "Fix it", status: "errored" }]);
     h.fail("POST /api/flows/f/s1/reads/listTasks_tasks");
-    const seen: SessionRow[][] = [];
+    const seen: LabSession[][] = [];
     stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
     await until(() => h.count("/reads/listTasks_tasks") >= 1 && seen.length >= 1);
     // No notice comes: the row's own retry reads the board again.
@@ -194,7 +194,7 @@ describe("watchSessions", () => {
     listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
     const h = host();
     h.list([{ id: "t1", goal: "Fix it", status: "errored", attempts: 1 }]);
-    const seen: SessionRow[][] = [];
+    const seen: LabSession[][] = [];
     stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
     await until(() => seen.at(-1)?.find((row) => row.id === "s1")?.waiting === 1);
     h.dismiss(["t1#1"]);
@@ -206,7 +206,7 @@ describe("watchSessions", () => {
     listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
     const h = host();
     h.list([{ id: "t1", goal: "Fix it", status: "errored", attempts: 1 }]);
-    const seen: SessionRow[][] = [];
+    const seen: LabSession[][] = [];
     stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
     await until(() => seen.at(-1)?.find((row) => row.id === "s1")?.waiting === 1);
     const boards = h.count("/reads/listTasks_tasks");
@@ -222,7 +222,7 @@ describe("watchSessions", () => {
     listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
     listings.failing = 1;
     const h = host();
-    const seen: SessionRow[][] = [];
+    const seen: LabSession[][] = [];
     stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
     await until(() => listings.count >= 1);
     expect(seen).toEqual([]);
@@ -234,7 +234,7 @@ describe("watchSessions", () => {
   it("lists once, then reads a row again on its own session's request or resource notice, never on a streamed item", async () => {
     listed.set("desk.main", [{ id: "s1", updatedAt: 1 }, { id: "s2", updatedAt: 2 }]);
     const h = host();
-    const seen: SessionRow[][] = [];
+    const seen: LabSession[][] = [];
     stops.push(createWiredLab(h.client).watchSessions((rows) => seen.push(rows)));
     await until(() => seen.length === 1);
     expect(seen[0]!.map((row) => row.id).sort()).toEqual(["s1", "s2"]);
@@ -264,7 +264,7 @@ describe("watchSessions", () => {
     listed.set("desk.main", [{ id: "s1", updatedAt: 1 }]);
     const h = host();
     const lab = createWiredLab(h.client);
-    const seen: SessionRow[][] = [];
+    const seen: LabSession[][] = [];
     stops.push(lab.watchSessions((rows) => seen.push(rows)));
     await until(() => seen.length === 1);
 

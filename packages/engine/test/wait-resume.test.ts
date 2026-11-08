@@ -12,35 +12,41 @@
  * durability provider, not a durable sequencer.
  */
 import {
-  WAIT_DEADLINE_ENTRY,
   defineFlow,
   generator,
   handler,
-  parkOnWait,
-  requireRequestHost,
   sequencer
 } from "@flow-state-dev/core";
+import {
+  WAIT_DEADLINE_ENTRY,
+  parkOnWait,
+  requireRequestHost,
+  onRequestEnded
+} from "@flow-state-dev/core/internal";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { onRequestEnded } from "@flow-state-dev/core/types";
 import type {
   BlockContext,
-  WaitOutcome,
   FlowInstance,
   GeneratorModel,
   GeneratorModelCallOptions,
-  GeneratorModelResult,
-  ResumeWaitResult
+  GeneratorModelResult
 } from "@flow-state-dev/core/types";
+import type {
+  WaitOutcome,
+  ResumeWaitResult
+} from "@flow-state-dev/core/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   continueRequest,
   createFlowRegistry,
   createFlowState,
-  createInMemoryStores,
   inMemoryStores,
   runAction
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createWaitResumeOperation } from "../src/context/wait-resume-operation";
 import { resumeWaitGate } from "../src/durability/resume-wait-gate";

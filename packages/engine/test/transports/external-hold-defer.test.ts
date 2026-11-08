@@ -15,17 +15,21 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
+import { ConcurrencyDeferLimitError } from "../../src/transports/errors";
 import {
-  ConcurrencyDeferLimitError,
   createFlowRegistry,
-  createInMemoryLeaseBackend,
-  createInMemoryStores,
+  defaultBodyUserIdPrincipalResolver
+} from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
+import { createInMemoryLeaseBackend } from "../../src/internal";
+import {
   createInboundTransportHost,
-  defaultBodyUserIdPrincipalResolver,
   type ConcurrencyLeaseBackend,
   type DispatchEnvelope,
   type FlowRunner
-} from "../../src";
+} from "../../src/host";
 import type { ExecutionResult } from "../../src/execution/types";
 import { createConcurrencyArbiter } from "../../src/transports/concurrency/arbiter";
 

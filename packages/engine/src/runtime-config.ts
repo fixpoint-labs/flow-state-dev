@@ -37,13 +37,15 @@ export interface RuntimeConfig {
   /** Instance-level settings threaded onto every block as `ctx.settings`. */
   settings?: FlowStateSettings;
   logger?: RuntimeLogger;
-  /** Tracing verbosity for observability snapshots (FIX-406 6H). */
+  // FIX-406 6H.
+  /** Tracing verbosity for observability snapshots. */
   tracingLevel?: TracingLevel;
   /** Maximum buffered SSE bytes per request — see `createLiveRequestStream`. */
   maxResponseBufferSize?: number;
+  // FIX-1772.
   /**
    * Largest block output or tool result, in serialized bytes, recorded whole
-   * in an item (FIX-1772). Forwarded to every response emitter the runtime
+   * in an item. Forwarded to every response emitter the runtime
    * builds. Absent → the emitter's own 256 KiB default.
    */
   maxRecordedValueBytes?: number;
@@ -56,44 +58,50 @@ export interface RuntimeConfig {
   onBackgroundWork?: (promise: Promise<unknown>) => void;
   /** Durable execution provider for checkpoint-based resume and HITL suspend. */
   durabilityProvider?: DurabilityProvider;
+  // FIX-141.
   /**
-   * Retention policy for the durability sweeper (FIX-141). When set alongside
+   * Retention policy for the durability sweeper. When set alongside
    * `durabilityProvider`, the router constructs a periodic sweeper that
    * enforces suspension expiry and prunes aged-out suspensions, leases, and
    * orphaned checkpoints. Absent → no sweeper.
    */
   durabilityRetention?: DurabilityRetentionConfig;
+  // FIX-724.
   /**
-   * Opt-in error-capture sink (FIX-724). Routes runtime block failures to an
+   * Opt-in error-capture sink. Routes runtime block failures to an
    * external observability service (Sentry, Datadog, ...). Forwarded to
    * `createExecutionContext`; absent → no capture.
    */
   errorCapture?: ErrorCaptureHandler;
+  // FIX-999; BP-026.
   /**
-   * Construction inputs for the request-host seam (FIX-999), forwarded to
-   * `createExecutionContext` (BP-026). A host that executes requests but wires
+   * Construction inputs for the request-host seam, forwarded to
+   * `createExecutionContext`. A host that executes requests but wires
    * none leaves capabilities unable to reach the runtime — `requireRequestHost`
    * then throws by name rather than failing as `undefined is not a function`.
    */
   requestHost?: RequestHostConstructionInputs;
+  // FIX-999.
   /**
-   * Resolved queued grace (FIX-999), carried here because three shipped paths
+   * Resolved queued grace, carried here because three shipped paths
    * sweep and only this bundle reaches all of them: the router's periodic
    * sweeper, startup detection in `createFlowRouteHandlers`, and the
    * client-poked `check-interrupted` route. Absent → `detectInterruptedRequests`
    * applies {@link DEFAULT_QUEUED_GRACE_MS}.
    */
   queuedGraceMs?: number;
+  // FIX-999.
   /**
-   * Transport sources this deployment adds to the public re-entry allow-list
-   * (FIX-999). Carried here for the same reason as `queuedGraceMs`: three
+   * Transport sources this deployment adds to the public re-entry allow-list.
+   * Carried here for the same reason as `queuedGraceMs`: three
    * routes consult the list — `retry`, `continue` and `resume` — and this
    * bundle is the only thing that reaches all of them from both public entry
    * points. Absent → only the built-in sources are re-enterable.
    */
   publicReentrySources?: readonly string[];
+  // FIX-1012.
   /**
-   * Largest `limit` the child-session listing route accepts (FIX-1012). Absent →
+   * Largest `limit` the child-session listing route accepts. Absent →
    * {@link DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT}.
    *
    * The list a client reads is all-time history — finished child sessions
@@ -105,22 +113,25 @@ export interface RuntimeConfig {
    * an operator's decision rather than a caller's.
    */
   maxChildSessionListLimit?: number;
+  // FIX-2078.
   /**
    * How long past its due time a debt may stay outstanding before a pass
-   * ends it, settled undeliverable and logged (FIX-2078). Read by the wake
+   * ends it, settled undeliverable and logged. Read by the wake
    * verb (`RequestHost.wakes.maxDebtAgeMs`). Absent → 24 hours.
    */
   maxDebtAgeMs?: number;
+  // FIX-2082.
   /**
-   * A wait's deadline bounds (FIX-2082), in milliseconds from the call: the
+   * A wait's deadline bounds, in milliseconds from the call: the
    * deadline a wait that names none gets (default five minutes), and the
    * shortest and longest one may name (default the sweep's resolution, one
    * second, and 24 hours). Read by `RequestHost.waits.deadlines`.
    */
   waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
+  // FIX-2129, epic D3.
   /**
    * The deadline a stop that waits for a user gets when it names none, in
-   * milliseconds from the stop (FIX-2129, epic D3): every `ctx.suspendForUser`
+   * milliseconds from the stop: every `ctx.suspendForUser`
    * without a `deadline`, and every held question. **Unset by default**: such
    * a stop waits until it is answered, stopped or cancelled. Separate from
    * `waitDeadlines`, which bounds waits on work. Between
@@ -185,9 +196,10 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
   };
 }
 
+// FIX-1012.
 /**
  * Largest `limit` the child-session listing route accepts when the host
- * configures none (FIX-1012). Bounds read amplification rather than payload
+ * configures none. Bounds read amplification rather than payload
  * size: each row resolves its status from the request store.
  */
 export const DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT = 100;
@@ -221,9 +233,10 @@ export const DEFAULT_STALE_SWEEP_INTERVAL_MS = 30_000;
 /** Heartbeat-age threshold (ms) for the stale-request sweeper by default. */
 export const DEFAULT_STALE_SWEEP_THRESHOLD_MS = 60_000;
 
+// FIX-999.
 /**
  * How long a request may sit in an external queue, unclaimed, before the
- * sweeper treats it as lost rather than waiting (FIX-999).
+ * sweeper treats it as lost rather than waiting.
  *
  * Deliberately NOT derived from the stale threshold. That threshold answers
  * "how long since a live worker checked in", tuned against the heartbeat
@@ -240,8 +253,9 @@ export const DEFAULT_STALE_SWEEP_THRESHOLD_MS = 60_000;
  */
 export const DEFAULT_QUEUED_GRACE_MS = 10 * 60_000;
 
+// FIX-999.
 /**
- * Reject a `queuedGraceMs` that cannot bound a queued entry (FIX-999).
+ * Reject a `queuedGraceMs` that cannot bound a queued entry.
  *
  * The grace is the only bound there is. `readLiveness` treats a `queuedAt`
  * entry as unconditionally live and defers the bound to the sweep on purpose,
@@ -286,9 +300,10 @@ export interface StaleSweepOptions {
   queuedGraceMs?: number;
 }
 
+// FIX-999.
 /**
  * Resolve the stale-sweep options to the facts the sweepers and the
- * request-host liveness gate reason about (FIX-999).
+ * request-host liveness gate reason about.
  *
  * There are two entry points that construct a `RuntimeConfig` — `createFlowState`
  * (whose config reaches the router *and* `worker.startWorker`) and a direct

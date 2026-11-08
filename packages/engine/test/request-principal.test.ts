@@ -7,7 +7,7 @@
  * and distinct per caller, so two callers reusing one id never meet.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import {
   principalOwnsRequest,

@@ -13,14 +13,18 @@
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
-import { defineTaskCollection, openRowHolds } from "@flow-state-dev/orchestration/tasks";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+import {
+  openOwnHolds,
+  GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
+} from "@flow-state-dev/orchestration/internal";
 import {
   askMidway,
   goalSeekLoop,
   taskBoard,
   taskWorkerInputSchema,
-  GOAL_SEEK_LOOP_TERMINATION_COMPONENT_TYPE,
   type TaskBoardHandle,
   type Verdict,
 } from "@flow-state-dev/orchestration/task-board";
@@ -84,7 +88,7 @@ function buildFlow() {
     uses: [capability],
     execute: async (input, ctx) => {
       const tasks = await (ctx.cap as any)[capability.name].tasks();
-      const [hold] = openRowHolds(tasks.get("a"));
+      const [hold] = openOwnHolds(tasks.get("a"));
       return tasks.answer("a", { questionId: hold!.id, message: input.message, from: "user", by: USER_ID });
     },
   });

@@ -1,6 +1,7 @@
+// FIX-2133.
 /**
  * The Inbox's shapes: one item type over what holds a task for the user, its
- * holds, what a read hands the list, and the answer a hold takes (FIX-2133).
+ * holds, what a read hands the list, and the answer a hold takes.
  * `index.ts` publishes the ones a caller uses; the rest stay inside the read.
  */
 import type { SuspendForUserKind } from "@flow-state-dev/core/types";
@@ -24,8 +25,8 @@ export type SuspensionHoldSource = {
  * through the board's `updateTask` action, as the user, on the session that
  * holds the board.
  */
-export type RowHoldSource = {
-  readonly kind: "row";
+export type OwnHoldSource = {
+  readonly kind: "task";
   /** The flow that owns the board's session; `null` when the reader can't name it, which leaves the hold unanswerable. */
   readonly flowId: string | null;
   /** The session that holds the board; `null` when the row names none. */
@@ -38,10 +39,10 @@ export type RowHoldSource = {
 
 /** One open hold an item shows. */
 export type InboxHold<TDetail = unknown> = {
-  /** A suspension hold's suspension id; a row hold's own id. */
+  /** A suspension hold's suspension id; an own hold's own id. */
   readonly id: string;
-  /** What answers it: a suspension through the engine, a row hold through the board. */
-  readonly source: SuspensionHoldSource | RowHoldSource;
+  /** What answers it: a suspension through the engine, an own hold through the board. */
+  readonly source: SuspensionHoldSource | OwnHoldSource;
   readonly ask: { readonly kind: InboxAskKind; readonly prompt: string; readonly title?: string };
   /** When it opened, epoch ms. */
   readonly openedAt: number;
@@ -81,7 +82,7 @@ export type InboxItem<TDetail = unknown> = {
 };
 
 /** A task row, as much of it as the Inbox reads. A browser's board row and a server's `Task` both fit. */
-export type InboxRow = {
+export type InboxTaskInput = {
   /** The board's ref the row is on. */
   readonly board: string;
   readonly id: string;
@@ -97,7 +98,7 @@ export type InboxRow = {
   /** Its steers, as far as the Inbox reads them: which hold each answers. A question is open while none carries its id. */
   readonly steers?: readonly { readonly id: string; readonly answers?: string }[] | null;
   /**
-   * Where its row questions are answered: the session that holds the board, and
+   * Where its own questions are answered: the session that holds the board, and
    * the board's `updateTask` action there. `null` when the reader can't say,
    * which leaves them unanswerable.
    */

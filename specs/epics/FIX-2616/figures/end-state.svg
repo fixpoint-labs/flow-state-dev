@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 452" role="img" aria-label="What's in the box. In the box, the lab: a harness choice that lists the models of the selected harness only; plan mode as an option of a harness that has one; the plan signed off before work starts; the run reporting its own harness and model. In the box, the packages: each harness package says whether it has a plan mode; one shared model-choice shape lifted out of Kitchen Sink; the model lists, which are FIX-2458's and already shipped. A fence across the box: what a harness offers is asked of its package, and the lab keeps no model list and no plan list of its own. Composed in by the app: the person's choice of harness, model and plan mode, stored once and read by the harness slot. Replaced in one line: the Coder chip and its Coder line in the message, the Plan first worker, and Kitchen Sink's copy of the choice shape. Not built: repositories, the sidebar and Settings, which are the sibling epic FIX-2592's; attachments in the composer; a plan mode for a harness that has none; any workforce package change."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .chip  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .one   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .none  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="452"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="612" height="312" rx="8"/>
+    <text class="t-tag c-code" x="32" y="38">IN THE BOX · WHAT THE LAB IS AFTER THIS</text>
+    <text class="t-lbl" x="32" y="62">THE LAB · FIX-2598 · FIX-2599</text>
+    <rect class="chip" x="32" y="70" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="92">A harness, then only its models</text>
+    <rect class="chip" x="32" y="110" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="132">Plan mode, where the harness has one</text>
+    <rect class="chip" x="32" y="150" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="172">The plan signed off before work starts</text>
+    <rect class="chip" x="32" y="190" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="212">The run reports its harness and model</text>
+    <text class="t-lbl" x="330" y="62">THE PACKAGES · FIX-2597</text>
+    <rect class="chip" x="330" y="70" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="92">Each harness: plan mode, or none</text>
+    <rect class="chip" x="330" y="110" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="132">One shared model-choice shape</text>
+    <rect class="chip" x="330" y="150" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="172">Model lists · FIX-2458, shipped</text>
+  </g>
+
+  <g id="the-fence">
+    <line class="fence" x1="16" y1="262" x2="628" y2="262"/>
+    <text class="t-tag c-gone" x="32" y="282">FENCE · ER-1</text>
+    <text class="t-b" x="32" y="300">What a harness offers is asked of its package</text>
+    <text class="t-s" x="32" y="316">the lab keeps no model list and no plan list of its own; it shows what the package says</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="644" y="16" width="280" height="150" rx="8"/>
+    <text class="t-tag c-acc" x="660" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="660" y="66">The person's choice</text>
+    <text class="t-s" x="660" y="84">harness, model and plan mode, stored</text>
+    <text class="t-s" x="660" y="100">once and read by the harness slot</text>
+    <text class="t-b" x="660" y="130">The lab's look and copy</text>
+    <text class="t-s" x="660" y="148">the registry's pieces, the lab's words</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="one" x="644" y="182" width="280" height="146" rx="8"/>
+    <text class="t-lbl" x="660" y="204">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="660" y="226">The Coder chip and its Coder: line</text>
+    <text class="t-s" x="660" y="241">a harness, then a model, instead</text>
+    <text class="t-b" x="660" y="262">The Plan first worker</text>
+    <text class="t-s" x="660" y="277">plan is an option of a harness</text>
+    <text class="t-b" x="660" y="298">Kitchen Sink's copy of the shape</text>
+    <text class="t-s" x="660" y="313">the shared one replaces it</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="none" x="16" y="344" width="908" height="92" rx="8"/>
+    <text class="t-tag c-gone" x="32" y="366">NOT BUILT</text>
+    <text class="t-b" x="32" y="394">Repositories, sidebar, Settings</text>
+    <text class="t-s" x="32" y="410">the sibling epic, FIX-2592</text>
+    <text class="t-b" x="252" y="394">Attachments in the composer</text>
+    <text class="t-s" x="252" y="410">FIX-2523</text>
+    <text class="t-b" x="472" y="394">A plan mode for Codex</text>
+    <text class="t-s" x="472" y="410">a harness with none gets none</text>
+    <text class="t-b" x="692" y="394">Any workforce package change</text>
+  </g>
+</svg>

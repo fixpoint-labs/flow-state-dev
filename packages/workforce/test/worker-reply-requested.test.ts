@@ -62,7 +62,7 @@ import { WORKER_MESSAGES_PATTERN, workerMessagesResources } from "../src/message
 import { messageReceivedEntry, messageReceivedSchema } from "../src/messages/message-received-entry";
 import { RECEIVED_MARK } from "../src/messages/received-mark";
 import { sendMessage } from "../src/messages/send-message";
-import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import type { WorkerInstallation } from "../src/workers/installation";
 

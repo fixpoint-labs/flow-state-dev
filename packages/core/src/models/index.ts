@@ -20,7 +20,7 @@ export type {
   ModelGroupDefaults,
   GatewayConfig,
   GatewayEntry,
-  RetryPolicy,
+  ModelRetryPolicy,
   GatewayType,
   ProviderName,
   ProviderPreference

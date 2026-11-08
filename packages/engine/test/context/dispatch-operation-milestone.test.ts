@@ -26,11 +26,13 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createDispatchOperation } from "../../src/context/dispatch-operation";
 import {
   createFlowRegistry,
-  createInboundTransportHost,
-  createInMemoryStores,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
-import type { DispatchHandle, InboundTransportHost } from "../../src/transports/types";
+import {
+  createInMemoryStores
+} from "../../src/host";
+import { createInboundTransportHost } from "../../src/host";
+import type { InboundDispatchHandle, InboundTransportHost } from "../../src/transports/types";
 
 const SPEC = {
   source: "internal" as const,
@@ -46,13 +48,13 @@ const SPEC = {
 };
 
 /** A host that hands back exactly the milestones the test wants to offer. */
-function hostReturning(handle: Partial<DispatchHandle>) {
-  const dispatch = (): DispatchHandle =>
+function hostReturning(handle: Partial<InboundDispatchHandle>) {
+  const dispatch = (): InboundDispatchHandle =>
     ({
       requestId: "req_child",
       finished: new Promise<never>(() => {}),
       ...handle
-    }) as DispatchHandle;
+    }) as InboundDispatchHandle;
   return { dispatch, usesExternalRunner: false } as Pick<
     InboundTransportHost,
     "dispatch" | "usesExternalRunner"
@@ -221,7 +223,7 @@ describe("not-started is reserved for a throw that happened before any child exi
       return rawSet(...args);
     }) as typeof rawSet;
 
-    // No `dispatchLocal`, so the host takes its external-dispatcher branch. The
+    // No `dispatchLocal`, so the host takes its external-flow-runner branch. The
     // envelope carries the id the host materialized, which is the only handle on
     // the record once the result comes back as a refusal.
     let enqueuedRequestId: string | undefined;

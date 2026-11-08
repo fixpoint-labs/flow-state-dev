@@ -24,9 +24,10 @@ export function safeParseJson(raw: string): unknown {
   }
 }
 
+// FIX-723.
 /**
- * One-token summary of a failed item's error for the collapsed transcript row
- * (FIX-723): the HTTP status when present (a 403 reads differently from a 500),
+ * One-token summary of a failed item's error for the collapsed transcript row:
+ * the HTTP status when present (a 403 reads differently from a 500),
  * otherwise the non-http classification (`network` / `timeout` / `abort`).
  * Returns `undefined` when there is nothing useful to surface inline.
  */
