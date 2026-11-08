@@ -300,6 +300,15 @@ describe("the resource entry reads the whole tree: a stored thing is a resource,
     expect(resourceHits("packages/workforce/src/zz.ts", "export const { widgetRow: widget, GET } = helpers;\n")).toEqual([]);
   });
 
+  it("reads an export list or pattern member that a comment sits in front of", () => {
+    // A commented barrel export is ordinary; the comment must not hide the name, or shift its line.
+    expect(resourceHits("packages/workforce/src/zz.ts", "export {\n  // reads one, then the rest\n  loadWidgetRow,\n  other,\n};\n")).toEqual(["3:loadWidgetRow,"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export { loadWidget, /** doc, with a comma */ fooRow };\n")).toEqual([
+      "1:export { loadWidget, /** doc, with a comma */ fooRow };",
+    ]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const {\n  /* the list */ loadWidgetRow,\n} = helpers;\n")).toEqual(["2:/* the list */ loadWidgetRow,"]);
+  });
+
   it("reads a long file with no export list in linear time", () => {
     // A matcher that looks behind for `export {` at every character is quadratic on exactly this.
     const long = `const markup = \`${"<div class=\"a\">x</div>\n".repeat(8000)}\`;\n`;

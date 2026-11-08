@@ -99,6 +99,11 @@ const SEAT_MAILBOX_GOAL_NAMES = [
 
 /** A name whose word parts include Row: `FooRow`, `Rows`, `RowHold`, `TaskRowsPage`, `writeRunRow`. Not `Arrow`, `Rowan`. */
 const ROW_NAME = String.raw`\w*Rows?(?:[A-Z_]\w*)?(?![\w$])`;
+/** `text` with every line and block comment blanked to spaces, newlines kept: same length, same offsets. */
+function blankComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (c) => c.replace(/[^\n]/g, " "));
+}
+
 /** An export list, read forward: `export {…}` or `export type {…}`, its members, and whether it re-exports (`from`). */
 const EXPORT_LIST = /(?<![\w$.])export\s+(?:type\s+)?\{([^}]*)\}(\s*from\b)?/g;
 const IS_ROW_NAME = new RegExp(String.raw`^(?:${ROW_NAME}|rows?[A-Z]\w*)$`);
@@ -117,7 +122,7 @@ function rowNamesInExportLists(text) {
     const reexport = m[2] !== undefined;
     const bodyAt = m.index + m[0].indexOf("{") + 1;
     let offset = 0;
-    for (const part of m[1].split(",")) {
+    for (const part of blankComments(m[1]).split(",")) {
       const spec = /^\s*(?:type\s+)?([\w$]+)(?:\s+as\s+([\w$]+))?\s*$/.exec(part);
       if (spec !== null) {
         const [, local, alias] = spec;
@@ -206,7 +211,7 @@ function rowNamesInExportedPatterns(text) {
       else if (c === "}" || c === "]" || c === ")") { depth--; if (depth === 0) { close = i; break; } }
     }
     if (close === -1) continue;
-    for (const b of patternBindings(text.slice(open + 1, close), m[1] === "{")) {
+    for (const b of patternBindings(blankComments(text.slice(open + 1, close)), m[1] === "{")) {
       if (IS_ROW_NAME.test(b.name)) hits.push({ index: open + 1 + b.at, name: b.name });
     }
     EXPORT_PATTERN.lastIndex = close;
