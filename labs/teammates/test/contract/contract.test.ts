@@ -80,7 +80,7 @@ function labScript(failing: { next: boolean }): ModelResolver {
           if (signal?.aborted) throw new DOMException("The task was cancelled.", "AbortError");
           return { text: "Every typo fixed." };
         }
-        // Chief of Staff
+        // The lead
         if (failing.next) {
           failing.next = false;
           throw new Error(FAILURE);
@@ -193,7 +193,7 @@ describe.each([
     const gap = GAPS[name]?.[column];
     return gap === undefined ? it(name, run, 60_000) : it.fails(`${name} (gap: ${gap})`, run, 60_000);
   };
-  /** Chief of Staff's conversation, on a fresh target. */
+  /** The lead's conversation, on a fresh target. */
   const chief = async (asks = false) => {
     target = await make(asks);
     // The screen opens on the roster: the adapter learns the workers' names from it, and draws a line
