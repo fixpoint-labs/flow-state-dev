@@ -38,6 +38,8 @@
  *     "moving to another session" case fails: they are never sent.
  *   - move the queue only once the new session has loaded, and the "still
  *     loads" case fails: a line sent for the new session goes to the old one.
+ *   - keep a session marked checked when the queue moves off it, and the
+ *     "coming back" case fails: its waiting turns are never read again.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -354,6 +356,21 @@ describe("useHarnessLines", () => {
     expect(flowMock.send).toHaveBeenLastCalledWith("run", { message: "for s2", mode: "ask" }, { sessionId: "s2" });
     expect(flowMock.send).not.toHaveBeenCalledWith("run", { message: "for s2", mode: "ask" }, { sessionId: "s1" });
     expect(result.current.waiting.map((line) => line.text)).toEqual(["for s2"]);
+  });
+
+  it("coming back to a session before the other one loads reads its waiting turns again", async () => {
+    const { result, rerender } = mount();
+    await result.current.send("waits");
+    await waitFor(() => expect(result.current.waiting.map((line) => line.text)).toEqual(["waits"]));
+    // Off to s2, back to s1 before s2 loads; s1 still has its turn and the waiting one.
+    rerender({ session: view(true, true, "s2") });
+    running = [
+      { id: "turn-1", actionName: "turn", startedAtMs: 1 },
+      { id: "line-1", actionName: "turn", startedAtMs: 2 }
+    ];
+    rerender({ session: view(true, false, "s1") });
+    await waitFor(() => expect(followRequest).toHaveBeenCalledWith("turn-1"));
+    expect(result.current.waiting.map((line) => line.key)).toEqual(["line-1"]);
   });
 
   it("a waiting line whose turn can't be sent leaves the list, and its send rejects", async () => {

@@ -248,6 +248,7 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
   // session, the queue moves with it at once, before the new session loads, so
   // a line sent for the new one never joins the old one's.
   const queueSession = useRef(sessionId);
+  const checkedOpen = useRef<string | null>(null);
   useEffect(() => {
     const left = queueSession.current;
     if (left === sessionId) return;
@@ -269,13 +270,14 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
     }
     queue.current = [];
     starting.current = null;
+    // The session entered is read afresh, even one this view checked before.
+    checkedOpen.current = null;
     publish();
     reattached.current.clear();
   }, [sessionId, client, flowKind, turnAction, publish]);
 
   // A view opened while turns wait follows the session's newest request, which
   // is a waiting one: follow the oldest running turn instead, and the rest after it.
-  const checkedOpen = useRef<string | null>(null);
   useEffect(() => {
     if (sessionId === undefined || isLoading || checkedOpen.current === sessionId) return;
     checkedOpen.current = sessionId;
