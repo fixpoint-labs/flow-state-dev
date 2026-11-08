@@ -1,6 +1,6 @@
 /**
- * The react root carries only what an app author reaches for (epic FIX-2447,
- * FIX-2604): hooks, renderers, `FlowNavigator` and the key helpers.
+ * The react root carries only what an app author reaches for: hooks,
+ * renderers, `FlowNavigator` and the key helpers.
  *
  * These value names were on the root with no outside reader. `deriveSuspensions`
  * has one, Shift Manager, which is our own package, so it moves to
