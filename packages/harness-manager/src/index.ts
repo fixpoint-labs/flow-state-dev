@@ -263,13 +263,13 @@ export {
 
 // ── The run record ──────────────────────────────────────────────────────────
 //
-// **Read, not write.** `openRunRow`, `writeRunRow` and `collectionRef` are the
+// **Read, not write.** `openRunRecord`, `writeRunRecord` and `collectionRef` are the
 // manager's own — every one of them writes through the attempt fence, and a
 // caller outside a claimed attempt either gets refused or corrupts a ledger the
 // board is the authority on. A host builds its status surface from
-// `readRunRow` and the collection; the writes stay internal.
+// `readRunRecord` and the collection; the writes stay internal.
 export {
-  readRunRow,
+  readRunRecord,
   runRecordCollection,
   runRecordStateSchema,
   heldSchema,

@@ -23,7 +23,7 @@ import {
   isTerminalStatus,
   type TaskCollectionRef
 } from "@flow-state-dev/orchestration/tasks";
-import { findTaskPartitions, rowsInSession } from "@flow-state-dev/orchestration/internal";
+import { findTaskPartitions, tasksInSession } from "@flow-state-dev/orchestration/internal";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-board/ledger";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
@@ -87,7 +87,7 @@ export async function checkTargetSession(
       );
     }
     // The task and its follow-ups, which run in that session one at a time.
-    if (rowsInSession(of.ledger, sessionId).some((row) => !isTerminalStatus(row.status))) {
+    if (tasksInSession(of.ledger, sessionId).some((row) => !isTerminalStatus(row.status))) {
       return refuse(
         `task_running: task "${of.task}" is still running, and a message would reach the work itself. ` +
           `Read it with getTask, or message it once it has ended.`

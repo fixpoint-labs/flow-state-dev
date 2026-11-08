@@ -3,7 +3,7 @@
  * Stubs `globalThis.fetch` so no network is exercised.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
+import type { ScheduleIndex, ScheduleIndexEntry } from "@flow-state-dev/scheduled";
 import {
   createGetToPostCronShim,
   createScheduleTickHandler
@@ -100,7 +100,7 @@ describe("createScheduleTickHandler", () => {
     vi.restoreAllMocks();
   });
 
-  function fakeIndex(due: ScheduleIndexRow[], opts: { failClaim?: boolean } = {}): ScheduleIndex {
+  function fakeIndex(due: ScheduleIndexEntry[], opts: { failClaim?: boolean } = {}): ScheduleIndex {
     return {
       async upsert() {},
       async remove() {},
@@ -111,7 +111,7 @@ describe("createScheduleTickHandler", () => {
     };
   }
 
-  const ROW: ScheduleIndexRow = {
+  const ROW: ScheduleIndexEntry = {
     cell: "u1:~org:acme",
     userId: "u1",
     orgId: "acme",

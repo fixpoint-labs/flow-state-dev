@@ -14,14 +14,14 @@
  */
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { SessionConnectionState } from "@flow-state-dev/client";
-import { toBoardTask, type LabAdapter, type WorkerRow } from "../src/adapter";
+import type { SessionConnectionStatus } from "@flow-state-dev/client";
+import { toBoardTask, type LabAdapter, type LabWorker } from "../src/adapter";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 
 afterEach(cleanup);
 
 const MIN = 60_000;
-const worker = { id: "lead", name: "Lead", role: "Runs the team", own: false } as WorkerRow;
+const worker = { id: "lead", name: "Lead", role: "Runs the team", own: false } as LabWorker;
 
 /** A board row as `listTasks` answers it. */
 const listed = (id: string, status: string, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }) => ({
@@ -36,14 +36,14 @@ const listed = (id: string, status: string, times: { updatedAt: number; startedA
   ...(times.leaseUntil === undefined ? {} : { leaseUntil: times.leaseUntil }),
 });
 
-function panel(rows: Record<string, any>[], connection: SessionConnectionState = "live", boardStale = false) {
+function panel(rows: Record<string, any>[], connection: SessionConnectionStatus = "live", boardStale = false) {
   const adapter = {
     watchTasks: (_session: string, emit: (tasks: unknown[]) => void, onStale?: (stale: boolean) => void) => {
       emit(rows.map((row) => toBoardTask(row)));
       if (boardStale) onStale?.(true);
       return () => {};
     },
-    watchConnection: (_session: string, emit: (state: SessionConnectionState) => void) => (emit(connection), () => {}),
+    watchConnection: (_session: string, emit: (state: SessionConnectionStatus) => void) => (emit(connection), () => {}),
   } as unknown as LabAdapter;
   render(
     <TeammatePanel adapter={adapter} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} onOpen={() => {}} />,

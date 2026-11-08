@@ -1,14 +1,14 @@
 import type { SentLineMark } from "@flow-state-dev/react";
 import { useState } from "react";
 import { defaultRehypePlugins } from "streamdown";
-import type { TaskRow, TaskStatus, ThreadEntry } from "../adapter";
+import type { LabTask, TaskStatus, ThreadEntry } from "../adapter";
 import { TASK_STATUS } from "../lib/task-status";
 import type { ToolRun, ToolStep } from "../lib/tool-steps";
 import { cn } from "../lib/utils";
 import { Clamp } from "./Clamp";
 import { MessageResponse } from "./flow-state/message";
 import { RequestRecovery } from "./flow-state/request-recovery";
-import { composeToolCallsLabel, toolRunOpen, type ToolStepState } from "./flow-state/tool-grouping";
+import { composeToolCallsLabel, toolRunOpen, type ToolStepStatus } from "./flow-state/tool-grouping";
 
 /**
  * Streamdown's own pipeline without `raw`: agent text is Markdown, and any
@@ -112,7 +112,7 @@ export function Entry({
 
 /** The session's task rows (`undefined` until read) and how to open one, as the main thread hands them to its lines. */
 export interface FeedTasks {
-  rows: readonly TaskRow[] | undefined;
+  rows: readonly LabTask[] | undefined;
   open: (taskId: string) => void;
 }
 
@@ -123,7 +123,7 @@ export interface FeedTasks {
  * the board doesn't list keeps what the line reported. (A start line reports
  * no status, so its dot is the row's.)
  */
-function lineStatus(reported: TaskStatus, row: TaskRow | undefined): { dot: TaskStatus; now: TaskStatus | undefined } {
+function lineStatus(reported: TaskStatus, row: LabTask | undefined): { dot: TaskStatus; now: TaskStatus | undefined } {
   const dot = row?.status ?? reported;
   return { dot, now: row !== undefined && row.status !== reported ? row.status : undefined };
 }
@@ -169,7 +169,7 @@ function StepLine({ step, tasks }: { step: ToolStep; tasks: FeedTasks | undefine
 }
 
 /** A failed step reads "(failed)" in words, and in the lab's red. */
-const stepTone = (state: ToolStepState) => (state === "error" ? "text-destructive" : "text-muted-foreground");
+const stepTone = (state: ToolStepStatus) => (state === "error" ? "text-destructive" : "text-muted-foreground");
 
 /**
  * A run of tool calls: one line, which opens to a line per call. The run

@@ -1,6 +1,6 @@
 import { isSendKey, useJumpToLatest, useSubmit } from "@flow-state-dev/react";
 import { useMemo, type FormEvent, type KeyboardEvent } from "react";
-import type { LabAdapter, TaskRow } from "../adapter";
+import type { LabAdapter, LabTask } from "../adapter";
 import { useWatch } from "../lib/use-watch";
 import { useDraftSend } from "../lib/use-draft-send";
 import { Entry } from "./Entry";
@@ -38,7 +38,7 @@ export function ThreadView({
 }: {
   adapter: LabAdapter;
   sessionId: string;
-  task: TaskRow;
+  task: LabTask;
   pinned: boolean;
   onClose: () => void;
 }) {

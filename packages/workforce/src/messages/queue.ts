@@ -30,7 +30,7 @@
 import { requestHostOf, canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { WaitGateBinding } from "@flow-state-dev/core/internal";
-import { findTaskPartitions, hasOpenHold, rowsInSession } from "@flow-state-dev/orchestration/internal";
+import { findTaskPartitions, hasOpenHold, tasksInSession } from "@flow-state-dev/orchestration/internal";
 import { externalHoldOf } from "@flow-state-dev/orchestration/tasks";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-board/ledger";
 import { TASK_ID_STATE_KEY } from "../workers/keys";
@@ -49,7 +49,7 @@ async function userHoldOf(ctx: BlockContext): Promise<WaitGateBinding | null> {
   for (const partition of await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId)) {
     const ledger = await conversationLedgerAt(ctx, partition);
     if (ledger === undefined) continue;
-    const held = rowsInSession(ledger, sessionId).find(hasOpenHold);
+    const held = tasksInSession(ledger, sessionId).find(hasOpenHold);
     if (held !== undefined) return { board: ledger.collectionId, taskId: held.id };
   }
   return null;
@@ -81,7 +81,7 @@ export async function answerExternalWait(ctx: BlockContext, row: Pick<WorkerMess
   for (const partition of await findTaskPartitions(ctx, CONVERSATION_LEDGER_ID, taskId)) {
     const ledger = await conversationLedgerAt(ctx, partition);
     if (ledger?.answer === undefined) continue;
-    for (const task of rowsInSession(ledger, sessionId)) {
+    for (const task of tasksInSession(ledger, sessionId)) {
       if ((task.steers ?? []).some((steer) => steer.id === key)) return true;
       const hold = externalHoldOf(task);
       if (hold === undefined) continue;

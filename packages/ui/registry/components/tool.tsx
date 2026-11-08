@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 
 import { CodeBlock } from "./code-block";
-import { composeToolCallsLabel, toolRunState, toolStepState, withToolState, type ToolStepState } from "./tool-grouping";
+import { composeToolCallsLabel, toolRunState, toolStepState, withToolState, type ToolStepStatus } from "./tool-grouping";
 import { toolIntent, toolSubject } from "./tool-naming";
 
 export {
@@ -54,7 +54,7 @@ export { toolIntent } from "./tool-naming";
  * Framework-agnostic tool execution state.
  * Replaces the AI SDK ToolUIPart["state"] with neutral vocabulary.
  */
-export type ToolState =
+type ToolStatus =
   | "pending"      // not yet started
   | "streaming"    // input being received
   | "running"      // executing
@@ -63,7 +63,7 @@ export type ToolState =
   | "error"        // failed
   | "denied";      // user rejected
 
-const statusLabels: Record<ToolState, string> = {
+const statusLabels: Record<ToolStatus, string> = {
   pending: "Pending",
   streaming: "Receiving input…",
   running: "Running…",
@@ -73,7 +73,7 @@ const statusLabels: Record<ToolState, string> = {
   denied: "Denied",
 };
 
-const statusIcons: Record<ToolState, ReactNode> = {
+const statusIcons: Record<ToolStatus, ReactNode> = {
   pending: <CircleIcon className="size-4" />,
   streaming: <ClockIcon className="size-4 animate-pulse" />,
   running: <ClockIcon className="size-4 animate-pulse" />,
@@ -83,7 +83,7 @@ const statusIcons: Record<ToolState, ReactNode> = {
   denied: <XCircleIcon className="size-4 text-warning" />,
 };
 
-export const getStatusBadge = (state: ToolState) => (
+export const getStatusBadge = (state: ToolStatus) => (
   <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
     {statusIcons[state]}
     {statusLabels[state]}
@@ -171,7 +171,7 @@ function thoughtLine(item: ReasoningItem): string | undefined {
 }
 
 /** A call waiting on an approval or a question is `awaiting`, not `error` (`isSuspensionWait`). */
-function mapToolStatus(item: ToolItem): ToolState {
+function mapToolStatus(item: ToolItem): ToolStatus {
   if (isSuspensionWait(item)) return "awaiting";
   switch (item.status) {
     case "in_progress": return "running";
@@ -222,7 +222,7 @@ function getToolErrorText(item: ToolItem): string | undefined {
 }
 
 /** A call's state is its status, then whether its result reports a failure (a refused read). */
-function lineState(item: ToolItem): ToolStepState {
+function lineState(item: ToolItem): ToolStepStatus {
   // A thought that ended unfinished (a stream that dropped mid-thought) is over, not still going.
   if (isThought(item)) return item.status === "in_progress" ? "running" : "completed";
   const state = mapToolStatus(item);
@@ -230,7 +230,7 @@ function lineState(item: ToolItem): ToolStepState {
   return toolStepState(status, getToolName(item), getToolOutput(item));
 }
 
-function runState(items: readonly ToolItem[]): ToolStepState {
+function runState(items: readonly ToolItem[]): ToolStepStatus {
   return toolRunState(items.map(lineState));
 }
 
@@ -242,7 +242,7 @@ function labelInput(item: Exclude<ToolItem, ReasoningItem>) {
 }
 
 /** "Thinking" while it goes on, "Thought" once it has. */
-const thoughtWord = (state: ToolStepState) => (state === "running" ? "Thinking" : "Thought");
+const thoughtWord = (state: ToolStepStatus) => (state === "running" ? "Thinking" : "Thought");
 
 function ToolCallDetails({ item }: { item: ToolItem }) {
   if (isThought(item)) {
@@ -280,7 +280,7 @@ function ToolCallDetails({ item }: { item: ToolItem }) {
 
 type ToolLineProps = {
   label: string;
-  state: ToolStepState;
+  state: ToolStepStatus;
   nested?: boolean;
   mono?: boolean;
   defaultOpen?: boolean;

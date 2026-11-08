@@ -2,10 +2,10 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { BoardColumns } from "@flow-state-dev/react/workforce";
 
 import {
-  boardRow,
-  failingRowsSource,
-  loadingRowsSource,
-  rowsSource,
+  boardTask,
+  failingResourcesSource,
+  loadingResourcesSource,
+  resourcesSource,
 } from "../fixtures/workforce";
 
 const meta = {
@@ -20,17 +20,17 @@ type Story = StoryObj<typeof meta>;
 
 /** The board read has not answered yet. */
 export const Loading: Story = {
-  args: { client: loadingRowsSource },
+  args: { client: loadingResourcesSource },
 };
 
 /** A board with no rows, which says why rather than spinning. */
 export const Empty: Story = {
-  args: { client: rowsSource([]) },
+  args: { client: resourcesSource([]) },
 };
 
 /** The read failed. The line says what failed and offers Retry. */
 export const Failed: Story = {
-  args: { client: failingRowsSource("Failed to load this board") },
+  args: { client: failingResourcesSource("Failed to load this board") },
 };
 
 /**
@@ -39,14 +39,14 @@ export const Failed: Story = {
  */
 export const Populated: Story = {
   args: {
-    client: rowsSource([
-      boardRow("t1", "pending", { title: "Refund order 1042", assignee: "support.ada" }),
-      boardRow("t2", "in_progress", { title: "Reset a customer's password", assignee: "support.grace" }),
-      boardRow("t3", "held", { goal: "Escalate the outage report" }),
-      boardRow("t4", "completed", { title: "Close duplicate ticket" }),
-      boardRow("t5", "errored", { title: "Sync the CRM", error: "CRM returned 503" }),
-      boardRow("t6", "awaiting_review", { title: "Draft reply to a VIP" }),
-      boardRow("t7", "snoozed", { title: "Follow up next week" }),
+    client: resourcesSource([
+      boardTask("t1", "pending", { title: "Refund order 1042", assignee: "support.ada" }),
+      boardTask("t2", "in_progress", { title: "Reset a customer's password", assignee: "support.grace" }),
+      boardTask("t3", "held", { goal: "Escalate the outage report" }),
+      boardTask("t4", "completed", { title: "Close duplicate ticket" }),
+      boardTask("t5", "errored", { title: "Sync the CRM", error: "CRM returned 503" }),
+      boardTask("t6", "awaiting_review", { title: "Draft reply to a VIP" }),
+      boardTask("t7", "snoozed", { title: "Follow up next week" }),
     ]),
   },
 };

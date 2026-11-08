@@ -20,10 +20,10 @@
  * deferred.
  */
 
-export type AudioPlayerState = "idle" | "playing";
+export type AudioPlayerStatus = "idle" | "playing";
 
 export type AudioPlayerCallbacks = {
-  onStateChange?: (state: AudioPlayerState) => void;
+  onStateChange?: (state: AudioPlayerStatus) => void;
   onChunkStart?: (index: number) => void;
   onChunkEnd?: (index: number) => void;
   onError?: (error: Error) => void;
@@ -41,7 +41,7 @@ export type AudioChunk = {
 };
 
 export type AudioPlayer = {
-  readonly state: AudioPlayerState;
+  readonly state: AudioPlayerStatus;
   /**
    * Streaming path: append a single chunk. Decoded and scheduled against
    * the shared `AudioContext` timeline for gap-free playback.
@@ -91,7 +91,7 @@ function resolveAudioContextCtor(): AudioContextCtor | undefined {
 export function createAudioPlayer(
   callbacks?: AudioPlayerCallbacks
 ): AudioPlayer {
-  let currentState: AudioPlayerState = "idle";
+  let currentState: AudioPlayerStatus = "idle";
   let audioContext: AudioContext | null = null;
   let nextStartTime = 0;
   let chunkIndex = 0;
@@ -111,7 +111,7 @@ export function createAudioPlayer(
   const SUSPENDED_BUFFER_LIMIT = 3;
   const suspendedQueue: AudioChunk[] = [];
 
-  function setState(next: AudioPlayerState) {
+  function setState(next: AudioPlayerStatus) {
     if (currentState === next) return;
     currentState = next;
     callbacks?.onStateChange?.(next);

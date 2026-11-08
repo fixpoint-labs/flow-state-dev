@@ -105,9 +105,9 @@ async function host(flow: FlowInstance, options: Host) {
   return state;
 }
 
-type Row = { id: string; status: string; wait?: { gateId: string; deadline: number; requestId?: string; lapsed?: true }; createdAt: number };
+type StoredTask = { id: string; status: string; wait?: { gateId: string; deadline: number; requestId?: string; lapsed?: true }; createdAt: number };
 const listRows = async (state: Awaited<ReturnType<typeof host>>, flow: FlowInstance) =>
-  (await act(state as never, flow, "list")).output as Row[];
+  (await act(state as never, flow, "list")).output as StoredTask[];
 
 const call =
   (toolCallId: string, toolName: string, args: () => Record<string, unknown>): StepFn =>

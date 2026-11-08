@@ -17,7 +17,7 @@ import {
   earliestTurnOf,
   latestTurn,
   planPanelState,
-  planRowStage,
+  planEntryStage,
   planSource,
   PREDATES_REASON,
   turnNotice,
@@ -229,20 +229,20 @@ describe("turnNumbers and earliestTurnOf", () => {
 // until it confirms a first move: Claude Code's create records no status, so a
 // row nobody has started yet holds null. The panel must read that as "to do",
 // not as a missing value.
-describe("planRowStage", () => {
+describe("planEntryStage", () => {
   it("reads a row with no status as not started, since a create records none", () => {
-    expect(planRowStage(null)).toEqual({ stage: "pending", label: "To do" });
+    expect(planEntryStage(null)).toEqual({ stage: "pending", label: "To do" });
   });
 
   it("reads the common words of the harnesses in any spelling", () => {
-    for (const word of ["pending", "Pending", "todo", "not_started", "notStarted", "", "  "]) expect(planRowStage(word).stage).toBe("pending");
+    for (const word of ["pending", "Pending", "todo", "not_started", "notStarted", "", "  "]) expect(planEntryStage(word).stage).toBe("pending");
     for (const word of ["in_progress", "in-progress", "In Progress", "running", "inProgress"]) {
-      expect(planRowStage(word)).toEqual({ stage: "active", label: "In progress" });
+      expect(planEntryStage(word)).toEqual({ stage: "active", label: "In progress" });
     }
-    for (const word of ["completed", "complete", "done"]) expect(planRowStage(word)).toEqual({ stage: "done", label: "Done" });
+    for (const word of ["completed", "complete", "done"]) expect(planEntryStage(word)).toEqual({ stage: "done", label: "Done" });
   });
 
   it("keeps a word it does not know, as the harness said it", () => {
-    expect(planRowStage("deleted")).toEqual({ stage: "other", label: "deleted" });
+    expect(planEntryStage("deleted")).toEqual({ stage: "other", label: "deleted" });
   });
 });

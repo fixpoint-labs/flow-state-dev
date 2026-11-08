@@ -196,7 +196,7 @@ seam-stamped sender (`readDispatchStamp` → `from.sessionId`). The author names
 no session. A request the runtime did not dispatch — including a public action
 whose HTTP body carries a perfectly shaped `metadata.dispatch.from` — refuses
 `no-sender`. Nested `{ from: true }` replies to the immediate stamped sender,
-not an oldest ancestor. `settleParentTask` stays the board-row close and is
+not an oldest ancestor. `settleParentTask` stays the board task's close and is
 not this path.
 
 Acceptance happens at enqueue time; when the run starts, `runAction` re-reads
@@ -255,7 +255,7 @@ host-owned data, and the framework can't persist a block. If you need a durable
 scheduled action to survive a crash, make it static — its handler is reachable
 from a stable coordinate.
 
-Persisted dynamic-schedule rows store a `kind` discriminator string (not a
+Persisted dynamic schedules store a `kind` discriminator string (not a
 block, which isn't serializable). The resolver maps `kind → block` through its
 `blocks` map. The discriminator is enough to re-dispatch a fresh run on the
 next tick; it is not enough to resume an in-flight durable run, which needs the

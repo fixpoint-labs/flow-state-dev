@@ -46,9 +46,9 @@ import { FlowProvider } from "../src/context/FlowContext";
 const BOARD = "eng.feature.triage";
 const SESSION = "s1";
 
-type Row = { topic: string; clientData: unknown };
+type Listed = { topic: string; clientData: unknown };
 
-const card = (id: string, status: string, extra: Record<string, unknown> = {}): Row => ({
+const card = (id: string, status: string, extra: Record<string, unknown> = {}): Listed => ({
   topic: id,
   clientData: { id, status, ...extra }
 });
@@ -57,18 +57,18 @@ const card = (id: string, status: string, extra: Record<string, unknown> = {}): 
  * A board source whose every read stays open until the case releases it, and
  * which answers with whatever rows the board holds at that moment.
  */
-function heldSource(initial: Row[]) {
+function heldSource(initial: Listed[]) {
   let rows = initial;
   const open: Array<() => void> = [];
   const listCollectionResources = vi.fn(
     () =>
-      new Promise<{ items: Row[] }>((resolve) => {
+      new Promise<{ items: Listed[] }>((resolve) => {
         open.push(() => resolve({ items: rows }));
       })
   );
   return {
     listCollectionResources,
-    setRows: (next: Row[]) => {
+    setRows: (next: Listed[]) => {
       rows = next;
     },
     /** Reads still open. */
@@ -86,7 +86,7 @@ function heldSource(initial: Row[]) {
 }
 
 /** A source that answers at once, and counts. */
-function fixedSource(items: Row[]) {
+function fixedSource(items: Listed[]) {
   return { listCollectionResources: vi.fn(async () => ({ items })) };
 }
 
@@ -255,7 +255,7 @@ describe("BoardList · live (V2)", () => {
   }
 
   /** Mount a live list and let its mount read land. Hands back the source at one read. */
-  async function mountLive(rows: Row[] = [card("t-1", "pending")]) {
+  async function mountLive(rows: Listed[] = [card("t-1", "pending")]) {
     const source = heldSource(rows);
     const view = renderLive(source);
     await source.release();
@@ -373,7 +373,7 @@ describe("BoardList · live (V2)", () => {
 describe("BoardList · the subscription carries the read's credential, to the read's origin (V3, BR-16)", () => {
   // The real client, against a host `fetch`: one transport for the read and
   // the subscription is the client and the list together.
-  function hostFetchAnswering(rows: Row[]) {
+  function hostFetchAnswering(rows: Listed[]) {
     const sent: Array<{ url: string; authorization: string | null }> = [];
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(init?.headers);

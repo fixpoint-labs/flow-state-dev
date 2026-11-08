@@ -132,9 +132,9 @@ export type IndexEntry = z.infer<typeof indexEntrySchema>;
  * thread at once both land: `updateState` re-runs its updater against the row
  * that won a write race, on every store.
  */
-const threadIndexRowSchema = z.object({ subscriptions: z.record(indexEntrySchema).default({}) });
+const threadIndexResourceStateSchema = z.object({ subscriptions: z.record(indexEntrySchema).default({}) });
 
-type ThreadIndexRow = z.infer<typeof threadIndexRowSchema>;
+type ThreadIndexResourceState = z.infer<typeof threadIndexResourceStateSchema>;
 
 /** The subscriptions, at `workforce/subscriptions/*` in the user's scope, shared across flows. Server-written. */
 const subscriptionsCollection = defineResourceCollection({
@@ -160,7 +160,7 @@ const subscriptionIndexCollection = defineResourceCollection({
   scope: "org",
   flowIsolation: false,
   prefetchMode: "lazy",
-  stateSchema: threadIndexRowSchema
+  stateSchema: threadIndexResourceStateSchema
 });
 
 /** The flow resources a flow that subscribes, delivers or ends subscriptions declares. */
@@ -185,7 +185,7 @@ export const subscriptionsOf = (ctx: BlockContext) => declared<SubscriptionResou
 export const subscriptionCursorsOf = (ctx: BlockContext) => declared<SubscriptionCursor>(ctx, SUBSCRIPTION_CURSORS_RESOURCE);
 
 /** The running org's thread index. */
-export const subscriptionIndexOf = (ctx: BlockContext) => declared<ThreadIndexRow>(ctx, SUBSCRIPTION_INDEX_RESOURCE);
+export const subscriptionIndexOf = (ctx: BlockContext) => declared<ThreadIndexResourceState>(ctx, SUBSCRIPTION_INDEX_RESOURCE);
 
 /** A thread key as an index row's key: one path segment. */
 export const indexKeyOf = (thread: string) => encodeURIComponent(thread);

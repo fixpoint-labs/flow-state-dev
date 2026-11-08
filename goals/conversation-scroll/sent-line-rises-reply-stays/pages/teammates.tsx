@@ -8,7 +8,7 @@
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import type { ConversationEntry, LabAdapter, WorkerRow } from "../adapter";
+import type { ConversationEntry, LabAdapter, LabWorker } from "../adapter";
 import { Conversation } from "../components/Conversation";
 import { SessionPopup } from "../components/SessionPopup";
 import "../styles.css";
@@ -50,7 +50,7 @@ const adapter = new Proxy({} as LabAdapter, {
   },
 });
 
-const worker: WorkerRow = { id: "helper", name: "Helper", role: "helps out" };
+const worker: LabWorker = { id: "helper", name: "Helper", role: "helps out" };
 
 function Page() {
   const open = useOpen();

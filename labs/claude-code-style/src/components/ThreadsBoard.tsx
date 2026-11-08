@@ -1,6 +1,6 @@
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
-import type { LabAdapter, TaskRow } from "../adapter";
+import type { LabAdapter, LabTask } from "../adapter";
 import { COLUMNS, columnOf, type Column } from "../lib/columns";
 import { taskSignalTone } from "../lib/task-status";
 import { useMissing, useNow, useWatch } from "../lib/use-watch";
@@ -34,7 +34,7 @@ export function ThreadsBoard({
   adapter: LabAdapter;
   sessionId: string;
   /** The session's task rows, as the app reads them; `undefined` until read. */
-  tasks: TaskRow[] | undefined;
+  tasks: LabTask[] | undefined;
   /** The app's last read of the rows failed: they may be old. */
   stale?: boolean;
   openId: string | undefined;

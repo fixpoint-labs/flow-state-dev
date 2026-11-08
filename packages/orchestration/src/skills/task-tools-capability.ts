@@ -607,7 +607,7 @@ export interface TaskTurnToolOptions {
 export type ReportProgressOptions = TaskTurnToolOptions;
 
 /** The row a task turn holds, with the ticket that proves it. */
-interface HeldRow {
+interface HeldTask {
   readonly claim: TaskClaimTicket;
   readonly ledger: TaskCollectionRef;
   readonly row: Task | undefined;
@@ -628,7 +628,7 @@ interface HeldRow {
 async function claimedRowOf(
   resolve: (ctx: BlockContext) => Promise<TaskCollectionRef | undefined>,
   ctx: BlockContext,
-): Promise<HeldRow | undefined> {
+): Promise<HeldTask | undefined> {
   if (!isTaskTurn(ctx)) return undefined;
   const ledger = await resolve(ctx);
   if (ledger === undefined) return undefined;

@@ -113,7 +113,7 @@ async function collectionInState(
   return collection;
 }
 
-interface Row {
+interface StoredTask {
   state: Parameters<typeof collectionInState>[0];
   onIdle: OnIdle;
   verdict: BoardQuiescence;
@@ -122,7 +122,7 @@ interface Row {
   shouldExit?: (collection: TaskCollectionRef) => boolean;
 }
 
-const rows: Row[] = [
+const rows: StoredTask[] = [
   // --- The row that pins the fast path. Verdict says keep draining; the wake
   // --- test still has to stir a sleeping worker, in every mode.
   { state: "claimable", onIdle: "complete", verdict: "continue", wakes: true },

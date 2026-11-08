@@ -18,7 +18,7 @@ import {
   createBadCronWarner,
   parseNextFireAt,
   type ScheduleIndex,
-  type ScheduleIndexRow
+  type ScheduleIndexEntry
 } from "@flow-state-dev/scheduled";
 
 /**
@@ -60,7 +60,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
   // against each other and against writers. The plain `db.transaction`
   // default is DEFERRED, which would let concurrent callers both pass
   // the SELECT before either escalates to a write lock.
-  const claimDueTx = db.transaction((now: number, limit: number): ScheduleIndexRow[] => {
+  const claimDueTx = db.transaction((now: number, limit: number): ScheduleIndexEntry[] => {
     const rows = selectDueStmt.all(now, limit) as Array<{
       cell: string;
       user_id: string;
@@ -71,7 +71,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
       next_fire_at: number;
     }>;
 
-    const claimed: ScheduleIndexRow[] = [];
+    const claimed: ScheduleIndexEntry[] = [];
     for (const row of rows) {
       const timezone = row.timezone ?? undefined;
       const next = parseNextFireAt(row.cron, timezone);
@@ -96,7 +96,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
   }).immediate;
 
   return {
-    async upsert(row: ScheduleIndexRow): Promise<void> {
+    async upsert(row: ScheduleIndexEntry): Promise<void> {
       upsertStmt.run({
         cell: row.cell,
         userId: row.userId,
@@ -112,7 +112,7 @@ export function createSQLiteScheduleIndex(db: Database.Database): ScheduleIndex 
       removeStmt.run(cell, key);
     },
 
-    async claimDue(now: number, limit = 100): Promise<ScheduleIndexRow[]> {
+    async claimDue(now: number, limit = 100): Promise<ScheduleIndexEntry[]> {
       return claimDueTx(now, limit);
     }
   };

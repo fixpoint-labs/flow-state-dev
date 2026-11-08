@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import type { BoardTask, LabAdapter, TalkRow, WorkerRow, WorkingNow } from "../adapter";
+import type { BoardTask, LabAdapter, LabTalk, LabWorker, WorkingNow } from "../adapter";
 import { harnessName } from "../lib/harness";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
@@ -50,7 +50,7 @@ export const taskLabel = (line: string, task: { harness?: string; model?: string
  * `harness:` differs from the harness of the worker the task was filed for.
  * A task that isn't a coding task, or whose worker's harness isn't known, has none.
  */
-function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly WorkerRow[]): WorkerRow[] {
+function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly LabWorker[]): LabWorker[] {
   const own = coders.find((w) => w.id === task.to)?.harness;
   if (own === undefined) return [];
   return coders.filter((w) => w.takesTasks && w.harness !== undefined && w.harness !== own);
@@ -102,14 +102,14 @@ export function PullRequestOpen({ adapter, task }: { adapter: LabAdapter; task: 
 }
 
 /** How a sent message stands. */
-export type AnswerState = "working" | "replied" | "no answer";
+export type AnswerStatus = "working" | "replied" | "no answer";
 
 /**
  * How a message stands, from the message log: `replied` by a reply message
  * (one a waited send took as its result is in the log too); `no answer` when
  * the reply is the framework's "no answer"; `working` until then.
  */
-export const answerIn = (talk: readonly TalkRow[], messageId: string): AnswerState => {
+export const answerIn = (talk: readonly LabTalk[], messageId: string): AnswerStatus => {
   const reply = talk.find((row) => row.inReplyTo === messageId);
   if (reply !== undefined) return reply.noAnswer === true ? "no answer" : "replied";
   return "working";
@@ -123,7 +123,7 @@ export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, on
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   /** The roster's coding workers: a failed or cancelled coding task can be re-run on another's harness. */
-  coders: readonly WorkerRow[];
+  coders: readonly LabWorker[];
   onClose: () => void;
   /** A task popup's conversation holds no such task, once its tasks are read: a link to a task that is gone. */
   onMissing?: () => void;
@@ -149,7 +149,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, onClose, 
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
-  coders: readonly WorkerRow[];
+  coders: readonly LabWorker[];
   onClose: () => void;
   onMissing?: () => void;
 }) {

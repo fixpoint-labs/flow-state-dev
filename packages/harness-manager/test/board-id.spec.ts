@@ -34,7 +34,7 @@ import { harnessManager } from "../src";
 import { branchFor, checkoutPathFor, type RunLocation } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 
-interface SnapshotRow {
+interface SnapshotResource {
   epic: string;
   principal: Omit<RunLocation["principal"], "orgId">;
   checkout: string;
@@ -44,7 +44,7 @@ interface SnapshotRow {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const snapshot = JSON.parse(
   readFileSync(join(HERE, "derivation-snapshot.json"), "utf8"),
-) as SnapshotRow[];
+) as SnapshotResource[];
 const CONFIG = { root: "/ws", sourceRepo: "/src", baseRef: "main" };
 const ALICE = { orgId: "org_devforce_lab", userId: "u_devforce_lab" };
 

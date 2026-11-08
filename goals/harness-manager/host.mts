@@ -28,7 +28,7 @@ import {
   harnessDrainBudgetMs,
   harnessManager,
   harnessTaskInputSchema,
-  readRunRow,
+  readRunRecord,
   resolveOwnership,
   runRecordCollection,
   runRecordStateSchema,
@@ -251,7 +251,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
         }
         const record =
           issue !== null && phaseName !== null && rowOwnsItsIdentity(task)
-            ? await readRunRow(ctx, runTopic(collectionId, issue, phaseName))
+            ? await readRunRecord(ctx, runTopic(collectionId, issue, phaseName))
             : undefined;
         rows.push({
           taskId: task.id,

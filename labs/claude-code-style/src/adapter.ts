@@ -40,7 +40,7 @@
  *
  * Every watch reads on a change, through `onNotice`.
  */
-import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type SessionConnectionState, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
+import { bindStoreToCallbacks, createClient, createRequestStreamStore, sessionFeed, topic, type Client, type SessionConnectionStatus, type SessionFeed, type WireNotice, type WireTopic } from "@flow-state-dev/client";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   createInboxClient,
@@ -88,7 +88,7 @@ import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/fl
 export type Unsubscribe = () => void;
 
 /** One row of the sessions list. */
-export interface SessionRow {
+export interface LabSession {
   id: string;
   title: string;
   /** The session's main worker; its mode is read from it (`modeOfWorker`). */
@@ -104,7 +104,7 @@ export interface SessionRow {
 }
 
 /** A project a session can work in: its checkout is where the session's tasks run. */
-export interface ProjectRow {
+export interface LabProject {
   id: string;
   name: string;
 }
@@ -146,7 +146,7 @@ export type ThreadEntry = (
 ) & { requestId?: string };
 
 /** A session feed's connection: `lapsed` once a retry has failed, `stopped` once it gives up. */
-export type ConnectionState = SessionConnectionState;
+export type ConnectionState = SessionConnectionStatus;
 
 /** What a thread shows now. */
 export interface ThreadView {
@@ -166,7 +166,7 @@ export interface ThreadView {
 export type TaskStatus = "pending" | "in_progress" | "held" | "completed" | "errored" | "cancelled";
 
 /** One background task, as a `listTasks` row carries it. */
-export interface TaskRow {
+export interface LabTask {
   id: string;
   title: string;
   goal: string;
@@ -235,7 +235,7 @@ export interface WorkingNow {
 }
 
 /** One coding harness's readiness, as harness-manager's readiness action answers it. */
-export type HarnessRow = HarnessReadinessChipRow;
+export type LabHarness = HarnessReadinessChipRow;
 
 /** Whether a run could check a repository out on this machine: the projects flow's `checkRepository`. */
 export type RepositoryCheck = { usable: true; how: "worktree" | "clone" } | { usable: false; problem: string };
@@ -244,15 +244,15 @@ export type RepositoryCheck = { usable: true; how: "worktree" | "clone" } | { us
 export interface LabAdapter {
   /** The modes this adapter runs; the view switch shows the others disabled. */
   readonly modes: readonly ModeId[];
-  watchSessions(onChange: (rows: SessionRow[]) => void): Unsubscribe;
-  listProjects(): Promise<ProjectRow[]>;
+  watchSessions(onChange: (rows: LabSession[]) => void): Unsubscribe;
+  listProjects(): Promise<LabProject[]>;
   /** A new project of yours on a git repository, which you may then work in. */
-  createProject(name: string, repository: string): Promise<ProjectRow>;
+  createProject(name: string, repository: string): Promise<LabProject>;
   /** Whether a coding run could use `repository` here, and what happens to it; the same check `createProject` refuses with. */
   checkRepository(repository: string): Promise<RepositoryCheck>;
   /** Which coding harnesses can run on this machine; `refresh` checks them again (Re-check). */
-  readHarnesses(refresh?: boolean): Promise<HarnessRow[]>;
-  openSession(mode: ModeId, projectId: string): Promise<SessionRow>;
+  readHarnesses(refresh?: boolean): Promise<LabHarness[]>;
+  openSession(mode: ModeId, projectId: string): Promise<LabSession>;
   send(sessionId: string, text: string): Promise<void>;
   interrupt(sessionId: string): Promise<void>;
   /** Run a failed turn of the session again, as a new request the engine links to `requestId`. */
@@ -262,7 +262,7 @@ export interface LabAdapter {
    * The session's task rows, on each change; `onStale` hears `true` when a read fails (the
    * rows handed last are kept, so they may be old) and `false` when one succeeds again.
    */
-  watchTasks(sessionId: string, onChange: (rows: TaskRow[]) => void, onStale?: (stale: boolean) => void): Unsubscribe;
+  watchTasks(sessionId: string, onChange: (rows: LabTask[]) => void, onStale?: (stale: boolean) => void): Unsubscribe;
   watchTaskWork(sessionId: string, taskId: string, onChange: (work: TaskWork) => void): Unsubscribe;
   /** Talk inside a thread: a steer on its task, which answers its open question if it has one. */
   sayInThread(sessionId: string, taskId: string, line: string): Promise<void>;
@@ -791,8 +791,8 @@ export function createWiredLab(fsd: Client): LabAdapter {
    * One row of the sessions list. `complete` is false when its board couldn't be read: `waiting`
    * is then the count `held` showed (none for a row not shown yet), and the list reads it again.
    */
-  type SessionRowRead = { row: SessionRow; complete: boolean };
-  const rowOf = async (worker: string, sessionId: string, held?: SessionRow): Promise<SessionRowRead> => {
+  type LabSessionRead = { row: LabSession; complete: boolean };
+  const rowOf = async (worker: string, sessionId: string, held?: LabSession): Promise<LabSessionRead> => {
     const [detail, turns, waiting] = await Promise.all([fsd.sessions.get(sessionId), runningTurns(sessionId), waitingCountFor(sessionId)]);
     // The first message's first line is the fallback until the generated title lands.
     const firstLine = detail.title?.trim() ? undefined : await firstLineOf(sessionId);
@@ -815,7 +815,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
    * How many of a session's tasks wait on you, read as the board reads them (its tasks and their
    * open holds), without the harness and review reads the board's cards add. A board that can't be
    * read is `undefined`, not none: the row keeps the count it showed, and the list reads it again
-   * ({@link SessionRowRead}), so the list never fails on it and never shows a guess as read.
+   * ({@link LabSessionRead}), so the list never fails on it and never shows a guess as read.
    */
   const waitingCountFor = async (sessionId: string): Promise<number | undefined> => {
     try {
@@ -827,7 +827,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
   };
 
   /** A listed task row, as much as the screen reads. */
-  type Listed = Omit<TaskRow, "run"> & {
+  type Listed = Omit<LabTask, "run"> & {
     runSessionId?: string;
     run?: { sessionId: string; requestId: string; startedAt?: number };
     holds?: TaskHold[];
@@ -935,14 +935,14 @@ export function createWiredLab(fsd: Client): LabAdapter {
   };
 
   /** How a finished coding task's review ended, from its output. Kept, since a finished task's output never changes. */
-  const reviews = new Map<string, Promise<TaskRow["review"]>>();
+  const reviews = new Map<string, Promise<LabTask["review"]>>();
   const reviewOf = (sessionId: string, task: Listed) => {
     if (!reviews.has(task.id)) {
       reviews.set(
         task.id,
         flowOfSession(sessionId)
           .then((flow) => run(flow, sessionId, taskActionName("getTask", TASKS_BOARD), { id: task.id }))
-          .then((read) => (read.task?.output?.review as TaskRow["review"]) ?? null),
+          .then((read) => (read.task?.output?.review as LabTask["review"]) ?? null),
       );
     }
     return reviews.get(task.id)!;
@@ -988,7 +988,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
     pullRequestWait({ status: task.status, holds: (task.holds ?? []) as unknown as PullRequestWaitInput["holds"] }, records);
 
   /** The pull requests a listed task waits on, each with its link from its run session's record; `undefined` when it waits on none. */
-  const pullRequestsOf = async (task: Listed): Promise<TaskRow["pullRequests"]> => {
+  const pullRequestsOf = async (task: Listed): Promise<LabTask["pullRequests"]> => {
     const wait = waitOf(task);
     if (wait === null) return undefined;
     const records = task.runSessionId === undefined ? [] : await pullRequestRecords(task.runSessionId, `${task.runSessionId}#${wait.holdId}`);
@@ -1003,7 +1003,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
   const boardOf = async (sessionId: string) => {
     const listed = await listedWithWaitingOn(sessionId);
     const rows = await Promise.all(
-      listed.map(async (task): Promise<TaskRow> => {
+      listed.map(async (task): Promise<LabTask> => {
         const { runSessionId: _session, run: link, holds: _holds, attempts: _attempts, leaseUntil, ...row } = task;
         const run = { ...(typeof link?.startedAt === "number" ? { startedAt: link.startedAt } : {}), ...(leaseUntil === undefined ? {} : { leaseUntil }) };
         // The harness its run reported; until one reports, the assignee's `harness` setting.
@@ -1054,7 +1054,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
     // joins at the next reload. Where push can miss a change, the whole list reads every 3 s.
     watchSessions: (onChange) => {
       let live = true;
-      let rows = new Map<string, SessionRow>();
+      let rows = new Map<string, LabSession>();
       let last: string | undefined;
       let subscription: { close(): void } | undefined;
       // The listed ids the subscription hears; `null` before the first listing lands, so an empty
@@ -1106,7 +1106,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
             if (relist) {
               relist = false;
               dirty.clear();
-              const next = new Map<string, SessionRow>();
+              const next = new Map<string, LabSession>();
               for (const mode of modes) {
                 const listed = await workforce.listWorkerSessions(mode.worker);
                 for (const read of await Promise.all(listed.map((entry) => rowOf(mode.worker, entry.session.id, rows.get(entry.session.id))))) {
@@ -1164,7 +1164,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
     },
     checkRepository: async (repository) => await run("projects", await projects(), "checkRepository", { repository }),
     readHarnesses: async (refresh = false) =>
-      (await run(READINESS_FLOW, await ownSession(READINESS_FLOW), "read", { refresh })).harnesses as HarnessRow[],
+      (await run(READINESS_FLOW, await ownSession(READINESS_FLOW), "read", { refresh })).harnesses as LabHarness[],
     openSession: async (mode, projectId) => {
       const { worker } = modeById(mode);
       const project = parseProjectRef(projectId);

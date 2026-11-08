@@ -21,15 +21,15 @@ type SessionEntry = Awaited<ReturnType<SessionSource["list"]>>[number];
 const pending = <T>(): Promise<T> => new Promise<T>(() => {});
 
 /** A collection that answers with these rows, one page. */
-export function rowsSource(rows: readonly { topic: string; clientData: unknown }[]): PanelRowSource {
+export function resourcesSource(rows: readonly { topic: string; clientData: unknown }[]): PanelRowSource {
   return { resources: { listCollectionResources: async () => ({ items: [...rows] }) } };
 }
 
 /** A collection read that never answers. */
-export const loadingRowsSource: PanelRowSource = { resources: { listCollectionResources: () => pending() } };
+export const loadingResourcesSource: PanelRowSource = { resources: { listCollectionResources: () => pending() } };
 
 /** A collection read that fails with this message. */
-export function failingRowsSource(message: string): PanelRowSource {
+export function failingResourcesSource(message: string): PanelRowSource {
   return {
     resources: {
       listCollectionResources: async () => {
@@ -64,12 +64,12 @@ export function failingItemSource(message: string): PanelItemSource {
 }
 
 /** One roster row, as the roster collection publishes it. */
-export function rosterRow(workerId: string, flow: string, instructions: string | null = null) {
+export function rosterWorker(workerId: string, flow: string, instructions: string | null = null) {
   return { topic: workerId, clientData: { workerId, flow, instructions } };
 }
 
 /** One board row, as a board publishes it. */
-export function boardRow(
+export function boardTask(
   id: string,
   status: string,
   card: { title?: string; goal?: string; assignee?: string; error?: string } = {}

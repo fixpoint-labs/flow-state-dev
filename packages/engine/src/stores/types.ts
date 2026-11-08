@@ -1335,7 +1335,7 @@ export type ResourceStateSetOptions = {
  * has cleared it since. `built`: the index holds an entry for every live row
  * the collection covers.
  */
-export type ResourceIndexBuildState = "unbuilt" | "building" | "built";
+export type ResourceIndexBuildStatus = "unbuilt" | "building" | "built";
 
 /** One row's entries, as a build found them. */
 export type ResourceIndexBuildEntry = {
@@ -1378,7 +1378,7 @@ export interface ResourceStateIndexes {
     scopeId: string,
     collection: string,
     index: string
-  ): Promise<ResourceIndexBuildState>;
+  ): Promise<ResourceIndexBuildStatus>;
 
   /**
    * Record that a build of `index` has begun in this scope (its state becomes

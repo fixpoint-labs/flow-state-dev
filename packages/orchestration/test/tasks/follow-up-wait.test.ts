@@ -70,7 +70,7 @@ const call =
   () => ({ toolCalls: [{ toolCallId, toolName, args }], finishReason: "tool-calls" });
 const finalAnswer: StepFn = (opts) => ({ text: `final: ${toolResults(opts.messages)}`, finishReason: "stop" });
 
-type Row = { id: string; followUpOf?: string; wait?: { requestId?: string } };
+type StoredTask = { id: string; followUpOf?: string; wait?: { requestId?: string } };
 
 describe("a follow-up waited on keeps its own id", () => {
   it("files the follow-up under its own id with createTask, and getTask's wait takes that row's slot", async () => {
@@ -85,7 +85,7 @@ describe("a follow-up waited on keeps its own id", () => {
       await act(state, flow, "seed");
       const parked = await act(state, flow, "run");
       expect(toolResults(seen[1]!.messages)).toContain('"taskId":"root-f1"');
-      const rows = (await act(state, flow, "list")).output as Row[];
+      const rows = (await act(state, flow, "list")).output as StoredTask[];
       const follow = rows.filter((r) => r.followUpOf === "root");
       expect(follow).toEqual([expect.objectContaining({ id: "root-f1" })]);
       expect(follow[0]!.wait?.requestId).toBe(parked.requestId);

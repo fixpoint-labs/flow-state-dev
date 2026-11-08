@@ -57,7 +57,7 @@ export {
 } from "./tasks/steers";
 export { keepsFilerOpen } from "./tasks/helpers/filed-work";
 export { decideTake, hasEnded, type TakeRule } from "./tasks/helpers/request-states";
-export { rowsInSession } from "./tasks/helpers/session-rows";
+export { tasksInSession } from "./tasks/helpers/session-rows";
 export { cancelAndResume } from "./tasks/helpers/user-stop";
 export { checkWaitable, toolCallOf, type WaitableOptions, type WaitableRefusal } from "./tasks/helpers/wait-on-task";
 

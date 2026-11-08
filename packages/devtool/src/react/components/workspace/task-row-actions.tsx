@@ -27,7 +27,7 @@ import {
   outcomeOf,
   taskIdField,
   type RequestOutcomeSource,
-  type RowActionOutcome,
+  type TaskActionOutcome,
 } from "../../lib/task-actions";
 
 /**
@@ -112,7 +112,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
     );
   };
 
-  const outcomeOfSubmission = ({ sent }: Submission): RowActionOutcome =>
+  const outcomeOfSubmission = ({ sent }: Submission): TaskActionOutcome =>
     sent === "sending"
       ? { state: "pending" }
       : "error" in sent
@@ -169,7 +169,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
   );
 }
 
-function Outcome({ outcome }: { outcome: RowActionOutcome }) {
+function Outcome({ outcome }: { outcome: TaskActionOutcome }) {
   switch (outcome.state) {
     case "pending":
       return (

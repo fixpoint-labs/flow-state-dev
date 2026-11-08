@@ -275,8 +275,8 @@ Workforce's private roster collection is the first consumer. Engine knows it onl
 
 A collection declaring `ownerWrites: { param }` takes the same key shape, the same definition checks except the browser-read one, and both fences. It differs in one rule: **every reader the scope serves reads the row, and only its owner writes it.**
 
-- **Reads.** The key fence admits the row to every read path listed above, for any caller, as long as its first `~` segment sits at the owner parameter. The request-start seed cache admits it too, judged against the run's declared collections, since those collections serve it from that cache.
-- **Writes.** A create, update or delete is refused with its own message (`A row of an owner-writes collection is written only by the user it belongs to.`) unless the session's user is the one the key's owner segment encodes. A reader holds refs it could write through, so the scope resource registry judges this where every write it makes meets the store (state mutate, state delete, content write, content delete), whichever handle, ref or eviction asked. The browser update and delete routes ask the same question before writing.
+- **Reads.** The key fence admits the resource to every read path listed above, for any caller, as long as its first `~` segment sits at the owner parameter. The request-start seed cache admits it too, judged against the run's declared collections, since those collections serve it from that cache.
+- **Writes.** A create, update or delete is refused with its own message (`A resource in an owner-writes collection is written only by the user it belongs to.`) unless the session's user is the one the key's owner segment encodes. A reader holds refs it could write through, so the scope resource registry judges this where every write it makes meets the store (state mutate, state delete, content write, content delete), whichever handle, ref or eviction asked. The browser update and delete routes ask the same question before writing.
 - **The startup fence** arms for either mode. An owner-private and an owner-writes declaration of one pattern are two declarations, and the second is refused.
 
 It reads only the key and the declaring collection, so a second process declaring the same collection over one store refuses the same writes. A flow that declares the pattern without the mode gets the key fence's plain-collection answer: absent, and refused on write.
@@ -550,7 +550,7 @@ Content is lazy-loaded via dedicated endpoints, gated by `client.content.read`:
 
 ```
 GET /api/flows/sessions/:sessionId/resources/:ref/content          → single resource
-GET /api/flows/sessions/:sessionId/resources/:ref/:topic/content   → collection item
+GET /api/flows/sessions/:sessionId/resources/:ref/:topic/content   → collection resource
 ```
 
 A single resource nothing has written yet returns the content its definition declares (`content` or `contentFile`), the same body a run's context starts from.

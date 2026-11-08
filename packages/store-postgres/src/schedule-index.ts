@@ -15,7 +15,7 @@ import {
   createBadCronWarner,
   parseNextFireAt,
   type ScheduleIndex,
-  type ScheduleIndexRow
+  type ScheduleIndexEntry
 } from "@flow-state-dev/scheduled";
 import type { QueryExecutor } from "./types";
 
@@ -31,7 +31,7 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
   const warnBadCron = createBadCronWarner("[flow-state/store-postgres]");
 
   return {
-    async upsert(row: ScheduleIndexRow): Promise<void> {
+    async upsert(row: ScheduleIndexEntry): Promise<void> {
       await executor.query(
         `INSERT INTO schedule_index (cell, key, user_id, org_id, cron, timezone, next_fire_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -60,7 +60,7 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
       );
     },
 
-    async claimDue(now: number, limit = 100): Promise<ScheduleIndexRow[]> {
+    async claimDue(now: number, limit = 100): Promise<ScheduleIndexEntry[]> {
       const tx = await executor.beginTx!();
       try {
         const sel = await tx.query(
@@ -73,7 +73,7 @@ export function createPostgresScheduleIndex(executor: QueryExecutor): ScheduleIn
           [now, limit]
         );
 
-        const claimed: ScheduleIndexRow[] = [];
+        const claimed: ScheduleIndexEntry[] = [];
         const advances: Array<{ cell: string; key: string; next: number }> = [];
 
         for (const row of sel.rows) {

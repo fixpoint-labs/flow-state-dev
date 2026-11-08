@@ -38,7 +38,7 @@ export {
   type RequestStore,
   resolveSharedUserCellKey,
   type ResourceIndexBuildEntry,
-  type ResourceIndexBuildState,
+  type ResourceIndexBuildStatus,
   type ResourceIndexEntry,
   type ResourceStateIndexes,
   type ResourceStateRow,

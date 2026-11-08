@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useInterruptKeys, useJumpToLatest } from "@flow-state-dev/react";
-import type { LabAdapter, ProjectRow, SessionRow, TaskRow } from "../adapter";
+import type { LabAdapter, LabProject, LabSession, LabTask } from "../adapter";
 import { elapsed, useNow, useWatch } from "../lib/use-watch";
 import { modeOfWorker } from "../modes";
 import { cn } from "../lib/utils";
@@ -36,10 +36,10 @@ export function Thread({
   onOpenThread,
 }: {
   adapter: LabAdapter;
-  session: SessionRow;
-  project: ProjectRow | undefined;
+  session: LabSession;
+  project: LabProject | undefined;
   /** The session's task rows, as the app reads them for this thread and its pane; `undefined` until read. */
-  tasks: TaskRow[] | undefined;
+  tasks: LabTask[] | undefined;
   onOpenThread: (taskId: string) => void;
 }) {
   const view = useWatch((emit: Parameters<LabAdapter["watchThread"]>[1]) => adapter.watchThread(session.id, emit), [adapter, session.id]);

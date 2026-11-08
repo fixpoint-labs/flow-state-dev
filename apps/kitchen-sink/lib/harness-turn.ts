@@ -158,7 +158,7 @@ export function turnNotice(turn: HarnessTurnRecord | null, status: TurnStatus, k
 }
 
 /** A plan row, as the resource route lists it: the topic under the collection, and its projected fields. */
-export interface PlanRowItem {
+export interface PlanEntry {
   readonly topic: string;
   readonly title: string | null;
   readonly status: string | null;
@@ -222,7 +222,7 @@ export interface PlanPanelInput {
    * The plan's rows, topics under the collection: `<request>/<run>/<item>` for
    * a turn's plan, `conversation/<id>/<item>` for a conversation's.
    */
-  readonly rows: readonly PlanRowItem[];
+  readonly rows: readonly PlanEntry[];
   /** The plan's list markers, topics under the collection (`<request>/<run>`, or `conversation/<id>`). */
   readonly markers: readonly PlanMarkerItem[];
   /**
@@ -238,7 +238,7 @@ export interface PlanPanelInput {
 export const PREDATES_REASON = "this conversation began before plans were kept across turns";
 
 /** How far along a plan row is, in the panel's three words plus whatever else a harness says. */
-export interface PlanRowStage {
+export interface PlanEntryStage {
   readonly stage: "pending" | "active" | "done" | "other";
   /** What the row reads as: a known stage's plain words, or the harness's own word. */
   readonly label: string;
@@ -249,7 +249,7 @@ export interface PlanRowStage {
  * `TaskCreate` carries no status), so `null` is a row nobody has started.
  * Spelling (snake, kebab, spaced, camel) is forgiven; a word this does not know is kept as said.
  */
-export function planRowStage(status: string | null): PlanRowStage {
+export function planEntryStage(status: string | null): PlanEntryStage {
   if (status === null || status.trim() === "") return { stage: "pending", label: "To do" };
   // `inProgress` (Cursor) and `in_progress` (Claude Code) are one word.
   switch (status.trim().replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase().replace(/[\s-]+/g, "_")) {

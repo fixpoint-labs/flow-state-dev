@@ -114,9 +114,9 @@ const byUri = (uri: string) => (ctx: any) => resolveResourceByUri(uri, ctx);
 const NO_COLLECTION = (path: string) => `throw No resource collection found matching path: ${path}`;
 const REFUSED = "throw A resource in an owner-private collection is readable only by the user it belongs to.";
 
-type Row = readonly [label: string, run: (ctx: any) => Promise<unknown>, expected: string];
+type Case = readonly [label: string, run: (ctx: any) => Promise<unknown>, expected: string];
 
-const ROWS: readonly Row[] = [
+const ROWS: readonly Case[] = [
   // ── CRUD tools ────────────────────────────────────────────────────────────
   ["create files/new.md", exec("createResource", { path: "files/new.md" }), `ok {"path":"files/new.md","ok":true}`],
   // `files/*` holds one segment, and no other collection matches: a miss, not a wrong claim.

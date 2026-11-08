@@ -14,8 +14,8 @@ import type { SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/cl
 import { TASKS_POLL_MS, TasksPanel } from "../src/components/TasksPanel";
 import { toWorker } from "../src/lib/reads";
 
-type Row = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
-let rows: Row[] = [];
+type StoredTask = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
+let rows: StoredTask[] = [];
 let refusal: string | null = null;
 const calls: string[] = [];
 
@@ -158,7 +158,7 @@ describe("the tasks panel (S11)", () => {
   });
 
   describe("at the Shift Coordinator, whose conversation never ends (activeOnly)", () => {
-    const mixed: Row[] = [
+    const mixed: StoredTask[] = [
       { id: "t1", goal: "Audit the licenses", status: "completed", assignee: "licenses", attempts: 1 },
       { id: "t2", goal: "Write the release notes", status: "in_progress", assignee: "notes", attempts: 1 },
       { id: "t3", goal: "Rotate the keys", status: "errored", assignee: "keys", attempts: 2 },

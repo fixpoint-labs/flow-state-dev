@@ -5,7 +5,7 @@
  * The project list follows the rule a run follows: only where the person may work.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LabAdapter, TaskRow } from "../src/adapter";
+import type { LabAdapter, LabTask } from "../src/adapter";
 import { createFakeLab } from "./fake-lab";
 
 beforeEach(() => vi.useFakeTimers());
@@ -14,7 +14,7 @@ afterEach(() => vi.useRealTimers());
 async function start(): Promise<{ lab: LabAdapter; id: string; status: (title: string) => string | undefined }> {
   const lab = createFakeLab();
   const { id } = await lab.openSession("session", "project-vendor-notes");
-  let rows: TaskRow[] = [];
+  let rows: LabTask[] = [];
   lab.watchTasks(id, (next) => (rows = next));
   await lab.send(id, "Compare Acme and Globex for us.");
   return { lab, id, status: (title) => rows.find((t) => t.title === title)?.status };
@@ -63,7 +63,7 @@ describe("the fake's threads", () => {
   async function threads() {
     const lab = createFakeLab();
     const { id } = await lab.openSession("threads", "project-vendor-notes");
-    let rows: TaskRow[] = [];
+    let rows: LabTask[] = [];
     lab.watchTasks(id, (next) => (rows = next));
     await lab.send(id, "Research three vendors for a status page, one thread each.");
     const row = (title: string) => rows.find((t) => t.title === title);
@@ -95,7 +95,7 @@ describe("the fake's threads, on review", () => {
   it("advances each thread by its own id, so two code requests with one title both reach review", async () => {
     const lab = createFakeLab();
     const { id } = await lab.openSession("threads", "project-vendor-notes");
-    let rows: TaskRow[] = [];
+    let rows: LabTask[] = [];
     lab.watchTasks(id, (next) => (rows = next));
     await lab.send(id, "Add a CHANGELOG line for the vendor pick");
     await vi.advanceTimersByTimeAsync(4000);
@@ -133,7 +133,7 @@ describe("the fake's stop line, with punctuation in titles", () => {
   it("cancels the thread whose file the line names, not the first one running", async () => {
     const lab = createFakeLab();
     const { id } = await lab.openSession("threads", "project-vendor-notes");
-    let rows: TaskRow[] = [];
+    let rows: LabTask[] = [];
     lab.watchTasks(id, (next) => (rows = next));
     await lab.send(id, "Add code first.ts");
     await vi.advanceTimersByTimeAsync(1300);

@@ -1,5 +1,5 @@
 import { useSubmit } from "@flow-state-dev/react";
-import type { LabAdapter, TaskRow } from "../adapter";
+import type { LabAdapter, LabTask } from "../adapter";
 import { cn } from "../lib/utils";
 import { Spend } from "./flow-state/spend";
 import { HarnessTag, PullRequestOpen, statusColumn, statusLine, ThreadIcon, waitsOnPullRequest } from "./ThreadStatus";
@@ -16,7 +16,7 @@ import { HarnessTag, PullRequestOpen, statusColumn, statusLine, ThreadIcon, wait
 export function ThreadCard(props: {
   adapter: LabAdapter;
   sessionId: string;
-  task: TaskRow | undefined;
+  task: LabTask | undefined;
   onOpen: (taskId: string) => void;
 }) {
   return props.task ? <LoadedThreadCard {...props} task={props.task} /> : null;
@@ -30,7 +30,7 @@ function LoadedThreadCard({
 }: {
   adapter: LabAdapter;
   sessionId: string;
-  task: TaskRow;
+  task: LabTask;
   onOpen: (taskId: string) => void;
 }) {
   const resolve = useSubmit(() => adapter.resolve(sessionId, task.id));
