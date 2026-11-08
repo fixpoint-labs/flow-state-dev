@@ -31,6 +31,9 @@ export function SessionPopup({ label, title, status, onClose, children }: {
     const opener = document.activeElement as HTMLElement | null;
     close.current?.focus();
     const onKey = (event: KeyboardEvent) => {
+      // A key aimed at a dialog stacked over this popup (⌘K, the keys sheet) is that dialog's.
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[role="dialog"]') != null && !dialog.current?.contains(target)) return;
       if (event.key === "Escape") {
         // Spent: closing the popup never also counts toward stopping the turn.
         event.preventDefault();
