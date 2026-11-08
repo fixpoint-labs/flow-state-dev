@@ -60,7 +60,7 @@ It comes down to one pipeline: an own adapter keeps a second verify-and-ack copy
   The object is what GitHub keeps under its own id (a review, a comment, a check run),
   versioned by its own last-changed time. A PR or issue, whose `updated_at` moves with any
   activity, is never the object: its events are occurrences,
-  `pull_request:<n>:<action>:<subject>` (the assignee or reviewer named), versioned by the
+  `pull_request:<owner>/<repo>#<n>:<action>:<subject>` (the thread key, then the assignee or reviewer named), versioned by the
   occurrence's time. Never the delivery's. Normalize reads the API object a payload embeds, so
   a poll gets the same pair. A check on two PRs is one event per PR.
 - **`sessionId` (Q5)** leaves GitHub's docs; the binding field stays.
