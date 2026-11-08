@@ -108,7 +108,7 @@ import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import { assertJsonSafe } from "./json-safe";
 import { HandedOverTaskError } from "./recorder-failure";
 
-export interface TaskDispatchOptions {
+export interface CreateTaskDispatchOptions {
   /** Block-name prefix, so a refusal names the board it came from. */
   name: string;
   /** The declaring board's stable id — half of the durable address. */
@@ -138,7 +138,7 @@ export interface TaskDispatchOptions {
  * the same value an inline worker would have received, which is what makes the
  * dispatched and inline paths agree on what the worker sees.
  */
-export function createTaskDispatch(options: TaskDispatchOptions): TaskWorker {
+export function createTaskDispatch(options: CreateTaskDispatchOptions): TaskWorker {
   const { name, boardId, assignee: named, address, binding, wait } = options;
 
   const handOver = async (payload: TaskWorkerInput, ctx: BlockContext) => {
