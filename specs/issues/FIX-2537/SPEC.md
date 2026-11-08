@@ -67,14 +67,14 @@ The chain grows two stages behind the config screens, and only the last one read
  };
 
  // a worker's turn
- subscribe({
+ saveRoutine({ trigger: { event: {
    provider: "github",
    thread: "github:acme/api",
    kinds: ["issue"],
 -  interest: "crash reports",                      // kept; nothing read it
 +  screens: [{ screen: "custom", name: "stack-trace" }, { screen: "interest" }],
 +  interest: "crash reports from production",      // quoted to the model as data
- })
+ } } })
 ```
 
 `screens` on the provider is illustrative; [D2](DECISIONS.md#d2) locks the `custom` listing and
