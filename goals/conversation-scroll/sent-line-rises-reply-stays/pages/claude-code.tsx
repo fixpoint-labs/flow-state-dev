@@ -1,6 +1,6 @@
 /**
  * The Claude Code-style lab's goal page: its real `Thread`, `ThreadView` (a
- * task's thread) and `Sheet` (the task panel), with the lab's stylesheet, on a
+ * task's thread) and the task panel's `SessionOverlay` sheet, with the lab's stylesheet, on a
  * scripted adapter (`script.ts`) in place of the server. Copied to the lab's
  * scratch copy as `src/goal/claude-code.tsx`.
  *
@@ -12,7 +12,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import type { LabAdapter, SessionRow, TaskRow, ThreadEntry } from "../adapter";
 import { Entry } from "../components/Entry";
-import { Sheet, SheetArea, SheetProvider } from "../components/Sheet";
+import { SessionOverlay, SessionOverlayArea, SessionOverlayProvider } from "../components/flow-state/session-overlay";
 import { Thread } from "../components/Thread";
 import { ThreadView } from "../components/ThreadView";
 import "../styles.css";
@@ -67,33 +67,33 @@ function Page() {
   const conversation = useConversation(open);
   if (surface === "task-thread") {
     return (
-      <SheetProvider>
+      <SessionOverlayProvider>
         <div style={{ height: "100vh" }} className="grid bg-background text-foreground">
-          <SheetArea>
+          <SessionOverlayArea>
             <div style={{ height: "100vh" }} />
-          </SheetArea>
+          </SessionOverlayArea>
         </div>
         <ThreadView key={open} adapter={adapter} sessionId="a" task={task(open)} pinned={false} onClose={() => undefined} />
-      </SheetProvider>
+      </SessionOverlayProvider>
     );
   }
   return (
-    <SheetProvider>
+    <SessionOverlayProvider>
       <div style={{ height: "100vh" }} className="grid bg-background text-foreground">
-        <SheetArea>
+        <SessionOverlayArea>
           <div style={{ height: "100vh" }}>
             <Thread adapter={adapter} session={session(surface === "task-panel" ? "panel" : open)} project={{ id: "p", name: "P" }} onOpenThread={() => undefined} />
           </div>
-        </SheetArea>
+        </SessionOverlayArea>
       </div>
       {surface === "task-panel" ? (
-        <Sheet key={open} label="Task" title={`Task ${open}`} onClose={() => undefined}>
+        <SessionOverlay key={open} variant="sheet" label="Task" title={`Task ${open}`} onClose={() => undefined}>
           {conversation.lines.map((line) => (
             <Entry key={line.id} entry={entryOf(line)} />
           ))}
-        </Sheet>
+        </SessionOverlay>
       ) : null}
-    </SheetProvider>
+    </SessionOverlayProvider>
   );
 }
 
