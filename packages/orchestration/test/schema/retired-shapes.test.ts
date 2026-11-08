@@ -51,13 +51,32 @@ describe("the retired-shape read", () => {
   // `"task"`; one stored under the retired `"row"` reads as `"task"` on both reads, so no
   // reader downstream branches on `"row"`.
   describe("a task's own hold stored under the row marker", () => {
-    const legacy = { id: "q1", actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which region?" } };
-    const confirm = { ...legacy, id: "c1", ask: { kind: "confirm", prompt: "Ship it?", onNo: "cancel" } };
-    const stop = { id: "susp_1", actor: "user", openedAt: 1, source: { kind: "suspension", requestId: "r", suspensionId: "susp_1" }, ask: { kind: "input", prompt: "Which branch?" } };
+    const legacy = {
+      id: "q1",
+      actor: "user",
+      openedAt: 1,
+      source: { kind: "row", closedBy: [{ by: "answer" }] },
+      ask: { kind: "question", prompt: "Which region?" },
+    };
+    const confirm = {
+      ...legacy,
+      id: "c1",
+      ask: { kind: "confirm", prompt: "Ship it?", onNo: "cancel" },
+    };
+    const stop = {
+      id: "susp_1",
+      actor: "user",
+      openedAt: 1,
+      source: { kind: "suspension", requestId: "r", suspensionId: "susp_1" },
+      ask: { kind: "input", prompt: "Which branch?" },
+    };
 
     it("the parse path reads it as the task's own, a confirm included", () => {
       expect(taskHoldSchema.parse(legacy).source).toEqual({ kind: "task", closedBy: [{ by: "answer" }] });
-      expect(taskHoldSchema.parse(confirm)).toMatchObject({ source: { kind: "task" }, ask: { kind: "confirm", onNo: "cancel" } });
+      expect(taskHoldSchema.parse(confirm)).toMatchObject({
+        source: { kind: "task" },
+        ask: { kind: "confirm", onNo: "cancel" },
+      });
       expect(taskSchema.parse({ ...row, status: "in_progress", holds: [legacy, stop] }).holds?.map((hold) => hold.source.kind)).toEqual(["task", "suspension"]);
     });
 

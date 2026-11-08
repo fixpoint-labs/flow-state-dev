@@ -290,7 +290,7 @@ describe("waitPrompt — the task's own hold, under either marker", () => {
     status: "in_progress",
     holds: [
       { id: "q1", source: { kind }, ask: { kind: "question", prompt: "Which region?" } },
-      { id: "q2", source: { kind }, ask: { kind: "confirm", prompt: "Ship it?" } },
+      { id: "q2", source: { kind }, ask: { kind: "question", prompt: "Ship it?" } },
     ],
     steers: [{ id: "s1", answers: "q1" }],
   });
@@ -300,7 +300,7 @@ describe("waitPrompt — the task's own hold, under either marker", () => {
   });
 
   it("shows a run's stop while it is on the task, whatever answers name", () => {
-    const task = { id: "t", status: "in_progress", holds: [{ id: "susp_1", source: { kind: "suspension" }, ask: { kind: "input", prompt: "Which branch?" } }], steers: [{ id: "s1", answers: "susp_1" }] };
+    const task = { id: "t", status: "in_progress", holds: [{ id: "susp_1", source: { kind: "suspension" }, ask: { kind: "review", prompt: "Which branch?" } }], steers: [{ id: "s1", answers: "susp_1" }] };
     expect(waitPrompt(task as never)).toBe("Which branch?");
   });
 });
