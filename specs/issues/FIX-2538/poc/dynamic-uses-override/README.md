@@ -15,7 +15,7 @@ rm packages/core/test/zz-poc.test.ts
 
 No key, no model: a scripted model records the tools it was offered and runs `createTask`.
 
-## What it showed (2026-11-05): REFUTED, adopt C
+## What it showed (2026-11-05): REFUTED — no tool swap; D2 holds on the board's write
 
 | Case | Result |
 |---|---|
