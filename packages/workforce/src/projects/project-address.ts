@@ -45,7 +45,7 @@ export const PROJECT_FILE_RESOURCES = {
 } as const;
 
 /** The accessor a project's resources are declared under at `visibility`. */
-export function projectResourcesAccessor(visibility: ProjectVisibility): string {
+function projectResourcesAccessor(visibility: ProjectVisibility): string {
   return visibility === "private" ? PRIVATE_PROJECTS_RESOURCE : PROJECTS_RESOURCE;
 }
 

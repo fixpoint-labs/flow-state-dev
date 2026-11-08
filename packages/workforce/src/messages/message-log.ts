@@ -33,7 +33,7 @@ export const MESSAGE_CHAINS_PATTERN = "workforce/message-chains/*";
 export const MESSAGE_CHAINS_RESOURCE = "workforceMessageChains";
 
 /** One chain: the ids of the messages sent in it, in the order their sends counted. */
-export const messageChainResourceStateSchema = z.object({ sent: z.array(z.string()).default([]) });
+const messageChainResourceStateSchema = z.object({ sent: z.array(z.string()).default([]) });
 
 export type MessageChainResourceState = z.infer<typeof messageChainResourceStateSchema>;
 

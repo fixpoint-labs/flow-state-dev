@@ -64,7 +64,7 @@ function useLookName(look: ThemeLook | undefined): string | null {
   return theme === undefined ? null : themeLabel(theme);
 }
 
-function WorkerResourceState({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: boolean }) {
+function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: boolean }) {
   const { worker, status, held, waitsOnYou, asks } = state;
   const onYou = new Set(waitsOnYou);
   return (
@@ -272,7 +272,7 @@ export function RosterView({
               </h2>
               <ul>
                 {group.map((state) => (
-                  <WorkerResourceState key={state.worker.id} state={state} gaps={gaps} own={ownIds.has(state.worker.id)} />
+                  <WorkerRow key={state.worker.id} state={state} gaps={gaps} own={ownIds.has(state.worker.id)} />
                 ))}
               </ul>
             </section>
