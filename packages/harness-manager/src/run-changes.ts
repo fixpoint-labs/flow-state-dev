@@ -20,7 +20,7 @@ import { rowsInSession } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { readRunChanges, runChangesSchema, type RunChanges } from "./commits";
 import { readRunRow, RUNS, runRecordCollection, runTopic } from "./run-record";
-import { sessionRow, type SessionDoorBoard } from "./session-door";
+import { sessionTask, type SessionDoorBoard } from "./session-door";
 import { runBoardSegment } from "./workspace";
 
 /** What a changes read takes: optionally which of the session's tasks, and optionally one file. */
@@ -83,7 +83,7 @@ export function harnessRunChangesRead(options: HarnessRunChangesReadOptions): Re
       const sessionId = ctx.session.identity.id;
       const row =
         input.taskId === undefined
-          ? sessionRow(board.tasks, sessionId)
+          ? sessionTask(board.tasks, sessionId)
           : rowsInSession(board.tasks, sessionId).find((task) => task.id === input.taskId);
       if (row === undefined) throw new HarnessRunChangesRefused(input.taskId === undefined ? "not-started" : "not-this-session");
       const identity = board.runOf(row);

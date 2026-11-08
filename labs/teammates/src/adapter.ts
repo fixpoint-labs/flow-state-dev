@@ -89,7 +89,7 @@ import {
   type RefiledTask,
   type TaskView,
 } from "@flow-state-dev/orchestration/inbox";
-import { pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitRow, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitInput, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
@@ -813,7 +813,7 @@ export function toBoardTask(
 
 /** A row's open pull-request wait, as harness-manager's browser reader reads it: the pull requests by number, or nothing. */
 function pullRequestsOf(row: Record<string, any>): Pick<BoardTask, "pullRequests"> {
-  const wait = pullRequestWait(row as PullRequestWaitRow);
+  const wait = pullRequestWait(row as PullRequestWaitInput);
   return wait === null ? {} : { pullRequests: wait.pullRequests.map(({ number }) => ({ number })) };
 }
 

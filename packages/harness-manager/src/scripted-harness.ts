@@ -21,9 +21,9 @@ export interface ScriptedHarnessOptions {
   mcpUses?: readonly CapabilityRef[];
 }
 
-/** The row line the manager's prompt carries, `Row <id>, phase <p>, attempt <n>.` */
-function rowLine(prompt: string): string {
-  return prompt.split("\n").find((line) => line.startsWith("Row ")) ?? "a row";
+/** A prompt line naming the task (`Task …`), else "a task". The manager's prompt writes no such line today. */
+function taskLine(prompt: string): string {
+  return prompt.split("\n").find((line) => line.startsWith("Task ")) ?? "a task";
 }
 
 /** Run git in `cwd` through the workspace host's runner, bounded by {@link GIT_TIMEOUT_MS}, returning stdout. */
@@ -40,15 +40,15 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
  * already committed this same file. With nothing new to commit, `git commit`
  * fails, and that failure would replace why the first attempt was sent back
  * (most often the judge's verdict). The commit is skipped instead: the
- * attempt's work is already on the row's branch.
+ * attempt's work is already on the task's branch.
  *
  * @param run The attempt, as the stub hands it to `duringRun`.
  */
 export async function commitScriptedWork(run: StubRun): Promise<void> {
-  writeFileSync(join(run.cwd, "SCRIPTED-RUN.md"), `A scripted run, no model.\n\n${rowLine(run.prompt)}\n`);
+  writeFileSync(join(run.cwd, "SCRIPTED-RUN.md"), `A scripted run, no model.\n\n${taskLine(run.prompt)}\n`);
   if (!existsSync(join(run.cwd, ".git")) || (await git(run.cwd, "status", "--porcelain")).trim() === "") return;
   await git(run.cwd, "add", "-A");
-  await git(run.cwd, "-c", "user.email=devforce-lab@example.test", "-c", "user.name=DevForce Lab", "commit", "-m", "scripted run: note the row");
+  await git(run.cwd, "-c", "user.email=devforce-lab@example.test", "-c", "user.name=DevForce Lab", "commit", "-m", "scripted run: note the task");
 }
 
 /**
@@ -62,10 +62,10 @@ export function scriptedHarness({ stepEveryMs, mcpUses }: ScriptedHarnessOptions
   return harnessStub({
     steps: [
       "Reading the worker's instructions, brief and conventions.",
-      "Planning the change for this row.",
+      "Planning the change for this task.",
       "Writing SCRIPTED-RUN.md in the checkout.",
       "Checking the checkout before committing.",
-      "Committing the work on the row's branch.",
+      "Committing the work on the task's branch.",
     ],
     stepEveryMs,
     duringRun: commitScriptedWork,
