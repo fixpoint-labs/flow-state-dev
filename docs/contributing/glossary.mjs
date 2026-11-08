@@ -99,8 +99,38 @@ const SEAT_MAILBOX_GOAL_NAMES = [
 
 /** A name whose word parts include Row: `FooRow`, `Rows`, `RowHold`, `TaskRowsPage`, `writeRunRow`. Not `Arrow`, `Rowan`. */
 const ROW_NAME = String.raw`\w*Rows?(?:[A-Z_]\w*)?(?![\w$])`;
-/** An export list's opening, read behind a name: `export {`, `export type {`, and any names before it in the list. */
-const IN_EXPORT_LIST = String.raw`(?<=(?<![\w$.])export\s+(?:type\s+)?\{[^}]*?)`;
+/** An export list, read forward: `export {…}` or `export type {…}`, its members, and whether it re-exports (`from`). */
+const EXPORT_LIST = /(?<![\w$.])export\s+(?:type\s+)?\{([^}]*)\}(\s*from\b)?/g;
+const IS_ROW_NAME = new RegExp(String.raw`^(?:${ROW_NAME}|rows?[A-Z]\w*)$`);
+
+/**
+ * The Row names a module exports through a list: a local's own name (`export { readTaskRow }`), or an
+ * alias's exported name (`export { x as fooRow }`, a re-export too). A plain re-export (`export { FooRow } from`)
+ * is left: its declaration is where the name counts. Each hit is `{ index, name }`, `index` at the member.
+ * @param {string} text
+ * @returns {{ index: number; name: string }[]}
+ */
+function rowNamesInExportLists(text) {
+  const hits = [];
+  EXPORT_LIST.lastIndex = 0;
+  for (let m = EXPORT_LIST.exec(text); m !== null; m = EXPORT_LIST.exec(text)) {
+    const reexport = m[2] !== undefined;
+    const bodyAt = m.index + m[0].indexOf("{") + 1;
+    let offset = 0;
+    for (const part of m[1].split(",")) {
+      const spec = /^\s*(?:type\s+)?([\w$]+)(?:\s+as\s+([\w$]+))?\s*$/.exec(part);
+      if (spec !== null) {
+        const [, local, alias] = spec;
+        const exported = alias ?? local;
+        if ((alias !== undefined || !reexport) && IS_ROW_NAME.test(exported)) {
+          hits.push({ index: bodyAt + offset + part.indexOf(exported, alias !== undefined ? part.indexOf(" as ") : 0), name: exported });
+        }
+      }
+      offset += part.length + 1;
+    }
+  }
+  return hits;
+}
 
 // ---------------------------------------------------------------------------------------------
 // 1. The terms
@@ -131,10 +161,7 @@ export const ENTRIES = [
         exportsRow: new RegExp(String.raw`(?<![\w$.])export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|enum)\s+(${ROW_NAME}|rows?[A-Z]\w*)`, "g"),
         // Code. A Row name exported through a list: `export { readTaskRow }`, or an alias `export { x as fooRow }` (a re-export too).
         // A plain re-export (`export { FooRow } from`) is left: its declaration is where the name counts.
-        exportsRowInList: new RegExp(
-          String.raw`${IN_EXPORT_LIST}(?<![\w$])(${ROW_NAME}|rows?[A-Z]\w*)\s*(?=(?:,[^}]*)?\}(?!\s*from\b))|${IN_EXPORT_LIST}\bas\s+(${ROW_NAME}|rows?[A-Z]\w*)\s*(?=[,}])`,
-          "g",
-        ),
+        exportsRowInList: rowNamesInExportLists,
         // Code. Any name built on CollectionItem, a use as well as a declaration: always a resource, wherever it sits.
         namesItem: /(?<![\w$])([\w$]*[Cc]ollectionItems?[\w$]*)/g,
         // Code. A lifecycle named State: a string-literal union (on one line or several) or a z.enum. State is scope or resource state only.

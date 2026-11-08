@@ -199,7 +199,7 @@ export function scanTreeRules(path, text, kept = {}) {
     if (CODE_FILE.test(path)) {
       const keptPath = keeps.find((e) => e.path?.test(path));
       for (const re of [rule.declaresRow, rule.exportsRow, rule.exportsRowInList]) {
-        const found = matchLines(re, text);
+        const found = typeof re === "function" ? re(text).map((h) => ({ line: text.slice(0, h.index).split("\n").length, name: h.name })) : matchLines(re, text);
         if (keptPath === undefined) for (const f of found) at.add(f.line);
         else if (found.length > 0) kept[keptPath.id] = (kept[keptPath.id] ?? 0) + found.length;
       }

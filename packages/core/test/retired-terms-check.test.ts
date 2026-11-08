@@ -290,6 +290,14 @@ describe("the resource entry reads the whole tree: a stored thing is a resource,
     expect(resourceHits("packages/workforce/src/zz.ts", "export { widgetRow as widget };\n")).toEqual([]);
   });
 
+  it("reads a long file with no export list in linear time", () => {
+    // A matcher that looks behind for `export {` at every character is quadratic on exactly this.
+    const long = `const markup = \`${"<div class=\"a\">x</div>\n".repeat(8000)}\`;\n`;
+    const started = performance.now();
+    expect(resourceHits("packages/workforce/src/zz.ts", long)).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
   it("refuses a plural Row word part followed by another word part", () => {
     expect(resourceHits("packages/workforce/src/zz.ts", "export type WidgetRowsPage = { widgets: unknown[] };\n")).toEqual([
       "1:export type WidgetRowsPage = { widgets: unknown[] };",
