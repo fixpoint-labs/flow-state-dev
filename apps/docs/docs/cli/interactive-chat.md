@@ -13,7 +13,7 @@ Every other way to talk to a flow-state project is one-shot: `fsdev run` execute
 ## Starting a session
 
 ```bash
-fsdev chat hello-chat chat
+pnpm fsdev chat hello-chat chat
 ```
 
 The two positional arguments are a flow kind and an action — the same pair `fsdev run` takes. That flow becomes the **default target**: the flow and action your typed messages route to. Runtime resolution is identical to `fsdev run` — an `fsdev.config.ts` in the cwd wins, otherwise flows are discovered from `src/flows/` and `flows/`. See [App Configuration](./configuration) for the config convention.
@@ -65,7 +65,7 @@ Turns run as whoever your app's resolver says, asked once per turn for that turn
 ## A session
 
 ```text
-$ fsdev chat hello-chat chat
+$ pnpm fsdev chat hello-chat chat
 Chatting with hello-chat · chat (session sess_a1b2c3).
 Type /help for commands, /exit to quit.
 ❯ My name is Ada.
