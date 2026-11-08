@@ -15,6 +15,7 @@
  * Browser-safe: no Node built-in on this module's graph (`./browser`).
  */
 import { OBSERVED_PULL_REQUESTS, pullRequestKey } from "@flow-state-dev/core/harness";
+import { isExternalHold } from "@flow-state-dev/orchestration/tasks";
 import type { RecordedWorkClient } from "./recorded-work";
 
 /** The event an external wait on a pull request names on each releaser. */
@@ -139,8 +140,8 @@ export function pullRequestWait(row: PullRequestWaitInput, records: readonly Pul
   const answered = new Set((row.steers ?? []).map((steer) => steer.answers).filter((id): id is string => id !== undefined));
   const hold = (row.holds ?? []).find(
     (h) =>
-      h.source.kind === "task" &&
-      h.ask.kind === "external" &&
+      // A caller may hand rows it never parsed (a replayed stream item): the predicate reads a hold's marker forward.
+      isExternalHold(h) &&
       !answered.has(h.id) &&
       (h.source.closedBy ?? []).some((releaser) => releaser.by === "event" && releaser.event === PULL_REQUEST_EVENT),
   );

@@ -3,8 +3,7 @@
  * Inbox can answer each. Inside the read; not published.
  */
 import { isTerminalStatus, type TaskStatus } from "../tasks/schema/task-status";
-import { isSuspensionHold, openHolds } from "../tasks/collection/holds";
-import { withCurrentHoldMarker } from "../tasks/schema/hold";
+import { isOwnHold, isSuspensionHold, openHolds } from "../tasks/collection/holds";
 import type { Task } from "../tasks/schema/task";
 import type { InboxHold, InboxTaskInput, InboxSuspension } from "./types";
 
@@ -60,15 +59,14 @@ export function openUserHolds<TDetail>(
   flowOf: (sessionId: string) => string | null | undefined,
   foundFor: (suspensionId: string) => InboxSuspension<TDetail> | undefined = () => undefined,
 ): InboxHold<TDetail>[] {
-  // A caller may hand rows it never parsed (a replayed stream item, a raw store read): read each hold's marker forward first.
-  const stored = row.holds?.map(withCurrentHoldMarker);
-  const open = openHolds({ status: row.status, holds: stored, steers: row.steers ?? undefined } as Pick<Task, "status" | "holds" | "steers">);
+  // A caller may hand rows it never parsed (a replayed stream item, a raw store read): `openHolds` and `isOwnHold` read a hold's marker forward.
+  const open = openHolds({ status: row.status, holds: row.holds ?? undefined, steers: row.steers ?? undefined } as Pick<Task, "status" | "holds" | "steers">);
   const holds: InboxHold<TDetail>[] = [];
   for (const hold of open) {
     if (hold.actor !== "user") continue;
     const title = hold.ask.title !== undefined ? { title: hold.ask.title } : {};
     const due = hold.due !== undefined ? { due: hold.due } : {};
-    if (hold.source.kind === "task") {
+    if (isOwnHold(hold)) {
       // An external wait is the system's (FIX-2578): never a person's to answer here.
       const kind = hold.ask.kind;
       if (kind === "external") continue;
