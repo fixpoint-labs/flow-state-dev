@@ -40,6 +40,8 @@
  *     loads" case fails: a line sent for the new session goes to the old one.
  *   - keep a session marked checked when the queue moves off it, and the
  *     "coming back" case fails: its waiting turns are never read again.
+ *   - let a failed send's retry for a session left run, and the "fails later"
+ *     case fails: the new session's held line is sent to the old one.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -371,6 +373,45 @@ describe("useHarnessLines", () => {
     rerender({ session: view(true, false, "s1") });
     await waitFor(() => expect(followRequest).toHaveBeenCalledWith("turn-1"));
     expect(result.current.waiting.map((line) => line.key)).toEqual(["line-1"]);
+  });
+
+  it("a send for a session left that fails later never sends the new session's lines there", async () => {
+    const { result, rerender } = mountChat();
+    await act(async () => {
+      await result.current.send("a2");
+      await result.current.send("a3");
+    });
+    // s1's turn ends: the view follows a2's turn; it starts, and a3's send goes out and hangs.
+    running = [{ id: "line-1", actionName: "run", startedAtMs: 2 }];
+    rerender({ session: view(false) });
+    await waitFor(() => expect(followRequest).toHaveBeenCalledWith("line-1"));
+    let fail: (error: Error) => void = () => undefined;
+    flowMock.send.mockImplementationOnce(() => new Promise((_resolve, reject) => (fail = reject)));
+    rerender({ session: view(true, false, "s1", [{ requestId: "line-1" }]) });
+    await waitFor(() => expect(flowMock.send).toHaveBeenCalledTimes(2));
+
+    // The view moves to s2, where a turn runs: b2 waits on the server, b3 is held.
+    running = [];
+    rerender({ session: view(true, false, "s2") });
+    await act(async () => {
+      await result.current.send("b2");
+      await result.current.send("b3");
+    });
+    expect(flowMock.send).toHaveBeenLastCalledWith("run", { message: "b2", mode: "ask" }, { sessionId: "s2" });
+    // s2's turn ends: the view follows b2's, which ends unseen while the read of what runs is slow.
+    running = [{ id: "line-2", actionName: "run", startedAtMs: 3 }];
+    rerender({ session: view(false, false, "s2") });
+    await waitFor(() => expect(followRequest).toHaveBeenCalledWith("line-2"));
+    rerender({ session: view(true, false, "s2") });
+    sessionsMock.requests.mockImplementationOnce(() => new Promise(() => undefined));
+    rerender({ session: view(false, false, "s2") });
+
+    // a3's send to s1 fails now: b3 must not be sent to s1.
+    await act(async () => {
+      fail(new Error("refused"));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(flowMock.send).not.toHaveBeenCalledWith("run", { message: "b3", mode: "ask" }, { sessionId: "s1" });
   });
 
   it("a waiting line whose turn can't be sent leaves the list, and its send rejects", async () => {

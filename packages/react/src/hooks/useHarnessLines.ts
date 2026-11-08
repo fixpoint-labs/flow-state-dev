@@ -114,6 +114,10 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
   // Lines whose turns wait for the one running, oldest first: the first on the
   // server, the rest held here until the one before them starts.
   const queue = useRef<QueuedLine[]>([]);
+  // The session the queue holds lines for. When the view moves to another
+  // session, the queue moves with it at once, before the new session loads, so
+  // a line sent for the new one never joins the old one's.
+  const queueSession = useRef(sessionId);
   const [waiting, setWaiting] = useState<readonly HarnessWaitingLine[]>([]);
   const publish = useCallback(() => {
     setWaiting(queue.current.map(({ key, text }) => (text === undefined ? { key } : { key, text })));
@@ -178,6 +182,9 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
    * order, so only one waits at a time.
    */
   const sendHeld = useCallback(() => {
+    // A call for a session the queue has moved off, such as a retry after a
+    // failed send: the queue holds another session's lines now.
+    if (queueSession.current !== sessionId) return;
     if (startPending()) return;
     if (queue.current.some((line) => line.requestId !== undefined || line.sending === true)) return;
     const next = queue.current[0];
@@ -187,7 +194,7 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
       console.error("[useHarnessLines] a waiting line could not be sent", error);
       sendHeld();
     });
-  }, [sendQueued]);
+  }, [sendQueued, sessionId]);
 
   // The turn the view moved to has its first item: it started, so the next held line can wait behind it.
   useEffect(() => {
@@ -244,10 +251,6 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
     if (!isStreaming) followWaiting();
   }, [isStreaming, followWaiting]);
 
-  // The session the queue holds lines for. When the view moves to another
-  // session, the queue moves with it at once, before the new session loads, so
-  // a line sent for the new one never joins the old one's.
-  const queueSession = useRef(sessionId);
   const checkedOpen = useRef<string | null>(null);
   useEffect(() => {
     const left = queueSession.current;
