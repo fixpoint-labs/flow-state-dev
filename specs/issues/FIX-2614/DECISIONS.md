@@ -77,21 +77,24 @@ It comes down to an app's fix: an edited copy never gets it.
   `listedRoutineSchema`. The implementation PR adds a *Routine* glossary entry retiring the old
   names and *recurring work* / *scheduled work*. *Schedule* stays the clock's word,
   *subscription* the event's.
-- **No aliases (BP-034, as FIX-2479; pre-1.0).** The changeset lists old to new. Stored keys,
-  dispatch ids and fields (`input.filer`) don't change (BP-030). Tested: a session whose history
-  calls `subscribe` still takes a turn.
+- **No aliases (BP-034, as FIX-2479).** Stored keys, ids and fields stay (BP-030). Tested: a
+  session whose history calls `subscribe` still takes a turn.
 - **The list lives on the roster flow,** which keeps schedules and now declares
   `subscriptionResources`. Paused routines list; ended ones don't; FIX-2536's poll rows never do.
   A roster client must not read the org-scoped thread index, which holds other users'
   entries, through the collection routes: a test.
-- **Reach.** Roster actions: all the user's routines. A worker's tools: those it files for or
-  its conversation made (today's `not_yours`).
+- **Reach.** Roster actions: all the user's routines. A worker's tools: its own (`not_yours`).
 - **A person's event routine** names `worker`; the user's conversation with it hears, derived on
   the server, never from input (BP-031).
-- **Endings read paused as live,** so a resume can't revive one for a failed task or closed thread.
-- **The seed.** `hireWorkforce`'s `routines.declared`, each naming a worker, through the same
-  writers when the user's roster session opens, keyed `app-<name>`; no roster, no seed.
-  FIX-2536 adds a polled entry's cadence; its poll row follows from `subscribe`.
+- **Endings read paused as live:** no resume for a failed task or closed thread.
+- **One config surface (EM call, 2026-11-08):** `routines.declared`, owned here. An entry with
+  an `owner` is seeded at startup for that owner (FIX-2536 D3 owns the mechanics); one without
+  is seeded for each user when their roster session opens, so no roster, no seed. One key for
+  both: FIX-2536's `cfg_<hash of flow kind and entry id>`, written only when missing or changed.
+  Both write through `saveRoutine`'s writers (ER-5); an entry removed from config is ended at
+  its next fire.
+- **Cadence (FIX-2536 D3):** `everyMinutes` (5, 10, 15, 20, 30, 60, checked in code) on an
+  event `saveRoutine`, passed to `subscribe`, and on config entries.
 - **`madeBy`** on new rows, optional. **Shift Manager:** *Routines*, with pause and delete.
 
 </details>
@@ -102,7 +105,6 @@ It comes down to an app's fix: an edited copy never gets it.
 |---|---|
 | A trigger × an action | FIX-2538 owns event-to-task |
 | Static `schedules` for config routines | They run as the system, not as a user |
-| Re-seed on every read, config wins all | Undoes a user's pause |
 
 ## Settled
 
@@ -112,16 +114,10 @@ with `listedScheduleSchema` and `ListedSchedule`.
 
 ## Analysis
 
-2026-11-08 · watermark 2026-11-05 (FIX-2535 to 2538's spec heads) · **Right approach, two forks
-raised.** Run by the authoring worker (no sub-agent tool); say so at the gate.
-
-1. **Reuse:** every Adds row composes; pausing an event uses the two writers.
-2. **Prior art:** GitHub Actions' `on:`, Zapier: a named thing, a trigger, an action.
-3. **Other shapes:** a routine store ([D1](#d1)); trigger × action.
-4. **New factors:** FIX-2536's poll row hangs on `subscribe`.
-5. **Necessity:** nothing lists subscriptions today.
-6. **Ergonomics:** four verbs for people and models.
-7. **Concerns:** a model starting recurring work ([Q1](#q1)).
+2026-11-08 · watermark FIX-2536 at 4d3d4ed · **Right approach, two forks raised.** Run by the
+authoring worker (no sub-agent tool). Reuse: every Adds row composes. Prior art: GitHub
+Actions' `on:`, Zapier. Other shapes: a routine store ([D1](#d1)), trigger × action. Necessity:
+nothing lists subscriptions. Concern: a model starting recurring work ([Q1](#q1)).
 
 ## Notes from review
 
@@ -129,5 +125,6 @@ None yet.
 
 ## How it got here
 
-- **Draft:** one name and four verbs over the two collections, the event verbs routed through
-  `subscribe` and `unsubscribe`, on the owner's 2026-11-08 direction.
+- **Draft:** one name and four verbs over the two collections, event verbs through `subscribe`
+  and `unsubscribe`, on the owner's 2026-11-08 direction.
+- **Aligned with FIX-2536 D3 (EM calls, 2026-11-08):** one config surface, its `cfg_` key, cadence.

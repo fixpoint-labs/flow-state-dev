@@ -9,7 +9,7 @@
 | **wants to see what runs for them** | Shift Manager's *Scheduled work* lists clock work; subscriptions are listed nowhere | One *Routines* list, clock and event, each with who made it |
 | **wants to stop one** | Clock: `deleteSchedule`. Event: only the conversation that subscribed | Pause, resume or delete any of theirs there; a resume re-checks read access |
 | **asks a worker "every Monday, refresh the numbers"** | The worker can't | The worker saves a clock routine, listed as its own ([Q1](DECISIONS.md#q1)) |
-| **declares routines in the app's config** | Static schedules run as the system, not a user | `routines.declared` seeds each user's routines once ([Q2](DECISIONS.md#q2)); poll cadence is FIX-2536's |
+| **declares routines in the app's config** | Static schedules run as the system, not a user | `routines.declared` seeds a named owner's at startup, or each user's on their roster session ([Q2](DECISIONS.md#q2)) |
 | **builds on the packages** | `subscriptionTools`; `saveSchedule`, `listSchedules`, `deleteSchedule` | `routineTools`; `listRoutines`, `saveRoutine`, `pauseRoutine`, `deleteRoutine`. No aliases; stored data unchanged |
 | **has a coding task following its PR** | A subscription, from FIX-2535's PR-open subscribe | The same, now a routine's event trigger |
 
@@ -26,7 +26,7 @@ verbs a worker uses, over the storage that exists today, with no old name left.*
 |---|---|
 | **The real need** | The issue's *"no one place to see or stop what is running for you"* (owner, 2026-11-08) |
 | **Smaller, and rejected** | "A merged list read": two write surfaces stay, and an event routine still can't be paused |
-| **Bigger, and not this issue's** | A trigger × action matrix · several triggers per routine · a create form · poll cadence (FIX-2536) |
+| **Bigger, and not this issue's** | A trigger × action matrix · several triggers per routine · a create form · the poll and its startup seed (FIX-2536) |
 | **Not done if** | A routine made by any writer is missing from the list · a paused one fires · a resume skips the read check · user B lists A's · a seed run twice makes two · a stored row from `main` stops listing or firing · an old name survives |
 
 ```mermaid
@@ -39,8 +39,6 @@ flowchart LR
   C["controls · schedules-only · pause-keeps-index"] -.-> L
   L -.->|"under a control"| F["must FAIL"]
 ```
-
-The list is checked against what each writer wrote, not against its own read.
 
 | How we verify | |
 |---|---|
@@ -109,7 +107,7 @@ and *subscription* as the event trigger's name.
 | `listRoutines` | `listSchedules`, plus the subscription collection the roster flow now declares |
 | `pauseRoutine` | `enabled` on a schedule; `unsubscribe` and `subscribe` on an event |
 | A person's event routine | `subscribe`, with the hearing session derived as a fire's is (`deriveWorkerSessionId`) |
-| The config seed | `saveRoutine`'s writers, keyed by declared name |
+| The config seed | `saveRoutine`'s writers, keyed `cfg_` as FIX-2536 D3 |
 | The *Routines* screen | The *Scheduled work* screen, widened |
 
 | The debt | |
