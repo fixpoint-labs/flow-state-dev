@@ -626,7 +626,8 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     const stub = readsMarker({
       duringRun: async (run) => {
         // A feature run commits; the conversation's run holds until the feature row is done.
-        if (run.prompt.includes("\nTask ")) {
+        // Only the implement phase's task line names a phase: the answer prompt writes `Task <id>, attempt <n>.` too.
+        if (/\nTask \S+, phase /.test(run.prompt)) {
           writeFileSync(join(run.cwd, "GREETING.md"), "hello\n");
           commitAll(run.cwd, "feature run: add the greeting");
           return;
