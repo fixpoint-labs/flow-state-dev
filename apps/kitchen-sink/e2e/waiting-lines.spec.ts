@@ -15,7 +15,7 @@ import { test, expect, openKitchenSink, byTestId } from "./fixtures";
 /** How long the first turn is held: past `queue`'s 30-second wait. */
 const HELD_MS = 35_000;
 
-type RequestRow = {
+type RequestSummary = {
   id: string;
   actionName: string;
   status: string;
@@ -24,15 +24,15 @@ type RequestRow = {
 };
 
 /** The session's `run` requests, oldest first, with their items when asked. */
-async function runRequests(page: Page, sessionId: string, query = ""): Promise<RequestRow[]> {
+async function runRequests(page: Page, sessionId: string, query = ""): Promise<RequestSummary[]> {
   const res = await page.request.get(`/api/flows/sessions/${encodeURIComponent(sessionId)}/requests?limit=50${query}`);
   expect(res.ok(), await res.text()).toBe(true);
-  const { requests } = (await res.json()) as { requests: RequestRow[] };
+  const { requests } = (await res.json()) as { requests: RequestSummary[] };
   return requests.filter((r) => r.actionName === "run").sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
 }
 
 /** The person's line a request carries. */
-const lineOf = (request: RequestRow) =>
+const lineOf = (request: RequestSummary) =>
   (request.items ?? [])
     .filter((item) => item.type === "message" && item.role === "user")
     .map((item) => (item.content ?? []).map((c) => c.text ?? "").join(""))
