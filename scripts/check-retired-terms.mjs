@@ -180,7 +180,7 @@ function matchLines(re, text) {
  * file outside this guard's in-scope areas is ignored. In code: a type
  * declared with Row in its name (`declaresRow`), an exported value built on
  * Row, directly or through an export list (`exportsRow`, `exportsRowInList`), any name built on CollectionItem (`namesItem`), and a
- * lifecycle named State (`declaresState`); a kept `path` drops the two Row
+ * lifecycle named State (`declaresState`); a kept `path` drops the three Row
  * matchers only. In a page: the rule's `prose`, once a quote rule has stripped
  * the released texts it names from a page it covers.
  * @param {string} path

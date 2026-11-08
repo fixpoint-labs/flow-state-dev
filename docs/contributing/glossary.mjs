@@ -129,13 +129,13 @@ export const ENTRIES = [
         declaresRow: new RegExp(String.raw`(?<![\w$.])(?:type|interface|class|enum)\s+(${ROW_NAME})\s*(?:[<={]|extends\b|implements\b)`, "g"),
         // Code. An exported value built on Row: `readRunRow`, `fooRowSchema`, `rowTruthOf`. A local is no name anyone meets.
         exportsRow: new RegExp(String.raw`(?<![\w$.])export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|enum)\s+(${ROW_NAME}|rows?[A-Z]\w*)`, "g"),
-        // Code. Any name built on CollectionItem, a use as well as a declaration: always a resource, wherever it sits.
         // Code. A Row name exported through a list: `export { readTaskRow }`, or an alias `export { x as fooRow }` (a re-export too).
         // A plain re-export (`export { FooRow } from`) is left: its declaration is where the name counts.
         exportsRowInList: new RegExp(
           String.raw`${IN_EXPORT_LIST}(?<![\w$])(${ROW_NAME}|rows?[A-Z]\w*)\s*(?=(?:,[^}]*)?\}(?!\s*from\b))|${IN_EXPORT_LIST}\bas\s+(${ROW_NAME}|rows?[A-Z]\w*)\s*(?=[,}])`,
           "g",
         ),
+        // Code. Any name built on CollectionItem, a use as well as a declaration: always a resource, wherever it sits.
         namesItem: /(?<![\w$])([\w$]*[Cc]ollectionItems?[\w$]*)/g,
         // Code. A lifecycle named State: a string-literal union (on one line or several) or a z.enum. State is scope or resource state only.
         declaresState: /(?<![\w$.])type\s+(\w*State)\s*=\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*\|?\s*["'`]|(?<![\w$.])(?:const|let|var)\s+(\w*State(?:Schema)?)\s*=\s*z\s*\.\s*enum\(|(?<![\w$.])enum\s+(\w*State)\s*\{/g,
