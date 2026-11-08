@@ -67,12 +67,12 @@ Right of the check is FIX-2534's path; only the coordinator's turn is new.
 
 ```diff
  // a coordinator's turn, or its user
- subscribe({
+ saveRoutine({ trigger: { event: {
    provider: "github",
    thread: "github:acme/api",
 +  unmatched: true,                        // hear only what no other subscription heard
    interest: "new issues nobody picked up",
- })
+ } } })
 
  // the app
 -defineSubscriptionServiceFlow({ kind, provider, installation, trustedBots: ["codex"] })
