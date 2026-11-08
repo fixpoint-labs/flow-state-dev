@@ -98,7 +98,7 @@ When someone presses Stop, the request ends `aborted`. Nothing failed and there'
 <RequestRecovery stopped stillRunning={backgroundRunning} onView={showTasks} />
 ```
 
-Stopping a turn doesn't stop the work it handed off. `stillRunning` tells the person how much of that is still going: pass the session's unfinished runs, such as `sessionFeed(...).getSnapshot().runs?.length`. Above zero, the line adds "2 background tasks still running" and a View link that calls `onView`. At zero, or when you pass nothing because the count isn't known yet, the clause is left off.
+Stopping a turn doesn't stop the background work it started. `stillRunning` tells the person how much of that is still going: pass the session's unfinished runs, such as `sessionFeed(...).getSnapshot().runs?.length`. Above zero, the line adds "2 background tasks still running" and a View link that calls `onView`. At zero, or when you pass nothing because the count isn't known yet, the clause is left off.
 
 Read the line from the request's status, not from the click. That way a reload or a second tab shows it too. If you draw several stopped turns, give the count only to the newest one, and only while nothing came after it. Otherwise an old line reports work that a later turn started.
 
