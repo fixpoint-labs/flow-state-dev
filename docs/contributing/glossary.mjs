@@ -132,6 +132,88 @@ function rowNamesInExportLists(text) {
   return hits;
 }
 
+/** An exported destructuring declaration's opening: `export const {` or `export let [`. */
+const EXPORT_PATTERN = /(?<![\w$.])export\s+(?:const|let|var)\s*([{[])/g;
+
+/** Split `text` at the commas that sit outside any bracket, keeping each part's offset. */
+function topLevelParts(text) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i <= text.length; i++) {
+    const c = text[i];
+    if (c === "{" || c === "[" || c === "(") depth++;
+    else if (c === "}" || c === "]" || c === ")") depth--;
+    else if ((c === "," && depth === 0) || i === text.length) {
+      parts.push({ text: text.slice(start, i), at: start });
+      start = i + 1;
+    }
+  }
+  return parts;
+}
+
+/** The names a destructuring pattern binds, each with its offset in `pattern` (the text inside the brackets). */
+function patternBindings(pattern, isObject) {
+  const out = [];
+  for (const part of topLevelParts(pattern)) {
+    let body = part.text;
+    let at = part.at;
+    // The default (`= …`) is read, not bound: cut it at the first top-level `=`.
+    let depth = 0;
+    for (let i = 0; i < body.length; i++) {
+      const c = body[i];
+      if (c === "{" || c === "[" || c === "(") depth++;
+      else if (c === "}" || c === "]" || c === ")") depth--;
+      else if (c === "=" && depth === 0) { body = body.slice(0, i); break; }
+    }
+    // In an object pattern `key: target` binds `target`; a bare key binds itself.
+    if (isObject) {
+      const colon = body.indexOf(":");
+      if (colon !== -1) { at += colon + 1; body = body.slice(colon + 1); }
+    }
+    const lead = body.length - body.trimStart().length;
+    at += lead;
+    body = body.trim().replace(/^\.\.\./, (m) => { at += m.length; return ""; });
+    const open = body[0];
+    if (open === "{" || open === "[") {
+      const close = body.lastIndexOf(open === "{" ? "}" : "]");
+      for (const b of patternBindings(body.slice(1, close), open === "{")) out.push({ name: b.name, at: at + 1 + b.at });
+    } else {
+      const name = /^[\w$]+/.exec(body)?.[0];
+      if (name) out.push({ name, at });
+    }
+  }
+  return out;
+}
+
+/**
+ * The Row names an exported destructuring declaration binds: `export const { readTaskRow } = helpers`,
+ * `export const { list: listTaskRows } = …`, nested and array patterns too. A property only read
+ * (`{ taskRow: task }`) is left: `task` is the name a consumer meets.
+ * @param {string} text
+ * @returns {{ index: number; name: string }[]}
+ */
+function rowNamesInExportedPatterns(text) {
+  const hits = [];
+  EXPORT_PATTERN.lastIndex = 0;
+  for (let m = EXPORT_PATTERN.exec(text); m !== null; m = EXPORT_PATTERN.exec(text)) {
+    const open = m.index + m[0].length - 1;
+    let depth = 0;
+    let close = -1;
+    for (let i = open; i < text.length; i++) {
+      const c = text[i];
+      if (c === "{" || c === "[" || c === "(") depth++;
+      else if (c === "}" || c === "]" || c === ")") { depth--; if (depth === 0) { close = i; break; } }
+    }
+    if (close === -1) continue;
+    for (const b of patternBindings(text.slice(open + 1, close), m[1] === "{")) {
+      if (IS_ROW_NAME.test(b.name)) hits.push({ index: open + 1 + b.at, name: b.name });
+    }
+    EXPORT_PATTERN.lastIndex = close;
+  }
+  return hits;
+}
+
 // ---------------------------------------------------------------------------------------------
 // 1. The terms
 // ---------------------------------------------------------------------------------------------
@@ -162,6 +244,8 @@ export const ENTRIES = [
         // Code. A Row name exported through a list: `export { readTaskRow }`, or an alias `export { x as fooRow }` (a re-export too).
         // A plain re-export (`export { FooRow } from`) is left: its declaration is where the name counts.
         exportsRowInList: rowNamesInExportLists,
+        // Code. A Row name an exported destructuring declaration binds: `export const { readTaskRow } = helpers`.
+        exportsRowInPattern: rowNamesInExportedPatterns,
         // Code. Any name built on CollectionItem, a use as well as a declaration: always a resource, wherever it sits.
         namesItem: /(?<![\w$])([\w$]*[Cc]ollectionItems?[\w$]*)/g,
         // Code. A lifecycle named State: a string-literal union (on one line or several) or a z.enum. State is scope or resource state only.

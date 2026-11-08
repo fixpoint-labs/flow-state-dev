@@ -290,6 +290,16 @@ describe("the resource entry reads the whole tree: a stored thing is a resource,
     expect(resourceHits("packages/workforce/src/zz.ts", "export { widgetRow as widget };\n")).toEqual([]);
   });
 
+  it("refuses a Row name a destructuring export binds, and leaves the names it only reads", () => {
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const { loadWidgetRow } = helpers;\n")).toEqual(["1:export const { loadWidgetRow } = helpers;"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const {\n  widget: loadWidgetRow,\n} = helpers;\n")).toEqual(["2:widget: loadWidgetRow,"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const [first, { rows: widgetRows = [] }] = pair;\n")).toEqual([
+      "1:export const [first, { rows: widgetRows = [] }] = pair;",
+    ]);
+    // `widgetRow:` is the property read; `widget` is the name a consumer meets.
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const { widgetRow: widget, GET } = helpers;\n")).toEqual([]);
+  });
+
   it("reads a long file with no export list in linear time", () => {
     // A matcher that looks behind for `export {` at every character is quadratic on exactly this.
     const long = `const markup = \`${"<div class=\"a\">x</div>\n".repeat(8000)}\`;\n`;
