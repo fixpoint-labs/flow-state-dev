@@ -10,7 +10,7 @@
 | **follows a thread both pushed and polled** | n/a | Each event once per session |
 | **follows a PR whose polled delivery was lost** | n/a | The next poll fetches it; it lands once ([D2](DECISIONS.md#d2)) |
 | **follows a private repo another user follows** | n/a | A poll on your credentials reaches only your sessions ([D1](DECISIONS.md#d1)) |
-| **pins a repo in the flow's config** | Only a model's `saveRoutine` call | It polls from the first boot; a redeploy adds no row ([D3](DECISIONS.md#d3)) |
+| **pins a repo in the flow's config** | Only a model's `subscribe` call | It polls from the first boot; a redeploy adds no row ([D3](DECISIONS.md#d3)) |
 | **pays for the GitHub calls** | n/a | Quiet threads cost `304`s; only due rows fire; a quiet repo can poll hourly |
 
 Inputs: the epic's ([FIX-2471](../../epics/FIX-2471/SPEC.md)) D10 and ER-4; FIX-2534's

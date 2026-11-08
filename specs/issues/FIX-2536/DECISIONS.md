@@ -54,17 +54,19 @@ cursor field, **not** FIX-2537 Q-A's verdict memo (epic D4).
 **What would change my mind:** delivery resending what it gave back on its own.
 
 <a name="d3"></a>
-## D3 · Config seeds subscriptions, and each may set its cadence (owner call, 2026-11-08)
+## D3 · Config seeds subscriptions, each with its cadence (owner call, 2026-11-08)
 
 | | |
 |---|---|
-| **Instead of** | Only a model's `saveRoutine` call, at one cadence |
-| **Because** | At startup each entry calls `subscribe`'s write, keyed `cfg_<hash of flow kind and entry id>`, only when missing or changed: a restart adds no row. A `cfg_` row whose entry left config ends at its next fire through `unsubscribe`'s write (reason `config_removed`), unpolled. `sub_` rows are untouched |
-| **The owner (EM call)** | Each entry names `owner: { userId, orgId }` and a `worker`, as server config (BP-031). The row lands in that user's shared cell (`resolveSharedUserCellKey`), checked by `fireOwnerRunThrough`, polling on their credentials (D1). The seed runs as the owner: `canRead` is `subscribe`'s |
-| **Cadence** | `everyMinutes` on `subscribe` or an entry: 5, 10, 15, 20, 30 or 60, else throws; default `poll.everyMinutes` |
-| **Locks in** | A `cfg_` row its thread or session ended stays ended while its entry is unchanged. ER-5 holds. Per FIX-2614, the seed targets `{ sessionId, worker, taskId? }` explicitly (`deriveWorkerSessionId`), reads the row, merges only config-owned fields, never re-enabling a paused routine |
+| **Instead of** | Only a model's `subscribe` call, at one cadence (FIX-2614's `saveRoutine` forwards to it) |
+| **Because** | At startup each entry calls `subscribe`'s write, keyed `cfg_<hash of flow kind and entry id>`, only when missing or changed: a restart adds no row. A `cfg_` row whose entry left config ends, unpolled, at its next fire (`unsubscribe`'s write, `config_removed`). `sub_` rows are untouched |
+| **The owner (EM call)** | Each entry names `owner: { userId, orgId }` and a `worker`, as server config (BP-031). The row lands in that user's shared cell (`resolveSharedUserCellKey`), checked by `fireOwnerRunThrough`, polling on their credentials (D1). `canRead` is `subscribe`'s, as the owner |
+| **Cadence** | `everyMinutes` on `subscribe` or an entry: 5/10/15/20/30/60, else throws; default `poll.everyMinutes` |
+| **Locks in** | A `cfg_` row its thread or session ended stays ended while its entry is unchanged. ER-5 holds. Per FIX-2614, the seed targets `{sessionId, worker, taskId?}` (`deriveWorkerSessionId`), reads the row, merges only config-owned fields, never re-enabling a paused routine |
 
-**Seam:** `routines.declared` is FIX-2614's; the polled seed and cadence are this issue's.
+**Seam:** `routines.declared` is FIX-2614's; the polled seed and cadence, ours.
+
+![D3: config seeds, chosen, beside a model's subscribe; decided by a redeploy](figures/d3-config-seed.svg)
 
 It comes down to a redeploy: a seed keyed by config id writes nothing new.
 
