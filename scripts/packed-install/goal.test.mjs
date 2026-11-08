@@ -271,6 +271,7 @@ test("a bare home specifier counts only as a whole token: a path that only start
   const home = ["@flow-state-dev/engine/host"];
   const grade = (line) => gradeMovedNames([dropped("@flow-state-dev/engine", "SessionStore", home)], new Map([["@flow-state-dev/engine", [line]]]));
   for (const wrong of [
+    "`SessionStore` moved to `@flow-state-dev/engine/host.js`",
     "- `SessionStore` moved to @flow-state-dev/engine/host.js",
     "- `SessionStore` moved to @flow-state-dev/engine/hostile.",
     "- `SessionStore` moved to @flow-state-dev/engine/host/sub",
