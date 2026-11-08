@@ -23,8 +23,10 @@
  *
  * Model-free. `--at <ref>` reads another commit (default `HEAD`). The control is
  * `--at <BEFORE>`: there no check reads the glossary, so the lever leg must FAIL.
+ * `--parity-at <ref>` replays parity on another tree (default `MOVED`), so the
+ * parity leg's own control (a commit on `MOVED` that drops a rule) can reach it.
  *
- * Run: pnpm tsx goals/vocabulary/one-glossary/retire-a-word-in-one-place/run.mts [--at <ref>]
+ * Run: pnpm tsx goals/vocabulary/one-glossary/retire-a-word-in-one-place/run.mts [--at <ref>] [--parity-at <ref>]
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -58,6 +60,7 @@ const SIDE_CHAIN = ["scripts/validate-side-chain-vocabulary.mjs"];
 const at = process.argv.includes("--at") ? process.argv[process.argv.indexOf("--at") + 1] : "HEAD";
 const repo = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
 const commit = execFileSync("git", ["rev-parse", at], { cwd: repo, encoding: "utf8" }).trim();
+const parityAt = process.argv.includes("--parity-at") ? process.argv[process.argv.indexOf("--parity-at") + 1] : MOVED;
 
 const git = (cwd: string, args: string[]) =>
   execFileSync("git", ["-c", "user.name=goal", "-c", "user.email=goal@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], {
@@ -175,7 +178,7 @@ await runGoal((failures, tell) => {
     evidence.push("parity: skipped, this commit has no glossary");
     return { failures, evidence: evidence.join("; ") };
   }
-  const after = copyOf("parity", MOVED);
+  const after = copyOf("parity", parityAt);
   const runAll = (d: string) => ({
     sweep: check(d, SWEEP),
     sweepControl: check(d, SWEEP, ["--control"]),
@@ -199,7 +202,7 @@ await runGoal((failures, tell) => {
   compare("the sweep's control", lines(now.sweepControl.out, /^CONTROL /), lines(then.sweepControl.out, /^CONTROL /));
   compare("the guard's control", tell.over("parity: guard control verdicts", lines(now.guardControl.out, /^plant |^CONTROL /)), lines(then.guardControl.out, /^plant |^CONTROL /));
   for (const k of Object.keys(now) as Array<keyof typeof now>) compare(`${k}'s exit code`, now[k].status, then[k].status);
-  evidence.push(`parity: ${sweepCounts(now.sweep)[0] ?? "no sweep summary"}; ${guardCounts(now.guard).length} guard count lines and ${lines(now.guardControl.out, /^plant /).length} guard control verdicts match the pre-move checks, at ${MOVED.slice(0, 9)}`);
+  evidence.push(`parity: ${sweepCounts(now.sweep)[0] ?? "no sweep summary"}; ${guardCounts(now.guard).length} guard count lines and ${lines(now.guardControl.out, /^plant |^CONTROL /).length} guard control verdicts match the pre-move checks, at ${parityAt.slice(0, 9)}`);
 
   return { failures, evidence: evidence.join("; ") };
 });
