@@ -35,7 +35,7 @@ export {
   type IntakeDecision,
   type Occurrence,
   type ReportLimits,
-  type ReportRow
+  type ReportResourceState
 } from "./reports";
 export { fingerprintOf, normalizeErrorMessage, type FingerprintParts } from "./fingerprint";
 export { redact, secretsFromEnv, REDACTED } from "./redact";

@@ -24,7 +24,7 @@ import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
 import type { WorkerInstallation } from "../workers/installation";
 import { WORKER_REPLIES_OWED_STATE } from "./keys";
 import { owedRepliesOf, type OwedReply } from "./delivery";
-import { MAX_MESSAGE_CHARS, messageLogOf, type WorkerMessageRow } from "./message-log";
+import { MAX_MESSAGE_CHARS, messageLogOf, type WorkerMessageResourceState } from "./message-log";
 import { sendMessage } from "./send-message";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 
@@ -32,7 +32,7 @@ import { requestHostOf } from "@flow-state-dev/core/internal";
 const OWED_REPLY_FROM = "message-received-answer";
 
 /** Whether `row` asks its recipient for a reply the framework owes. */
-export function wantsReply(row: Pick<WorkerMessageRow, "replyRequested">): boolean {
+export function wantsReply(row: Pick<WorkerMessageResourceState, "replyRequested">): boolean {
   return row.replyRequested === true;
 }
 

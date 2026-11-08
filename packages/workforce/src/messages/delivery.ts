@@ -39,7 +39,7 @@ import { z } from "zod";
 import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
 import type { WorkerInstallation } from "../workers/installation";
 import { MESSAGE_RECEIVED_ENTRY, SEND_MESSAGE_TOOL, SENDS_MESSAGES_MARK, WORKER_MESSAGES_OWED_STATE, WORKER_REPLIES_OWED_STATE } from "./keys";
-import { messageLogOf, type WorkerMessageRow } from "./message-log";
+import { messageLogOf, type WorkerMessageResourceState } from "./message-log";
 
 /** The host's debt age when it keeps no wakes to say one: a day. */
 const DEFAULT_DEBT_AGE_MS = 24 * 60 * 60 * 1000;
@@ -185,7 +185,7 @@ export function isFinalRefusal(refused: DispatchRefusal): boolean {
  *   dispatch of a message whose sender waits for the reply), so the
  *   engine counts it in the chain of waits.
  */
-export function dispatchMessage(ctx: BlockContext, row: WorkerMessageRow, from: string, waits = false): Promise<DispatchOutcome> {
+export function dispatchMessage(ctx: BlockContext, row: WorkerMessageResourceState, from: string, waits = false): Promise<DispatchOutcome> {
   return dispatchThroughSeam(ctx, {
     type: "internal",
     action: MESSAGE_RECEIVED_ENTRY,
@@ -207,14 +207,14 @@ export function dispatchMessage(ctx: BlockContext, row: WorkerMessageRow, from: 
  * @returns Whether it was written.
  */
 export async function endMessage(
-  ref: ResourceRef<WorkerMessageRow>,
+  ref: ResourceRef<WorkerMessageResourceState>,
   status: "refused" | "undeliverable",
   reason: string,
   options: { told?: boolean; force?: boolean } = {}
 ): Promise<boolean> {
   const ended = await withOutcome(
-    (mutator: (row: WorkerMessageRow) => WorkerMessageRow) => ref.updateState(mutator),
-    (row: WorkerMessageRow) => {
+    (mutator: (row: WorkerMessageResourceState) => WorkerMessageResourceState) => ref.updateState(mutator),
+    (row: WorkerMessageResourceState) => {
       if (row.status !== "unconfirmed" || (row.takenBy !== undefined && options.force !== true)) return { state: row, result: false };
       return { state: { ...row, status, reason, ...(options.told === true ? { toldAt: Date.now() } : {}) }, result: true };
     }
@@ -223,12 +223,12 @@ export async function endMessage(
 }
 
 /** D1's line: what the sending session's next turn reads of a message that couldn't land. */
-function undeliveredLine(row: Pick<WorkerMessageRow, "id" | "to" | "reason">): string {
+function undeliveredLine(row: Pick<WorkerMessageResourceState, "id" | "to" | "reason">): string {
   return `Your message ${row.id} to ${row.to} wasn't delivered: ${row.reason ?? "no reason was given"}.`;
 }
 
 /** Leave D1's line in the running session (the sender's), then record it on the row. */
-async function tellSender(ctx: BlockContext, ref: ResourceRef<WorkerMessageRow>): Promise<void> {
+async function tellSender(ctx: BlockContext, ref: ResourceRef<WorkerMessageResourceState>): Promise<void> {
   const emit = storedEmitters(ctx);
   await emit.message(undeliveredLine(ref.state), { itemVisibility: { client: true, history: true } });
   await emit.stored();
@@ -257,7 +257,7 @@ export function storedEmitters(ctx: BlockContext) {
  * row is `unconfirmed`, for the session the row is addressed to. A taker that
  * hasn't ended keeps it; one that ended without delivering is taken over.
  */
-export async function takeMessage(ctx: BlockContext, id: string): Promise<WorkerMessageRow | undefined> {
+export async function takeMessage(ctx: BlockContext, id: string): Promise<WorkerMessageResourceState | undefined> {
   const ref = await messageLogOf(ctx).getOptional(id);
   const row = ref?.state;
   if (ref === undefined || row === undefined || row.toSession !== ctx.session.identity.id || row.status !== "unconfirmed") return undefined;
@@ -266,8 +266,8 @@ export async function takeMessage(ctx: BlockContext, id: string): Promise<Worker
   const own = ctx.request.identity.id;
   const seen = row.takenBy;
   const taken = await withOutcome(
-    (mutator: (current: WorkerMessageRow) => WorkerMessageRow) => ref.updateState(mutator),
-    (current: WorkerMessageRow) => {
+    (mutator: (current: WorkerMessageResourceState) => WorkerMessageResourceState) => ref.updateState(mutator),
+    (current: WorkerMessageResourceState) => {
       if (current.status !== "unconfirmed" || current.takenBy !== seen) return { state: current, result: undefined };
       return { state: { ...current, takenBy: own }, result: { ...current, takenBy: own } };
     }
@@ -284,8 +284,8 @@ export async function markDelivered(ctx: BlockContext, id: string): Promise<bool
   if (ref === undefined) return false;
   const own = ctx.request.identity.id;
   const marked = await withOutcome(
-    (mutator: (current: WorkerMessageRow) => WorkerMessageRow) => ref.updateState(mutator),
-    (current: WorkerMessageRow) => {
+    (mutator: (current: WorkerMessageResourceState) => WorkerMessageResourceState) => ref.updateState(mutator),
+    (current: WorkerMessageResourceState) => {
       if (current.status !== "unconfirmed" || current.takenBy !== own) return { state: current, result: false };
       return { state: { ...current, status: "delivered" as const, deliveredAs: own, deliveredAt: Date.now() }, result: true };
     }
@@ -298,7 +298,7 @@ export async function markDelivered(ctx: BlockContext, id: string): Promise<bool
  * recipient now, or `undefined` when it can. The send's own check, without
  * the budget, which the row paid once.
  */
-export type RecheckRecipient = (ctx: BlockContext, row: WorkerMessageRow) => Promise<string | undefined>;
+export type RecheckRecipient = (ctx: BlockContext, row: WorkerMessageResourceState) => Promise<string | undefined>;
 
 /**
  * The pass's message step: pay what the running session owes for the
@@ -328,7 +328,7 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
     next = next === undefined ? at : Math.min(next, at);
   };
   // End the row, tell the sender, drop the id: false when another writer ended it first.
-  const close = async (ref: ResourceRef<WorkerMessageRow>, id: string, status: "refused" | "undeliverable", reason: string, force = false) => {
+  const close = async (ref: ResourceRef<WorkerMessageResourceState>, id: string, status: "refused" | "undeliverable", reason: string, force = false) => {
     if (!(await endMessage(ref, status, reason, force ? { force: true } : undefined))) return false;
     await tellSender(ctx, ref);
     drop.push(id);

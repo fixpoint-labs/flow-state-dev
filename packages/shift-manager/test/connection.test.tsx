@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { useReportFeedState, worstFeedState } from "../src/lib/feed-health";
 import { LabProvider, useLab } from "../src/lib/lab-data";
-import { inboxSection, toBoardRow, toWorker, type LabSnapshot } from "../src/lib/reads";
+import { inboxSection, toBoardTaskView, toWorker, type LabSnapshot } from "../src/lib/reads";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import type { ConnectionFeedState } from "../src/components/flow-state/connection-banner";
 
@@ -57,7 +57,7 @@ const startedAt = Date.UTC(2026, 10, 4, 9, 0);
 /** One running task on eng's board, and ops' board failing, so Tasks offers a Retry that reads again. */
 function lab(): LabSnapshot {
   const workers = [toWorker({ id: "eng.coder", kind: "coder" })!];
-  const running = toBoardRow("s_eng.tasks", "s_eng", "E-1", { id: "E-1", title: "E-1 title", status: "in_progress", assignee: "coder", startedAt });
+  const running = toBoardTaskView("s_eng.tasks", "s_eng", "E-1", { id: "E-1", title: "E-1 title", status: "in_progress", assignee: "coder", startedAt });
   const read: Omit<LoadedSnapshot, "inbox"> = {
     readAt: startedAt,
     sessions: [],

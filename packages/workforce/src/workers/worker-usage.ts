@@ -106,8 +106,8 @@ const workerUsageCapability = defineCapability({
   resources: { [WORKER_USAGE_RESOURCE]: workerUsageCollection }
 });
 
-/** One worker's row for a period, as {@link workerUsageAction} answers it. */
-export interface WorkerUsageRow {
+/** One worker's usage for a period, as {@link workerUsageAction} answers it. */
+export interface WorkerUsageView {
   /** The worker's id. */
   worker: string;
   /** `true` when the worker is no longer on the reader's roster. */
@@ -230,7 +230,7 @@ export async function readWorkerUsage(
   days: number,
   onRoster: ReadonlySet<string>,
   now: number = Date.now()
-): Promise<WorkerUsageRow[]> {
+): Promise<WorkerUsageView[]> {
   const collection = collectionOn(ctx);
   if (collection === undefined) throw missingCollection();
   const byWorker = new Map<string, WorkerSourceSpend[]>();
@@ -263,7 +263,7 @@ export async function readWorkerUsage(
     });
 }
 
-const workerSourceSpendRowSchema = z.object({
+const workerSourceSpendSchema = z.object({
   source: z.string(),
   kind: z.enum(["model", "harness"]),
   billing: z.enum(["api-key", "subscription"]).nullable(),
@@ -274,12 +274,12 @@ const workerSourceSpendRowSchema = z.object({
   unreported: z.number()
 });
 
-const workerUsageRowSchema = z.object({
+const workerUsageViewSchema = z.object({
   worker: z.string(),
   gone: z.boolean(),
   tokens: z.object({ input: z.number(), output: z.number() }),
   costUsd: z.number().nullable(),
-  bySource: z.array(workerSourceSpendRowSchema)
+  bySource: z.array(workerSourceSpendSchema)
 });
 
 /**
@@ -288,7 +288,7 @@ const workerUsageRowSchema = z.object({
  *
  * Input `{ days?: number }`, 1 to {@link WORKER_USAGE_MAX_DAYS}, default
  * {@link WORKER_USAGE_DEFAULT_DAYS}: today and the days before it, in UTC.
- * Output `{ workers }`, one {@link WorkerUsageRow} per worker that spent in
+ * Output `{ workers }`, one {@link WorkerUsageView} per worker that spent in
  * the period, ordered by id. Zero-model.
  */
 export function workerUsageAction(installation: WorkerInstallation) {
@@ -299,7 +299,7 @@ export function workerUsageAction(installation: WorkerInstallation) {
     block: handler({
       name: "worker-usage",
       inputSchema: z.object({ days: z.number().int().min(1).max(WORKER_USAGE_MAX_DAYS).optional() }),
-      outputSchema: z.object({ workers: z.array(workerUsageRowSchema) }),
+      outputSchema: z.object({ workers: z.array(workerUsageViewSchema) }),
       uses: [workerUsageCapability],
       resources: { ...installation.resources },
       execute: async (input, ctx: BlockContext) => {

@@ -30,12 +30,12 @@ export {
   projectFileSchema,
   projectFilesPrefix,
   PROJECTS_RESOURCE,
-  projectRowSchema,
+  projectResourceStateSchema,
   projectVisibilitySchema,
   type ProjectAddress,
   type ProjectVisibility,
   type ProjectFile,
-  type ProjectRow
+  type ProjectResourceState
 } from "./collections";
 
 export {

@@ -178,8 +178,8 @@ export type Projects = {
  */
 export type RunLink = { sessionId: string; requestId: string; attempt: number };
 
-/** One row on a conversation's board, with the fields a board publishes to a browser. */
-export type BoardRow = {
+/** One task on a conversation's board, with the fields a board publishes to a browser. */
+export type BoardTaskView = {
   /** The board's ref: `<sessionId>.tasks`, the conversation that holds it and the collection. */
   boardRef: string;
   /** The session id of the conversation that holds the board. */
@@ -225,7 +225,7 @@ export type BoardRow = {
 };
 
 /** A conversation's board and every row on it. */
-export type ConversationBoards = { refs: string[]; rows: BoardRow[] };
+export type ConversationBoards = { refs: string[]; rows: BoardTaskView[] };
 
 /** A pending approval, review or question, and the session that holds it. */
 export type Ask = {
@@ -519,13 +519,13 @@ function toSteerAnswers(value: unknown): Array<{ id: string; answers?: string }>
 }
 
 /**
- * A board row, from what the board publishes.
+ * A board's task, from what the board publishes.
  *
  * `title` is never absent: a row filed with none reads its goal there. The
  * Brief's `distinctTitle` (`lib/tasks.ts`) is written against that, and shows
  * a title only when it differs from `goal`.
  */
-export function toBoardRow(boardRef: string, ownerSessionId: string, topic: string, stored: unknown): BoardRow {
+export function toBoardTaskView(boardRef: string, ownerSessionId: string, topic: string, stored: unknown): BoardTaskView {
   // A row stored `blocked` (orchestration 0.5.0 and earlier) reads as `held`.
   const data = withRetiredShapes(stored);
   return {
@@ -613,7 +613,7 @@ export function inboxSection(
   sessions: readonly Pick<SessionSummary, "id" | "flowId">[],
 ): Section<InboxItem<Ask>[]> {
   if (!asks.ok) return asks;
-  const rows: BoardRow[] = [];
+  const rows: BoardTaskView[] = [];
   for (const board of Object.values(boards)) {
     if (!board.ok) return { ok: false, failure: { ...board.failure, message: `Inbox lists what each task waits on from its board, and a board did not load. ${board.failure.message}` } };
     rows.push(...board.value.rows);
@@ -647,7 +647,7 @@ export function inboxSection(
  * no action Shift Manager names: `null`, and its questions read as
  * unanswerable here.
  */
-function boardOwnerOf(row: BoardRow): InboxTaskInput["holder"] {
+function boardOwnerOf(row: BoardTaskView): InboxTaskInput["holder"] {
   return row.boardRef === conversationBoardRef(row.ownerSessionId)
     ? { sessionId: row.ownerSessionId, action: taskActionName("updateTask", CONVERSATION_BOARD_COLLECTION) }
     : null;
@@ -667,7 +667,7 @@ export type LabReader = {
   /** One refresh: every read once. */
   read(): Promise<LabSnapshot>;
   /** Re-read one conversation's board, for a screen waiting on a row to move. */
-  readBoard(sessionId: string): Promise<BoardRow[]>;
+  readBoard(sessionId: string): Promise<BoardTaskView[]>;
   /**
    * Answer an ask through its session's owning flow. Rejects when the session
    * names no owner, or when the Lab refuses the answer.
@@ -744,11 +744,11 @@ export function createLabReader(client: Client): LabReader {
     readEveryCollectionPage(client.resources, sessionId, ref, { limit: PAGE_SIZE });
 
   /** A conversation's board: the user's whole ledger, read through the conversation, keeping its own partition's rows. */
-  const readBoard = async (sessionId: string): Promise<BoardRow[]> => {
+  const readBoard = async (sessionId: string): Promise<BoardTaskView[]> => {
     const boardRef = conversationBoardRef(sessionId);
     return (await readCollection(sessionId, CONVERSATION_BOARD_COLLECTION))
       .filter((row) => conversationOfTopic(row.topic) === sessionId)
-      .map((row) => toBoardRow(boardRef, sessionId, row.topic, row.clientData));
+      .map((row) => toBoardTaskView(boardRef, sessionId, row.topic, row.clientData));
   };
 
   /**
@@ -780,12 +780,12 @@ export function createLabReader(client: Client): LabReader {
       }
       if (carrier === undefined) return [];
       const listed = new Set(sessions.map((s) => s.id));
-      const byHolder = new Map<string, BoardRow[]>();
+      const byHolder = new Map<string, BoardTaskView[]>();
       for (const row of await readCollection(carrier, CONVERSATION_BOARD_COLLECTION)) {
         const holder = conversationOfTopic(row.topic);
         if (!listed.has(holder)) continue;
         const rows = byHolder.get(holder) ?? [];
-        rows.push(toBoardRow(conversationBoardRef(holder), holder, row.topic, row.clientData));
+        rows.push(toBoardTaskView(conversationBoardRef(holder), holder, row.topic, row.clientData));
         byHolder.set(holder, rows);
       }
       return [...byHolder].map(

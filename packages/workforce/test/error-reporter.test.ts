@@ -32,7 +32,7 @@ import {
   type ErrorReporter,
   type ErrorReporterHost,
   type ErrorReporterOptions,
-  type ReportRow
+  type ReportResourceState
 } from "../src/error-reporter";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
@@ -122,7 +122,7 @@ type Lab = {
   host: BoardHost;
   reporter: ErrorReporter;
   prompts: Prompted[];
-  rows: () => Promise<ReportRow[]>;
+  rows: () => Promise<ReportResourceState[]>;
   asks: () => Promise<SuspensionRecord[]>;
   answer: (ask: SuspensionRecord, data: Record<string, unknown>) => Promise<void>;
   breaks: (message: string, userId?: string) => Promise<void>;
@@ -220,7 +220,7 @@ async function openLab(
 
   const rows = async () => {
     const result = await bound.run({ flowKind: ERROR_REPORTER_INTAKE_FLOW, action: "reports", input: { op: "all" }, userId: OPERATOR, orgId: ORG, sessionId: "error-report-intake", source: "internal" });
-    return ((result.output as { rows?: ReportRow[] }).rows ?? []).filter((row) => row.kind === "report" || row.kind === "storm");
+    return ((result.output as { rows?: ReportResourceState[] }).rows ?? []).filter((row) => row.kind === "report" || row.kind === "storm");
   };
   const asks = async () =>
     ((await runtime.stores.suspensions.list({ status: "pending" })) as SuspensionRecord[]).filter((s) =>

@@ -13,7 +13,7 @@ import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { connect } from "../src/lib/connection";
 import { readSessionItems } from "../src/lib/run";
-import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, createLabReader, toBoardRow, type BoardRow } from "../src/lib/reads";
+import { CONVERSATION_BOARD_COLLECTION, conversationBoardRef, createLabReader, toBoardTaskView, type BoardTaskView } from "../src/lib/reads";
 import { openRunLab, RUN_LAB_ASK, RUN_LAB_FAILURE, RUN_LAB_SPEND, RUN_LAB_USER_ID } from "./fixtures/run-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -40,9 +40,9 @@ async function openLab(options: Parameters<typeof openRunLab>[0] = {}) {
   const boardRef = conversationBoardRef(lab.conversation);
   // The oracle reads the store directly: the page's `fetch` is the DOM's, and
   // is not this test's to share.
-  const rows = async (): Promise<BoardRow[]> => {
+  const rows = async (): Promise<BoardTaskView[]> => {
     const stored = new Map((await lab.storedRows()).map((row) => [row.id, row]));
-    return lab.filed.map((f) => toBoardRow(boardRef, lab.conversation, f.taskId, stored.get(f.taskId)));
+    return lab.filed.map((f) => toBoardTaskView(boardRef, lab.conversation, f.taskId, stored.get(f.taskId)));
   };
   return { lab, served: s, client, rows, boardRef };
 }
@@ -59,7 +59,7 @@ async function renderAt(baseUrl: string, path: string, devtoolUrl?: string) {
 }
 
 /** A held row on the shared flow (or on a worker's flow of its own), once its run is linked. */
-async function heldRow(opened: Awaited<ReturnType<typeof openLab>>, own: boolean): Promise<BoardRow> {
+async function heldRow(opened: Awaited<ReturnType<typeof openLab>>, own: boolean): Promise<BoardTaskView> {
   const worker = opened.lab.workers.find((w) => (own ? w.id === opened.lab.ownWorker!.id : w.flow === opened.lab.sharedFlow!))!;
   const filed = opened.lab.filed.find((f) => f.kind === "running" && f.workerId === worker.id)!;
   return eventually(async () => (await opened.rows()).find((r) => r.id === filed.taskId && r.run !== null), "the held run's link");
@@ -264,7 +264,7 @@ function rewriteRows(match: (url: string) => boolean, edit: (rows: Array<Record<
 }
 
 /** A short row once it has finished, with its run linked. */
-async function finishedRow(opened: Awaited<ReturnType<typeof openLab>>): Promise<BoardRow> {
+async function finishedRow(opened: Awaited<ReturnType<typeof openLab>>): Promise<BoardTaskView> {
   const short = opened.lab.filed.find((f) => f.kind === "short")!;
   return eventually(async () => (await opened.rows()).find((r) => r.id === short.taskId && r.status === "completed" && r.run !== null), "a finished row", 20_000);
 }
@@ -686,7 +686,7 @@ describe("a task whose run waits on a user (BR-17)", () => {
  * after the Lab's boot has settled: the short runs done and the failing one
  * failed, so the screen's first read isn't racing their notices.
  */
-async function filedRow(opened: Awaited<ReturnType<typeof openLab>>, kind: "held" | "cancellable" | "failing", ready: (row: BoardRow) => boolean): Promise<BoardRow> {
+async function filedRow(opened: Awaited<ReturnType<typeof openLab>>, kind: "held" | "cancellable" | "failing", ready: (row: BoardTaskView) => boolean): Promise<BoardTaskView> {
   const settling = opened.lab.filed.filter((f) => f.kind === "short" || f.kind === "failing").map((f) => f.taskId);
   await eventually(async () => {
     const rows = await opened.rows();

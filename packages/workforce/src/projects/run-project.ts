@@ -29,9 +29,9 @@ import type { RunSourceRefusal } from "@flow-state-dev/workspace";
 import { filingProjectAddressOf, filingProjectOf, filingWorkstreamOf } from "../conversation-board/filing-session";
 import { filedProjectOf, claimedTask } from "../conversation-board/held-task";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
-import { projectAddressSchema, projectRowSchema, type ProjectAddress, type ProjectRow, type ProjectVisibility } from "./collections";
+import { projectAddressSchema, projectResourceStateSchema, type ProjectAddress, type ProjectResourceState, type ProjectVisibility } from "./collections";
 import { isMember } from "./membership-gate";
-import { projectRowsAt, workstreamsAt, type MissingCollection } from "./project-address";
+import { projectResourcesAt, workstreamsAt, type MissingCollection } from "./project-address";
 import { workstreamEntryKey } from "./workstream-collections";
 import { parseProjectRef, parseWorkstreamRef, type WorkstreamAddress } from "./workstream-ref";
 
@@ -71,7 +71,7 @@ export function namesProject(input: unknown): boolean {
 export interface RunProject {
   readonly kind: "found";
   readonly visibility: ProjectVisibility;
-  readonly project: ProjectRow;
+  readonly project: ProjectResourceState;
   /** The run's owner: the request's resolved user, allowed on the project. */
   readonly owner: string;
 }
@@ -186,11 +186,11 @@ async function fromWorkstream(ctx: LooseBlockContext, link: string): Promise<Run
   if ((await entries.getOptional(workstreamEntryKey(project.id, owner, id))) === undefined) {
     return refused("no-such-workstream", `"${owner}" has no workstream "${id}" in project "${project.id}".`);
   }
-  const stored = await projectRowsAt(ctx, project.visibility, notHeld).getOptional(project.id);
+  const stored = await projectResourcesAt(ctx, project.visibility, notHeld).getOptional(project.id);
   if (stored === undefined) {
     return refused("no-such-project", `workstream "${id}" is in project "${project.id}", which doesn't exist.`);
   }
-  const row = projectRowSchema.parse(stored.state);
+  const row = projectResourceStateSchema.parse(stored.state);
   // The same check the project path makes: an owner taken off the project loses its runs.
   if (!mayWorkOn(project.visibility, row, owner)) return notAMember(owner, project.id);
   return { kind: "found", visibility: project.visibility, project: row, owner };
@@ -203,18 +203,18 @@ async function fromWorkstream(ctx: LooseBlockContext, link: string): Promise<Run
  * one of a shared project's members, or a private project's owner.
  */
 async function fromProject(ctx: LooseBlockContext, address: ProjectAddress): Promise<RunProject | RunSourceRefusal> {
-  const stored = await projectRowsAt(ctx, address.visibility, notHeld).getOptional(address.id);
+  const stored = await projectResourcesAt(ctx, address.visibility, notHeld).getOptional(address.id);
   if (stored === undefined) {
     return refused("no-project", `there is no ${address.visibility} project "${address.id}" this run can work in.`);
   }
-  const project = projectRowSchema.parse(stored.state);
+  const project = projectResourceStateSchema.parse(stored.state);
   const owner = runOwnerOf(ctx);
   if (owner === undefined || !mayWorkOn(address.visibility, project, owner)) return notAMember(owner, address.id);
   return { kind: "found", visibility: address.visibility, project, owner };
 }
 
 /** Whether `owner` may work on `project`: one of a shared project's members, or a private project's owner. */
-function mayWorkOn(visibility: ProjectVisibility, project: ProjectRow, owner: string): boolean {
+function mayWorkOn(visibility: ProjectVisibility, project: ProjectResourceState, owner: string): boolean {
   return visibility === "private" ? project.ownerUserId === owner : isMember(project, owner);
 }
 

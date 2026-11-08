@@ -218,7 +218,7 @@ function collidingRefs(
         `"${at}" and "${sibling}" both claim the ref "${reference.ref}". A references/ file ` +
           `and a resources/ file at one level are two spellings of one document, and they do ` +
           `not behave the same — a reference is read from its file and nothing can write it, ` +
-          `while a resource seeds a row that then becomes the source. Keep one.`,
+          `while a resource seeds stored state that then becomes the source. Keep one.`,
       ),
     });
   }

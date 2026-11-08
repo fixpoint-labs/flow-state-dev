@@ -22,11 +22,11 @@ export {
   listedScreenSchema,
   subscriptionCursorSchema,
   subscriptionResources,
-  subscriptionRowSchema,
+  subscriptionResourceStateSchema,
   type ListedScreen,
   type ScreenKind,
   type SubscriptionCursor,
-  type SubscriptionRow
+  type SubscriptionResourceState
 } from "./rows";
 export { screenRefusal, screenVerdictSchema, screenVerdictsSchema, type ScreenVerdict } from "./screens";
 export {

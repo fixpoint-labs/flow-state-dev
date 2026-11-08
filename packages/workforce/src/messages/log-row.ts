@@ -44,7 +44,7 @@ export type MessageAddress = z.infer<typeof messageAddressSchema>;
 export const MESSAGE_STATUSES = ["unconfirmed", "delivered", "refused", "undeliverable"] as const;
 
 /** One message. */
-export const workerMessageRowSchema = z.object({
+export const workerMessageResourceStateSchema = z.object({
   id: z.string().min(1),
   /** The sending worker's id. */
   from: z.string().min(1),
@@ -134,5 +134,5 @@ export const workerMessageRowSchema = z.object({
   at: z.number()
 });
 
-export type WorkerMessageRow = z.infer<typeof workerMessageRowSchema>;
+export type WorkerMessageResourceState = z.infer<typeof workerMessageResourceStateSchema>;
 

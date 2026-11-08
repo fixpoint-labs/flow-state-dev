@@ -32,9 +32,9 @@ import {
   WORKER_ID_STATE_KEY,
   WORKSTREAM_STATE_KEY
 } from "../workers/keys";
-import { projectAddressSchema, projectRowSchema } from "./collections";
+import { projectAddressSchema, projectResourceStateSchema } from "./collections";
 import { isMember } from "./membership-gate";
-import { PROJECT_ROW_RESOURCES, projectRowsAt } from "./project-address";
+import { PROJECT_ROW_RESOURCES, projectResourcesAt } from "./project-address";
 import { projectRef } from "./workstream-ref";
 
 /**
@@ -101,13 +101,13 @@ export function defineSetWorkProjectBlock(otherSession: (sessionId: string) => s
       const owner = ctx.session.identity.userId;
       if (user === undefined || user !== owner) refuse("only the session's own user sets the project it works in.");
       const { visibility, id } = input.project;
-      const stored = await projectRowsAt(ctx, visibility).getOptional(id);
+      const stored = await projectResourcesAt(ctx, visibility).getOptional(id);
       if (stored === undefined) {
         refuse(
           visibility === "private" ? `you have no private project "${id}".` : `this organization has no project "${id}" you can read.`
         );
       }
-      const row = projectRowSchema.parse(stored.state);
+      const row = projectResourceStateSchema.parse(stored.state);
       const allowed = visibility === "private" ? row.ownerUserId === user : isMember(row, user);
       if (!allowed) refuse(`not-a-member: "${user}" is not a member of project "${id}", so this conversation can't work in it.`);
       await ctx.session.patchState({ [WORK_PROJECT_STATE_KEY]: projectRef(input.project) });

@@ -242,7 +242,7 @@ export async function openInventory(
   if (workers.length > 0 && options.workerWriter === undefined) {
     throw new Error(
       `openInventory was given ${workers.length} worker${workers.length === 1 ? "" : "s"} and no ` +
-        `\`workerWriter\`. A worker has no session, so its row has to be written from inside some ` +
+        `\`workerWriter\`. A worker has no session, so its resource has to be written from inside some ` +
         `flow, and there is nothing in the roster that says which. Pass ` +
         `\`workerWriter: { flowKind }\` naming a flow kind whose \`internal.actions\` spread ` +
         `\`inventoryWriterActions()\`.`
@@ -289,7 +289,7 @@ export async function openInventory(
     } catch (error) {
       // Collected, not thrown: the caller is the one that knows whether a
       // workerless inventory is worth refusing to boot over.
-      problems.push(`the worker rows could not be written — ${messageOf(error)}`);
+      problems.push(`the worker resources could not be written — ${messageOf(error)}`);
     }
   }
 

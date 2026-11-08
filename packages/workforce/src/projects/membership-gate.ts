@@ -13,7 +13,7 @@
  * caller's input.
  */
 
-import type { ProjectRow } from "./collections";
+import type { ProjectResourceState } from "./collections";
 
 /**
  * Whether `sessionOwner` is one of the project's members.
@@ -22,6 +22,6 @@ import type { ProjectRow } from "./collections";
  * @param sessionOwner The session's owner from the engine's session record:
  *   `ctx.session.identity.userId`. A session with no owner is never a member.
  */
-export function isMember(row: Pick<ProjectRow, "members">, sessionOwner: string | undefined): boolean {
+export function isMember(row: Pick<ProjectResourceState, "members">, sessionOwner: string | undefined): boolean {
   return sessionOwner !== undefined && sessionOwner.length > 0 && row.members.includes(sessionOwner);
 }

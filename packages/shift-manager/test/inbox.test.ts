@@ -20,8 +20,8 @@ import {
   conversationOfTopic,
   createLabReader,
   inboxSection,
-  toBoardRow,
-  type BoardRow,
+  toBoardTaskView,
+  type BoardTaskView,
   type LabSnapshot,
 } from "../src/lib/reads";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
@@ -47,16 +47,16 @@ async function labWithState() {
 type Loaded = Exclude<LabSnapshot, { refused: object } | { unreachable: object }>;
 
 /** Every board row the user's ledger holds, read through `sessionId`'s flow, not through the Lab reader. */
-async function boardRows(client: Client, sessionId: string): Promise<BoardRow[]> {
+async function boardRows(client: Client, sessionId: string): Promise<BoardTaskView[]> {
   const rows = await readEveryCollectionPage(client.resources, sessionId, CONVERSATION_BOARD_COLLECTION, { limit: 200 });
   return rows.map((row) => {
     const holder = conversationOfTopic(row.topic);
-    return toBoardRow(conversationBoardRef(holder), holder, row.topic, row.clientData);
+    return toBoardTaskView(conversationBoardRef(holder), holder, row.topic, row.clientData);
   });
 }
 
 /** The truth: every listed session's suspended requests, and the board's rows. */
-async function readTruth(client: Client, rows: BoardRow[]): Promise<InboxTruth> {
+async function readTruth(client: Client, rows: BoardTaskView[]): Promise<InboxTruth> {
   const sessions = await client.sessions.list({ include: "dispatch-runs" });
   const suspensions = [];
   for (const session of sessions) {

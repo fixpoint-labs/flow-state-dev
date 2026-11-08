@@ -30,7 +30,7 @@ import {
   subscriptionResources,
   subscriptionsOf,
   type IndexEntry,
-  type SubscriptionRow
+  type SubscriptionResourceState
 } from "./rows";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 
@@ -94,9 +94,9 @@ const tenantOf = (ctx: BlockContext): string | undefined => {
 };
 
 /** Whether `row` was made by the running session: its id, in its tenant. */
-const madeHere = (ctx: BlockContext, row: SubscriptionRow): boolean => row.sessionId === ctx.session.identity.id && row.tenantId === tenantOf(ctx);
+const madeHere = (ctx: BlockContext, row: SubscriptionResourceState): boolean => row.sessionId === ctx.session.identity.id && row.tenantId === tenantOf(ctx);
 
-const indexEntryOf = (row: SubscriptionRow): IndexEntry => ({
+const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   provider: row.provider,
   thread: row.thread,
   ...(row.kinds === undefined ? {} : { kinds: row.kinds }),
@@ -139,7 +139,7 @@ export async function subscribe(ctx: BlockContext, providers: readonly Subscript
   const id = await subscriptionIdOf(identity.id, provider.provider, thread, tenantId);
   const self = await provider.self?.(ctx);
   const taskId = state[TASK_ID_STATE_KEY];
-  const row: SubscriptionRow = {
+  const row: SubscriptionResourceState = {
     id,
     provider: provider.provider,
     thread,
