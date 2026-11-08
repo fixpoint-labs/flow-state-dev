@@ -12,8 +12,7 @@
  * reads `projectId` as nothing more than a key prefix into the collection the
  * answer names — it never looks the id up, and never learns what owns it.
  */
-import type { LooseBlockContext } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { ProjectedEntryState } from "./types";
 
 /**
@@ -98,4 +97,4 @@ export type RunSourceAnswer = RepoRunSource | FilesRunSource | RunSourceRefusal;
  * context reaches — stored, server-written data — and never from a row's
  * input, its metadata, or anything a model wrote.
  */
-export type RunSource = (ctx: LooseBlockContext) => RunSourceAnswer | Promise<RunSourceAnswer>;
+export type RunSource = (ctx: BlockContext) => RunSourceAnswer | Promise<RunSourceAnswer>;
