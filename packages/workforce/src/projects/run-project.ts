@@ -23,7 +23,6 @@
  * against its owner first), never a field of the task or a hand-over's payload.
  */
 
-import type { LooseBlockContext } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { RunSourceRefusal } from "@flow-state-dev/workspace";
 import { filingProjectAddressOf, filingProjectOf, filingWorkstreamOf } from "../conversation-board/filing-session";
@@ -83,12 +82,8 @@ export interface RunProject {
  *   `projectWorkspaceCapability` installs.
  * @returns The project, its visibility and the run's owner, or a refusal.
  */
-export async function runProjectOf(ctx: LooseBlockContext): Promise<RunProject | RunSourceRefusal> {
-  // The run source hands a `LooseBlockContext` (`@flow-state-dev/workspace`'s
-  // `RunSource`), narrower than the block context it is at runtime. Retyping
-  // `RunSource` is a published change of its own.
-  // eslint-disable-next-line no-restricted-syntax
-  const held = (await claimedTask(ctx as unknown as BlockContext))?.row;
+export async function runProjectOf(ctx: BlockContext): Promise<RunProject | RunSourceRefusal> {
+  const held = (await claimedTask(ctx))?.row;
   const named = namedProjectOf(held);
   if (named.kind === "malformed") return named.refusal;
   // The session's project address is the one the board writes on a task it
@@ -163,12 +158,12 @@ function otherProject(named: NamedProject, own: ProjectAddress | undefined): Run
 }
 
 /** The bare user a run belongs to, not `identity.id`: that is the user record's storage key, which carries the org. */
-function runOwnerOf(ctx: LooseBlockContext): string | undefined {
+function runOwnerOf(ctx: BlockContext): string | undefined {
   return ctx.user?.identity?.userId;
 }
 
 /** A run for the workstream its session leads. */
-async function fromWorkstream(ctx: LooseBlockContext, link: string): Promise<RunProject | RunSourceRefusal> {
+async function fromWorkstream(ctx: BlockContext, link: string): Promise<RunProject | RunSourceRefusal> {
   const address: WorkstreamAddress | undefined = parseWorkstreamRef(link);
   const owner = ctx.session.identity.userId;
   if (address === undefined || owner === undefined || owner.length === 0) {
@@ -202,7 +197,7 @@ async function fromWorkstream(ctx: LooseBlockContext, link: string): Promise<Run
  * private project in the run owner's own scope), and the run's owner must be
  * one of a shared project's members, or a private project's owner.
  */
-async function fromProject(ctx: LooseBlockContext, address: ProjectAddress): Promise<RunProject | RunSourceRefusal> {
+async function fromProject(ctx: BlockContext, address: ProjectAddress): Promise<RunProject | RunSourceRefusal> {
   const stored = await projectResourcesAt(ctx, address.visibility, notHeld).getOptional(address.id);
   if (stored === undefined) {
     return refused("no-project", `there is no ${address.visibility} project "${address.id}" this run can work in.`);
