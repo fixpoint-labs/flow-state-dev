@@ -2,9 +2,10 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-The calls above any single issue, and what each locks in for the six children and the closure.
-D2, Q1 and Q2 are the sign-off. D1 was the owner's call before the draft and is a card because it
-is the product's shape. Q1 and Q2 are open and the owner's.
+The calls above any single issue, and what each locks in for the three children and the closure.
+D1 and D2 merged in #4873 and stand. Q1, Q2 and Q3 are open and the owner's, and are the sign-off.
+The split of the merged set into two epics is the owner's decision of 2026-11-08, recorded in
+[The split](#the-split).
 
 ## The tree
 
@@ -18,6 +19,8 @@ flowchart TD
   Q1 -.->|"recommended against"| X3["on whatever the bind"]
   E --> Q2["Q2 · open · Coordinators"]
   Q2 -.->|"recommended against"| X4["Workstreams or Project Sessions"]
+  E --> Q3["Q3 · open · the working line as a quick fix"]
+  Q3 -.->|"recommended against"| X5["a child with a spec"]
 ```
 
 <a name="d1"></a>
@@ -105,7 +108,9 @@ chose that on purpose, since a workstream needs a project and a lead and caps a 
 **The trade-off.** After the rename, *project* is gone from this lab's words, and *Project
 Sessions* brings it back beside *Repository* with a third meaning. *Workstreams* promises an entry
 the lab does not make, and clashes with the palette. *Coordinators* clashes with neither, and costs
-a line of help for a newcomer. Any of them is one label to change; no stored data names it.
+a line of help for a newcomer. Any of them is one label to change; no stored data names it. The
+sibling epic ([FIX-2616](https://linear.app/fixpoint-labs/issue/FIX-2616)) shows the same word in
+its plan-mode and harness copy; both epics say *coordinator session* until this is decided.
 
 **My recommendation: *Coordinators*.** It names what the lead does and clashes with nothing on
 either app's screen.
@@ -119,52 +124,115 @@ real workstreams, or that word.
 
 It comes down to the neighbour word: *Workstreams* has a palette group and *Project* a third meaning.
 
+<a name="q3"></a>
+## Q3 · Open · Does the working line leave this epic and ship as a quick fix, with no spec?
+
+**In plain terms.** FIX-2595 keeps the "Claude is working" line at the bottom of the
+conversation. The analysis found its fix is about five lines beside a sticky pattern the lab
+already has. A child of this epic gets its own spec and a spec review before any code. A quick
+fix gets a ticket and a pull request.
+
+**The options.** *Quick fix:* FIX-2595 leaves this epic, is fixed through `adhoc-quick-fix`, and
+still blocks the closure, so leg b sees it. *Stays a child:* the spec route it is on now.
+
+**The trade-off.** A quick fix saves a spec and its review for five lines. It also drops the
+direction gate: the pull request review is the only gate, and [ER-8](#who-owns-what) (the line
+reads the turn state the thread already reads: no new read, poll or store) is checked there and
+at the closure, not at a spec review. Either way leg b still looks for the line in view.
+
+**My recommendation: a quick fix.** The fix is small and sits beside a pattern the lab has, and
+ER-8 and leg b still check it.
+
+**What would change my mind.** The fix turning out to need a new read of turn state. Then it is a
+child with a spec again.
+
+**What being wrong costs.** Low. A quick fix that grows comes back as a child with the spec it
+skipped; a spec for five lines costs one review. If yes, a short amendment drops FIX-2595 from
+the set table, and its Linear parent is cleared with its block on the closure kept.
+
+![Q3: a quick fix with no spec, recommended, beside staying a child with a spec. Decides it: what five lines need. Price: the pull request review is the only gate. Flips if the fix needs a new read of turn state](figures/open-working-line.svg)
+
+It comes down to size: five lines do not earn a spec, and the closure's leg b still checks them.
+
 ## Who owns what
 
-![Who owns what: a matrix of eleven rules by FIX-2593, 2597, 2594, 2595, 2598, 2599, the closure and the coordinator, each rule with exactly one owns cell](figures/ownership.svg)
+![Who owns what: a matrix of nine rules by FIX-2593, FIX-2594, FIX-2595, the closure and the coordinator, each rule with exactly one owns cell](figures/ownership.svg)
 
 Every rule has one owner. Read a row to see where it is decided and where it is only used.
 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | **One list of admitted repositories**, kept by the host and persisted in its root, as the fetch pins are; `CLAUDE_CODE_STYLE_REPOSITORIES` seeds the same list. A project row only points at one. Nothing is admitted by being named in a row, because anyone can write one (BP-031). The lab keeps no second list | FIX-2593 | FIX-2594's spec review; the closure's restart leg |
+| ER-1 | **One list of admitted repositories**, kept by the host and persisted in its root, as the fetch pins are; `CLAUDE_CODE_STYLE_REPOSITORIES` seeds the same list, or, when it is unset, the repository the lab is started in. A project resource only points at one. Nothing is admitted by being named in a project resource, because anyone can write one (BP-031). The lab keeps no second list | FIX-2593 | FIX-2594's spec review; the closure's restart leg |
 | ER-2 | A repository added later passes every check one named at start passes, in the same words. Settings asks the host's `checkRepository` and copies none | FIX-2593 | FIX-2594's spec review; the closure |
 | ER-3 | Removal is refused while git lists any worktree of the repository under the host's root, a run waiting for review included, since it still needs `land`. The refusal says how many. A worktree git lists whose directory is gone is pruned first and not counted, so a crashed run cannot block removal for good. No worktree is made in a repository between the check and the unregistering, and a repository being removed takes no new run: one exclusion covers both, whose shape is FIX-2593's. No retire state; a restart changes nothing. One removal path stays (FIX-2369 ER-5) | FIX-2593 | The closure's leg a |
 | ER-4 | Admitting a repository is decided by the host's own construction and the transport, never by a request field (BP-031). **The package:** registration refuses unless the host was built to allow it, default off, so no host app gains the door by upgrading. **The lab:** builds the host to allow it only while bound to loopback, or when the operator turned it on ([Q1](#q1)), read from the bind the process started with | FIX-2593 | FIX-2594's spec review, which sets it; the lab's README |
-| ER-5 | The lab says *repository*. `project` survives only where it names the workforce row or a package call (`listProjects`, `setWorkProject`, `readProjectSource`), inside the adapter and flow files. *Workspace* is never the person's word for it | FIX-2594 | Each lab child's review; the closure's sweep |
+| ER-5 | The lab says *repository*. `project` survives only where it names the workforce resource or a package call (`listProjects`, `setWorkProject`, `readProjectSource`), inside the adapter and flow files. *Workspace* is never the person's word for it. The sibling epic's lab children obey this and do not own it | FIX-2594 | Each lab child's review, the sibling's included; the closure's sweep |
 | ER-6 | No default repository; a session's type is read from its main worker, never stored (FIX-2152 ER-8) | FIX-2594 | The closure's leg b |
 | ER-7 | Settings' add keeps FIX-2403: the check as the field is left, the *what happens to your repo* line, Create off while the server says no, the server's `repository-unusable` refusal | FIX-2594 | `checks-the-repository-first`, re-run at the closure |
-| ER-8 | The working line reads the turn state the thread already reads: no new read, poll or store, no repository code | FIX-2595 | FIX-2595's spec review; the closure's leg b |
-| ER-9 | What a harness offers is asked of its package, never a list the lab keeps. Models are FIX-2458's. Plan mode and the model-choice shape lifted from Kitchen Sink are FIX-2597's, reconciled with FIX-2369 ER-1 | FIX-2597 | FIX-2598's and FIX-2599's spec review; the closure's legs c and d |
-| ER-10 | The person's harness, model and plan choice is stored once and read by the harness slot. The message text is not the carrier, and `Coder:` goes or is demoted. Where it lives (task input, session state or a harness-manager feed) is FIX-2598's call, and a package change is a child that blocks it. Amends FIX-2152 ER-9 and FIX-2157 D5 | FIX-2598 | FIX-2599's spec review; the closure's legs c and d |
-| ER-11 | Consumed issues keep their parents: FIX-2402 under FIX-2430, FIX-2251 under FIX-2440, FIX-2585 under FIX-2369, FIX-2458 under FIX-2447. FIX-2402, 2552, 2340, 2403, 2421 and 2152 are `relates-to` only | The coordinator | Each refresh |
+| ER-8 | The working line reads the turn state the thread already reads: no new read, poll or store, no repository code | FIX-2595 | FIX-2595's spec review (or its pull request review, if [Q3](#q3) is yes); the closure's leg b |
+| ER-9 | Consumed issues keep their parents: FIX-2402 under FIX-2430, FIX-2251 under FIX-2440. FIX-2402, 2552, 2340, 2403, 2421 and 2152 are `relates-to` only, and so is the sibling epic FIX-2616 | The coordinator | Each refresh |
 
 ## Coordination seams
+
+Seams between this epic's own issues. The seams with the sibling epic's issues are in
+[Between the two epics](#between-the-two-epics).
 
 | Seam | Between | Rule |
 |---|---|---|
 | The registration call's shape and its persisted list | FIX-2593 and FIX-2594 | FIX-2593's spec merges first; FIX-2594 is written against its names, and its build starts after FIX-2593's merges. A different shape is FIX-2593's to settle, never a lab workaround |
-| `Thread.tsx`, `Entry.tsx`, the feed | FIX-2594 (header, no-repository note), FIX-2595 (end of the feed), FIX-2599 (plan card) | Different lines. FIX-2595 merges first; the others rebase |
-| `Composer.tsx`, the harness flow, coder workers, `picks-the-coder` | FIX-2598 and FIX-2599 (and FIX-2523, outside) | FIX-2598 first; FIX-2599 rebases. FIX-2523 rebases whichever lands second |
-| The dialog, `adapter.ts`, `test/fake-lab.ts` | FIX-2594, FIX-2598 | Each adds its own rows and verbs. A choice FIX-2598 puts in the dialog lands after FIX-2594 |
+| `Thread.tsx`, `Entry.tsx`, the feed | FIX-2594 (header, no-repository note), FIX-2595 (end of the feed) | Different lines. FIX-2595 merges first; FIX-2594 rebases |
 | `SessionsList.tsx`, `adapter.ts` | FIX-2594 and FIX-2552 (outside) | Second to merge rebases. FIX-2594 builds no live join; FIX-2552 re-adds no switch |
-| `fsdev.config.mts`, `projects.mts`, the README, the lab's goal scripts | FIX-2594, FIX-2598, FIX-2599 | Each edits its own part, and the scripts that drive its own surface. FIX-2152 ER-1's caps hold: the Settings glue goes in `projects.mts` (32 lines), not the config (185 of 300) |
-| Kitchen Sink's model picker | FIX-2597 and FIX-2458 (outside) | FIX-2458 deletes the hand-kept Cursor list; FIX-2597 lifts the choice shape the lab would otherwise copy, and deletes Kitchen Sink's copy in its PR (FIX-2369 ER-3) |
 
-**Pairs that share files:** FIX-2594 with FIX-2595 and FIX-2599 (thread and feed); FIX-2598 with
-FIX-2599 (composer, flow, workers, goals); FIX-2594 with FIX-2598 (dialog, adapter, config,
-README). FIX-2593, FIX-2597 and FIX-2595 start together.
+**Pairs that share files:** FIX-2594 with FIX-2595 (thread and feed). FIX-2593 and FIX-2595 start
+together.
+
+**A cap note, not a seam.** FIX-2152 ER-1 caps a lab's configuration at 300 lines and its small
+flows at three, each under 200. It counts `fsdev.config.mts` (85 lines), `host.mts` (158) and the
+`workforce/**` Markdown (157) as configuration: about 400 on 2026-11-08, where the merged text
+counted `fsdev.config.mts` alone (185). `workforce/flows/harness-thread.mts` is 346 lines, and the
+three flows are `harness-thread`, `pins` and `projects` (32). The lab has no inventory script today.
+FIX-2594's spec re-counts, keeps the Settings glue in `projects.mts` rather than the config, and
+settles the cap through ER-1's own route if it must move.
+
+## Between the two epics
+
+This epic and [FIX-2616](https://linear.app/fixpoint-labs/issue/FIX-2616) share lab files and no
+decision. **The rule: this epic's lab issues land first on the shared surfaces, and the sibling's
+two lab issues rebase on them. The second issue to merge on a surface rebases; nothing is
+blocked in Linear.**
+
+| Surface | This epic | The sibling's | Order |
+|---|---|---|---|
+| The new-session dialog, `adapter.ts`, `test/fake-lab.ts` | FIX-2594 | FIX-2598 (a choice it puts in the dialog) | FIX-2594 first. Each adds its own rows and verbs |
+| `Thread.tsx`, `Entry.tsx`, the feed | FIX-2594, FIX-2595 | FIX-2599 (the plan card) | FIX-2595, then FIX-2594, then FIX-2599. Different lines |
+| `fsdev.config.mts`, `host.mts`, `projects.mts`, the README | FIX-2594 | FIX-2598, FIX-2599 | Each edits its own part. FIX-2594 rewrites the README for the sidebar and Settings; the sibling's issues update its *Coder* and plan sections, after FIX-2594 where one section moves |
+| `Composer.tsx`, the harness flow, the coder workers | none | FIX-2598, FIX-2599 | The sibling's alone |
+| The lab's goal scripts: `picks-the-coder` and the helper `lab.mts` (`openSessionOn`), which click the *Projects* tab and the *Choose a project* picker | FIX-2594 | FIX-2598, FIX-2599 | FIX-2594 moves their session-start steps to the dialog first and keeps them green; the sibling's issues then rewrite the chip legs |
+
+**Why a stated order and not a Linear block.** The overlap is the same files, not a behaviour one
+issue needs from the other. The harness choice lives in the composer and needs nothing from
+Settings or the dialog. A block from FIX-2594 to FIX-2598 would also chain the sibling's lab
+leg to FIX-2593, a package issue it does not need, and FIX-2598 already waits on FIX-2597. If
+FIX-2598's own spec puts a choice in the dialog, that is a real dependency; the coordinator wires
+the block then. **Neither closure waits on the other.** This closure uses the scripted coder.
+The sibling's closure uses the repository the environment variable names, which [ER-1](#who-owns-what)
+keeps as a seed, so it needs no Settings. A closure script that picks a coder follows
+whichever chip is on `main` that day.
+
+Two things bind both epics. [ER-5](#who-owns-what) (*repository*, not *project*) is this epic's rule
+and the sibling's lab children obey it. [Q2](#q2) holds the coordinator group's name for both.
 
 ## Decided in review, recorded so no child reopens them
 
 - **Naming (owner).** *Repository*, not *workspace*: `@flow-state-dev/workspace` uses *workspace*
-  for a run's checkout folder and calls the registered thing a repository. The project row stays storage.
+  for a run's checkout folder and calls the registered thing a repository. The project resource
+  stays storage.
 - **Settings owns repositories (owner):** list, add, check, remove, the harness chips and the
   first-run copy. The dialog's list ends with *Add repository…*, which opens Settings' add flow.
 - **Remove unregisters** the repository, refused while a worktree of it exists ([ER-3](#who-owns-what)).
-  The project row stays, shown as not admitted. No `setRepository(null)`, no workforce change;
+  The project resource stays, shown as not admitted. No `setRepository(null)`, no workforce change;
   workforce has no delete verb and gains none.
-- **Rows made before this epic are not admitted by it.** Their repository stays a copy until the
+- **Projects made before this epic are not admitted by it.** Their repository stays a copy until the
   person registers it in Settings. A repository in the environment variable is admitted at start,
   as it is a worktree today (BP-030).
 - **The coordinator group's name is not decided.** [Q2](#q2) holds it. Every document says *work
@@ -177,54 +245,69 @@ README). FIX-2593, FIX-2597 and FIX-2595 start together.
 - **The gate sits in the package, the decision in the lab (review).** A published call that grants
   operator access should not depend on every host app remembering to gate it, so the option is the
   package's and defaults off; the lab only turns it on.
-- **Model lists** are FIX-2458's. FIX-2598 settles per-session or not, the default and the worker
-  ids, inside [ER-10](#who-owns-what).
-- **Plan mode starts from a reproduction**, from FIX-2585, and files package support as a child
-  that blocks it. Claude Code and Cursor have a plan mode; Codex has none. The sign-off composes an
-  existing hold: the tool-approval hold on `ExitPlanMode`, or the review stop.
 
-## Split line
+## The split
 
-Six issues and a closure over two outcomes. **Repositories and one sidebar:** FIX-2593, FIX-2594,
-FIX-2595. **Harness, model and plan mode:** FIX-2597, FIX-2598, FIX-2599. They share lab files but
-no decision. A split gives each half its own closure with the matching legs. Recommended: every
-input to the harness half is outside the set (FIX-2458 is another project's epic, FIX-2585 is
-unscheduled), and FIX-2599's reproduction takes as long as it takes, so the repository half,
-buildable now, would wait on it. Short of a split, the closure reports each leg by itself, so leg d's need for a signed-in Claude Code
-never hides a pass of the others. Not done: the owner placed both in this set; a second review
-recommended the split, and FIX-2595 as a quick fix, and neither is decided here.
+**Decided by the owner in session on 2026-11-08.** The merged set (#4873, merge commit
+`5ff99605fc17dba2bfd76c832fd8ef92dab5951a`) held six issues and a closure over two outcomes, and
+its *Split line* recommended a split without deciding one. **Repositories and one sidebar:**
+FIX-2593, FIX-2594, FIX-2595, which stay here. **Harness, model and plan mode:** FIX-2597,
+FIX-2598, FIX-2599, which went to [FIX-2616](https://linear.app/fixpoint-labs/issue/FIX-2616).
+The reasons the merged text gave: every input to the harness half is outside the set (FIX-2458
+belonged to another epic and is Done as of 2026-11-08; FIX-2585 is unscheduled), and FIX-2599's
+reproduction takes as long as it takes, so the repository half, buildable now, would wait on it.
+A split gives each half its own closure with the matching legs, so a leg that needs a signed-in
+Claude Code never holds the other. They share lab files but no decision.
+
+| What | Where it went |
+|---|---|
+| Children FIX-2597, FIX-2598, FIX-2599 | Parent changed to FIX-2616 in Linear; each stays in Backlog. FIX-2598 keeps its FIX-2458 block |
+| The closure | FIX-2596 stays here, blocked by FIX-2593, FIX-2594, FIX-2595 only. FIX-2617 is the sibling's, blocked by its three |
+| Rules | The merged ER-9 and ER-10 are FIX-2616's ER-1 and ER-2. The merged ER-11 is this epic's ER-9 and FIX-2616's ER-3. ER-1 to ER-8 keep their numbers |
+| Legs | The merged legs a and b stay a and b. The merged c and d are FIX-2617's a and b |
+| Figures | The box and the ownership matrix are redrawn for each epic. D1, D2, Q1 and Q2 and their figures stay here |
+| Open holds | Q1 and Q2 stay here, and Q2 also shows in the sibling's copy. **Q3 is new:** the merged text said a second review recommended FIX-2595 as a quick fix and left it undecided |
+
+The merged text in #4873 stays the record of the original direction. No child changed status,
+no issue spec was written and nothing was dispatched by the split.
 
 ## What the end-state POC showed
 
-None built. The division is three chains on separate surfaces; a POC would show only a package
-call's shape, which FIX-2593's and FIX-2597's specs own.
+None built. The division is two chains on separate surfaces; a POC would show only a package
+call's shape, which FIX-2593's spec owns.
 
 ## Analysis
 
-2026-11-06 · watermark 2026-11-06 (the epic filed) · **Right approach, with folds.** An Opus
-analyst ran `reuse-review` and the seven objectives, with the `adhd` frames inline.
+Inherited from the merged set, 2026-11-06 · watermark 2026-11-06 (the epic filed). An Opus
+analyst ran `reuse-review` and the seven objectives, with the `adhd` frames inline. The
+points that are this epic's:
 
-1. **Reuse** — registration **extends** `localRepositories` and its pins. Models are
-   **FIX-2458's**: FIX-2597 shrank, and FIX-2598 waits for it.
+1. **Reuse** — registration **extends** `localRepositories` and its pins.
 2. **Prior art** — Conductor: an app list of repositories, one worktree per workspace, the
    user's own permissions (D2). VS Code Workspace Trust: trust granted in the UI, which fed Q1.
 3. **Other shapes** — a provider callback loses, since `list`, `land` and `remove` run with no
-   request context. Registering at app start restores the restart. Strongest other division: two
-   epics ([Split line](#split-line)).
-4. **New factors** — FIX-2458 and FIX-2585 are named and consumed. FIX-2421 is done, Kitchen Sink's.
-5. **Necessity** — right size, slightly over: FIX-2595 could be a quick fix.
-6. **Ergonomics** — the start option and the runtime call are one list ([ER-1](#who-owns-what)).
-7. **Concerns** — three folded: ER-3 was unsafe across a restart and a review wait; admission
-   derived from rows trusts whatever any caller wrote, so the host keeps the list; the chosen
-   model had no path to a run ([ER-10](#who-owns-what)).
+   request context. Registering at app start restores the restart.
+4. **Necessity** — right size, slightly over: FIX-2595 could be a quick fix ([Q3](#q3)).
+5. **Ergonomics** — the start option and the runtime call are one list ([ER-1](#who-owns-what)).
+6. **Concerns** — ER-3 was unsafe across a restart and a review wait; admission derived from
+   project resources trusts whatever any caller wrote, so the host keeps the list.
+
+Split pass, 2026-11-08 · an Opus analyst ran `analysis` and `reuse-review` on both drafted sets.
+**Right approach, with folds.** Nothing is dropped or duplicated against the merged text, and the
+code supports a stated merge order with no Linear block. Folded: FIX-2594 is a party to the goal
+scripts `picks-the-coder` and `lab.mts`, which still click the *Projects* tab; the config count
+follows ER-1's own definition (about 400 of 300, `host.mts` and the workforce Markdown counted);
+ER-1's seed names the started-in default; the sibling edge reaches FIX-2595 on the graph; a stale
+*row* in the Q2 figure. Recorded: no open item.
 
 ## How it got here
 
 - **Drafted (Nov 6)** — repositories and one sidebar from the owner's decisions; the working line added.
 - **Name held (Nov 6)** — the coordinator group's name made open; Q2 added.
 - **Scope grew (Nov 6)** — harness and model, plan mode and a harness-package child added; the split line recorded.
-- **Analysis (Nov 6)** — the host keeps the list of admitted repositories; removal is refused while a worktree exists; FIX-2597 shrank behind FIX-2458; the choice's carrier became ER-10; Q1 follows the bind; Q2 gained *Coordinators*.
+- **Analysis (Nov 6)** — the host keeps the list of admitted repositories; removal is refused while a worktree exists; Q1 follows the bind; Q2 gained *Coordinators*.
+- **Review (Nov 6)** — ER-4's owner moved to FIX-2593, the package refusing unless built to allow it; ER-3 prunes a crashed run's worktree and excludes a concurrent add; the closure reports each leg by itself; the debt read slightly up.
+- **Merged (Nov 7)** — #4873 merged by the owner.
+- **Split (Nov 8)** — the owner split the set; this epic kept the repository leg, the harness leg went to FIX-2616; Q3 added; the config count corrected against ER-1.
 
-- **Review (Nov 6)** — ER-4's owner moved to FIX-2593, the package refusing unless built to allow it; ER-3 prunes a crashed run's worktree and excludes a concurrent add; the closure reports each leg by itself; the debt read slightly up; FIX-2597's graph edge and figure no longer carry model lists.
-
-**Open: 2.** Q1 and Q2.
+**Open: 3.** Q1, Q2 and Q3.
