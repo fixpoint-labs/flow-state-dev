@@ -58,11 +58,13 @@ cursor field, **not** FIX-2537 Q-A's verdict memo (epic D4).
 
 | | |
 |---|---|
-| **Instead of** | Only a model's `subscribe` call, all at one cadence |
-| **Because** | At startup each entry calls `subscribe`'s write, keyed `cfg_<hash of flow kind and entry id>`, only when missing or changed, so a restart adds no row. A `cfg_` row whose entry left config is ended by its next fire through `unsubscribe`'s write (reason `config_removed`), unpolled. `sub_` rows are never touched |
-| **The owner (EM call)** | The entry names `owner: { userId, orgId }` and a `worker`, as server config (BP-031). The row lands in that user's shared cell (`resolveSharedUserCellKey`), checked by `fireOwnerRunThrough` like any other, polling on their credentials (D1). The seed runs as the owner, so `canRead` is `subscribe`'s. It hears in the owner's session with that worker (`deriveWorkerSessionId`); no tenant |
-| **Cadence** | `everyMinutes` on `subscribe` or an entry: 5, 10, 15, 20, 30 or 60, else throws; `poll.everyMinutes` is the default |
-| **Locks in** | A `cfg_` row its thread or session ended stays ended while its entry is unchanged. ER-5 holds: the seed and the fire call `subscribe`'s and `unsubscribe`'s writes, never the row directly |
+| **Instead of** | Only a model's `saveRoutine` call, at one cadence |
+| **Because** | At startup each entry calls `subscribe`'s write, keyed `cfg_<hash of flow kind and entry id>`, only when missing or changed: a restart adds no row. A `cfg_` row whose entry left config ends at its next fire through `unsubscribe`'s write (reason `config_removed`), unpolled. `sub_` rows are untouched |
+| **The owner (EM call)** | Each entry names `owner: { userId, orgId }` and a `worker`, as server config (BP-031). The row lands in that user's shared cell (`resolveSharedUserCellKey`), checked by `fireOwnerRunThrough`, polling on their credentials (D1). The seed runs as the owner: `canRead` is `subscribe`'s |
+| **Cadence** | `everyMinutes` on `subscribe` or an entry: 5, 10, 15, 20, 30 or 60, else throws; default `poll.everyMinutes` |
+| **Locks in** | A `cfg_` row its thread or session ended stays ended while its entry is unchanged. ER-5 holds. Per FIX-2614, the seed targets `{ sessionId, worker, taskId? }` explicitly (`deriveWorkerSessionId`), reads the row, merges only config-owned fields, never re-enabling a paused routine |
+
+**Seam:** `routines.declared` is FIX-2614's; the polled seed and cadence are this issue's.
 
 It comes down to a redeploy: a seed keyed by config id writes nothing new.
 

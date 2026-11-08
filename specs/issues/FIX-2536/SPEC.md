@@ -10,7 +10,7 @@
 | **follows a thread both pushed and polled** | n/a | Each event once per session |
 | **follows a PR whose polled delivery was lost** | n/a | The next poll fetches it; it lands once ([D2](DECISIONS.md#d2)) |
 | **follows a private repo another user follows** | n/a | A poll on your credentials reaches only your sessions ([D1](DECISIONS.md#d1)) |
-| **pins a repo in the flow's config** | Only a model's `subscribe` call | It polls from the first boot; a redeploy adds no row ([D3](DECISIONS.md#d3)) |
+| **pins a repo in the flow's config** | Only a model's `saveRoutine` call | It polls from the first boot; a redeploy adds no row ([D3](DECISIONS.md#d3)) |
 | **pays for the GitHub calls** | n/a | Quiet threads cost `304`s; only due rows fire; a quiet repo can poll hourly |
 
 Inputs: the epic's ([FIX-2471](../../epics/FIX-2471/SPEC.md)) D10 and ER-4; FIX-2534's
@@ -63,12 +63,12 @@ flowchart LR
  defineSubscriptionServiceFlow({
    kind: "github-service", provider: github, installation,
 +  poll: { everyMinutes: 5, index: createSQLiteScheduleIndex(db) },  // the default; off the list throws
-+  subscriptions: [{ id: "api-repo", owner: { userId, orgId }, worker: "triage",
-+    thread: "github:acme/api", everyMinutes: 60, interest: "new issues" }],  // D3
  })
++hireWorkforce(installation, { routines: { declared: [{ id: "api-repo", owner: { userId, orgId }, worker: "triage",
++  trigger: { event: { provider: "github", thread: "github:acme/api", everyMinutes: 60, interest: "new issues" } } }] } })  // D3; FIX-2614's surface
 
  // a worker's call
-+subscribe({ provider: "github", thread, interest, everyMinutes: 15 })  // 5, 10, 15, 20, 30, 60
++saveRoutine({ trigger: { event: { provider: "github", thread, interest, everyMinutes: 15 } } })  // 5, 10, 15, 20, 30, 60
 
  // the provider (FIX-2535 builds GitHub's normalize; this issue its poll)
  const github: SubscriptionProvider = {
@@ -83,7 +83,7 @@ flowchart LR
 Shapes are illustrations; [D2](DECISIONS.md#d2) locks the cursor fields, [D3](DECISIONS.md#d3) the seed's owner and keys.
 
 **Seam with FIX-2614 (Routines):** it owns *routine*, the user-facing name, list and tools, and
-generalises the config surface over clock and event triggers; this issue keeps *subscription* and
+`routines.declared`, the config surface over clock and event triggers; this issue keeps *subscription* and
 owns the polled seed and cadence.
 
 **Docs:** `docs/architecture/scheduled-actions.md` in the change; the workforce README and
