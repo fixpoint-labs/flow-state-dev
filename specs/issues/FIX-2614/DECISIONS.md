@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-One decision and two owner forks are the sign-off. The owner's 2026-11-08 direction is an input.
+One decision and two owner forks are the sign-off.
 
 ## The tree
 
@@ -23,14 +23,14 @@ Solid edges are what you sign; dashed edges lost, for the reason on the label.
 | | |
 |---|---|
 | **Instead of** | A routine collection that both triggers move into · a merged list read, with today's verbs kept |
-| **Because** | Epic ER-5 makes `subscribe` and `unsubscribe` a subscription's only writers; FIX-2536 hangs its poll row on them. So pause is `unsubscribe` with reason `paused` (out of the index, poll row ended), and resume is `subscribe` again from the row, re-checking read access as the user (ER-4). A clock routine pauses on its `enabled`. A schedule's key is in its dispatch id (`schedules/keys.ts`): a new store migrates live fires |
+| **Because** | ER-5 makes `subscribe` and `unsubscribe` a subscription's only writers, and FIX-2536's poll row hangs on them. Pause is `unsubscribe` with reason `paused`; resume is `subscribe` from the row, re-checking read access (ER-4). A clock routine pauses on `enabled`. A schedule's key is in its dispatch id: a new store migrates live fires |
 | **Locks in** | Four public verbs and a `trigger: { clock } \| { event }` input. A routine id names its trigger (`clock:<key>`, `event:<subscription id>`). A third trigger is a third collection under the same verbs |
 
 ![D1: two collections, chosen, beside a routine collection; decided by the event trigger's writers](figures/d1-two-collections.svg)
 
 It comes down to ER-5's writers: a new store adds a third, and migrates every live fire.
 
-**What would change my mind:** a third trigger that fits neither collection, with a fourth on the way.
+**What would change my mind:** a third trigger that fits neither collection.
 
 <a name="open"></a>
 ## Open
@@ -74,28 +74,30 @@ It comes down to an app's fix: an edited copy never gets it.
 
 - **Names (EM call, 2026-11-08).** `listRoutines`, `saveRoutine`, `pauseRoutine` (one `paused`
   flag: resume differs only by it), `deleteRoutine`; `routineTools`; `LIST_ROUTINES_ACTION`,
-  `listedRoutineSchema`. The implementation PR adds a *Routine* glossary entry retiring the old
-  names and *recurring work* / *scheduled work*. *Schedule* stays the clock's word,
-  *subscription* the event's.
+  `listedRoutineSchema`. A *Routine* glossary entry retires the old names; *schedule* and
+  *subscription* stay the triggers' words.
 - **No aliases (BP-034, as FIX-2479).** Stored keys, ids and fields stay (BP-030). Tested: a
   session whose history calls `subscribe` still takes a turn.
 - **The list lives on the roster flow,** which keeps schedules and now declares
   `subscriptionResources`. Paused routines list; ended ones don't; FIX-2536's poll rows never do.
-  A roster client must not read the org-scoped thread index, which holds other users'
-  entries, through the collection routes: a test.
-- **Reach.** Roster actions: all the user's routines. A worker's tools: its own (`not_yours`).
-- **A person's event routine** names `worker`; the user's conversation with it hears, derived on
-  the server, never from input (BP-031).
-- **Endings read paused as live:** no resume for a failed task or closed thread.
+  Tested: a roster client can't read the org-scoped thread index.
+- **Reach.** People: all their routines. A worker: its own (`not_yours`).
+- **`subscribe` takes a target (EM call, 2026-11-08; Gitar).** `subscribe(ctx, providers,
+  input, target?)`, `target = { sessionId, worker, taskId? }`. None: `ctx.session`, as today.
+  The roster verbs, a person's event routine, resume and the seed pass one: derived on the server
+  (`deriveWorkerSessionId`, BP-031), or copied from the stored row on resume, so `taskId`
+  survives. Still one of ER-5's two writers.
 - **One config surface (EM call, 2026-11-08):** `routines.declared`, owned here. An entry with
   an `owner` is seeded at startup for that owner (FIX-2536 D3 owns the mechanics); one without
   is seeded for each user when their roster session opens, so no roster, no seed. One key for
   both: FIX-2536's `cfg_<hash of flow kind and entry id>`, written only when missing or changed.
-  Both write through `saveRoutine`'s writers (ER-5); an entry removed from config is ended at
-  its next fire.
+  Both write through ER-5's writers; a removed entry ends at its next fire.
+  **The seed keeps a pause (EM call, 2026-11-08; Gitar):** it reads the stored row first; a
+  paused event routine gets only the config-owned fields, through `subscribe`'s write with
+  `enabled: false` and no index entry; a clock row keeps its stored `enabled`.
 - **Cadence (FIX-2536 D3):** `everyMinutes` (5, 10, 15, 20, 30, 60, checked in code) on an
   event `saveRoutine`, passed to `subscribe`, and on config entries.
-- **`madeBy`** on new rows, optional. **Shift Manager:** *Routines*, with pause and delete.
+- **`madeBy`**, optional. **Shift Manager:** *Routines*, pause and delete.
 
 </details>
 
@@ -108,9 +110,7 @@ It comes down to an app's fix: an edited copy never gets it.
 
 ## Settled
 
-None; read in the code. Retiring, by `grep -rn` over `packages/`, `apps/`, `goals/`:
-`subscriptionTools`, `saveSchedule`, `listSchedules`, `deleteSchedule`, `LIST_SCHEDULES_ACTION`,
-with `listedScheduleSchema` and `ListedSchedule`.
+None; read in the code. The retiring names were found by `grep -rn` over `packages/`, `apps/`, `goals/`.
 
 ## Analysis
 
@@ -127,4 +127,5 @@ None yet.
 
 - **Draft:** one name and four verbs over the two collections, event verbs through `subscribe`
   and `unsubscribe`, on the owner's 2026-11-08 direction.
-- **Aligned with FIX-2536 D3 (EM calls, 2026-11-08):** one config surface, its `cfg_` key, cadence.
+- **Aligned with FIX-2536 D3, and Gitar's two findings (EM calls, 2026-11-08):** one config
+  surface, the `cfg_` key, cadence; `subscribe`'s target; the seed keeps a pause.
