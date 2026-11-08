@@ -13,9 +13,9 @@ in view. The rest were decided while drafting and are recorded so no child reope
 flowchart TD
   E["FIX-2618"] --> D1["D1 · one epic, proofs first, now"]
   D1 -.->|"rejected"| X1["four epics in order"]
-  E --> D2["D2 · build specs after the proofs"]
+  E --> D2["D2 · stage-2 specs parked until the proofs merge"]
   D2 -.->|"rejected"| X2["one spec set for all twelve"]
-  E --> D3["D3 · lab adapters stop growing"]
+  E --> D3["D3 · lab adapters stop growing once siblings amend"]
   D3 -.->|"rejected"| X3["grow until kits land"]
   E --> O["O1 to O5 · open for the owner"]
 ```
@@ -27,7 +27,7 @@ flowchart TD
 |---|---|
 | **Instead of** | Four epics in dependency order (views, resource addressing, notice ids, kits), as the design review first proposed · or views and resources alone, with kits never |
 | **Because** | Each change leans on the others. A kit packages views and resources, so its shape is decided by theirs; in four epics the kit epic inherits names and seams it never chose. The objective needs the adapter gone, and only the kit's client half does that at the root. The owner has put kits in scope as FSD's own composition unit |
-| **Locks in** | A large epic (twelve children) and one closure over four mechanisms. A collapse trigger: if FIX-2622 shows the wiring pain is workforce's own API, FIX-2626 to FIX-2628 leave for a follow-up epic |
+| **Locks in** | A large epic (twelve children) and one closure over four mechanisms. A collapse trigger: if FIX-2622 shows the wiring pain is workforce's own API, FIX-2626 and FIX-2627 leave for a follow-up epic, and FIX-2628 narrows to moving claude-code-style onto views and direct reads with no kits, so leg a still has an owner |
 
 **What would change my mind:** the teammates proof (FIX-2622) showing that a better
 `createWorkerInstallation` removes the wiring with no new unit. Then the objective is met by
@@ -38,31 +38,55 @@ views and resources alone, and kits wait for a second feature that needs them.
 It comes down to the kit: designed last in its own epic, it inherits a model it never shaped.
 
 <a name="d2"></a>
-## D2 · The build children are specced after the proofs, in a second spec-set PR
+## D2 · The build children are specced after the proofs merge, each on its own spec PR
 
 | | |
 |---|---|
-| **Instead of** | One spec set for all twelve children, written as soon as this spec merges (the standard [spec-set](../../../docs/contributing/orchestration.md#the-spec-set-one-pr-for-the-epics-issue-specs) path) |
+| **Instead of** | One spec set for all twelve children, written as soon as this spec merges (the standard [spec-set](../../../docs/contributing/orchestration.md#the-spec-set-one-pr-for-the-epics-issue-specs) path) · or stage 2 as a follow-up epic |
 | **Because** | Three of the build children rest on claims nobody has checked: a view can run with no session (`runRead.ts:33` takes a `sessionId`), declared dependencies can be checked, and a kit removes the host's wiring. A refuted premise after approval redraws up to six approved specs, the kit spec most of all |
-| **Locks in** | Two spec-set PRs. **Stage 1:** FIX-2619 to FIX-2622, specced and built first. **Stage 2:** FIX-2551 and FIX-2623 to FIX-2628, specced together after stage 1 merges, with each proof's result recorded below. The closure's QA plan is written in stage 1 and reviewed while the rest build |
+| **Locks in** | **Stage 1:** FIX-2619 to FIX-2622 and the closure's QA plan, in the one spec-set PR. **Stage 2:** FIX-2551 and FIX-2623 to FIX-2628, specced after FIX-2620 to FIX-2622 merge, each on its own spec PR, with each proof's result recorded below |
 
-![D2: the build children specced after the proofs, chosen, beside one spec set for all twelve. Decides it: a refuted premise costs a note instead of redrawing approved specs. Price: a second spec-set PR. Flips if the proofs land before a set would be drafted anyway](figures/d2-prove-first.svg)
+**How the hold works, with no script change.** The wake has one grouped spec dispatch and no
+second one: once the spec-set PR exists, a child still at `NEEDS_SPEC` gets its own `spec`
+dispatch (`epic-wake.js`, `awaitsSpecSet`), and blocked-by gates implementation only. So:
+
+1. The stage-1 spec-set dispatch leaves the seven stage-2 children out of `specSetMembers`,
+   naming D2, the path a set already has for a child it shouldn't spec.
+2. When the coordinator records that PR, before the next wake, it parks each stage-2 row with a
+   `blocker`: "held until stage 1's proofs merge, D2". A row with a `blocker` is not dispatched.
+   Parked any earlier, the rows would pause the stage-1 set itself (`specSetPaused`).
+3. When FIX-2620 to FIX-2622 have merged, the coordinator records that as the resolution and
+   clears the blockers (FIX-2625's stays until [O4](#o4) is answered). Stage 2 then takes the
+   out-of-set path: per-issue spec PRs, held by the cross-spec hold until one cross-spec review
+   runs over them and the stage-1 members.
+
+**The alternative:** stage 2 as a follow-up epic. The hold is then structural, but it costs a
+second epic spec and its approval, and the rules here would bind children in another epic.
+
+![D2: stage-2 specs parked until the proofs merge, chosen, beside one spec set for all twelve. Decides it: a refuted premise costs a note instead of redrawing approved specs. Price: seven per-issue spec PRs and a cross-spec review. Flips if the proofs land before a set would be drafted anyway](figures/d2-prove-first.svg)
 
 It comes down to a refuted proof: before the build specs it costs a note, after them six redraws.
 
 <a name="d3"></a>
-## D3 · Lab adapters stop growing at this epic's merge
+## D3 · Lab adapters stop growing, once the sibling epics' specs agree
 
 | | |
 |---|---|
 | **Instead of** | Letting FIX-2592, FIX-2616 and FIX-2369's stacks 2 to 4 add verbs and rows to the labs' `adapter.ts` files until kits land |
 | **Because** | Every verb added now is one more this epic deletes, and three open epics are about to add them. A need a screen has is already the package's to serve under FIX-2152 ER-4; this makes it a package read (a view once FIX-2623 lands), never an adapter verb |
-| **Locks in** | [ER-8](#who-owns-what), held by the coordinator at those epics' spec reviews. Reads already in a package (FIX-2374 `sessionFeed`, FIX-2379's task-row view, FIX-2412 `watchRoster`) become views by rename, not by rewrite |
+| **Locks in** | [ER-8](#who-owns-what), with a release condition. Merged sibling specs say the opposite today: [FIX-2592 → Between the two epics](../FIX-2592/DECISIONS.md#between-the-two-epics) gives FIX-2594 and FIX-2598 "Each adds its own rows and verbs" in `adapter.ts` and `test/fake-lab.ts`; FIX-2616 points at that table; FIX-2369's stack 3 "adds a function" per issue. Reads already in a package (FIX-2374 `sessionFeed`, FIX-2379's task-row view, FIX-2412 `watchRoster`) become views by rename, not by rewrite |
+
+**The release condition.** ER-8 binds only once three amendments have merged, each its own
+follow-up PR from `main`, owned by the sibling epic and approved by the owner: FIX-2592's surface
+table, FIX-2616's matching line, and FIX-2369's stack plan. The agreement is recorded at project
+scope, in Framework simplification & cleanup's project spec, and names that FIX-2592, FIX-2616
+and FIX-2369 sit in Workforce: Shift Manager. Asking for the amendments is the coordinator's task.
+Until they merge, ER-8 is advisory: a sibling may add a verb, and FIX-2628 counts it and deletes it.
 
 **What would change my mind:** those epics landing before stage 2 starts. Then their verbs are
-counted into FIX-2628's estimate, not frozen.
+counted into FIX-2628's estimate, and the amendments aren't worth asking for.
 
-![D3: lab adapters stop growing now, chosen, beside growing until kits land. Decides it: the lines this epic must delete stay at today's count. Price: sibling lab epics write a package read instead of a verb. Flips if those epics land before stage 2](figures/d3-adapter-freeze.svg)
+![D3: lab adapters stop growing once the sibling specs are amended, chosen, beside growing until kits land. Decides it: the lines this epic must delete stop rising. Price: three sibling amendments, and ER-8 advisory until they merge. Flips if those epics land before stage 2](figures/d3-adapter-freeze.svg)
 
 It comes down to the delete count: each sibling verb added now is one more to remove later.
 
@@ -84,9 +108,26 @@ But a kit is a new concept, slots are a contract that is hard to change later, a
 every app's setup. A capability can't do this job: it installs into one block and can't add
 flows or views (`define-capability.ts`).
 
-**My recommendation: yes,** after the teammates proof (FIX-2622) and after views and resource
-addressing land, so a kit packages things that exist. Slots stay few, typed and published only
-by the kit that owns the concept ([ER-5](#who-owns-what)).
+**What a kit imports and what it copies.** A kit has two halves, and never offers one flow both
+ways (a copy beside a still-importable export is two ways to do the same thing):
+
+- **The library half,** imported and versioned: resources, views, blocks, capabilities and the
+  client hooks. This is the public API.
+- **The copied half:** the app-level flows a user installs and then configures (teammates, Shift
+  Manager), copied into the project through the same registry-style copy-in the UI uses
+  (FIX-1655's registry). It is [FIX-1477 D1](../../issues/FIX-1477/DECISIONS.md#d1)'s rule read
+  from the other side: what consumers hold unchanged ships from a package, because a copy that
+  drifts is the defect there; what a user is meant to change is copied, because there drift is
+  the point.
+
+The split is the owner's stated direction (2026-11-04), relayed by the architect review on this
+PR and **pending the owner's confirmation**; nothing in the repository records copy-in for flows
+yet. If it isn't the direction, kits ship their flows as library imports, and the teammates and
+Shift Manager flows stay importable.
+
+**My recommendation: yes, with the split,** after the teammates proof (FIX-2622) and after views
+and resource addressing land, so a kit packages things that exist. Slots stay few, typed and
+published only by the kit that owns the concept ([ER-5](#who-owns-what)).
 
 **What would change my mind.** The proof showing the pain is mostly workforce's own API (the
 circular callback), so a better `hireWorkforce` fixes it. Then fix workforce and wait for a
@@ -95,7 +136,7 @@ second kit.
 **What being wrong costs.** Building kits first, with slots designed before a second kit exists,
 freezes the wrong contract. Doing it last, against two kits, keeps that cheap.
 
-![O1: kits, recommended after the teammates proof and views, beside fixing workforce's API. Decides it: only a kit's client half removes the adapters at the root. Price: slots are a new public contract. Flips if the proof shows the pain is workforce's own API](figures/open-kits.svg)
+![O1: kits with a library half and a copied half, recommended after the teammates proof and views, beside fixing workforce's API. Decides it: only a kit's client half removes the adapters at the root. Price: slots are a new public contract. Flips if the proof shows the pain is workforce's own API](figures/open-kits.svg)
 
 It comes down to the adapters: a better install API removes the wiring, never the read model.
 
@@ -132,36 +173,47 @@ so the rename is cheap now and dearer with each app.
 It comes down to what the client must know: with a view, nothing but the view.
 
 <a name="o3"></a>
-## O3 · Open · Read stored resources directly, and write through the session that runs them? · generalizes FIX-1788
+## O3 · Open · How does a client write a user or org resource: directly under a write rule, or through a flow? · generalizes FIX-1788, revisits FIX-1945 D1
 
-**In plain terms.** A user or org resource is read by scope and key with no session. A resource
-can name the flow that runs it (`runBy`), with one session per resource (a dashboard) or one per
-user (pins), and a client writes by sending that session an action
-([example](examples/resource-runBy.md)).
+**In plain terms.** Reading is settled either way: a user or org resource is read by scope and
+key, with no session. Writing has two paths, and the question is which resources get which
+([example](examples/resource-runBy.md)):
 
-**The options.** *Direct reads and `runBy` writes.* *A declared write rule* on the resource
-(owner only, schema-valid) beside direct reads. *As today:* every resource addressed by a
-session.
+- **Path 1, a declared write rule.** For plain CRUD such as pins, the client writes the resource
+  directly, like a file. The server runs the resource's validators first: its schema, the owner
+  fence, and an optional `canWrite` hook. No flow exists for it.
+- **Path 2, `runBy`.** For a resource where a flow does real work (a dashboard, one session per
+  artifact), the resource names the flow that runs it and the client sends that session an
+  action. It is the general form of FIX-1788's worker.
 
-**The trade-off.** It settles the dashboard-versus-pins tension: writing belongs to a flow, but
-reading user or org data shouldn't need its session. It is the general form of FIX-1788's worker.
-Writes keep running in blocks, so FIX-1945's reason holds (a client write that skips the
-validator). But the server now finds or makes a session from a resource: creation races,
-deletes, and a resource whose flow is gone are new lifecycle to get right. The epic declines to
-widen generic client writes; it does not retire today's session-scope `client.content.*` routes
-(FIX-296).
+**The options.** *Both, each where it fits.* *`runBy` only:* pins keep a per-user flow session.
+*A write rule only:* the dashboard's refresh becomes a write that something else notices.
 
-**My recommendation: direct reads and `runBy` writes.**
+**The trade-off.** A flow used as a CRUD system for pins is ceremony: a session, a flow and two
+actions to toggle a list. But a write that skips its validators is the defect FIX-1945 D1 exists
+to prevent (the skills drawer's generic client write skipped the cap and the stale-edit check).
+A write rule keeps that reason, since the validators run server-side on every write, and it
+narrows the earlier line "no generic client writes" to "no *unvalidated* client writes". `runBy`
+brings new lifecycle (creation races, deletes, a resource whose flow is gone); the write rule
+brings a second write path to keep in step with the first. Today's session-scope
+`client.content.*` routes (FIX-296) stay either way.
 
-**What would change my mind.** Most resources turning out to need no flow for writes. Then a
-declared write rule earns its place beside `runBy`.
+**My recommendation: both paths, each where it fits.** A write rule for plain CRUD; `runBy` where
+a flow does work. A resource with neither cannot be written from a client. The owner has said
+both that pins through a flow is the wrong design and that some resources do need their flow, so
+this is **awaiting the owner**.
 
-**What being wrong costs.** Low for reads, which are additive. Moderate for `runBy`: a wrong
-session lifecycle shows as duplicate sessions, as it does today.
+**What would change my mind.** A validator a write rule can't express (one that needs other
+resources, or a run) turning out to be common. Then those resources take `runBy`, and the rule
+stays small or goes.
 
-![O3: direct reads and runBy writes, recommended, beside a declared write rule and beside today. Decides it: validators and rules keep running in blocks. Price: find-or-make session lifecycle. Flips if most resources need no flow to write](figures/open-runby.svg)
+**What being wrong costs.** Low for reads, which are additive. Moderate for writes: a write rule
+too weak for its resource lets bad data in, and a wrong `runBy` lifecycle shows as duplicate
+sessions, as it does today.
 
-It comes down to validators: a write rule is a second path that skips them.
+![O3: both paths, recommended, a write rule for plain CRUD and runBy where a flow does work, beside runBy only and a write rule only. Decides it: every client write still runs its validators. Price: two write paths, and find-or-make session lifecycle. Flips if most validators need a run](figures/open-runby.svg)
+
+It comes down to validators: a write rule that runs them is safe; one that skips them is not.
 
 <a name="o4"></a>
 ## O4 · Open · Ids on notices: accept the one-hour window? · revisits FIX-2428 D2, extends FIX-2367 D2
@@ -243,11 +295,11 @@ the stage-2 specs.
 | ER-1 | One hook computes an answer for a screen: the view. `reads` and scope `derived` go with no alias; nothing that does the same job is added beside views | FIX-2623 builds · FIX-2551, FIX-2627, FIX-2628 use | The stage-2 cross-spec review; the closure |
 | ER-2 | A view never writes (its context refuses writes and dispatch, as a read's does today). Every byte a client sees comes through a checked read or view; a notice carries ids, never rows | FIX-2623 builds · FIX-2624, FIX-2625 use | Each child's spec review; the closure |
 | ER-3 | A session-free read or view takes user and org from the verified principal, never from the body, query or headers (BP-031) | FIX-2624 builds · FIX-2623 uses | FIX-2623's and FIX-2624's spec review |
-| ER-4 | No generic client write is added. A client writes a user or org resource only by sending an action to its `runBy` session; session-scope `client.content.*` stays as it is | FIX-2624 builds · FIX-2626, FIX-2628 use | The stage-2 cross-spec review |
-| ER-5 | A kit holds only existing pieces (flows, views, resources, capabilities, blocks, workers, a client half, config, slots). It reaches another kit only through slots that kit publishes, never patches one, and a host can turn off what it contributes. Slots are few, typed, and published only by the kit that owns the concept | FIX-2626 builds · FIX-2627, FIX-2628 use | FIX-2627's spec review; closure leg b |
+| ER-4 | No unvalidated client write is added. A client writes a user or org resource only under its declared write rule (schema, owner fence, optional `canWrite`, all run server-side) or by sending an action to its `runBy` session; with neither, it can't. Session-scope `client.content.*` stays as it is. Wording waits for [O3](#o3) | FIX-2624 builds · FIX-2626, FIX-2628 use | The stage-2 cross-spec review |
+| ER-5 | A kit holds only existing pieces (flows, views, resources, capabilities, blocks, workers, a client half, config, slots). It reaches another kit only through slots that kit publishes, never patches one, and a host can turn off what it contributes. Slots are few, typed, and published only by the kit that owns the concept. A flow a user installs and configures is copied, never also exported ([O1](#o1)) | FIX-2626 builds · FIX-2627, FIX-2628 use | FIX-2627's spec review; closure leg b |
 | ER-6 | Data the server computes is typed by its view's output schema (`ViewOutput`). An app hand-writes only what its screen computes | FIX-2623 builds · FIX-2627, FIX-2628 use | FIX-2628's spec review; closure leg a |
 | ER-7 | One live read in the client: the coalescer and the path rule live in one place, and `useView` and every package watch sit on it | FIX-2551 builds · FIX-2623, FIX-2627 use | The stage-2 reuse review |
-| ER-8 | No lab adapter grows from this epic's merge. A screen's new need is a package read or view, never a new adapter verb or hand-written row type ([D3](#d3)) | The coordinator · FIX-2628 uses | FIX-2592, FIX-2616 and FIX-2369's spec reviews |
+| ER-8 | No lab adapter grows once the sibling amendments merge. A screen's new need is then a package read or view, never a new adapter verb or hand-written row type. Until FIX-2592, FIX-2616 and FIX-2369's amendments merge it is advisory, and FIX-2628 deletes what was added ([D3](#d3)) | The coordinator (it asks for the amendments) · FIX-2628 uses | FIX-2592, FIX-2616 and FIX-2369's spec reviews, after the amendments |
 | ER-9 | Every public name the set fixes is in the glossary in the PR that coins it; "read" retires as the hook's name; the unit's name waits for [O5](#o5) | FIX-2619 builds · FIX-2623, FIX-2626 use | Each child's PR checks |
 | ER-10 | Ids on notices are hints. No ids means read everything; a full read runs on connect, reconnect, resync, a poll tick and wherever the bus doesn't cross processes; a notice that drops the resource name carries no ids | FIX-2625 builds · FIX-2623 uses (keys) | FIX-2625's spec review; the closure |
 
@@ -271,9 +323,10 @@ Engineering calls, carried from the design review where they were decided withou
 
 - **No separate view definer beside reads.** A view is the rename of a read, never a second hook.
 - **Notice ids are hints.** A full read is always the fallback.
-- **No generic client writes.** Phrased precisely: the epic declines to widen them; the existing
-  session-scope `client.content.*` routes (FIX-296, with grants) stay, and FIX-1945's rules
-  record keeps client writes off.
+- **No unvalidated client writes.** Phrased precisely: every client write runs its validators,
+  under a write rule or through `runBy` ([O3](#o3)); the existing session-scope
+  `client.content.*` routes (FIX-296, with grants) stay, and FIX-1945's rules record keeps client
+  writes off.
 - **The concept doc comes first,** and names wait for the glossary.
 - **FIX-2551 is a child, not absorbed.** It already says what it delivers; FIX-2623's `useView`
   builds on it.
@@ -316,7 +369,7 @@ objective or the division.
    read set at run time instead of declaring it.
 3. **Other shapes.** Four epics in order ([D1](#d1)); no kit, a better install API ([O1](#o1),
    FIX-2622 tests it); inferred dependencies (the Convex shape, recorded below); a write rule on
-   the resource ([O3](#o3)).
+   the resource ([O3](#o3)), now one of O3's two paths.
 4. **New factors.** FIX-2466 is building on no-row notices now, so [O4](#o4) is time-bound.
    FIX-2447's export ratchet and FIX-2600's glossary are live; both are seams above.
 5. **Necessity.** Yes at this size, with FIX-2622's collapse trigger. The leaner set drops
@@ -341,5 +394,10 @@ objective or the division.
 - **Owner scope (2026-11-08)** — kits are in scope as FSD's own composition unit; a third-party
   ecosystem stays out. Sign-offs on FIX-2286, FIX-2367 and FIX-2428 may be reopened.
 - **Drafted (2026-11-08)** — one epic in two spec stages; twelve children; five open holds.
+- **Review round 1 (2026-11-08)** — Codex: stage 2 had no gate the wake honours ([D2](#d2) now
+  parks the rows); ER-8 contradicted FIX-2592's merged surface table ([D3](#d3) now waits on
+  amendments); the collapse dropped claude-code-style's migration (FIX-2628 narrows instead).
+  The architect review: kits split into a library half and a copied half ([O1](#o1)), and pins
+  take a write rule, not a flow ([O3](#o3), now a two-path fork). Both are pending the owner.
 
 **Open:** [O1](#o1) · [O2](#o2) · [O3](#o3) · [O4](#o4) · [O5](#o5).

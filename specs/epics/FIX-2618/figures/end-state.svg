@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 474" role="img" aria-label="What&#x27;s in the box. In the box, what an app on workforce gets: views replacing flow reads, one live read in the client, resources read by scope with no session, writes sent to the session that runs the resource, ids on notices, kits with requires, slots, config and a client half, and the workforce and harness kits with one shared coding worker flow. The fence: a view never writes, a client writes only through a block in the resource&#x27;s session, a notice carries ids and never rows, and a kit reaches another only through its slots. Composed in by the app: its own local kit, its screens and renderer, one config object per kit. Replaced in one line: flow reads and scope derived by a view, four own sessions by a direct read, the host&#x27;s wiring by an entry in kits, hand-written row types by ViewOutput. Not built: a third-party ecosystem, generic client writes, the Teammates and Shift Manager adapters, the one-route-per-answer cleanup."
+<svg viewBox="0 0 940 474" role="img" aria-label="What&#x27;s in the box. In the box, what an app on workforce gets: views replacing flow reads, one live read in the client, resources read by scope with no session, writes under a declared write rule or sent to the session that runs the resource, ids on notices, kits with requires, slots, config and a client half, and the workforce and harness kits with one shared coding worker flow. The fence: a view never writes, every client write runs the resource&#x27;s validators, a notice carries ids and never rows, and a kit reaches another only through its slots. Composed in by the app: its own local kit, the app flows it copied in, its screens and renderer, one config object per kit. Replaced in one line: flow reads and scope derived by a view, four own sessions by a direct read, the host&#x27;s wiring by an entry in kits, hand-written row types by ViewOutput. Not built: a third-party ecosystem, unvalidated client writes, the Teammates and Shift Manager adapters, the one-route-per-answer cleanup."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -60,8 +60,8 @@
     <text class="t-b" x="44" y="123">Resources by scope · FIX-2624</text>
     <text class="t-s" x="44" y="139">direct reads, no session for user or org</text>
     <rect class="chip" x="328" y="104" width="284" height="44" rx="4"/>
-    <text class="t-b" x="340" y="123">Writes to the runBy session · FIX-2624</text>
-    <text class="t-s" x="340" y="139">fsd.resource(ref).send, found or made</text>
+    <text class="t-b" x="340" y="123">Write rules and runBy · FIX-2624</text>
+    <text class="t-s" x="340" y="139">plain CRUD direct; a flow where it works</text>
     <rect class="chip" x="32" y="156" width="284" height="44" rx="4"/>
     <text class="t-b" x="44" y="175">Ids on notices · FIX-2625</text>
     <text class="t-s" x="44" y="191">optional hints; gated on O4</text>
@@ -76,8 +76,8 @@
   <g id="the-fence">
     <line class="fence" x1="16" y1="272" x2="628" y2="272"/>
     <text class="t-tag c-gone" x="32" y="296">FENCE · ER-2 · ER-4 · ER-5</text>
-    <text class="t-b" x="32" y="318">A view never writes. A client writes only through a block, in</text>
-    <text class="t-b" x="32" y="336">the session that runs the resource. A notice carries ids, never rows.</text>
+    <text class="t-b" x="32" y="318">A view never writes. Every client write runs the resource&#x27;s</text>
+    <text class="t-b" x="32" y="336">validators server-side. A notice carries ids, never rows.</text>
     <text class="t-s" x="32" y="356">a kit reaches another kit only through the slots that kit publishes</text>
   </g>
 
@@ -85,7 +85,7 @@
     <rect class="app" x="644" y="16" width="280" height="160" rx="8"/>
     <text class="t-tag c-acc" x="660" y="38">COMPOSED IN BY THE APP</text>
     <text class="t-b" x="660" y="64">Its own local kit</text>
-    <text class="t-s" x="660" y="80">pins, its flow settings · FIX-2628</text>
+    <text class="t-s" x="660" y="80">pins, copied flows, settings · FIX-2628</text>
     <text class="t-b" x="660" y="106">Its screens and renderer</text>
     <text class="t-s" x="660" y="122">ThreadEntry, entriesOf, its words</text>
     <text class="t-b" x="660" y="148">One config object per kit</text>
@@ -109,7 +109,7 @@
     <text class="t-tag c-gone" x="32" y="410">NOT BUILT</text>
     <text class="t-b" x="32" y="434">A third-party ecosystem</text>
     <text class="t-s" x="32" y="450">publish, discover, version, registry</text>
-    <text class="t-b" x="262" y="434">Generic client writes</text>
+    <text class="t-b" x="262" y="434">Unvalidated client writes</text>
     <text class="t-s" x="262" y="450">session-scope content stays as is</text>
     <text class="t-b" x="492" y="434">The other two adapters</text>
     <text class="t-s" x="492" y="450">Teammates, Shift Manager: next epic</text>

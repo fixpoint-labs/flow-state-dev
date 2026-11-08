@@ -34,7 +34,8 @@ export function useThread(sessionId: string, threads: boolean) {
 }
 
 export const usePins = () => useResource(claudeCodeStyle.resources.pins);
-export const pin = (taskId: string) => claudeCodeStyle.resources.pins.send("pin", { taskId });
+export const pin = (taskId: string) =>                       // a direct write under the write rule (O3)
+  fsd.resources.user("pins").state.update((s) => ({ pinned: [...s.pinned, taskId] }));
 
 // ~250 lines in all, ~135 of them the renderer that was already the app's. Today: 1,498.
 ```
@@ -87,6 +88,6 @@ stay.
 | `watchTasks` | 3, over `boardOf` (~380 behind it) | `useView(harness.views.codingBoard, { sessionId })` | orchestration's board view + harness fields |
 | `watchTaskWork` | 96: run feed, request stream, plan watch, merging | `useView(harness.views.runWork, { taskId })` + `useSessionFeed(run)` | harness kit |
 | `sayInThread` · `taskActions` · `resolve` · `requestChanges` | ~20, looking up the open hold first | the board's steer/cancel calls, an answer to `row.openHold` | orchestration; the board view row already carries its hold |
-| `watchPins` · `pin` · `unpin` | 9, plus the own session | `useResource(app.resources.pins)`, `fsd.resource(pins).send("pin", …)` | app kit, with direct reads |
+| `watchPins` · `pin` · `unpin` | 9, plus the own session | `useResource(app.resources.pins)`, a direct write under its write rule | app kit, with direct reads and writes |
 
 Line counts are from reading `src/adapter.ts` today; what each verb becomes is proposed.

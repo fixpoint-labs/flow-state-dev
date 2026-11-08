@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="O3, open: read user and org resources directly by scope and key, and write through the session that runs them. Recommended: direct reads and runBy writes. Instead of: a declared write rule on the resource, or today&#x27;s session-addressed routes. Decides it: validators and rules keep running in blocks. Price: the server finds or makes a session, which is new lifecycle. Flips if most resources turn out to need no flow to write."
+<svg viewBox="0 0 940 418" role="img" aria-label="O3, open: how a client writes a user or org resource, read directly by scope either way. Recommended: both paths, a declared write rule for plain CRUD such as pins and runBy where a flow does work such as a dashboard. Instead of: runBy only, or a write rule only. Decides it: every client write still runs its validators. Price: two write paths, and find-or-make session lifecycle for runBy. Flips if most validators need a run."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -50,73 +50,73 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">O3 · OPEN · THE CALL</text>
-    <text class="t-q" x="32" y="52">Read stored resources directly, and write through the session that runs them?</text>
+    <text class="t-q" x="32" y="52">Write a user resource directly under a rule, or through its flow?</text>
   </g>
   <g id="options">
     <rect class="rec" x="212" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">Direct reads, runBy writes</text>
+    <text class="t-h c-code" x="228" y="112">Both, each where it fits</text>
     <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="468" y="112">A declared write rule</text>
+    <text class="t-h c-lost" x="468" y="112">runBy only</text>
     <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="708" y="112">As today</text>
+    <text class="t-h c-lost" x="708" y="112">A write rule only</text>
   </g>
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">VALIDATORS AND</text>
-    <text class="t-lbl" x="32" y="169">RULES ON A WRITE</text>
+    <text class="t-lbl" x="32" y="156">VALIDATORS ON</text>
+    <text class="t-lbl" x="32" y="169">A CLIENT WRITE</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="163">+</text>
-    <text class="t-b" x="248" y="162">Still run in blocks</text>
-    <text class="t-s" x="248" y="180">FIX-1945&#x27;s reason holds</text>
-    <text class="mark minus" x="468" y="163">−</text>
-    <text class="t-b" x="488" y="162">A second write path</text>
-    <text class="t-s" x="488" y="180">owner-only, schema-valid</text>
-    <text class="mark plus" x="708" y="163">+</text>
-    <text class="t-b" x="728" y="162">Run, inside a run</text>
-    <text class="t-s" x="728" y="180">but an app makes a session</text>
+    <text class="t-b" x="248" y="162">Run on every write</text>
+    <text class="t-s" x="248" y="180">schema, owner, canWrite, or blocks</text>
+    <text class="mark plus" x="468" y="163">+</text>
+    <text class="t-b" x="488" y="162">Run in blocks</text>
+    <text class="t-s" x="488" y="180">FIX-1945&#x27;s reason holds</text>
+    <text class="mark minus" x="708" y="163">−</text>
+    <text class="t-b" x="728" y="162">Only what a rule can say</text>
+    <text class="t-s" x="728" y="180">a run-time check has no home</text>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="218">A SESSION MADE</text>
-    <text class="t-lbl" x="32" y="231">ONLY TO READ</text>
+    <text class="t-lbl" x="32" y="218">PINS: PLAIN</text>
+    <text class="t-lbl" x="32" y="231">ADD AND REMOVE</text>
     <text class="mark plus" x="228" y="225">+</text>
-    <text class="t-b" x="248" y="224">None; four go</text>
-    <text class="t-s" x="248" y="242">pins, roster, lab, reader</text>
-    <text class="mark plus" x="468" y="225">+</text>
-    <text class="t-b" x="488" y="224">None</text>
-    <text class="t-s" x="488" y="242">reads are direct</text>
-    <text class="mark minus" x="708" y="225">−</text>
-    <text class="t-b" x="728" y="224">Four stay</text>
-    <text class="t-s" x="728" y="242">and the next app adds one</text>
+    <text class="t-b" x="248" y="224">A direct write</text>
+    <text class="t-s" x="248" y="242">no flow, no session</text>
+    <text class="mark minus" x="468" y="225">−</text>
+    <text class="t-b" x="488" y="224">A flow used as CRUD</text>
+    <text class="t-s" x="488" y="242">a per-user session to toggle</text>
+    <text class="mark plus" x="708" y="225">+</text>
+    <text class="t-b" x="728" y="224">A direct write</text>
+    <text class="t-s" x="728" y="242">no flow, no session</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
   <g id="row-3">
     <text class="t-lbl" x="32" y="276">NEW LIFECYCLE</text>
     <text class="t-lbl" x="32" y="289">TO GET RIGHT</text>
     <text class="mark minus" x="228" y="283">−</text>
-    <text class="t-b" x="248" y="282">Find-or-make a session</text>
-    <text class="t-s" x="248" y="300">races, deletes, a lost flow</text>
-    <text class="mark tie" x="468" y="283">=</text>
-    <text class="t-b" x="488" y="282">None for writes</text>
-    <text class="t-s" x="488" y="300">a rule, not a session</text>
-    <text class="mark tie" x="708" y="283">=</text>
-    <text class="t-b" x="728" y="282">None</text>
-    <text class="t-s" x="728" y="300">nothing new</text>
+    <text class="t-b" x="248" y="282">Two write paths</text>
+    <text class="t-s" x="248" y="300">and find-or-make for runBy</text>
+    <text class="mark minus" x="468" y="283">−</text>
+    <text class="t-b" x="488" y="282">Find-or-make a session</text>
+    <text class="t-s" x="488" y="300">races, deletes, a lost flow</text>
+    <text class="mark minus" x="708" y="283">−</text>
+    <text class="t-b" x="728" y="282">The dashboard loses its flow</text>
+    <text class="t-s" x="728" y="300">a refresh becomes a write</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">runBy on a resource; FIX-1788 generalized</text>
-    <text class="t-s" x="32" y="387">no generic client writes</text>
+    <text class="t-b" x="32" y="369">A write rule and runBy on a resource</text>
+    <text class="t-s" x="32" y="387">no unvalidated client writes; FIX-1788 generalized</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">Most resources need no flow to write</text>
-    <text class="t-s" x="494" y="387">then a declared rule earns a place beside runBy</text>
+    <text class="t-b" x="494" y="369">Most validators need other data or a run</text>
+    <text class="t-s" x="494" y="387">then those take runBy, and the rule stays small</text>
   </g>
 </svg>

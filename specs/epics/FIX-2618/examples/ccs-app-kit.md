@@ -4,7 +4,7 @@
 
 > **PROPOSED.** A sketch from the design review, not code. None of the APIs it names exist yet (`defineView`, `defineKit`, `runBy`, `fsd.resource`, `useView`, `ViewOutput`, kit slots and the kits' views). Names follow the working name "kit", which is open hold [O5](../DECISIONS.md#o5). The child that builds each piece owns its real shape.
 
-`labs/claude-code-style/kit.ts`, proposed: everything only this app has. Pins become a user resource run by the pins flow, one session per user, read directly (so `listPins` goes). The app's settings for workforce's agent and coordinator flows go in through workforce's slots. The test for what stays here: if another app would write the same thing, it belongs in a package kit. Built by [FIX-2628](https://linear.app/fixpoint-labs/issue/FIX-2628).
+`labs/claude-code-style/kit.ts`, proposed: everything only this app has. Pins become a user resource with a declared write rule: read directly and written directly, with the schema and owner fence run server-side, so `listPins` and the pins flow both go (open hold [O3](../DECISIONS.md#o3); under `runBy` only, the pins flow stays as a per-user session). The app's settings for workforce's agent and coordinator flows go in through workforce's slots. The test for what stays here: if another app would write the same thing, it belongs in a package kit. Built by [FIX-2628](https://linear.app/fixpoint-labs/issue/FIX-2628).
 
 ```ts
 export const claudeCodeStyle = defineKit({
@@ -15,12 +15,8 @@ export const claudeCodeStyle = defineKit({
     pins: defineResource({
       scope: "user",
       stateSchema: z.object({ pinned: z.array(z.string()).default([]) }),
-      client: { state: { read: true } },             // read directly; no listPins
-      runBy: { flow: "pins", session: "per-user" },
+      client: { state: { read: true, write: { owner: true } } },   // read and written directly; no listPins, no pins flow
     }),
-  },
-  flows: {
-    pins: defineFlow({ kind: "pins", actions: { pin, unpin } }),   // the two blocks, unchanged
   },
 
   // Into workforce's slots: the lab's two main workers' flow settings.

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="O1, open: should FSD have kits, an installable unit above a flow. Recommended: yes, after the teammates proof and after views and resource addressing. Instead of: no new unit, fix workforce&#x27;s own API. Decides it: only a kit&#x27;s client half removes the adapters at the root. Price: slots are a new public contract. Locks in defineKit, slots and a client half. Flips if the proof shows the pain is workforce&#x27;s own API."
+<svg viewBox="0 0 940 418" role="img" aria-label="O1, open: should FSD have kits, an installable unit above a flow. Recommended: yes, with a library half that is imported and a copied half for app flows a user configures, after the teammates proof and after views and resource addressing. Instead of: no new unit, fix workforce&#x27;s own API. Decides it: only a kit&#x27;s client half removes the adapters at the root. Price: slots are a new public contract. Locks in defineKit, slots and a client half. Flips if the proof shows the pain is workforce&#x27;s own API."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -55,7 +55,7 @@
   <g id="options">
     <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">Yes, after FIX-2622 and views</text>
+    <text class="t-h c-code" x="228" y="112">Yes, library half + copied flows</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">No: fix workforce&#x27;s API</text>
@@ -98,8 +98,8 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">defineKit, slots and a client half</text>
-    <text class="t-s" x="32" y="387">built last, against two kits</text>
+    <text class="t-b" x="32" y="369">defineKit, slots, a client half, copied flows</text>
+    <text class="t-s" x="32" y="387">built last, against two kits; split pending owner</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
