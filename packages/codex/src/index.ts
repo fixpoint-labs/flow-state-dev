@@ -1,6 +1,6 @@
 /**
  * Public surface of `@flow-state-dev/codex`: the Codex harness block, its
- * opt-in capability, the client seam, the cost derivation, the usage read, the environment pass-list, the start-time account probe and its readiness check, the model list, the handle and wire types, and the
+ * opt-in capability, the client seam, the usage read, the environment pass-list, the start-time account probe and its readiness check, the model list, the handle and wire types, and the
  * typed errors.
  *
  * A *harness* is a coding agent driven as a block — you hand it a prompt, it
@@ -16,7 +16,6 @@ export {
   createDefaultResolveCodexClient,
   type CodexSdkImporter,
 } from "./codex-client";
-export { estimateCodexCost } from "./cost";
 export { findCodexProgram, readCodexUsage, type CodexProgram, type ReadCodexUsageOptions } from "./usage";
 export { listCodexModels, type ListCodexModelsOptions } from "./model-list";
 export {
