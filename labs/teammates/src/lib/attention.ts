@@ -28,14 +28,14 @@ export interface Alert {
  * line or a need), the alerts it holds now, and whether its watches have
  * loaded (until they have, its alerts are not yet known).
  */
-export interface RowAttention {
+export interface TeammateAttention {
   asks: boolean;
   loaded: boolean;
   alerts: readonly Alert[];
 }
 
 /** A row's attention, from its name, its unread count, what it needs from you and its coding tasks that just ended. */
-export function rowAttention(name: string, loaded: boolean, unread: number, needs: readonly Need[], endings: readonly BoardTask[]): RowAttention {
+export function teammateAttention(name: string, loaded: boolean, unread: number, needs: readonly Need[], endings: readonly BoardTask[]): TeammateAttention {
   return {
     asks: unread > 0 || needs.length > 0,
     loaded,
@@ -47,7 +47,7 @@ export function rowAttention(name: string, loaded: boolean, unread: number, need
 }
 
 /** The tab's title: how many teammates have something for you, each counted once. */
-export function titleFor(rows: Readonly<Record<string, RowAttention>>): string {
+export function titleFor(rows: Readonly<Record<string, TeammateAttention>>): string {
   const count = Object.values(rows).filter((r) => r.asks).length;
   return count > 0 ? `(${count}) ${TITLE}` : TITLE;
 }
@@ -63,7 +63,7 @@ export function titleFor(rows: Readonly<Record<string, RowAttention>>): string {
 export function createNotifier(io: { enabled: () => boolean; hidden: () => boolean; notify: (text: string) => void }) {
   const known = new Set<string>();
   const baselined = new Set<string>();
-  return (rows: Readonly<Record<string, RowAttention>>) => {
+  return (rows: Readonly<Record<string, TeammateAttention>>) => {
     for (const [id, row] of Object.entries(rows)) {
       if (!row.loaded) continue;
       const first = !baselined.has(id);
@@ -123,7 +123,7 @@ export function useNotifyToggle(): { on: boolean; blocked: string | undefined; t
 }
 
 /** Sets the tab's title from the rows, and notifies of new alerts while `notifyOn`. Puts back the title the page had on unmount. */
-export function useAttention(rows: Readonly<Record<string, RowAttention>>, notifyOn: boolean): void {
+export function useAttention(rows: Readonly<Record<string, TeammateAttention>>, notifyOn: boolean): void {
   const enabled = useRef(notifyOn);
   enabled.current = notifyOn;
   const [observe] = useState(() =>

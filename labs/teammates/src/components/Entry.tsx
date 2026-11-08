@@ -2,7 +2,7 @@ import { memo } from "react";
 import type { ConversationEntry } from "../adapter";
 import type { Look } from "../lib/looks";
 import { Avatar } from "./Avatar";
-import type { AnswerState } from "./Popups";
+import type { AnswerStatus } from "./Popups";
 import { useSubmit } from "@flow-state-dev/react";
 import { MarkdownText } from "./flow-state/message-response";
 import { RequestRecovery } from "./flow-state/request-recovery";
@@ -45,7 +45,7 @@ export const Entry = memo(function Entry({
   /** The worker coding tasks run on: its results are the task's, not a teammate's. */
   isCoding?: (id: string) => boolean;
   /** For a sent message: how it stands. */
-  answer?: AnswerState;
+  answer?: AnswerStatus;
   /** Open the exchange a sent message started. */
   onOpenMessage?: (entry: Extract<ConversationEntry, { kind: "sent" }>) => void;
   /** Open the task a result came from. */
@@ -196,7 +196,7 @@ function ResultLine({ who, look, entry, onOpen }: { who: string; look?: Look; en
 }
 
 /** A message to another worker: one line, "Messaged researcher", that opens the exchange. */
-function SentLine({ to, look, text, answer, onOpen }: { to: string; look: Look; text: string; answer: AnswerState; onOpen?: () => void }) {
+function SentLine({ to, look, text, answer, onOpen }: { to: string; look: Look; text: string; answer: AnswerStatus; onOpen?: () => void }) {
   return (
     <button
       type="button"

@@ -10,8 +10,8 @@ import { SessionScope, TaskBoardMeta } from "../src/components/TaskBoardMeta";
 import type { SubscribeOptions, WireNotice, WireTopic } from "@flow-state-dev/client";
 import { TASKS_POLL_MS } from "../src/components/TasksPanel";
 
-type Row = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
-let rows: Row[] = [];
+type StoredTask = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
+let rows: StoredTask[] = [];
 let failing = false;
 const calls: string[] = [];
 let refreshes = 0;

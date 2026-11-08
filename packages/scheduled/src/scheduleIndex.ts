@@ -28,7 +28,7 @@
  * rows with one key when they have schedules in several storage cells (one
  * per organization, and a flow-isolated cell).
  */
-export interface ScheduleIndexRow {
+export interface ScheduleIndexEntry {
   /**
    * The storage cell the schedule is persisted in. With `key`, the row's
    * identity. Filled by `defineScheduleCollection` from the engine's own
@@ -72,7 +72,7 @@ export interface ScheduleIndex {
    * `(cell, key)`. The caller passes the freshly-computed
    * `nextFireAt` — implementations do not parse cron themselves.
    */
-  upsert(row: ScheduleIndexRow): Promise<void>;
+  upsert(row: ScheduleIndexEntry): Promise<void>;
 
   /**
    * Atomically claim all rows whose `nextFireAt <= now` AND advance
@@ -87,7 +87,7 @@ export interface ScheduleIndex {
    *
    * `limit` defaults to 100.
    */
-  claimDue(now: number, limit?: number): Promise<ScheduleIndexRow[]>;
+  claimDue(now: number, limit?: number): Promise<ScheduleIndexEntry[]>;
 
   /**
    * Remove the row for `(cell, key)`. No-op when the row does not exist.

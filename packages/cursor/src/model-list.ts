@@ -49,7 +49,7 @@ const MODELS_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "..", "runti
 type Answer = { rows: unknown } | { loadError: string } | { listError: string };
 
 /** A row of `Cursor.models.list()`, as far as this reads it. */
-interface ModelRow {
+interface ListedModel {
   id?: unknown;
   displayName?: unknown;
   description?: unknown;
@@ -57,7 +57,7 @@ interface ModelRow {
 }
 
 /** A variant of a row, as far as this reads it. */
-interface VariantRow {
+interface ListedVariant {
   params?: unknown;
   displayName?: unknown;
   description?: unknown;
@@ -77,7 +77,7 @@ export async function listCursorModels(
   if ("failed" in answer) return { status: "failed", reason: answer.failed };
   if ("loadError" in answer) return { status: "failed", reason: `The Cursor SDK could not be loaded: ${answer.loadError}` };
   if ("listError" in answer) return { status: "failed", reason: `Cursor could not list its models: ${answer.listError}` };
-  const models = toModels(Array.isArray(answer.rows) ? (answer.rows as ModelRow[]) : []);
+  const models = toModels(Array.isArray(answer.rows) ? (answer.rows as ListedModel[]) : []);
   if (models.length === 0) return { status: "failed", reason: "Cursor listed no models" };
   return { status: "models", models };
 }
@@ -121,7 +121,7 @@ function ask(env: Readonly<Record<string, string>>, sdkModule: string, timeoutMs
 }
 
 /** Cursor's rows as models, one per id, in Cursor's order. */
-function toModels(rows: readonly ModelRow[]): Array<HarnessModelInfo & { variants: CursorModelVariant[] }> {
+function toModels(rows: readonly ListedModel[]): Array<HarnessModelInfo & { variants: CursorModelVariant[] }> {
   const byId = new Map<string, HarnessModelInfo & { variants: CursorModelVariant[] }>();
   for (const row of rows) {
     const id = text(row.id);
@@ -132,14 +132,14 @@ function toModels(rows: readonly ModelRow[]): Array<HarnessModelInfo & { variant
       label: text(row.displayName) ?? id,
       ...(description === undefined ? {} : { description }),
       isDefault: false,
-      variants: Array.isArray(row.variants) ? (row.variants as VariantRow[]).map(toVariant) : [],
+      variants: Array.isArray(row.variants) ? (row.variants as ListedVariant[]).map(toVariant) : [],
     });
   }
   return [...byId.values()];
 }
 
 /** One of a row's variants. */
-function toVariant(row: VariantRow): CursorModelVariant {
+function toVariant(row: ListedVariant): CursorModelVariant {
   const params = Array.isArray(row.params)
     ? (row.params as Array<{ id?: unknown; value?: unknown }>).flatMap((p) => {
         const id = text(p.id);

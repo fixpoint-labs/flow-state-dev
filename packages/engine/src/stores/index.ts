@@ -57,7 +57,7 @@ export type {
   VersionedResourceState,
   ResourceIndexEntry,
   ResourceStateSetOptions,
-  ResourceIndexBuildState,
+  ResourceIndexBuildStatus,
   ResourceIndexBuildEntry,
   ResourceStateIndexes,
   OrgListOptions,

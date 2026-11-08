@@ -40,15 +40,17 @@
  * published glossary page. Shift Manager's rows name its screens (its Roster
  * screen beside Workforce's roster), so they don't count toward a term.
  *
- * ## Added lines
+ * ## Whole-tree rules
  *
- * A retirement the glossary reads at `added-lines` scope (today, the resource
- * entry's) is refused only on a line the checkout adds against the base ref:
- * the existing tree keeps its names until they are renamed. A declaration of a
- * name the rule retires counts; a use does not. Docs prose the rule names counts
- * in a page. Its exemptions (a rendered table row) come from the glossary too.
- * History, process, goals and root config stay out of scope, same as the other
- * terms.
+ * A retirement the glossary reads at `tree` scope (today, the resource entry's)
+ * matches by shape rather than by one word: in code, a name it declares or
+ * exports (each matcher runs over the whole file, so a declaration may span
+ * lines); in a page, its prose. Every line of every in-scope file counts, the
+ * existing tree as much as a change. Its exemptions come from the glossary too:
+ * a path keeps a file's `…Row` names, and the quote rule strips a released
+ * message's text on the pages it names, never the line. Each must keep
+ * something, or it is stale. History, process, goals and root config stay out
+ * of scope, same as the other terms.
  *
  * Run: node scripts/check-retired-terms.mjs [--root <dir>] [--list [term]] [--control]
  *   --root     scan another checkout (default: this repository)
@@ -63,13 +65,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
-  ADDED_LINE_EXEMPTIONS,
-  ADDED_LINE_RULES,
   AREAS,
   GUARD_EXEMPTIONS as EXCEPTIONS,
   GUARD_TERMS as TERMS,
   PERSON_PINS,
   PUBLISHED_TERMS,
+  TREE_EXEMPTIONS,
+  TREE_RULES,
 } from "../docs/contributing/glossary.mjs";
 
 /** The glossary's areas, terms, exceptions and pins, re-exported for this guard's tests and codemods. */
@@ -156,198 +158,65 @@ export function scanFile(path, text, exceptions, stripped = {}) {
   return hits;
 }
 
-/**
- * Whether a `*Row` declaration names a resource, by the rule's context: the file
- * is a collection module, the line says collection, or the name does.
- * @param {{ context: { file: RegExp; line: RegExp; name: RegExp } }} rule
- * @param {string} path
- * @param {string} line
- * @param {string} name
- */
-function inContext(rule, path, line, name) {
-  return rule.context.file.test(path) || rule.context.line.test(line) || rule.context.name.test(name);
-}
-
-/** The exemptions that keep one added-lines rule's words. */
-const exemptionsOf = (rule) => ADDED_LINE_EXEMPTIONS.filter((e) => e.rules.includes(rule.id));
+/** The exemptions that keep one whole-tree rule's words. */
+const exemptionsOf = (rule) => TREE_EXEMPTIONS.filter((e) => e.rules.includes(rule.id));
 
 const DOC_FILE = /\.(?:md|mdx)$/;
+const CODE_FILE = /\.(?:[cm]?[jt]sx?)$/;
+
+/** The 1-based line each match of the global `re` starts on, in `text`, with what it captured. */
+function matchLines(re, text) {
+  re.lastIndex = 0;
+  const found = [];
+  for (let m = re.exec(text); m !== null; m = re.exec(text)) {
+    found.push({ line: text.slice(0, m.index).split("\n").length, name: m.slice(1).find((g) => g !== undefined) ?? m[0] });
+    if (m[0] === "") re.lastIndex++;
+  }
+  return found;
+}
 
 /**
- * The glossary's added-lines retirements, refused on lines a change adds.
- * `added` is the 1-based line numbers added in `path`. A line the change did
- * not add is ignored, and so is a file outside this guard's in-scope areas.
- * Each rule refuses, on an added line: its `prose` in a page; a declaration of
- * a name built on its item word (`declaresItem`); and a `…Row` declaration
- * (`declaresRow`) in its context. An exemption's `line` keeps the whole line,
- * its `path` keeps the file's `…Row` declarations, its `name` keeps one name.
+ * The glossary's whole-tree retirements over one file, every line of it. A
+ * file outside this guard's in-scope areas is ignored. In code: a type
+ * declared with Row in its name (`declaresRow`), an exported value built on
+ * Row (`exportsRow`), any name built on CollectionItem (`namesItem`), and a
+ * lifecycle named State (`declaresState`); a kept `path` drops the two Row
+ * matchers only. In a page: the rule's `prose`, once a quote rule has stripped
+ * the released texts it names from a page it covers.
  * @param {string} path
  * @param {string} text
- * @param {Set<number>} added
+ * @param {Record<string, number>} [kept] counts per exemption id, added to
  * @returns {{ term: string; line: number; text: string }[]}
  */
-export function scanCollectionRows(path, text, added) {
+export function scanTreeRules(path, text, kept = {}) {
   const area = areaOf(path);
   if (area === undefined || !area.scope) return [];
-  if (added === undefined || added.size === 0) return [];
   const lines = text.split("\n");
   const hits = [];
-  const isDoc = DOC_FILE.test(path);
-  for (const rule of ADDED_LINE_RULES) {
+  for (const rule of TREE_RULES) {
     const keeps = exemptionsOf(rule);
-    const keptPath = keeps.some((e) => e.path?.test(path));
-    for (const n of [...added].sort((a, b) => a - b)) {
-      const raw = lines[n - 1];
-      if (raw === undefined) continue;
-      if (keeps.some((e) => e.line?.test(raw))) continue;
-      const hit = { term: rule.id, line: n, text: raw.trim().slice(0, 160) };
-      if (isDoc && rule.prose.test(raw)) {
-        hits.push(hit);
-        continue;
+    const at = new Set();
+    if (CODE_FILE.test(path)) {
+      const keptPath = keeps.find((e) => e.path?.test(path));
+      for (const re of [rule.declaresRow, rule.exportsRow]) {
+        const found = matchLines(re, text);
+        if (keptPath === undefined) for (const f of found) at.add(f.line);
+        else if (found.length > 0) kept[keptPath.id] = (kept[keptPath.id] ?? 0) + found.length;
       }
-      const declared = (re) => {
-        re.lastIndex = 0;
-        const names = [];
-        for (let m = re.exec(raw); m !== null; m = re.exec(raw)) names.push(m[1]);
-        return names.filter((name) => !keeps.some((e) => e.name?.test(name)));
-      };
-      // A kept path is where a `…Row` is a rendered table row; a `…CollectionItem…` is a resource wherever it sits.
-      if (declared(rule.declaresItem).length > 0 || (!keptPath && declared(rule.declaresRow).some((name) => inContext(rule, path, raw, name)))) hits.push(hit);
+      for (const re of [rule.namesItem, rule.declaresState]) for (const f of matchLines(re, text)) at.add(f.line);
+    } else if (DOC_FILE.test(path)) {
+      const quoting = keeps.filter((e) => e.pages?.test(path));
+      lines.forEach((raw, i) => {
+        let line = raw;
+        for (const e of quoting) {
+          const next = e.quotes.reduce((l, re) => l.replace(re, " "), line);
+          if (next !== line) kept[e.id] = (kept[e.id] ?? 0) + 1;
+          line = next;
+        }
+        if (rule.prose.test(line)) at.add(i + 1);
+      });
     }
-  }
-  return hits;
-}
-
-/**
- * Added-line numbers from one unified diff (`git diff -U0`). Keys are repo-relative
- * paths. Context and deletions are not added lines. A `+++` header is read only
- * outside a hunk, so an added line whose text starts with `++` still counts.
- * @param {string} diff
- * @returns {Map<string, Set<number>>}
- */
-export function parseUnifiedAddedLines(diff) {
-  /** @type {Map<string, Set<number>>} */
-  const map = new Map();
-  let path = null;
-  let newLine = 0;
-  let inHunk = false;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("diff --git ")) {
-      path = null;
-      inHunk = false;
-      continue;
-    }
-    if (!inHunk && line.startsWith("+++ ")) {
-      const raw = line.slice(4);
-      if (raw === "/dev/null") path = null;
-      else if (raw.startsWith("b/")) path = raw.slice(2);
-      else path = raw;
-      continue;
-    }
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-    if (hunk) {
-      newLine = Number(hunk[1]);
-      inHunk = path !== null;
-      continue;
-    }
-    if (!inHunk || path === null || line === "") continue;
-    if (line.startsWith("\\")) continue;
-    if (line.startsWith("+")) {
-      let set = map.get(path);
-      if (set === undefined) map.set(path, (set = new Set()));
-      set.add(newLine);
-      newLine++;
-      continue;
-    }
-    if (line.startsWith("-")) continue;
-    newLine++;
-  }
-  return map;
-}
-
-/**
- * The ref added lines are measured against. CI's pull_request event sets
- * `GITHUB_BASE_REF`. A local checkout uses `origin/main` when it exists.
- * @param {string} root
- */
-export function baseRef(root) {
-  const fromEnv = process.env.GITHUB_BASE_REF;
-  if (fromEnv !== undefined && fromEnv !== "") return `origin/${fromEnv}`;
-  try {
-    execFileSync("git", ["rev-parse", "--verify", "--quiet", "origin/main"], { cwd: root, stdio: "ignore" });
-    return "origin/main";
-  } catch {
-    return "main";
-  }
-}
-
-/**
- * Run git in `root` and return stdout.
- * @param {string} root
- * @param {string[]} args
- */
-function git(root, args) {
-  return execFileSync("git", ["-c", "color.ui=false", ...args], {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-}
-
-/**
- * Lines this working tree adds relative to {@link baseRef}, plus every line of
- * an untracked file. One diff against the base, so the line numbers match the
- * files on disk (committed changes and uncommitted edits together).
- * @param {string} root
- * @returns {Map<string, Set<number>>}
- */
-export function addedLines(root) {
-  const base = baseRef(root);
-  let diff;
-  try {
-    diff = git(root, ["diff", "-U0", "--no-color", base]);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Could not diff against ${base} to find added lines. In CI this means the checkout is shallow. Locally, fetch the base branch first. ${message}`,
-    );
-  }
-  const map = parseUnifiedAddedLines(diff);
-  const untracked = git(root, ["ls-files", "--others", "--exclude-standard", "-z"]);
-  for (const path of untracked.split("\0").filter(Boolean)) {
-    if (BINARY.test(path)) continue;
-    let text;
-    try {
-      text = readFileSync(join(root, path), "utf8");
-    } catch {
-      continue;
-    }
-    if (text.includes("\0")) continue;
-    let set = map.get(path);
-    if (set === undefined) map.set(path, (set = new Set()));
-    const count = text.split("\n").length;
-    for (let i = 1; i <= count; i++) set.add(i);
-  }
-  return map;
-}
-
-/**
- * Added lines, in scope, that the glossary's added-lines retirements refuse.
- * @param {string} [root]
- * @returns {{ path: string; term: string; line: number; text: string }[]}
- */
-export function findAddedCollectionRows(root = ROOT) {
-  const hits = [];
-  for (const [path, lines] of addedLines(root)) {
-    let text;
-    try {
-      text = readFileSync(join(root, path), "utf8");
-    } catch {
-      continue;
-    }
-    if (text.includes("\0")) continue;
-    for (const hit of scanCollectionRows(path, text, lines)) hits.push({ path, ...hit });
+    for (const n of [...at].sort((a, b) => a - b)) hits.push({ term: rule.id, line: n, text: (lines[n - 1] ?? "").trim().slice(0, 160) });
   }
   return hits;
 }
@@ -398,8 +267,9 @@ export function census({ files, paths }, { extraExceptions = [] } = {}) {
     const text = files.get(path);
     if (text === undefined) continue;
     for (const hit of scanFile(path, text, exceptions, stripped)) hits.push({ path, area: area.id, ...hit });
+    for (const hit of scanTreeRules(path, text, stripped)) hits.push({ path, area: area.id, ...hit });
   }
-  const stale = exceptions.filter((e) => !stripped[e.id]).map((e) => e.id);
+  const stale = [...exceptions, ...TREE_EXEMPTIONS].filter((e) => !stripped[e.id]).map((e) => e.id);
   const glossaryText = files.get(GLOSSARY);
   const glossary = glossaryText === undefined ? { missing: [...GLOSSARY_TERMS], repeated: [] } : checkGlossary(glossaryText);
   const ok = unscoped.length === 0 && hits.length === 0 && stale.length === 0 && glossary.missing.length === 0 && glossary.repeated.length === 0;
@@ -450,9 +320,19 @@ export const PLANTS = [
   { path: PERSON_PINS[0].path, line: "If you can't help, say how to reach a person, and tell the person who signed in.", term: "person" },
   { path: GLOSSARY, line: "| **Worker** | workforce | A second definition. | Worker |", term: null },
   { path: "zz-planted-folder/notes.md", line: "Nothing retired here.", term: null },
-  // A resource in a collection named as a row, refused on an added line. In memory, so the control does not need a dirty tree.
-  { path: "packages/orchestration/src/tasks/collection/zz-planted.ts", line: "export type WidgetRow = { id: string };", term: "collection-row" },
+  // A resource named as a row or a collection item, and a lifecycle named State, in any package (FIX-2479).
+  { path: "packages/orchestration/src/tasks/collection/zz-planted.ts", line: "export type FooRow = { id: string };", term: "collection-row" },
+  { path: "packages/workforce/src/zz-planted-resource.ts", line: "export type FooRow = { id: string };", term: "collection-row" },
+  { path: "packages/client/src/zz-planted.ts", line: "export function useFooCollectionItem() {}", term: "collection-row" },
+  { path: "packages/harness-manager/src/zz-planted.ts", line: "export async function readFooRow() {}", term: "collection-row" },
+  { path: "packages/workspace/src/zz-planted.ts", line: 'export type FooState = "idle" | "done";', term: "collection-row" },
   { path: "apps/docs/docs/zz-collection-planted.md", line: "Each collection row is stored beside the worker.", term: "collection-row" },
+  // A released quote is kept as text, not as a line: a second use beside it still counts.
+  {
+    path: "apps/docs/docs/zz-quote-planted.md",
+    line: 'It throws "A row of an owner-writes collection is written only by the user it belongs to." for each row of the shared collection.',
+    term: "collection-row",
+  },
   // A retired name in a contributor doc and in a skill, the trees agents read most (FIX-2354).
   { path: "docs/contributing/zz-planted.md", line: "Locality is decided by `isInProcessDispatcher`.", term: "isInProcessDispatcher" },
   { path: ".agents/skills/zz-planted/SKILL.md", line: "Locality is decided by `isInProcessDispatcher`.", term: "isInProcessDispatcher" },
@@ -480,9 +360,7 @@ export function control(tree) {
   const r = census({ files, paths }, { extraExceptions: [STALE_PLANT] });
   const results = PLANTS.filter((p) => p.term !== null).map((p) => {
     const line = lineOf.get(p);
-    const refused = ADDED_LINE_RULES.some((rule) => rule.id === p.term)
-      ? scanCollectionRows(p.path, files.get(p.path) ?? "", new Set([line])).some((h) => h.line === line)
-      : r.hits.some((h) => h.path === p.path && h.line === line && h.term === p.term);
+    const refused = r.hits.some((h) => h.path === p.path && h.line === line && h.term === p.term);
     return { what: `${p.path}:${line} (${p.term})`, refused };
   });
   results.push({ what: "a second glossary row for Worker", refused: r.glossary.repeated.includes("Worker") });
@@ -491,25 +369,16 @@ export function control(tree) {
   return { results, ok: results.every((x) => x.refused) };
 }
 
-/**
- * @param {ReturnType<typeof census>} r
- * @param {{ path: string; term: string; line: number; text: string }[]} rowHits
- */
-function print(r, rowHits) {
+/** @param {ReturnType<typeof census>} r */
+function print(r) {
   console.log(`tracked files: ${r.files}`);
   console.log("areas: " + AREAS.map((a) => `${a.id}${a.scope ? "" : " (kept)"} ${r.areaCounts[a.id] ?? 0}`).join(" · "));
   for (const e of EXCEPTIONS.map((x) => x.id)) console.log(`exception ${e}: ${r.stripped[e] ?? 0} stripped`);
+  for (const e of TREE_EXEMPTIONS.map((x) => x.id)) console.log(`exemption ${e}: ${r.stripped[e] ?? 0} kept`);
   const byTerm = {};
   for (const h of r.hits) byTerm[h.term] = (byTerm[h.term] ?? 0) + 1;
   for (const t of TERMS) if (byTerm[t.id]) console.log(`  ${t.id}: ${byTerm[t.id]} counted (say ${t.say})`);
-  if (rowHits.length > 0) {
-    for (const rule of ADDED_LINE_RULES) {
-      const own = rowHits.filter((h) => h.term === rule.id);
-      if (own.length === 0) continue;
-      console.error(`  ${rule.id}: ${own.length} added line(s) use a word the ${rule.term} entry retires (say ${rule.say}: ${rule.anchor.join(", ")})`);
-      for (const h of own) console.error(`  ${h.path}:${h.line}  ${h.text}`);
-    }
-  }
+  for (const rule of TREE_RULES) if (byTerm[rule.id]) console.log(`  ${rule.id}: ${byTerm[rule.id]} counted, a word the ${rule.term} entry retires (say ${rule.say}: ${rule.anchor.join(", ")})`);
   if (r.unscoped.length > 0) console.error(`UNSCOPED (no area): ${r.unscoped.join(", ")}`);
   if (r.stale.length > 0) console.error(`STALE EXCEPTIONS (remove them): ${r.stale.join(", ")}`);
   if (r.glossary.missing.length > 0) console.error(`GLOSSARY: no row for ${r.glossary.missing.join(", ")}`);
@@ -517,8 +386,7 @@ function print(r, rowHits) {
   const lines = new Set(r.hits.map((h) => `${h.path}:${h.line}`));
   const inFiles = new Set(r.hits.map((h) => h.path));
   if (r.hits.length > 0) console.error(`FAIL · ${lines.size} lines in ${inFiles.size} files use a retired term`);
-  if (rowHits.length > 0) console.error(`FAIL · ${rowHits.length} added line(s) use a retired word`);
-  if (r.ok && rowHits.length === 0) console.log("check-retired-terms: PASS · no retired term outside its exceptions, every exception strips something, every file has an area, one glossary row per term, no added line uses a retired word");
+  if (r.ok) console.log("check-retired-terms: PASS · no retired term outside its exceptions, every exception strips something, every file has an area, one glossary row per term");
 }
 
 function main() {
@@ -533,25 +401,12 @@ function main() {
     return;
   }
   const r = census(tree);
-  let rowHits = [];
-  let rowError = null;
-  try {
-    rowHits = findAddedCollectionRows(root);
-  } catch (error) {
-    rowError = error instanceof Error ? error.message : String(error);
-  }
   if (process.argv.includes("--list")) {
     const which = process.argv[process.argv.indexOf("--list") + 1];
     for (const h of r.hits) if (which === undefined || which.startsWith("--") || h.term === which) console.log(`${h.path}:${h.line}  [${h.term}]  ${h.text}`);
-    for (const h of rowHits) if (which === undefined || which.startsWith("--") || h.term === which) console.log(`${h.path}:${h.line}  [${h.term}]  ${h.text}`);
   }
-  print(r, rowHits);
-  if (rowError !== null) {
-    console.error(rowError);
-    process.exitCode = 1;
-    return;
-  }
-  process.exitCode = r.ok && rowHits.length === 0 ? 0 : 1;
+  print(r);
+  process.exitCode = r.ok ? 0 : 1;
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) main();

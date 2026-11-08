@@ -29,7 +29,7 @@ import {
   createScheduledTransportAdapter,
   defineScheduleCollection,
   type ScheduleIndex,
-  type ScheduleIndexRow,
+  type ScheduleIndexEntry,
 } from "@flow-state-dev/scheduled";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { createScheduleTickHandler } from "../src/schedules";
@@ -49,7 +49,7 @@ function latestMondayNine(now = Date.now()): number {
 const BASE = "http://localhost";
 
 function boot() {
-  const rows: ScheduleIndexRow[] = [];
+  const rows: ScheduleIndexEntry[] = [];
   const index: ScheduleIndex = {
     async upsert(row) {
       rows.push(row);

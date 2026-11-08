@@ -16,10 +16,10 @@
  */
 import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
 import type { BlockContext, ReadConfig } from "@flow-state-dev/core/types";
-import { rowsInSession } from "@flow-state-dev/orchestration/internal";
+import { tasksInSession } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { readRunChanges, runChangesSchema, type RunChanges } from "./commits";
-import { readRunRow, RUNS, runRecordCollection, runTopic } from "./run-record";
+import { readRunRecord, RUNS, runRecordCollection, runTopic } from "./run-record";
 import { sessionTask, type SessionDoorBoard } from "./session-door";
 import { runBoardSegment } from "./workspace";
 
@@ -84,13 +84,13 @@ export function harnessRunChangesRead(options: HarnessRunChangesReadOptions): Re
       const row =
         input.taskId === undefined
           ? sessionTask(board.tasks, sessionId)
-          : rowsInSession(board.tasks, sessionId).find((task) => task.id === input.taskId);
+          : tasksInSession(board.tasks, sessionId).find((task) => task.id === input.taskId);
       if (row === undefined) throw new HarnessRunChangesRefused(input.taskId === undefined ? "not-started" : "not-this-session");
       const identity = board.runOf(row);
       const record =
         identity === undefined
           ? undefined
-          : await readRunRow(ctx, runTopic(runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.phase));
+          : await readRunRecord(ctx, runTopic(runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.phase));
       const at = input.path === undefined ? {} : { path: input.path };
       if (record?.filesOnly === true) {
         return input.path === undefined

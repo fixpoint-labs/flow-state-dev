@@ -3,10 +3,10 @@
  * read: the roster and the lab's context. No worker, file or project is named
  * here that wasn't read.
  */
-import type { LabContext, WorkerRow } from "../adapter";
+import type { LabContext, LabWorker } from "../adapter";
 
 /** The workers `worker` hands work to, by name: its declared delegates, from the roster as read. */
-export function delegatesOf(worker: WorkerRow, workers: readonly WorkerRow[], context: LabContext | undefined): WorkerRow[] {
+export function delegatesOf(worker: LabWorker, workers: readonly LabWorker[], context: LabContext | undefined): LabWorker[] {
   const declared = context?.delegates[worker.id];
   if (declared === undefined) return [];
   const others = workers.filter((w) => w.id !== worker.id);
@@ -19,7 +19,7 @@ function spoken(names: readonly string[]): string {
 }
 
 /** The empty conversation's sentence: who the worker is, and who it hands work to when it has delegates. */
-export function emptyLine(worker: WorkerRow, delegates: readonly WorkerRow[]): string {
+export function emptyLine(worker: LabWorker, delegates: readonly LabWorker[]): string {
   if (delegates.length === 0) return `Say hello to ${worker.name}. This is your one conversation with it.${worker.role === "" ? "" : ` ${worker.role}`}`;
   const talkers = delegates.filter((w) => !w.takesTasks).map((w) => w.name);
   const coders = delegates.filter((w) => w.takesTasks).map((w) => w.name);
@@ -31,7 +31,7 @@ export function emptyLine(worker: WorkerRow, delegates: readonly WorkerRow[]): s
 }
 
 /** Lines the empty conversation offers; a click puts one in the composer and nothing is sent. */
-export function starterLines(worker: WorkerRow, delegates: readonly WorkerRow[]): string[] {
+export function starterLines(worker: LabWorker, delegates: readonly LabWorker[]): string[] {
   const talker = delegates.find((w) => !w.takesTasks);
   const coder = delegates.find((w) => w.takesTasks);
   if (delegates.length === 0) return ["What can you help me with?", "What have you worked on so far?"];

@@ -19,7 +19,7 @@
  * stable proxy — install it with the app's `setScheduleIndexImpl` equivalent. The index no-ops until the pool is resolved on first request.
  */
 import type { StoreAdapter } from "@flow-state-dev/engine";
-import type { ScheduleIndex, ScheduleIndexRow } from "@flow-state-dev/scheduled";
+import type { ScheduleIndex, ScheduleIndexEntry } from "@flow-state-dev/scheduled";
 import {
   createPostgresScheduleIndex
 } from "@flow-state-dev/store-postgres";
@@ -129,7 +129,7 @@ export function vercelPostgresStores(
   }
 
   const scheduleIndex: ScheduleIndex = {
-    upsert: (row: ScheduleIndexRow) => (realIndex ?? NOOP_INDEX).upsert(row),
+    upsert: (row: ScheduleIndexEntry) => (realIndex ?? NOOP_INDEX).upsert(row),
     claimDue: (now: number, limit?: number) =>
       (realIndex ?? NOOP_INDEX).claimDue(now, limit),
     remove: (id: { cell: string; key: string }) =>

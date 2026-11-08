@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
 import { ChevronRightIcon, TerminalIcon } from "lucide-react";
-import type { BoardTask, LabAdapter, WorkerRow } from "../adapter";
+import type { BoardTask, LabAdapter, LabWorker } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useNow, useStale, useWatch } from "../lib/use-watch";
-import { taskRowPresentation } from "../lib/task-presentation";
+import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
 import { STALE_CLASS } from "./flow-state/connection-banner";
@@ -89,7 +89,7 @@ export function TeammatePanel({
   onOpen,
 }: {
   adapter: LabAdapter;
-  worker: WorkerRow;
+  worker: LabWorker;
   /** The teammate's one conversation: the tasks listed are the ones it filed. */
   sessionId: string;
   /** The task open in the popup, if one is. */
@@ -123,7 +123,7 @@ export function TeammatePanel({
   const row = (t: BoardTask) => {
     const coding = isCoding(t.to);
     const line = taskLine(t, coding, nameOf);
-    const state = taskRowPresentation(t);
+    const state = taskPresentation(t);
     const reason = t.status === "failed" || t.status === "cancelled" ? reasonLine(t) : undefined;
     return (
       <li key={t.id}>
@@ -264,7 +264,7 @@ export function TeammatePanel({
  */
 function StatusWords({ task, now, stale }: { task: BoardTask; now: number; stale: boolean }) {
   if (task.view === undefined) return <>{task.status}</>;
-  const time = <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={(kind) => taskRowPresentation(task, kind).tone} fallback={task.status} />;
+  const time = <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={(kind) => taskPresentation(task, kind).tone} fallback={task.status} />;
   if (task.status === "running" || taskSignal(task.view, task.run, now, { stale }) === null) return time;
   return (
     <>

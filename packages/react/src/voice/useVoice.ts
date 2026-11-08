@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Content, MessageItem, OutputAudioContent } from "@flow-state-dev/core/items";
 import { createAudioRecorder, type AudioRecorder } from "./audio-recorder";
-import { createAudioPlayer, type AudioPlayer, type AudioPlayerState } from "./audio-player";
+import { createAudioPlayer, type AudioPlayer, type AudioPlayerStatus } from "./audio-player";
 import type { ContentAudioDeltaEvent, OutputItem } from "@flow-state-dev/core/items";
 import {
   createSpeechRecognition,
@@ -60,7 +60,7 @@ export function useVoice(
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
-  const [playerState, setPlayerState] = useState<AudioPlayerState>("idle");
+  const [playerState, setPlayerState] = useState<AudioPlayerStatus>("idle");
 
   const recorderRef = useRef<AudioRecorder | null>(null);
   const playerRef = useRef<AudioPlayer | null>(null);

@@ -112,7 +112,7 @@ interface RoleEntry {
 }
 
 /** One role: its entries, the factory that brings them, and how to spread it. */
-interface RoleRow {
+interface RoleSpec {
   readonly entries: readonly RoleEntry[];
   readonly factory: string;
   readonly fix: string;
@@ -133,7 +133,7 @@ const MANAGER_ENTRIES: readonly RoleEntry[] = [
 ];
 
 /** The table. The coordinator's row is a manager's, plus its own three. */
-const ROLE_TABLE: Readonly<Record<WorkerRole, RoleRow>> = {
+const ROLE_TABLE: Readonly<Record<WorkerRole, RoleSpec>> = {
   contributor: {
     entries: [{ name: WORKER_TASK_ENTRY, section: "task", built: isWorkerTaskEntry }],
     factory: "workerTaskEntry",

@@ -6,7 +6,7 @@ import type { BoardTask } from "../adapter";
 import type { TaskSignalKind } from "../components/flow-state/task-signals";
 
 /** A task's word and the class that colours it. */
-export interface TaskRowPresentation {
+export interface TaskPresentation {
   word: string;
   tone: string;
 }
@@ -20,7 +20,7 @@ export interface TaskRowPresentation {
  * answering (its time signal reads *quiet*) is in the warning colour; a
  * failed one is red; the rest are quiet.
  */
-export function taskRowPresentation(task: Pick<BoardTask, "status" | "waiting">, signal?: TaskSignalKind): TaskRowPresentation {
+export function taskPresentation(task: Pick<BoardTask, "status" | "waiting">, signal?: TaskSignalKind): TaskPresentation {
   if (task.status === "running" && task.waiting !== undefined) return { word: "waiting on you", tone: "text-attention" };
   if (signal === "quiet") return { word: "quiet", tone: "text-warning" };
   if (task.status === "failed") return { word: "failed", tone: "text-destructive" };

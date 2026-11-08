@@ -45,7 +45,7 @@ export type { ChangeKind, PushCapability, TopicOptions, WireNotice, WireTopic } 
 
 export { sessionQueryFor } from "./session-client/session-query";
 export { interruptedBySession, type InterruptedBySessionOptions } from "./interrupted-by-session";
-export type { SessionConnectionState } from "./session-client/follow-session";
+export type { SessionConnectionStatus } from "./session-client/follow-session";
 export {
   sessionFeed,
   type SessionFeed,

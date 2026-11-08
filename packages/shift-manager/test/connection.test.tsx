@@ -23,7 +23,7 @@ import { useReportFeedState, worstFeedState } from "../src/lib/feed-health";
 import { LabProvider, useLab } from "../src/lib/lab-data";
 import { inboxSection, toBoardTaskView, toWorker, type LabSnapshot } from "../src/lib/reads";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import type { ConnectionFeedState } from "../src/components/flow-state/connection-banner";
+import type { ConnectionFeedStatus } from "../src/components/flow-state/connection-banner";
 
 /** What the next read answers. */
 let answer: () => LabSnapshot;
@@ -178,12 +178,12 @@ describe("the page's connection is the worst of its feeds", () => {
   it("a feed on screen that lapses makes the page stale while the snapshot reads fine, and stops counting once it goes", async () => {
     // One object, as the page holds one: a new connection is a new client and a new read.
     const CONNECTION = { userId: "u_test" };
-    let seen: { health: ConnectionFeedState; stale: boolean } | undefined;
-    function Feed({ state }: { state: ConnectionFeedState }) {
+    let seen: { health: ConnectionFeedStatus; stale: boolean } | undefined;
+    function Feed({ state }: { state: ConnectionFeedStatus }) {
       useReportFeedState(state);
       return null;
     }
-    function Probe({ feed }: { feed: ConnectionFeedState | null }) {
+    function Probe({ feed }: { feed: ConnectionFeedStatus | null }) {
       const { health, stale } = useLab();
       seen = { health, stale };
       return feed === null ? null : <Feed state={feed} />;

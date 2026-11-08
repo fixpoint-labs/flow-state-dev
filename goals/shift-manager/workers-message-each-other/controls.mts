@@ -230,7 +230,7 @@ export const CONTROLS: Record<ControlName, Control> = {
     patches: [
       {
         module: TARGET,
-        from: String.raw`if \(rowsInSession\(of\.ledger, sessionId\)\.some\(\(row\) => !isTerminalStatus\(row\.status\)\)\) \{`,
+        from: String.raw`if \(tasksInSession\(of\.ledger, sessionId\)\.some\(\(row\) => !isTerminalStatus\(row\.status\)\)\) \{`,
         to: "if (false) {",
       },
     ],

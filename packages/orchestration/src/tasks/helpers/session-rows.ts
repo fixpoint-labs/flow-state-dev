@@ -17,7 +17,7 @@ import type { TaskCollectionRef } from "../collection/types";
 import type { Task } from "../schema/task";
 
 /** The rows of `ledger` that run in `sessionId`, in ledger order. Empty when none ran there. */
-export function rowsInSession(ledger: TaskCollectionRef, sessionId: string): Task[] {
+export function tasksInSession(ledger: TaskCollectionRef, sessionId: string): Task[] {
   const rows = ledger.list() as Task[];
   const roots = new Set<string>();
   for (const task of rows) if (task.run?.sessionId === sessionId) roots.add(task.followUpOf ?? task.id);

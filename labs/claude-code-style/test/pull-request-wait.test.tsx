@@ -9,7 +9,7 @@
  */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { LabAdapter, TaskRow, TaskWork } from "../src/adapter";
+import type { LabAdapter, LabTask, TaskWork } from "../src/adapter";
 import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { ThreadCard } from "../src/components/ThreadCard";
 import { ThreadView } from "../src/components/ThreadView";
@@ -20,7 +20,7 @@ afterEach(cleanup);
 
 const URL_7 = "https://github.com/acme/app/pull/7";
 
-const WAITING: TaskRow = {
+const WAITING: LabTask = {
   id: "t-7",
   title: "Rename the session log",
   goal: "Rename it",
@@ -39,7 +39,7 @@ const adapter = {
   resolve: async () => {},
 } as unknown as LabAdapter;
 
-function openView(task: TaskRow) {
+function openView(task: LabTask) {
   render(
     <SessionOverlayProvider>
       <SessionOverlayArea>

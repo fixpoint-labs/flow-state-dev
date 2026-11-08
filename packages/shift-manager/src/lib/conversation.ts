@@ -13,7 +13,7 @@
  * first read keeps it on screen; only a failed first read shows.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SessionConnectionState, SessionSummary } from "@flow-state-dev/client";
+import type { SessionConnectionStatus, SessionSummary } from "@flow-state-dev/client";
 import { COORDINATOR_FLOW, deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
 import { useReportFeedState } from "./feed-health";
@@ -136,7 +136,7 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
   const [follows, setFollows] = useState(0);
   const failed = useRef(false);
   // The followed feed's connection, for the page's bar; nothing while no session is followed.
-  const [feedState, setFeedState] = useState<SessionConnectionState | undefined>(undefined);
+  const [feedState, setFeedState] = useState<SessionConnectionStatus | undefined>(undefined);
   useReportFeedState(sessionId === null ? undefined : feedState);
 
   useEffect(() => {

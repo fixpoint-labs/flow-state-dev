@@ -7,15 +7,15 @@
 import type { JsonObject } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
 import { defineScheduleCollection } from "../src/defineScheduleCollection";
-import type { ScheduleIndex, ScheduleIndexRow } from "../src/scheduleIndex";
+import type { ScheduleIndex, ScheduleIndexEntry } from "../src/scheduleIndex";
 
 /**
  * In-memory `ScheduleIndex` used to observe hook side-effects.
  * Mirrors the contract loosely — claimDue is not exercised by these
  * tests (the real backends are covered by the conformance suite).
  */
-function createFakeIndex(): ScheduleIndex & { rows: Map<string, ScheduleIndexRow> } {
-  const rows = new Map<string, ScheduleIndexRow>();
+function createFakeIndex(): ScheduleIndex & { rows: Map<string, ScheduleIndexEntry> } {
+  const rows = new Map<string, ScheduleIndexEntry>();
   return {
     rows,
     async upsert(row) {

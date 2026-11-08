@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { LabAdapter, TaskRow, TaskStatus } from "../adapter";
+import type { LabAdapter, LabTask, TaskStatus } from "../adapter";
 import { FINISHED, TASK_STATUS } from "../lib/task-status";
 import { useMissing, useNow, useWatch } from "../lib/use-watch";
 import { Clamp } from "./Clamp";
@@ -43,7 +43,7 @@ export function TasksPane({
   adapter: LabAdapter;
   sessionId: string;
   /** The session's task rows, as the app reads them; `undefined` until read. */
-  tasks: TaskRow[] | undefined;
+  tasks: LabTask[] | undefined;
   /** The app's last read of the rows failed: they may be old. */
   stale?: boolean;
   /** The task whose sheet is open, kept by the app so the page's address can name it. */
@@ -122,7 +122,7 @@ export function TasksPane({
  * the link, and that a line in the Steer box wakes it. A failed task's error
  * shows as an error.
  */
-function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter; sessionId: string; task: TaskRow; onClose: () => void }) {
+function TaskSheet({ adapter, sessionId, task, onClose }: { adapter: LabAdapter; sessionId: string; task: LabTask; onClose: () => void }) {
   const actions = useMemo(() => adapter.taskActions(sessionId), [adapter, sessionId]);
   const work = useWatch(
     (emit: Parameters<LabAdapter["watchTaskWork"]>[2]) => adapter.watchTaskWork(sessionId, task.id, emit),

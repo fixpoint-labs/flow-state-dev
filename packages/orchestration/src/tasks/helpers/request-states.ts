@@ -10,7 +10,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** Where one request stands: running its own work, parked on a person or a wait, or ended (its process died too). */
-export type RequestState = "running" | "parked" | "ended";
+export type RequestStanding = "running" | "parked" | "ended";
 
 /**
  * Read where each of `ids` stands, in one read of each engine record.
@@ -32,12 +32,12 @@ export type RequestState = "running" | "parked" | "ended";
 export async function requestStates(
   ctx: BlockContext,
   ids: readonly string[]
-): Promise<Readonly<Partial<Record<string, RequestState>>> | undefined> {
+): Promise<Readonly<Partial<Record<string, RequestStanding>>> | undefined> {
   const waits = requestHostOf(ctx)?.waits;
   if (ids.length === 0 || (waits?.running === undefined && waits?.ended === undefined)) return undefined;
   const unique = [...new Set(ids)];
   const [running, ended] = await Promise.all([waits.running?.(unique), waits.ended?.(unique)]);
-  const states: Partial<Record<string, RequestState>> = {};
+  const states: Partial<Record<string, RequestStanding>> = {};
   for (const id of unique) {
     if (running?.[id] === true) states[id] = "running";
     else if (ended?.[id] === true || (running !== undefined && ended === undefined)) states[id] = "ended";

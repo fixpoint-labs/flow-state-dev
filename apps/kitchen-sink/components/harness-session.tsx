@@ -75,7 +75,7 @@ import {
   turnNumbers,
   turnWaitingOnApproval,
   type PlanMarkerItem,
-  type PlanRowItem,
+  type PlanEntry,
   type TurnNotice,
   type TurnStatus,
 } from "@/lib/harness-turn";
@@ -614,7 +614,7 @@ function PlanRows({
   if (rows.error !== undefined) {
     return <p className="text-sm text-destructive">The plan can't be read: {rows.error.message}</p>;
   }
-  const rowItems: PlanRowItem[] = rows.items
+  const rowItems: PlanEntry[] = rows.items
     .filter((item) => ownTopic(resourcesPrefix, item.topic))
     .map((item) => ({
       topic: item.topic,

@@ -7,13 +7,13 @@
  *
  * Red states produced before this was trusted: on `main` (filing order, no
  * order by time, *Failed* collapsed with no reason, *Done* uncapped) every panel case
- * fails; read `waiting` out of `taskRowPresentation` and the card case fails; drop
+ * fails; read `waiting` out of `taskPresentation` and the card case fails; drop
  * the times from the board's `listTasks` rows and the adapter case fails.
  */
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it } from "vitest";
-import { toBoardTask, type BoardTask, type LabAdapter, type WorkerRow } from "../src/adapter";
+import { toBoardTask, type BoardTask, type LabAdapter, type LabWorker } from "../src/adapter";
 import { TaskCard } from "../src/components/TaskCard";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 import { lookOf } from "../src/lib/looks";
@@ -38,7 +38,7 @@ const TASKS: BoardTask[] = [
   task("c1", { status: "cancelled", boardStatus: "cancelled" }, { completedAt: NOW - MIN }),
 ];
 
-const worker: WorkerRow = { id: "chief", name: "Lead", role: "Routes work", instructions: "", own: false } as WorkerRow;
+const worker: LabWorker = { id: "chief", name: "Lead", role: "Routes work", instructions: "", own: false } as LabWorker;
 
 /** Just what the panel watches: one conversation's tasks, and a connection that never went stale. */
 const adapter = {

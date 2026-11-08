@@ -30,8 +30,8 @@ const LEDGER_ID = "per-row-tasks";
 type Ran = { entry: string; taskId: string; session: string };
 
 /** What a row carries: which entry, and optionally which existing session. */
-type RowInput = { entry?: string; sessionId?: string };
-const rowOf = (task: TaskTargetQuery) => ((task.input as TaskWorkerInput).input ?? {}) as RowInput;
+type TaskEntryInput = { entry?: string; sessionId?: string };
+const rowOf = (task: TaskTargetQuery) => ((task.input as TaskWorkerInput).input ?? {}) as TaskEntryInput;
 
 function entry(name: string, ran: Ran[]) {
   return handler({
@@ -45,7 +45,7 @@ function entry(name: string, ran: Ran[]) {
   });
 }
 
-function boardFlow(ran: Ran[], rows: Array<{ id: string; input: RowInput }>, among = ["work", "post"]) {
+function boardFlow(ran: Ran[], rows: Array<{ id: string; input: TaskEntryInput }>, among = ["work", "post"]) {
   const board = taskBoard({
     name: "per-row",
     boardId: LEDGER_ID,
@@ -95,7 +95,7 @@ async function until(predicate: () => Promise<boolean>, label: string): Promise<
   throw new Error(`timed out waiting for ${label}`);
 }
 
-async function boot(ran: Ran[], rows: Array<{ id: string; input: RowInput }>) {
+async function boot(ran: Ran[], rows: Array<{ id: string; input: TaskEntryInput }>) {
   const flow = boardFlow(ran, rows);
   const state = createFlowState({
     flows: { [flow.id]: flow },

@@ -22,7 +22,7 @@ export interface ListClaudeCodeModelsOptions {
 }
 
 /** A row of the SDK's `supportedModels()`, as far as this reads it. */
-interface SdkModelRow {
+interface SdkModelEntry {
   value?: unknown;
   resolvedModel?: unknown;
   displayName?: unknown;
@@ -31,7 +31,7 @@ interface SdkModelRow {
 
 /** The part of the SDK's query handle the list uses. */
 interface ModelQuery {
-  supportedModels(): Promise<SdkModelRow[]>;
+  supportedModels(): Promise<SdkModelEntry[]>;
   close?: () => void;
 }
 
@@ -46,7 +46,7 @@ const DEFAULT_ROW = "default";
  */
 export async function listClaudeCodeModels(options: ListClaudeCodeModelsOptions): Promise<HarnessModelList> {
   const timeoutMs = options.timeoutMs ?? 10_000;
-  const asked = await runIdleQuery<ModelQuery, SdkModelRow[]>(
+  const asked = await runIdleQuery<ModelQuery, SdkModelEntry[]>(
     { env: options.env, timeoutMs, importSdk: options.importSdk },
     (handle) => handle.supportedModels(),
   );
@@ -65,7 +65,7 @@ export async function listClaudeCodeModels(options: ListClaudeCodeModelsOptions)
  * SDK doesn't resolve whose value is an alias (the default row included), since
  * a stored alias would follow Claude Code to another model.
  */
-function toModels(rows: readonly SdkModelRow[]): HarnessModelInfo[] {
+function toModels(rows: readonly SdkModelEntry[]): HarnessModelInfo[] {
   const text = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
   const byId = new Map<string, HarnessModelInfo>();
   let defaultId: string | undefined;

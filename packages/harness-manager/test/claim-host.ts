@@ -36,7 +36,7 @@ import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,
   harnessTaskInputSchema,
-  readRunRow,
+  readRunRecord,
   runRecordCollection,
   type CompletionRunContext,
   type HarnessFeeds,
@@ -335,7 +335,7 @@ export function claimHost(options: HostOptions) {
     inputSchema: z.object({ topic: z.string() }),
     outputSchema: z.unknown(),
     resources: { runs: runRecordCollection },
-    execute: async (input, ctx) => (await readRunRow(ctx as never, input.topic)) ?? null,
+    execute: async (input, ctx) => (await readRunRecord(ctx as never, input.topic)) ?? null,
   });
   // Write a run record as it stands, as an earlier version of the manager left it.
   const putRecordBlock = handler({

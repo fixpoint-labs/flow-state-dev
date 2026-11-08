@@ -10,7 +10,7 @@
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import type { LabAdapter, SessionRow, TaskRow, ThreadEntry } from "../adapter";
+import type { LabAdapter, LabSession, LabTask, ThreadEntry } from "../adapter";
 import { Entry } from "../components/Entry";
 import { Sheet, SheetArea, SheetProvider } from "../components/Sheet";
 import { Thread } from "../components/Thread";
@@ -58,8 +58,8 @@ const adapter: LabAdapter = {
   unpin: async () => undefined,
 };
 
-const session = (id: string): SessionRow => ({ id, title: `Session ${id}`, worker: "desk.main", updatedAt: 0, running: false, waiting: 0, projectId: "p" });
-const task = (id: string): TaskRow => ({ id, title: `Task ${id}`, goal: "A task", status: "in_progress" });
+const session = (id: string): LabSession => ({ id, title: `Session ${id}`, worker: "desk.main", updatedAt: 0, running: false, waiting: 0, projectId: "p" });
+const task = (id: string): LabTask => ({ id, title: `Task ${id}`, goal: "A task", status: "in_progress" });
 
 function Page() {
   const open = useOpen();

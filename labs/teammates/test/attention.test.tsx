@@ -18,7 +18,7 @@ import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BoardTask, ConversationEntry } from "../src/adapter";
 import { App } from "../src/App";
-import { createNotifier, rowAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
+import { createNotifier, teammateAttention, titleFor, useNotifyToggle } from "../src/lib/attention";
 import { ENDING_SHOWN_MS, needsOf, statusOf, type StatusInputs } from "../src/lib/status";
 import { createFixtureLab } from "./fake-lab";
 
@@ -66,9 +66,9 @@ describe("the tab's title", () => {
 
   it("counts a teammate with only unread lines, though it needs nothing and notifies nothing", () => {
     // D3: the title counts unread or needing you; the badge and notifications are needs only.
-    const unreadOnly = rowAttention("writer", true, 2, [], []);
+    const unreadOnly = teammateAttention("writer", true, 2, [], []);
     expect(unreadOnly).toEqual({ asks: true, loaded: true, alerts: [] });
-    expect(titleFor({ writer: unreadOnly, researcher: rowAttention("researcher", true, 0, [], []) })).toBe("(1) Teammates");
+    expect(titleFor({ writer: unreadOnly, researcher: teammateAttention("researcher", true, 0, [], []) })).toBe("(1) Teammates");
   });
 });
 

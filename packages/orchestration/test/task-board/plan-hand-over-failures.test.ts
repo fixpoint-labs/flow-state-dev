@@ -279,7 +279,7 @@ function planFlow(filer?: GeneratorModel): FlowInstance {
   } as never)({ id: "plan-hand-over-fails" });
 }
 
-type Row = { id: string; status: string; wait?: { requestId?: string; lapsed?: true; drain?: true } };
+type StoredTask = { id: string; status: string; wait?: { requestId?: string; lapsed?: true; drain?: true } };
 
 describe("a plan drain that fails after handing a row over", () => {
   let state: ReturnType<typeof createFlowState> | undefined;
@@ -356,7 +356,7 @@ describe("a plan drain that fails after handing a row over", () => {
       }
       return check();
     };
-    const rowsNow = async () => (await act("rows")).output as Row[];
+    const rowsNow = async () => (await act("rows")).output as StoredTask[];
     return { act, recordOf, until, rowsNow };
   }
 

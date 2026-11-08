@@ -8,7 +8,7 @@
 import {
   composeToolCallsLabel,
   type ToolCallStatus,
-  type ToolStepState,
+  type ToolStepStatus,
   toolRunState,
   toolStepState,
   withToolState,
@@ -28,14 +28,14 @@ export interface ToolCallOf {
 export interface ToolStep {
   id: string;
   line: string;
-  state: ToolStepState;
+  state: ToolStepStatus;
   taskId?: string;
 }
 
 /** A run of steps: the line that sums them, where the run stands, and each step. */
 export interface ToolRun {
   label: string;
-  state: ToolStepState;
+  state: ToolStepStatus;
   steps: ToolStep[];
 }
 

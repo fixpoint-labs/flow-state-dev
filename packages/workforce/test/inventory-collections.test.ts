@@ -40,7 +40,7 @@ const inheritsIsolation = defineResourceCollection({
 
 const workers = defineWorkerInventoryCollection();
 
-type Rows = {
+type StoredResources = {
   workers: unknown[];
   control: unknown[];
 };
@@ -77,7 +77,7 @@ const readBlock = handler({
 });
 
 /**
- * Rows keyed by their own id, for comparison.
+ * StoredResources keyed by their own id, for comparison.
  *
  * `list()` declares no order — it returns the loaded set in insertion order —
  * so comparing positionally would assert something the collection does not
@@ -129,7 +129,7 @@ async function write(
 async function read(
   ctx: ReturnType<typeof twoFlows>,
   opts: { orgId?: string; tenantId?: string } = {}
-): Promise<Rows> {
+): Promise<StoredResources> {
   const result: any = await runAction({
     flow: ctx.reader,
     actionName: "read",
@@ -139,7 +139,7 @@ async function read(
     runtimeConfig: {} as never,
     ...opts
   });
-  return (result.output ?? result) as Rows;
+  return (result.output ?? result) as StoredResources;
 }
 
 describe("what the collections declare", () => {

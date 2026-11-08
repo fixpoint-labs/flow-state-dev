@@ -217,10 +217,10 @@ export function AsOf({ readAt, onRefresh, testId }: { readAt: number; onRefresh:
 }
 
 /** v2's state square states (`NODE`, v2:893-896). */
-export type TaskState = "needs" | "run" | "review" | "queued" | "done";
+export type SquareStatus = "needs" | "run" | "review" | "queued" | "done";
 
 /** The state square a board column draws its rows with. */
-export const STATE_OF_COLUMN: Record<Column, TaskState> = {
+export const STATE_OF_COLUMN: Record<Column, SquareStatus> = {
   QUEUED: "queued",
   RUNNING: "run",
   "NEEDS YOU": "needs",
@@ -228,7 +228,7 @@ export const STATE_OF_COLUMN: Record<Column, TaskState> = {
   DONE: "done",
 };
 
-const STATE_SQUARE: Record<TaskState, string> = {
+const STATE_SQUARE: Record<SquareStatus, string> = {
   // The highlighter, only because the row waits on a user.
   needs: "border-solid border-foreground bg-attention",
   run: "border-solid border-info bg-info",
@@ -238,7 +238,7 @@ const STATE_SQUARE: Record<TaskState, string> = {
 };
 
 /** A task's state as v2's 8px square (v2:893-896): needs, run, review, queued or done. */
-export function StateSquare({ state, className }: { state: TaskState; className?: string }) {
+export function StateSquare({ state, className }: { state: SquareStatus; className?: string }) {
   return <span className={cn("inline-block size-2 shrink-0 border", STATE_SQUARE[state], className)} data-state-square={state} aria-hidden />;
 }
 

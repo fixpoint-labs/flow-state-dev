@@ -15,9 +15,9 @@ import { OBSERVED_PULL_REQUESTS, pullRequestKey } from "@flow-state-dev/core/har
 import { describe, expect, it } from "vitest";
 import { pullRequestWait, readSessionPullRequests, type RecordedWorkClient } from "../src/browser";
 
-type Row = { topic: string; clientData?: unknown };
+type Listed = { topic: string; clientData?: unknown };
 
-function fakeClient(rows: Row[] | null, options: { readable?: boolean; failWith?: Error } = {}): RecordedWorkClient & { asked: string[] } {
+function fakeClient(rows: Listed[] | null, options: { readable?: boolean; failWith?: Error } = {}): RecordedWorkClient & { asked: string[] } {
   const asked: string[] = [];
   const manifest: ResourceManifest = {
     flowKind: "coding",
@@ -53,7 +53,7 @@ function fakeClient(rows: Row[] | null, options: { readable?: boolean; failWith?
   } as RecordedWorkClient & { asked: string[] };
 }
 
-const row = (n: number, data: Record<string, unknown>): Row => ({ topic: `${OBSERVED_PULL_REQUESTS}/github.com/acme/app/${n}`, clientData: data });
+const row = (n: number, data: Record<string, unknown>): Listed => ({ topic: `${OBSERVED_PULL_REQUESTS}/github.com/acme/app/${n}`, clientData: data });
 const pr = (n: number, extra: Record<string, unknown> = {}) => ({
   host: "github.com",
   repository: "acme/app",

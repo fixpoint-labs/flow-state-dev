@@ -20,7 +20,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { SessionConnectionState } from "@flow-state-dev/client";
+import type { SessionConnectionStatus } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext, useJumpToLatest } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
 import { shiftManagerRenderers } from "../components/ToolLine";
@@ -117,7 +117,7 @@ function RunItems({ run }: { run: OpenRun }) {
   const feed = useJumpToLatest();
   const { reportStatus } = task;
   // The feed's connection, for the page's bar and stale styling.
-  const [feedState, setFeedState] = useState<SessionConnectionState | undefined>(undefined);
+  const [feedState, setFeedState] = useState<SessionConnectionStatus | undefined>(undefined);
   useReportFeedState(feedState);
 
   useEffect(() => {
