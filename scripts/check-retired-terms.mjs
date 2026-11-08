@@ -179,7 +179,7 @@ function matchLines(re, text) {
  * The glossary's whole-tree retirements over one file, every line of it. A
  * file outside this guard's in-scope areas is ignored. In code: a type
  * declared with Row in its name (`declaresRow`), an exported value built on
- * Row (`exportsRow`), any name built on CollectionItem (`namesItem`), and a
+ * Row, directly or through an export list (`exportsRow`, `exportsRowInList`), any name built on CollectionItem (`namesItem`), and a
  * lifecycle named State (`declaresState`); a kept `path` drops the two Row
  * matchers only. In a page: the rule's `prose`, once a quote rule has stripped
  * the released texts it names from a page it covers.
@@ -198,7 +198,7 @@ export function scanTreeRules(path, text, kept = {}) {
     const at = new Set();
     if (CODE_FILE.test(path)) {
       const keptPath = keeps.find((e) => e.path?.test(path));
-      for (const re of [rule.declaresRow, rule.exportsRow]) {
+      for (const re of [rule.declaresRow, rule.exportsRow, rule.exportsRowInList]) {
         const found = matchLines(re, text);
         if (keptPath === undefined) for (const f of found) at.add(f.line);
         else if (found.length > 0) kept[keptPath.id] = (kept[keptPath.id] ?? 0) + found.length;

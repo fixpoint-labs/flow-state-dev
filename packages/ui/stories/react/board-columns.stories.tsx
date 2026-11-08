@@ -3,8 +3,8 @@ import { BoardColumns } from "@flow-state-dev/react/workforce";
 
 import {
   boardTask,
-  failingRowsSource,
-  loadingRowsSource,
+  failingResourcesSource,
+  loadingResourcesSource,
   resourcesSource,
 } from "../fixtures/workforce";
 
@@ -20,7 +20,7 @@ type Story = StoryObj<typeof meta>;
 
 /** The board read has not answered yet. */
 export const Loading: Story = {
-  args: { client: loadingRowsSource },
+  args: { client: loadingResourcesSource },
 };
 
 /** A board with no rows, which says why rather than spinning. */
@@ -30,7 +30,7 @@ export const Empty: Story = {
 
 /** The read failed. The line says what failed and offers Retry. */
 export const Failed: Story = {
-  args: { client: failingRowsSource("Failed to load this board") },
+  args: { client: failingResourcesSource("Failed to load this board") },
 };
 
 /**

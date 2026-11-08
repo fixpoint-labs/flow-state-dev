@@ -2,8 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Roster } from "@flow-state-dev/react/workforce";
 
 import {
-  failingRowsSource,
-  loadingRowsSource,
+  failingResourcesSource,
+  loadingResourcesSource,
   rosterWorker,
   resourcesSource,
 } from "../fixtures/workforce";
@@ -20,7 +20,7 @@ type Story = StoryObj<typeof meta>;
 
 /** The roster read has not answered yet. */
 export const Loading: Story = {
-  args: { client: loadingRowsSource },
+  args: { client: loadingResourcesSource },
 };
 
 /** The organization has hired nobody. */
@@ -30,7 +30,7 @@ export const Empty: Story = {
 
 /** The read failed. The line says what failed and offers Retry; nothing re-reads on a timer. */
 export const Failed: Story = {
-  args: { client: failingRowsSource("Failed to load the roster") },
+  args: { client: failingResourcesSource("Failed to load the roster") },
 };
 
 /** Workers on the roster, each with the flow it runs. */

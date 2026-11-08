@@ -279,6 +279,25 @@ describe("the resource entry reads the whole tree: a stored thing is a resource,
     expect(resourceHits("packages/engine/src/zz.ts", kept)).toEqual([]);
   });
 
+  it("refuses a Row name exported through an export list or an alias, and leaves a re-export of an existing name", () => {
+    // Changing the export syntax must not let a retired public name through.
+    expect(resourceHits("packages/workforce/src/zz.ts", "const loadWidgetRow = () => null;\nexport { loadWidgetRow };\n")).toEqual(["2:export { loadWidgetRow };"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export {\n  loadWidget,\n  type WidgetRowPage,\n};\n")).toEqual(["3:type WidgetRowPage,"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", 'export { loadWidget as loadWidgetRow } from "./read";\n')).toEqual([
+      '1:export { loadWidget as loadWidgetRow } from "./read";',
+    ]);
+    // The exported name is what a consumer meets: a Row local exported under another name is fine.
+    expect(resourceHits("packages/workforce/src/zz.ts", "export { widgetRow as widget };\n")).toEqual([]);
+  });
+
+  it("refuses a plural Row word part followed by another word part", () => {
+    expect(resourceHits("packages/workforce/src/zz.ts", "export type WidgetRowsPage = { widgets: unknown[] };\n")).toEqual([
+      "1:export type WidgetRowsPage = { widgets: unknown[] };",
+    ]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export function loadWidgetRowsPage() {}\n")).toEqual(["1:export function loadWidgetRowsPage() {}"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export function rowsetOf() {}\nexport type Rowan = string;\n")).toEqual([]);
+  });
+
   it("refuses any CollectionItem name in code, a use as well as a declaration, and leaves a page's prose to the release", () => {
     expect(resourceHits("packages/react/src/zz.ts", "export function useFooCollectionItem() {}\n")).toEqual(["1:export function useFooCollectionItem() {}"]);
     expect(resourceHits("apps/kitchen-sink/lib/zz.ts", "const page = await client.resources.listCollectionItems(id, ref);\n")).toEqual([

@@ -97,8 +97,10 @@ const SEAT_MAILBOX_GOAL_NAMES = [
   "a-seat-reaches-the-documents-its-file-names",
 ];
 
-/** A name whose word parts include Row: `FooRow`, `Rows`, `RowHold`, `writeRunRow`. Not `Arrow`, `Rowan`. */
-const ROW_NAME = String.raw`\w*Row(?:s|[A-Z_]\w*)?(?![\w$])`;
+/** A name whose word parts include Row: `FooRow`, `Rows`, `RowHold`, `TaskRowsPage`, `writeRunRow`. Not `Arrow`, `Rowan`. */
+const ROW_NAME = String.raw`\w*Rows?(?:[A-Z_]\w*)?(?![\w$])`;
+/** An export list's opening, read behind a name: `export {`, `export type {`, and any names before it in the list. */
+const IN_EXPORT_LIST = String.raw`(?<=(?<![\w$.])export\s+(?:type\s+)?\{[^}]*?)`;
 
 // ---------------------------------------------------------------------------------------------
 // 1. The terms
@@ -128,6 +130,12 @@ export const ENTRIES = [
         // Code. An exported value built on Row: `readRunRow`, `fooRowSchema`, `rowTruthOf`. A local is no name anyone meets.
         exportsRow: new RegExp(String.raw`(?<![\w$.])export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|enum)\s+(${ROW_NAME}|rows?[A-Z]\w*)`, "g"),
         // Code. Any name built on CollectionItem, a use as well as a declaration: always a resource, wherever it sits.
+        // Code. A Row name exported through a list: `export { readTaskRow }`, or an alias `export { x as fooRow }` (a re-export too).
+        // A plain re-export (`export { FooRow } from`) is left: its declaration is where the name counts.
+        exportsRowInList: new RegExp(
+          String.raw`${IN_EXPORT_LIST}(?<![\w$])(${ROW_NAME}|rows?[A-Z]\w*)\s*(?=(?:,[^}]*)?\}(?!\s*from\b))|${IN_EXPORT_LIST}\bas\s+(${ROW_NAME}|rows?[A-Z]\w*)\s*(?=[,}])`,
+          "g",
+        ),
         namesItem: /(?<![\w$])([\w$]*[Cc]ollectionItems?[\w$]*)/g,
         // Code. A lifecycle named State: a string-literal union (on one line or several) or a z.enum. State is scope or resource state only.
         declaresState: /(?<![\w$.])type\s+(\w*State)\s*=\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*\|?\s*["'`]|(?<![\w$.])(?:const|let|var)\s+(\w*State(?:Schema)?)\s*=\s*z\s*\.\s*enum\(|(?<![\w$.])enum\s+(\w*State)\s*\{/g,

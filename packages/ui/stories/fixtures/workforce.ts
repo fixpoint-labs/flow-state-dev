@@ -26,10 +26,10 @@ export function resourcesSource(rows: readonly { topic: string; clientData: unkn
 }
 
 /** A collection read that never answers. */
-export const loadingRowsSource: PanelRowSource = { resources: { listCollectionResources: () => pending() } };
+export const loadingResourcesSource: PanelRowSource = { resources: { listCollectionResources: () => pending() } };
 
 /** A collection read that fails with this message. */
-export function failingRowsSource(message: string): PanelRowSource {
+export function failingResourcesSource(message: string): PanelRowSource {
   return {
     resources: {
       listCollectionResources: async () => {
