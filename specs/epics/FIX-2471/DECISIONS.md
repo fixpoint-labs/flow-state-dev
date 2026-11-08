@@ -70,7 +70,7 @@ It comes down to where recipient rules live: a second sender kind keeps a second
 |---|---|
 | **Instead of** | Recurring work and subscriptions kept apart: two names, lists and tool sets |
 | **Because** | Both fire on their own, as their owner; a person needs one place to see and stop them |
-| **Locks in** | One trigger: a clock (recurring work) or an event (still called a subscription, pushed or polled). One name, list and tool set over `scheduled`'s schedule rows and FIX-2534's subscription rows; no new store. Renamed in this epic ([ER-9](#who-owns-what)) |
+| **Locks in** | One trigger: a clock (recurring work) or an event (still called a subscription, pushed or polled). One name, list and tool set over `scheduled`'s schedule rows and FIX-2534's subscription rows; no new store. Renamed in this epic ([ER-9](#who-owns-what)). Child 6 owns the glossary edit: `docs/contributing/glossary.mjs` in its implementation PR and `apps/docs/docs/glossary.md` at release through `/release-docs`. The entry defines a routine as a standing instruction with one trigger, a clock or an event, and says it replaces "recurring work" ([FIX-2085 D3](../../issues/FIX-2085/DECISIONS.md#d3)) and "schedule" as user-facing names |
 
 ![D12: routines over both rows, chosen, beside two kinds kept apart; decided by where a person stops what runs as them](figures/d12-routines.svg)
 
