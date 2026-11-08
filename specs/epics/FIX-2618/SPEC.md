@@ -37,20 +37,21 @@ flowchart LR
   M["main · every child merged"] --> A["leg a · claude-code-style on kits · real model · browser"]
   M --> B["leg b · teammates host on the same kits"]
   A -->|"thread, coding task, board row, pin · all on screen · inventory clean"| P["PASS · the epic's goal is met"]
-  B -->|"no callback, no casts, no coder.ts routing, no flow both copied and imported"| P
+  B -->|"no callback, no casts, no coder.ts routing · per O1, no flow both copied and imported"| P
   C["control · today's main"] -.-> A
   A -.->|"under the control"| F["must FAIL · inventory refuses adapter.ts"]
 ```
 
 Leg b is the one the smaller goal skips: a second app on the same kits is what shows the slots
-are not shaped for one consumer. Under [O1](DECISIONS.md#o1)'s split it imports the kits' library
-half and keeps its teammate flows as copied files it owns. Under today's `main` the inventory must refuse the adapter,
+are not shaped for one consumer. If the owner confirms [O1](DECISIONS.md#o1)'s split, it imports the
+kits' library half and keeps its teammate flows as copied files it owns; if not, it imports them.
+Under today's `main` the inventory must refuse the adapter,
 which is what makes the PASS mean something.
 
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's goal check (FIX-2629), real model, in a browser, on one `main` commit after every other child merges. Its clean run is the epic's wrap condition |
-| **Signal** | Leg a: a thread, a delegated coding task, its board row changing, and a pin written directly under its write rule with no pins flow ([O3](DECISIONS.md#o3)), all seen on screen, with FIX-2152 ER-1's inventory passing and no file that assembles server data. Leg b: the teammates host installs workforce and the harness kit's library half, its own routing flow is gone, and no flow is both copied and importable |
+| **Signal** | Leg a: a thread, a delegated coding task, its board row changing, and a pin written from the client through its validated path (a write rule or `runBy`, per [O3](DECISIONS.md#o3)), all seen on screen, with FIX-2152 ER-1's inventory passing and no file that assembles server data. Leg b: the teammates host installs workforce and the harness kit, its own routing flow is gone, and, under [O1](DECISIONS.md#o1)'s split, no flow is both copied and importable |
 | **Input** | A held-out coding prompt in a scratch repository, chosen at run time |
 | **Anti-game** | Don't assert on a view's own output or a kit's unit tests: they pass while a screen still reads through a hand-rolled session. Assert on the screen and on the inventory |
 | **Control that must fail** | Today's `main`: the inventory refuses `adapter.ts` and the own-session helpers. A view with one dependency left out: the development-time check fails |

@@ -123,7 +123,8 @@ ways (a copy beside a still-importable export is two ways to do the same thing):
 The split is the owner's stated direction (2026-11-04), relayed by the architect review on this
 PR and **pending the owner's confirmation**; nothing in the repository records copy-in for flows
 yet. If it isn't the direction, kits ship their flows as library imports, and the teammates and
-Shift Manager flows stay importable.
+Shift Manager flows stay importable. The goal check holds either way: leg b checks "no flow both
+copied and importable" only under the split.
 
 **My recommendation: yes, with the split,** after the teammates proof (FIX-2622) and after views
 and resource addressing land, so a kit packages things that exist. Slots stay few, typed and
@@ -201,7 +202,8 @@ brings a second write path to keep in step with the first. Today's session-scope
 **My recommendation: both paths, each where it fits.** A write rule for plain CRUD; `runBy` where
 a flow does work. A resource with neither cannot be written from a client. The owner has said
 both that pins through a flow is the wrong design and that some resources do need their flow, so
-this is **awaiting the owner**.
+this is **awaiting the owner**. The goal check holds under any answer: leg a checks for a pin
+written through its validated path, whichever path O3 picks.
 
 **What would change my mind.** A validator a write rule can't express (one that needs other
 resources, or a run) turning out to be common. Then those resources take `runBy`, and the rule
