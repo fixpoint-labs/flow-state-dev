@@ -31,6 +31,9 @@
  *     it, and "until the turn before it has started" fails: the two wait on
  *     the server together while the first hasn't claimed the session.
  *   - ignore `input`, and the "input" cases fail: the turn gets `{ prompt }`.
+ *   - send a new line while an older one is still held, and the "older one
+ *     is still held" case fails: the new line jumps it, and the held one is
+ *     never sent.
  *   - clear the held lines when the view moves to another session, and the
  *     "moving to another session" case fails: they are never sent.
  */
@@ -277,6 +280,38 @@ describe("useHarnessLines", () => {
     rerender({ session: view(false, false, "s1", [{ requestId: "line-1" }]) });
     await waitFor(() => expect(followRequest).toHaveBeenLastCalledWith("line-2"));
     await waitFor(() => expect(result.current.waiting).toEqual([]));
+  });
+
+  it("a line sent while an older one is still held waits behind it, even when the turn before ended unseen", async () => {
+    const { result, rerender } = mountChat();
+    await act(async () => {
+      await result.current.send("second");
+      await result.current.send("third");
+    });
+    // The running turn ends: the view moves to the second's turn, and the third stays held.
+    running = [{ id: "line-1", actionName: "run", startedAtMs: 2 }];
+    rerender({ session: view(false) });
+    await waitFor(() => expect(followRequest).toHaveBeenCalledWith("line-1"));
+    rerender({ session: view(true) });
+    // The second's turn ends before any of its items is seen, and the read of what runs is slow.
+    let answer: (turns: typeof running) => void = () => undefined;
+    sessionsMock.requests.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    rerender({ session: view(false) });
+    await waitFor(() => expect(sessionsMock.requests).toHaveBeenCalledTimes(3));
+
+    // A line sent during that read: the held third goes first, not the new one.
+    await act(async () => {
+      await result.current.send("fourth");
+    });
+    expect(flowMock.send).toHaveBeenCalledTimes(2);
+    expect(flowMock.send).toHaveBeenLastCalledWith("run", { message: "third", mode: "ask" }, { sessionId: "s1" });
+    await act(async () => {
+      answer([]);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    // The view moves to the third's turn; the fourth waits held behind it, nothing stranded.
+    await waitFor(() => expect(followRequest).toHaveBeenLastCalledWith("line-2"));
+    expect(result.current.waiting.map((line) => line.text)).toEqual(["fourth"]);
   });
 
   it("moving to another session sends the lines held for the one left, in the order typed, rather than dropping them", async () => {

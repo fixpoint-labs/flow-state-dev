@@ -306,15 +306,20 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
           const line: QueuedLine = { key: `line-${++keys.current}`, text, input };
           queue.current = [...queue.current, line];
           publish();
-          // Another line already waits on the server, or the turn the view moved to hasn't
-          // started: this one waits here, and is sent in its turn.
-          if (startPending() || queue.current.some((other) => other !== line && (other.requestId !== undefined || other.sending === true))) return;
+          // Only the oldest line is ever sent. One before this waits on the server or
+          // is held: this one waits here, and is sent in its turn. A held one may go now.
+          if (queue.current[0] !== line) {
+            sendHeld();
+            return;
+          }
+          // The turn the view moved to hasn't started: this one waits for it.
+          if (startPending()) return;
           await sendQueued(line, followWaiting);
         }
       };
       return lines.send(prompt, streaming.current || queue.current.length > 0, sender);
     },
-    [client, flowKind, sessionId, steerAction, turnAction, sendAction, followWaiting, lines, inputOf, publish, sendQueued]
+    [client, flowKind, sessionId, steerAction, turnAction, sendAction, followWaiting, lines, inputOf, publish, sendQueued, sendHeld]
   );
 
   return { send, waiting };
