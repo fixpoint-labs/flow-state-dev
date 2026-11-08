@@ -137,7 +137,7 @@ For full control (custom retry policy, gateway instances, provider preference or
 The CLI is the fastest way to confirm your key is wired up:
 
 ```bash
-fsdev run hello-chat chat -i '{"message": "Say hi."}'
+pnpm fsdev run hello-chat chat -i '{"message": "Say hi."}'
 ```
 
 You should see streaming text in your terminal. If it fails with a provider error, check that the env var is exported in the shell where you ran the command.
