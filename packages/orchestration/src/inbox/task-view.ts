@@ -12,7 +12,7 @@ import { taskSpendViewSchema } from "../tasks/schema/spend";
 import { isTerminalStatus, persistedTaskStatusSchema, type TaskStatus } from "../tasks/schema/task-status";
 import type { Task } from "../tasks/schema/task";
 import { openUserHolds } from "./holds";
-import type { InboxHold, InboxRow } from "./types";
+import type { InboxHold, InboxTaskInput } from "./types";
 
 /**
  * What a person sees a task as.
@@ -25,10 +25,10 @@ import type { InboxHold, InboxRow } from "./types";
  *   status, as long as it isn't terminal.
  * - `failed`, `done`, `cancelled`: its terminal statuses.
  */
-export type TaskRowState = "queued" | "held" | "running" | "waiting" | "failed" | "done" | "cancelled";
+export type TaskViewStatus = "queued" | "held" | "running" | "waiting" | "failed" | "done" | "cancelled";
 
 /** A task row as the view reads it: an Inbox row plus what a board publishes beside it. A `Task` on its board fits. */
-export type TaskViewRow = InboxRow & {
+export type TaskViewInput = InboxTaskInput & {
   readonly error?: string | null;
   readonly statusNote?: string | null;
   /** The stored ledger (a raw board row) or the view `listTasks` already folded it to. */
@@ -39,7 +39,7 @@ export type TaskViewRow = InboxRow & {
 };
 
 /** One task row, as a person sees it. */
-export type TaskRowView<TDetail = unknown> = {
+export type TaskView<TDetail = unknown> = {
   readonly board: string;
   readonly id: string;
   /** Its title, else its goal, else its id. */
@@ -49,7 +49,7 @@ export type TaskRowView<TDetail = unknown> = {
   /** The status as stored, read forward (a legacy `blocked` reads `held`). Kept even when it is a word {@link state} doesn't know. */
   readonly status: string;
   /** What a person sees it as. */
-  readonly state: TaskRowState;
+  readonly state: TaskViewStatus;
   /**
    * Its oldest open user hold: what it asks (`ask.kind`, `ask.prompt`), where
    * the answer goes, whether it can be answered here, and what the reader
@@ -78,7 +78,7 @@ export type TaskRowView<TDetail = unknown> = {
 };
 
 /** Stored status → what a person sees. `waiting` is the one override, for a non-terminal row with an open user hold. */
-const DISPLAY_STATE: Record<TaskStatus, Exclude<TaskRowState, "waiting">> = {
+const DISPLAY_STATE: Record<TaskStatus, Exclude<TaskViewStatus, "waiting">> = {
   pending: "queued",
   held: "held",
   in_progress: "running",
@@ -93,7 +93,7 @@ const DISPLAY_STATE: Record<TaskStatus, Exclude<TaskRowState, "waiting">> = {
  * raw row's stored ledger is folded here. `null` when it is neither, since a
  * view never throws on a row.
  */
-function spendOf(row: TaskViewRow, status: string): TaskSpendView | null {
+function spendOf(row: TaskViewInput, status: string): TaskSpendView | null {
   const folded = taskSpendViewSchema.safeParse(row.spend);
   if (folded.success) return folded.data;
   try {
@@ -114,14 +114,14 @@ function spendOf(row: TaskViewRow, status: string): TaskSpendView | null {
  *   so a row holding a question waits on you whether or not the caller did
  *   the Inbox read; those holds say they can't be answered from here.
  */
-export function taskRowView<TDetail = unknown>(row: TaskViewRow, holds?: readonly InboxHold<TDetail>[]): TaskRowView<TDetail> {
+export function taskView<TDetail = unknown>(row: TaskViewInput, holds?: readonly InboxHold<TDetail>[]): TaskView<TDetail> {
   const parsed = persistedTaskStatusSchema.safeParse(row.status);
   const status = parsed.success ? parsed.data : row.status;
   const terminal = parsed.success && isTerminalStatus(parsed.data);
   const open = terminal
     ? []
     : [...(holds ?? openUserHolds<TDetail>({ ...row, status }, () => null))].sort((a, b) => a.openedAt - b.openedAt);
-  const state: TaskRowState = !terminal && open.length > 0 ? "waiting" : parsed.success ? DISPLAY_STATE[parsed.data] : "queued";
+  const state: TaskViewStatus = !terminal && open.length > 0 ? "waiting" : parsed.success ? DISPLAY_STATE[parsed.data] : "queued";
   const spend = spendOf(row, status);
   return {
     board: row.board,

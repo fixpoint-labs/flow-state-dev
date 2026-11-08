@@ -50,7 +50,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { askMidway, currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 import { openHolds, type Task } from "@flow-state-dev/orchestration/tasks";
 import { createInboxClient, type InboxItem } from "@flow-state-dev/orchestration/inbox";
-import { reconcileInbox, rowTruthOf, suspensionTruthOf, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
+import { reconcileInbox, taskTruthOf, suspensionTruthOf, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { steerOrTalk } from "../../../packages/workforce/src/conversation-board/steer.ts";
 import {
@@ -126,7 +126,7 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[] }> = {
       {
         module: "packages/orchestration/src/tasks/collection/internal.ts",
         from: String.raw`  if \(hasOpenHold\(task\)\) return false;\n  if \(task\.status !== "pending"`,
-        to: '  if (openRowHolds(task).length > 1) return false;\n  if (task.status !== "pending"'
+        to: '  if (openOwnHolds(task).length > 1) return false;\n  if (task.status !== "pending"'
       }
     ],
     legs: ["a", "b"]
@@ -191,8 +191,8 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[] }> = {
     patches: [
       {
         module: "packages/orchestration/src/inbox/holds.ts",
-        from: String.raw`    if \(hold\.source\.kind === "row"\) \{\n      const holder`,
-        to: '    if (hold.source.kind === "row") {\n      continue;\n      const holder'
+        from: String.raw`    if \(hold\.source\.kind === "task"\) \{\n      const holder`,
+        to: '    if (hold.source.kind === "task") {\n      continue;\n      const holder'
       }
     ],
     legs: ["a"]
@@ -497,7 +497,7 @@ async function truthOf(run: Run): Promise<InboxTruth> {
   for (const sessionId of sessions) {
     suspensions.push(...suspensionTruthOf(sessionId, await run.h.http.client.sessions.requests(sessionId, { status: "suspended", includeItems: true })));
   }
-  return { rows: rowTruthOf(rows), suspensions, closed: run.closed };
+  return { rows: taskTruthOf(rows), suspensions, closed: run.closed };
 }
 /** Every leg ends here: the Inbox is the list it should be. */
 async function reconciled(run: Run, leg: string): Promise<void> {
@@ -717,7 +717,7 @@ async function legE(run: Run): Promise<void> {
   const t11Row = await run.h.byId(t11);
   const resumed = proofsOf(t11, "resumed")[0]?.outcome as { cancelled?: boolean } | undefined;
   const t11Item = await itemOf(run, t11);
-  if (resumed?.cancelled !== true || openHolds(t11Row!).map((h) => h.source.kind).join() !== "row" || t11Item?.holds.map((h) => h.source.kind).join() !== "row") {
+  if (resumed?.cancelled !== true || openHolds(t11Row!).map((h) => h.source.kind).join() !== "task" || t11Item?.holds.map((h) => h.source.kind).join() !== "task") {
     run.failures.push(`e:one-wait-per-turn — wanted the stop refused and cancelled (resumed cancelled), t11 held on its question alone; resumed ${show(resumed)}, holds ${show(t11Row?.holds)}, item ${show(t11Item?.holds)}`);
   }
   // t8: a line typed in a held session answers the oldest open question, and leaves the other.

@@ -76,7 +76,7 @@ import {
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import {
-  HandedOverRowError,
+  HandedOverTaskError,
   reportRecorderFailure,
   TaskBoardRecorderFailureError,
   TaskBoardReportFailureError,
@@ -472,8 +472,8 @@ export function createRecordError(options: RecordErrorOptions) {
       // A plan drain that failed past its hand-over: the row is another
       // session's, so there is nothing of this request's to record on it, and
       // `skip` swallowing it would leave the drain waiting on nothing. The
-      // plan fails instead (see `dispatch-row.ts`).
-      if (error instanceof HandedOverRowError) {
+      // plan fails instead (see `dispatch-task.ts`).
+      if (error instanceof HandedOverTaskError) {
         stopLeaseRenewal();
         throw error;
       }

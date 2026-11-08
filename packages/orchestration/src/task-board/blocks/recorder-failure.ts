@@ -247,17 +247,17 @@ function describeReports(reports: readonly RecorderFailureReport[]): string {
 
 /**
  * A plan drain failed after it handed `taskId` to a session of its own (see
- * `dispatch-row.ts`). The row is that session's, so this is never recorded on
+ * `dispatch-task.ts`). The row is that session's, so this is never recorded on
  * it: every recorder rethrows it, whatever `onError` says, and the drain's
  * request fails.
  */
-export class HandedOverRowError extends Error {
+export class HandedOverTaskError extends Error {
   constructor(boardId: string, taskId: string, cause: unknown) {
     super(
       `[task-board] "${boardId}" handed task "${taskId}" to a session of its own and then failed, so the plan ` +
         `fails: ${cause instanceof Error ? cause.message : String(cause)}`
     );
-    this.name = "HandedOverRowError";
+    this.name = "HandedOverTaskError";
     this.cause = cause;
   }
 }

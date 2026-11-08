@@ -42,7 +42,7 @@ export {
 } from "./tasks/collection/filing";
 export { hasStarted } from "./tasks/collection/field-rules";
 export { endsFiledWork } from "./tasks/collection/cascade";
-export { answerOf, hasOpenHold, isRowHold, isSuspensionHold, nextHoldDue, openRowHolds } from "./tasks/collection/holds";
+export { answerOf, hasOpenHold, isOwnHold, isSuspensionHold, nextHoldDue, openOwnHolds } from "./tasks/collection/holds";
 export { MAX_QUESTION_PROMPT } from "./tasks/schema/hold";
 export { MAX_STEERS } from "./tasks/schema/steer";
 export {

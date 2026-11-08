@@ -59,7 +59,7 @@ export type TaskInit<TInput = unknown> = {
   held?: boolean;
   // FIX-2133.
   /**
-   * Questions the task waits on before it starts: each a row hold
+   * Questions the task waits on before it starts: each an own hold
    * (`Task.holds`) the user answers, a plain question or a `confirm` (a yes or
    * a no). The task stays `pending` and starts no attempt until every one is
    * answered, or a deadline the host set passes; every answer joins its

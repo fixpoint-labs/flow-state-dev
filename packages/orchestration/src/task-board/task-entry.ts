@@ -322,7 +322,7 @@ function buildTaskGate(options: {
     if (partition === undefined) {
       throw new StaleTaskClaimError(
         taskId,
-        `board "${boardId}" keeps its rows per partition, and the dispatch names none`
+        `board "${boardId}" keeps its tasks per partition, and the dispatch names none`
       );
     }
     return board.collectionInPartition(ctx, partition);
@@ -419,7 +419,7 @@ function buildTaskGate(options: {
           if (row === undefined) {
             throw new StaleTaskClaimError(
               dispatch.taskId,
-              `no such row on board "${boardId}" — it was deleted, or this board resolved to a ` +
+              `no such task on board "${boardId}" — it was deleted, or this board resolved to a ` +
                 `different ledger than the one that claimed it`
             );
           }
@@ -440,7 +440,7 @@ function buildTaskGate(options: {
           if (row.createdAt !== dispatch.createdAt) {
             throw new StaleTaskClaimError(
               dispatch.taskId,
-              "the row was deleted and recreated under the same id after this dispatch was addressed"
+              "the task was deleted and recreated under the same id after this dispatch was addressed"
             );
           }
           if (
@@ -450,7 +450,7 @@ function buildTaskGate(options: {
           ) {
             throw new StaleTaskClaimError(
               dispatch.taskId,
-              "the row was deleted and recreated under the same id after this dispatch was " +
+              "the task was deleted and recreated under the same id after this dispatch was " +
                 "addressed (its incarnation differs, though its creation stamp does not)"
             );
           }
@@ -472,7 +472,7 @@ function buildTaskGate(options: {
           if (row.status !== "in_progress") {
             throw new StaleTaskClaimError(
               dispatch.taskId,
-              `the row is "${row.status}", so no claim is outstanding on it`
+              `the task is "${row.status}", so no claim is outstanding on it`
             );
           }
           // The row must still route to the assignee that dispatched it. A dispatch
@@ -488,7 +488,7 @@ function buildTaskGate(options: {
           if (row.assignee !== dispatch.assignee) {
             throw new StaleTaskClaimError(
               dispatch.taskId,
-              `this dispatch was sent from assignee "${dispatch.assignee}" but the row now routes to ` +
+              `this dispatch was sent from assignee "${dispatch.assignee}" but the task now routes to ` +
                 `"${row.assignee ?? "(no assignee)"}"`
             );
           }
@@ -667,7 +667,7 @@ async function adoptLapsedLease(
     // or invent a lease this board never chose.
     throw new StaleTaskClaimError(
       row.id,
-      "its lease ran out before this dispatch started, and the row carries no lease " +
+      "its lease ran out before this dispatch started, and the task carries no lease " +
         "duration this dispatch could take it back for"
     );
   }
@@ -690,13 +690,13 @@ async function adoptLapsedLease(
     throw new StaleTaskClaimError(
       row.id,
       `its lease ran out before this dispatch started and this board's collection reported ` +
-        `no verdict for the renewal, so nothing says the row is still this dispatch's to run`
+        `no verdict for the renewal, so nothing says the task is still this dispatch's to run`
     );
   }
   if (outcome.outcome === "declined") {
     throw new StaleTaskClaimError(
       row.id,
-      `its lease ran out before this dispatch started and the row was taken back ` +
+      `its lease ran out before this dispatch started and the task was taken back ` +
         `(${outcome.reason}), so the successor owns it and any work done here could ` +
         `not be recorded`
     );
@@ -716,8 +716,8 @@ async function adoptLapsedLease(
     // conclusion from a store that contradicted itself.
     throw new Error(
       `[task-board] ledger "${board.collectionId}" recorded the lease renewal for task ` +
-        `"${row.id}" and then reported no such row. The claim cannot be re-minted from a ` +
-        `row the collection denies holding.`
+        `"${row.id}" and then reported no such task. The claim cannot be re-minted from a ` +
+        `task the collection denies holding.`
     );
   }
   return adopted;
@@ -759,7 +759,7 @@ async function writeRunLink(
   if (outcome === undefined) {
     throw new StaleTaskClaimError(
       held.id,
-      `this board's collection reported no verdict for the run link, so nothing says the row ` +
+      `this board's collection reported no verdict for the run link, so nothing says the task ` +
         `is still this dispatch's to run`
     );
   }

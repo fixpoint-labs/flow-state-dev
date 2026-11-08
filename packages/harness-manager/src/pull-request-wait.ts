@@ -139,7 +139,7 @@ export function pullRequestWait(row: PullRequestWaitRow, records: readonly PullR
   const answered = new Set((row.steers ?? []).map((steer) => steer.answers).filter((id): id is string => id !== undefined));
   const hold = (row.holds ?? []).find(
     (h) =>
-      h.source.kind === "row" &&
+      h.source.kind === "task" &&
       h.ask.kind === "external" &&
       !answered.has(h.id) &&
       (h.source.closedBy ?? []).some((releaser) => releaser.by === "event" && releaser.event === PULL_REQUEST_EVENT),

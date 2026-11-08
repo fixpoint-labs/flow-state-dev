@@ -80,7 +80,7 @@ describe.each([
         id: outcome.questions![0],
         actor: "system",
         openedAt: 1_000,
-        source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
+        source: { kind: "task", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
         ask: { kind: "external", prompt: WAIT.prompt },
       },
     ]);

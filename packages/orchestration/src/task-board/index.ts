@@ -160,7 +160,7 @@ import {
 } from "./dispatch-assignee";
 import { assertBoardModeSupported, runsElsewhereFor, type TaskBoardMode } from "./board-mode";
 import { createTaskGate } from "./task-entry";
-import { createRowDispatch } from "./blocks/dispatch-row";
+import { createTaskDispatch } from "./blocks/dispatch-task";
 import { markDelegating, TASK_SETTLED_ENTRY } from "../tasks/notice/delivery";
 import { recordBoardResolver } from "./board-resolver";
 
@@ -910,7 +910,7 @@ export function taskBoard<
     });
     for (const assignee of allDispatchers) {
       if (assignee.kind === "newSession") {
-        newSessionDispatch = createRowDispatch({
+        newSessionDispatch = createTaskDispatch({
           // A wire value, kept: a router's recorded decision names it.
           name: `${name}-to-new-session`,
           boardId,
@@ -929,7 +929,7 @@ export function taskBoard<
       if (assignee.kind === "floor") {
         // The fallback stands in for every assignee the board does not name,
         // so its dispatch carries no assignee: each row goes over under its own.
-        floorDispatch = createRowDispatch({
+        floorDispatch = createTaskDispatch({
           // A router's recorded decision names it, so a resumed request reselects the same route.
           name: `${name}-dispatch-fallback`,
           boardId,
@@ -942,7 +942,7 @@ export function taskBoard<
       if (assignee.kind !== "named") continue;
       dispatchByAssignee.set(
         assignee.name,
-        createRowDispatch({
+        createTaskDispatch({
           name: `${name}-dispatch-${assignee.name}`,
           boardId,
           assignee: assignee.name,
@@ -1358,15 +1358,15 @@ function resolveNewSession(
   if (!isTaskDispatcher(newSession)) {
     throw new Error(
       `[task-board] "${name}" newSession is not a task dispatcher. Put a ` +
-        `\`dispatcher({ action, session })\` there, naming the task entry a row filed ` +
+        `\`dispatcher({ action, session })\` there, naming the task entry that a task filed ` +
         `\`session: "new"\` runs in.`
     );
   }
   if (mode !== "plan") {
     throw new Error(
       `[task-board] "${name}" is a delegation board and declares newSession: a delegation ` +
-        `board hands every row to another session already. Drop newSession, or drop \`mode\` ` +
-        `for a plan board, whose rows run inline unless filed \`session: "new"\`.`
+        `board hands every task to another session already. Drop newSession, or drop \`mode\` ` +
+        `for a plan board, whose tasks run inline unless filed \`session: "new"\`.`
     );
   }
   return { name: "", kind: "newSession", label: "newSession", dispatch: newSession.dispatch };

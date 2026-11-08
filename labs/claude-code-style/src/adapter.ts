@@ -49,10 +49,10 @@ import {
   type BoardActions,
   type InboxAnswer,
   type InboxHold,
-  type InboxRow,
+  type InboxTaskInput,
   type TaskHold,
-  type TaskRowView,
-  taskRowView,
+  type TaskView,
+  taskView,
 } from "@flow-state-dev/orchestration/inbox";
 import { parseNotice, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
 import {
@@ -201,8 +201,8 @@ export interface TaskRow {
   spend?: TaskSpendView;
   /** Why its last attempt failed, as the board recorded it; only on a failed task. */
   error?: string;
-  /** The row as orchestration's `taskRowView` reads it, once per read: its state and times, for its time signal and the pane's counts. */
-  view?: TaskRowView;
+  /** The row as orchestration's `taskView` reads it, once per read: its state and times, for its time signal and the pane's counts. */
+  view?: TaskView;
   /**
    * What the view doesn't carry, for the time signal: when this attempt's run started (its run link's
    * `startedAt`), and the row's lease deadline, which a live run keeps renewing. Each absent until the row has it.
@@ -879,7 +879,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
       ...(task.spend == null ? {} : { spend: task.spend }),
       ...(typeof task.attempts === "number" ? { attempts: task.attempts } : {}),
       ...(typeof task.leaseUntil === "number" ? { leaseUntil: task.leaseUntil } : {}),
-      view: taskRowView({ ...task, board: sessionId }),
+      view: taskView({ ...task, board: sessionId }),
     }));
   };
 
@@ -896,7 +896,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
         runFlows.set(task.runSessionId, detail.flowId ?? detail.flowKind ?? null);
       }
     }
-    const rows: InboxRow[] = listed.map((task) => ({
+    const rows: InboxTaskInput[] = listed.map((task) => ({
       board: sessionId,
       id: task.id,
       title: task.title,

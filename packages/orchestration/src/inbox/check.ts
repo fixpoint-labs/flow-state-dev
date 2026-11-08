@@ -13,7 +13,7 @@ import type { SessionRequestSummary } from "@flow-state-dev/client";
 import { isUserSuspension } from "@flow-state-dev/core/types";
 import { isTerminalStatus, type TaskStatus } from "../tasks/schema/task-status";
 import { taskItemId } from "./holds";
-import type { InboxItem, InboxRow } from "./types";
+import type { InboxItem, InboxTaskInput } from "./types";
 
 export { taskItemId };
 
@@ -27,19 +27,19 @@ export type SuspensionTruth = {
 };
 
 /** A task row's open user holds, as the board's own task listing records them. */
-export type RowTruth = {
+export type TaskTruth = {
   readonly board: string;
   readonly taskId: string;
   /** The suspension ids of its open suspension holds. */
   readonly suspensionHolds: readonly string[];
   /** The ids of its open questions and confirms. */
-  readonly rowHolds: readonly string[];
+  readonly ownHolds: readonly string[];
 };
 
 /** What should be in the Inbox, read apart from the list. */
 export type InboxTruth = {
   readonly suspensions: readonly SuspensionTruth[];
-  readonly rows: readonly RowTruth[];
+  readonly rows: readonly TaskTruth[];
   /**
    * The holds (their suspension or hold ids) answered or cancelled before this
    * read: each must be in no later list, and no later truth. A hold, not an
@@ -93,26 +93,26 @@ export function suspensionTruthOf(sessionId: string, requests: readonly SessionR
 
 /**
  * A board's rows as truth, read straight from what `listTasks` returns, field
- * by field: an open row holds the user on each `actor: "user"` hold in its
+ * by field: an open task holds the user on each `actor: "user"` hold in its
  * `holds`, a suspension's while it is there, a question's or a confirm's while
  * no steer names it. Not the list's helpers, nor the board's predicate, so a
  * fault in either shows.
  */
-export function rowTruthOf(rows: readonly InboxRow[]): RowTruth[] {
+export function taskTruthOf(rows: readonly InboxTaskInput[]): TaskTruth[] {
   return rows.flatMap((row) => {
     if (isTerminalStatus(row.status as TaskStatus)) return [];
     const answered = new Set((row.steers ?? []).flatMap((steer) => (steer.answers === undefined ? [] : [steer.answers])));
     const suspensionHolds: string[] = [];
-    const rowHolds: string[] = [];
-    // Open holds re-derived here on purpose, not through `openRowHolds`: the
+    const ownHolds: string[] = [];
+    // Open holds re-derived here on purpose, not through `openOwnHolds`: the
     // truth stays independent of the predicate it checks.
     for (const hold of row.holds ?? []) {
       if (hold.actor !== "user") continue;
       if (hold.source.kind === "suspension") suspensionHolds.push(hold.source.suspensionId);
-      else if (!answered.has(hold.id)) rowHolds.push(hold.id);
+      else if (!answered.has(hold.id)) ownHolds.push(hold.id);
     }
-    if (suspensionHolds.length === 0 && rowHolds.length === 0) return [];
-    return [{ board: row.board, taskId: row.id, suspensionHolds, rowHolds }];
+    if (suspensionHolds.length === 0 && ownHolds.length === 0) return [];
+    return [{ board: row.board, taskId: row.id, suspensionHolds, ownHolds }];
   });
 }
 
@@ -145,12 +145,12 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
     for (const id of row.suspensionHolds) if (!live.has(id)) drift.push(`question ${id} on ${row.board}:${row.taskId}: no live stop`);
   }
   // A listed task item shows the holds its row has now: a stale list offers a stop that ended, or a question answered.
-  const heldBy = new Map(truth.rows.map((r) => [taskItemId(r.board, r.taskId), [...r.suspensionHolds, ...r.rowHolds].sort()]));
+  const heldBy = new Map(truth.rows.map((r) => [taskItemId(r.board, r.taskId), [...r.suspensionHolds, ...r.ownHolds].sort()]));
   for (const item of items) {
     if (item.task === null) continue;
     const held = heldBy.get(item.id) ?? [];
     const shown = item.holds.map((h) => h.id).sort();
-    if (shown.join(",") !== held.join(",")) drift.push(`item ${item.id} shows ${shown.join(", ") || "none"}, its row has ${held.join(", ") || "none"}`);
+    if (shown.join(",") !== held.join(",")) drift.push(`item ${item.id} shows ${shown.join(", ") || "none"}, its task has ${held.join(", ") || "none"}`);
   }
 
   const unanswerable = items.flatMap((item) => item.holds.flatMap((hold) => (hold.unanswerable === null ? [] : [{ id: item.id, hold: hold.id, why: hold.unanswerable }])));
@@ -158,7 +158,7 @@ export function reconcileInbox(items: readonly InboxItem<unknown>[], truth: Inbo
   const closed = new Set(truth.closed ?? []);
   const holdsSeen = new Set([
     ...items.flatMap((item) => item.holds.map((h) => h.id)),
-    ...truth.rows.flatMap((r) => [...r.suspensionHolds, ...r.rowHolds]),
+    ...truth.rows.flatMap((r) => [...r.suspensionHolds, ...r.ownHolds]),
     ...truth.suspensions.map((s) => s.suspensionId),
   ]);
   const reopened = [...holdsSeen].filter((id) => closed.has(id));

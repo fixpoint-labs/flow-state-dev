@@ -69,7 +69,7 @@ const STORED_QUESTION = {
   id: "q-1",
   actor: "user",
   openedAt: 1,
-  source: { kind: "row", closedBy: [{ by: "answer" }] },
+  source: { kind: "task", closedBy: [{ by: "answer" }] },
   ask: QUESTION,
 };
 
@@ -189,7 +189,7 @@ describe("the completion reason over stored rows", () => {
       id: "wait-1",
       actor: "system",
       openedAt: 1,
-      source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
+      source: { kind: "task", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
       ask: { kind: "external", prompt: "Waiting on pull request #7." },
     };
     const collection = await storedCollection([{ id: "awaiting-merge", status: "in_progress", leaseUntil: NOW - 1, holds: [external] }]);

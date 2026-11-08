@@ -34,7 +34,7 @@ export const taskSteerSchema = z.object({
   at: z.number(),
   // FIX-2133.
   /**
-   * The row hold this steer answers: its id. A row hold is open
+   * The own hold this steer answers: its id. An own hold is open
    * while no steer carries its id. **Absent** on a steer that answers nothing.
    */
   answers: z.string().optional(),

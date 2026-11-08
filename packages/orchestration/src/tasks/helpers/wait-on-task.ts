@@ -897,7 +897,7 @@ async function cancelOrOwe(collection: TaskCollectionRef, taskId: string, reason
       );
     } catch (markError) {
       console.warn(
-        `[orchestration] wait "${taskId}": its cancel failed, and so did recording it as owed; the row stays open: ` +
+        `[orchestration] wait "${taskId}": its cancel failed, and so did recording it as owed; the task stays open: ` +
           `${(error as Error).message}; ${(markError as Error).message}`
       );
     }

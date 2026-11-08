@@ -29,7 +29,7 @@ import type { TaskCollectionRef } from "./types";
 import type { TaskChangeEvent } from "./change-event";
 import type { TaskSettingsSupport } from "./filing";
 import { TaskCapExceededError, validateTaskCaps, type TaskCapOptions } from "./task-caps";
-import { createTaskMethodTable, type RowDecision, type RowWritten, type TaskBoardView, type TaskStorage } from "./method-table";
+import { createTaskMethodTable, type TaskDecision, type TaskWritten, type TaskBoardView, type TaskStorage } from "./method-table";
 
 /** Options for {@link createStateBackedTaskCollection}. */
 export interface StateBackedOptions extends TaskCapOptions {
@@ -220,8 +220,8 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
   const storage: TaskStorage = {
     board: { row: (id) => ownTask(readTasks(), id), rows: () => Object.values(readTasks()) },
 
-    async write<R>(id: string, decide: (row: Task, view: TaskBoardView) => RowDecision<R>): Promise<RowWritten<R>> {
-      return withOutcome(casWrite, (tasks): { state: Record<string, Task> | undefined; result: RowWritten<R> } => {
+    async write<R>(id: string, decide: (row: Task, view: TaskBoardView) => TaskDecision<R>): Promise<TaskWritten<R>> {
+      return withOutcome(casWrite, (tasks): { state: Record<string, Task> | undefined; result: TaskWritten<R> } => {
         const task = ownTask(tasks, id);
         if (task === undefined) throw new Error(`[tasks] task "${id}" not found`);
         const decision = decide(task, viewOf(tasks));

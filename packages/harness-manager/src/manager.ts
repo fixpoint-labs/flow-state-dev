@@ -67,7 +67,7 @@ import {
   STEERED_WHILE_RUNNING,
   answerOf,
   hasFrozenLedgerAssignee,
-  isRowHold,
+  isOwnHold,
   MAX_STEERS,
   readCommittedTask,
   shownSteer,
@@ -85,7 +85,7 @@ import {
   type DefinedTaskCollection,
   type Task,
   type TaskClaimTicket,
-  type RowHold,
+  type OwnHold,
   type TaskCollectionRef,
   type TaskSteer,
   type TaskWorker,
@@ -4400,17 +4400,17 @@ function heldTicket(
 function isAnswer(row: Pick<Task, "holds">, steer: Pick<TaskSteer, "answers" | "from">): boolean {
   if (steer.answers === undefined || steer.from === "board") return false;
   const hold = row.holds?.find((h) => h.id === steer.answers);
-  return hold !== undefined && isRowHold(hold) && !isExternalHold(hold);
+  return hold !== undefined && isOwnHold(hold) && !isExternalHold(hold);
 }
 
 // FIX-2578.
 /**
  * The external wait `row`'s release owes this turn for: the
- * newest of its row holds, when that is an external wait a steer answered. A
+ * newest of its own holds, when that is an external wait a steer answered. A
  * question asked after it is newer, and its answer's turn is the question's.
  */
-function wokenWait(row: Task): RowHold | undefined {
-  const newest = (row.holds ?? []).filter(isRowHold).at(-1);
+function wokenWait(row: Task): OwnHold | undefined {
+  const newest = (row.holds ?? []).filter(isOwnHold).at(-1);
   return newest !== undefined && isExternalHold(newest) && answerOf(row, newest.id) !== undefined ? newest : undefined;
 }
 
@@ -4462,7 +4462,7 @@ function answeredQuestions(row: Task | undefined): AnsweredQuestion[] {
   if (row === undefined) return [];
   const answered: AnsweredQuestion[] = [];
   for (const hold of row.holds ?? []) {
-    if (!isRowHold(hold)) continue;
+    if (!isOwnHold(hold)) continue;
     const steer = answerOf(row, hold.id);
     if (steer === undefined || !isAnswer(row, steer)) continue;
     answered.push({ question: hold.ask.prompt, answer: steer.message });

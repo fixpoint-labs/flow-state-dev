@@ -343,8 +343,8 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
   if (board.mode === "delegation") {
     throw new Error(
       `[goalSeekLoop] "${name}" can't loop over "${board.capability.name}", a delegation board: ` +
-        `its drain returns while the rows it handed to other sessions still run, so the judge ` +
-        `would rule on unfinished work. Loop over a plan board, whose drain waits on every row.`,
+        `its drain returns while the tasks it handed to other sessions still run, so the judge ` +
+        `would rule on unfinished work. Loop over a plan board, whose drain waits on every task.`,
     );
   }
   if (maxIterations > 1 && board.hasIdlessInitialTasks) {

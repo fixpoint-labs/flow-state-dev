@@ -22,7 +22,7 @@
  * would; Retry runs that turn's line again.
  */
 import type { SessionConnectionState } from "@flow-state-dev/client";
-import { taskRowView } from "@flow-state-dev/orchestration/inbox";
+import { taskView } from "@flow-state-dev/orchestration/inbox";
 import {
   rerunOverrides,
   runSteps,
@@ -653,7 +653,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
             .filter((t) => t.sessionId === sessionId)
             .map(({ sessionId: _, createdAt, completedAt, ...card }) => ({
               ...card,
-              view: taskRowView({ id: card.id, status: card.boardStatus, title: card.title, goal: card.goal, board: sessionId, createdAt, startedAt: card.startedAt, completedAt }),
+              view: taskView({ id: card.id, status: card.boardStatus, title: card.title, goal: card.goal, board: sessionId, createdAt, startedAt: card.startedAt, completedAt }),
             })),
         ),
       );

@@ -98,7 +98,7 @@ describe("readSessionPullRequests", () => {
         {
           id: "h1",
           openedAt: 1,
-          source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key: pullRequestKey({ host: "github.com", owner: "acme", name: "app", number: 7 }) }] },
+          source: { kind: "task", closedBy: [{ by: "event", event: "pull-request", key: pullRequestKey({ host: "github.com", owner: "acme", name: "app", number: 7 }) }] },
           ask: { kind: "external", prompt: "Waiting on pull request #7 to merge or close." },
         },
       ],

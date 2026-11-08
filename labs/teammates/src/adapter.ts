@@ -27,7 +27,7 @@
  * |                     | and the board's `listTasks` read (`taskActionName`), on each notice of the     |
  * |                     | conversation's board                                                          |
  * |                     | and each linked run's session, where the run writes its row (its holds)      |
- * |                     | and `taskRowView` with the Inbox's holds (`inboxItems`), for what it waits on |
+ * |                     | and `taskView` with the Inbox's holds (`inboxItems`), for what it waits on |
  * |                     | you for, and what its runs spent (the harness and model they reported)       |
  * | `answerOpenHold`        | the Inbox client's `answerOne`, on the task's open question or review         |
  * | `taskActions`       | the Inbox client's `board(at)` on the conversation that filed the task, its   |
@@ -81,13 +81,13 @@ import {
   createInboxClient,
   inboxItems,
   taskActionName,
-  taskRowView,
+  taskView,
   type InboxAnswer,
   type InboxHold,
-  type InboxRow,
+  type InboxTaskInput,
   type RefileOverrides,
-  type RefileRow,
-  type TaskRowView,
+  type RefiledTask,
+  type TaskView,
 } from "@flow-state-dev/orchestration/inbox";
 import { pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitRow, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
@@ -172,7 +172,7 @@ export interface BoardTask {
   harness?: string;
   /** The model its run reported, when it reported one; never guessed. */
   model?: string;
-  /** What its runs spent, as orchestration's task-row view folds it (`taskRowView`); absent before any ran. */
+  /** What its runs spent, as orchestration's task-row view folds it (`taskView`); absent before any ran. */
   spend?: TaskSpendView;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
@@ -184,8 +184,8 @@ export interface BoardTask {
    * is done and its work is not, so it stays open. Absent while it waits on none.
    */
   pullRequests?: { number: number | null }[];
-  /** The row as orchestration's `taskRowView` reads it, once per read: its state and times, for its time signal and the panel's counts. */
-  view?: TaskRowView;
+  /** The row as orchestration's `taskView` reads it, once per read: its state and times, for its time signal and the panel's counts. */
+  view?: TaskView;
   /**
    * What the view doesn't carry, for the time signal: when this attempt's run started (its run link's
    * `startedAt`), and the row's lease deadline, which a live run keeps renewing. Each absent until the row has it.
@@ -783,7 +783,7 @@ export function toBoardTask(
   // A teammate's answer is the output as is; a coding run's is its output's `answer`. Blank is none.
   const answer = answerTextOf(row.output);
   // One read of the row as orchestration's task-row view: its folded spend, and its oldest open hold.
-  const view = typeof row.id === "string" && typeof row.status === "string" ? taskRowView({ ...row, board: row.board ?? "" } as InboxRow, holds) : null;
+  const view = typeof row.id === "string" && typeof row.status === "string" ? taskView({ ...row, board: row.board ?? "" } as InboxTaskInput, holds) : null;
   const spend = view?.spend ?? null;
   return {
     id: row.id,
@@ -847,7 +847,7 @@ function startedAtOf(row: Record<string, any>): { startedAt?: number } {
 }
 
 /** The fields a re-file copies from a task, as the board's `refile` takes them. */
-function refileRowOf(task: BoardTask): RefileRow {
+function refileRowOf(task: BoardTask): RefiledTask {
   return { goal: task.goal, title: task.title, context: task.context ?? null, assignee: task.to, labels: task.labels ?? null, priority: task.priority ?? null };
 }
 
@@ -862,8 +862,8 @@ export function rerunOverrides(task: BoardTask, worker: string): RefileOverrides
   return { assignee: worker, context: task.context === undefined || task.context === "" ? line : `${task.context}\n\n${line}` };
 }
 
-/** What a row waits on you for, as `taskRowView` reads it: its oldest open hold, or nothing. */
-function waitingOf(view: TaskRowView | null): { waiting?: TaskWaiting } {
+/** What a row waits on you for, as `taskView` reads it: its oldest open hold, or nothing. */
+function waitingOf(view: TaskView | null): { waiting?: TaskWaiting } {
   const hold = view?.hold ?? null;
   if (hold === null) return {};
   const kind = hold.ask.kind === "question" || hold.ask.kind === "review" ? hold.ask.kind : "other";
@@ -878,8 +878,8 @@ function waitingOf(view: TaskRowView | null): { waiting?: TaskWaiting } {
  * @param flowOf The flow that owns a session: the conversation's, or a run's.
  */
 export function holdsOfRows(sessionId: string, rows: readonly Record<string, any>[], flowOf: (sessionId: string) => string | undefined): Map<string, InboxHold[]> {
-  const inboxRows: InboxRow[] = rows.map((row) => ({
-    ...(row as InboxRow),
+  const inboxRows: InboxTaskInput[] = rows.map((row) => ({
+    ...(row as InboxTaskInput),
     board: sessionId,
     holder: { sessionId, action: UPDATE_TASK },
   }));
