@@ -22,7 +22,7 @@ import {
 } from "@flow-state-dev/core/harness";
 
 /** The two resource reads this module makes: any `Client` from `@flow-state-dev/client` fits. */
-export type RecordedWorkClient = { resources: Pick<ResourcesApi, "getResourceManifest" | "listCollectionItems"> };
+export type RecordedWorkClient = { resources: Pick<ResourcesApi, "getResourceManifest" | "listCollectionResources"> };
 
 /** The run to read: the session it ran in and the request that was the run. */
 export type RecordedRun = { sessionId: string; requestId: string };
@@ -85,7 +85,7 @@ export async function readRecordedWork(client: RecordedWorkClient, run: Recorded
   const read = async (pattern: string, prefix = underRequest(pattern)) => {
     const ref = recordedRef(manifest, pattern);
     if (ref === undefined) return null;
-    const page = await client.resources.listCollectionItems(run.sessionId, ref, { limit: RECORDED_PAGE, topicPrefix: prefix });
+    const page = await client.resources.listCollectionResources(run.sessionId, ref, { limit: RECORDED_PAGE, topicPrefix: prefix });
     return { items: page.items, truncated: page.nextCursor != null };
   };
   const readPlan = async () => {

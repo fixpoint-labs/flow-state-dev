@@ -31,7 +31,7 @@ function fakeClient(rows: Record<string, Row[]>, options: { pageLimit?: number; 
         if (options.failWith) throw options.failWith;
         return manifest;
       },
-      async listCollectionItems(_sessionId, ref, list): Promise<CollectionListPage> {
+      async listCollectionResources(_sessionId, ref, list): Promise<CollectionListPage> {
         const all = (rows[ref] ?? [])
           .filter((r) => r.topic.startsWith(list?.topicPrefix ?? ""))
           .map((r) => ({ ...r, topic: r.topic.slice(`${ref}/`.length) }));

@@ -68,7 +68,7 @@ export type ReadEveryCollectionPageOptions = {
  * already sent. A page that fails rejects with that page's own error.
  */
 export async function readEveryCollectionPage(
-  source: Pick<ResourcesApi, "listCollectionItems">,
+  source: Pick<ResourcesApi, "listCollectionResources">,
   sessionId: string,
   ref: string,
   options: ReadEveryCollectionPageOptions = {}
@@ -78,7 +78,7 @@ export async function readEveryCollectionPage(
   const seen = new Set<string>();
   let cursor: string | undefined;
   for (let pagesRead = 0; pagesRead < COLLECTION_READ_MAX_PAGES; ) {
-    const page = await source.listCollectionItems(sessionId, ref, {
+    const page = await source.listCollectionResources(sessionId, ref, {
       ...(limit === undefined ? {} : { limit }),
       ...(cursor === undefined ? {} : { cursor })
     });

@@ -2,7 +2,7 @@
  * Behavioral tests for useSuspensions (FIX-276).
  *
  * The react package has no DOM/render harness by convention (see the note in
- * useResourceCollectionItem-overlay.test.ts), so the hook's two testable units
+ * useCollectionResource-overlay.test.ts), so the hook's two testable units
  * are exercised directly as pure functions:
  *  - `deriveSuspensions` — the `useMemo` derivation over `session.items`.
  *  - `resolveSuspension` — the body the `approve`/`reject` callbacks wrap,

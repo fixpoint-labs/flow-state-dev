@@ -43,7 +43,7 @@ function fakeClient(rows: Row[] | null, options: { readable?: boolean; failWith?
         if (options.failWith) throw options.failWith;
         return manifest;
       },
-      async listCollectionItems(_sessionId, _ref, list): Promise<CollectionListPage> {
+      async listCollectionResources(_sessionId, _ref, list): Promise<CollectionListPage> {
         const items = (rows ?? [])
           .filter((r) => r.topic.startsWith(list?.topicPrefix ?? ""))
           .map((r) => ({ ...r, topic: r.topic.slice(`${OBSERVED_PULL_REQUESTS}/`.length) }));

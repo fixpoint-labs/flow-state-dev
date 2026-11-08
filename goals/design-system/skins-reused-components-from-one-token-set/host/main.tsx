@@ -162,9 +162,9 @@ const cards = ["pending", "in_progress", "held", "completed"].map((status, i) =>
   topic: `card-${i}`,
   clientData: { id: `card-${i}`, status, title: `Card ${status}`, assignee: i % 2 ? "billing" : undefined },
 }));
-const rosterSource = { resources: { listCollectionItems: async () => ({ items: seats }) } } as never;
-const boardSource = { resources: { listCollectionItems: async () => ({ items: cards }) } } as never;
-const seatSource = { resources: { getCollectionItemState: async () => seats[0] } } as never;
+const rosterSource = { resources: { listCollectionResources: async () => ({ items: seats }) } } as never;
+const boardSource = { resources: { listCollectionResources: async () => ({ items: cards }) } } as never;
+const seatSource = { resources: { getCollectionResourceState: async () => seats[0] } } as never;
 
 // --- page --------------------------------------------------------------------
 

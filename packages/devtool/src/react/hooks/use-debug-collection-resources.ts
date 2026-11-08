@@ -1,5 +1,5 @@
 /**
- * Lazily fetches and paginates a collection's items via the debug surface.
+ * Lazily fetches and paginates a collection's resources via the debug surface.
  *
  * The hook is dormant until the consumer calls `loadMore` (typical pattern:
  * fire it the first time the user expands a collection row). Each call
@@ -11,17 +11,17 @@
  * onto the next visit's walk — see `use-session-state`.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DebugCollectionItem } from "@flow-state-dev/client";
+import type { DebugCollectionResource } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
 import { describeReadError } from "../lib/instance-ownership";
 
-export type UseDebugCollectionItemsOptions = {
+export type UseDebugCollectionResourcesOptions = {
   topicFilter?: string;
   pageSize?: number;
 };
 
-export type UseDebugCollectionItemsResult = {
-  items: DebugCollectionItem[];
+export type UseDebugCollectionResourcesResult = {
+  items: DebugCollectionResource[];
   isLoading: boolean;
   error: string | null;
   hasMore: boolean;
@@ -35,14 +35,14 @@ export type UseDebugCollectionItemsResult = {
 // item, so we cap accumulation rather than virtualizing.
 const MAX_ACCUMULATED_ITEMS = 5000;
 
-export function useDebugCollectionItems(
+export function useDebugCollectionResources(
   sessionId: string | null,
   ref: string | null,
-  options: UseDebugCollectionItemsOptions = {}
-): UseDebugCollectionItemsResult {
+  options: UseDebugCollectionResourcesOptions = {}
+): UseDebugCollectionResourcesResult {
   const { client } = useDevTool();
   const { topicFilter, pageSize } = options;
-  const [items, setItems] = useState<DebugCollectionItem[]>([]);
+  const [items, setItems] = useState<DebugCollectionResource[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -58,7 +58,7 @@ export function useDebugCollectionItems(
       setIsLoading(true);
       setError(null);
       try {
-        const result = await client.sessions.debug.listCollectionItems(sessionId, ref, {
+        const result = await client.sessions.debug.listCollectionResources(sessionId, ref, {
           cursor,
           limit: pageSize,
           topic: topicFilter && topicFilter.length > 0 ? topicFilter : undefined
@@ -75,7 +75,7 @@ export function useDebugCollectionItems(
         });
         setHasMore(!capped && result.nextCursor !== null);
       } catch (err) {
-        setError(describeReadError(err, "Failed to fetch collection items"));
+        setError(describeReadError(err, "Failed to fetch collection resources"));
       } finally {
         setIsLoading(false);
       }

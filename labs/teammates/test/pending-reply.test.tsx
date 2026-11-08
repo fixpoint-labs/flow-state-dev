@@ -55,7 +55,7 @@ describe("the message log the screen reads", () => {
       clientData: { ...reply, id, exchange: "msg_question", fromSession: "wks_r", fromFlow: "teammates", toSession: "wks_1", toFlow: "teammates", hop: 1, status },
     });
     const client = {
-      resources: { listCollectionItems: async () => ({ items: [row("msg_landed", "delivered"), row("msg_on_its_way", "unconfirmed")] }) },
+      resources: { listCollectionResources: async () => ({ items: [row("msg_landed", "delivered"), row("msg_on_its_way", "unconfirmed")] }) },
     } as unknown as Client;
     let rows: TalkRow[] | undefined;
     const stop = createLabAdapter(client).watchTalk(LEAD, (next) => (rows = next));

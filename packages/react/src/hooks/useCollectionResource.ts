@@ -1,6 +1,6 @@
 // FIX-427; FIX-739.
 /**
- * Convenience hook for fetching a single collection item by topic.
+ * Convenience hook for fetching a single collection resource by topic.
  *
  * The fetched item is the baseline; when the collection declares
  * `client.live: true`, mid-stream mutations land in the snapshot's per-topic
@@ -9,7 +9,7 @@
  * reflects a `pending → writing → published` transition without a refetch.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CollectionItemHandle } from "@flow-state-dev/client";
+import type { CollectionResourceHandle } from "@flow-state-dev/client";
 import { useResourceCollection } from "./useResourceCollection";
 import type { SessionView } from "./useSession";
 
@@ -17,26 +17,26 @@ import type { SessionView } from "./useSession";
 /**
  * `TClient` is the collection's projected per-item client-data type;
  * pass it via the hook generic, e.g.
- * `useResourceCollectionItem<ClientDataOf<typeof memos>>(...)`. Defaults to
+ * `useCollectionResource<ClientDataOf<typeof memos>>(...)`. Defaults to
  * `unknown` so existing untyped call sites are unchanged.
  */
-export type UseResourceCollectionItemResult<TClient = unknown> = {
-  item: CollectionItemHandle<TClient> | null;
+export type UseCollectionResourceResult<TClient = unknown> = {
+  item: CollectionResourceHandle<TClient> | null;
   isLoading: boolean;
   error: Error | undefined;
   refetch: () => void;
 };
 
-export function useResourceCollectionItem<TClient = unknown>(
+export function useCollectionResource<TClient = unknown>(
   session: SessionView,
   ref: string,
   topic: string
-): UseResourceCollectionItemResult<TClient> {
+): UseCollectionResourceResult<TClient> {
   const { get, wrap, live } = useResourceCollection<TClient>(session, ref);
 
   const [read, setRead] = useState<{
     identity: typeof wrap;
-    item: CollectionItemHandle<TClient> | null;
+    item: CollectionResourceHandle<TClient> | null;
     error: Error | undefined;
   } | null>(null);
   const holdsCurrent = read !== null && read.identity === wrap;
@@ -88,7 +88,7 @@ export function useResourceCollectionItem<TClient = unknown>(
   //     create/update that arrives before (or instead of) the baseline fetch is
   //     still surfaced. `wrap` provides the lazy `fetchContent`.
   //   - no overlay → the baseline passes through unchanged (non-live path).
-  const itemWithLive = useMemo<CollectionItemHandle<TClient> | null>(() => {
+  const itemWithLive = useMemo<CollectionResourceHandle<TClient> | null>(() => {
     if (liveEntry === undefined) return item;
     if (liveEntry.deleted === true) return null;
     // The overlay carries the same projected shape as the baseline item.

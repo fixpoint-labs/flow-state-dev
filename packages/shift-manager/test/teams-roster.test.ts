@@ -37,7 +37,7 @@ function clientsFor(lab: Lab): Client {
     },
     resources: {
       getResourceManifest: async () => manifest,
-      listCollectionItems: async (_sessionId: string, ref: string) => {
+      listCollectionResources: async (_sessionId: string, ref: string) => {
         const rows = collections[ref];
         return { items: (rows ?? []).map((data, i) => ({ topic: `${ref}-${i}`, clientData: data })) };
       },

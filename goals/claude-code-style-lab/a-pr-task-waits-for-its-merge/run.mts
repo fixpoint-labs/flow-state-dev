@@ -124,7 +124,7 @@ await runGoal(async (failures, tell) => {
       const manifest = await fsd.resources.getResourceManifest(sessionId);
       const ref = manifest.resources.find((r) => r.kind === "collection" && r.pattern === "observed-pull-requests/**")?.ref;
       if (ref === undefined) return [];
-      return (await fsd.resources.listCollectionItems(sessionId, ref, { limit: 50, topicPrefix: "observed-pull-requests/" })).items.map((i) => i.clientData);
+      return (await fsd.resources.listCollectionResources(sessionId, ref, { limit: 50, topicPrefix: "observed-pull-requests/" })).items.map((i) => i.clientData);
     };
     /** The row once its task waits on a pull request again (a new wait than `before`), or settled. */
     const waitOrSettle = (session: string, id: string, before?: string) =>

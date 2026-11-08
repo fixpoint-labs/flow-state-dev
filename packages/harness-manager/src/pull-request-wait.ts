@@ -81,7 +81,7 @@ export async function readSessionPullRequests(client: RecordedWorkClient, runSes
     (r) => r.kind === "collection" && r.pattern === `${OBSERVED_PULL_REQUESTS}/**` && r.client.state?.read === true,
   )?.ref;
   if (ref === undefined) return [];
-  const page = await client.resources.listCollectionItems(runSessionId, ref, {
+  const page = await client.resources.listCollectionResources(runSessionId, ref, {
     limit: SESSION_PULL_REQUESTS_PAGE,
     topicPrefix: `${OBSERVED_PULL_REQUESTS}/`,
   });

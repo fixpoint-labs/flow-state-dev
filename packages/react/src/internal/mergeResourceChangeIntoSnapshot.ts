@@ -2,7 +2,7 @@
 /**
  * Pure reducer that folds a `live: true` `resource_change` SSE item into the
  * React layer's cached `SessionStateSnapshotResponse`, so `useResource` and
- * `useResourceCollectionItem` surface mid-stream resource updates without an
+ * `useCollectionResource` surface mid-stream resource updates without an
  * HTTP refetch. The resource-side analog of
  * `mergeStateChangeIntoSnapshot`.
  *
