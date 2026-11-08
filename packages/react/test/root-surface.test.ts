@@ -7,8 +7,8 @@
  * `@flow-state-dev/react/internal`. The rest have no reader beyond react itself
  * (`useVoice` drives the recorder, player and speech primitives;
  * `useSuspensionForm` reads the schema analysis; the interrupt keys own their
- * window), so they leave public surface. No alias stays on the root (the epic's
- * Q1 was answered "break"). Their types follow the same split; the export
+ * window), so they leave public surface. No alias stays on the root: an old
+ * import breaks on purpose. Their types follow the same split; the export
  * check (`scripts/check-root-exports.mjs`) holds those, since a type has no
  * runtime key to assert on here.
  */
