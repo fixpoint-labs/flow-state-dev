@@ -172,7 +172,7 @@ export interface BoardTask {
   harness?: string;
   /** The model its run reported, when it reported one; never guessed. */
   model?: string;
-  /** What its runs spent, as orchestration's task-row view folds it (`taskView`); absent before any ran. */
+  /** What its runs spent, as orchestration's task view folds it (`taskView`); absent before any ran. */
   spend?: TaskSpendView;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
@@ -782,7 +782,7 @@ export function toBoardTask(
     row.status === "completed" ? "done" : row.status === "errored" ? "failed" : row.status === "cancelled" ? "cancelled" : "running";
   // A teammate's answer is the output as is; a coding run's is its output's `answer`. Blank is none.
   const answer = answerTextOf(row.output);
-  // One read of the row as orchestration's task-row view: its folded spend, and its oldest open hold.
+  // One read of the row as orchestration's task view: its folded spend, and its oldest open hold.
   const view = typeof row.id === "string" && typeof row.status === "string" ? taskView({ ...row, board: row.board ?? "" } as InboxTaskInput, holds) : null;
   const spend = view?.spend ?? null;
   return {
