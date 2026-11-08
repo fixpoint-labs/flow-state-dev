@@ -368,13 +368,17 @@ const namesIt = (line, name) => line.includes(`\`${name}\``);
 
 /**
  * A line of the package's own changelog names a home when it carries the full
- * specifier, its short `<package>/<subpath>` form, or its `./<subpath>` form,
- * each whole.
+ * specifier, its short `<package>/<subpath>` form, or its `./<subpath>` form
+ * in backticks, or the full specifier as a bare whole token: ended by
+ * whitespace, a backtick, a quote, a comma, `;`, `:`, `)`, `]` or the line's
+ * end, never by `.`, so `…/engine/host.js` is not `…/engine/host`.
  */
 const namesHome = (line, home) => {
   const short = home.replace(/^@flow-state-dev\//, "");
   const sub = short.slice(short.indexOf("/") + 1);
-  return [home, short, `./${sub}`].some((form) => line.includes(`\`${form}\``)) || new RegExp(`${home}(?![\\w/-])`).test(line);
+  if ([home, short, `./${sub}`].some((form) => line.includes(`\`${form}\``))) return true;
+  const escaped = home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\w/@.-])${escaped}(?=[\\s\`'",;:)\\]]|$)`).test(line);
 };
 
 /**

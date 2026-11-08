@@ -267,6 +267,27 @@ test("a home may be written as its short subpath or its ./ subpath, a name must 
   assert.match(failures[1], /Spread: no changelog line names it with its new home/, "`./hostile` is not `./host`");
 });
 
+test("a bare home specifier counts only as a whole token: a path that only starts with it is a wrong path, not the home", () => {
+  const home = ["@flow-state-dev/engine/host"];
+  const grade = (line) => gradeMovedNames([dropped("@flow-state-dev/engine", "SessionStore", home)], new Map([["@flow-state-dev/engine", [line]]]));
+  for (const wrong of [
+    "- `SessionStore` moved to @flow-state-dev/engine/host.js",
+    "- `SessionStore` moved to @flow-state-dev/engine/hostile.",
+    "- `SessionStore` moved to @flow-state-dev/engine/host/sub",
+    // A `.` never ends the token, so a bare specifier closing a sentence is not
+    // read as the home: a false fail is fixed by backticks, a false green is not seen.
+    "- `SessionStore` moved to @flow-state-dev/engine/host.",
+  ])
+    assert.match(grade(wrong).join("\n"), /no changelog line names it with its new home/, wrong);
+  for (const right of [
+    "- `SessionStore` moved to @flow-state-dev/engine/host, with the rest",
+    "- `SessionStore` moved to @flow-state-dev/engine/host",
+    "- `SessionStore` moved (see @flow-state-dev/engine/host)",
+    '- `SessionStore` moved to "@flow-state-dev/engine/host"',
+  ])
+    assert.deepEqual(grade(right), [], right);
+});
+
 test("a dropped name that still compiles from the root fails, and a journey that walked no name fails", () => {
   const lines = new Map([["@flow-state-dev/core", ["- `Kept` moved to `@flow-state-dev/core/types`."]]]);
   const failures = gradeMovedNames([dropped("@flow-state-dev/core", "Kept", ["@flow-state-dev/core/types"], { failsOnNew: false })], lines);
