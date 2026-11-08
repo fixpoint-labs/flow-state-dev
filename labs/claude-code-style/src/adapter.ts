@@ -1031,9 +1031,12 @@ export function createWiredLab(fsd: Client): LabAdapter {
       let turnOf: TurnsRead | undefined;
       /** The entries, built again only when the items or the turns change: never for a runs-only change. */
       let entries: ThreadEntry[] = [];
+      const stoppedSeen = new Set<string>();
       const build = () => {
         if (items === undefined || turnOf === undefined) return;
-        const stopped = new Set(turnOf.turns.filter((turn) => turn.status === "aborted").map((turn) => turn.id));
+        // Kept for the view's life: a stopped line stays once its turn leaves the recent-turns read.
+        for (const turn of turnOf.turns) if (turn.status === "aborted") stoppedSeen.add(turn.id);
+        const stopped = stoppedSeen;
         entries = withStopped(entriesOf(items, turnOf.threads), stopped);
       };
       let last: string | undefined;

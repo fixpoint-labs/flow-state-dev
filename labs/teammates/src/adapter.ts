@@ -825,11 +825,13 @@ export function answeringOf(items: readonly Item[], inProgress: readonly string[
  * The turns a Stop pressed now stops, by request id: the answering requests the list names as in
  * progress, and a turn whose answer or tool call is still being written before the list says so
  * (the list trails the items). Only those two item types: the board's own passes write rows, never
- * an answer, and a Stop must never reach them.
+ * an answer, and a Stop must never reach them. As in `answeringOf`, a still-written item counts only
+ * for the newest request: a crashed or aborted turn leaves its half-written item so for good.
  */
 function answeringTurnsOf(items: readonly Item[], inProgress: readonly string[], ended: readonly string[] = []): string[] {
+  const newest = items[items.length - 1]?.requestId;
   const writing = items
-    .filter((i) => (i.type === "message" || i.type === "tool_output") && i.status === "in_progress" && !ended.includes(i.requestId))
+    .filter((i) => (i.type === "message" || i.type === "tool_output") && i.status === "in_progress" && i.requestId === newest && !ended.includes(i.requestId))
     .map((i) => i.requestId as string);
   return [...new Set([...inProgress, ...writing])];
 }
@@ -962,7 +964,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
    * Each conversation's stop under way: the turns an `interrupt` aborted, until the view's request
    * read shows every one ended. `wake` tells the conversation's open views to draw again.
    */
-  const stops = new Map<string, { ids: ReadonlySet<string> }>();
+  const stops = new Map<string, { ids: Set<string> }>();
   const stopWatchers = new Map<string, Set<() => void>>();
   const wake = (sessionId: string) => stopWatchers.get(sessionId)?.forEach((tell) => tell());
   /** Each worker's conversation, and the flow it runs on, once opened. */
@@ -1037,6 +1039,9 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
               if ((error as { status?: number }).status !== 409) throw error;
               const now = (await client.sessions.requests(sessionId, { limit: 20 })).find((r) => r.id === id);
               if (now?.status === "in_progress") throw new Error("The turn went on before the stop reached it. Press Stop again.");
+              // Ended already, so the stop waits on it no longer (an old turn may be past the requests read).
+              stop.ids.delete(id);
+              if (stop.ids.size === 0) done();
             });
         }
       } catch (error) {
@@ -1114,7 +1119,8 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           inProgress = answering.filter((r) => r.status === "in_progress").map((r) => r.id);
           quiet = requests.filter((r) => QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
           ended = requests.filter((r) => r.status !== "in_progress").map((r) => r.id);
-          stopped = answering.filter((r) => r.status === "aborted").map((r) => r.id);
+          // Kept for the view's life: a stopped line stays once its turn leaves the 20-request read.
+          stopped = [...new Set([...stopped, ...answering.filter((r) => r.status === "aborted").map((r) => r.id)])];
           // A turn that ended with a call still marked running reads that call failed.
           reuse(toEntries(items, workerIds, ended, stopped));
           emit();

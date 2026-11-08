@@ -31,16 +31,20 @@ function host() {
   let summary: unknown;
   let holdRequests: Promise<void> | undefined;
   let requestsFailing = 0;
+  let items: unknown[] = [{ id: "u1", type: "message", status: "completed", requestId: "r1", itemIndex: 0, ts: 1, role: "user", content: [{ type: "output_text", text: "hi" }] }];
   const fetcher = (async (url: string, init?: RequestInit) => {
     const path = new URL(url, "http://x").pathname;
     calls.push(`${init?.method ?? "GET"} ${path}`);
+    // A turn long over: the abort route refuses it as finished.
+    if (path.endsWith("/abort")) return json({ error: "finished" }, 409);
     if (path.endsWith("/requests")) {
       await holdRequests;
       if (requestsFailing > 0) {
         requestsFailing -= 1;
         return json({ error: "down" }, 503);
       }
-      return json({ requests });
+      const status = new URL(url, "http://x").searchParams.get("status");
+      return json({ requests: status === null ? requests : requests.filter((r) => (r as { status?: string }).status === status) });
     }
     if (path.endsWith("/stream")) {
       const body = new ReadableStream<Uint8Array>({
@@ -51,7 +55,6 @@ function host() {
       return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
     }
     if (path.endsWith("/state")) {
-      const items = [{ id: "u1", type: "message", status: "completed", requestId: "r1", itemIndex: 0, ts: 1, role: "user", content: [{ type: "output_text", text: "hi" }] }];
       return json({
         sessionId: "s1",
         flowKind: "agent",
@@ -81,6 +84,7 @@ function host() {
       for (const s of subscriptions) if (!s.closed) s.options.onChange(notice);
     },
     requests: (next: unknown[]) => void (requests = next),
+    items: (next: unknown[]) => void (items = next),
     failRequestReads: (n: number) => void (requestsFailing = n),
     summary: (next: unknown) => void (summary = next),
     holdRequestReads: () => {
@@ -123,6 +127,44 @@ describe("watchConversation's answering state", () => {
     h.requests([{ id: "r2", actionName: "respond", status: "in_progress", startedAtMs: 2 }]);
     h.hear({ topic: { scope: "session", id: "s1" }, kind: "request" });
     await until(() => h.count("/sessions/s1/requests") === 2);
+  });
+});
+
+describe("a Stop after a turn that crashed mid-answer, long ago", () => {
+  it("never aborts that turn, and never sticks on stopping", async () => {
+    const h = host();
+    // r0 crashed mid-answer and is past the 20-request read; r1 answered and is over.
+    h.items([
+      { id: "a0", type: "message", status: "in_progress", requestId: "r0", itemIndex: 0, ts: 1, role: "assistant", content: [{ type: "output_text", text: "half" }] },
+      { id: "u1", type: "message", status: "completed", requestId: "r1", itemIndex: 1, ts: 2, role: "user", content: [{ type: "output_text", text: "hi" }] },
+      { id: "a1", type: "message", status: "completed", requestId: "r1", itemIndex: 2, ts: 3, role: "assistant", content: [{ type: "output_text", text: "hello" }] },
+    ]);
+    h.requests([{ id: "r1", actionName: "respond", status: "completed", startedAtMs: 2 }]);
+    const lab = createLabAdapter(h.client);
+    const id = await lab.openConversation("eng");
+    const views: ConversationView[] = [];
+    stops.push(lab.watchConversation(id, (view) => views.push(view)));
+    await until(() => views.some((v) => v.entries.length === 3) && h.count(`/sessions/${id}/requests`) >= 1);
+    await lab.interrupt(id);
+    await settle();
+    expect(h.count("/abort")).toBe(0);
+    expect(views.at(-1)!.stopping).toBe(false);
+  });
+});
+
+describe("a stopped line", () => {
+  it("stays once its turn leaves the 20-request read", async () => {
+    const h = host();
+    h.requests([{ id: "r1", actionName: "respond", status: "aborted", startedAtMs: 1 }]);
+    const views: ConversationView[] = [];
+    stops.push(createLabAdapter(h.client).watchConversation("s1", (view) => views.push(view)));
+    await until(() => views.at(-1)?.entries.some((e) => e.kind === "stopped") === true);
+    // Twenty later passes push r1 out of the read.
+    h.requests(Array.from({ length: 20 }, (_, i) => ({ id: `d${i}`, actionName: "dispatch", status: "completed", startedAtMs: 10 + i })));
+    h.hear({ topic: { scope: "session", id: "s1" }, kind: "request" });
+    await until(() => h.count("/sessions/s1/requests") === 2);
+    await settle();
+    expect(views.at(-1)!.entries.some((e) => e.kind === "stopped")).toBe(true);
   });
 });
 
