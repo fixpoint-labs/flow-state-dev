@@ -131,7 +131,7 @@ function newest(rows: readonly Task[]): Task {
  * latest open one, a follow-up waiting to start; else, every one finished,
  * the latest that ran here, whose coding session talk resumes.
  */
-export function sessionRow(tasks: TaskCollectionRef, sessionId: string): Task | undefined {
+export function sessionTask(tasks: TaskCollectionRef, sessionId: string): Task | undefined {
   const rows = rowsInSession(tasks, sessionId);
   const linked = rows.filter((task) => task.run?.sessionId === sessionId);
   if (linked.length === 0) return undefined;
@@ -210,7 +210,7 @@ export function harnessTalkTurn(options: HarnessTalkTurnOptions) {
     uses,
     execute: async (input, ctx: BlockContext) => {
       const board = await options.board(ctx);
-      const row = board === undefined ? undefined : sessionRow(board.tasks, ctx.session.identity.id);
+      const row = board === undefined ? undefined : sessionTask(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
       if (!isTerminalStatus(row.status)) throw new SessionDoorRefused("task-running");
       const identity = board.runOf(row);
@@ -287,7 +287,7 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
     uses: options.uses ?? [],
     execute: async (input, ctx: BlockContext) => {
       const board = await options.board(ctx);
-      const row = board === undefined ? undefined : sessionRow(board.tasks, ctx.session.identity.id);
+      const row = board === undefined ? undefined : sessionTask(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
       if (isTerminalStatus(row.status)) return { talk: input.message };
       const refused = await steerFromLine(board.tasks, row.id, input.message, ctx);

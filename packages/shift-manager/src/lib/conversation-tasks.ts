@@ -7,7 +7,7 @@
  * refusal comes back as an `ActionRefused` carrying its reason.
  */
 import { ClientHttpError, topic, type Client, type WireTopic } from "@flow-state-dev/client";
-import { pullRequestWait, readSessionPullRequests, type PullRequestWaitRow } from "@flow-state-dev/harness-manager/browser";
+import { pullRequestWait, readSessionPullRequests, type PullRequestWaitInput } from "@flow-state-dev/harness-manager/browser";
 import { ActionRefused } from "./action";
 import { CONVERSATION_BOARD_COLLECTION, describeFailure } from "./reads";
 
@@ -47,7 +47,7 @@ export type ConversationTask = {
   assignee?: string;
   attempts: number;
   /** Its open holds, when it has any: what it waits on. */
-  holds?: PullRequestWaitRow["holds"];
+  holds?: PullRequestWaitInput["holds"];
   /** The run it is in, once one started. */
   run?: { sessionId: string; requestId: string } | null;
 };

@@ -12,7 +12,7 @@ import {
   harnessReadinessAction,
   harnessReadinessCapability,
   READINESS_GUIDANCE,
-  type HarnessReadinessRow,
+  type HarnessReadinessView,
 } from "../src/readiness";
 
 const READY: HarnessReadiness = { ready: true };
@@ -33,7 +33,7 @@ function scripted(answers: Array<HarnessReadiness | "hang" | "throw">) {
   return { check, calls: () => calls };
 }
 
-const brief = (rows: HarnessReadinessRow[]) => rows.map(({ harness, ready, remedy, unanswered }) => ({ harness, ready, remedy, unanswered }));
+const brief = (rows: HarnessReadinessView[]) => rows.map(({ harness, ready, remedy, unanswered }) => ({ harness, ready, remedy, unanswered }));
 
 describe("harnessReadiness — the kept read", () => {
   it("checks every harness on the first read, then answers from the kept rows", async () => {
@@ -160,7 +160,7 @@ describe("harnessReadinessAction — through a real flow", () => {
     } as never);
     const state = createFlowState({ flows: { "readiness-flow": flow }, stores: { test: { primary: inMemoryStores() } }, defaultProfile: "test" } as never);
     const rt = (await (state as any).getRuntime()) as { stores: unknown; runtimeConfig: object };
-    const act = async (input: unknown): Promise<HarnessReadinessRow[]> => {
+    const act = async (input: unknown): Promise<HarnessReadinessView[]> => {
       const result = (await runAction({
         flow,
         actionName: "harnessReadiness",
@@ -170,7 +170,7 @@ describe("harnessReadinessAction — through a real flow", () => {
         sessionId: `s_${Math.random().toString(36).slice(2)}`,
         stores: rt.stores,
         runtimeConfig: { ...rt.runtimeConfig },
-      } as never)) as { output?: { harnesses: HarnessReadinessRow[] }; error?: unknown };
+      } as never)) as { output?: { harnesses: HarnessReadinessView[] }; error?: unknown };
       if (result.error !== undefined) throw new Error(JSON.stringify(result.error));
       return result.output!.harnesses;
     };
