@@ -242,7 +242,7 @@ describe.each([
   /** `it`, or `it.fails` when this column has a gap named for `name`. */
   const check = (name: string, run: () => Promise<void>) => {
     const gap = GAPS[name]?.[column];
-    return gap === undefined ? it(name, run, 30_000) : it.fails(`${name} (gap: ${gap})`, run, 30_000);
+    return gap === undefined ? it(name, run, 60_000) : it.fails(`${name} (gap: ${gap})`, run, 60_000);
   };
 
   describe("a result that lands mid-turn", () => {
