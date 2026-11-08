@@ -131,7 +131,7 @@ try {
   await leg("question", { text: "The March export" });
   await leg("confirm", { done: true });
 } catch (error) {
-  failures.push(`threw: ${(error as Error).message}`);
+  failures.push(`hold:threw — ${(error as Error).message}`);
 }
 console.log(JSON.stringify({ failures, evidence }));
 process.exit(0);
