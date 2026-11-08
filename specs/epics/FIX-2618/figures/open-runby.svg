@@ -1,0 +1,122 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="O3, open: read user and org resources directly by scope and key, and write through the session that runs them. Recommended: direct reads and runBy writes. Instead of: a declared write rule on the resource, or today&#x27;s session-addressed routes. Decides it: validators and rules keep running in blocks. Price: the server finds or makes a session, which is new lifecycle. Flips if most resources turn out to need no flow to write."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .box    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .chip   { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .one    { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; }
+    .none   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence  { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .o      { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .u      { fill:var(--accent-soft); }
+    .c      { fill:var(--surface); stroke:var(--accent); stroke-width:1; stroke-dasharray:3 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-col  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; font-weight:600; }
+    .t-id   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-o    { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-u    { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">O3 · OPEN · THE CALL</text>
+    <text class="t-q" x="32" y="52">Read stored resources directly, and write through the session that runs them?</text>
+  </g>
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">Direct reads, runBy writes</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="468" y="112">A declared write rule</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="708" y="112">As today</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">VALIDATORS AND</text>
+    <text class="t-lbl" x="32" y="169">RULES ON A WRITE</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="163">+</text>
+    <text class="t-b" x="248" y="162">Still run in blocks</text>
+    <text class="t-s" x="248" y="180">FIX-1945&#x27;s reason holds</text>
+    <text class="mark minus" x="468" y="163">−</text>
+    <text class="t-b" x="488" y="162">A second write path</text>
+    <text class="t-s" x="488" y="180">owner-only, schema-valid</text>
+    <text class="mark plus" x="708" y="163">+</text>
+    <text class="t-b" x="728" y="162">Run, inside a run</text>
+    <text class="t-s" x="728" y="180">but an app makes a session</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">A SESSION MADE</text>
+    <text class="t-lbl" x="32" y="231">ONLY TO READ</text>
+    <text class="mark plus" x="228" y="225">+</text>
+    <text class="t-b" x="248" y="224">None; four go</text>
+    <text class="t-s" x="248" y="242">pins, roster, lab, reader</text>
+    <text class="mark plus" x="468" y="225">+</text>
+    <text class="t-b" x="488" y="224">None</text>
+    <text class="t-s" x="488" y="242">reads are direct</text>
+    <text class="mark minus" x="708" y="225">−</text>
+    <text class="t-b" x="728" y="224">Four stay</text>
+    <text class="t-s" x="728" y="242">and the next app adds one</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">NEW LIFECYCLE</text>
+    <text class="t-lbl" x="32" y="289">TO GET RIGHT</text>
+    <text class="mark minus" x="228" y="283">−</text>
+    <text class="t-b" x="248" y="282">Find-or-make a session</text>
+    <text class="t-s" x="248" y="300">races, deletes, a lost flow</text>
+    <text class="mark tie" x="468" y="283">=</text>
+    <text class="t-b" x="488" y="282">None for writes</text>
+    <text class="t-s" x="488" y="300">a rule, not a session</text>
+    <text class="mark tie" x="708" y="283">=</text>
+    <text class="t-b" x="728" y="282">None</text>
+    <text class="t-s" x="728" y="300">nothing new</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">runBy on a resource; FIX-1788 generalized</text>
+    <text class="t-s" x="32" y="387">no generic client writes</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">Most resources need no flow to write</text>
+    <text class="t-s" x="494" y="387">then a declared rule earns a place beside runBy</text>
+  </g>
+</svg>

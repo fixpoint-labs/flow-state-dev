@@ -1,0 +1,110 @@
+<svg viewBox="0 0 940 418" role="img" aria-label="O1, open: should FSD have kits, an installable unit above a flow. Recommended: yes, after the teammates proof and after views and resource addressing. Instead of: no new unit, fix workforce&#x27;s own API. Decides it: only a kit&#x27;s client half removes the adapters at the root. Price: slots are a new public contract. Locks in defineKit, slots and a client half. Flips if the proof shows the pain is workforce&#x27;s own API."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .box    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .chip   { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .one    { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; }
+    .none   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence  { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .o      { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .u      { fill:var(--accent-soft); }
+    .c      { fill:var(--surface); stroke:var(--accent); stroke-width:1; stroke-dasharray:3 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-col  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; font-weight:600; }
+    .t-id   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-o    { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-u    { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="418"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">O1 · OPEN · THE CALL</text>
+    <text class="t-q" x="32" y="52">Should FSD have kits: an installable unit above a flow?</text>
+  </g>
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">Yes, after FIX-2622 and views</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">No: fix workforce&#x27;s API</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE ADAPTERS,</text>
+    <text class="t-lbl" x="32" y="169">AT THE ROOT</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="163">+</text>
+    <text class="t-b" x="248" y="162">The client half ships with the kit</text>
+    <text class="t-s" x="248" y="180">an app maps names, nothing more</text>
+    <text class="mark minus" x="592" y="163">−</text>
+    <text class="t-b" x="612" y="162">Each app still writes its read model</text>
+    <text class="t-s" x="612" y="180">a better hireWorkforce fixes wiring only</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">A CONTRACT THAT</text>
+    <text class="t-lbl" x="32" y="231">IS HARD TO CHANGE</text>
+    <text class="mark minus" x="228" y="225">−</text>
+    <text class="t-b" x="248" y="224">Slots are a new public contract</text>
+    <text class="t-s" x="248" y="242">a new concept, in every app&#x27;s setup</text>
+    <text class="mark plus" x="592" y="225">+</text>
+    <text class="t-b" x="612" y="224">Nothing new to learn or freeze</text>
+    <text class="t-s" x="612" y="242">capabilities and flows as today</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">THE NEXT FEATURE</text>
+    <text class="t-lbl" x="32" y="289">AFTER WORKFORCE</text>
+    <text class="mark plus" x="228" y="283">+</text>
+    <text class="t-b" x="248" y="282">The same kind of thing</text>
+    <text class="t-s" x="248" y="300">a mission or living-artifacts kit</text>
+    <text class="mark minus" x="592" y="283">−</text>
+    <text class="t-b" x="612" y="282">Wired by hand again</text>
+    <text class="t-s" x="612" y="300">a second circular callback</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="349">LOCKS IN</text>
+    <text class="t-b" x="32" y="369">defineKit, slots and a client half</text>
+    <text class="t-s" x="32" y="387">built last, against two kits</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="349">FLIPS IF</text>
+    <text class="t-b" x="494" y="369">FIX-2622 shows the pain is workforce&#x27;s API</text>
+    <text class="t-s" x="494" y="387">then fix workforce and wait for a second kit</text>
+  </g>
+</svg>
