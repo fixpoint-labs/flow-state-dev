@@ -29,12 +29,12 @@ Dashed edges lost, for the reason on the label.
 |---|---|
 | **Instead of** | (a) fork on first edit · (c) read-only with "Make my own copy" · a full copy stored under the standard id |
 | **Because** | Only an edit under the **same id** keeps what the issue asks to keep. Chief of Staff's conversation, its tasks, the other teammates' messages to it and every `WORKER.md` that names `chief-of-staff` as a delegate all address the id. A fork gets a new id, so the edited copy starts with no conversation and nobody's messages reach it, while the original keeps running beside it. A full copy under the same id keeps the id, but freezes the file's tools, skills and team text at the copy (FIX-1790 D3), so a deploy stops reaching that user for everything, not only the two fields they changed |
-| **Locks in** | A user-scoped `workforce/worker-edits/<id>` row with `name` and `instructions`, each `null` for "the file's". The roster and `resolveWorker` read it at the start of every turn. Its existence is `edited` on the roster. `reset(id)` deletes it. The file is never written, so FIX-1786's *"a standard worker always matches its file"* becomes *"matches its file, except the name and instructions a user set for themselves"* |
+| **Locks in** | A user-scoped `workforce/worker-edits/<id>` row with `name` and `instructions`, each `null` for "the file's". `resolveWorker`, the server roster and the client's `roster()` read it (the client at each read, the other two at the start of every turn). The org inventory keeps the file's name. Its existence is `edited` on the roster. `reset(id)` deletes it. The file is never written, so FIX-1786's *"a standard worker always matches its file"* becomes *"matches its file, except the name and instructions a user set for themselves"* |
 
 **What would change my mind:** a need to edit a standard worker's tools or skills too. Then a full
 copy under the same id is the cheaper shape, and this layer should go rather than grow.
 
-**If wrong:** delete the collection and the two read sites; nobody's id or session moved.
+**If wrong:** delete the collection and its three read sites; nobody's id or session moved.
 
 The Architect earlier leaned to fork-on-edit (FIX-2309 gap 1). It is rejected here for the id
 alone: under it, acceptance criterion 1 (*"leaves its id, conversation, tasks and message history
@@ -70,4 +70,4 @@ has no edits, is refused.
 
 ## Notes from review
 
-*(Empty until review.)*
+- Gitar, round 1: the spec named two read sites and missed the client's `roster()` and the org inventory. Fixed: three read sites; the inventory keeps the file's name, on purpose.

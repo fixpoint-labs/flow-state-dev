@@ -94,8 +94,13 @@ row gains a name.
 
 - **Workforce:** the worker row gains `name`. A new user-scoped collection holds a user's edits to
   standard workers, keyed by the standard id. `edit` writes it for a standard id; `reset` deletes
-  it. `resolveWorker` and the roster lay it over the file's `name:` and body. Edits are read at the
-  start of a turn, like every row today, so a running turn keeps its own.
+  it. Three read sites lay it over the file: `resolveWorker` (name and body), the server roster
+  (`installation.roster()`, which the identity line reads), and the client's `roster()`, which
+  today reads the standard-worker projection and nulls `name` on your own rows. Edits are read at
+  the start of a turn, like every row today, so a running turn keeps its own.
+- **Not changed:** the organization's worker inventory (`inventoryWorkers`) keeps each file's
+  name. It is org-scoped, so one user's name can't go there, and the lab names teammates from
+  `roster()`, not the inventory.
 - **Lab:** the Edit form takes name and instructions for every teammate, and shows **Reset to
   default** on an edited standard teammate. Hiring still makes the id from the typed name.
 - **Docs:** none in this PR (release docs). The changeset names `name`, standard-worker `edit` and
