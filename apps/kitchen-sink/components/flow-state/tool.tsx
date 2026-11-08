@@ -54,7 +54,7 @@ export { toolIntent } from "./tool-naming";
  * Framework-agnostic tool execution state.
  * Replaces the AI SDK ToolUIPart["state"] with neutral vocabulary.
  */
-export type ToolStatus =
+type ToolStatus =
   | "pending"      // not yet started
   | "streaming"    // input being received
   | "running"      // executing
