@@ -38,9 +38,10 @@ export function SessionPopup({ label, title, status, onClose, children }: {
       }
       else if (event.key === "Tab") keepFocusIn(dialog.current, event);
     };
-    document.addEventListener("keydown", onKey);
+    // Capture phase, so the Esc is spent before the conversation's stop keys (on the document since before) see it.
+    document.addEventListener("keydown", onKey, true);
     return () => {
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
       opener?.focus?.();
     };
   }, [onClose]);
