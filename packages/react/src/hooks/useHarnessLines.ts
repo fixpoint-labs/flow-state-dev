@@ -60,7 +60,8 @@ export type HarnessLinesView<TOutcome extends string = HarnessLineOutcome> = {
   /**
    * The lines waiting for the running turn, oldest first, until each one's
    * turn is followed. At most one is on the server; the rest wait in the page
-   * and are sent in order, so a reload or a closed tab loses those.
+   * and are sent in order, so a reload or a closed tab loses those. Moving
+   * the view to another session sends the held ones to the session left.
    */
   waiting: readonly HarnessWaitingLine[];
 };
@@ -248,6 +249,22 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
   const checkedOpen = useRef<string | null>(null);
   useEffect(() => {
     if (sessionId === undefined || isLoading || checkedOpen.current === sessionId) return;
+    const left = checkedOpen.current;
+    // Lines still held for the session being left go to its server now, oldest
+    // first, so leaving the session doesn't drop them. Each waits there under
+    // `defer`, which may start them in another order.
+    const held = queue.current.filter((line) => line.requestId === undefined && line.sending !== true);
+    if (left !== null && held.length > 0) {
+      void (async () => {
+        for (const line of held) {
+          try {
+            await client.flow(flowKind).send(turnAction, line.input, { sessionId: left });
+          } catch (error) {
+            console.error("[useHarnessLines] a waiting line could not be sent", error);
+          }
+        }
+      })();
+    }
     checkedOpen.current = sessionId;
     queue.current = [];
     starting.current = null;
@@ -269,7 +286,7 @@ export function useHarnessLines<TOutcome extends string = HarnessLineOutcome>(
       // Unread, the view stays on the request it follows.
       () => undefined
     );
-  }, [sessionId, isLoading, runningTurns, followRequest, publish]);
+  }, [sessionId, isLoading, runningTurns, followRequest, publish, client, flowKind, turnAction]);
 
   const send = useCallback(
     (prompt: string): Promise<TOutcome> => {

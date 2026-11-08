@@ -31,6 +31,8 @@
  *     it, and "until the turn before it has started" fails: the two wait on
  *     the server together while the first hasn't claimed the session.
  *   - ignore `input`, and the "input" cases fail: the turn gets `{ prompt }`.
+ *   - clear the held lines when the view moves to another session, and the
+ *     "moving to another session" case fails: they are never sent.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -275,6 +277,25 @@ describe("useHarnessLines", () => {
     rerender({ session: view(false, false, "s1", [{ requestId: "line-1" }]) });
     await waitFor(() => expect(followRequest).toHaveBeenLastCalledWith("line-2"));
     await waitFor(() => expect(result.current.waiting).toEqual([]));
+  });
+
+  it("moving to another session sends the lines held for the one left, in the order typed, rather than dropping them", async () => {
+    const { result, rerender } = mountChat();
+    await act(async () => {
+      await result.current.send("second");
+      await result.current.send("third");
+      await result.current.send("fourth");
+    });
+    expect(flowMock.send).toHaveBeenCalledTimes(1);
+
+    rerender({ session: view(false, false, "s2") });
+    await waitFor(() => expect(flowMock.send).toHaveBeenCalledTimes(3));
+    expect(flowMock.send.mock.calls.slice(1)).toEqual([
+      ["run", { message: "third", mode: "ask" }, { sessionId: "s1" }],
+      ["run", { message: "fourth", mode: "ask" }, { sessionId: "s1" }]
+    ]);
+    // The new session's view lists none of them.
+    expect(result.current.waiting).toEqual([]);
   });
 
   it("a waiting line whose turn can't be sent leaves the list, and its send rejects", async () => {
