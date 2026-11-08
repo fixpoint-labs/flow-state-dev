@@ -13,7 +13,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../../../..");
 const SPELLINGS = {
@@ -55,10 +55,12 @@ function totalOf(byPkg, name) {
   return Object.values(byPkg).reduce((s, c) => s + (c[name] ?? 0), 0);
 }
 
-/** Independent count: git grep over the tracked tree, a different walker. */
+/** Independent count: git grep over the tracked tree, a different walker. Exit 1 is no match, so 0; 2 and above is an error. */
 function gitCount(pattern) {
-  const out = execFileSync("git", ["grep", "-ohE", pattern, "--", "packages/*/src/**"], { cwd: root, encoding: "utf8" });
-  return out.split("\n").filter(Boolean).length;
+  const r = spawnSync("git", ["grep", "-ohE", pattern, "--", "packages/*/src/**"], { cwd: root, encoding: "utf8" });
+  if (r.status === 1) return 0;
+  if (r.status !== 0) throw new Error(`git grep failed (exit ${r.status ?? r.signal}): ${r.error?.message ?? r.stderr}`);
+  return r.stdout.split("\n").filter(Boolean).length;
 }
 
 const byPkg = census();
