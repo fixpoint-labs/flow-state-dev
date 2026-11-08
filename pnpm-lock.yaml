@@ -902,9 +902,6 @@ importers:
       '@flow-state-dev/store-sqlite':
         specifier: workspace:*
         version: link:../../packages/store-sqlite
-      '@flow-state-dev/testing':
-        specifier: workspace:*
-        version: link:../../packages/testing
       '@flow-state-dev/workforce':
         specifier: workspace:*
         version: link:../../packages/workforce
@@ -1137,9 +1134,6 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
-      '@flow-state-dev/testing':
-        specifier: workspace:*
-        version: link:../../packages/testing
       '@tailwindcss/vite':
         specifier: ^4.2.0
         version: 4.3.0(vite@7.3.1(@types/node@22.19.13)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0))
