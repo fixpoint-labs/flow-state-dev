@@ -13,13 +13,13 @@ What each lab checked for, and found already decided:
 | A line with files while a worker runs | The epic's *what stays*: it waits for the next turn |
 | What a coding teammate or a Claude Code run gets | FIX-2519 |
 | What a generator teammate's model gets from earlier turns | FIX-2517 [D1](../FIX-2517/DECISIONS.md#d1) |
-| A PDF to a Codex or Cursor teammate | FIX-2520 [D1](../FIX-2520/DECISIONS.md#d1) |
+| A PDF to a Codex or Cursor teammate, as its text | FIX-2520 [D1](../FIX-2520/DECISIONS.md#d1) |
 
 ## Decided, not asked
 
 - **One implementation PR for both labs**, closing FIX-2523 and FIX-2524.
 - **Styling is each lab's**: the strip takes the lab's class names; its behaviour doesn't change.
-- **The Claude Code-style lab's shortcuts keep working**, and the goal check presses each one.
+- **The Claude Code-style lab's shortcuts keep working**; its existing tests cover them, not the goal check.
 
 ## Considered and dropped
 

@@ -36,7 +36,7 @@ flowchart LR
   A --> L2["leg b · attach a PDF, ask what only it says"]
   A --> L3["leg c · an 11th image, an oversized file, an unsupported type"]
   L1 -->|"reply describes both · reload and restart show both"| P["PASS · the goal is met"]
-  L2 -->|"reply carries the PDF's code word · Codex and Cursor refuse it by name"| P
+  L2 -->|"reply carries the PDF's code word"| P
   L3 -->|"a plain message · nothing sent"| P
   C["control · today's main"] -.-> A
   A -.->|"under the control"| F["must FAIL · every leg"]
@@ -45,7 +45,7 @@ flowchart LR
 | How we verify | |
 |---|---|
 | **Goal check** | The closure, [FIX-2565](https://linear.app/fixpoint-labs/issue/FIX-2565), on one `main` commit, in each app's browser: persistent stores, real model, real harness |
-| **Signal** | a: the reply names each image; a reload, and one after a restart, show both; the session read carries references, not bytes. b: the PDF's code word; on the Codex and Cursor pages, their named refusal ([FIX-2520 D1](../../issues/FIX-2520/DECISIONS.md#d1)). c: a composer message, no action request |
+| **Signal** | a: the reply names each image; a reload, and one after a restart, show both; the session read carries references, not bytes. b: the PDF's code word, on every page, Codex and Cursor from its extracted text ([FIX-2520 D1](../../issues/FIX-2520/DECISIONS.md#d1)). c: a composer message, no action request |
 | **Input** | Fresh images and a PDF with a random code word, per run |
 | **Anti-game** | Assert on what the person sees, never on a stubbed model |
 | **Control that must fail** | Today's `main`: every leg. A planted strip of `file` parts: legs a and b |

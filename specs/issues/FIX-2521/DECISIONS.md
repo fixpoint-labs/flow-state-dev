@@ -10,15 +10,16 @@ Those calls, so nobody re-derives them here:
 |---|---|
 | The +, paste, drop, previews, refusals, upload on attach | FIX-2518 [D1](../FIX-2518/DECISIONS.md#d1), [D2](../FIX-2518/DECISIONS.md#d2) |
 | What the model gets from earlier turns | FIX-2517 [D1](../FIX-2517/DECISIONS.md#d1) |
-| A PDF refused on the Codex and Cursor pages | FIX-2520 [D1](../FIX-2520/DECISIONS.md#d1) |
+| A PDF's text on the Codex and Cursor pages | FIX-2520 [D1](../FIX-2520/DECISIONS.md#d1) |
 | A line with files sent while a turn runs waits for the next turn | The epic's *what stays* |
 
 ## Decided, not asked
 
 - **Reproduce first.** The implementation PR opens on a test that pastes an image into the Flow
   State composer, sends, and asserts the request carries it. It is red on `main` before the fix.
-- **Drafts:** a session switch keeps an unsent draft's files (FIX-2518's in-memory draft); a
-  reload keeps its text only, as today. The issue asked to pick one and test it; this is it.
+- **Drafts:** a session switch or a reload keeps an unsent draft's text, as today, and clears its
+  files (FIX-2518's draft rule); the sweep takes their uploads. The issue asked to pick one and
+  test it; this is it.
 - **No paste or drop handler stays in the app.** If one is found, it goes (ER-6).
 - **Registry copies refresh, never edit.** `pnpm registry:refresh`, and the drift test proves it.
 
@@ -39,5 +40,7 @@ to FIX-2519, the user line's file parts to FIX-2518.
 ## How it got here
 
 - **Drafted (Nov 8)** in the epic's spec set.
+- **Fold (Nov 8).** Drafts clear their files on a switch (FIX-2518's cut); a PDF on Codex and
+  Cursor is read from its text (the owner's call, FIX-2520 D1).
 
 **Open: none.**

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 502" role="img" aria-label="What the closure runs: three legs in each of six chat surfaces. Leg a, two images: in every surface the reply names both, and a reload and a restart show both; in Shift Manager a task&#x27;s re-run names both too, and in the Teammates lab both a generator and a coding teammate do. Leg b, a PDF: the reply carries the PDF&#x27;s code word on Flow State chat, the Claude Code page, Shift Manager&#x27;s generator worker, the Claude Code-style lab and the generator teammate; on the Codex and Cursor pages the pass is the named refusal. Leg c: three named refusals and nothing sent, everywhere."
+<svg viewBox="0 0 940 502" role="img" aria-label="What the closure runs: three legs in each of six chat surfaces. Leg a, two images: in every surface the reply names both, and a reload and a restart show both; in Shift Manager a task&#x27;s re-run names both too, and in the Teammates lab both a generator and a coding teammate do. Leg b, a PDF: the reply carries the PDF&#x27;s code word in every surface, on the Codex and Cursor pages from its extracted text, from both a generator and a coding worker in Shift Manager, and from both teammates in the Teammates lab. Leg c: three named refusals and nothing sent, everywhere."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -76,9 +76,9 @@
     <rect class="new" x="156" y="204" width="248" height="60" rx="5"/>
     <text class="t-bn" x="170" y="226">Reply names both</text>
     <text class="t-s" x="170" y="244">reload, restart: both show</text>
-    <rect class="same" x="416" y="204" width="248" height="60" rx="5"/>
-    <text class="t-b" x="430" y="226">The named refusal</text>
-    <text class="t-s" x="430" y="244">FIX-2520 D1, nothing sent</text>
+    <rect class="new" x="416" y="204" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="430" y="226">Reply has the code word</text>
+    <text class="t-s" x="430" y="244">from its extracted text, FIX-2520 D1</text>
     <rect class="new" x="676" y="204" width="248" height="60" rx="5"/>
     <text class="t-bn" x="690" y="226">Three named refusals</text>
     <text class="t-s" x="690" y="244">nothing sent</text>
@@ -90,7 +90,7 @@
     <text class="t-s" x="170" y="318">and a task&#x27;s re-run does too</text>
     <rect class="new" x="416" y="278" width="248" height="60" rx="5"/>
     <text class="t-bn" x="430" y="300">Reply has the code word</text>
-    <text class="t-s" x="430" y="318">a generator worker</text>
+    <text class="t-s" x="430" y="318">a generator and a coding worker</text>
     <rect class="new" x="676" y="278" width="248" height="60" rx="5"/>
     <text class="t-bn" x="690" y="300">Three named refusals</text>
     <text class="t-s" x="690" y="318">in every composer</text>
@@ -115,7 +115,7 @@
     <text class="t-s" x="170" y="466">one generator, one coding</text>
     <rect class="new" x="416" y="426" width="248" height="60" rx="5"/>
     <text class="t-bn" x="430" y="448">Reply has the code word</text>
-    <text class="t-s" x="430" y="466">the generator teammate</text>
+    <text class="t-s" x="430" y="466">both teammates</text>
     <rect class="new" x="676" y="426" width="248" height="60" rx="5"/>
     <text class="t-bn" x="690" y="448">Three named refusals</text>
     <text class="t-s" x="690" y="466">nothing sent</text>

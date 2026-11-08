@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 354" role="img" aria-label="FIX-2521, before and after, four rows. Flow State chat: today a pasted image is lost on send because handleSubmit sends the text only; after, the plus button, paste, drop and previews, with attachments on sendAction. The Claude Code, Codex and Cursor pages: today the same silent loss; after, the same composer, with attachments on lines.send. My line in the conversation: today text; after, text, thumbnails and chips, live and after a reload. A draft on a session switch: today its text is kept; after, its text and files are kept."
+<svg viewBox="0 0 940 280" role="img" aria-label="FIX-2521, before and after, three rows. Flow State chat: today a pasted image is lost on send because handleSubmit sends the text only; after, the plus button, paste, drop and previews, with attachments on sendAction. The Claude Code, Codex and Cursor pages: today the same silent loss; after, the same composer, with attachments on lines.send. My line in the conversation: today text; after, text, thumbnails and chips, live and after a reload."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -37,7 +37,7 @@
     .c-lost { fill:var(--ink-2); }
     .c-acc  { fill:var(--accent); }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="354"/>
+  <rect class="bg" x="0" y="0" width="940" height="280"/>
   <g id="columns">
     <rect class="head" x="16" y="14" width="908" height="28" rx="5"/>
     <text class="t-lbl" x="194" y="32">TODAY</text>
@@ -73,15 +73,5 @@
     <rect class="new" x="558" y="204" width="366" height="60" rx="5"/>
     <text class="t-bn" x="572" y="226">Text, thumbnails and chips</text>
     <text class="t-s" x="572" y="244">live and after a reload</text>
-  </g>
-  <g id="row-3">
-    <text class="t-lbl" x="24" y="298">A DRAFT ON A</text>
-    <text class="t-lbl" x="24" y="311">SESSION SWITCH</text>
-    <rect class="old" x="180" y="278" width="366" height="60" rx="5"/>
-    <text class="t-b" x="194" y="300">Its text is kept</text>
-    <text class="t-s" x="194" y="318">the stored draft</text>
-    <rect class="new" x="558" y="278" width="366" height="60" rx="5"/>
-    <text class="t-bn" x="572" y="300">Its text and files are kept</text>
-    <text class="t-s" x="572" y="318">FIX-2518&#x27;s draft rule</text>
   </g>
 </svg>

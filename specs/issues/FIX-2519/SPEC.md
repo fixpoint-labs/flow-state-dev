@@ -8,7 +8,7 @@
 |---|---|---|
 | **pastes a screenshot of a bug into a Claude Code, Codex or Cursor session** | Describes it in words; the image never leaves the browser | The harness gets the image with the prompt; the reply describes it |
 | **sends a line with a file while a turn runs** | Text steers the turn | The line waits for the next turn; steering stays text |
-| **sends a type a harness can't take** | n/a | The turn is refused before it starts, naming the file and the harness ([ER-5](../../epics/FIX-2516/DECISIONS.md#who-owns-what)) |
+| **sends a PDF to Codex or Cursor** | n/a | The agent gets its text, extracted on our side (FIX-2520 [D1](../FIX-2520/DECISIONS.md#d1)); a type a harness can't take refuses the turn by name ([ER-5](../../epics/FIX-2516/DECISIONS.md#who-owns-what)) |
 | **runs Codex in a session's checkout** | n/a | The image sits in a per-turn folder outside the checkout, gone when the turn ends; the agent can't commit it ([D1](DECISIONS.md#d1)) |
 | **files a task with a screenshot for a coding worker** | The worker gets the brief's text | Every run of the task gets the brief's files too ([ER-7](../../epics/FIX-2516/DECISIONS.md#who-owns-what)) |
 
@@ -38,8 +38,8 @@ The check reads each harness's reply and the checkout after the turn, not the SD
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/attachments/reach-each-harness/` · each real harness where signed in · the implementer at completion · verdict in the implementation PR, with a harness not signed in named, not skipped |
-| **Signal** | Per harness, the reply contains both words; after a Codex turn, `git status` in the checkout shows no image and the per-turn folder is gone; a PDF to a Codex turn (before FIX-2520) is refused by name and no run starts; a task re-run hands its brief's image to the run |
-| **Input** | Two PNGs drawn per run. A JPEG and a WebP pair must pass too |
+| **Signal** | Per harness, the reply contains both words; after a Codex turn, `git status` in the checkout shows no image and the per-turn folder is gone; a task re-run hands its brief's image to the run |
+| **Input** | Two PNGs drawn per run. JPEG, WebP and GIF are each adapter's unit tests |
 | **Anti-game** | Don't assert on the stubbed SDK call alone: it passes while the real CLI drops `--image` |
 | **Control that must fail** | `GOAL_CONTROL=strip-attachments` (the turn drops them before `HarnessRunInput`): FAIL on *reply names both words*, per harness |
 
@@ -96,18 +96,19 @@ The adapter is the one place that knows its SDK's form; everything above it carr
 | Already here | What this does with it |
 |---|---|
 | `HarnessRunInput` and `harnessRunInputSchema` (`core/src/types/harness.ts`, exported from `core/harness`) | **Extends** with optional `attachments` |
-| The harness session flow's `turn` and `steer` (`harness-manager/src/session-flow.ts`) | **Extends.** `turn` passes the request's attachments; `steer` refuses a line with files and the hook re-queues it |
+| The harness session flow's `turn` (`harness-manager/src/session-flow.ts`) | **Extends.** `turn` passes the request's attachments. `steer` is untouched: it has no `userMessage`, so FIX-2517 already refuses its files |
 | `useHarnessLines` (`react/src/hooks/useHarnessLines.ts`) | **Extends.** `send(prompt, { attachments })` |
 | Claude Code's streaming input (`claude-code/src/sdk/agent.ts`) | **Extends.** A user message with image blocks |
 | Codex `runStreamed` (`codex/src/agent.ts`), Cursor `agent.send` (`cursor/src/agent.ts`) | **Extends** to each SDK's image input |
 | The workspace host that places checkouts | **Considered.** It places checkouts, not files; the per-turn folder is the adapter's |
+| `ownLinkRoot` (`cursor/src/workspace-alias.ts`), a private per-user temp folder; the `mkdtemp` probe in `harness-manager/src/guards.ts` | **Extends.** `ownLinkRoot` is lifted into one shared private-temp-root helper; Cursor's links and Codex's per-turn folder both use it, not a third copy |
 | The board run that starts a task's harness run | **Extends.** Hands the task row's `attachments` (FIX-2522) in |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `HarnessRunInput.attachments` | The prompt string | Images aren't text; the field is ER-1's shape |
-| Per-turn files for Codex | The workspace host | New and small: a temp folder per turn, removed after ([D1](DECISIONS.md#d1)) |
-| A per-harness "takes" list | The limits set | Composed: the set says what a message may carry; each adapter says which of those it reads |
+| Per-turn files for Codex | The workspace host; `ownLinkRoot` | Composed: a folder per turn under the shared private temp root, removed after ([D1](DECISIONS.md#d1)) |
+| Each adapter's entry in the accepts list | The limits set | Composed: one accepts-list type in `contracts/attachments`, shared with FIX-2520, that each target fills; no per-adapter list type |
 
 | The debt | |
 |---|---|

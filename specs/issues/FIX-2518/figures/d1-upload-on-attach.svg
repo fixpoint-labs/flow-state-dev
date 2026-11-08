@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D1, when an attached file goes up to the server. Chosen: the moment it is attached. Instead of: when the message is sent. It comes down to the first row: a file the server refuses is refused on its chip before Send, with the typed message untouched, where upload-on-send refuses after Send and the whole message comes back. Send with ten images sends at once. The price: a draft left unsent leaves an upload no one claimed, swept after a day. Locks in: every attach is a call to the server. Flips if unclaimed uploads cost real storage."
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, when an attached file goes up to the server. Chosen: the moment it is attached. Instead of: when the message is sent. It comes down to the first row: a file the server refuses is refused on its chip before Send, with the typed message untouched, where upload-on-send refuses after Send and the whole message comes back. Send with ten images sends at once. The price: a draft left unsent leaves an upload no one claimed, swept no sooner than a day. Locks in: every attach is a call to the server. Flips if unclaimed uploads cost real storage."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -80,7 +80,7 @@
     <text class="t-lbl" x="32" y="289">UNSENT</text>
     <text class="mark minus" x="228" y="282">−</text>
     <text class="t-b" x="248" y="281">Leaves an upload no one claimed</text>
-    <text class="t-s" x="248" y="299">swept after a day</text>
+    <text class="t-s" x="248" y="299">swept no sooner than a day</text>
     <text class="mark plus" x="592" y="282">+</text>
     <text class="t-b" x="612" y="281">Leaves nothing</text>
     <text class="t-s" x="612" y="299">nothing went up</text>

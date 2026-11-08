@@ -24,7 +24,7 @@ message whose request carries references, not bytes.**
 | **The real need** | The epic's composer half, in every chat, from one place ([ER-6](../../epics/FIX-2516/DECISIONS.md#who-owns-what)) |
 | **Smaller, and rejected** | "PromptInput shows thumbnails." Leaves Shift Manager and both labs to rebuild it, which ER-6 forbids |
 | **Bigger, and not this issue's** | Each app's wiring (FIX-2521 to 2523); documents' types (FIX-2520 widens `accept`) |
-| **Not done if** | Previews show but the request carries data URLs · a refusal only logs · the hook works only inside PromptInput |
+| **Not done if** | Previews show but the request carries data URLs · a refusal only logs · PromptInput keeps its own copy of the attachment state |
 
 ```mermaid
 flowchart LR
@@ -40,7 +40,7 @@ The check reads the request on the wire and what the composer shows, not the hoo
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/attachments/composer-attaches-and-refuses/` · model-free · real browser against a local server · the implementer at completion · verdict in the implementation PR |
-| **Signal** | Two thumbnails before Send; the request body holds two `fsd-blob:` references and no base64 run over 1 KB; each refused file shows its line and is announced (`aria-live`); Send with no text and two files is enabled; Tab reaches + and both remove buttons; the same run through a bare `useAttachments` + `AttachmentStrip` composer passes too |
+| **Signal** | Two thumbnails before Send; the request body holds two `fsd-blob:` references and no base64 run over 1 KB; each refused file shows its line and is announced (`aria-live`); Send with no text and two files is enabled; Tab reaches + and both remove buttons |
 | **Input** | Fresh images per run; a 25 MB file; a real HEIC. Pasting three images at once must pass too |
 | **Anti-game** | Don't assert on the hook's state or on a story's props: both pass while Send ships data URLs |
 | **Control that must fail** | Today's `main`: FAIL on *references, no base64* and on *thumbnails before Send* |
@@ -80,20 +80,20 @@ composer. `PromptInput`'s README entry.
 |---|---|
 | `PromptInput`, `usePromptInputAttachments`, `PromptInputActionAddAttachments`, paste in `PromptInputTextarea`, `globalDrop`, `accept`/`maxFiles`/`maxFileSize`/`onError` (`ui/registry/components/prompt-input.tsx`) | **Builds on.** PromptInput's attachment state moves into `useAttachments`; `usePromptInputAttachments` reads it. No second copy |
 | `convertBlobUrlToDataUrl` in the same file | **Removes.** Send carries references |
-| The registry `message` component | **Extends.** A user line's `file` parts draw as thumbnails and chips, read through FIX-824's read route |
+| The registry `message` component | **Extends.** A user line's `file` parts draw as thumbnails and chips, read through FIX-824's read route, with the same piece `AttachmentStrip` draws |
 | Any other paste or drop handling | **None outside apps.** Searched `clipboardData`, `onDrop`, `dataTransfer` across `packages/`; the app copies are FIX-2521 to 2523's to remove |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `useAttachments` | `usePromptInputAttachments` | That one reads PromptInput's context; this is the same state without PromptInput, and PromptInput is built on it |
-| `AttachmentStrip` | None in the registry | New: the previews nothing draws today |
+| `AttachmentStrip` and its thumbnail-or-chip piece | None in the registry | New: the previews nothing draws today. One piece draws a file in the strip and on the user line |
 | Downscaling to 1,568 px | None | New and small: a canvas resize in the browser |
 
 | The debt | |
 |---|---|
 | **Removes** | The data-URL conversion on submit; the invisible paste |
-| **Adds** | Two ways into the same state, PromptInput and the bare hook ([D2](DECISIONS.md#d2)), permanent by design |
-| **Leaves** | Kitchen Sink's text-draft store, which FIX-2521 extends to files |
+| **Adds** | Two ways into one state, PromptInput and the bare hook ([D2](DECISIONS.md#d2)), permanent by design; PromptInput holds no copy |
+| **Leaves** | Kitchen Sink's text-draft store, text only |
 
 **Net: flat.** One conversion goes; a hook and a strip arrive, and PromptInput shrinks onto them.
 
@@ -105,7 +105,7 @@ refusals heard and references on the wire. If wrong: each app gets its own half 
 **[The debt](#whats-already-here-and-the-debt), net flat.** If wrong: two entry points drift.
 
 1. **[D1](DECISIONS.md#d1) · A file uploads the moment it is attached.** If wrong: abandoned
-   drafts leave a day of unclaimed uploads.
+   drafts leave unclaimed uploads for at least a day.
 2. **[D2](DECISIONS.md#d2) · The pieces ship as a hook and a strip any composer can hold;
    PromptInput is built from them.** If wrong: two ways in to keep working.
 

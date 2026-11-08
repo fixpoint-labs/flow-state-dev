@@ -46,7 +46,7 @@ answer.
 |---|---|
 | **Goal check** | `goals/attachments/survive-a-restart-by-reference/` · model-free · the implementer at completion · verdict in the implementation PR |
 | **Signal** | After the restart: all 11 reads return the uploaded bytes (SHA-256 equal); the session read is under 20 KB, holds 11 `fsd-blob:` references and no base64 run over 1 KB; a second user's read of each id is 404. `git diff` on `store-sqlite`, `store-postgres` and the engine's filesystem and memory stores is empty; no `dependencies` entry was added |
-| **Input** | Fresh random images and a PDF padded to 20 MB, made per run. A Postgres primary must pass too |
+| **Input** | Fresh random images and a PDF padded to 20 MB, made per run, on SQLite. The durable-primary-to-disk branch is unit-tested for Postgres, not re-run here |
 | **Anti-game** | Don't read the files off disk or through the store interface. The route is what a person reaches |
 | **Control that must fail** | `GOAL_CONTROL=memory-blobs`: FAIL on *all 11 reads after the restart*. Today's `main`: FAIL at upload (no route) |
 
@@ -72,7 +72,7 @@ restart.
 **A client, by hand:**
 
 ```diff
-+ POST …/blobs            (multipart: one file)   → 201 { attachment: { type: "file", mediaType, filename, data: "fsd-blob:b_8f2…" } }
++ POST …/blobs            (raw body, like …/transcribe: one file)   → 201 { attachment: { type: "file", mediaType, filename, data: "fsd-blob:b_8f2…" } }
 + GET  …/blobs/b_8f2…      → the bytes, if you can read the session that owns it; else 404
 ```
 
@@ -113,6 +113,9 @@ reference, and only the resolver turns it back into bytes ([ER-1](../../epics/FI
 | `createFilesystemStores`'s `rootDir` | **Builds on.** A filesystem primary puts blobs under its own root |
 | The in-memory detection FIX-2452 D1 prints at startup | **Builds on.** It decides [D1](DECISIONS.md#d1) |
 | `loadCheckedSession` (`engine/src/routes/route-utils.ts`), the session read's check | **Builds on.** Every read and claim passes it |
+| The transcribe route's raw-body upload (`handleTranscribe`, `engine/src/routes/stream-routes.ts`) and `client.transcribe` (`client/src/client.ts`) | **Extends.** The upload route takes the same raw body, and the client's upload mirrors `transcribe`. No multipart |
+| `uint8ArrayToBase64` (`engine/src/streaming/binary.ts`) | **Reuses.** The resolver's base64 step for a model part |
+| The session delete's cascade (`handleDeleteSession`'s `deleteAll`, `purgeStaleResourceState` in `engine/src/context/session-birth.ts`) | **Extends.** A session's files go in the same cascade that clears its content and resource state |
 | `FileContent` (`contracts/src/items/content.ts`) | **Builds on**, in reference form |
 | `ContentStore` | **Leaves alone.** It holds strings per resource. Searched `blob`, `binary`, `upload`, `Buffer` across `packages/*/src`: nothing else stores bytes |
 | [FIX-2452 D2](../FIX-2452/DECISIONS.md#d2): `blobs` stays reserved until this lands | **Kept, then fulfilled.** The docs' "reserved" line goes |
@@ -120,14 +123,14 @@ reference, and only the resolver turns it back into bytes ([ER-1](../../epics/FI
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `BlobStore` and `localBlobStores` | `ContentStore`; the `blobs` slot | Fills the slot in the store-adapter shape; `ContentStore` is strings keyed by resource |
-| Upload and read routes | The action route | The action route stays JSON. Both reuse `loadCheckedSession` |
+| Upload and read routes | The action route; the transcribe route | The action route stays JSON. Upload takes transcribe's raw-body shape; both reuse `loadCheckedSession` |
 | `contracts/attachments`: the limits set, the `fsd-blob:` helper | `PromptInput`'s limit props | One set both sides read ([ER-4](../../epics/FIX-2516/DECISIONS.md#who-owns-what)); the props default to it |
-| The one engine resolver | None. Searched `data:` and base64 decoders in `engine/src` | New: the only place a reference becomes bytes |
+| The one engine resolver | `binary.ts`'s base64 encoder, which it calls | New: the only place a reference becomes bytes |
 
 | The debt | |
 |---|---|
 | **Removes** | The `blobs` skip branch in `resolve-slots.ts`; the "reserved" docs line |
-| **Adds** | A store kind, two routes, a sweep inside the store. A durable profile's bytes sit on disk beside a database, so a backup has two halves; permanent until a hosted adapter, which is not filed |
+| **Adds** | A store kind, two routes, the 24-hour sweep of unclaimed uploads inside the store. A durable profile's bytes sit on disk beside a database, so a backup has two halves; permanent until a hosted adapter, which is not filed |
 | **Leaves** | No hosted adapter: a serverless deploy refuses attachments by name ([epic debt](../../epics/FIX-2516/SPEC.md#whats-already-here-and-the-debt)) |
 
 **Net: up, on purpose.** One store kind and two routes, the epic's accepted debt.
@@ -144,9 +147,7 @@ a backup story operators get wrong.
 1. **[D1](DECISIONS.md#d1) · Attachment bytes live wherever the sessions live: on disk when they
    persist, in memory when they don't.** If wrong: an in-memory app loses files it could have
    kept, with no session to show them.
-2. **[D2](DECISIONS.md#d2) · An upload's type is what its bytes are, not what the caller says.**
-   If wrong: a renamed file is refused that a model would have read.
 
-**Open: none.** D2 is the one to weigh.
+**Open: none.**
 
 Feature · `contracts` + `engine` + `vercel` · medium · epic FIX-2516

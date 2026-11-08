@@ -24,10 +24,10 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Uploading every file when Send is pressed |
-| **Because** | The server's type check (FIX-824 D2) can refuse a file. Refused at attach, the chip says why and the typed message is untouched; refused at send, the whole message bounces. Send with ten photos also goes at once |
-| **Locks in** | Every attach is a call to the server, so an offline composer can't attach. An abandoned draft leaves uploads no one claimed; FIX-824 sweeps them after a day. A chip shows a spinner until its upload lands, and Send waits only for those still in flight |
+| **Because** | The server's limits check (FIX-824's allowlist) can refuse a file. Refused at attach, the chip says why and the typed message is untouched; refused at send, the whole message bounces. Send with ten photos also goes at once |
+| **Locks in** | Every attach is a call to the server, so an offline composer can't attach. An abandoned draft leaves uploads no one claimed; FIX-824 sweeps them no sooner than a day, on its next upload. A chip shows a spinner until its upload lands, and Send waits only for those still in flight |
 
-![D1: upload when attached, chosen, beside upload on send. Decides it: a refused file is refused on its chip before Send, not after. Price: an abandoned draft leaves an unclaimed upload, swept after a day](figures/d1-upload-on-attach.svg)
+![D1: upload when attached, chosen, beside upload on send. Decides it: a refused file is refused on its chip before Send, not after. Price: an abandoned draft leaves an unclaimed upload, swept no sooner than a day](figures/d1-upload-on-attach.svg)
 
 It comes down to a file the server refuses: on send, the whole message comes back.
 
@@ -50,10 +50,14 @@ It comes down to the apps' own composers: moving them to PromptInput redoes thei
   not resized. The limit check reads the size as picked (20 MB), per the epic.
 - **The refusal lines' wording** names the file and the limit; the server's named errors map onto
   the same lines.
-- **Drafts.** A draft's files are kept as references in the page's memory per session, so a
-  session switch keeps them; a reload drops them. No bytes in `localStorage` (ER-2).
+- **Drafts.** A draft's files are kept as references in the page's memory and cleared on a
+  session switch or a reload; FIX-824's sweep takes their uploads. No bytes in `localStorage`
+  (ER-2).
 - **The user line** draws a `file` part as a thumbnail (images) or a chip (name, type, size),
-  read through FIX-824's read route. A file whose read fails shows a chip that says so.
+  read through FIX-824's read route, with the one piece `AttachmentStrip` uses. A file whose read
+  fails shows a chip that says so.
+- **One state home.** PromptInput's attachment state lives in `useAttachments`; PromptInput
+  holds no copy (the Architect, #4941).
 - **Kitchen Sink's copy** follows the registry by `pnpm registry:refresh`; FIX-2521 runs it.
 
 ## Considered and dropped
@@ -86,5 +90,8 @@ It comes down to the apps' own composers: moving them to PromptInput redoes thei
 - **Drafted (Nov 8)** in the epic's spec set.
 - **Set review (Nov 8).** The user line's file parts were drawn by no one; this issue took them,
   in the registry `message` component (found writing FIX-2521 and FIX-2523).
+- **Fold (Nov 8), the set's first independent read.** Drafts clear on a session switch; the
+  sweep's day is a floor, not a bound; one thumbnail piece for the strip and the line; PromptInput
+  holds no state copy. Cut: the second goal run through a bare composer.
 
 **Open: none.**

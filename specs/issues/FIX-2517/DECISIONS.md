@@ -24,7 +24,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Only the current turn's files; or every file the session ever held |
 | **Because** | People refer back: "the error in that screenshot" two turns later. A filename alone makes them attach it again. Every file ever sent grows each call past the provider's request limit |
-| **Locks in** | Counting back from the newest turn, a call carries up to 10 images and 5 documents, the same numbers as one message. An older file becomes one line on its turn, `[image: shot.png, not re-sent]`. Chats with files cost more per turn, re-sent and billed each call. A flow can't change the rule in v1 |
+| **Locks in** | Counting back from the newest turn, through the newest-first budget walk `history.ts` already has (`selectRequestsByLimit`), a call carries up to 10 images and 5 documents, the same numbers as one message. An older file becomes one line on its turn, `[image: shot.png, not re-sent]`. Chats with files cost more per turn, re-sent and billed each call. A flow can't change the rule in v1 |
 
 ![D1: the newest files up to one message's limits, chosen, beside only this turn's files. Decides it: a question two turns later still sees the screenshot. Price: up to 10 images and 5 documents re-sent and billed each call](figures/d1-history-files.svg)
 
@@ -39,6 +39,7 @@ Then re-sending is free and the cap only bounds the request.
   and every harness turn. It is the convergence point for ER-4: the client, React, the worker
   door and the harness session flow all reach it, and a hand-built request too.
 - **An action with no `userMessage` refuses files by name.** There is no user line to put them on.
+  The harness `steer` action is one, so it needs no file check of its own (FIX-2519).
 - **The parse step claims each reference into the turn's session** through FIX-824's claim, after
   the session check, and before any block runs.
 - **A block reads the request's attachments from its context**, in reference form. The harness
@@ -71,8 +72,16 @@ Then re-sending is free and the cap only bounds the request.
 6. **Ergonomics** — one option on send; nothing for a flow author.
 7. **Concerns** — re-send cost on long chats. Recorded in D1.
 
+## Notes from review
+
+- *The Architect, #4941:* "Counting back from the newest turn with a cap works for linear chats.
+  Name what happens on branch or retry … A retried turn can drop the newest files out of the
+  window while the user is looking at them." Below the bar: the implementer's tests own it.
+
 ## How it got here
 
 - **Drafted (Nov 8)** in the epic's spec set.
+- **Fold (Nov 8), the set's first independent read.** D1 reuses `history.ts`'s newest-first
+  budget walk (reuse review). The goal check's variant inputs moved to unit tests.
 
 **Open: none.**

@@ -103,7 +103,7 @@ Each rule has one owner. A *uses* cell is a place where a child must not decide 
 
 | Seam | Between | Rule |
 |---|---|---|
-| A reference's owner | FIX-824, 2517, 2522 | Each file has one owner. FIX-824 claims an upload into the turn's session; FIX-2522 claims a task's files into the board's scope. Nothing shares a reference across owners, so a later session copy re-claims its files |
+| A reference's owner | FIX-824, 2517, 2522 | Each file has one owner. FIX-824 claims an upload into the turn's session; FIX-2522 claims a task's files into the board's scope. Nothing shares a reference across owners |
 | The `blobs` slot | FIX-824, FIX-2452 | FIX-2452 keeps `blobs` (reserved until FIX-824 lands) and refuses only `queue` and `scheduler`. FIX-824 makes `blobs` real and names its factory in FIX-2452's store-factory family. |
 | `sendAction` and `useSession` | FIX-2517, FIX-2450, FIX-2455 | FIX-2517 adds `attachments` to the send options on whichever handle FIX-2455 leaves |
 | `prompt-input.tsx` and the registry `Conversation` | FIX-2518, 2520, FIX-2456 | FIX-2518 lands the pieces; FIX-2520 only widens `accept`; FIX-2456 owns the scroll chrome |
@@ -133,9 +133,11 @@ Each rule has one owner. A *uses* cell is a place where a child must not decide 
 - **Per-target detail is the children's.** FIX-2517 owns the history rule, FIX-2519 each
   harness's hand-off, FIX-2518 drafts. The epic fixes only the outcomes.
 - **Documents.** Text-like files go as text headed by the filename; a PDF as a file part where
-  the provider takes PDFs, else ER-5's message. Codex and Cursor refuse a PDF by name
-  ([FIX-2520 D1](../../issues/FIX-2520/DECISIONS.md#d1)). No extraction library in v1. FIX-2520's in-app
-  PDF checks are the closure's leg b.
+  the provider takes PDFs. Codex, Cursor and any other target that can't read a PDF get its
+  text, extracted on our side and stored beside the file; a scanned page is a stated limit, not a
+  refusal ([FIX-2520 D1](../../issues/FIX-2520/DECISIONS.md#d1), the owner's call of Nov 8,
+  replacing "no extraction library in v1"). The extractor is FIX-2520's one new dependency.
+  FIX-2520's in-app PDF checks are the closure's leg b.
 - **FIX-367 and FIX-891 stay related.** FIX-367 can build on the `blobs` slot later; FIX-2517
   delivers FIX-891's file-part half, and upload-once is not this epic's.
 
@@ -166,8 +168,9 @@ per resource. Major concern: a hosted deploy has no adapter; named as debt.
   resolver. From Cursor: store mechanics left to FIX-824, the predecessor rows split.
 - **Spec set (Nov 8).** Writing the children's specs together amended six points: the labs
   merged (D1's trigger); blob durability follows the sessions (FIX-824 D1); the Vercel mark sits
-  in the host's runtime config; Codex and Cursor refuse PDFs, so leg b passes there on the
-  refusal (FIX-2520 D1); a 200 KB text cap joined the limits (FIX-2520 D2); two unowned seams
-  got owners. One fact corrected: no flow in the repo hand-rolled base64 input.
+  in the host's runtime config; Codex and Cursor get a PDF's extracted text (FIX-2520 D1, the
+  owner's call, which reversed the draft's refusal); PDF joined FIX-824's v1 type list, so the
+  kill line's own upload passes; a 200 KB text cap joined the limits (FIX-2520 D2); two unowned
+  seams got owners. One fact corrected: no flow in the repo hand-rolled base64 input.
 
 **Open:** none.

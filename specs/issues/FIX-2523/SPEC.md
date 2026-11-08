@@ -43,7 +43,7 @@ The check reads each reply and the reloaded thread.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/attachments/lab-composers/` · real model and real Claude Code · real browser, the implementer first, `fsd-qa` over the mailbox if it can't · verdict in the implementation PR |
-| **Signal** | Each of the three replies describes both images; a reload shows both on the line; leg c's three refusals show and nothing is sent; every shortcut in `keys.ts` still fires |
+| **Signal** | Each of the three replies describes both images; a reload shows both on the line; leg c's three refusals show and nothing is sent |
 | **Input** | Images drawn per run with a random word each |
 | **Anti-game** | Don't assert on the adapter call alone: it can carry files the worker's flow drops |
 | **Control that must fail** | Today's `main`: FAIL on *request carries the image* (no way to attach) |

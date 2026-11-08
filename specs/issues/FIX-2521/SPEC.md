@@ -8,8 +8,8 @@
 |---|---|---|
 | **pastes a screenshot into Flow State chat and sends** | The image is held where no one sees it, then lost: only the text is sent | A thumbnail before Send; the reply describes the image |
 | **does the same on the Claude Code, Codex or Cursor page** | The same silent loss | The harness gets the image; its reply describes it |
-| **reloads, or switches to another session and back** | Their text draft is kept | The line shows its images after a reload; an unsent draft keeps its files across a switch |
-| **attaches a PDF on the Codex or Cursor page** | n/a | The harness's plain refusal, before anything is sent (FIX-2520 D1) |
+| **reloads, or switches to another session and back** | Their text draft is kept | The line shows its images after a reload; an unsent draft keeps its text, and its files clear on a switch (FIX-2518) |
+| **attaches a PDF on the Codex or Cursor page** | n/a | The harness answers from its text, extracted on our side (FIX-2520 D1) |
 | **attaches an 11th image or a HEIC** | n/a | The composer says why; nothing is sent |
 
 Kitchen Sink is glue: every behaviour here is a package's, and this issue wires it in and removes
@@ -42,14 +42,14 @@ The check reads the reply and the reloaded page, the way a person would.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/attachments/kitchen-sink-chats/` · real model and each signed-in harness · real browser, the implementer first, `fsd-qa` over the mailbox if it can't · verdict in the implementation PR |
-| **Signal** | Per page: the reply describes both images; after a reload both thumbnails show on the user line; an unsent draft's files survive a session switch; leg c's three refusals show and nothing is sent; a PDF on Flow State chat is answered (FIX-2520) and refused by name on Codex and Cursor |
+| **Signal** | Per page: the reply describes both images; after a reload both thumbnails show on the user line; leg c's three refusals show and nothing is sent; a PDF is answered on Flow State chat and on all three harness pages (FIX-2520) |
 | **Input** | Images drawn per run with a random word each |
 | **Anti-game** | Don't assert on the composer's state; the reproduction test reads the request on the wire |
 | **Control that must fail** | Today's `main`: the reproduction test, red on *request carries the image*, shown before the fix |
 
 ## What changes
 
-![FIX-2521 before and after: Flow State chat and the three harness pages lose a pasted image today and send attachments after; my line shows thumbnails and chips live and after a reload; a draft keeps its files across a session switch](figures/what-changes.svg)
+![FIX-2521 before and after: Flow State chat and the three harness pages lose a pasted image today and send attachments after; my line shows thumbnails and chips live and after a reload](figures/what-changes.svg)
 
 The red lines are today's bug; every green line is a package's piece, wired in.
 
@@ -77,7 +77,7 @@ links its Flow State chat as the live example.
 |---|---|
 | `app/flow-state/page.tsx` and `components/harness-session.tsx`, both on the registry `PromptInput` | **Extends.** Send passes `msg.files` |
 | `components/flow-state/` registry copies | **Refreshed** by `pnpm registry:refresh` after FIX-2518; the drift test proves it |
-| Kitchen Sink's stored text draft (`clearDraft`, `SESSION_DRAFT`) | **Leaves alone.** Files ride FIX-2518's in-memory draft beside it |
+| Kitchen Sink's stored text draft (`clearDraft`, `SESSION_DRAFT`) | **Leaves alone.** Files ride FIX-2518's in-memory draft beside it, cleared on a switch |
 | Hand-rolled base64 input anywhere in the app | **None found.** Searched `readAsDataURL`, `base64` in `apps/kitchen-sink`: the registry copy, which FIX-2518 changes, and the artifact viewer's image `src`, which draws an artifact and stays |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |

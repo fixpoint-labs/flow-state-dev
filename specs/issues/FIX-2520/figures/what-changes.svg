@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 428" role="img" aria-label="FIX-2520, before and after, five rows. What the composer takes: images; after, PDF, text, Markdown, CSV and code files too. A PDF to a generator goes as a file part where the provider reads PDFs, else the model&#x27;s named refusal. A PDF to Claude Code goes as a document block. A PDF to Codex or Cursor is refused by name before the turn starts. A text-like file goes as text headed by its name to every target, and one over 200 KB is refused."
+<svg viewBox="0 0 940 428" role="img" aria-label="FIX-2520, before and after, five rows. What the composer takes: images and PDFs, from FIX-824&#x27;s list; after, text, Markdown, CSV and code files too. A PDF to a generator goes as a file part where the provider reads PDFs, else as its extracted text. A PDF to Claude Code goes as a document block. A PDF to Codex or Cursor goes as its text, extracted on our side and stored beside the file. A text-like file goes as text headed by its name to every target, and one over 200 KB is refused."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -47,10 +47,10 @@
     <text class="t-lbl" x="24" y="76">WHAT THE</text>
     <text class="t-lbl" x="24" y="89">COMPOSER TAKES</text>
     <rect class="old" x="180" y="56" width="366" height="60" rx="5"/>
-    <text class="t-b" x="194" y="78">Images, after FIX-2518</text>
-    <text class="t-s" x="194" y="96">PNG, JPEG, WebP, GIF</text>
+    <text class="t-b" x="194" y="78">Images and PDFs, after FIX-2518</text>
+    <text class="t-s" x="194" y="96">FIX-824&#x27;s list</text>
     <rect class="new" x="558" y="56" width="366" height="60" rx="5"/>
-    <text class="t-bn" x="572" y="78">Plus PDF, text, Markdown, CSV, code</text>
+    <text class="t-bn" x="572" y="78">Plus text, Markdown, CSV, code</text>
     <text class="t-s" x="572" y="96">the limits set&#x27;s list, widened</text>
   </g>
   <g id="row-1">
@@ -60,7 +60,7 @@
     <text class="t-s" x="194" y="152">nothing</text>
     <rect class="new" x="558" y="130" width="366" height="60" rx="5"/>
     <text class="t-bn" x="572" y="152">A file part, as the provider reads it</text>
-    <text class="t-s" x="572" y="170">else a named refusal, ER-5</text>
+    <text class="t-s" x="572" y="170">else its extracted text, D1</text>
   </g>
   <g id="row-2">
     <text class="t-lbl" x="24" y="224">A PDF TO</text>
@@ -77,8 +77,8 @@
     <rect class="same" x="180" y="278" width="366" height="60" rx="5"/>
     <text class="t-s" x="194" y="300">nothing</text>
     <rect class="new" x="558" y="278" width="366" height="60" rx="5"/>
-    <text class="t-bn" x="572" y="300">Refused, by name, D1</text>
-    <text class="t-s" x="572" y="318">before the turn starts</text>
+    <text class="t-bn" x="572" y="300">Its text, extracted on our side, D1</text>
+    <text class="t-s" x="572" y="318">stored beside the file; no text layer, said so</text>
   </g>
   <g id="row-4">
     <text class="t-lbl" x="24" y="372">A TEXT-LIKE</text>

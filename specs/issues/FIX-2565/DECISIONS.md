@@ -3,9 +3,9 @@
 [Spec](SPEC.md) · **Decisions**
 
 **No decisions of its own.** The closure proves the epic's goal as the epic wrote it
-([FIX-2516](../../epics/FIX-2516/SPEC.md#the-goal-and-how-well-know-its-met)), with one amendment
-the set made: on the Codex and Cursor pages, leg b passes on the named refusal
-(FIX-2520 [D1](../FIX-2520/DECISIONS.md#d1)).
+([FIX-2516](../../epics/FIX-2516/SPEC.md#the-goal-and-how-well-know-its-met)). On the Codex and
+Cursor pages leg b passes on the code word, read from the PDF's extracted text
+(FIX-2520 [D1](../FIX-2520/DECISIONS.md#d1), the owner's call of Nov 8).
 
 ## Decided, not asked
 
@@ -25,17 +25,21 @@ the set made: on the Codex and Cursor pages, leg b passes on the named refusal
 | Alternative | Why not |
 |---|---|
 | Re-run each child's goal check and stop | Each ran alone; the seams between them are this issue's reason to exist |
+| Re-run every child's goal check before the legs | The app and harness checks are the legs themselves, on the same commit |
 | One app as a sample for the others | Each app has its own composer and send path, which is why each has its own issue |
 
 <a name="analysis"></a>
 ## Analysis
 
 2026-11-08 · watermark 2026-11-05 · **Right approach.** Run over the set by `epic-agent`. Reuse:
-the last closure's runner layout. The set review changed leg b's pass on Codex and Cursor and
-added the seam walks for the two seams it found unowned.
+the last closure's runner layout. The set review added the seam walks for the two seams it found
+unowned.
 
 ## How it got here
 
 - **Filed with the epic (Nov 5).** **Specced (Nov 8)** in the epic's spec set.
+- **Fold (Nov 8).** Leg b on Codex and Cursor passes on the code word (the owner's call). Cut:
+  sweep 1 re-runs only the kill line and the model-free package checks; the second-user 404 runs
+  once; the session-copy walk went (no session copy exists).
 
 **Open: none.**

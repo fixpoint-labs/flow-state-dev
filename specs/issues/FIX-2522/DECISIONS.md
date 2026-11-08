@@ -37,7 +37,13 @@ It comes down to the re-run: an editable brief gives two runs of one task two br
   the task's live and die separately (the epic's seam *A reference's owner*).
 - **Every composer** (task, `@worker` in a workstream, Inbox reply, Coordinator chat, new task)
   uses FIX-2518's `useAttachments` inside `ComposerShell`. No composer keeps its own handler.
-- **Deleting a task deletes its files** through FIX-824's owner delete.
+- **Deleting a task deletes its own files, by id**: the references on its row, not everything the
+  board's scope owns. The scope stays their read check, so a sibling task keeps its files (Codex,
+  #4941).
+- **`attachments` is its own task-row field, not part of `task.input`.** `input` is each worker's
+  own typed payload, `unknown` to the substrate (`orchestration/src/tasks/schema/task.ts`), so the
+  board run, the delete and the brief couldn't find references inside it. A named field has one
+  shape they all read, and takes `context`'s field rule.
 - **The brief line** draws the files under the folded text, through the registry message piece.
 
 ## Considered and dropped
@@ -66,5 +72,7 @@ It comes down to the re-run: an editable brief gives two runs of one task two br
 
 - **Drafted (Nov 8)** in the epic's spec set. The set review found FIX-824's claim named only a
   session as owner; FIX-824 now takes a board's scope too.
+- **Fold (Nov 8).** A task's delete takes its own ids, not the board's (Codex); why the field
+  isn't `task.input` (reuse review).
 
 **Open: none.**

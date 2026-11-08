@@ -40,7 +40,7 @@ The check reads the model's reply and the reloaded session, not the message the 
 |---|---|
 | **Goal check** | `goals/attachments/reach-the-model/` · `openai/gpt-6-luna` · the implementer at completion · verdict in the implementation PR |
 | **Signal** | The reply contains both words; the session read after a reload has one user item with a text part and two `file` parts whose `data` is `fsd-blob:`; turn 3, "what word was on the second image?", is answered. An 11th image gets the named limit error and no request record |
-| **Input** | Two PNGs drawn per run with random words. A JPEG pair, or three images, must pass too |
+| **Input** | Two PNGs drawn per run with random words. The other image types and counts are unit tests |
 | **Anti-game** | Don't assert on `itemToLLMMessages`' output or on a stubbed model; both pass while a real call drops the parts |
 | **Control that must fail** | `GOAL_CONTROL=drop-file-parts` (the history build keeps text only): FAIL on *reply names both words*. Today's `main` fails at the send |
 
@@ -104,7 +104,7 @@ The limits are checked once, at the parse step, so no path past it can skip them
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
 | `attachments` on the request and send options | Each flow's input schema | Beside the input, so one check covers every flow (epic D3) |
-| The history rule ([D1](DECISIONS.md#d1)) | The history visibility rules | Composed: runs after visibility, on user items only |
+| The history rule ([D1](DECISIONS.md#d1)) | The history visibility rules; the newest-first budget walk in `engine/src/context/history.ts` (`selectRequestsByLimit`) | Composed: runs after visibility, on user items only, as that walk with files as the budget |
 | The request's attachments on the block context | Block input | Input stays the flow's; the context already carries request fields |
 
 | The debt | |

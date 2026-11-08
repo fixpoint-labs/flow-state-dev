@@ -5,7 +5,7 @@
 The epic already settled the big calls: bytes go through a blob store with a local-disk default
 ([epic D2](../../epics/FIX-2516/DECISIONS.md#d2)), the reference rides in `FileContent.data` as
 `fsd-blob:<id>` ([epic D4](../../epics/FIX-2516/DECISIONS.md#d4)), and reads always pass the
-session check (ER-3). These two are the store's own.
+session check (ER-3). One call is the store's own.
 
 ## The tree
 
@@ -13,8 +13,6 @@ session check (ER-3). These two are the store's own.
 flowchart TD
   I["FIX-824"] --> D1["D1 · bytes live wherever the sessions live"]
   D1 -.->|"rejected · bytes nothing points at after a restart"| X1["always on local disk"]
-  I --> D2["D2 · the type is what the bytes are"]
-  D2 -.->|"rejected · HTML named shot.png served from our origin"| X2["trust the declared type"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -32,22 +30,6 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 It comes down to a restart of an in-memory app: always-on-disk leaves files no session can show.
 
-<a name="d2"></a>
-## D2 · An upload's type is what its bytes are, not what the caller says
-
-| | |
-|---|---|
-| **Instead of** | Storing and serving the declared media type |
-| **Because** | The read route serves from our own origin. A page of HTML uploaded as `shot.png` and served under a wrong header runs there. Reading the first bytes against the limits set's list closes that at upload, once |
-| **Locks in** | The limits set lists each allowed type with its signature; text-like types are checked as UTF-8 with no NUL bytes. A file whose bytes disagree with its name is refused with the reason, so a HEIC photo renamed `.jpg` is refused. Adding a type means adding its signature |
-
-![D2: what the bytes are, chosen, beside what the caller declares. Decides it: a page of HTML named shot.png is refused at upload instead of served from our origin. Price: a renamed real file is refused with the reason](figures/d2-type-from-bytes.svg)
-
-It comes down to our origin: a trusted declared type is one wrong header from running a page.
-
-**What would change my mind:** reads served from a separate origin or always as a download.
-Then the declared type is safe enough, and a renamed file could pass.
-
 ## Decided, not asked
 
 - **The convergence point for bytes is the resolver.** Every model-message build and every
@@ -55,20 +37,33 @@ Then the declared type is safe enough, and a renamed file could pass.
   string-matches `fsd-blob:` (ER-1). A test greps for both outside the helper and the resolver.
 - **Claiming is part of the send.** An upload is held for its uploader; the action that names it
   claims it into the turn's session, after the session check. A reference held by another user,
-  or already claimed by another owner, is refused by name. A later copy of a session re-claims
-  its files (the epic's seam *A reference's owner*).
+  or already claimed by another owner, is refused by name.
 - **An owner is a session or a board's scope.** FIX-2522 claims a task's files into its board's
   scope; a read of such a file passes that scope's read check. The store knows owners, not tasks
   (ER-7: no task noun in the store).
-- **The store sweeps itself.** Unclaimed uploads go after 24 hours, checked when the store opens
-  and on each upload; a session's files go when the session is deleted. No scheduler.
+- **The store sweeps unclaimed uploads itself**, no sooner than 24 hours, checked when the store
+  opens and on each upload, so a quiet server keeps them until its next upload. No scheduler.
+- **A session's files go in the session's existing cascade**: `handleDeleteSession`'s `deleteAll`
+  step, beside its content and resource state, and `purgeStaleResourceState`
+  (`engine/src/context/session-birth.ts`) when a deleted id is reborn. No second delete path.
+- **A task's files go by id**: deleting a task deletes the references on its row; the board's
+  scope stays their read check, so a sibling task's files stay (FIX-2522).
 - **One id per upload, no content addressing.** Dedupe would share bytes across owners, which the
   one-owner rule forbids.
+- **Types are an allowlist, not a byte check.** An upload's declared type must be on the
+  limits set's list, and text-like files must be UTF-8 with no NUL bytes. No per-type signature
+  table: the read route below already stops a mislabelled page from running.
 - **The read route** sends `X-Content-Type-Options: nosniff`, serves images inline and every
   other type as a download. Its paths sit beside the flow's session routes.
+- **Upload is a raw body**, the transcribe route's shape (`handleTranscribe`), and the client's
+  upload mirrors `client.transcribe`. No multipart parser.
+- **The resolver's base64 step** is `uint8ArrayToBase64` in `engine/src/streaming/binary.ts`.
 - **The limits set** (`@flow-state-dev/contracts/attachments`): 10 images and 5 documents a
-  message; 20 MB a file; PDFs to 100 pages; text-like files to 200 KB of text (FIX-2520 D2);
-  PNG, JPEG, WebP, GIF; HEIC refused. FIX-2520 widens the type list in this one file.
+  message; 20 MB a file; PNG, JPEG, WebP, GIF and PDF in v1, so the kill line's PDF uploads;
+  PDFs to 100 pages, counted server-side before any model call by FIX-2520's extractor (ER-4);
+  text-like files to 200 KB of text (FIX-2520 D2); HEIC refused. FIX-2520 adds the text-like
+  types in this one file. It also holds the accepts-list type each target fills (FIX-2519,
+  FIX-2520).
 - **A host whose disk doesn't last** says so in its runtime config (`@flow-state-dev/vercel`'s
   host adapter), not in its store adapter, so the kill line's "no change to the existing store
   adapters" holds. The engine then refuses an upload with a named error; it names no host.
@@ -106,5 +101,10 @@ set by `epic-agent`; this issue's lines:
 - **Set review (Nov 8).** D1 amended the epic's "used whenever a profile names none" to follow
   the sessions; the Vercel mark moved to the host's runtime config; FIX-2522 needed a board's
   scope as an owner, so a claim takes one; FIX-2520 added the 200 KB text cap to the limits set.
+- **Fold (Nov 8), the set's first independent read.** PDF joined the v1 type list, so the kill
+  line's own upload passes (gitar). D2, the per-type byte signatures, went: nosniff and
+  download-only already close what it closed (second look, and the Architect's note). Postgres
+  left the goal check for a unit test; the session-copy re-claim went (no session copy exists).
+  Reuse: transcribe's raw-body upload, `binary.ts`, and the session delete's cascade.
 
 **Open: none.**

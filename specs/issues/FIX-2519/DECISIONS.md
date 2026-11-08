@@ -24,7 +24,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Writing them into the session's checkout, where Codex already reads |
 | **Because** | A coding agent runs `git add -A`. A screenshot in the tree ships in someone's pull request |
-| **Locks in** | The Codex adapter writes each image to a fresh folder under the OS temp directory, passes the paths as `local_image`, and removes the folder when the turn ends, failed or not. A host whose sandbox limits reads must allow that folder. Claude Code and Cursor take bytes and write nothing |
+| **Locks in** | The Codex adapter writes each image to a fresh folder under the shared private temp root, passes the paths as `local_image`, and removes the folder when the turn ends, failed or not. A host whose sandbox limits reads must allow that folder. Claude Code and Cursor take bytes and write nothing |
 
 ![D1: a per-turn folder outside the checkout, chosen, beside the session's checkout. Decides it: an agent that runs git add can't commit the screenshot. Price: a host with a tight sandbox must let Codex read the folder](figures/d1-codex-turn-folder.svg)
 
@@ -36,12 +36,13 @@ It comes down to `git add -A`: in the checkout, the screenshot ships with the fi
 
 - **A refused type refuses the turn**, before the run starts, with the file and the harness named
   in the conversation. Running without it is the text-only fallback ER-5 forbids.
-- **What each harness takes in v1:** Claude Code PNG, JPEG, WebP, GIF; Codex and Cursor the
-  types their SDKs document for images. Each adapter declares its list; the session flow checks
-  it before the run.
+- **What each harness takes in v1:** all three take PNG, JPEG, WebP and GIF. Each adapter fills
+  the one accepts-list type in `contracts/attachments` (shared with FIX-2520); the session flow
+  checks it before the run. A PDF to Codex or Cursor goes as its text (FIX-2520 D1).
 - **The resolver is the only reader of bytes** (ER-1); each adapter calls it.
-- **A steer with files is refused by the `steer` action**, and `useHarnessLines` sends the line as
-  the next turn instead, so a person sees one queued line, not an error.
+- **A line with files never steers.** `useHarnessLines` sends it as the next turn, so a person
+  sees one queued line, not an error. A hand-built steer with files is refused by FIX-2517's
+  no-`userMessage` rule; `steer` adds no check of its own.
 - **A task's brief files** go to every run of the task: the board run reads the task row's
   `attachments` (FIX-2522's) and puts them on `HarnessRunInput`, after the run's own turn files.
 - **`HarnessRunInput` stays in `core/harness`** (FIX-2448's move); nothing lands on core's root.
@@ -74,5 +75,9 @@ It comes down to `git add -A`: in the checkout, the screenshot ships with the fi
 - **Drafted (Nov 8)** in the epic's spec set.
 - **Set review (Nov 8).** `useHarnessLines.send` was owned by no one; this issue took it (found
   writing FIX-2521).
+- **Fold (Nov 8), the set's first independent read.** One accepts-list type shared with FIX-2520
+  replaced per-adapter lists; Codex's folder uses one private temp-root helper lifted from Cursor's
+  `ownLinkRoot`. Cut: the pre-FIX-2520 PDF refusal signal, `steer`'s own file check,
+  the JPEG and WebP goal inputs.
 
 **Open: none.**
