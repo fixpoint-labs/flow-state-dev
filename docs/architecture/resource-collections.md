@@ -158,7 +158,7 @@ Three engine pieces, all in `engine/src/resources/resource-indexes.ts`:
 
 `findBy` on the collection ref (`resource-registry.ts` `findRows`) gets candidate keys from `findIndexedKeys` through the registry's `findIndexedKeys` option, or, when the store has no index verbs (memory, filesystem) or the registry is a mock, from the collection's own `list()`. Candidates are fenced (`ownerKeyAdmits`) **before** they are loaded, loaded by key (`lazyLoad.getInstance`), and each is re-checked against its row in the request's cache, so a stale entry, a row this request changed and a key it deleted are never returned. The owner fence wraps `findBy` as it wraps `list`. Partitioned views (skills, task ledger partitions) narrow `findBy` to the partition as they narrow `list`. Cost on SQL: one index query, then one row read per hit.
 
-What `findBy` sees differs from an eager `list()` in one way: keys come from the committed index, so it can name a row another request committed after this one started; an eager collection's cache treats such a key as absent, a lazy one loads it.
+What `findBy` sees differs from an eager `list()` in one way: keys come from the committed index, so it can name a resource another request committed after this one started; an eager collection's cache treats such a key as absent, a lazy one loads it.
 
 ## Eviction
 
