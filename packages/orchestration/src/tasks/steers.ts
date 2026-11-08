@@ -7,7 +7,7 @@
  * count.
  */
 import type { Task } from "./schema/task";
-import { externalHoldOf, hasOpenHold, openRowHolds, steerPlacesTaken, type QuestionAnswer } from "./collection/holds";
+import { externalHoldOf, hasOpenHold, openOwnHolds, steerPlacesTaken, type QuestionAnswer } from "./collection/holds";
 import { MAX_STEERS, type TaskSteer } from "./schema/steer";
 
 /** What a sender hands the `steer` verb. */
@@ -63,7 +63,7 @@ export function steersTakenIn(task: Pick<Task, "steers" | "attempts">, takenIn: 
  * What a `steer` writes on `task`, decided inside the write: the patch, or
  * `"unchanged"` for a key already kept, or `"limit"` past {@link MAX_STEERS}.
  * Each open question keeps its answer's place under the cap, so a
- * row hold is always answerable: an ordinary steer is refused once the
+ * own hold is always answerable: an ordinary steer is refused once the
  * steers and the open questions reach it.
  * A task running nothing while it waits on work it filed now waits on the
  * steer instead: a turn is owed for it (D2).
@@ -161,7 +161,7 @@ async function oldestOpenQuestion(ledger: LineSteerLedger, taskId: string, key: 
   const row = ledger.getCommitted !== undefined ? await ledger.getCommitted(taskId) : ledger.get?.(taskId);
   if (row === undefined) return undefined;
   if ((row.steers ?? []).some((steer) => steer.id === key)) return null;
-  return openRowHolds(row).find((hold) => hold.ask.kind === "question" || hold.ask.kind === "external")?.id;
+  return openOwnHolds(row).find((hold) => hold.ask.kind === "question" || hold.ask.kind === "external")?.id;
 }
 
 // BP-031.

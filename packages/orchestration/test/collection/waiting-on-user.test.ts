@@ -91,7 +91,7 @@ describe.each([
     expect((await collection.ask!("t", [{ kind: "question", prompt: "Which date column?" }], { claim })).outcome).toBe("recorded");
     const refused = await collection.setKeptOpenBy!("t", "suspended", { claim, hold: STOP });
     expect(refused).toMatchObject({ outcome: "declined", reason: "open-question" });
-    expect(openHolds(collection.get("t")!).map((hold) => hold.source.kind)).toEqual(["row"]);
+    expect(openHolds(collection.get("t")!).map((hold) => hold.source.kind)).toEqual(["task"]);
   });
 
   it("a cancel owes the parked run its resume in the same write, keeping the stop it is owed to; the clear drops both", async () => {

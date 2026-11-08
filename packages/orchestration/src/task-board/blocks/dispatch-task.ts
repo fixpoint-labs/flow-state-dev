@@ -69,7 +69,7 @@
  * longer waits on. So every throw past that point (a wait slot another
  * request took, a ledger write that failed, a row gone, a gate resumed with no
  * wait outcome, a seam that threw once the claim was released) leaves as a
- * {@link HandedOverRowError}, which every recorder rethrows whatever `onError`
+ * {@link HandedOverTaskError}, which every recorder rethrows whatever `onError`
  * says: the drain's request fails, naming the row, and no later row runs. A
  * park is not a failure and passes through. On the replay after a park the
  * whole call is past the hand-over, its checks included, which is why they run
@@ -106,9 +106,9 @@ import { checkWait, waitOnTask, type CheckedWait, type WaitOnTaskOptions } from 
 import type { TaskAssigneeAddress } from "../dispatch-assignee";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import { assertJsonSafe } from "./json-safe";
-import { HandedOverRowError } from "./recorder-failure";
+import { HandedOverTaskError } from "./recorder-failure";
 
-export interface RowDispatchOptions {
+export interface TaskDispatchOptions {
   /** Block-name prefix, so a refusal names the board it came from. */
   name: string;
   /** The declaring board's stable id — half of the durable address. */
@@ -138,7 +138,7 @@ export interface RowDispatchOptions {
  * the same value an inline worker would have received, which is what makes the
  * dispatched and inline paths agree on what the worker sees.
  */
-export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
+export function createTaskDispatch(options: TaskDispatchOptions): TaskWorker {
   const { name, boardId, assignee: named, address, binding, wait } = options;
 
   const handOver = async (payload: TaskWorkerInput, ctx: BlockContext) => {
@@ -163,7 +163,7 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
         address,
         "flow-not-found",
         `[task-board] "${boardId}" could not dispatch task "${claim.taskId}": it names no ` +
-          `assignee, and the fallback hands a row over by the name on it.`
+          `assignee, and the fallback hands a task over by the name on it.`
       );
     }
 
@@ -357,7 +357,7 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
       // hands it back on a refusal: change either and fix this with it.
       const released = (ctx.sequencer!.state as z.infer<typeof taskBoardWorkerBodyStateSchema>).currentClaim === undefined;
       if (!replayed && !released) throw error;
-      throw new HandedOverRowError(boardId, taskId, error);
+      throw new HandedOverTaskError(boardId, taskId, error);
     }
   };
 

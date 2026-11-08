@@ -208,7 +208,7 @@ export function defineTaskCollection<
   if (options.partitionBy !== undefined) assertPartitionable(options);
   if (options.recordEnding !== undefined && typeof options.recordEnding !== "function") {
     throw new Error(
-      `[tasks] defineTaskCollection "${options.id}": recordEnding must be a function of the row and its ending`
+      `[tasks] defineTaskCollection "${options.id}": recordEnding must be a function of the task and its ending`
     );
   }
 
@@ -283,14 +283,14 @@ function assertPartitionable(options: DefineTaskCollectionOptions): void {
   }
   if (options.scope !== "user") {
     throw new Error(
-      `${where}: partitionBy keeps one set of rows per partition at the owner's user scope, ` +
+      `${where}: partitionBy keeps one set of tasks per partition at the owner's user scope, ` +
         `so the collection must be scope: "user" (got "${options.scope}").`
     );
   }
   if (options.maxInstances !== undefined) {
     throw new Error(
       `${where}: partitionBy cannot be combined with maxInstances, which counts every ` +
-        `partition's rows, so one partition's add would be refused or evict a row by another's.`
+        `partition's tasks, so one partition's add would be refused or evict a task by another's.`
     );
   }
 }

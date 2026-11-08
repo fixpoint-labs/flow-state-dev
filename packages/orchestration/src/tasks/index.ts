@@ -46,13 +46,13 @@ export {
 // predicate every reader asks of it, open holds.
 export {
   taskHoldSchema,
-  rowHoldSchema,
+  ownHoldSchema,
   suspensionHoldSchema,
   type ConfirmOnNo,
   type ExternalWait,
   type ExternalWaitEvent,
   type QuestionInit,
-  type RowHold,
+  type OwnHold,
   type SuspensionHold,
   type TaskHold,
 } from "./schema/hold";

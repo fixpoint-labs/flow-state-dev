@@ -26,7 +26,7 @@ const question = {
   id: "q1",
   actor: "user",
   openedAt: 1,
-  source: { kind: "row", closedBy: [{ by: "answer" }] },
+  source: { kind: "task", closedBy: [{ by: "answer" }] },
   ask: { kind: "question", prompt: "Only line 1, or every typo?" },
 };
 const review = {
@@ -43,7 +43,7 @@ describe("a task waits on you while its row holds a question or a review", () =>
   it("a question: answered on the conversation's board, through its updateTask", () => {
     const holds = holdsOfRows(CONVERSATION, [row([question])], flowOf).get("task_1")!;
     expect(holds.map((h) => [h.ask.kind, h.source])).toEqual([
-      ["question", { kind: "row", flowId: "agent", sessionId: CONVERSATION, action: "updateTask_tasks", taskId: "task_1" }],
+      ["question", { kind: "task", flowId: "agent", sessionId: CONVERSATION, action: "updateTask_tasks", taskId: "task_1" }],
     ]);
     expect(toBoardTask(row([question]), undefined, holds).waiting).toEqual({ kind: "question", prompt: "Only line 1, or every typo?", unanswerable: null, holdId: "q1" });
   });

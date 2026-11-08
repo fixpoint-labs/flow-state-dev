@@ -100,7 +100,7 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   // and a question is open while no steer carries its id.
   "holds",
   "steers",
-  // What its runs spent (FIX-2398): the stored ledger, which a reader folds with `taskRowView`.
+  // What its runs spent (FIX-2398): the stored ledger, which a reader folds with `taskView`.
   "spend",
   "createdAt",
   "updatedAt",

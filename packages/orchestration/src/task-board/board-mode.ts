@@ -68,12 +68,12 @@ export function assertBoardModeSupported(options: {
     throw new Error(
       mode === "plan"
         ? `[task-board] "${name}" is a plan board, the default, and its dispatcher at ${declared} says ` +
-            `\`wait: false\`: a plan board's drain waits on every row, the ones it hands to another ` +
+            `\`wait: false\`: a plan board's drain waits on every task, the ones it hands to another ` +
             `session included. Drop \`wait\`, or declare \`mode: "delegation"\` for a board that ` +
-            `hands rows off and waits on none.`
+            `hands tasks off and waits on none.`
         : `[task-board] "${name}" is a delegation board, and its dispatcher at ${declared} says ` +
-            `\`wait: true\`: a delegation board's drain waits on no row. Drop \`wait\`, or drop ` +
-            `\`mode\` for a plan board, whose drain waits on every row it hands over.`
+            `\`wait: true\`: a delegation board's drain waits on no task. Drop \`wait\`, or drop ` +
+            `\`mode\` for a plan board, whose drain waits on every task it hands over.`
     );
   }
   if (mode === "plan") return;
@@ -85,7 +85,7 @@ export function assertBoardModeSupported(options: {
   if (inlineAt.length > 0) {
     throw new Error(
       `[task-board] "${name}" is a delegation board, and ${inlineAt.join(", ")} runs in the drain: ` +
-        `a delegation board hands every row to another session and its drain waits on none, so ` +
+        `a delegation board hands every task to another session and its drain waits on none, so ` +
         `work running in it would be left behind. Put a \`dispatcher({ action, session })\` there, ` +
         `or move the inline work to a plan board (drop \`mode\`).`
     );
@@ -94,7 +94,7 @@ export function assertBoardModeSupported(options: {
     throw new Error(
       `[task-board] "${name}" is a delegation board with no dispatcher, so it hands nothing to ` +
         `another session. Give an assignee a \`dispatcher({ action, session })\`, or drop \`mode\` ` +
-        `for a plan board, whose drain runs and waits on its rows.`
+        `for a plan board, whose drain runs and waits on its tasks.`
     );
   }
 }

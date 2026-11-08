@@ -376,7 +376,7 @@ async function act(api: LabApi, flowId: string, sessionId: string, action: strin
 function openHolds(row: Record<string, any>): string[] {
   if (row.status !== "in_progress" || !Array.isArray(row.holds)) return [];
   const answered = new Set(((row.steers ?? []) as Array<{ answers?: string }>).flatMap((s) => (typeof s.answers === "string" ? [s.answers] : [])));
-  return (row.holds as Array<{ id: string; source?: { kind?: string } }>).filter((h) => h.source?.kind === "row" && !answered.has(h.id)).map((h) => h.id);
+  return (row.holds as Array<{ id: string; source?: { kind?: string } }>).filter((h) => h.source?.kind === "task" && !answered.has(h.id)).map((h) => h.id);
 }
 
 /** Wait until a conversation's board holds a row, or give up. */

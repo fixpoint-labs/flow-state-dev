@@ -65,7 +65,7 @@ import {
   type FilingStamp,
   type TaskSettingsPatch,
 } from "./internal";
-import { assertAskable, externalWaitProblem, hasOpenHold, holdWrite, holdsDue, newExternalHold, newRowHolds, type HoldChange } from "./holds";
+import { assertAskable, externalWaitProblem, hasOpenHold, holdWrite, holdsDue, newExternalHold, newOwnHolds, type HoldChange } from "./holds";
 import { stampWrite } from "../write-provenance";
 import { spendAfterWrite } from "../spend";
 import { ticketNamesIncarnation } from "../claim-ticket";
@@ -97,10 +97,10 @@ export interface TaskBoardView {
  * What a row write decided, on the committed row inside the write: refuse it,
  * write `row` and report `result`, or (`undefined`) change nothing.
  */
-export type RowDecision<R> = { readonly decline: TaskWriteDeclineReason } | { readonly row: Task; readonly result: R } | undefined;
+export type TaskDecision<R> = { readonly decline: TaskWriteDeclineReason } | { readonly row: Task; readonly result: R } | undefined;
 
 /** What a row write did: refused (with the row's status), committed `result`, or (`undefined`) nothing. */
-export type RowWritten<R> =
+export type TaskWritten<R> =
   | { readonly declined: TaskWriteDeclineReason; readonly status: TaskStatus }
   | { readonly committed: R }
   | undefined;
@@ -159,7 +159,7 @@ export interface TaskStorage {
    *
    * @throws when the board has no row `id`.
    */
-  write<R>(id: string, decide: (row: Task, board: TaskBoardView) => RowDecision<R>): Promise<RowWritten<R>>;
+  write<R>(id: string, decide: (row: Task, board: TaskBoardView) => TaskDecision<R>): Promise<TaskWritten<R>>;
   /**
    * Compare-and-set write over the rows `select` picks, in its order: each is
    * decided as {@link write} decides one, `committed` runs for each committed
@@ -169,7 +169,7 @@ export interface TaskStorage {
    */
   writeEach<R>(
     select: (board: TaskBoardView) => readonly Task[],
-    decide: (row: Task, board: TaskBoardView) => RowDecision<R>,
+    decide: (row: Task, board: TaskBoardView) => TaskDecision<R>,
     options: {
       readonly stop?: (result: R) => boolean;
       readonly before?: (row: Task) => Promise<void>;
@@ -588,7 +588,7 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
       // A mirror of a run's stop is refused on a row a question holds (FIX-2133).
       return transitionTo(id, "in_progress", null, (task) => waitingOnPatch(task, keptOpenBy, waitOptions), {
         ...linkRunGuards({ claim: waitOptions.claim }),
-        ...(waitOptions.hold !== undefined ? { refuseWithOpenHold: "row" as const } : {}),
+        ...(waitOptions.hold !== undefined ? { refuseWithOpenHold: "task" as const } : {}),
       });
     },
 
@@ -597,7 +597,7 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
       assertAskable(asks);
       const guards = linkRunGuards({ claim: askOptions.claim });
       // Minted once, outside the write, so a retried write opens the same holds.
-      const holds = newRowHolds(asks, now(), {
+      const holds = newOwnHolds(asks, now(), {
         ...(options.filing?.holdDueMs !== undefined ? { dueMs: options.filing.holdDueMs } : {}),
         midway: true,
       });
@@ -612,7 +612,7 @@ export function createTaskMethodTable<TInput = unknown, TOutput = unknown>(
       const problem = externalWaitProblem(wait);
       if (problem !== undefined) throw new Error(`[tasks] awaitExternal: ${problem}, so the task can't wait on it. Nothing was written.`);
       const guards = linkRunGuards({ claim: waitOptions.claim });
-      // Minted once, outside the write, so a retried write opens the same hold. One `ask` write opens every row hold.
+      // Minted once, outside the write, so a retried write opens the same hold. One `ask` write opens every own hold.
       const hold = newExternalHold(wait, now());
       const outcome = await confirmed(id, () =>
         writeHolds(id, "asked", { op: "ask", holds: [hold] }, (task) => transitionDeclineReason(task, "in_progress", guards, collectionId, now()))

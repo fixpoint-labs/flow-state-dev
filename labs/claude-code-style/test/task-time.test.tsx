@@ -13,7 +13,7 @@
  */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { taskRowView } from "@flow-state-dev/orchestration/inbox";
+import { taskView } from "@flow-state-dev/orchestration/inbox";
 import type { LabAdapter, TaskRow, TaskStatus } from "../src/adapter";
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadsBoard } from "../src/components/ThreadsBoard";
@@ -31,7 +31,7 @@ function row(id: string, title: string, status: TaskStatus, times: { updatedAt: 
     goal: title,
     status,
     updatedAt,
-    view: taskRowView({ id, title, goal: title, status, board: "s1", updatedAt }),
+    view: taskView({ id, title, goal: title, status, board: "s1", updatedAt }),
     ...(startedAt === undefined && leaseUntil === undefined ? {} : { run: { ...(startedAt === undefined ? {} : { startedAt }), ...(leaseUntil === undefined ? {} : { leaseUntil }) } }),
   };
 }

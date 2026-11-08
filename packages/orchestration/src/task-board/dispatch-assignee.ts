@@ -16,7 +16,7 @@
  *    board, `assertDispatchEntrySupported` for the entry block the gate is
  *    given.
  *
- * **No execution lives here.** The drain-side dispatch is `blocks/dispatch-row.ts`
+ * **No execution lives here.** The drain-side dispatch is `blocks/dispatch-task.ts`
  * and the child-side gate is `task-entry.ts`; this module only decides what a
  * declaration *means* and refuses the ones that cannot work.
  *
@@ -276,9 +276,9 @@ export function assertDispatchBoardSupported(options: {
   if (unnamed.length > 0) {
     throw new Error(
       `[task-board] "${name}" holds a task dispatcher at ${unnamed.map((s) => s.label).join(", ")}, ` +
-        `but a uniform worker cannot dispatch — a dispatch is addressed by the row's assignee. ` +
+        `but a uniform worker cannot dispatch — a dispatch is addressed by the task's assignee. ` +
         `Declare it under \`workers: { <name>: dispatcher({ action, session }) }\`, or as the ` +
-        `\`defaultWorker\`, which hands each row over under the assignee it names.`
+        `\`defaultWorker\`, which hands each task over under the assignee it names.`
     );
   }
 
@@ -320,9 +320,9 @@ export function assertDispatchBoardSupported(options: {
   if (collection?.scope === "session" && collection.sharedToLineage !== true) {
     throw new Error(
       `[task-board] "${name}" dispatches assignees (${declared}) on a session-scoped ` +
-        `collection — a child session would resolve an empty ledger and never find the row ` +
+        `collection — a child session would resolve an empty ledger and never find the task ` +
         `it was dispatched for. Add \`sharedToLineage: true\` so the ledger resolves to the ` +
-        `lineage root and the child addresses the same rows the board claimed, or declare ` +
+        `lineage root and the child addresses the same tasks the board claimed, or declare ` +
         `the collection \`scope: "user"\` or \`scope: "org"\`.`
     );
   }
@@ -361,7 +361,7 @@ export function assertDispatchEntrySupported(options: {
   throw new Error(
     `[task-board] "${name}" dispatches to task entry "${target}" ${where}, which declares ` +
       `sessionStateSchema — a dispatched block runs in a child session it may share with ` +
-      `other rows, where two blocks choosing the same key with different shapes corrupt ` +
+      `other tasks, where two blocks choosing the same key with different shapes corrupt ` +
       `each other with no error. Keep the block's state on the task instead.`
   );
 }

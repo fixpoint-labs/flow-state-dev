@@ -45,7 +45,7 @@ export async function findTaskPartitions(
   const declared = ledger.config;
   if (!isDefinedTaskCollection(declared) || declared.__taskCollection.partitionBy === undefined) {
     throw new Error(
-      `[tasks] findTaskPartitions: ledger "${ledgerId}" does not keep its rows per partition (partitionBy).`
+      `[tasks] findTaskPartitions: ledger "${ledgerId}" does not keep its tasks per partition (partitionBy).`
     );
   }
   const prefix = `${getPatternPrefix(ledger.pattern)}/`;

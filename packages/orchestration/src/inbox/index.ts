@@ -34,12 +34,12 @@ export {
   type BoardAt,
   type InboxClient,
   type RefileOverrides,
-  type RefileRow,
+  type RefiledTask,
   type TaskActionTool,
 } from "./client";
 export { inboxItems } from "./list";
 // One task row as a person sees it: the one status and waiting-on vocabulary (FIX-2379).
-export { taskRowView, type TaskRowState, type TaskRowView, type TaskViewRow } from "./row-view";
+export { taskView, type TaskViewStatus, type TaskView, type TaskViewInput } from "./task-view";
 // What a row's holds are, for a reader that parses a published row (FIX-2133).
 export { taskHoldSchema, type TaskHold } from "../tasks/schema/hold";
 export type {
@@ -48,9 +48,9 @@ export type {
   InboxAskKind,
   InboxHold,
   InboxItem,
-  InboxRow,
+  InboxTaskInput,
   InboxSuspension,
   InboxTask,
-  RowHoldSource,
+  OwnHoldSource,
   SuspensionHoldSource,
 } from "./types";

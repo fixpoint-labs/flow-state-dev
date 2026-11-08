@@ -22,7 +22,7 @@
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { WorkerInstallation } from "../workers/installation";
-import type { RowHold, Task } from "@flow-state-dev/orchestration/tasks";
+import type { OwnHold, Task } from "@flow-state-dev/orchestration/tasks";
 import { FILING_WORKER_STATE_KEY } from "../workers/keys";
 import { MAX_MESSAGE_CHARS } from "./log-row";
 import type { MessageTarget } from "./message-target";
@@ -55,7 +55,7 @@ function clip(text: string, max: number): string {
  * and how to answer it (a confirm's answer is `done`), or, for a routed task,
  * that the user answers it.
  */
-export function midwayQuestionText(row: Task, hold: RowHold): string {
+export function midwayQuestionText(row: Task, hold: OwnHold): string {
   const title = clip(row.title ?? row.goal, TASK_LABEL_CHARS);
   const how = isRouted(row)
     ? "The user answers it from their Inbox; it isn't yours to answer."
@@ -89,7 +89,7 @@ export async function sendQuestionToFiler(
   ctx: BlockContext,
   sender: { readonly installation: WorkerInstallation; readonly flowKind: string },
   row: Task,
-  questions: readonly RowHold[]
+  questions: readonly OwnHold[]
 ): Promise<void> {
   if (row.filer?.sessionId === ctx.session.identity.id) return;
   const filer = filerOf(ctx, row);

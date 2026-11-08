@@ -103,8 +103,8 @@ import type { TaskSettingsSupport } from "./filing";
 import type { TaskFiledCascade } from "./cascade";
 import {
   createTaskMethodTable,
-  type RowDecision,
-  type RowWritten,
+  type TaskDecision,
+  type TaskWritten,
   type TaskBoardView,
   type TaskStorage,
   type TaskStorageDelivery,
@@ -473,13 +473,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * would still persist and notify), and is caught here into a value. A write
    * that changes nothing writes `current` back, as the store's own no-op.
    */
-  async function writeRow<R>(id: string, decide: (row: Task, view: TaskBoardView) => RowDecision<R>): Promise<RowWritten<R>> {
+  async function writeRow<R>(id: string, decide: (row: Task, view: TaskBoardView) => TaskDecision<R>): Promise<TaskWritten<R>> {
     const ref = mirror.get(id);
     if (ref === undefined) {
       throw new Error(`[tasks] task "${id}" not found`);
     }
     try {
-      return await updateStateWith<JsonObject, RowWritten<R>>(ref, (current) => {
+      return await updateStateWith<JsonObject, TaskWritten<R>>(ref, (current) => {
         const task = readTaskStateOf<unknown, unknown>(current) as Task;
         const decision = decide(task, board);
         if (decision === undefined) return { state: current, result: undefined };

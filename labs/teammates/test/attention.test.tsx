@@ -14,7 +14,7 @@
  * the title case fails.
  */
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
-import { taskRowView } from "@flow-state-dev/orchestration/inbox";
+import { taskView } from "@flow-state-dev/orchestration/inbox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BoardTask, ConversationEntry } from "../src/adapter";
 import { App } from "../src/App";
@@ -28,7 +28,7 @@ const named = (id: string) => id;
 /** A task, with its row's view carrying when it ended (`completedAt`), as the adapter reads one. */
 const task = (id: string, { completedAt, ...over }: Partial<BoardTask> & { completedAt?: number }): BoardTask => {
   const t: BoardTask = { id, to: "cursor", title: `Task ${id}`, status: "running", boardStatus: "in_progress", goal: "g", ...over };
-  return { ...t, view: taskRowView({ id, status: t.boardStatus, title: t.title, goal: t.goal, board: "s1", completedAt }) };
+  return { ...t, view: taskView({ id, status: t.boardStatus, title: t.title, goal: t.goal, board: "s1", completedAt }) };
 };
 const approval = (resolution?: string): ConversationEntry => ({ kind: "approval", id: "ap", requestId: "q", suspensionId: "s", text: "Publish the draft?", ...(resolution ? { resolution } : {}) });
 const inputs = (over: Partial<StatusInputs>): StatusInputs => ({ activity: { running: false, lastActiveAt: 0 } as StatusInputs["activity"], entries: [], talk: [], tasks: [], now: NOW, ...over });

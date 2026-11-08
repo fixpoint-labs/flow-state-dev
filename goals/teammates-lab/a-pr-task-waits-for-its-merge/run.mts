@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createClient } from "@flow-state-dev/client";
 import { reviewDetail } from "@flow-state-dev/harness-manager/browser";
-import { createInboxClient, inboxItems, taskActionName, type InboxHold, type InboxRow } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, taskActionName, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { assertPatched, describePatches, goalTmpDir, loadFixture, modulePatchEnv, REPO_ROOT, runGoal, stopProcessGroup, type ModulePatch } from "../../lib/index.mts";
 import { githubStub, stubPullRequestUrl } from "../../lib/github-stub.mts";
@@ -53,7 +53,7 @@ const CONTROLS: Record<string, ModulePatch[]> = {
 if (!(CONTROL in CONTROLS)) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(CONTROLS).filter(Boolean).join(", ")}`);
 const PATCHES = CONTROLS[CONTROL]!;
 
-type Row = InboxRow & { attempts?: number; output?: Record<string, any> | null; error?: string | null; run?: { sessionId: string } | null };
+type Row = InboxTaskInput & { attempts?: number; output?: Record<string, any> | null; error?: string | null; run?: { sessionId: string } | null };
 
 await runGoal(async (failures, tell) => {
   if (PATCHES.length > 0) console.error(describePatches(PATCHES, REPO_ROOT));

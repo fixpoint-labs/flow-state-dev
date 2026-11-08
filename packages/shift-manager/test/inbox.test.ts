@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { readEveryCollectionPage, type Client } from "@flow-state-dev/client";
 import { createInboxClient } from "@flow-state-dev/orchestration/inbox";
-import { reconcileInbox, rowTruthOf, suspensionTruthOf, taskItemId, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
+import { reconcileInbox, taskTruthOf, suspensionTruthOf, taskItemId, type InboxTruth } from "@flow-state-dev/orchestration/inbox/check";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { COORDINATOR_FLOW } from "@flow-state-dev/workforce";
 import { connect } from "../src/lib/connection";
@@ -62,7 +62,7 @@ async function readTruth(client: Client, rows: BoardRow[]): Promise<InboxTruth> 
   for (const session of sessions) {
     suspensions.push(...suspensionTruthOf(session.id, await client.sessions.requests(session.id, { status: "suspended", includeItems: true })));
   }
-  return { suspensions, rows: rowTruthOf(rows.map((row) => ({ ...row, board: row.boardRef }))) };
+  return { suspensions, rows: taskTruthOf(rows.map((row) => ({ ...row, board: row.boardRef }))) };
 }
 
 /**
@@ -142,11 +142,11 @@ describe("the Inbox against a real Lab", () => {
   // nobody could answer. The hold is planted the way a store holds one written before its
   // marker was renamed (`source.kind: "row"`, FIX-2479 D1): it lists as the task's own hold,
   // `"task"`, the Inbox's one call answers it through the board's updateTask, and it closes.
-  // The confirm is the second path: the same marker on the other kind a person answers.
+  // The confirm is the second path: the same marker on the other ask a user answers.
   it.each([
     ["question", { kind: "question", prompt: "Which region?" }, { text: "eu-west" }],
     ["confirm", { kind: "confirm", prompt: "Ship to eu-west?" }, { done: true }],
-  ] as const)("a %s stored under the old row marker lists as the task's own, is answered through updateTask, and closes", async (_kind, ask, answer) => {
+  ] as const)("a %s stored under the old row marker lists as the task's own, is answered through updateTask, and closes", async (_which, ask, answer) => {
     const { client, flowState } = await labWithState();
     await client.flow(COORDINATOR_FLOW).send("respond", { message: "ship it" }, { sessionId: "ops.desk" });
     await settled(client, 2);

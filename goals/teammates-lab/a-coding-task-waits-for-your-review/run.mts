@@ -20,7 +20,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@flow-state-dev/client";
 import { reviewDetail, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
-import { createInboxClient, inboxItems, type InboxHold, type InboxRow } from "@flow-state-dev/orchestration/inbox";
+import { createInboxClient, inboxItems, type InboxHold, type InboxTaskInput } from "@flow-state-dev/orchestration/inbox";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import {
   assertPatched,
@@ -53,7 +53,7 @@ const CONTROLS: Record<string, ModulePatch[]> = {
 if (!(CONTROL in CONTROLS)) throw new Error(`unknown GOAL_CONTROL "${CONTROL}"`);
 const PATCHES = CONTROLS[CONTROL]!;
 
-type Row = InboxRow & { attempts?: number; output?: { review?: string } | null; error?: string | null };
+type Row = InboxTaskInput & { attempts?: number; output?: { review?: string } | null; error?: string | null };
 
 /** The filing conversation's board rows. */
 async function rows(fsd: Fsd, flow: string, sessionId: string): Promise<Row[]> {

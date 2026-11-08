@@ -58,7 +58,7 @@ const waiting = (holder: string, id: string, assignee: string): BoardRow =>
     title: `${id} title`,
     status: "in_progress",
     assignee,
-    holds: [{ id: `q-${id}`, actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
+    holds: [{ id: `q-${id}`, actor: "user", openedAt: 1, source: { kind: "task", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
   });
 const ask = (workerId: string, suspensionId: string, message: string): Ask =>
   ({

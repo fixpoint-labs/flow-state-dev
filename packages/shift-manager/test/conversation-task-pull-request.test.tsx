@@ -25,7 +25,7 @@ const WAITING: ConversationTask = {
     {
       id: "wait_1",
       openedAt: 1,
-      source: { kind: "row", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
+      source: { kind: "task", closedBy: [{ by: "event", event: "pull-request", key: "github.com/acme/app/7" }] },
       ask: { kind: "external", prompt: "Waiting for pull request #7 to merge or close." },
     },
   ],

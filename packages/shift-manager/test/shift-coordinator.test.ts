@@ -174,7 +174,7 @@ describe("what needs the user, in the shift summary (FIX-2131)", () => {
         id: `q-${id}`,
         actor: "user",
         openedAt: 1,
-        source: { kind: "row", closedBy: [{ by: "answer" }] },
+        source: { kind: "task", closedBy: [{ by: "answer" }] },
         ask: { kind: "question", prompt: "Approve the plan to merge the rounding copies?" },
       },
     ] as BoardRow["holds"],

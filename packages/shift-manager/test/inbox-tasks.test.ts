@@ -121,7 +121,7 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
         // Held on a question for you: running, and one Inbox item of its own (FIX-2131).
         row("B", "in_progress", {
           ownerSessionId: "s_desk",
-          holds: [{ id: "q-B", actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
+          holds: [{ id: "q-B", actor: "user", openedAt: 1, source: { kind: "task", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
         }),
         row("C", "pending"),
         row("D", "completed", { ownerSessionId: "s_other" }),

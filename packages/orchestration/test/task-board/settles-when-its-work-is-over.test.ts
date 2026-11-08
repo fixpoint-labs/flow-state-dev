@@ -606,7 +606,7 @@ describe("a task held on its questions midway (FIX-2133)", () => {
     await h.run();
     const row = (await h.row())!;
     // The row holds its question alone: no mirror, no wait recorded, not settled.
-    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["row"]);
+    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["task"]);
     expect(row).toMatchObject({ status: "in_progress", attempts: 1 });
     expect(row.keptOpenBy).toBeUndefined();
   });
@@ -982,7 +982,7 @@ describe("a task turn's model waits on a person one way per turn (FIX-2131)", ()
       { ok: false, error: expect.stringMatching(/^one_wait_per_turn: .*holdTaskForUser/) },
     ]);
     const row = (await h.row())!;
-    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["row"]);
+    expect(openHolds(row).map((hold) => hold.source.kind)).toEqual(["task"]);
   });
 
   it("suspendForUser and holdTaskForUser in one step: the review, first, suspends the run; the question is refused naming it, and no question is kept", async () => {
