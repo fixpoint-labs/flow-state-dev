@@ -90,18 +90,6 @@ const handle = client.flow(kind).request(lost.id);
 
 The default text is "This turn was cut off before it finished." Pass `reason` to say something else, and `who` to name whose turn it was. Each button is disabled while its call runs, and a refused call is shown on the line the same way a refused retry is. To find lost turns, poll `client.requests.interrupted()` every few seconds and group them by conversation with `interruptedBySession` from `@flow-state-dev/client`. A turn shows up there about a minute after the restart.
 
-### A turn you stopped
-
-When someone presses Stop, the request ends `aborted`. Nothing failed and there's nothing to retry, so pass `stopped` and the line is a quiet status, "Interrupted by you", with no button of its own:
-
-```tsx
-<RequestRecovery stopped stillRunning={backgroundRunning} onView={showTasks} />
-```
-
-Stopping a turn doesn't stop the background work it started. `stillRunning` tells the person how much of that is still going: pass the session's unfinished runs, such as `sessionFeed(...).getSnapshot().runs?.length`. Above zero, the line adds "2 background tasks still running" and a View link that calls `onView`. At zero, or when you pass nothing because the count isn't known yet, the clause is left off.
-
-Read the line from the request's status, not from the click. That way a reload or a second tab shows it too. If you draw several stopped turns, give the count only to the newest one, and only while nothing came after it. Otherwise an old line reports work that a later turn started.
-
 ## ModelBadge
 
 A small pill that shows which model actually answered. It reads a `ModelIdentity` (the `{ actual, requested?, gateway? }` record stamped on every generator-emitted item), renders `actual` as the label, and lists the requested string and gateway in the hover tooltip. It renders nothing when the model is undefined, so passing `item.model` straight from any item is safe.
