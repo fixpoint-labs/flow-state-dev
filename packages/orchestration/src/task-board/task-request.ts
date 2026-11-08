@@ -69,7 +69,7 @@ import { DEFAULT_LEASE_DURATION_MS } from "../tasks/collection/internal";
 import { MAX_QUESTION_PROMPT, type ExternalWait } from "../tasks/schema/hold";
 import { readCommittedTask } from "../tasks/collection/read-committed";
 import { untakenSteers } from "../tasks/steers";
-import { ticketClaimsTask } from "../tasks/collection/internal";
+import { ticketStillRunsTask } from "../tasks/collection/internal";
 import { askedOnTicket, suspensionHoldOf } from "../tasks/collection/holds";
 import { advisoryCancel, advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
 import { settleAtRequestEnd } from "./blocks/record-result";
@@ -187,10 +187,10 @@ export function admittedTaskOf(ctx: BlockContext): { readonly ref: TaskCollectio
 /**
  * Whether the row is still on the claim `ticket` names: same row, running,
  * same attempt and same turn, by the one predicate the write
- * fence shares (`ticketClaimsTask`).
+ * fence shares (`ticketStillRunsTask`).
  */
 function claimHolds(ref: TaskCollectionRef, ticket: TaskClaimTicket, row: Task | undefined): row is Task {
-  return ticketClaimsTask(ticket, ref.collectionId, row);
+  return ticketStillRunsTask(ticket, ref.collectionId, row);
 }
 
 // FIX-2133.

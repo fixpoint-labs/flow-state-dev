@@ -768,7 +768,7 @@ function attemptOwnsTask(task: Task, attempt: number): boolean {
  * dispatch's gate, an advisory write-back): two turns can share an attempt,
  * so an attempt-only check passes a stale turn.
  */
-export function ticketClaimsTask(ticket: TaskClaimTicket, collectionId: string, task: Task | undefined): task is Task {
+export function ticketStillRunsTask(ticket: TaskClaimTicket, collectionId: string, task: Task | undefined): task is Task {
   return (
     task !== undefined &&
     ticketNamesTask(ticket, collectionId, task) &&
