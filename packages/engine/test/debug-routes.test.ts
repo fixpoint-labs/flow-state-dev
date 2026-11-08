@@ -18,9 +18,9 @@ import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import {
   assertDebugAllowed,
-  handleDebugGetCollectionItemContent,
+  handleDebugGetCollectionResourceContent,
   handleDebugGetResourceContent,
-  handleDebugListCollectionItems,
+  handleDebugListCollectionResources,
   handleDebugListResources,
   resolveDebugConfig,
   type ResolvedDebugConfig
@@ -465,10 +465,10 @@ describe("handleDebugListResources", () => {
 });
 
 // ---------------------------------------------------------------------------
-// handleDebugListCollectionItems
+// handleDebugListCollectionResources
 // ---------------------------------------------------------------------------
 
-describe("handleDebugListCollectionItems", () => {
+describe("handleDebugListCollectionResources", () => {
   async function setupMemos(): Promise<Ctx> {
     return setupCtx({
       resources: {
@@ -493,7 +493,7 @@ describe("handleDebugListCollectionItems", () => {
         "memos/eee": { title: "TE", body: "BE" }
       }
     });
-    const page1 = await handleDebugListCollectionItems(
+    const page1 = await handleDebugListCollectionResources(
       makeReq(`${BASE}/memos/items?limit=2`),
       {
         kind: "debug_list_collection_items",
@@ -510,7 +510,7 @@ describe("handleDebugListCollectionItems", () => {
     ]);
     expect(b1.nextCursor).not.toBeNull();
 
-    const page2 = await handleDebugListCollectionItems(
+    const page2 = await handleDebugListCollectionResources(
       makeReq(
         `${BASE}/memos/items?limit=2&cursor=${encodeURIComponent(b1.nextCursor)}`
       ),
@@ -528,7 +528,7 @@ describe("handleDebugListCollectionItems", () => {
     ]);
     expect(b2.nextCursor).not.toBeNull();
 
-    const page3 = await handleDebugListCollectionItems(
+    const page3 = await handleDebugListCollectionResources(
       makeReq(
         `${BASE}/memos/items?limit=2&cursor=${encodeURIComponent(b2.nextCursor)}`
       ),
@@ -546,7 +546,7 @@ describe("handleDebugListCollectionItems", () => {
 
   it("filters by topic substring", async () => {
     const ctx = await setupMemos();
-    const res = await handleDebugListCollectionItems(
+    const res = await handleDebugListCollectionResources(
       makeReq(`${BASE}/memos/items?topic=foo`),
       {
         kind: "debug_list_collection_items",
@@ -564,7 +564,7 @@ describe("handleDebugListCollectionItems", () => {
 
   it("400s on a malformed cursor", async () => {
     const ctx = await setupMemos();
-    const res = await handleDebugListCollectionItems(
+    const res = await handleDebugListCollectionResources(
       makeReq(`${BASE}/memos/items?cursor=%00not%20base64%21`),
       {
         kind: "debug_list_collection_items",
@@ -581,7 +581,7 @@ describe("handleDebugListCollectionItems", () => {
 
   it("400s on non-numeric limit", async () => {
     const ctx = await setupMemos();
-    const res = await handleDebugListCollectionItems(
+    const res = await handleDebugListCollectionResources(
       makeReq(`${BASE}/memos/items?limit=abc`),
       {
         kind: "debug_list_collection_items",
@@ -596,7 +596,7 @@ describe("handleDebugListCollectionItems", () => {
 
   it("400s on negative limit", async () => {
     const ctx = await setupMemos();
-    const res = await handleDebugListCollectionItems(
+    const res = await handleDebugListCollectionResources(
       makeReq(`${BASE}/memos/items?limit=-1`),
       {
         kind: "debug_list_collection_items",
@@ -610,7 +610,7 @@ describe("handleDebugListCollectionItems", () => {
 
   it("400s on absurd limit", async () => {
     const ctx = await setupMemos();
-    const res = await handleDebugListCollectionItems(
+    const res = await handleDebugListCollectionResources(
       makeReq(`${BASE}/memos/items?limit=10000`),
       {
         kind: "debug_list_collection_items",
@@ -628,7 +628,7 @@ describe("handleDebugListCollectionItems", () => {
         "memos/aaa": { title: "Hello", body: "BODY", secret: "SECRET" }
       }
     });
-    const res = await handleDebugListCollectionItems(
+    const res = await handleDebugListCollectionResources(
       makeReq(`${BASE}/memos/items`),
       {
         kind: "debug_list_collection_items",
@@ -652,7 +652,7 @@ describe("handleDebugListCollectionItems", () => {
 
   it("404s with resource_not_found for an unknown ref", async () => {
     const ctx = await setupMemos();
-    const res = await handleDebugListCollectionItems(
+    const res = await handleDebugListCollectionResources(
       makeReq(`${BASE}/nope/items`),
       {
         kind: "debug_list_collection_items",
@@ -667,7 +667,7 @@ describe("handleDebugListCollectionItems", () => {
 
   it("400s with bad_request when ref is a single resource (not_collection)", async () => {
     const ctx = await setupMemos();
-    const res = await handleDebugListCollectionItems(
+    const res = await handleDebugListCollectionResources(
       makeReq(`${BASE}/profile/items`),
       {
         kind: "debug_list_collection_items",
@@ -682,7 +682,7 @@ describe("handleDebugListCollectionItems", () => {
 });
 
 // ---------------------------------------------------------------------------
-// handleDebugGetResourceContent / handleDebugGetCollectionItemContent
+// handleDebugGetResourceContent / handleDebugGetCollectionResourceContent
 // ---------------------------------------------------------------------------
 
 describe("handleDebugGetResourceContent", () => {
@@ -755,7 +755,7 @@ describe("handleDebugGetResourceContent", () => {
   });
 });
 
-describe("handleDebugGetCollectionItemContent", () => {
+describe("handleDebugGetCollectionResourceContent", () => {
   it("returns 200 with the body for a collection item", async () => {
     const ctx = await setupCtx({
       resources: { "memos/abc": { title: "T", body: "B" } }
@@ -766,7 +766,7 @@ describe("handleDebugGetCollectionItemContent", () => {
       "memos/abc",
       "memo body"
     );
-    const res = await handleDebugGetCollectionItemContent(
+    const res = await handleDebugGetCollectionResourceContent(
       makeReq(`${BASE}/memos/items/abc/content`),
       {
         kind: "debug_get_collection_item_content",
@@ -794,7 +794,7 @@ describe("handleDebugGetCollectionItemContent", () => {
       "memos/nested/key",
       "deep body"
     );
-    const res = await handleDebugGetCollectionItemContent(
+    const res = await handleDebugGetCollectionResourceContent(
       makeReq(`${BASE}/memos/items/nested/key/content`),
       {
         kind: "debug_get_collection_item_content",
@@ -812,7 +812,7 @@ describe("handleDebugGetCollectionItemContent", () => {
     const ctx = await setupCtx({
       resources: { "memos/abc": { title: "T", body: "B" } }
     });
-    const res = await handleDebugGetCollectionItemContent(
+    const res = await handleDebugGetCollectionResourceContent(
       makeReq(`${BASE}/memos/items/abc/content`),
       {
         kind: "debug_get_collection_item_content",
@@ -830,7 +830,7 @@ describe("handleDebugGetCollectionItemContent", () => {
     const ctx = await setupCtx({
       resources: { profile: { name: "Alice" } }
     });
-    const res = await handleDebugGetCollectionItemContent(
+    const res = await handleDebugGetCollectionResourceContent(
       makeReq(`${BASE}/profile/items/anything/content`),
       {
         kind: "debug_get_collection_item_content",
@@ -885,7 +885,7 @@ describe("clientView projections", () => {
     const ctx = await setupCtx({
       resources: { "gated/one": { v: "value" } }
     });
-    const res = await handleDebugListCollectionItems(
+    const res = await handleDebugListCollectionResources(
       makeReq(`${BASE}/gated/items`),
       {
         kind: "debug_list_collection_items",

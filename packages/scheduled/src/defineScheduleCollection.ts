@@ -221,8 +221,8 @@ function indexOrgFor(
   console.warn(
     `[flow-state/scheduled] schedule ${userId}/${key} is not indexed: its stored organization ` +
       `does not match the organization of the execution that wrote it. A schedule fires into ` +
-      `the organization that created it; write the row from that organization, or attribute a ` +
-      `pre-existing row with the upgrade recipe in the persistence guide.`
+      `the organization that created it; write the resource from that organization, or attribute a ` +
+      `pre-existing resource with the upgrade recipe in the persistence guide.`
   );
   return null;
 }

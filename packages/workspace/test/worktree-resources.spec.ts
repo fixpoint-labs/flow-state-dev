@@ -9,14 +9,14 @@
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorktreeCollection, WorktreeRow } from "../src/worktrees";
+import type { WorktreeCollection, WorktreeResourceState } from "../src/worktrees";
 import {
   addWorktreePullRequests,
   markWorktreeProvisioning,
   recordWorktreeCheckout,
   worktreeKey,
   worktreeName,
-  worktreeRowSchema,
+  worktreeResourceStateSchema,
 } from "../src/worktrees";
 import { localWorkspaceHost } from "../src/local-host";
 import { recordBranchPullRequests } from "../src/branch-pull-requests";
@@ -25,18 +25,18 @@ import { createRemote, git, tempDir, type Remote } from "./git-fixtures";
 const noSource = () => ({ kind: "refused" as const, reason: "unused", message: "unused" });
 
 /** Rows in a `Map`, parsed through the row schema on every write as the store does. */
-function rows(): WorktreeCollection & { all: Map<string, WorktreeRow>; writes: { key: string; state: string | null }[] } {
-  const all = new Map<string, WorktreeRow>();
+function rows(): WorktreeCollection & { all: Map<string, WorktreeResourceState>; writes: { key: string; state: string | null }[] } {
+  const all = new Map<string, WorktreeResourceState>();
   const writes: { key: string; state: string | null }[] = [];
   const refOf = (key: string) => ({
     path: `worktrees/${key}`,
     state: all.get(key)!,
     // Like the store: the updater runs against the stored row and runs again
     // when another write landed in between.
-    updateState: async (updater: (state: WorktreeRow) => WorktreeRow | Promise<WorktreeRow>) => {
+    updateState: async (updater: (state: WorktreeResourceState) => WorktreeResourceState | Promise<WorktreeResourceState>) => {
       for (;;) {
         const base = all.get(key)!;
-        const next = worktreeRowSchema.parse(await updater(base));
+        const next = worktreeResourceStateSchema.parse(await updater(base));
         if (all.get(key) !== base) continue;
         all.set(key, next);
         writes.push({ key, state: next.state });
@@ -50,9 +50,9 @@ function rows(): WorktreeCollection & { all: Map<string, WorktreeRow>; writes: {
     pattern: "worktrees/**",
     scope: "user",
     getOptional: async (key: string) => (all.has(key) ? refOf(key) : undefined),
-    upsert: async (key: string, update: Partial<WorktreeRow>, createOnly: Partial<WorktreeRow> = {}) => {
+    upsert: async (key: string, update: Partial<WorktreeResourceState>, createOnly: Partial<WorktreeResourceState> = {}) => {
       const prior = all.get(key);
-      const next = worktreeRowSchema.parse(prior === undefined ? { ...createOnly, ...update } : { ...prior, ...update });
+      const next = worktreeResourceStateSchema.parse(prior === undefined ? { ...createOnly, ...update } : { ...prior, ...update });
       all.set(key, next);
       writes.push({ key, state: next.state });
       return refOf(key);
@@ -205,7 +205,7 @@ describe("attach and remove", () => {
   });
 
   it("reads a bare-string attached entry as a session", () => {
-    expect(worktreeRowSchema.parse({ attached: ["s-9"] }).attached).toEqual([{ kind: "session", id: "s-9", lastTurnAt: null }]);
+    expect(worktreeResourceStateSchema.parse({ attached: ["s-9"] }).attached).toEqual([{ kind: "session", id: "s-9", lastTurnAt: null }]);
   });
 
   it("keeps the row, marked removed, once the worktree is gone", async () => {
@@ -290,8 +290,8 @@ describe("a turn-end read racing a removal", () => {
         if (ref === undefined) return undefined;
         return {
           ...ref,
-          updateState: (updater: (row: WorktreeRow) => WorktreeRow) =>
-            ref.updateState((row: WorktreeRow) => {
+          updateState: (updater: (row: WorktreeResourceState) => WorktreeResourceState) =>
+            ref.updateState((row: WorktreeResourceState) => {
               const out = updater(row);
               // The removal commits after this read computed `lost`, before it lands.
               if (!raced) {

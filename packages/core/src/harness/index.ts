@@ -72,7 +72,7 @@ export {
   observedPlanListCollection,
   observedPlanListStateSchema,
   planKeySegment,
-  planRowsPrefix,
+  planResourcesPrefix,
   readPlanTarget,
   replacePlanList,
 } from "../types/harness-plan";

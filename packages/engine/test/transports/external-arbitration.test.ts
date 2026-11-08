@@ -331,7 +331,7 @@ describe("a delivery into an existing session, on a queue host whose adapter sup
     }
   });
 
-  it("is still refused `external-dispatcher` when the adapter supplies no lease backend", async () => {
+  it("is still refused `external-flow-runner` when the adapter supplies no lease backend", async () => {
     const observed: Observed = { runs: [] };
     const { flow } = queueFlow("ext-no-backend", observed, "queue");
     const enqueued: DispatchEnvelope[] = [];
@@ -339,7 +339,7 @@ describe("a delivery into an existing session, on a queue host whose adapter sup
     try {
       await seedSession(web.runtime, "s_alice", "ext-no-backend");
       const sent = await deliverFrom(web.runtime, flow, "s_alice", "hi");
-      expect(sent.error?.message).toMatch(/external-dispatcher/);
+      expect(sent.error?.message).toMatch(/external-flow-runner/);
       expect(sent.error?.message).toMatch(/lease backend/);
       expect(enqueued).toEqual([]);
     } finally {

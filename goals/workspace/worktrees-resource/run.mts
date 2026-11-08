@@ -28,7 +28,7 @@ import {
   type HarnessSessionFeeds,
   type HarnessSessionWorkspace,
 } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost, type WorktreeRow } from "@flow-state-dev/workspace";
+import { localWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 
@@ -186,14 +186,14 @@ async function act(sessionId: string, action: string, input: unknown): Promise<s
 }
 
 /** The rows a page in `sessionId` sees, through the flow's resource route. */
-async function rows(sessionId: string, userId = USER, orgId = ORG): Promise<WorktreeRow[]> {
+async function rows(sessionId: string, userId = USER, orgId = ORG): Promise<WorktreeResourceState[]> {
   const res = await router.GET(
     new Request(`http://goal/api/flows/sessions/${sessionId}/resources/worktrees?userId=${userId}`, { headers: as(userId, orgId) }),
     { params: { path: ["sessions", sessionId, "resources", "worktrees"] } },
   );
-  const body = (await res.json()) as { items?: Array<{ clientData?: WorktreeRow }> };
+  const body = (await res.json()) as { items?: Array<{ clientData?: WorktreeResourceState }> };
   if (process.env.GOAL_DEBUG) console.error("rows", res.status, JSON.stringify(body).slice(0, 400));
-  return (body.items ?? []).map((item) => item.clientData).filter((row): row is WorktreeRow => row !== undefined);
+  return (body.items ?? []).map((item) => item.clientData).filter((row): row is WorktreeResourceState => row !== undefined);
 }
 
 const stateOf = async (sessionId: string) =>

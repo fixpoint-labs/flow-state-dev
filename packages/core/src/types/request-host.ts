@@ -44,7 +44,7 @@
  * the principal's sessions extends `sessions` instead.
  */
 
-import type { WaitGateBinding, WaitOutcome, WaitRow } from "./wait-gate";
+import type { WaitGateBinding, WaitOutcome, TaskAddress } from "./wait-gate";
 import type { HistoryTurn, MessageLimit } from "./scope";
 import type { InternalBlockContext } from "./block";
 
@@ -236,7 +236,7 @@ export interface RequestWaits {
    * @param input.own The row the running request works, when it works one:
    *   server-derived by the caller (its claim), never input.
    */
-  depth(input: { readonly binding?: WaitGateBinding; readonly own?: WaitRow }): Promise<number>;
+  depth(input: { readonly binding?: WaitGateBinding; readonly own?: TaskAddress }): Promise<number>;
   /**
    * Whether each request has stopped running its own work: it ended, or its
    * process died while it ran (`interrupted`). `false` for one running or

@@ -25,7 +25,7 @@ import { createFlowState, inMemoryStores } from "../src";
 import { ownerKeyAdmits, ownerKeyMaySeed } from "../src/resources/owner-private";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
-const REFUSAL = "A row of an owner-private collection is readable only by the user it belongs to.";
+const REFUSAL = "A resource in an owner-private collection is readable only by the user it belongs to.";
 const ALICE_KEY = "notes/~alice/research";
 const ALICE_TEXT = "ALICE-PRIVATE";
 const tagInput = z.object({ tag: z.string() });
@@ -538,7 +538,7 @@ describe("an owner-private collection serves each row only to its owner", () => 
       authentication: verified,
     });
     await expect(bootApp({ private: privateFlow, wide }, inMemoryStores())).rejects.toThrow(
-      'Collection pattern "[a]/[b]/[c]" can reach the rows of owner-private collection "notes/[owner]/[id]".'
+      'Collection pattern "[a]/[b]/[c]" can reach the resources of owner-private collection "notes/[owner]/[id]".'
     );
   });
 });

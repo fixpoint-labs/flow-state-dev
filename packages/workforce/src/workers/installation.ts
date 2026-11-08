@@ -674,7 +674,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     // The caller's own worker, read at their scope: another user's row is
     // simply not there, so it is refused exactly as a worker that doesn't
     // exist is.
-    const found = lookupWorker(workerId, await input.readCollectionItem(WORKERS_RESOURCE, workerId));
+    const found = lookupWorker(workerId, await input.readCollectionResource(WORKERS_RESOURCE, workerId));
     if (found.found === "none") return { ok: false, status: 404, message: `No worker "${workerId}".` };
     if (found.found === "unreadable") {
       return { ok: false, message: `Worker "${workerId}" can't be used: ${found.problem}.` };
@@ -732,7 +732,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     const accessor = address.visibility === "private" ? PRIVATE_PROJECTS_RESOURCE : PROJECTS_RESOURCE;
     let row: Record<string, unknown> | undefined;
     try {
-      row = await input.readCollectionItem(accessor, address.id);
+      row = await input.readCollectionResource(accessor, address.id);
     } catch {
       return {
         ok: false,
@@ -767,7 +767,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (address === undefined) {
       return { ok: false, message: `"${WORKSTREAM_STATE_KEY}" "${ref}" names no workstream: it is <visibility>/<project>/<workstream>.` };
     }
-    const entry = await input.readCollectionItem(
+    const entry = await input.readCollectionResource(
       workstreamsAccessor(address.project.visibility),
       workstreamEntryKey(address.project.id, input.principal.userId, address.id)
     );

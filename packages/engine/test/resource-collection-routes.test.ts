@@ -18,11 +18,11 @@ import { gateNextStateRead } from "../src/testing";
 import type { StoreRegistry, SessionRecord } from "../src/stores/types";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import {
-  handleCreateCollectionItem,
-  handleDeleteCollectionItem,
+  handleCreateCollectionResource,
+  handleDeleteCollectionResource,
   handleUpdateResourceContent,
   handleListCollectionState,
-  handleGetCollectionItemContent,
+  handleGetCollectionResourceContent,
 } from "../src/routes/resource-routes";
 
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -91,7 +91,7 @@ async function setupCtx(
 }
 
 function create(ctx: Ctx, topic: string, content?: string): Promise<Response> {
-  return handleCreateCollectionItem(
+  return handleCreateCollectionResource(
     new Request("http://x/sessions/sess_1/resources/notes", {
       method: "POST",
       body: JSON.stringify(content === undefined ? { topic } : { topic, content }),
@@ -102,7 +102,7 @@ function create(ctx: Ctx, topic: string, content?: string): Promise<Response> {
 }
 
 function del(ctx: Ctx, topic: string): Promise<Response> {
-  return handleDeleteCollectionItem(
+  return handleDeleteCollectionResource(
     new Request(`http://x/sessions/sess_1/resources/notes/${topic}`, { method: "DELETE" }),
     { kind: "delete_collection_item", sessionId: ctx.sessionId, ref: "notes", topic },
     { registry: ctx.registry, stores: ctx.stores }
@@ -134,7 +134,7 @@ function list(ctx: Ctx): Promise<Response> {
  * two do not agree when there is no row.
  */
 async function readContent(ctx: Ctx, topic: string): Promise<unknown> {
-  const response = await handleGetCollectionItemContent(
+  const response = await handleGetCollectionResourceContent(
     new Request(`http://x/sessions/sess_1/resources/notes/${topic}/content`),
     { kind: "get_collection_item_content", sessionId: ctx.sessionId, ref: "notes", topic },
     { registry: ctx.registry, stores: ctx.stores }
@@ -483,7 +483,7 @@ describe("delete collection item route — conflict before ContentStore is touch
 // ---------------------------------------------------------------------------
 
 /**
- * FIX-1260, second path (BP-035). `handleCreateCollectionItem` is the only
+ * FIX-1260, second path (BP-035). `handleCreateCollectionResource` is the only
  * route in the engine that writes resource state, and it seeded its row from a
  * bare `safeParse` beside the guard the registry's write verbs go through. So a
  * schema the registry refuses could still be seeded over HTTP, and the row it

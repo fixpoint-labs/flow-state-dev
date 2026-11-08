@@ -102,7 +102,7 @@ import { claimRequestRecord, principalOwnsRequest } from "../context/request-pri
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
-import { ownRowOf, resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
+import { ownTaskOf, resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { noteSuspensionDeadline } from "../durability/suspension-deadlines";
 import { WRITES_OUTLIVE_ABORT, requestEndRegistryOf, type WritesOutliveAbort } from "./request-end-hooks";
@@ -353,7 +353,7 @@ function assertDispatchersRoutable(
                   `dispatches to task:"${action}", which is gated for board ` +
                   `"${gatedBy?.boardId ?? "<none>"}", but the dispatcher is held by ` +
                   (binding === undefined ? "no board" : `board "${binding.boardId}"`) +
-                  `. One entry settles against one ledger; a row claimed on another board's ledger ` +
+                  `. One entry settles against one ledger; a task claimed on another board's ledger ` +
                   `would be refused at this gate after the dispatch was accepted. Dispatch from the ` +
                   `board that declares this entry, or declare an entry for the other board.`,
                 { scope: "request" }
@@ -2498,7 +2498,7 @@ async function runActionAttempt<
           // dispatcher's wait) gets the row the engine reads off this
           // request's own task dispatch (FIX-2082).
           if (isWaitGate(record) && record.data != null && record.data.own === undefined) {
-            const own = ownRowOf(options.source, options.metadata, options.input);
+            const own = ownTaskOf(options.source, options.metadata, options.input);
             if (own !== undefined) record.data = { ...record.data, own };
           }
           const waitDeadline = isWaitGate(record) ? waitGateDataOf(record)?.deadline : undefined;

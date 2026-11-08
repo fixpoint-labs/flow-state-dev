@@ -42,7 +42,7 @@ import {
   applyGetOrPatchState,
 } from "@flow-state-dev/core/types";
 import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
-import { OWNER_ROW_REFUSAL, ownerKeyAdmits, ownerWritesRefusalForKey } from "../resources/owner-private";
+import { OWNER_RESOURCE_REFUSAL, ownerKeyAdmits, ownerWritesRefusalForKey } from "../resources/owner-private";
 import { cloneValue, resolveClientData } from "@flow-state-dev/core/helpers";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core/internal";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
@@ -787,7 +787,7 @@ function fenceOwnerKeys(
   const own = (key: string | Record<string, string>): boolean =>
     admits(resolveCollectionKey(handle.pattern, key));
   const refuse = (): never => {
-    throw new Error(OWNER_ROW_REFUSAL);
+    throw new Error(OWNER_RESOURCE_REFUSAL);
   };
   return {
     ...handle,
@@ -1454,7 +1454,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           );
         }
         if (!ownerKeyAdmits(extConfig, storageKey, options.actorUserId)) {
-          throw new Error(OWNER_ROW_REFUSAL);
+          throw new Error(OWNER_RESOURCE_REFUSAL);
         }
         const state = await readThrough(storageKey);
         if (state === undefined) {

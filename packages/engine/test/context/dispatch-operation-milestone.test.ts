@@ -223,7 +223,7 @@ describe("not-started is reserved for a throw that happened before any child exi
       return rawSet(...args);
     }) as typeof rawSet;
 
-    // No `dispatchLocal`, so the host takes its external-dispatcher branch. The
+    // No `dispatchLocal`, so the host takes its external-flow-runner branch. The
     // envelope carries the id the host materialized, which is the only handle on
     // the record once the result comes back as a refusal.
     let enqueuedRequestId: string | undefined;

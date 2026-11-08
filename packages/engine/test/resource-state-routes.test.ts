@@ -19,7 +19,7 @@ import type { StoreRegistry, SessionRecord, UserRecord } from "../src/stores/typ
 import { resolveResourceScopeId, resolveUserStorageKey } from "../src/stores/scope-keys";
 import {
   handleListCollectionState,
-  handleGetCollectionItemState,
+  handleGetCollectionResourceState,
   handleGetResourceManifest
 } from "../src/routes/resource-routes";
 import { handleDeleteSession } from "../src/routes/session-routes";
@@ -396,10 +396,10 @@ describe("handleListCollectionState", () => {
 // get_collection_item_state
 // ---------------------------------------------------------------------------
 
-describe("handleGetCollectionItemState", () => {
+describe("handleGetCollectionResourceState", () => {
   it("returns the item by storage key", async () => {
     const ctx = await setupCtx({ artifacts: { "spec.md": { title: "Spec" } } });
-    const res = await handleGetCollectionItemState(
+    const res = await handleGetCollectionResourceState(
       makeReq("http://localhost/sessions/sess_1/resources/artifacts/artifacts%2Fspec.md"),
       { kind: "get_collection_item_state", sessionId: ctx.sessionId, ref: "artifacts", topic: "artifacts/spec.md" },
       { registry: ctx.registry, stores: ctx.stores }
@@ -414,7 +414,7 @@ describe("handleGetCollectionItemState", () => {
 
   it("resolves bare topic to full storage key", async () => {
     const ctx = await setupCtx({ artifacts: { "spec.md": { title: "Spec" } } });
-    const res = await handleGetCollectionItemState(
+    const res = await handleGetCollectionResourceState(
       makeReq("http://localhost/sessions/sess_1/resources/artifacts/spec.md"),
       { kind: "get_collection_item_state", sessionId: ctx.sessionId, ref: "artifacts", topic: "spec.md" },
       { registry: ctx.registry, stores: ctx.stores }
@@ -426,7 +426,7 @@ describe("handleGetCollectionItemState", () => {
 
   it("returns 200 + null body when topic is not present", async () => {
     const ctx = await setupCtx({ artifacts: {} });
-    const res = await handleGetCollectionItemState(
+    const res = await handleGetCollectionResourceState(
       makeReq("http://localhost/sessions/sess_1/resources/artifacts/missing"),
       { kind: "get_collection_item_state", sessionId: ctx.sessionId, ref: "artifacts", topic: "missing" },
       { registry: ctx.registry, stores: ctx.stores }
@@ -437,7 +437,7 @@ describe("handleGetCollectionItemState", () => {
 
   it("returns 403 without state.read", async () => {
     const ctx = await setupCtx({ privateItems: { "x": {} } });
-    const res = await handleGetCollectionItemState(
+    const res = await handleGetCollectionResourceState(
       makeReq("http://localhost/sessions/sess_1/resources/private/x"),
       { kind: "get_collection_item_state", sessionId: ctx.sessionId, ref: "private", topic: "x" },
       { registry: ctx.registry, stores: ctx.stores }
@@ -505,7 +505,7 @@ describe("user-scoped collection reads", () => {
 
   it("returns a single user-scope item state (was 501)", async () => {
     const ctx = await setupCtx({ accounts: { acct_a: { name: "Brokerage A" } } });
-    const res = await handleGetCollectionItemState(
+    const res = await handleGetCollectionResourceState(
       makeReq("http://localhost/sessions/sess_1/resources/accounts/acct_a"),
       { kind: "get_collection_item_state", sessionId: ctx.sessionId, ref: "accounts", topic: "acct_a" },
       { registry: ctx.registry, stores: ctx.stores }
@@ -521,7 +521,7 @@ describe("user-scoped collection reads", () => {
 
   it("returns 200 + null for a missing user-scope item (no user record)", async () => {
     const ctx = await setupCtx();
-    const res = await handleGetCollectionItemState(
+    const res = await handleGetCollectionResourceState(
       makeReq("http://localhost/sessions/sess_1/resources/accounts/acct_a"),
       { kind: "get_collection_item_state", sessionId: ctx.sessionId, ref: "accounts", topic: "acct_a" },
       { registry: ctx.registry, stores: ctx.stores }

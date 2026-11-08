@@ -112,7 +112,7 @@ const byPath = (path: string) => (ctx: any) => resolveResourceByPath(path, ctx);
 const byUri = (uri: string) => (ctx: any) => resolveResourceByUri(uri, ctx);
 
 const NO_COLLECTION = (path: string) => `throw No resource collection found matching path: ${path}`;
-const REFUSED = "throw A row of an owner-private collection is readable only by the user it belongs to.";
+const REFUSED = "throw A resource in an owner-private collection is readable only by the user it belongs to.";
 
 type Row = readonly [label: string, run: (ctx: any) => Promise<unknown>, expected: string];
 

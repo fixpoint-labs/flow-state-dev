@@ -389,7 +389,7 @@ function createCheck(workspace: HarnessSessionWorkspace) {
       flow: { kind: "stub-session", id: "stub-session" },
       state,
       via: "create",
-      readCollectionItem: async () => undefined,
+      readCollectionResource: async () => undefined,
     });
 }
 

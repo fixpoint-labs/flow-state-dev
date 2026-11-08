@@ -13,9 +13,9 @@ import { createInMemoryStores } from "../src/host";
 import type { StoreRegistry, SessionRecord } from "../src/stores/types";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import {
-  handleGetCollectionItemState,
-  handleGetCollectionItemContent,
-  handleCreateCollectionItem,
+  handleGetCollectionResourceState,
+  handleGetCollectionResourceContent,
+  handleCreateCollectionResource,
   handleListCollectionState,
 } from "../src/routes/resource-routes";
 import { handleGetSessionState } from "../src/routes/state-routes";
@@ -82,7 +82,7 @@ function makeReq(url: string, method = "GET"): Request {
 describe("projected collection — item-state route", () => {
   it("projects hook state (not store defaults)", async () => {
     const ctx = await setupCtx();
-    const res = await handleGetCollectionItemState(
+    const res = await handleGetCollectionResourceState(
       makeReq("http://x/sessions/sess_1/resources/portfolio/AAPL"),
       { kind: "get_collection_item_state", sessionId: ctx.sessionId, ref: "portfolio", topic: "AAPL" },
       { registry: ctx.registry, stores: ctx.stores }
@@ -96,7 +96,7 @@ describe("projected collection — item-state route", () => {
 
   it("returns 200 + null when the app has no such record", async () => {
     const ctx = await setupCtx();
-    const res = await handleGetCollectionItemState(
+    const res = await handleGetCollectionResourceState(
       makeReq("http://x/sessions/sess_1/resources/portfolio/NONE"),
       { kind: "get_collection_item_state", sessionId: ctx.sessionId, ref: "portfolio", topic: "NONE" },
       { registry: ctx.registry, stores: ctx.stores }
@@ -108,7 +108,7 @@ describe("projected collection — item-state route", () => {
   it("hands read a trusted server-derived context", async () => {
     const read = vi.fn(async ({ key }: { key: string }) => APP_STORE[key] ?? null);
     const ctx = await setupCtx(buildPositions(read));
-    await handleGetCollectionItemState(
+    await handleGetCollectionResourceState(
       makeReq("http://x/sessions/sess_1/resources/portfolio/AAPL"),
       { kind: "get_collection_item_state", sessionId: ctx.sessionId, ref: "portfolio", topic: "AAPL" },
       { registry: ctx.registry, stores: ctx.stores }
@@ -123,7 +123,7 @@ describe("projected collection — item-state route", () => {
 describe("projected collection — content route", () => {
   it("renders content from the template against the read-through state", async () => {
     const ctx = await setupCtx();
-    const res = await handleGetCollectionItemContent(
+    const res = await handleGetCollectionResourceContent(
       makeReq("http://x/sessions/sess_1/resources/portfolio/AAPL/content"),
       { kind: "get_collection_item_content", sessionId: ctx.sessionId, ref: "portfolio", topic: "AAPL" },
       { registry: ctx.registry, stores: ctx.stores }
@@ -335,7 +335,7 @@ describe("projected collection — org read for an unattributed session", () => 
     // written there (FIX-1442). It is a refusal now, and the read hook is still
     // never called: no query is built for a boundary nobody has established.
     await expect(
-      handleGetCollectionItemState(
+      handleGetCollectionResourceState(
         makeReq("http://x/sessions/sess_1/resources/portfolio/AAPL"),
         { kind: "get_collection_item_state", sessionId: "sess_1", ref: "portfolio", topic: "AAPL" },
         { registry, stores }
@@ -348,7 +348,7 @@ describe("projected collection — org read for an unattributed session", () => 
 describe("projected collection — write routes closed", () => {
   it("rejects a client create with a read-only error", async () => {
     const ctx = await setupCtx();
-    const res = await handleCreateCollectionItem(
+    const res = await handleCreateCollectionResource(
       makeReq("http://x/sessions/sess_1/resources/portfolio", "POST"),
       { kind: "create_collection_item", sessionId: ctx.sessionId, ref: "portfolio" },
       { registry: ctx.registry, stores: ctx.stores }

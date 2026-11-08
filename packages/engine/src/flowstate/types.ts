@@ -107,7 +107,7 @@ export interface WorkerAdapter {
    *
    * Absent → each process arbitrates only its own in-process runs, work handed
    * to the queue is not arbitrated, and a delivery into an existing session is
-   * refused `external-dispatcher`.
+   * refused `external-flow-runner`.
    */
   readonly leaseBackend?: ConcurrencyLeaseBackend;
 }
