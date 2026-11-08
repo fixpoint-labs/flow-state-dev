@@ -51,17 +51,26 @@ function AgentMarkdown({ text, className }: { text: string; className?: string }
  * or the step that started it): the session's task rows, so its dot is the
  * task now, and the open the pane makes, behind its *Open task*. A task's own
  * sheet hands none: its lines name tasks on another board (FIX-2399 E4).
+ *
+ * A turn you stopped is the registry's `request-recovery` stopped line;
+ * `stillRunning` is the background work it counts, which the thread passes
+ * only to the line that can say it truly, and `onViewTasks` opens where those
+ * tasks are listed.
  */
 export function Entry({
   entry,
   mark,
   tasks,
   onRetry,
+  stillRunning,
+  onViewTasks,
 }: {
   entry: ThreadEntry;
   mark?: SentLineMark;
   tasks?: FeedTasks;
   onRetry?: () => Promise<void>;
+  stillRunning?: number;
+  onViewTasks?: () => void;
 }) {
   switch (entry.kind) {
     case "user":
@@ -95,10 +104,10 @@ export function Entry({
           ▸ {composeToolCallsLabel([{ name: "createTask" }])}
         </div>
       );
-    case "interrupted":
+    case "stopped":
       return (
-        <div className="text-xs text-muted-foreground" data-entry="interrupted">
-          Interrupted. Background tasks keep running.
+        <div data-entry="stopped">
+          <RequestRecovery stopped stillRunning={stillRunning} onView={onViewTasks} />
         </div>
       );
     case "failed":

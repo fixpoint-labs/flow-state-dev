@@ -34,6 +34,12 @@ interface Target {
   /** The host stops answering; `restore` brings it back. */
   lose(): void;
   restore(): void;
+  /** The next abort is answered 409 and goes no further, as when an answer resumed the turn first. */
+  refuseNextAbort(): void;
+  /** Lets the research the stop scenario holds finish. */
+  releaseResearch(): void;
+  /** The abort calls the adapter posted, by URL; the fake posts none, so it has none. */
+  aborts?: string[];
   close(): Promise<void>;
 }
 
@@ -41,7 +47,21 @@ interface Target {
 const FAILURE = "The model provider is down.";
 /** The question a thread holds on. */
 const QUESTION = "Which region matters, EU or US?";
-const ASK = { midTurn: "Compare Acme and Globex for us.", long: "Write the long version of the notes.", failing: "Summarize the notes.", question: "Find where Vendor B hosts." };
+const ASK = {
+  midTurn: "Compare Acme and Globex for us.",
+  long: "Write the long version of the notes.",
+  failing: "Summarize the notes.",
+  question: "Find where Vendor B hosts.",
+  /** A turn that files two research tasks, then works on until it is stopped. */
+  stopWithTasks: "Research both vendors, then draft the comparison.",
+  /** A turn after a stopped one. */
+  after: "Thanks, carry on later.",
+};
+/** A research task's goal carries this while the stop scenario holds it running. */
+const HELD = "[held]";
+
+/** The last user message of a step's messages: what this turn answers, not what an earlier one did. */
+const lastUserLine = (said: string) => said.slice(said.lastIndexOf('"role":"user"'));
 
 function fakeTarget(): Target {
   const fake = createFakeLab({ speed: 0.1 });
@@ -51,12 +71,14 @@ function fakeTarget(): Target {
     failNextTurn: () => fake.failNextTurn(FAILURE),
     lose: () => fake.setConnection("lapsed"),
     restore: () => fake.setConnection("live"),
+    releaseResearch: () => {},
+    refuseNextAbort: () => fake.refuseNextStop(),
     close: async () => {},
   };
 }
 
 /** The workers' turns, by the worker a step is for. Only the model is scripted; every tool runs for real. */
-function labScript(failing: { next: boolean }): ModelResolver {
+function labScript(failing: { next: boolean }, held: Promise<void>): ModelResolver {
   let researched: () => void = () => {};
   const research = new Promise<void>((resolve) => (researched = resolve));
   const worker = (said: string) => /You are ([\w-]+)/.exec(said)?.[1];
@@ -66,6 +88,7 @@ function labScript(failing: { next: boolean }): ModelResolver {
         const who = worker(said);
         if (who === "researcher") {
           researched();
+          if (said.includes(HELD)) await Promise.race([held, waitFor(30_000, signal)]);
           return { text: "Acme: $40 per user, 24-hour support." };
         }
         if (who === "thread") {
@@ -77,7 +100,16 @@ function labScript(failing: { next: boolean }): ModelResolver {
           failing.next = false;
           throw new Error(FAILURE);
         }
-        if (said.includes(ASK.long)) {
+        if (lastUserLine(said).includes(ASK.stopWithTasks)) {
+          if (step < 2) {
+            const vendor = step === 0 ? "Acme" : "Globex";
+            return { call: { name: "createTask", args: { assignee: "desk.researcher", title: `Research ${vendor}`, goal: `${HELD} Find ${vendor}'s price.` } } };
+          }
+          await waitFor(30_000, signal);
+          if (signal?.aborted) throw new DOMException("The turn was stopped.", "AbortError");
+          return { text: "The comparison, finished." };
+        }
+        if (lastUserLine(said).includes(ASK.long)) {
           await waitFor(30_000, signal);
           // A stopped model call ends with no text, as a provider's cut stream does.
           if (signal?.aborted) throw new DOMException("The turn was stopped.", "AbortError");
@@ -113,8 +145,26 @@ async function realTarget(): Promise<Target> {
   execFileSync("git", ["-C", repo, "add", "-A"], { env: git });
   execFileSync("git", ["-C", repo, "commit", "-q", "-m", "init"], { env: git });
   const failing = { next: false };
-  const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: [], modelResolver: labScript(failing) });
-  const plug = pluggable(createInProcessFetch(flowState as never) as never);
+  let releaseResearch: () => void = () => {};
+  const held = new Promise<void>((resolve) => (releaseResearch = resolve));
+  const { flowState } = await openLab({ data, userId: "u_lab", model: "test/scripted", utilityModel: "test/utility", repositories: [], modelResolver: labScript(failing, held) });
+  const inProcess = createInProcessFetch(flowState as never) as unknown as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  const aborts: string[] = [];
+  const refuse = { next: false };
+  // Every call goes to the host as it is; an abort is noted on the way. A refused one is the
+  // abort route's 409 for a turn an answer resumed first (`already-resolved`): it never reaches the
+  // host, so the turn runs on, and only the request record says so.
+  const plug = pluggable(async (input, init) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (init?.method === "POST" && url.endsWith("/abort")) {
+      aborts.push(url);
+      if (refuse.next) {
+        refuse.next = false;
+        return new Response(JSON.stringify({ error: "Request was resumed before the stop reached it" }), { status: 409, headers: { "content-type": "application/json" } });
+      }
+    }
+    return inProcess(input, init);
+  });
   const lab = createWiredLab(createClient({ userId: "u_lab", baseUrl: "", fetcher: plug.fetcher as never }));
   const project = await lab.createProject("vendor-notes", `file://${repo}`);
   return {
@@ -123,7 +173,11 @@ async function realTarget(): Promise<Target> {
     failNextTurn: () => (failing.next = true),
     lose: () => plug.pull(),
     restore: () => plug.restore(),
+    releaseResearch: () => releaseResearch(),
+    refuseNextAbort: () => (refuse.next = true),
+    aborts,
     close: async () => {
+      releaseResearch();
       plug.restore();
       await (flowState as unknown as { dispose?: () => Promise<void> }).dispose?.();
       rmSync(data, { recursive: true, force: true });
@@ -133,7 +187,6 @@ async function realTarget(): Promise<Target> {
 
 /** Assertions the real adapter can't meet yet, by column, with the issue that closes each. */
 const GAPS: Record<string, { real?: string; fake?: string }> = {
-  "shows that the turn was stopped": { real: "FIX-2375" },
 };
 
 const stops: Unsubscribe[] = [];
@@ -268,9 +321,90 @@ describe.each([
       expect(view.running).toBe(false);
       expect(view.entries.filter((e) => e.kind === "assistant").length).toBe(before);
     });
-    check("shows that the turn was stopped", async () => {
-      const { view } = await stopped();
-      expect(view.entries.some((e) => e.kind === "interrupted")).toBe(true);
+    check("shows that the turn was stopped, after its last entry, and says stopping until it ended", async () => {
+      target = await make();
+      const { lab } = target;
+      const id = await target.open("session");
+      const view = thread(lab, id);
+      await lab.send(id, ASK.long);
+      const running = await view.until((v) => v.running);
+      const turn = running.requestId;
+      const pressed = lab.interrupt(id);
+      await view.until((v) => v.stopping);
+      await pressed;
+      const ended = await view.until((v) => !v.running && !v.stopping && v.entries.some((e) => e.kind === "stopped"));
+      const stopped = ended.entries.filter((e) => e.kind === "stopped");
+      expect(stopped).toHaveLength(1);
+      // After the stopped turn's own line, and last: nothing came after it.
+      const at = ended.entries.indexOf(stopped[0]!);
+      expect(ended.entries.findIndex((e) => e.kind === "user" && e.text === ASK.long)).toBeLessThan(at);
+      expect(at).toBe(ended.entries.length - 1);
+      if (target.aborts !== undefined) {
+        // One abort, for the turn that ran; the line names that turn, from its record.
+        expect(target.aborts).toEqual([expect.stringContaining(`/requests/${turn}/abort`)]);
+        expect(stopped[0]!.requestId).toBe(turn);
+        expect(ended.entries[at - 1]!.requestId).toBe(turn);
+      }
+    });
+
+    check("a stop the server refuses while the turn runs on clears stopping, says why, and draws no stopped line", async () => {
+      target = await make();
+      const { lab } = target;
+      const id = await target.open("session");
+      const view = thread(lab, id);
+      await lab.send(id, ASK.long);
+      await view.until((v) => v.running);
+      target.refuseNextAbort();
+      await expect(lab.interrupt(id)).rejects.toThrow(/Press Stop again/);
+      // The record still reads running: no stopped line, and Stop is offered again.
+      await waitFor(300);
+      const after = view.latest()!;
+      expect(after.running).toBe(true);
+      expect(after.stopping).toBe(false);
+      expect(after.entries.some((e) => e.kind === "stopped")).toBe(false);
+      // Pressed again, it stops.
+      await lab.interrupt(id);
+      await view.until((v) => !v.running && v.entries.some((e) => e.kind === "stopped"));
+    });
+
+    check("counts the background work the stopped turn left running, from the session's runs", async () => {
+      target = await make();
+      const { lab } = target;
+      const id = await target.open("session");
+      const view = thread(lab, id);
+      const board = tasks(lab, id);
+      await lab.send(id, ASK.stopWithTasks);
+      await board.until((r) => r.filter((t) => t.status === "in_progress").length === 2);
+      await view.until((v) => v.running);
+      await lab.interrupt(id);
+      await view.until((v) => !v.running && v.entries.some((e) => e.kind === "stopped"));
+      // The count is the work still running, whichever turn filed it: the board's running rows.
+      const counted = await view.until((v) => v.backgroundRunning !== null && v.backgroundRunning > 0);
+      expect(counted.backgroundRunning).toBeLessThanOrEqual(2);
+      if (target.aborts !== undefined) {
+        // Stop stops the turn only: both tasks it filed still run, until their own end.
+        expect(counted.backgroundRunning).toBe(2);
+        target.releaseResearch();
+        await view.until((v) => v.backgroundRunning === 0, 20_000);
+      }
+    });
+
+    check("keeps the stopped line after the stopped turn when a newer turn completes", async () => {
+      target = await make();
+      const { lab } = target;
+      const id = await target.open("session");
+      const view = thread(lab, id);
+      await lab.send(id, ASK.long);
+      const turn = (await view.until((v) => v.running)).requestId;
+      await lab.interrupt(id);
+      await view.until((v) => !v.running && v.entries.some((e) => e.kind === "stopped"));
+      await lab.send(id, ASK.after);
+      const later = await view.until((v) => !v.running && v.entries.at(-1)?.kind === "assistant" && v.entries.some((e) => e.kind === "user" && e.text === ASK.after));
+      const stopped = later.entries.filter((e) => e.kind === "stopped");
+      expect(stopped).toHaveLength(1);
+      const at = later.entries.indexOf(stopped[0]!);
+      expect(later.entries.findIndex((e) => e.kind === "user" && e.text === ASK.after)).toBeGreaterThan(at);
+      if (target.aborts !== undefined) expect(later.entries[at - 1]!.requestId).toBe(turn);
     });
   });
 

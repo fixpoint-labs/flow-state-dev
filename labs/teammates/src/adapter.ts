@@ -9,10 +9,12 @@
  * | `watchWorkers`      | the workforce client's `watchRoster()`: every hire, edit and fire, anywhere   |
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
+ * | `interrupt`         | the request's `abort`, for each answering turn the conversation showed running |
  * | `watchConversation` | the session's items, from its snapshot and then its stream (`sessionFeed`), |
  * |                     | each run of tool calls named by the UI registry's `tool-naming` and        |
- * |                     | `tool-grouping`, and its requests (is it answering) on each request notice, |
- * |                     | via `client.subscribe`                                                     |
+ * |                     | `tool-grouping`, and its requests (is it answering, which turns you stopped) |
+ * |                     | on each request notice, via `client.subscribe`; the feed's unfinished runs |
+ * |                     | for the background work still running                                      |
  * | `watchConnection`   | the same feed's connection state: `live`, `lapsed` once a retry has failed…  |
  * | `answerApproval`    | the request's `answer`: approve or reject a `user_approval` stop             |
  * | `retry`             | the request's `retry()` on the conversation's flow: a failed turn again      |
@@ -290,7 +292,9 @@ export type ConversationEntry =
   /** The worker waits for your yes (`suspendForUser` with an approval); `resolution` once answered. */
   | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string }
   /** A run of tool calls one turn made in a row, drawn inline as one line ({@link StepRun}) that opens to each. */
-  | ({ kind: "steps"; id: string; steps: SessionStep[] } & StepRun);
+  | ({ kind: "steps"; id: string; steps: SessionStep[] } & StepRun)
+  /** A turn you stopped: its request ended `aborted`. It follows that turn's last entry. */
+  | { kind: "stopped"; id: string; requestId: string };
 
 /**
  * A run of tool steps as one line: what it did ("Read 2 files and searched
@@ -323,6 +327,13 @@ export interface ConversationView {
   entries: ConversationEntry[];
   /** The worker is answering in this conversation now. */
   running: boolean;
+  /** From an `interrupt` until every turn it aborted has ended. */
+  stopping: boolean;
+  /**
+   * The conversation's background work still running: its unfinished runs as the session stream
+   * names them, whichever turn started them. `null` until the stream has named them: unknown is not zero.
+   */
+  backgroundRunning: number | null;
   /** Present while the conversation holds turns older than its first entry: adds the page before them. */
   loadEarlier?: () => Promise<void>;
   /** When the conversation's first loaded item was written, in ms. A message sent before it is outside the window. */
@@ -397,6 +408,11 @@ export interface LabAdapter {
   /** The worker's one conversation; the same id every time. */
   openConversation(worker: string): Promise<string>;
   send(sessionId: string, text: string): Promise<void>;
+  /**
+   * Stop the worker: abort each answering turn the conversation shows running now. A line sent
+   * after it starts its own turn, which this never reaches. Rejects with why the server refused one.
+   */
+  interrupt(sessionId: string): Promise<void>;
   watchConversation(sessionId: string, onChange: (view: ConversationView) => void): Unsubscribe;
   /** Whether the conversation's feed still hears the server, in the session feed's words. */
   watchConnection(sessionId: string, onChange: (state: SessionConnectionStatus) => void): Unsubscribe;
@@ -925,6 +941,7 @@ export function toEntries(
   workers: ReadonlySet<string>,
   ended: readonly string[] = [],
   retryableTurns: ReadonlySet<string> = new Set(),
+  stopped: readonly string[] = [],
 ): ConversationEntry[] {
   const rows = boardRows(items);
   const entries: ConversationEntry[] = [];
@@ -1000,14 +1017,24 @@ export function toEntries(
       entries.push({ kind: "received", id: item.id, messageId: id, from, text, ...(inReplyTo === undefined ? {} : { inReplyTo }), ...(noAnswer === true ? { noAnswer: true } : {}) });
     }
   };
+  /** How many entries there were once each stopped turn's last item was read: its line goes there. */
+  const endOf = new Map<string, number>();
   for (const item of items) {
     const drawn = entries.length;
+    const lastBefore = entries[drawn - 1];
     drawEntry(item);
     if (entries.length !== drawn) newestTurn = item.requestId;
+    const grew = entries.length > drawn || entries[entries.length - 1] !== lastBefore;
+    if (grew && stopped.includes(item.requestId)) endOf.set(item.requestId, entries.length);
   }
-  return entries.map((entry) =>
+  const marked = entries.map((entry) =>
     entry.kind === "failed" && entry.requestId === newestTurn && retryableTurns.has(entry.requestId) ? { ...entry, retryable: true } : entry,
   );
+  // From the end, so each place is still where it was counted.
+  for (const [requestId, at] of [...endOf].sort((a, b) => b[1] - a[1])) {
+    marked.splice(at, 0, { kind: "stopped", id: `stopped:${requestId}`, requestId });
+  }
+  return marked;
 }
 
 /**
@@ -1025,6 +1052,21 @@ export function answeringOf(items: readonly Item[], inProgress: readonly string[
   const newest = items[items.length - 1]?.requestId;
   const live = (requestId: string) => inProgress.includes(requestId) || (requestId === newest && !ended.includes(requestId));
   return inProgress.length > 0 || items.some((i) => i.status === "in_progress" && live(i.requestId));
+}
+
+/**
+ * The turns a Stop pressed now stops, by request id: the answering requests the list names as in
+ * progress, and a turn whose answer or tool call is still being written before the list says so
+ * (the list trails the items). Only those two item types: the board's own passes write rows, never
+ * an answer, and a Stop must never reach them. As in `answeringOf`, a still-written item counts only
+ * for the newest request: a crashed or aborted turn leaves its half-written item so for good.
+ */
+function answeringTurnsOf(items: readonly Item[], inProgress: readonly string[], ended: readonly string[] = []): string[] {
+  const newest = items[items.length - 1]?.requestId;
+  const writing = items
+    .filter((i) => (i.type === "message" || i.type === "tool_output") && i.status === "in_progress" && i.requestId === newest && !ended.includes(i.requestId))
+    .map((i) => i.requestId as string);
+  return [...new Set([...inProgress, ...writing])];
 }
 
 /** Who a `sendMessage` output went to, when it sent one: a refused send sent nothing. */
@@ -1149,6 +1191,17 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   /** Each conversation's tasks' open holds, from its last read: what `answerOpenHold` answers. */
   const openHolds = new Map<string, Map<string, InboxHold[]>>();
   const feeds = sessionFeeds(client);
+  /** Each conversation's answering turns its open view last read as running: what Stop stops. */
+  const runningNow = new Map<string, string[]>();
+  /** Each conversation's turns this page sent, by request id, in order: a Stop leaves the ones sent after its press. */
+  const sent = new Map<string, string[]>();
+  /**
+   * Each conversation's stop under way: the turns an `interrupt` aborted, until the view's request
+   * read shows every one ended. `wake` tells the conversation's open views to draw again.
+   */
+  const stops = new Map<string, { ids: Set<string> }>();
+  const stopWatchers = new Map<string, Set<() => void>>();
+  const wake = (sessionId: string) => stopWatchers.get(sessionId)?.forEach((tell) => tell());
   /** Each worker's conversation, and the flow it runs on, once opened. */
   const conversations = new Map<string, { sessionId: string; flow: string }>();
   /** Told each time a conversation opens, so a worker's activity is watched from then. */
@@ -1227,10 +1280,54 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     async send(sessionId, text) {
       const flow = flowOfSession.get(sessionId);
       if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
+      // The id is the page's own, so a Stop pressed before this send can tell this turn came after it.
+      const requestId = `req_${crypto.randomUUID()}`;
+      sent.set(sessionId, [...(sent.get(sessionId) ?? []), requestId]);
       // Streamed, so the answer shows as it is written (the session stream sends it once finished).
-      const response = await client.flow(flow).send("respond", { message: text }, { sessionId, stream: true });
+      const response = await client.flow(flow).send("respond", { message: text }, { sessionId, requestId, stream: true });
       if (!response.ok) throw new Error(`teammates: the send was refused (${response.status})`);
       if (response.headers.get("content-type")?.includes("text/event-stream")) feeds(sessionId).followResponse(response);
+    },
+    async interrupt(sessionId) {
+      const flow = flowOfSession.get(sessionId);
+      if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
+      // The turns running at the press: what the view showed, plus what the server reads now, since the
+      // view's read can lag a line sent just before the press. A line sent after it is its own turn.
+      const shown = runningNow.get(sessionId) ?? [];
+      const sentBefore = new Set(sent.get(sessionId) ?? []);
+      const read = (await client.sessions.requests(sessionId, { status: "in_progress", limit: 20 })).filter((r) => !QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
+      // The read answers after the press: a turn this page sent meanwhile is not one Stop stops.
+      const sentAfter = new Set((sent.get(sessionId) ?? []).filter((id) => !sentBefore.has(id)));
+      const ids = [...new Set([...shown, ...read])].filter((id) => !sentAfter.has(id));
+      const stop = { ids: new Set(ids) };
+      stops.set(sessionId, stop);
+      wake(sessionId);
+      const done = () => {
+        if (stops.get(sessionId) === stop) stops.delete(sessionId);
+        wake(sessionId);
+      };
+      try {
+        for (const id of ids) {
+          await client
+            .flow(flow)
+            .request(id)
+            .abort()
+            .catch(async (error: unknown) => {
+              // A 409 is a turn that ended meanwhile, or one an answer resumed first, which runs on:
+              // the record decides. Still running, the server refused the stop.
+              if ((error as { status?: number }).status !== 409) throw error;
+              const now = (await client.sessions.requests(sessionId, { limit: 20 })).find((r) => r.id === id);
+              if (now?.status === "in_progress") throw new Error("The turn went on before the stop reached it. Press Stop again.");
+              // Ended already, so the stop waits on it no longer (an old turn may be past the requests read).
+              stop.ids.delete(id);
+              if (stop.ids.size === 0) done();
+            });
+        }
+      } catch (error) {
+        done();
+        throw error;
+      }
+      if (ids.length === 0) done();
     },
     async answerApproval(sessionId, approval, approve) {
       const flow = flowOfSession.get(sessionId);
@@ -1250,6 +1347,11 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       let inProgress: string[] = [];
       let ended: string[] = [];
       let retryable = new Set<string>();
+      /** The answering turns that ended `aborted`: each gets a stopped line. */
+      let stopped: string[] = [];
+      /** The board's own passes (`dispatch`), which are never stopped. */
+      let quiet: string[] = [];
+      let backgroundRunning: number | null = null;
       let shown: ConversationView | undefined;
       // Unchanged entries keep their objects, so a streamed chunk redraws only the growing one.
       const reuse = stableList<ConversationEntry>((next) => {
@@ -1258,18 +1360,39 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const feed = feeds(sessionId);
       const loadEarlier = () => feed.loadEarlier();
       const emit = () => {
+        // What the view shows answering, never the board's own passes: what a Stop pressed now stops.
+        runningNow.set(sessionId, answeringTurnsOf(items, inProgress, ended).filter((id) => !quiet.includes(id)));
         const running = answeringOf(items, inProgress, ended);
+        const stop = stops.get(sessionId);
+        // A stop ends once the requests show every turn it aborted ended.
+        if (stop !== undefined && [...stop.ids].every((id) => ended.includes(id))) stops.delete(sessionId);
+        const stopping = stops.has(sessionId);
         const earlier = feed.hasEarlier();
         const since: number | undefined = items[0]?.ts;
-        if (shown?.entries === entries && shown.running === running && (shown.loadEarlier !== undefined) === earlier && shown.since === since) return;
-        shown = { entries, running, ...(earlier ? { loadEarlier } : {}), ...(since === undefined ? {} : { since }) };
+        if (
+          shown?.entries === entries &&
+          shown.running === running &&
+          shown.stopping === stopping &&
+          shown.backgroundRunning === backgroundRunning &&
+          (shown.loadEarlier !== undefined) === earlier &&
+          shown.since === since
+        )
+          return;
+        shown = { entries, running, stopping, backgroundRunning, ...(earlier ? { loadEarlier } : {}), ...(since === undefined ? {} : { since }) };
         onChange(shown);
       };
       const stopFeed = watchFeed(sessionId, (next) => next, (next) => {
         items = next;
-        reuse(toEntries(items, workerIds, ended, retryable));
+        reuse(toEntries(items, workerIds, ended, retryable, stopped));
         emit();
       });
+      // A runs-only change moves the count alone: the entries stay as they are.
+      const stopRuns = feed.watchRuns((count) => {
+        backgroundRunning = count;
+        emit();
+      });
+      const watchers = stopWatchers.get(sessionId) ?? new Set<() => void>();
+      stopWatchers.set(sessionId, watchers.add(emit));
       const stopPoll = onNotice(
         client,
         [topic.session(sessionId)],
@@ -1278,16 +1401,22 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         (requests) => {
           const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
           inProgress = answering.filter((r) => r.status === "in_progress").map((r) => r.id);
+          quiet = requests.filter((r) => QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
           ended = requests.filter((r) => r.status !== "in_progress").map((r) => r.id);
+          // Kept for the view's life: a stopped line stays once its turn leaves the 20-request read.
+          stopped = [...new Set([...stopped, ...answering.filter((r) => r.status === "aborted").map((r) => r.id)])];
           // The turns the engine would retry: a record with no source predates it, and came in over http.
           retryable = new Set(requests.filter((r) => RETRYABLE_SOURCES.has(r.source ?? "http")).map((r) => r.id));
           // A turn that ended with a call still marked running reads that call failed.
-          reuse(toEntries(items, workerIds, ended, retryable));
+          reuse(toEntries(items, workerIds, ended, retryable, stopped));
           emit();
         },
       );
       return () => {
+        watchers.delete(emit);
+        if (watchers.size === 0) runningNow.delete(sessionId);
         stopFeed();
+        stopRuns();
         stopPoll();
       };
     },

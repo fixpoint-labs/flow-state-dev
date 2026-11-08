@@ -22,7 +22,9 @@ import { ToolRun } from "./ToolRun";
  * A failed turn is the registry's `request-recovery` line under the worker's
  * name, with its reason; `onRetry` draws its Retry, so pass it only for the
  * newest turn while nothing runs. A reply its turn never finished is marked
- * incomplete.
+ * incomplete. A turn you stopped is its stopped line, with the background work
+ * still running (`stillRunning`) when the conversation passes it, and View
+ * (`onViewTasks`) to where the tasks are listed.
  * Memoized: a streamed chunk redraws only the entry that changed.
  */
 export const Entry = memo(function Entry({
@@ -36,6 +38,8 @@ export const Entry = memo(function Entry({
   onOpenTask,
   onAnswer,
   onRetry,
+  stillRunning,
+  onViewTasks,
 }: {
   entry: ConversationEntry;
   workerName: string;
@@ -53,8 +57,18 @@ export const Entry = memo(function Entry({
   onAnswer?: (approve: boolean) => Promise<void>;
   /** Run a failed turn again. */
   onRetry?: () => Promise<void>;
+  /** For a stopped turn's line: the background work still running, when this line may say it. */
+  stillRunning?: number;
+  /** Show where the conversation's tasks are listed. */
+  onViewTasks?: () => void;
 }) {
   switch (entry.kind) {
+    case "stopped":
+      return (
+        <div data-entry="stopped">
+          <RequestRecovery stopped stillRunning={stillRunning} onView={onViewTasks} />
+        </div>
+      );
     case "user":
       return (
         <div className="flex justify-end">

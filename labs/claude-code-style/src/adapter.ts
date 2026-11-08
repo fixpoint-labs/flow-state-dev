@@ -13,12 +13,13 @@
  * | `createProject` | the project blocks' `createProject`, a private project on a repository   |
  * | `openSession`   | a new session on the mode's main worker, then `setWorkProject`            |
  * | `send`          | the worker's door, `respond`, in that session                             |
- * | `interrupt`     | aborting the session's running request                                     |
+ * | `interrupt`     | aborting each turn running in the session when it is called                |
  * | `retry`         | the client's `request(id).retry()` on the session's flow: a failed turn again |
  * | `watchThread`   | the session's items, followed through the client's `sessionFeed`          |
  * |                 | and that feed's connection state, for the connection bar; `loadEarlier`    |
  * |                 | is the feed's, for a thread longer than its first read; its running turn   |
- * |                 | is the session's requests, read on each request notice                     |
+ * |                 | and the turns you stopped are the session's recent requests, read on each  |
+ * |                 | request notice; `backgroundRunning` is the feed's unfinished runs          |
  * | `watchTasks`    | the conversation board's `listTasks` read, and the rows' open holds        |
  * |                 | again on each notice of the board, through `client.subscribe`; a failed   |
  * |                 | row's error from its `getTask`, once per attempt; a row waiting on its pull |
@@ -135,7 +136,8 @@ export type ThreadEntry = (
       /** The main session took it while a turn was running (step 4). */
       duringTurn: boolean;
     }
-  | { kind: "interrupted"; id: string }
+  /** A turn you stopped: its request ended `aborted`. It follows that request's last entry. */
+  | { kind: "stopped"; id: string }
   /**
    * A turn that failed, from the engine's `error` item: its reason, and `retryable` when Retry is
    * offered on it: it is the thread's newest turn, and one the engine will run again for you.
@@ -158,6 +160,13 @@ export interface ThreadView {
   turnStartedAt?: number;
   /** The running turn's request. */
   requestId?: string;
+  /** From an `interrupt` until every turn it aborted has ended. */
+  stopping: boolean;
+  /**
+   * The session's background work still running: its unfinished runs as the session stream names
+   * them, whichever turn started them. `null` until the stream has named them: unknown is not zero.
+   */
+  backgroundRunning: number | null;
   /** Present while the thread holds items older than its first entry: adds the page before them. */
   loadEarlier?: () => Promise<void>;
 }
@@ -283,6 +292,9 @@ const READINESS_FLOW = "harness-readiness";
 
 /** How often an open view reads again, in ms. */
 const READ_EVERY_MS = 1500;
+
+/** How many of a session's recent requests the thread reads for its turns' states. */
+const RECENT_TURNS = 50;
 
 /** The requests that are a turn of the main session: a user's line, or a background result after the turn. */
 const TURN_ACTIONS = new Set(["respond", "onTaskSettled"]);
@@ -573,6 +585,24 @@ export function entriesOf(items: readonly Item[], threads = false, retryableTurn
   );
 }
 
+/**
+ * A thread's entries with a `stopped` line after the last entry of each turn you stopped (`stopped`,
+ * its request ids). A stopped turn with no entry in the loaded window gets no line: there is nowhere
+ * true to put it.
+ */
+function withStopped(entries: readonly ThreadEntry[], stopped: ReadonlySet<string>): ThreadEntry[] {
+  if (stopped.size === 0) return [...entries];
+  const lastOf = new Map<string, number>();
+  entries.forEach((entry, at) => {
+    if (entry.requestId !== undefined && stopped.has(entry.requestId)) lastOf.set(entry.requestId, at);
+  });
+  const after = new Map([...lastOf].map(([requestId, at]) => [at, requestId]));
+  return entries.flatMap((entry, at) => {
+    const requestId = after.get(at);
+    return requestId === undefined ? [entry] : [entry, { kind: "stopped" as const, id: `stopped:${requestId}`, requestId }];
+  });
+}
+
 /** The adapter the app runs on: the served lab, as the user the page was served for. */
 export function createLabAdapter(): LabAdapter {
   return createWiredLab(createClient({ userId: readUserId(), baseUrl: readBasePath(), fetcher: withBearerToken(readBearerToken()) }));
@@ -593,15 +623,22 @@ function followItems(
   types: readonly string[],
   onItems: (items: Item[], loadEarlier: (() => Promise<void>) | undefined) => void,
   onState?: (state: ConnectionState) => void,
+  onRuns?: (count: number | null) => void,
 ): { feed: SessionFeed; stop: Unsubscribe } {
   const feed = sessionFeed(fsd, sessionId, { itemTypes: [...types] });
   const loadEarlier = () => feed.loadEarlier();
   let last: readonly unknown[] | undefined;
   let lastState: ConnectionState | undefined;
-  const stop = feed.subscribe(({ items, hasEarlier, state }) => {
+  let lastRuns: number | null | undefined;
+  const stop = feed.subscribe(({ items, hasEarlier, state, runs }) => {
     if (state !== lastState) {
       lastState = state;
       onState?.(state);
+    }
+    const count = runs === null ? null : runs.length;
+    if (count !== lastRuns) {
+      lastRuns = count;
+      onRuns?.(count);
     }
     // Nothing until the history lands, and nothing when only the connection state moved.
     if ((items.length === 0 && state === "connecting") || items === last) return;
@@ -758,6 +795,15 @@ export function createWiredLab(fsd: Client): LabAdapter {
       .filter((request) => request.status === "in_progress" && TURN_ACTIONS.has(request.actionName))
       .sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
   const runningTurns = async (sessionId: string) => turnsRunningIn(await fsd.sessions.requests(sessionId, { status: "in_progress", limit: 50 }));
+
+  /**
+   * Each session's stop under way: the turns an `interrupt` aborted (`ids`, `null` while it reads
+   * which are running), until the thread's request read shows every one ended. `wake` tells the
+   * session's open threads to draw again.
+   */
+  const stops = new Map<string, { ids: Set<string> | null }>();
+  const stopWatchers = new Map<string, Set<() => void>>();
+  const wake = (sessionId: string) => stopWatchers.get(sessionId)?.forEach((tell) => tell());
 
   /** Every item of a session of the types a thread draws (or `types`), every page. */
   const itemsOf = async (sessionId: string, types: readonly string[] = THREAD_ITEMS): Promise<Item[]> => {
@@ -1187,10 +1233,36 @@ export function createWiredLab(fsd: Client): LabAdapter {
       if (response.headers.get("content-type")?.includes("text/event-stream")) feed.followResponse(response);
     },
     interrupt: async (sessionId) => {
-      for (const turn of await runningTurns(sessionId)) {
-        // A turn that ended meanwhile answers 409, which is the stop already done.
-        await fsd.flow(turn.flowId ?? turn.flowKind).request(turn.id).abort().catch(() => undefined);
+      // Stopping from the press; the turns it stops are those running now, not one started after.
+      const stop: { ids: Set<string> | null } = { ids: null };
+      stops.set(sessionId, stop);
+      wake(sessionId);
+      const done = () => {
+        if (stops.get(sessionId) === stop) stops.delete(sessionId);
+        wake(sessionId);
+      };
+      try {
+        const turns = await runningTurns(sessionId);
+        stop.ids = new Set(turns.map((turn) => turn.id));
+        for (const turn of turns) {
+          await fsd
+            .flow(turn.flowId ?? turn.flowKind)
+            .request(turn.id)
+            .abort()
+            .catch(async (error: unknown) => {
+              // A 409 is a turn that ended meanwhile, or one an answer resumed first, which runs on:
+              // the record decides. Still running, the server refused the stop.
+              if ((error as { status?: number }).status !== 409) throw error;
+              const now = (await fsd.sessions.requests(sessionId, { limit: RECENT_TURNS })).find((r) => r.id === turn.id);
+              if (now?.status === "in_progress") throw new Error("The turn went on before the stop reached it. Press Stop again.");
+            });
+        }
+      } catch (error) {
+        done();
+        throw error;
       }
+      if (stop.ids.size === 0) done();
+      else wake(sessionId);
     },
     retry: async (sessionId, requestId) => {
       await fsd.flow(await flowOfSession(sessionId)).request(requestId).retry();
@@ -1201,14 +1273,38 @@ export function createWiredLab(fsd: Client): LabAdapter {
       let items: Item[] | undefined;
       let loadEarlier: (() => Promise<void>) | undefined;
       let connection: ConnectionState | undefined;
-      let turnOf: { turn: Awaited<ReturnType<typeof runningTurns>>[number] | undefined; threads: boolean; retryable: string[] } | undefined;
+      let backgroundRunning: number | null = null;
+      type TurnsRead = {
+        /** The recent turns, any status, oldest first: what the stopped lines and a stop's end are read from. */
+        turns: Awaited<ReturnType<typeof runningTurns>>;
+        turn: Awaited<ReturnType<typeof runningTurns>>[number] | undefined;
+        threads: boolean;
+        retryable: string[];
+      };
+      let turnOf: TurnsRead | undefined;
+      /** The entries, built again only when the items or the turns change: never for a runs-only change. */
+      let entries: ThreadEntry[] = [];
+      const stoppedSeen = new Set<string>();
+      const build = () => {
+        if (items === undefined || turnOf === undefined) return;
+        // Kept for the view's life: a stopped line stays once its turn leaves the recent-turns read.
+        for (const turn of turnOf.turns) if (turn.status === "aborted") stoppedSeen.add(turn.id);
+        entries = withStopped(entriesOf(items, turnOf.threads, new Set(turnOf.retryable)), stoppedSeen);
+      };
       let last: string | undefined;
       const tell = () => {
         if (items === undefined || turnOf === undefined) return;
-        const { turn, threads, retryable } = turnOf;
+        const { turn } = turnOf;
+        // A stop ends once this read shows every turn it aborted ended.
+        const stop = stops.get(sessionId);
+        if (stop?.ids != null && [...stop.ids].every((id) => turnOf!.turns.some((t) => t.id === id && t.status !== "in_progress"))) {
+          stops.delete(sessionId);
+        }
         const view: ThreadView = {
-          entries: entriesOf(items, threads, new Set(retryable)),
+          entries,
           running: turn !== undefined,
+          stopping: stops.has(sessionId),
+          backgroundRunning,
           ...(connection === undefined ? {} : { connection }),
           ...(turn?.startedAtMs === undefined ? {} : { turnStartedAt: turn.startedAtMs }),
           ...(turn === undefined ? {} : { requestId: turn.id }),
@@ -1227,34 +1323,44 @@ export function createWiredLab(fsd: Client): LabAdapter {
         (next, earlier) => {
           items = next;
           loadEarlier = earlier;
+          build();
           tell();
         },
         (state) => {
           connection = state;
           tell();
         },
+        (count) => {
+          backgroundRunning = count;
+          tell();
+        },
       );
       threadFeeds.set(sessionId, feed);
+      const watchers = stopWatchers.get(sessionId) ?? new Set<() => void>();
+      stopWatchers.set(sessionId, watchers.add(tell));
       // A turn starts and ends as a request: a request notice on the session's topic. Never on
       // `items`, which a streaming reply sends once per stored chunk.
       const stopTurns = onNotice(
         fsd,
         [topic.session(sessionId)],
         (notice) => notice.kind === "request",
-        async () => {
-          // One read of the latest requests, newest updated first, answers both: the running turn
-          // is among them, and so is the turn a failed line could retry.
-          const [recent, threads] = await Promise.all([fsd.sessions.requests(sessionId, { limit: 50 }), isThreads(sessionId)]);
+        async (): Promise<TurnsRead> => {
+          // One read of the latest requests, newest updated first, answers all three: the running turn
+          // is among them, so are the stopped turns, and so is the turn a failed line could retry.
+          const [recent, threads] = await Promise.all([fsd.sessions.requests(sessionId, { limit: RECENT_TURNS }), isThreads(sessionId)]);
           // The turns the engine would retry: a record with no source predates it, and came in over http.
           const retryable = recent.filter((request) => RETRYABLE_SOURCES.has(request.source ?? "http")).map((request) => request.id);
-          return { turn: turnsRunningIn(recent)[0], threads, retryable };
+          const turns = recent.filter((request) => TURN_ACTIONS.has(request.actionName)).sort((a, b) => (a.startedAtMs ?? 0) - (b.startedAtMs ?? 0));
+          return { turns, turn: turnsRunningIn(recent)[0], threads, retryable };
         },
         (next) => {
           turnOf = next;
+          build();
           tell();
         },
       );
       return () => {
+        watchers.delete(tell);
         if (threadFeeds.get(sessionId) === feed) threadFeeds.delete(sessionId);
         stopItems();
         stopTurns();

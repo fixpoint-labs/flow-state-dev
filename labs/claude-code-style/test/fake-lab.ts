@@ -57,6 +57,8 @@ export interface FakeLab extends LabAdapter {
   readonly retries: { sessionId: string; requestId: string }[];
   /** The next turn's model call fails with `reason`, before any reply: the contract tests' failed turn. */
   failNextTurn(reason: string): void;
+  /** The next Stop is refused while its turn runs on, as a server that resumed the turn first refuses it. */
+  refuseNextStop(): void;
 }
 
 interface FixtureTask extends LabTask {
@@ -69,6 +71,8 @@ interface FixtureSession {
   row: LabSession;
   entries: ThreadEntry[];
   running: boolean;
+  /** A Stop is under way: from the press until the turn has ended, as the real adapter reads it. */
+  stopping?: boolean;
   turnStartedAt?: number;
   /** Lines sent while a turn ran, by their entry id. */
   queue: { id: string; text: string }[];
@@ -128,6 +132,7 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
   let seq = 0;
   let connection: ConnectionState = "live";
   let failNext: string | undefined;
+  let refuseStop = false;
   const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
   const notify = () => {
@@ -453,6 +458,9 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       connection = state;
       notify();
     },
+    refuseNextStop() {
+      refuseStop = true;
+    },
     failNextTurn(reason) {
       failNext = reason;
     },
@@ -517,10 +525,20 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
     async interrupt(sessionId) {
       const s = session(sessionId);
       if (!s.running) return;
+      if (refuseStop) {
+        refuseStop = false;
+        throw new Error("The turn went on before the stop reached it. Press Stop again.");
+      }
       for (const t of s.timers) clearTimeout(t);
       s.timers = [];
-      push(s, { kind: "interrupted", id: nextId("i") });
-      endTurn(s);
+      // Stopping until the server says the turn ended, then its stopped line after its last entry.
+      s.stopping = true;
+      notify();
+      setTimeout(() => {
+        s.stopping = false;
+        push(s, { kind: "stopped", id: nextId("i") });
+        endTurn(s);
+      }, 50 * speed);
     },
 
     async retry(sessionId, requestId) {
@@ -536,7 +554,9 @@ export function createFakeLab(options: FakeOptions = {}): FakeLab {
       return watch(() => {
         const s = sessions.get(sessionId);
         if (!s) return;
-        const view: ThreadView = { entries: s.entries, running: s.running, turnStartedAt: s.turnStartedAt, connection };
+        // The real adapter's count is the session's unfinished runs: here, its tasks still going.
+        const backgroundRunning = s.tasks.filter((task) => task.status === "in_progress" || task.status === "pending").length;
+        const view: ThreadView = { entries: s.entries, running: s.running, stopping: s.stopping === true, backgroundRunning, turnStartedAt: s.turnStartedAt, connection };
         onChange(view);
       });
     },

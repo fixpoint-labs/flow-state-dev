@@ -77,6 +77,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   };
   const [projects, setProjects] = useState<LabProject[]>([]);
   const [paneWidth, setPaneWidth] = usePaneWidth();
+  const paneRef = useRef<HTMLDivElement>(null);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   const panels = usePanels();
   // A collapse slides for a moment; a drag of the edge never does, or the edge would trail the pointer.
@@ -239,6 +240,12 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               project={projects.find((p) => p.id === selected.projectId)}
               tasks={taskRows}
               onOpenThread={(taskId) => openTaskOf(selected.id, taskId)}
+              // The right pane lists the session's background work: View moves you there.
+              onViewTasks={() => {
+                // A collapsed pane opens first, so View lands on the list.
+                if (paneCollapsed) slideThen(panels.togglePane)();
+                paneRef.current?.focus();
+              }}
             />
           ) : (
             <ProjectPicker
@@ -255,7 +262,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
             />
           )}
         </SessionOverlayArea>
-        <div className="relative min-h-0 min-w-0">
+        <div ref={paneRef} tabIndex={-1} className="relative min-h-0 min-w-0 outline-none">
           {paneCollapsed ? null : <PaneResizer width={paneWidth} onResize={setPaneWidth} />}
           {pane === undefined ? null : paneCollapsed ? (
             // Collapsed: a strip with the toggle and the pane's name. The pane itself stays mounted below, hidden, so a task open in a sheet stays open.

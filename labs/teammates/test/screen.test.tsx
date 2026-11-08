@@ -188,6 +188,20 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Message writer")));
   });
 
+  it("an Esc in ⌘K over a popup closes the switcher only, and the popup stays open under it", async () => {
+    render(<App adapter={fast()} />);
+    await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
+    const line = await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
+    line.focus();
+    fireEvent.click(line);
+    screen.getByRole("dialog", { name: "Messaged researcher" });
+    act(() => void fireEvent.keyDown(document.activeElement!, { key: "k", metaKey: true }));
+    const input = await screen.findByRole("combobox");
+    act(() => void fireEvent.keyDown(input, { key: "Escape" }));
+    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+    expect(screen.getByRole("dialog", { name: "Messaged researcher" })).toBeTruthy();
+  });
+
   it("holds researcher's reply as pending while Lead answers you, and lands it after that answer", async () => {
     render(<App adapter={fast()} />);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
