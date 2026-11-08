@@ -257,4 +257,4 @@ None built.
   ([#4673](https://github.com/fixpoint-labs/flow-state-dev/pull/4673)).
 - **Opened (Nov 4).** [ER-7](#er7), from that spec's Q-A.
 - **Amended (owner, 2026-11-08).** FIX-2614 joined, with [D12](#d12); [D10](#d10) took config seeds
-  and per-subscription cadence.
+  and per-subscription cadence ([#4945](https://github.com/fixpoint-labs/flow-state-dev/pull/4945)).
