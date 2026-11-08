@@ -12,6 +12,8 @@ flowchart TD
   D5 -.->|"rejected · content crosses users"| X5["one app token at org scope"]
   E --> D9["D9 · delivery is sendMessage's exempt path, labelled"]
   D9 -.->|"rejected · two sets of recipient rules"| X9["a new sender kind"]
+  E --> D12["D12 · a routine: one standing instruction, one trigger, over the rows we have"]
+  D12 -.->|"rejected · two lists to find what runs as you"| X12["recurring work and subscriptions, kept apart"]
   E --> Q1["Q1 · Fail closed: who gets through a screen by default"]
   E --> Q3["Q3 · In observe, a held task, not an Inbox item with no task"]
   E --> Q4["Q4 · No Slack flow; the event shape is proved without it"]
@@ -60,6 +62,19 @@ It comes down to a private repo: on one app token, its content reaches a user wh
 ![D9: the exempt path, chosen, beside a new sender kind; decided by where recipient rules live](figures/d9-exempt-sender.svg)
 
 It comes down to where recipient rules live: a second sender kind keeps a second copy in step.
+
+<a name="d12"></a>
+## D12 · A routine is one standing instruction with one trigger, on the rows we have (owner, 2026-11-08)
+
+| | |
+|---|---|
+| **Instead of** | Recurring work and subscriptions kept apart: two names, lists and tool sets |
+| **Because** | Both fire on their own, as their owner; a person needs one place to see and stop them |
+| **Locks in** | One trigger: a clock (recurring work) or an event (still called a subscription, pushed or polled). One name, list and tool set over `scheduled`'s schedule rows and FIX-2534's subscription rows; no new store. Renamed in this epic ([ER-9](#who-owns-what)) |
+
+![D12: routines over both rows, chosen, beside two kinds kept apart; decided by where a person stops what runs as them](figures/d12-routines.svg)
+
+It comes down to stopping what runs as you: with two lists, a person finds half of it.
 
 <a name="q1"></a>
 ## Q1 · decided · Fail closed: who gets through a screen by default · owner, 2026-11-04
@@ -175,9 +190,11 @@ forwarded; drops are counted. The service flow never calls `createTask`.
 <a name="d10"></a>
 **D10 · Polling runs on per-user schedule rows** (cadence, owner, Nov 2; rows, EM, Nov 3). Each
 subscription is a row (`defineScheduleCollection`, `createResourceCollectionScheduleResolver`,
-`onOverlap: "skip"`); the 5-minute floor is checked at subscribe. Implementer notes: the poll
-walks the resolver's due index, not every subscription; conditional requests, per-repo batching;
-check runs on terminal state, comment edits once per object.
+`onOverlap: "skip"`) at its own cadence from the allowed list, 5 minutes the floor, checked at
+subscribe (owner, 2026-11-08). Config-declared subscriptions seed the rows `subscribe` writes,
+through it and idempotently (owner, 2026-11-08); child 6 generalises that config over both
+triggers. Implementer notes: the poll walks the resolver's due index, not every subscription;
+conditional requests, per-repo batching; check runs on terminal state, comment edits once per object.
 
 <a name="d11"></a>
 **D11 · Explicit vs inferred work** (owner, Nov 2). `off`, `observe`, `auto`: one key beside
@@ -188,7 +205,7 @@ every mode; inferred only in `auto`.
 
 ## Who owns what
 
-![Who owns what: eight rules by six children, each with one owner; child 1 owns six](figures/ownership.svg)
+![Who owns what: nine rules by seven children, each with one owner; child 1 owns six](figures/ownership.svg)
 
 Child 1, the seam, owns six; a *uses* cell is a place a child must not re-decide.
 
@@ -198,17 +215,18 @@ Child 1, the seam, owns six; a *uses* cell is a place a child must not re-decide
 | ER-2 | The service flow never files a task | Child 5 (D8) | Closure, leg d |
 | ER-3 | One messaging API: `sendMessage`, no roster worker | Child 1 (D9) | Spec reviews |
 | ER-4 | Users subscribe to and hear only threads they can read; nothing crosses users | Child 1 (D5) | Children 3, 4; closure's two users |
-| ER-5 | Only `subscribe` and `unsubscribe` write subscriptions | Child 1 (D5) | Children 2, 5 |
+| ER-5 | Only `subscribe` and `unsubscribe` write subscriptions; config and routine tools call them | Child 1 (D5) | Children 2, 3, 5, 6 |
 | ER-6 | One normalized event over `WebhookInboundEvent` | Child 1 (D4) | Children 2, 3 |
 | ER-7 | *Pending · [ER-7](#er7)* A task's subscription ends with the task | Child 1 (D5) | Closure |
 | ER-8 | Seen once per subscription, sent once per session | Child 1 (D4) | Closure, leg c |
+| ER-9 | One routine list over the existing rows | Child 6 (D12) | Closure |
 
 ## Coordination seams
 
 | Seam | Between | Rule |
 |---|---|---|
 | `sendMessage` | Child 1, [FIX-2070](https://linear.app/fixpoint-labs/issue/FIX-2070) (In Development) | The second to land rebases onto the other's `exempt` path |
-| The subscription row | Children 1, 3 | Child 1 owns it; child 3 adds schedule fields; delivery writes the cursor row (ER-5) |
+| The subscription row | Children 1, 3, 6 | Child 1 owns it; child 3 adds schedule fields and config seeds, which child 6 widens; delivery writes the cursor row (ER-5) |
 | The event shape | Children 1, 2, 3 | Child 1 fixes it; push and poll map into it |
 | Coordinator config | Child 5, FIX-1786 | One key beside `routing` |
 
@@ -238,3 +256,5 @@ None built.
 - **Corrected (EM, Nov 4).** [D4](#d4)'s cursor row, from FIX-2534's spec
   ([#4673](https://github.com/fixpoint-labs/flow-state-dev/pull/4673)).
 - **Opened (Nov 4).** [ER-7](#er7), from that spec's Q-A.
+- **Amended (owner, 2026-11-08).** FIX-2614 joined, with [D12](#d12); [D10](#d10) took config seeds
+  and per-subscription cadence.
