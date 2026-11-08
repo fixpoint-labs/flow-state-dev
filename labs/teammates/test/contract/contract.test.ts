@@ -63,7 +63,7 @@ const ASK = {
 };
 
 /** The last user message of a step's messages: what this turn answers, not what an earlier one did. */
-const lastAsk = (said: string) => said.slice(said.lastIndexOf('"role":"user"'));
+const lastUserLine = (said: string) => said.slice(said.lastIndexOf('"role":"user"'));
 
 /** The fake; `asks` makes its coding run ask {@link QUESTION} before it edits. */
 function fakeTarget(asks: boolean): Target {
@@ -98,7 +98,7 @@ function labScript(failing: { next: boolean }): ModelResolver {
           failing.next = false;
           throw new Error(FAILURE);
         }
-        const asked = lastAsk(said);
+        const asked = lastUserLine(said);
         if (asked.includes(ASK.stopMe) && step < 2) {
           const module = step === 0 ? "A" : "B";
           return { call: { name: "createTask", args: { assignee: CODER, title: `Fix module ${module}`, goal: `Fix the typo in module ${module}.` } } };
@@ -312,7 +312,7 @@ describe.each([
   });
 
   describe("a turn stop", () => {
-    /** Chief of Staff's conversation, answering a turn that filed two tasks and works on. */
+    /** The lead's conversation, answering a turn that filed two tasks and works on. */
     const answering = async () => {
       const { lab, id } = await chief();
       const view = conversation(lab, id);

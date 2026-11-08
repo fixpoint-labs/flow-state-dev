@@ -61,7 +61,7 @@ const ASK = {
 const HELD = "[held]";
 
 /** The last user message of a step's messages: what this turn answers, not what an earlier one did. */
-const lastAsk = (said: string) => said.slice(said.lastIndexOf('"role":"user"'));
+const lastUserLine = (said: string) => said.slice(said.lastIndexOf('"role":"user"'));
 
 function fakeTarget(): Target {
   const fake = createFakeLab({ speed: 0.1 });
@@ -100,7 +100,7 @@ function labScript(failing: { next: boolean }, held: Promise<void>): ModelResolv
           failing.next = false;
           throw new Error(FAILURE);
         }
-        if (lastAsk(said).includes(ASK.stopWithTasks)) {
+        if (lastUserLine(said).includes(ASK.stopWithTasks)) {
           if (step < 2) {
             const vendor = step === 0 ? "Acme" : "Globex";
             return { call: { name: "createTask", args: { assignee: "desk.researcher", title: `Research ${vendor}`, goal: `${HELD} Find ${vendor}'s price.` } } };
@@ -109,7 +109,7 @@ function labScript(failing: { next: boolean }, held: Promise<void>): ModelResolv
           if (signal?.aborted) throw new DOMException("The turn was stopped.", "AbortError");
           return { text: "The comparison, finished." };
         }
-        if (lastAsk(said).includes(ASK.long)) {
+        if (lastUserLine(said).includes(ASK.long)) {
           await waitFor(30_000, signal);
           // A stopped model call ends with no text, as a provider's cut stream does.
           if (signal?.aborted) throw new DOMException("The turn was stopped.", "AbortError");
