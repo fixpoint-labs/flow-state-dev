@@ -38,7 +38,7 @@ export function useDebugResourceContent(
       const body =
         topic === null
           ? await client.sessions.debug.fetchResourceContent(sessionId, ref)
-          : await client.sessions.debug.fetchCollectionItemContent(sessionId, ref, topic);
+          : await client.sessions.debug.fetchCollectionResourceContent(sessionId, ref, topic);
       setContent(body);
     } catch (err) {
       setError(describeReadError(err, "Failed to fetch content"));

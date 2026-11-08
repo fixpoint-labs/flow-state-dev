@@ -340,7 +340,7 @@ export type CollectionSnapshotEntry = {
   /**
    * Per-topic live overlay. Populated client-side by
    * `mergeResourceChangeIntoSnapshot` from `live: true` resource_change deltas
-   * and read by `useResourceCollectionItem` as an overlay on the fetched
+   * and read by `useCollectionResource` as an overlay on the fetched
    * baseline. A created/updated entry carries `clientData`; a deleted entry is
    * a tombstone (`deleted: true`) so the hook can show the item as gone without
    * waiting for a refetch. Never emitted by the server — purely a client-merge
@@ -363,16 +363,16 @@ export type CollectionListPage = {
 };
 
 /**
- * Single collection item state returned by `GET /sessions/:id/resources/:ref/:topic`.
+ * One collection resource's state, returned by `GET /sessions/:id/resources/:ref/:topic`.
  */
-export type CollectionItemState = {
+export type CollectionResourceState = {
   topic: string;
   clientData?: unknown;
 };
 
 // FIX-296; FIX-741.
 /**
- * React-layer wrapper around a collection item. Augments the server's
+ * React-layer wrapper around a collection resource. Augments the server's
  * `{ topic, clientData? }` payload with the lazy-content ergonomic
  * (`fetchContent()`) so consumers don't have to plumb the client themselves.
  *
@@ -382,7 +382,7 @@ export type CollectionItemState = {
  * `JsonValue` produced by the server projection; the type is a hook-boundary
  * assertion backed by the projection contract.
  */
-export type CollectionItemHandle<TClient = unknown> = {
+export type CollectionResourceHandle<TClient = unknown> = {
   topic: string;
   clientData?: TClient;
   fetchContent(): Promise<string | null>;
@@ -607,7 +607,7 @@ export type ListDebugSuspensionsOptions = {
 };
 
 /** One item in a paginated collection debug listing. */
-export type DebugCollectionItem = {
+export type DebugCollectionResource = {
   topic: string;
   storageKey: string;
   state: Record<string, unknown> | null;
@@ -618,13 +618,13 @@ export type DebugCollectionItem = {
   contentVisibleToClient: boolean;
 };
 
-export type DebugCollectionItemsResponse = {
-  items: DebugCollectionItem[];
+export type DebugCollectionResourcesResponse = {
+  items: DebugCollectionResource[];
   nextCursor: string | null;
 };
 
 /** Query options for the debug items endpoint. */
-export type ListDebugCollectionItemsOptions = {
+export type ListDebugCollectionResourcesOptions = {
   limit?: number;
   cursor?: string | null;
   /** Case-sensitive substring filter on the bare topic. */

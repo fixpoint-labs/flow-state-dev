@@ -25,7 +25,7 @@ function hostClient(pattern: string, ref: string) {
   const subscriptions: Array<{ topics: readonly WireTopic[]; options: SubscribeOptions; closed: boolean }> = [];
   const client = {
     resources: {
-      listCollectionItems: vi.fn(async () => ({ items: [] })),
+      listCollectionResources: vi.fn(async () => ({ items: [] })),
       getResourceManifest: vi.fn(async () => ({
         flowKind: "desk",
         resources: [{ ref, kind: "collection", scope: "org", pattern, hasClientData: false, client: {} }]
@@ -49,7 +49,7 @@ function hostClient(pattern: string, ref: string) {
       for (let i = 0; i < 10; i += 1) await Promise.resolve();
     });
   };
-  return { client, subscriptions, hear, reads: () => client.resources.listCollectionItems.mock.calls.length };
+  return { client, subscriptions, hear, reads: () => client.resources.listCollectionResources.mock.calls.length };
 }
 
 afterEach(() => cleanup());

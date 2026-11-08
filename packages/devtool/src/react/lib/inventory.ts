@@ -81,15 +81,15 @@ function describeFailure(error: unknown): { httpStatus?: number; message: string
  * read so far.
  */
 export async function readEveryPage(
-  client: Pick<ResourcesApi, "listCollectionItems">,
+  client: Pick<ResourcesApi, "listCollectionResources">,
   sessionId: string,
   ref: string,
 ): Promise<InventoryRead> {
   let pagesRead = 0;
   let rowsRead = 0;
-  const counted: Pick<ResourcesApi, "listCollectionItems"> = {
-    listCollectionItems: async (...args) => {
-      const page = await client.listCollectionItems(...args);
+  const counted: Pick<ResourcesApi, "listCollectionResources"> = {
+    listCollectionResources: async (...args) => {
+      const page = await client.listCollectionResources(...args);
       pagesRead += 1;
       rowsRead += page.items.length;
       return page;
@@ -104,8 +104,8 @@ export async function readEveryPage(
   }
 }
 
-/** A worker row as the tab shows it. */
-export type WorkerRow = { id: string; kind: string | null };
+/** A worker as the tab shows it. */
+export type WorkerView = { id: string; kind: string | null };
 
 function field(row: unknown, key: string): unknown {
   return typeof row === "object" && row !== null ? (row as Record<string, unknown>)[key] : undefined;
@@ -115,7 +115,7 @@ function text(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-/** A worker row's fields, as stored. A missing kind reads as unknown, never throws. */
-export function toWorkerRow(row: unknown): WorkerRow {
+/** A stored worker's fields. A missing kind reads as unknown, never throws. */
+export function toWorkerView(row: unknown): WorkerView {
   return { id: text(field(row, "id")) ?? "", kind: text(field(row, "kind")) };
 }

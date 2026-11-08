@@ -22,16 +22,16 @@ import { createPushHub, type SubscribeOptions, type Subscription } from "./subsc
 import type {
   ChildSessionSummary,
   ClientFetch,
-  CollectionItemState,
+  CollectionResourceState,
   CollectionListPage,
-  DebugCollectionItemsResponse,
+  DebugCollectionResourcesResponse,
   DebugResourcesResponse,
   DebugSuspensionsResponse,
   ExecuteActionRequestBody,
   ExecuteActionResponse,
   FlowCapabilities,
   FlowListEntry,
-  ListDebugCollectionItemsOptions,
+  ListDebugCollectionResourcesOptions,
   ListDebugSuspensionsOptions,
   QueryValue,
   RequestSSECallbacks,
@@ -160,26 +160,26 @@ export type UpdateSessionMetadataOptions = {
   metadata?: Record<string, unknown>;
 };
 
-/** A resource's or collection item's rendered content. */
+/** A resource's rendered content, alone or in a collection. */
 export type ResourceContentResponse = {
   ref: string;
   topic?: string;
   content: string;
 };
 
-/** A new collection item. */
-export type CreateCollectionItemOptions = {
+/** A new resource in a collection. */
+export type CreateCollectionResourceOptions = {
   topic: string;
   content?: string;
 };
 
-/** New content for a resource or collection item. */
+/** New content for a resource, alone or in a collection. */
 export type UpdateResourceContentOptions = {
   content: string;
 };
 
-/** Paging for one collection's items. */
-export type ListCollectionItemsOptions = {
+/** Paging for one collection's resources. */
+export type ListCollectionResourcesOptions = {
   limit?: number;
   cursor?: string;
   topicPrefix?: string;
@@ -456,32 +456,32 @@ export interface SessionsApi {
   debug: {
     listResources(sessionId: string): Promise<DebugResourcesResponse>;
     listSuspensions(sessionId: string, options?: ListDebugSuspensionsOptions): Promise<DebugSuspensionsResponse>;
-    listCollectionItems(
+    listCollectionResources(
       sessionId: string,
       ref: string,
-      options?: ListDebugCollectionItemsOptions
-    ): Promise<DebugCollectionItemsResponse>;
+      options?: ListDebugCollectionResourcesOptions
+    ): Promise<DebugCollectionResourcesResponse>;
     fetchResourceContent(sessionId: string, ref: string): Promise<string>;
-    fetchCollectionItemContent(sessionId: string, ref: string, topic: string): Promise<string>;
+    fetchCollectionResourceContent(sessionId: string, ref: string, topic: string): Promise<string>;
   };
 }
 
 /** A session's resources. */
 export interface ResourcesApi {
   getResourceContent(sessionId: string, ref: string): Promise<ResourceContentResponse>;
-  getCollectionItemContent(sessionId: string, ref: string, topic: string): Promise<ResourceContentResponse>;
-  createCollectionItem(sessionId: string, ref: string, options: CreateCollectionItemOptions): Promise<{ topic: string }>;
+  getCollectionResourceContent(sessionId: string, ref: string, topic: string): Promise<ResourceContentResponse>;
+  createCollectionResource(sessionId: string, ref: string, options: CreateCollectionResourceOptions): Promise<{ topic: string }>;
   updateResourceContent(
     sessionId: string,
     ref: string,
     topic: string,
     options: UpdateResourceContentOptions
   ): Promise<void>;
-  deleteCollectionItem(sessionId: string, ref: string, topic: string): Promise<void>;
+  deleteCollectionResource(sessionId: string, ref: string, topic: string): Promise<void>;
   /** One page of a collection; pass `nextCursor` back as `cursor` for the next. */
-  listCollectionItems(sessionId: string, ref: string, options?: ListCollectionItemsOptions): Promise<CollectionListPage>;
+  listCollectionResources(sessionId: string, ref: string, options?: ListCollectionResourcesOptions): Promise<CollectionListPage>;
   /** One item's state, or `null` when the topic is absent. */
-  getCollectionItemState(sessionId: string, ref: string, topic: string): Promise<CollectionItemState | null>;
+  getCollectionResourceState(sessionId: string, ref: string, topic: string): Promise<CollectionResourceState | null>;
   /** The public resources a session's flow declares. Deterministic per flow kind. */
   getResourceManifest(sessionId: string): Promise<ResourceManifest>;
 }
@@ -617,15 +617,15 @@ export function createClient(options: CreateClientOptions): Client {
           userId: listOptions?.userId,
           limit: listOptions?.limit
         }),
-      listCollectionItems: (sessionId, ref, listOptions) =>
-        t.json<DebugCollectionItemsResponse>(
+      listCollectionResources: (sessionId, ref, listOptions) =>
+        t.json<DebugCollectionResourcesResponse>(
           `/api/flows/sessions/${sid(sessionId)}/debug/resources/${seg(requireValue(ref, "ref"))}/items`,
           undefined,
           { limit: listOptions?.limit, cursor: listOptions?.cursor ?? undefined, topic: listOptions?.topic }
         ),
       fetchResourceContent: async (sessionId, ref) =>
         (await t.raw(`/api/flows/sessions/${sid(sessionId)}/debug/resources/${seg(requireValue(ref, "ref"))}/content`)).text(),
-      fetchCollectionItemContent: async (sessionId, ref, topic) =>
+      fetchCollectionResourceContent: async (sessionId, ref, topic) =>
         (
           await t.raw(
             `/api/flows/sessions/${sid(sessionId)}/debug/resources/${seg(requireValue(ref, "ref"))}/${topicPath(topic)}/content`
@@ -639,9 +639,9 @@ export function createClient(options: CreateClientOptions): Client {
 
   const resources: ResourcesApi = {
     getResourceContent: (sessionId, ref) => t.json(`${resourcePath(sessionId, ref)}/content`),
-    getCollectionItemContent: (sessionId, ref, topic) =>
+    getCollectionResourceContent: (sessionId, ref, topic) =>
       t.json(`${resourcePath(sessionId, ref)}/${topicPath(topic)}/content`),
-    createCollectionItem: (sessionId, ref, item) =>
+    createCollectionResource: (sessionId, ref, item) =>
       t.json(resourcePath(sessionId, ref), { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(item) }),
     updateResourceContent: async (sessionId, ref, topic, update) => {
       await t.raw(`${resourcePath(sessionId, ref)}/${topicPath(topic)}/content`, {
@@ -650,16 +650,16 @@ export function createClient(options: CreateClientOptions): Client {
         body: JSON.stringify(update)
       });
     },
-    deleteCollectionItem: async (sessionId, ref, topic) => {
+    deleteCollectionResource: async (sessionId, ref, topic) => {
       await t.raw(`${resourcePath(sessionId, ref)}/${topicPath(topic)}`, { method: "DELETE" });
     },
-    listCollectionItems: (sessionId, ref, listOptions = {}) =>
+    listCollectionResources: (sessionId, ref, listOptions = {}) =>
       t.json(resourcePath(sessionId, ref), undefined, {
         limit: listOptions.limit,
         cursor: listOptions.cursor,
         topicPrefix: listOptions.topicPrefix
       }),
-    getCollectionItemState: (sessionId, ref, topic) => t.json(`${resourcePath(sessionId, ref)}/${topicPath(topic)}`),
+    getCollectionResourceState: (sessionId, ref, topic) => t.json(`${resourcePath(sessionId, ref)}/${topicPath(topic)}`),
     getResourceManifest: (sessionId) => t.json(`/api/flows/sessions/${sid(sessionId)}/manifest`)
   };
 

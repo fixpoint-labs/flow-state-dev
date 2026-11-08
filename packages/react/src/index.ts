@@ -54,9 +54,9 @@ export {
 } from "./hooks/useResourceCollectionList";
 
 export {
-  useResourceCollectionItem,
-  type UseResourceCollectionItemResult
-} from "./hooks/useResourceCollectionItem";
+  useCollectionResource,
+  type UseCollectionResourceResult
+} from "./hooks/useCollectionResource";
 
 export {
   useResourceManifest,

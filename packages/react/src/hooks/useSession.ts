@@ -1417,7 +1417,7 @@ export function useSession(
           //   - LIVE (`client.live: true`, carries an inline `delta`, FIX-739):
           //     merge the projected delta into the cached snapshot mid-stream —
           //     same mechanism as state_change — and skip the refetch path so a
-          //     subscribed useResourceCollectionItem/useResource updates with no
+          //     subscribed useCollectionResource/useResource updates with no
           //     HTTP round-trip.
           //   - DEFAULT (no delta): resources have separate content endpoints,
           //     so flag a single batched snapshot refetch at completion rather

@@ -6,7 +6,7 @@
  * error, accumulated pages via `loadMore`, and refetching on mutations.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CollectionItemHandle } from "@flow-state-dev/client";
+import type { CollectionResourceHandle } from "@flow-state-dev/client";
 import {
   useResourceCollection,
   type CollectionListOptions,
@@ -29,13 +29,13 @@ const NO_ITEMS: never[] = [];
  * re-render.
  */
 export function applyLiveOverlay<TClient = unknown>(
-  items: CollectionItemHandle<TClient>[],
+  items: CollectionResourceHandle<TClient>[],
   live: UseResourceCollectionResult<TClient>["live"],
   wrap: UseResourceCollectionResult<TClient>["wrap"]
-): CollectionItemHandle<TClient>[] {
+): CollectionResourceHandle<TClient>[] {
   if (live === undefined) return items;
   const seen = new Set<string>();
-  const out: CollectionItemHandle<TClient>[] = [];
+  const out: CollectionResourceHandle<TClient>[] = [];
   for (const item of items) {
     seen.add(item.topic);
     const overlay = live[item.topic];
@@ -63,7 +63,7 @@ export function applyLiveOverlay<TClient = unknown>(
  */
 export type UseResourceCollectionListResult<TClient = unknown> = {
   /** Items accumulated across `loadMore` calls. */
-  items: CollectionItemHandle<TClient>[];
+  items: CollectionResourceHandle<TClient>[];
   /** True when another page can be loaded via `loadMore` (an opaque cursor remains). */
   hasMore: boolean;
   isLoading: boolean;
@@ -88,7 +88,7 @@ export function useResourceCollectionList<TClient = unknown>(
 
   const [read, setRead] = useState<{
     identity: readonly unknown[];
-    items: CollectionItemHandle<TClient>[];
+    items: CollectionResourceHandle<TClient>[];
     // Opaque cursor for the NEXT page; `undefined` once the last page is reached.
     nextCursor: string | undefined;
     fetched: boolean;
@@ -99,7 +99,7 @@ export function useResourceCollectionList<TClient = unknown>(
   const [generation, setGeneration] = useState(0);
 
   const holdsCurrent = read !== null && fence.holds(read.identity);
-  const items: CollectionItemHandle<TClient>[] = holdsCurrent ? read.items : NO_ITEMS;
+  const items: CollectionResourceHandle<TClient>[] = holdsCurrent ? read.items : NO_ITEMS;
   const nextCursor = holdsCurrent ? read.nextCursor : undefined;
   const fetched = holdsCurrent ? read.fetched : false;
   const error = holdsCurrent ? read.error : undefined;
