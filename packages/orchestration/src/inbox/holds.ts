@@ -4,6 +4,7 @@
  */
 import { isTerminalStatus, type TaskStatus } from "../tasks/schema/task-status";
 import { isSuspensionHold, openHolds } from "../tasks/collection/holds";
+import { withCurrentHoldMarker } from "../tasks/schema/hold";
 import type { Task } from "../tasks/schema/task";
 import type { InboxHold, InboxTaskInput, InboxSuspension } from "./types";
 
@@ -49,7 +50,7 @@ export function holdOfSuspension<TDetail>(s: InboxSuspension<TDetail>): InboxHol
 }
 
 /**
- * A row's open holds for the user (`actor: "user"`), by the one predicate the
+ * A task's open holds for the user (`actor: "user"`), by the one predicate the
  * board reads (`openHolds`): its questions and confirms, answered through the
  * board, and its run's stop for a person, answered through the engine in the
  * session its run link names.
@@ -59,7 +60,9 @@ export function openUserHolds<TDetail>(
   flowOf: (sessionId: string) => string | null | undefined,
   foundFor: (suspensionId: string) => InboxSuspension<TDetail> | undefined = () => undefined,
 ): InboxHold<TDetail>[] {
-  const open = openHolds({ status: row.status, holds: row.holds ?? undefined, steers: row.steers ?? undefined } as Pick<Task, "status" | "holds" | "steers">);
+  // A caller may hand rows it never parsed (a replayed stream item, a raw store read): read each hold's marker forward first.
+  const stored = row.holds?.map(withCurrentHoldMarker);
+  const open = openHolds({ status: row.status, holds: stored, steers: row.steers ?? undefined } as Pick<Task, "status" | "holds" | "steers">);
   const holds: InboxHold<TDetail>[] = [];
   for (const hold of open) {
     if (hold.actor !== "user") continue;

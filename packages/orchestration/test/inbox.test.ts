@@ -306,6 +306,16 @@ describe("a task held on questions (row holds, FIX-2133)", () => {
     ]);
   });
 
+  // FIX-2479 D1: a caller may hand the read rows it never parsed (a replayed stream item, a raw
+  // store read). A question stored under the retired `"row"` marker lists as the task's own,
+  // answerable, and its answer still closes it.
+  it("lists a question a caller hands it under the retired row marker as the task's own, and its answer closes it", () => {
+    const legacy = { ...csv, source: { kind: "row", closedBy: [{ by: "answer" }] } } as unknown as TaskHold;
+    const [item] = inboxItems({ rows: [held("t1", [legacy])], suspensions: [], flowOf: desk });
+    expect(item!.holds.map((h) => [h.id, h.source.kind, h.answerable])).toEqual([["q1", "task", true]]);
+    expect(inboxItems({ rows: [held("t1", [legacy], { steers: [{ id: "st1", answers: "q1" }] })], suspensions: [], flowOf: desk })).toEqual([]);
+  });
+
   it("an answered question leaves the item, by the steer that carries its id; the last one takes the item with it", () => {
     const one = held("t1", [csv, column], { steers: [{ id: "st1", answers: "q1" }] });
     expect(inboxItems({ rows: [one], suspensions: [], flowOf: desk })[0]!.holds.map((h) => h.id)).toEqual(["q2"]);

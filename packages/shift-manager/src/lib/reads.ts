@@ -213,7 +213,7 @@ export type BoardRow = {
   /** Its steers as the Inbox reads them: which question each answers. A question is open while none does. */
   steers: Array<{ id: string; answers?: string }>;
   /**
-   * What its runs spent, folded by orchestration's task-row view: harness,
+   * What its runs spent, folded by orchestration's task view: harness,
    * model, tokens and the vendor's charge. `null` before it runs, or from a
    * board that publishes no spend.
    */
@@ -553,7 +553,7 @@ export function toBoardRow(boardRef: string, ownerSessionId: string, topic: stri
 }
 
 /**
- * A stored row's spend as orchestration's task-row view folds it: `null` when
+ * A stored row's spend as orchestration's task view folds it: `null` when
  * it has none, or when the stored ledger can't be read (the view's fold never
  * throws on a row, so one bad write doesn't fail the board's read).
  */
