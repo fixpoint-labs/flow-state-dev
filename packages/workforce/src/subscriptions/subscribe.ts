@@ -110,8 +110,8 @@ export interface SubscribeWrite {
  * ({@link nextRow}):
  *
  * - `fresh`: a subscribe, a new act: the row is on.
- * - `keep`: a seed's write of the config's fields: the row keeps its committed on, paused or ended
- *   state, and a new row is on.
+ * - `keep`: a seed's write of the config's fields over the committed row, by the seed rules below;
+ *   a new row is on.
  * - `resume`: on, only over a paused row.
  */
 type Life = "fresh" | "keep" | "resume";
@@ -120,10 +120,12 @@ type Life = "fresh" | "keep" | "resume";
  * The transition rules every write and end of a subscription goes through, against the committed
  * row, so no interleaving of them leaves a row its writers didn't agree on:
  *
- * - a terminal end (any reason but `paused`) is sticky: only a fresh subscribe starts a new life;
- *   a resume, a pause and a seed leave an ended row ended, except that a seed turns back on a row
- *   ended `config_removed` (its entry left config and is back: an end the config caused, not the
- *   user), the one way an ended row comes back;
+ * - a terminal end (any reason but `paused`) is sticky: only a fresh subscribe starts a new life,
+ *   and a resume or a pause leaves an ended row ended;
+ * - a seed keeps the user's pause always; it keeps an end only while the thread is unchanged,
+ *   since an end belongs to the thread it ended on (a closed PR says nothing of a new one); and a
+ *   row ended `config_removed` comes back on when its entry returns. These are the only ways an
+ *   ended row comes back short of a fresh subscribe;
  * - a pause applies only to an enabled row;
  * - a resume applies only to a paused row;
  * - an end applies to an enabled or a paused row.
@@ -133,7 +135,9 @@ type Life = "fresh" | "keep" | "resume";
 function nextRow(current: SubscriptionResourceState | undefined, row: SubscriptionResourceState, life: Life): SubscriptionResourceState | undefined {
   if (life === "fresh") return row;
   if (life === "resume") return current !== undefined && isPaused(current) ? row : undefined;
-  if (current === undefined || current.enabled || current.endedReason === "config_removed") return row;
+  if (current === undefined || current.enabled) return row;
+  // A seed keeps a pause always; an end only on the thread it ended on, and not config's own.
+  if (!isPaused(current) && (current.endedReason === "config_removed" || current.thread !== row.thread)) return row;
   const { enabled: _on, endedReason: _why, endedAt: _when, ...fields } = row;
   return { ...fields, enabled: false, ...(current.endedReason === undefined ? {} : { endedReason: current.endedReason }), ...(current.endedAt === undefined ? {} : { endedAt: current.endedAt }) };
 }

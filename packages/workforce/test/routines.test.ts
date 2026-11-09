@@ -18,7 +18,7 @@ import { bootSubscriptionsHost, event, github, revoked, type SubscriptionsHost }
 import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import { ROSTER_FLOW } from "../src/workers/keys";
 import { SUBSCRIPTION_INDEX_PATTERN } from "../src/subscriptions/keys";
-import type { DeclaredRoutine } from "../src/routines";
+import { declaredRoutineKey, type DeclaredRoutine } from "../src/routines";
 import type { SubscriptionProvider } from "../src/subscriptions";
 
 const PR = "github:acme/api#412";
@@ -499,6 +499,63 @@ describe("the app's declared routines", () => {
     const third = boot({ declared: declared(), stores });
     expect((await list(third)).find((r) => r.id === event!.id)).toMatchObject({ paused: true });
     expect(await indexed(third, PR)).not.toContain(sub);
+  });
+
+  /** Restart over `stores` with the event entry on `thread`; answer A's declared event routine and its subscription id. */
+  async function reseed(stores: ReturnType<typeof inMemoryStores>, thread: string) {
+    const entries = declared();
+    (entries[1]!.trigger as { event: { thread: string } }).event.thread = thread;
+    const h = boot({ declared: entries, stores });
+    const event = (await list(h)).find((r) => r.id.startsWith("event:"));
+    return { h, event, row: (await h.subscriptionRows("alice")).find((r) => r.id.startsWith("cfg_")) };
+  }
+
+  /** End the declared event routine's row as its thread's closing would, out of the index. */
+  async function closeThread(h: SubscriptionsHost) {
+    await h.route(event({ kind: "pull_request", text: "Merged.", closes: true }));
+  }
+
+  it("a declared event routine whose thread closed comes back on when config moves it to a new thread", async () => {
+    const stores = inMemoryStores();
+    const first = await reseed(stores, PR);
+    await closeThread(first.h);
+    expect(first.h ? (await first.h.subscriptionRows("alice")).find((r) => r.id === first.row!.id) : undefined).toMatchObject({ enabled: false, endedReason: "thread_closed" });
+    await first.h.dispose();
+    host = undefined;
+    const moved = await reseed(stores, "github:acme/api#999");
+    expect(moved.row).toMatchObject({ thread: "github:acme/api#999", enabled: true });
+    expect(await indexed(moved.h, "github:acme/api#999")).toContain(moved.row!.id);
+  });
+
+  it("a declared event routine the user paused stays paused when config moves it to a new thread", async () => {
+    const stores = inMemoryStores();
+    const first = await reseed(stores, PR);
+    ok((await roster(first.h, "alice", "pauseRoutine", { id: first.event!.id, paused: true })).output);
+    await first.h.dispose();
+    host = undefined;
+    const moved = await reseed(stores, "github:acme/api#999");
+    expect(moved.row).toMatchObject({ thread: "github:acme/api#999", enabled: false, endedReason: "paused" });
+    expect(await indexed(moved.h, "github:acme/api#999")).toEqual([]);
+  });
+
+  it("a declared event routine whose thread closed stays ended while config keeps it on that thread", async () => {
+    const stores = inMemoryStores();
+    const first = await reseed(stores, PR);
+    await closeThread(first.h);
+    await first.h.dispose();
+    host = undefined;
+    // A config change that keeps the thread: the end is the thread's, and it still holds.
+    const entries = declared();
+    (entries[1]!.trigger as { event: { interest: string } }).event.interest = "reviews and checks";
+    const again = boot({ declared: entries, stores });
+    await list(again);
+    expect((await again.subscriptionRows("alice")).find((r) => r.id.startsWith("cfg_"))).toMatchObject({ thread: PR, enabled: false, endedReason: "thread_closed" });
+    expect(await indexed(again, PR)).toEqual([]);
+  });
+
+  it("keys a declared entry by the pinned formula the poll keys it by too", async () => {
+    // cfg_ + the first 12 bytes of sha256("workforce-roster\n" + id), as hex: FIX-2536's poll ends rows by this key.
+    expect(await declaredRoutineKey("api-pr")).toBe("cfg_05562bf34a380505896ae059");
   });
 
   it("refuses a declared routine that would never fire before anything registers", () => {
