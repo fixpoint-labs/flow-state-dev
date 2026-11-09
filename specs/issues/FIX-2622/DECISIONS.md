@@ -39,8 +39,11 @@ the proof is the kit host plus that line.
   variants, A only, B only, or neither. The two read-only flows are credited to views
   (FIX-2623) and the harness-block casts to neither, unless a variant really removes them.
 - **Parity is checked on the flows served, not only on the host tests.** The four host tests
-  never list or invoke the served flows, and the contract test drives three of them, so the POC
-  adds a throwaway parity check: same flow ids as today, one action per flow. A variant that
+  never list or invoke the served flows, and the contract test drives three workers but never
+  lists the flows or touches `workforce-roster`, so the POC adds a throwaway parity check: the
+  same ids `GET /api/flows` returns today (one copy per worker flow `hireWorkforce` registers,
+  plus `workforce-roster`, `harness-readiness` and `lab-context`), and one action per flow,
+  a `hire` and a roster read on the roster flow. A variant that
   dropped wiring along with a flow would otherwise be credited with removing it.
 - **Lines moved into a package are not removed.** The count is what the host author still
   writes, plus what the variant adds to a package, stated separately.
