@@ -65,7 +65,13 @@ const screenSettingsSchema = z.object({
   /** The subscription takes outsiders' events (epic Q1's per-subscription opt-in). */
   outsiders: z.literal(true).optional(),
   /** The subscriber's own id at the provider, for `own`. */
-  self: z.string().min(1).optional()
+  self: z.string().min(1).optional(),
+  /**
+   * The subscription hears only what no other subscription heard: an event
+   * every ordinary subscription refused on content, of a kind the app
+   * forwards. Only a coordinator's session makes one.
+   */
+  unmatched: z.literal(true).optional()
 });
 
 /** One subscription. Server-written: the session, worker, task and user come from the subscribing turn, never from the tool's input. */

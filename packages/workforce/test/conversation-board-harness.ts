@@ -176,6 +176,8 @@ export type BoardHostOptions = {
   agentAnswer?: MockGeneratorInstance;
   /** The options the judgment turn is built with: the agent worker flow's catalog and capabilities. */
   agent?: CoordinatorFlowOptions["agent"];
+  /** The providers a coordinator's conversation subscribes on (its `subscribe` action). */
+  coordinatorSubscriptions?: CoordinatorFlowOptions["subscriptions"];
   /** The `agent` flow's `answerAgain` (FIX-2159), which the coordinator flow doesn't take. */
   answerAgain?: AgentWorkerFlowOptions["answerAgain"];
   /** Capabilities the `agent` flow installs that need the installation (FIX-2173's consult). */
@@ -295,7 +297,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const coordinator = defineCoordinatorFlow({
     installation,
     routeModel: "typesafe-ai/jev",
-    ...(options.agent === undefined ? {} : { agent: options.agent })
+    ...(options.agent === undefined ? {} : { agent: options.agent }),
+    ...(options.coordinatorSubscriptions === undefined ? {} : { subscriptions: options.coordinatorSubscriptions })
   });
   flows = {
     tasker: { flow: tasker, roles: ["contributor"] },

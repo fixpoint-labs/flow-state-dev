@@ -217,6 +217,14 @@ export interface ConversationBoardOptions {
    * conversation is handed here, which attaches the message and files it.
    */
   routes?: RoutedFiling;
+  // FIX-2538 D2.
+  /**
+   * The confirm a filing on the running turn waits on, or `undefined` when it
+   * files as asked: read on every write that files a task (one, a batch, a
+   * routed one), server-side, so a model can't file around it. A step for
+   * the worker itself, which nothing could confirm, is refused on such a turn.
+   */
+  holdsFiling?: (ctx: BlockContext, init: TaskInit) => string | undefined;
   // FIX-2240.
   /**
    * The messages the session sent that are still owed: the pass's
@@ -245,6 +253,19 @@ export interface RoutedFiling {
    * checked as a filing is, so a refusal throws `TaskWriteRefusedError`.
    */
   file(ctx: BlockContext, init: TaskInit): Promise<Task>;
+}
+
+/**
+ * `init`, waiting on the confirm `holdsFiling` names for the running turn, or
+ * as given when it names none. Added once: a confirm with the same prompt
+ * already asked isn't asked twice.
+ */
+function heldAs<T extends TaskInit>(holdsFiling: ConversationBoardOptions["holdsFiling"], ctx: BlockContext, init: T): T {
+  const prompt = holdsFiling?.(ctx, init);
+  if (prompt === undefined) return init;
+  const asked = init.questions ?? [];
+  if (asked.some((q) => q.kind === "confirm" && q.prompt === prompt)) return init;
+  return { ...init, questions: [...asked, { kind: "confirm" as const, prompt }] };
 }
 
 /** A new task's id, minted before its add so its place in the chain is reserved first. */
@@ -847,6 +868,7 @@ const passStateOf = (ctx: BlockContext): PassState => (ctx.request.state ?? {}) 
  * the actions, and the ledger.
  */
 export function defineConversationBoard(options: ConversationBoardOptions) {
+  const heldAsTurnSays = <T extends TaskInit>(ctx: BlockContext, init: T): T => heldAs(options.holdsFiling, ctx, init);
   // FIX-2081.
   /**
    * Who a filing in the running session can name, read now: its delegates
@@ -1288,7 +1310,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
     const createTask: TaskCollectionRef["createTask"] = async (filing) => {
       // A caller never writes the session a target resolved to.
-      const { targetSessionId: _resolved, ...init } = filing;
+      const { targetSessionId: _resolved, ...asked } = filing;
+      const init = heldAsTurnSays(ctx, asked);
       checkFiling(init);
       // On a turn routing a message, a filing whose result goes to the
       // conversation is a routed task: its layer attaches the message.
@@ -1428,7 +1451,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         assertUniqueIds(inits);
         assertIdsFree(inits, (id) => ref.get(id));
         // A caller never writes the session a target resolved to.
-        const unresolved = inits.map(({ targetSessionId: _resolved, ...init }) => ({ ...init, id: init.id ?? newTaskId() }));
+        const unresolved = inits.map(({ targetSessionId: _resolved, ...init }) => ({ ...heldAsTurnSays(ctx, init), id: init.id ?? newTaskId() }));
         const ordered = dependencyOrder(unresolved);
         const filedWith = new Map(ordered.map((init) => [init.id, init]));
         for (const init of ordered) checkFiling(init, filedWith);
@@ -1486,6 +1509,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     /** Every check a step passes before anything is written. */
     const checkStep = (init: TaskInit): void => {
       if (!routesSelf) throw stepFromItsOwnTurn(self);
+      // A step runs in this request, so nothing could confirm it: work a turn's filings wait on goes to a delegate.
+      if (options.holdsFiling?.(ctx, init) !== undefined) {
+        throw new TaskWriteRefusedError(
+          "step_needs_a_yes",
+          "what you file on this turn waits on the user's yes, and a step for yourself runs now, so it can't. File it for a delegate; it starts once they say yes. Nothing was filed."
+        );
+      }
       if (isSteppingTurn(ctx)) {
         throw new TaskWriteRefusedError(
           "no_step_while_stepping",
@@ -1940,7 +1970,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const { stamp, own } = await filedProjectFor(ctx);
     const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: heldFromFiling(filing) ? freshHopMark(ctx) : turnHopMark(ctx), [FILED_PROJECT]: stamp };
     const input = ownProjectIn(filing.input, own);
-    const { metadata: _metadata, input: _input, ...rest } = filing;
+    const { metadata: _metadata, input: _input, ...rest } = heldAsTurnSays(ctx, filing);
     const init: TaskInit & { id: string } = {
       ...rest,
       metadata,

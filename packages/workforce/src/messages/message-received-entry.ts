@@ -1,4 +1,4 @@
-// FIX-1989, FIX-2238; FIX-2240; FIX-2310; FIX-2318; FIX-2578.
+// FIX-1989, FIX-2238; FIX-2240; FIX-2310; FIX-2318; FIX-2578; FIX-2538.
 /**
  * How a worker hears a message: the `onMessageReceived`
  * internal entry, on every worker flow. The hire refuses a worker flow
@@ -36,14 +36,29 @@
  * one, queues until nothing holds it (`./queue`). A message to a task session
  * whose task waits on something outside the board (an `external` hold) answers that wait instead, and runs no turn here: the task's owed
  * turn reads it.
+ *
+ * A service's forward (an event no other subscription heard) carries its
+ * mark, `addressed` or `inferred`, on its row: the landing copies it to request
+ * state, where the turn's board write and send tool read it. A flow's
+ * `landsOnly` can land a message as its items with no turn (a coordinator
+ * set to `inferredWork: off` does for an inferred forward), through the same
+ * turnless landing a flow with no turn has.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
 import type { WorkerInstallation } from "../workers/installation";
 import { conversationLedgerResources } from "../conversation-board/ledger";
-import { messageTurnStateSchema, RECEIVED_REPLY_OWED_STATE, RECEIVED_LANDED_STATE, startTurnAtHop } from "./hop";
+import {
+  messageTurnStateSchema,
+  RECEIVED_FORWARD_STATE,
+  RECEIVED_LANDED_STATE,
+  RECEIVED_REPLY_OWED_STATE,
+  RECEIVED_TURNLESS_STATE,
+  startTurnAtHop
+} from "./hop";
+import type { WorkerMessageResourceState } from "./log-row";
 import { sendOwedReply, wantsReply, oweReply, type NoAnswerReason } from "./owed-replies";
 import { carriesPass, markDelivered, storedEmitters, takeMessage } from "./delivery";
 import { MESSAGE_RECEIVED_ENTRY, RECEIVED_MESSAGE_COMPONENT, SEND_MESSAGE_TOOL } from "./keys";
@@ -130,7 +145,8 @@ export function receivedMessagePrompt(received: MessageReceived): string {
 }
 
 const heardSchema = z.object({
-  act: z.enum(["none", "heard"]),
+  /** `landed`: the message landed as its items, and runs no turn (`landsOnly`). */
+  act: z.enum(["none", "heard", "landed"]),
   received: messageReceivedSchema.optional()
 });
 
@@ -163,6 +179,11 @@ export function messageReceivedEntry(options: {
   readonly installation: WorkerInstallation;
   readonly flowKind: string;
   readonly hears?: MessageHearing;
+  /**
+   * Whether this landed message runs no turn: it lands as its items only, as
+   * on a flow with no turn. Read after the take, from the row the server wrote.
+   */
+  readonly landsOnly?: (ctx: BlockContext, row: WorkerMessageResourceState) => boolean | Promise<boolean>;
 }) {
   const heard = handler({
     name: "message-received-heard",
@@ -242,11 +263,14 @@ export function messageReceivedEntry(options: {
       // before its end does, even right after the delivery.
       if (wantsReply(row) && carriesPass(options.installation, options.flowKind)) await oweReply(ctx, row.id);
       await markDelivered(ctx, row.id);
+      const turnless = options.turn !== undefined && options.landsOnly !== undefined && (await options.landsOnly(ctx, row));
       await ctx.request.atomicState(() => ({
         [RECEIVED_LANDED_STATE]: true,
-        ...(wantsReply(row) ? { [RECEIVED_REPLY_OWED_STATE]: row.id } : {})
+        ...(wantsReply(row) ? { [RECEIVED_REPLY_OWED_STATE]: row.id } : {}),
+        ...(row.forward === undefined ? {} : { [RECEIVED_FORWARD_STATE]: row.forward }),
+        ...(turnless ? { [RECEIVED_TURNLESS_STATE]: true } : {})
       }));
-      return { act: "heard", received };
+      return turnless ? { act: "landed" } : { act: "heard", received };
     }
   });
 
@@ -278,11 +302,12 @@ export function messageReceivedEntry(options: {
       // input's shape, which a turn's own output could match.
       const state = ctx.request.state as Record<string, unknown> | undefined;
       if (state?.[RECEIVED_LANDED_STATE] !== true) return {};
+      const ranNoTurn = options.turn === undefined || state[RECEIVED_TURNLESS_STATE] === true;
       // A turnless landing answers blank: "no answer".
-      const reply = options.turn === undefined ? "" : replyTextOf(input);
-      await replyOwedHere(ctx, reply, options.turn === undefined ? "turnless" : "silent");
+      const reply = ranNoTurn ? "" : replyTextOf(input);
+      await replyOwedHere(ctx, reply, ranNoTurn ? "turnless" : "silent");
       // Landed, and nothing ran on it: no reply, not an empty one.
-      if (options.turn === undefined) return { turnless: true as const };
+      if (ranNoTurn) return { turnless: true as const };
       return { reply: reply.slice(0, MAX_MESSAGE_CHARS) };
     }
   });

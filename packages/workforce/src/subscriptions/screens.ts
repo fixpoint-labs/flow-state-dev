@@ -127,6 +127,16 @@ const passRest = handler({
 
 const undecided = (screening: Screening) => screening.pending.length > 0;
 
+/**
+ * Whether a refusal says the screens couldn't decide, rather than that the
+ * event's content didn't fit: the judgment's `interest: unjudged`, or a
+ * screen's `<screen>: failed` from a throw, both pinned reasons. Such an event
+ * isn't unheard, so nothing forwards it: an outage forwards nothing.
+ */
+export function blocksForward(verdict: ScreenVerdict): boolean {
+  return !verdict.pass && (verdict.reason === "interest: unjudged" || verdict.reason.endsWith(": failed"));
+}
+
 /** The config screen chain: `sender`, `own`, `labels`, `words`, `allow`, each while a subscription is undecided. */
 export function configScreenChain(options: ScreenOptions) {
   return sequencer({ name: "subscription-config-screens", inputSchema: screeningSchema })

@@ -351,6 +351,8 @@ interface ServiceMessage {
   readonly text: string;
   /** The server-chosen id, so a repeat lands once. */
   readonly id: string;
+  /** An unheard event forwarded to an unmatched subscription: how it reached it, and its link. */
+  readonly forward?: WorkerMessageResourceState["forward"];
 }
 
 /**
@@ -380,7 +382,8 @@ export async function sendServiceMessage(
       sender: message.sender,
       recipientId: message.to.worker,
       destination: { sessionId: message.to.sessionId, flow: message.to.flow },
-      addressed: { addressedBy: "session" as const }
+      addressed: { addressedBy: "session" as const },
+      ...(message.forward === undefined ? {} : { forward: message.forward })
     }
   );
 }
@@ -439,6 +442,8 @@ interface Resolved {
   readonly destination: MessageAddress;
   readonly exchange?: string;
   readonly addressed: Pick<WorkerMessageResourceState, "addressedBy" | "toTask">;
+  /** A service's forward: the mark the row carries. */
+  readonly forward?: WorkerMessageResourceState["forward"];
 }
 
 /** Every send's tail, once its recipient is checked: the budget, the owed id, the row, then one dispatch. */
@@ -466,6 +471,7 @@ async function sendTo(
     from: resolved.sender,
     to: resolved.recipientId,
     ...resolved.addressed,
+    ...(resolved.forward === undefined ? {} : { forward: resolved.forward }),
     text: input.text,
     exchange: resolved.exchange ?? id,
     ...(input.inReplyTo === undefined ? {} : { inReplyTo: input.inReplyTo }),

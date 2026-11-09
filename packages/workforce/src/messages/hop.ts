@@ -74,6 +74,18 @@ export const RECEIVED_LANDED_STATE = "workforceReceivedLanded";
 /** The request-state field naming the reply-requested message an `onMessageReceived` request landed, so its turn's end answers it. */
 export const RECEIVED_REPLY_OWED_STATE = "workforceReplyOwed";
 
+// FIX-2538 D2.
+/**
+ * The request-state field carrying the forward mark of the message an
+ * `onMessageReceived` request landed (`addressed` or `inferred`, and the event's
+ * link), copied from its row: what the board's write and the send tool read
+ * on that turn. Absent on every other turn.
+ */
+export const RECEIVED_FORWARD_STATE = "workforceReceivedForward";
+
+/** The request-state field saying the landed message runs no turn (the flow's `landsOnly` said so): its reply step reads it. */
+export const RECEIVED_TURNLESS_STATE = "workforceReceivedTurnless";
+
 /** The request state the hop and the per-turn count are kept in. */
 export const messageTurnStateSchema = z.object({
   [TURN_HOP_STATE]: z.number().int().nonnegative().optional(),
@@ -81,8 +93,16 @@ export const messageTurnStateSchema = z.object({
   [TURN_SENT_STATE]: z.number().int().nonnegative().optional(),
   [TURN_PAID_STATE]: z.array(z.string()).optional(),
   [RECEIVED_LANDED_STATE]: z.boolean().optional(),
-  [RECEIVED_REPLY_OWED_STATE]: z.string().optional()
+  [RECEIVED_REPLY_OWED_STATE]: z.string().optional(),
+  [RECEIVED_FORWARD_STATE]: z.object({ as: z.enum(["addressed", "inferred"]), url: z.string() }).optional(),
+  [RECEIVED_TURNLESS_STATE]: z.boolean().optional()
 });
+
+/** The forward mark of the message the running request landed, or `undefined` on any other turn. */
+export function turnForwardOf(ctx: Pick<BlockContext, "request">): { readonly as: "addressed" | "inferred"; readonly url: string } | undefined {
+  const value = (ctx.request?.state as Record<string, unknown> | undefined)?.[RECEIVED_FORWARD_STATE] as { as?: unknown; url?: unknown } | undefined;
+  return (value?.as === "addressed" || value?.as === "inferred") && typeof value.url === "string" ? { as: value.as, url: value.url } : undefined;
+}
 
 /** A session's current hop count: 0 for one that keeps none. */
 export function sessionHopOf(state: unknown): number {
