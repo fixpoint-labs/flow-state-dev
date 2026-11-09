@@ -19,8 +19,11 @@
  *   retry (core's evaluator makes one call), no split, no generator. A cancel
  *   rethrows.
  *
- * A request that resumes after the judgment finished reads its answer from the
- * request's record (the sequencer's resume replay), so it doesn't ask again.
+ * A request that resumes after the judgment finished gets its answer from the
+ * engine's resume replay, so it doesn't ask again. One case asks again: crash
+ * recovery with no durability provider and trace observability off, where the
+ * engine re-runs finished steps. Routing has delivered nothing by then, so the
+ * cost is one more call.
  */
 import { boolean, evaluator, handler, sequencer } from "@flow-state-dev/core";
 import type { BooleanAnswer, EvaluationModel, SubscriptionEvent } from "@flow-state-dev/core/types";

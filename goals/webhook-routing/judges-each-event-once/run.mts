@@ -63,6 +63,8 @@ const PATCHES: Record<string, ModulePatch[]> = {
     },
     { module: INTEREST_TS, from: String.raw`import \{ boolean, evaluator, handler, sequencer \} from "@flow-state-dev/core";`, to: 'import { boolean, evaluator, generator, handler, sequencer } from "@flow-state-dev/core";' }
   ],
+  // The quote strips its fence tags in one pass, so a nested tag rebuilds a closing one.
+  "single-strip": [{ module: INTEREST_TS, from: String.raw`\.replace\(/\[<>\]/g, ""\)`, to: '.replace(/<\\/?interest>/gi, "")' }],
   // An unjudged refusal counts as one on content: an outage reads as "nobody wanted it".
   "forward-unjudged": [
     { module: "packages/workforce/src/subscriptions/screens.ts", from: String.raw`verdict\.reason !== INTEREST_UNJUDGED && `, to: "" }
@@ -467,6 +469,7 @@ await runGoal(async (failures, tell) => {
   if (steering.some((q) => q.length > 200 || q.includes("<interest>") || q.includes("</interest>"))) failures.push("g: the steering sentence reached the model uncapped or with a fence tag");
   // A nested tag a single strip would rebuild (`</inte<interest>rest>`) must not survive either.
   const nested = tell.over("g · up · the nested-tag sentence's quotes", up.runs.flatMap((r) => r.quotes).filter((q) => q.startsWith("Approving reviews") && !q.startsWith("Approving reviews.")));
+  for (const q of nested.filter((q) => /[<>]/.test(q)).slice(0, 1)) failures.push(`g: the nested-tag sentence reached the model holding < or >, so it could close its fence: ${JSON.stringify(q.slice(0, 80))}`);
   if (up.runs.some((r) => r.quotes.some((q) => /[<>]/.test(q)))) failures.push("g: a quote reached the model holding < or >, so a sentence could close its fence");
 
   // Reported: the share code decided, and calls per normalized event.
