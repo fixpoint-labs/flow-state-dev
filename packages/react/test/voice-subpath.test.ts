@@ -1,6 +1,6 @@
 /**
- * The voice primitives live on `@flow-state-dev/react/voice`, not on the root
- * (FIX-2604).
+ * The voice primitives live on `@flow-state-dev/react/voice`, not on the
+ * root.
  *
  * The root is what a chat-app author autocompletes, and `useVoice` is all a
  * chat app needs, so it stays there. The recorder, player and speech
