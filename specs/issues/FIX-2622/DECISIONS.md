@@ -38,6 +38,10 @@ the proof is the kit host plus that line.
 - **Attribution, not totals.** Each wiring line and cast gets one row: removed by both
   variants, A only, B only, or neither. The two read-only flows are credited to views
   (FIX-2623) and the harness-block casts to neither, unless a variant really removes them.
+- **Parity is checked on the flows served, not only on the host tests.** The four host tests
+  never list or invoke the served flows, and the contract test drives three of them, so the POC
+  adds a throwaway parity check: same flow ids as today, one action per flow. A variant that
+  dropped wiring along with a flow would otherwise be credited with removing it.
 - **Lines moved into a package are not removed.** The count is what the host author still
   writes, plus what the variant adds to a package, stated separately.
 - **The coder routing stays as it is.** Merging teammates' `coder.ts` routing with

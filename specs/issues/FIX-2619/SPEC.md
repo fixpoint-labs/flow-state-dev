@@ -9,7 +9,7 @@
 | **writes a stage-2 spec** in [FIX-2618](../../epics/FIX-2618/SPEC.md) (views, resources by scope, kits) | Reads eight read paths in code and four specs to learn how a client reads and writes today, and guesses at the target | Reads one concept doc: the target model, built up one part at a time, with a table of where today's code differs |
 | **wants to know how a flow `read` works** | Finds no architecture section for it, and the endpoint table omits its route | Finds both in `docs/architecture/`, matching the code on `main` |
 | **reads `resources-and-client-data.md`** | Is told scope `derived` is *the* way to show server data, with no word about `reads` | Reads what is true today, with the two hooks side by side and a pointer to the concept doc |
-| **names a new public thing** in the epic | Finds no entry for view or slot, and the FIX-2246 entry refuses `the kit` and `kit.x` everywhere | Finds entries for view, the unit and slot once the owner has answered the holds that fix them ([D1](DECISIONS.md#d1)) |
+| **names a new public thing** in the epic | Finds no entry for view or slot, and the FIX-2246 entry refuses `the kit`, `const kit` / `this kit` and `kit.x` everywhere | Finds entries for view, the unit and slot once the owner has answered the holds that fix them ([D1](DECISIONS.md#d1)) |
 | **reads the objectives' non-goals** | Reads "Plugin/extension ecosystem" and concludes any installable unit is out | Reads that a third-party ecosystem is out and FSD's own unit is in, once [O1](../../epics/FIX-2618/DECISIONS.md#o1) is answered |
 
 Stage-2 specs written against four private readings of an unwritten model drift apart.
@@ -31,7 +31,8 @@ writes, stays current and installs a feature, and the words they use are the glo
 with only the doc lists the parts in order and answers six scenario questions, two of them
 edge cases (an org resource two users write; a view whose dependency changes while its screen
 is closed). The control is the vocabulary sweep: once the FIX-2246 entry is narrowed, a planted
-"session kit" in a published page must still fail it, and a planted `kit.slots` must pass.
+"session kit" in a published page must still fail it, and a planted `kit.slots` and a planted
+`const kit = defineKit(...)` line must pass.
 
 ## What changes
 
@@ -79,7 +80,7 @@ them. No user docs.
 | Already here | What this does with it |
 |---|---|
 | [FIX-2286 D1](../FIX-2286/DECISIONS.md#d1): flow `reads`, "the one hook for watching a computed view" | **Builds on.** Documented as it is today, and as the view the epic proposes ([O2](../../epics/FIX-2618/DECISIONS.md#o2)) |
-| The glossary entry "Session factory… Never a kit" ([FIX-2246](https://linear.app/fixpoint-labs/issue/FIX-2246)) | **Amended**, once [O5](../../epics/FIX-2618/DECISIONS.md#o5) answers "kit": the retire keeps "filing / session / task-filing / manager kit" and drops `the kit` and `kit.x` |
+| The glossary entry "Session factory… Never a kit" ([FIX-2246](https://linear.app/fixpoint-labs/issue/FIX-2246)) | **Amended**, once [O5](../../epics/FIX-2618/DECISIONS.md#o5) answers "kit": the retire keeps "filing / session / task-filing / manager kit" and drops `the kit`, `const kit` / `this kit` and `kit.x` |
 | The objectives non-goal "Plugin/extension ecosystem" | **Amended**, once [O1](../../epics/FIX-2618/DECISIONS.md#o1) is answered: the third-party ecosystem stays out |
 | The word "slot" already names a block's config field (`ToolsSlot`, `UsesSlot`, the context slot, BP-017) | **Leaves alone.** The new entry defines a kit's slot and names the block sense as the same idea one level down ([decided](DECISIONS.md#decided-not-asked)) |
 | `docs/internal/design/harness-shared-kit.md` uses "kit" for a shared harness floor | **Leaves alone.** An internal design note; the narrowed entry reads code and published pages only |

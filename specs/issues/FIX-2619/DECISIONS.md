@@ -25,7 +25,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Holding the whole issue until O1, O2 and O5 are answered · or adding every entry now, under the working names |
 | **Because** | The stage-2 specs need the model, not the final words: a doc that says "kit (working name, O5)" serves them as well as one that says the answer. A glossary entry is different, because the checks enforce it: an entry for a name the owner then rejects is a rule CI applies to every PR until someone reverts it |
-| **Locks in** | The concept doc may be renamed once after the owner answers, by the same child that edits the entry. The order the entries land in: "view" when O2 is answered; the unit's name and the narrowed FIX-2246 retire when O5 is; "slot" and the objectives line when O1 is. If O1 is "no kits", the unit and slot entries are never added and the objectives line stays as it is |
+| **Locks in** | The concept doc may be renamed once after the owner answers, by the same child that edits the entry. The order the entries land in: "view" when O2 is answered; the unit's name and the narrowed FIX-2246 retire when O5 is (it keeps the session-factory names and drops `the kit`, `const kit` / `this kit` and `kit.x`); "slot" and the objectives line when O1 is. If O1 is "no kits", the unit and slot entries are never added and the objectives line stays as it is |
 
 ![D1: the concept doc now under the working names with each glossary entry waiting for its hold, chosen, beside everything waiting for the owner. Decides it: whether the stage-2 specs can start from a written model. Price: the doc may be renamed once. Locks in that entries land in the order the holds are answered. Flips if the owner answers O1, O2 and O5 before the doc is drafted](figures/d1-names-wait.svg)
 
@@ -53,8 +53,9 @@ Then it all lands in one PR and the split is moot.
   FIX-2092's loose use stay: a view is an English word, and a `reach: "meaning"` retire of it
   would refuse ordinary prose.
 - **The narrowed FIX-2246 retire keeps refusing the session-factory sense** ("filing kit",
-  "session kit", "task-filing kit", "manager kit") and drops the bare `the kit` and `kit.x`,
-  which are the new unit's ordinary spelling.
+  "session kit", "task-filing kit", "manager kit") and drops the other three alternatives of
+  today's pattern (`glossary.mjs`, the `session-factory` retire): `the kit`, `const kit` /
+  `this kit`, and `kit.x`, which are the new unit's ordinary spelling.
 - **Each stage-2 child that changes a part of the model edits that part of the concept doc in
   its own PR**, as it edits its own glossary entry ([seams](../../epics/FIX-2618/DECISIONS.md#coordination-seams)).
 
