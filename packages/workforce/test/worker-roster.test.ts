@@ -347,6 +347,16 @@ describe("naming a worker, and editing a standard one", () => {
     expect(await rowOf(h, "alice", "sec.auditor")).toMatchObject([{ name: "Auditor", edited: true }]);
   });
 
+  it("a fork of an edited standard worker starts from the user's copy, without its name", async () => {
+    const h = host();
+    const app = h.client("alice");
+    await app.edit({ id: "researcher", name: "Ada", instructions: "Research twice." });
+    await app.fork("researcher", "researcher-2");
+    const session = await app.ensureWorkerSession({ worker: "researcher-2" });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research twice.", tone: "formal" });
+    expect(await rowOf(h, "alice", "researcher-2")).toMatchObject([{ name: null, forkedFrom: "researcher", standard: false }]);
+  });
+
   it("a later edit of the copy takes any field, like any row of the user's own", async () => {
     const h = host();
     const app = h.client("alice");

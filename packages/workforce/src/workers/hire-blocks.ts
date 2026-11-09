@@ -196,11 +196,13 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
       refuseStandard(input.id, "replace");
+      // The caller's own row first: an edited standard worker forks as they edited it.
       const file = installation.standardWorker(input.from);
+      const own = file === undefined ? undefined : await roster(ctx).getOptional(input.from);
       const row =
-        file !== undefined
+        file !== undefined && own === undefined
           ? rowFromStandard(file)
-          : { ...(await readOwn(ctx, input.from)), forkedFrom: input.from };
+          : { ...(await readOwn(ctx, input.from)), forkedFrom: input.from, name: null };
       check(input.id, row);
       await write(ctx, input.id, row);
       return { id: input.id, flow: row.flow };
