@@ -39,8 +39,8 @@ const PATCHES: Record<string, ModulePatch[]> = {
   "no-gate": [
     {
       module: "packages/workforce/src/conversation-board/board.ts",
-      from: String.raw`const prompt = holdsFiling\?\.\(ctx, init\);`,
-      to: "const prompt = undefined as string | undefined; void holdsFiling;"
+      from: String.raw`const held = holdsFiling\?\.\(ctx, init\);`,
+      to: "const held = undefined as { prompt: string; metadata: Record<string, unknown> } | undefined; void holdsFiling;"
     }
   ]
 };

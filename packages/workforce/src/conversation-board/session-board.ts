@@ -51,7 +51,7 @@ import { PLAN_WAITING_STATE } from "./plan";
 import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
 import { defineWorkerDelegates, soleTaskDelegate, type TaskDelegates } from "../delegates/worker-delegates";
 import type { InferredWork } from "../coordinator/coordinator-keys";
-import { messageHopStateShape, turnForwardOf } from "../messages/hop";
+import { INFERRED_FORWARD_METADATA, messageHopStateShape, RECEIVED_FORWARD_STATE, turnForwardOf } from "../messages/hop";
 import { workerMessagesResources } from "../messages/message-log";
 import { defineSendMessageCapability } from "../messages/message-tool";
 import { MESSAGE_RECEIVED_ENTRY } from "../messages/keys";
@@ -153,7 +153,7 @@ export interface SessionBoardOptions {
 const CONFIRM_GOAL_CHARS = 600;
 
 /** The confirm an inferred task waits on: its goal, and the event it came from. */
-export function inferredConfirmPrompt(goal: string, url: string): string {
+function inferredConfirmPrompt(goal: string, url: string): string {
   const quoted = goal.length <= CONFIRM_GOAL_CHARS ? goal : `${goal.slice(0, CONFIRM_GOAL_CHARS - 1)}…`;
   return `Nobody asked for this: it was inferred from ${url}. Run it? ${quoted}`;
 }
@@ -192,7 +192,9 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // On an inferred turn in `observe`, every filing waits on the user's yes.
     holdsFiling: (ctx, init) => {
       const forward = turnForwardOf(ctx);
-      return forward !== undefined && inferredOn(ctx) === "observe" ? inferredConfirmPrompt(init.goal, forward.url) : undefined;
+      return forward !== undefined && inferredOn(ctx) === "observe"
+        ? { prompt: inferredConfirmPrompt(init.goal, forward.url), metadata: { [INFERRED_FORWARD_METADATA]: forward } }
+        : undefined;
     }
   });
 
@@ -306,7 +308,19 @@ export function defineSessionBoard(options: SessionBoardOptions) {
           "manager"
         ),
         [TASK_SETTLED_ENTRY]: markRolePiece(
-          taskSettledEntry({ turn, policy, ...(onRouted === undefined ? {} : { onRouted }) }),
+          taskSettledEntry({
+            turn,
+            policy,
+            ...(onRouted === undefined ? {} : { onRouted }),
+            // A task filed on an inferred turn wakes its filer's turn as that forward's turn did (a No's
+            // cancel included), so the work the user declined isn't filed again unheld.
+            turnStateOf: (row) => {
+              const forward = row.metadata?.[INFERRED_FORWARD_METADATA] as { as?: unknown; url?: unknown } | undefined;
+              return forward?.as === "inferred" && typeof forward.url === "string"
+                ? { [RECEIVED_FORWARD_STATE]: { as: "inferred", url: forward.url } }
+                : undefined;
+            }
+          }),
           "manager"
         ),
         // A check of the session's waiting task, on the notices' line: what

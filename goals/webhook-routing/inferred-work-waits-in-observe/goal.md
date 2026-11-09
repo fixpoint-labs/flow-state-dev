@@ -8,7 +8,7 @@
 - **(b)** `observe`: every task a forward filed on an inferred turn holds one open confirm and started no attempt, for both users; the Inbox built from those rows reconciles green (`reconcileInbox`);
 - **(c)** `auto`: the same inferred tasks ran, and as many were filed as in `observe` (a filing the model held itself, and a step, set aside);
 - **(d)** `off`: 0 model calls on an inferred forward; the addressed events ran in every mode, for both users;
-- **(e)** a forwarded kind whose screen failed or held reaches no unmatched coordinator: **not run end to end.** No screen on this branch can fail or hold; FIX-2537's evaluator is the first that can. The rule (`blocksForward`, the pinned `interest: unjudged` and `<screen>: failed` reasons) is unit-tested in `packages/workforce/test/subscriptions-unmatched.test.ts`;
+- **(e)** a forwarded kind whose screen failed or held reaches no unmatched coordinator: **not run end to end.** No screen on this branch can fail or hold; FIX-2537's evaluator is the first that can. The rule (`refusedOnContent`, the pinned `interest: unjudged` and `<screen>: failed` reasons) is unit-tested in `packages/workforce/test/subscriptions-unmatched.test.ts`;
 - **(f)** the comment alice's follower heard, the unlisted kind and the outsider reached no coordinator; routing counted as many drops as the fixture holds; alice's desks hold exactly the oracle's forwards;
 - **(g)** every row filed on an inferred `observe` turn carries the confirm, whichever way it was filed; the step for itself is refused, so no unconfirmed work runs in that request.
 

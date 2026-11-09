@@ -83,6 +83,14 @@ export const RECEIVED_REPLY_OWED_STATE = "workforceReplyOwed";
  */
 export const RECEIVED_FORWARD_STATE = "workforceReceivedForward";
 
+/**
+ * The metadata key a task filed on an inferred turn carries: the forward it
+ * was inferred from. Written by the board's filing, server-side. A turn its
+ * ending wakes runs as that forward's turn did, so work the user declined
+ * can't be filed again unheld.
+ */
+export const INFERRED_FORWARD_METADATA = "workforceInferredFrom";
+
 /** The request-state field saying the landed message runs no turn (the flow's `landsOnly` said so): its reply step reads it. */
 export const RECEIVED_TURNLESS_STATE = "workforceReceivedTurnless";
 

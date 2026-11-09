@@ -12,7 +12,7 @@ import { mockGenerator } from "@flow-state-dev/testing";
 import type { SubscriptionEvent } from "@flow-state-dev/core/types";
 import type { OwnHold, TaskHold } from "@flow-state-dev/orchestration/tasks";
 import { afterEach, describe, expect, it } from "vitest";
-import { blocksForward } from "../src/subscriptions/screens";
+import { refusedOnContent } from "../src/subscriptions/screens";
 import type { WorkerManifest } from "../src/manifest";
 import { githubServiceFlow } from "../src/subscriptions/github/service-flow";
 import type { GitHubSubscriptionProvider } from "../src/subscriptions/github/provider";
@@ -38,8 +38,10 @@ function textOf(input: unknown): string {
 /**
  * A judgment turn that files one task for the tasker per forwarded event it
  * reads (its `[evt-…]` mark, the latest in its input), with no questions of
- * its own, then says so. `[send]` in the event sends the tasker a message
- * instead. Every call is counted.
+ * its own, then says so. Every call is counted. A mark's suffix changes the
+ * turn: `-send` sends the lead a message instead; `-own` files with the
+ * model's own confirm, under the board's very prompt, whose No lets the work
+ * go on; `-refile` files the same work again on the turn its cancel wakes.
  */
 function scriptedJudgment(calls: string[]) {
   const handled = new Set<string>();
@@ -51,13 +53,20 @@ function scriptedJudgment(calls: string[]) {
         when: (input: unknown) => {
           const text = textOf(input);
           calls.push(text);
-          const last = [...text.matchAll(/\[evt-(\w+?)(-send)?\]/g)].at(-1);
-          if (last === undefined || handled.has(last[0])) return false;
-          handled.add(last[0]);
+          const last = [...text.matchAll(/\[evt-(\w+?)(-send|-own|-refile)?\]/g)].at(-1);
+          if (last === undefined) return false;
+          // A `-refile` mark files once more on the turn its task's cancel wakes.
+          const key = last[2] === "-refile" && text.includes(`"status":"cancelled"`) ? `${last[0]}:again` : last[0];
+          if (handled.has(key)) return false;
+          handled.add(key);
+          const goal = `Triage ${last[0]}`;
+          const url = [...text.matchAll(/https:\/\/github\.com\/acme\/api\/issues\/\d+/g)].at(-1)?.[0] ?? "";
+          const questions =
+            last[2] === "-own" ? [{ kind: "confirm", prompt: `Nobody asked for this: it was inferred from ${url}. Run it? ${goal}`, onNo: "continue" }] : [];
           step.toolCalls =
-            last[2] !== undefined
+            last[2] === "-send"
               ? [{ toolCallId: `send-${last[1]}`, toolName: "sendMessage", args: { to: "lead", text: `look at ${last[0]}` } }]
-              : [{ toolCallId: `file-${last[1]}`, toolName: "createTask", args: { goal: `Triage ${last[0]}`, assignee: "eng.tasker", questions: [] } }];
+              : [{ toolCallId: `file-${key}`, toolName: "createTask", args: { goal, assignee: "eng.tasker", questions } }];
           return true;
         },
         then: step
@@ -82,8 +91,9 @@ function issue(fields: Partial<SubscriptionEvent> = {}): SubscriptionEvent {
   });
 }
 
-function boot(calls: string[] = [], forwards: readonly string[] | null = ["issue", "comment"]) {
+function boot(calls: string[] = [], forwards: readonly string[] | null = ["issue", "comment"], extra: { userDeadlineMs?: number } = {}) {
   return bootSubscriptionsHost({
+    ...extra,
     standard: WATCHERS,
     judgment: scriptedJudgment(calls),
     service: forwards === null ? {} : { forwards: { kinds: forwards } }
@@ -234,11 +244,77 @@ describe("a coordinator's inferredWork", () => {
   });
 });
 
-describe("blocksForward", () => {
+describe("observe's confirm closes only on the user's yes", () => {
+  /** Answer `row`'s board confirm as the user, from their Inbox: the coordinator's `updateTask_tasks`. */
+  const answer = async (h: SubscriptionsHost, sessionId: string, row: Record<string, any>, done: boolean) => {
+    const [hold] = confirmsOf(row);
+    const out = await h.act("alice", sessionId, "updateTask_tasks", { id: row.id, answers: hold!.id, done });
+    await h.settled();
+    return out;
+  };
+
+  it("no deadline closes it, though the host sets one for every question to the user", async () => {
+    const h = boot([], ["issue", "comment"], { userDeadlineMs: 1_000 });
+    await watching(h, "alice", "watch.observe");
+    await h.route(issue({ title: "Inferred [evt-50]" }));
+    const [row] = await filedBy(h, "alice");
+    expect(confirmsOf(row!)).toHaveLength(1);
+    expect(confirmsOf(row!)[0]!.due, "the board's confirm has no due time for payHoldDeadlines to pay").toBeUndefined();
+    expect(h.runs).toHaveLength(0);
+  });
+
+  it("a confirm the model asked under the same prompt, whose No lets the work go on, is replaced: a No cancels", async () => {
+    const h = boot();
+    const sessionId = await watching(h, "alice", "watch.observe");
+    await h.route(issue({ title: "Inferred [evt-51-own]" }));
+    const [row] = await filedBy(h, "alice");
+    const confirms = confirmsOf(row!);
+    expect(confirms).toHaveLength(1);
+    expect(confirms[0]!.ask).toMatchObject({ kind: "confirm", onNo: "cancel" });
+    await answer(h, sessionId, row!, false);
+    const after = (await filedBy(h, "alice")).find((r) => r.id === row!.id);
+    expect(after?.status).toBe("cancelled");
+    expect(h.runs.some((run) => run.taskId === row!.id)).toBe(false);
+  });
+
+  it("after a No, the turn its cancel wakes files the same work held again; a retry of the cancelled task doesn't start it", async () => {
+    const calls: string[] = [];
+    const h = boot(calls);
+    const sessionId = await watching(h, "alice", "watch.observe");
+    await h.route(issue({ title: "Inferred [evt-52-refile]" }));
+    const [first] = await filedBy(h, "alice");
+    const before = calls.length;
+    const answered = await answer(h, sessionId, first!, false);
+    const rows = await filedBy(h, "alice");
+    const again = rows.filter((r) => r.id !== first!.id);
+    expect(again, "the woken turn filed it again").toHaveLength(1);
+    expect(confirmsOf(again[0]!)).toHaveLength(1);
+    // The cancelled one, retried: a cancel cleared its holds, so a retry would run it with no yes. Refused.
+    const retried = await h.act("alice", sessionId, "retryTask_tasks", { id: first!.id });
+    await h.settled();
+    expect(JSON.stringify(retried.output ?? retried.error)).toContain("inferred_needs_a_yes");
+    expect((await filedBy(h, "alice")).find((r) => r.id === first!.id)?.status).toBe("cancelled");
+    expect(h.runs, "no attempt started without a yes").toHaveLength(0);
+  });
+
+  it("a yes releases the task as filed, and it runs", async () => {
+    const h = boot();
+    const sessionId = await watching(h, "alice", "watch.observe");
+    await h.route(issue({ title: "Inferred [evt-53]" }));
+    const [row] = await filedBy(h, "alice");
+    await answer(h, sessionId, row!, true);
+    expect(h.runs.some((run) => run.taskId === row!.id)).toBe(true);
+  });
+});
+
+describe("refusedOnContent", () => {
   it("reads the screens' could-not-decide reasons, never a content refusal", () => {
-    expect(blocksForward({ subscription: "s", pass: false, reason: "interest: unjudged" })).toBe(true);
-    expect(blocksForward({ subscription: "s", pass: false, reason: "custom:triage: failed" })).toBe(true);
-    expect(blocksForward({ subscription: "s", pass: false, reason: "words: none of the words export" })).toBe(false);
-    expect(blocksForward({ subscription: "s", pass: true, reason: "passed the config screens" })).toBe(false);
+    // Could not decide: never on content, so an outage forwards nothing.
+    expect(refusedOnContent({ subscription: "s", pass: false, reason: "interest: unjudged" })).toBe(false);
+    expect(refusedOnContent({ subscription: "s", pass: false, reason: "custom:triage: failed" })).toBe(false);
+    expect(refusedOnContent({ subscription: "s", pass: false, reason: "no verdict" })).toBe(false);
+    // A refusal on what the event says, and a pass, which isn't a refusal at all.
+    expect(refusedOnContent({ subscription: "s", pass: false, reason: "words: none of the words export" })).toBe(true);
+    expect(refusedOnContent({ subscription: "s", pass: true, reason: "passed the config screens" })).toBe(false);
   });
 });

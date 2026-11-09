@@ -121,7 +121,7 @@ import {
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { markDispatcher } from "@flow-state-dev/core/types";
 import { requestHostOf, dispatchThroughSeam } from "@flow-state-dev/core/internal";
-import { carriedHopState, freshHopMark, heldFromFiling, hopMarkOf, sessionUserLinesOf, turnHopMark } from "../messages/hop";
+import { carriedHopState, freshHopMark, heldFromFiling, hopMarkOf, INFERRED_FORWARD_METADATA, sessionUserLinesOf, turnHopMark } from "../messages/hop";
 import type { BlockContext, BlockDefinition, DispatchAddress } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
@@ -219,12 +219,13 @@ export interface ConversationBoardOptions {
   routes?: RoutedFiling;
   // FIX-2538 D2.
   /**
-   * The confirm a filing on the running turn waits on, or `undefined` when it
-   * files as asked: read on every write that files a task (one, a batch, a
-   * routed one), server-side, so a model can't file around it. A step for
+   * The confirm a filing on the running turn waits on (its prompt), and the
+   * marker the row carries for it, or `undefined` when it files as asked:
+   * read on every write that files a task (one, a batch, a routed one),
+   * server-side, so a model can't file around it. A step for
    * the worker itself, which nothing could confirm, is refused on such a turn.
    */
-  holdsFiling?: (ctx: BlockContext, init: TaskInit) => string | undefined;
+  holdsFiling?: (ctx: BlockContext, init: TaskInit) => { readonly prompt: string; readonly metadata: Record<string, unknown> } | undefined;
   // FIX-2240.
   /**
    * The messages the session sent that are still owed: the pass's
@@ -256,16 +257,22 @@ export interface RoutedFiling {
 }
 
 /**
- * `init`, waiting on the confirm `holdsFiling` names for the running turn, or
- * as given when it names none. Added once: a confirm with the same prompt
- * already asked isn't asked twice.
+ * `init`, waiting on the confirm `holdsFiling` names for the running turn, with
+ * its marker in the row's metadata; or as given when it names none. The
+ * board's confirm is always its own: a No cancels and no deadline closes it.
+ * A caller's question with the same prompt is replaced by it, never kept in
+ * its place (a caller's confirm may let the work go on after a No), so
+ * applying this twice files one confirm.
  */
 function heldAs<T extends TaskInit>(holdsFiling: ConversationBoardOptions["holdsFiling"], ctx: BlockContext, init: T): T {
-  const prompt = holdsFiling?.(ctx, init);
-  if (prompt === undefined) return init;
-  const asked = init.questions ?? [];
-  if (asked.some((q) => q.kind === "confirm" && q.prompt === prompt)) return init;
-  return { ...init, questions: [...asked, { kind: "confirm" as const, prompt }] };
+  const held = holdsFiling?.(ctx, init);
+  if (held === undefined) return init;
+  const others = (init.questions ?? []).filter((q) => q.prompt !== held.prompt);
+  return {
+    ...init,
+    questions: [...others, { kind: "confirm" as const, prompt: held.prompt, onNo: "cancel" as const, untimed: true as const }],
+    metadata: { ...(init.metadata ?? {}), ...held.metadata }
+  };
 }
 
 /** A new task's id, minted before its add so its place in the chain is reserved first. */
@@ -1381,6 +1388,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ? {}
         : {
             async retry(id: string) {
+              // A cancel clears a row's holds, so a retry would start inferred work its confirm
+              // never released (a No cancels it). Filed again, it waits on the user's yes.
+              const row = ref.get(id);
+              if (row?.status === "cancelled" && row.metadata?.[INFERRED_FORWARD_METADATA] !== undefined) {
+                throw new TaskWriteRefusedError(
+                  "inferred_needs_a_yes",
+                  `task "${id}" was inferred from an event nobody asked about, and was cancelled before the user said yes, so it can't be retried. File it again; it waits on their yes. Nothing was changed.`
+                );
+              }
               await owePass(ctx);
               const outcome = await ref.retry!(id);
               if (outcome.outcome === "recorded" && hasStartable(ref, id)) await triggerPass(ctx);

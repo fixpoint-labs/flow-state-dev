@@ -194,6 +194,8 @@ export type BoardHostOptions = {
   durable?: boolean;
   /** The host's debt age (`RequestWakes.maxDebtAgeMs`): how long a debt may stay owed before a pass ends it. */
   maxDebtAgeMs?: number;
+  /** How long a question to the user waits before the board closes it "no answer came" (`RuntimeConfig.userDeadlineMs`). */
+  userDeadlineMs?: number;
   /** The host's wait deadline bounds (`RequestWaits.deadlines`). */
   waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
   /** The gates a `[hold:<name>]` task waits on, by name, until the test releases them. */
@@ -326,6 +328,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
     ...(options.maxDebtAgeMs === undefined ? {} : { maxDebtAgeMs: options.maxDebtAgeMs }),
+    ...(options.userDeadlineMs === undefined ? {} : { userDeadlineMs: options.userDeadlineMs }),
     ...(options.waitDeadlines === undefined ? {} : { waitDeadlines: options.waitDeadlines }),
     ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
     ...(options.adapters === undefined ? {} : { adapters: options.adapters }),

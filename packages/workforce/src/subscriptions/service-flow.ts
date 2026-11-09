@@ -44,7 +44,7 @@
  * nominated beside the rest, for the kinds the app lists in `forwards.kinds`,
  * and judged in the same screen run; it takes the event only when every
  * ordinary verdict refused on content: none passed, and none failed or held
- * ({@link blocksForward}). Its delivery marks the message `addressed` (the event's
+ * (`refusedOnContent`). Its delivery marks the message `addressed` (the event's
  * `addressed`) or `inferred`, server-side, and the coordinator's
  * `inferredWork` decides what its turn may do. `Routed.unmatched` counts what
  * was forwarded, and why nothing was. Without `forwards`, nothing is forwarded.
@@ -81,7 +81,7 @@ import {
   type SubscriptionCursor,
   type SubscriptionResourceState
 } from "./rows";
-import { blocksForward, configScreenChain, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
+import { configScreenChain, refusedOnContent, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
 import { unsubscribe, type SubscriptionProvider } from "./subscribe";
 
 /** The default cap: the most messages one subscription sends in an hour. */
@@ -125,12 +125,12 @@ export interface SubscriptionServiceOptions {
 }
 
 /** How a forwarded event reaches a coordinator: it asks the app's agent, or nobody asked. Written by the delivery, never by a model. */
-export const FORWARD_MARKS = ["addressed", "inferred"] as const;
+const FORWARD_MARKS = ["addressed", "inferred"] as const;
 
-export type ForwardMark = (typeof FORWARD_MARKS)[number];
+type ForwardMark = (typeof FORWARD_MARKS)[number];
 
 /** Why an unheard event was forwarded to no one. */
-export const UNMATCHED_DROPS = ["kind not forwarded", "no coordinator follows", "screens refused it"] as const;
+const UNMATCHED_DROPS = ["kind not forwarded", "no coordinator follows", "screens refused it"] as const;
 
 const deliverInputSchema = z.object({
   subscription: z.string().min(1),
@@ -314,8 +314,9 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       const ordinary = nominated.filter((c) => c.entry.unmatched !== true);
       const unmatched = nominated.filter((c) => c.entry.unmatched === true);
       const ordinaryVerdicts = ordinary.map(verdictOf);
-      // Unheard: no ordinary subscription passed, and every refusal was on content.
-      const unheard = !ordinaryVerdicts.some((v) => v.pass || blocksForward(v));
+      // Unheard: every ordinary verdict refused on content (none passed, none failed or held).
+      // Read before the owner-run cap, so an event the cap cut off still counts as heard.
+      const unheard = ordinaryVerdicts.every(refusedOnContent);
       const take = (candidate: Candidate, verdict: Routed["verdicts"][number], forward?: ForwardMark): boolean => {
         // Past the cap, a passing subscription is refused: the event reaches no more sessions.
         const capped = verdict.pass && delivered.size >= maxOwnerRuns;

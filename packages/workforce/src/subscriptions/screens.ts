@@ -128,13 +128,15 @@ const passRest = handler({
 const undecided = (screening: Screening) => screening.pending.length > 0;
 
 /**
- * Whether a refusal says the screens couldn't decide, rather than that the
- * event's content didn't fit: the judgment's `interest: unjudged`, or a
- * screen's `<screen>: failed` from a throw, both pinned reasons. Such an event
- * isn't unheard, so nothing forwards it: an outage forwards nothing.
+ * Whether a verdict refused the event on its content. `interest: unjudged`
+ * (the judgment couldn't answer), a screen that failed (`<screen>: failed`)
+ * and `no verdict` are not, all pinned reasons: an event refused that way
+ * isn't unheard, so nothing forwards it, and an outage forwards nothing.
+ * The same rule as the judgment's own `refusedOnContent`, which replaces this
+ * one when both are in.
  */
-export function blocksForward(verdict: ScreenVerdict): boolean {
-  return !verdict.pass && (verdict.reason === "interest: unjudged" || verdict.reason.endsWith(": failed"));
+export function refusedOnContent(verdict: ScreenVerdict): boolean {
+  return !verdict.pass && verdict.reason !== "interest: unjudged" && verdict.reason !== "no verdict" && !/: failed$/.test(verdict.reason);
 }
 
 /** The config screen chain: `sender`, `own`, `labels`, `words`, `allow`, each while a subscription is undecided. */
