@@ -196,6 +196,27 @@ jobs:
         if: ${{ !cancelled() }}
         run: node --test scripts/root-exports.test.mjs
 
+      # The retired-term guard lives here because it reads names with the
+      # TypeScript parser (FIX-2631 D2), so it needs the install, and its
+      # added-names reach is the same per-file ratchet against the same base.
+      # Unconditional: a retired Workforce word is as wrong on main as on a PR.
+      # docs/contributing/glossary.mjs owns the terms, the areas and the exceptions.
+      - name: No retired Workforce term
+        if: ${{ !cancelled() }}
+        run: node scripts/check-retired-terms.mjs
+
+      # A change may not add a row local, parameter or property outside the
+      # store adapters and UI list modules. A base that does not resolve fails.
+      - name: No new row name for a resource
+        if: ${{ !cancelled() }}
+        run: node scripts/check-retired-terms.mjs --added-since HEAD^1
+
+      # The plants must still be refused on the real tree, or the checks above
+      # could pass because they stopped seeing a term or a kind of name.
+      - name: The retired-term guard refuses its plants
+        if: ${{ !cancelled() }}
+        run: node scripts/check-retired-terms.mjs --control
+
   # The package tests, split across runners by scripts/test-shards.mjs. Each
   # shard runs its packages one at a time, as `pnpm test` does: two at once on
   # one runner oversubscribe it and tests start timing out.
@@ -419,17 +440,6 @@ jobs:
       # it matches co-occurring concepts instead of a phrase list.
       - name: No doc teaches per-kind flowIsolation
         run: node scripts/check-isolation-coordinate.mjs
-
-      # Unconditional for the same reason: a retired Workforce word is as
-      # wrong on main as on a PR. docs/contributing/glossary.mjs owns the terms, the
-      # areas and the exceptions.
-      - name: No retired Workforce term
-        run: node scripts/check-retired-terms.mjs
-
-      # The plants must still be refused on the real tree, or the check above
-      # could pass because it stopped seeing a term.
-      - name: The retired-term guard refuses its plants
-        run: node scripts/check-retired-terms.mjs --control
 
       # One word per thing (FIX-1876): dispatch, wait, ask and hand-off each
       # name one mechanism. docs/contributing/glossary.mjs owns the words, the exemptions and

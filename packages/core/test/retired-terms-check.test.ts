@@ -4,9 +4,18 @@
  * closes that a word list can't (a folder nobody classified, an exception
  * nobody needs).
  */
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  ADDED_PLANTS,
   EXCEPTIONS,
+  NAME_READS,
+  addedRowNames,
+  addedSince,
+  declaredNames,
   GLOSSARY_TERMS,
   PERSON_PINS,
   PLANTS,
@@ -66,8 +75,11 @@ describe("the guard refuses a retired word wherever it isn't kept on purpose", (
     expect(results.filter((x) => !x.refused)).toEqual([]);
     expect(ok).toBe(true);
     // One result per plant with a term, plus the duplicate row, the stale
-    // exception and the unscoped folder.
-    expect(results).toHaveLength((PLANTS as Array<{ term: string | null }>).filter((p) => p.term !== null).length + 3);
+    // exception and the unscoped folder, then one per added-names plant and
+    // one per parser read (each must have a plant).
+    expect(results).toHaveLength(
+      (PLANTS as Array<{ term: string | null }>).filter((p) => p.term !== null).length + 3 + (ADDED_PLANTS as unknown[]).length + (NAME_READS as unknown[]).length,
+    );
   });
 
   it("counts a task board's own seat: seat has no exception, the board's included", () => {
@@ -273,7 +285,7 @@ describe("the resource entry reads the whole tree: a stored thing is a resource,
       "const taskRow = rows[0];",
       'import { type VersionedRow } from "@flow-state-dev/contracts";',
       'export { type ScheduleIndexRow } from "./scheduleIndex";',
-      "  type ResourceStateRow,",
+      "import {\n  type ResourceStateRow,\n} from \"./state\";",
       "export function throwArrow() {}",
     ].join("\n");
     expect(resourceHits("packages/engine/src/zz.ts", kept)).toEqual([]);
@@ -406,5 +418,166 @@ describe("the resource entry reads the whole tree: a stored thing is a resource,
     expect(counted(hit)).toContain("packages/workforce/src/zz.ts:1:collection-row");
     // A fixture with no quote: the released-quote exemption strips nothing, so it is stale.
     expect(run({}).stale).toContain("released-quotes");
+  });
+});
+
+type Added = { term: string; line: number; name: string; text: string };
+const added = (path: string, before: string | null, after: string): string[] =>
+  (addedRowNames as (p: string, b: string | null, a: string) => Added[])(path, before, after).map((h) => `${h.line}:${h.name}`);
+type Read = { read: string };
+
+describe("the resource entry reads Row type parameters and the six phrases on every line of the tree", () => {
+  it("refuses a row type parameter anywhere, and leaves a type argument and a rendered element", () => {
+    // A type parameter is a name the next reader copies, so it counts with no change to hold it.
+    expect(resourceHits("packages/engine/src/zz.ts", "function g<TRow extends object>(x: TRow) {}\n")).toEqual(["1:function g<TRow extends object>(x: TRow) {}"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "function h<TaskRows>() {}\n")).toHaveLength(1);
+    // Passing or rendering a Row name is a use: its declaration is where it counts.
+    expect(resourceHits("packages/workforce/src/zz.ts", "const page = load<TaskRow>();\n")).toEqual([]);
+    expect(resourceHits("packages/workforce/src/zz.tsx", "const view = <TaskRow id={id} />;\n")).toEqual([]);
+  });
+
+  it("refuses a phrase in a comment, a test name, a string, a page and a figure", () => {
+    expect(resourceHits("packages/workforce/src/zz.ts", "// the subscription row is deleted when it ends\n")).toHaveLength(1);
+    expect(resourceHits("packages/orchestration/test/zz.test.ts", 'it("reads each task\'s rows", () => {});\n')).toHaveLength(1);
+    expect(resourceHits("packages/workforce/src/zz.ts", 'throw new Error("no schedule row for that id");\n')).toHaveLength(1);
+    expect(resourceHits("docs/contributing/zz.md", "Write the Project Row back once.\n")).toHaveLength(1);
+    // A figure is read like any other text: a label on a published SVG counts.
+    expect(resourceHits("apps/docs/guides/zz.svg", '<text x="1" y="1">The worker rows</text>\n')).toHaveLength(1);
+    // "entry", the resource's own name, and a row that names no resource pass.
+    expect(resourceHits("packages/workforce/src/zz.ts", "// the subscription entry, each task, a table row, a row in the UI\n")).toEqual([]);
+  });
+
+  it("keeps the phrases in a store adapter and a UI list module, and counts what they keep", () => {
+    const kept: Record<string, number> = {};
+    const scan = scanTreeRules as (p: string, t: string, k: Record<string, number>) => Hit[];
+    expect(scan("packages/store-sqlite/src/zz.ts", "// the schedule row's primary key\n", kept)).toEqual([]);
+    expect(scan("packages/shift-manager/src/components/zz.tsx", "// the worker's row on the roster\n", kept)).toEqual([]);
+    expect(kept).toEqual({ "store-adapter-rows": 1, "ui-list-rows": 1 });
+  });
+});
+
+describe("TypeScript's parser reads every declaration kind, and a use never", () => {
+  const names = (text: string) =>
+    (declaredNames as (p: string, t: string) => Array<{ name: string; kind: string; read: string }>)("zz.ts", text).map((d) => `${d.read}:${d.kind}:${d.name}`);
+
+  it("tells an exported value from a local, and a binding from the key it reads", () => {
+    expect(names("export const fooRow = 1; const barRow = 2;")).toEqual(["variable:exported-value:fooRow", "variable:local:barRow"]);
+    expect(names("export const { taskRow: task, list: rows } = x;")).toEqual(["binding:exported-value:task", "binding:exported-value:rows"]);
+    expect(names("export function readRow() {} function writeRow() {}")).toEqual(["function:exported-value:readRow", "function:local:writeRow"]);
+  });
+
+  it("reads an import only when it binds a name, and an export list only when it is not a plain re-export", () => {
+    expect(names('import { VersionedRow } from "./v"; import { b as barRows } from "./x"; import rowDefault from "./d";')).toEqual([
+      "import:import:barRows",
+      "import:import:rowDefault",
+    ]);
+    expect(names('export { FooRow } from "./w"; export { a as fooRow } from "./w"; export { localRow };')).toEqual(["export-list:export:fooRow", "export-list:export:localRow"]);
+  });
+
+  it("dropping any one read lets its plant through the control", () => {
+    // The control is only as good as its plants: each read must have one that nothing else catches.
+    const fixture = tree({ [PERSON_PINS[0].path]: "Say how to reach a person when you can't help.\n" });
+    const run = control as (t: Tree, o: { reads: Read[] }) => { results: Array<{ what: string; refused: boolean }>; ok: boolean };
+    for (const dropped of NAME_READS as Read[]) {
+      const { ok, results } = run(fixture, { reads: (NAME_READS as Read[]).filter((r) => r !== dropped) });
+      expect(ok, `control passed with the ${dropped.read} read dropped`).toBe(false);
+      expect(results.filter((x) => !x.refused).map((x) => x.what).join(" ")).toContain(dropped.read);
+    }
+  });
+});
+
+describe("a change may not add a row name to a file (D1, a per-file ratchet)", () => {
+  it("refuses a new local, parameter or property, and names the one that is new", () => {
+    expect(added("packages/workforce/src/zz.ts", null, "const taskRow = 1;\n")).toEqual(["1:taskRow"]);
+    expect(added("packages/workforce/src/zz.ts", "const row = 1;\n", "const row = 1;\nfunction f(row: unknown) {}\n")).toEqual(["2:row"]);
+    expect(added("packages/workforce/src/zz.ts", "", "interface I {\n  workerRow: string;\n}\n")).toEqual(["2:workerRow"]);
+  });
+
+  it("passes an edit to a line that already declares one, and a swap inside one file", () => {
+    // A diff marks an edited line as added; counting per file is what keeps an edit from forcing a rename.
+    expect(added("packages/workforce/src/zz.ts", "const row = load();\n", "const row = (load() ?? null);\n")).toEqual([]);
+    expect(added("packages/workforce/src/zz.ts", "const row = 1;\n", "const taskRow = 1;\n")).toEqual([]);
+    // Fewer is always fine.
+    expect(added("packages/workforce/src/zz.ts", "const row = 1;\nconst rows = [];\n", "const entry = 1;\n")).toEqual([]);
+  });
+
+  it("passes a use, a kept path, and a file outside in-scope code", () => {
+    expect(added("packages/workforce/src/zz.ts", null, "use(entry.row); call({ row }); const s = 'row';\n")).toEqual([]);
+    expect(added("packages/store-postgres/src/zz.ts", null, "const row = 1;\n")).toEqual([]);
+    expect(added("packages/react/src/components/zz.tsx", null, "const row = 1;\n")).toEqual([]);
+    expect(added("specs/issues/zz/poc/x.mjs", null, "const row = 1;\n")).toEqual([]);
+    expect(added("packages/workforce/README.md", null, "const row = 1;\n")).toEqual([]);
+  });
+});
+
+describe("the added reach reads two real commits, as the hook and CI run it", () => {
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@localhost", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8" });
+  const write = (dir: string, files: Record<string, string>) => {
+    for (const [p, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, p)), { recursive: true });
+      writeFileSync(join(dir, p), text);
+    }
+  };
+  const repo = (base: Record<string, string>) => {
+    const dir = mkdtempSync(join(tmpdir(), "retired-terms-"));
+    git(dir, "init", "-q", "-b", "main");
+    write(dir, base);
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "base");
+    return dir;
+  };
+  type Run = { ok: boolean; changed: number; hits: Array<{ path: string; name: string }> };
+  const since = addedSince as (root: string, base: string, head?: string) => Run;
+  const moved = "export function plan(list: string[]) {\n  const row = list[0];\n  return row;\n}\n".repeat(4);
+
+  it("refuses a new name and a copied file's names, and passes an edit, a rename and a deletion", () => {
+    const dir = repo({
+      "packages/workforce/src/old.ts": "export function load(x: unknown) {\n  const row = x;\n  return row;\n}\n",
+      "packages/workforce/src/moving.ts": moved,
+      "packages/workforce/src/gone.ts": "const row = 1;\n",
+      "packages/workforce/src/stays.ts": "export const keep = (rows: string[]) => rows;\n",
+    });
+    try {
+      write(dir, {
+        "packages/workforce/src/old.ts": "export function load(x: unknown) {\n  const row = x ?? null;\n  return row;\n}\n",
+        "packages/workforce/src/fresh.ts": "export function f(list: string[]) {\n  const taskRow = list[0];\n  return taskRow;\n}\n",
+        // A copy of a file that stays: git reads it as added, so its names are new.
+        "packages/workforce/src/copy.ts": "export const keep = (rows: string[]) => rows;\n",
+      });
+      git(dir, "mv", "packages/workforce/src/moving.ts", "packages/workforce/src/moved.ts");
+      git(dir, "rm", "-q", "packages/workforce/src/gone.ts");
+      git(dir, "add", "-A");
+      git(dir, "commit", "-q", "-m", "head");
+      // CI's form: the merge's first parent. The hook's form: a merge base and an explicit head.
+      for (const r of [since(dir, "HEAD^1"), since(dir, git(dir, "rev-parse", "main~1").trim(), git(dir, "rev-parse", "HEAD").trim())]) {
+        expect(r.ok).toBe(false);
+        expect([...new Set(r.hits.map((h) => `${h.path}:${h.name}`))].sort()).toEqual(["packages/workforce/src/copy.ts:rows", "packages/workforce/src/fresh.ts:taskRow"]);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads the commits, not the working tree", () => {
+    const dir = repo({ "packages/workforce/src/a.ts": "const a = 1;\n" });
+    try {
+      write(dir, { "packages/workforce/src/a.ts": "const row = 1;\n" });
+      expect(since(dir, "HEAD").ok).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("exits 1 when the base does not resolve, so CI never skips", () => {
+    const dir = repo({ "packages/workforce/src/a.ts": "const a = 1;\n" });
+    try {
+      expect(() => since(dir, "HEAD^1")).toThrow(/does not resolve/);
+      const cli = spawnSync(process.execPath, [join(__dirname, "../../../scripts/check-retired-terms.mjs"), "--root", dir, "--added-since", "HEAD^1"], { encoding: "utf8" });
+      expect(cli.status).toBe(1);
+      expect(cli.stderr).toMatch(/does not resolve/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

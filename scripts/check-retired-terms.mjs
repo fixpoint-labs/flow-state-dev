@@ -7,7 +7,7 @@
  * each says instead, which are read on Workforce's ground only, the areas and
  * the exceptions all come from the glossary (`docs/contributing/glossary.mjs`).
  * This file owns how it finds them: the areas walk, the ground, the token
- * strip and the added-lines scan.
+ * strip, the parser's name reads and the added-names ratchet.
  *
  * ## Totality, twice
  *
@@ -43,27 +43,45 @@
  * ## Whole-tree rules
  *
  * A retirement the glossary reads at `tree` scope (today, the resource entry's)
- * matches by shape rather than by one word: in code, a name it declares or
- * exports (each matcher runs over the whole file, so a declaration may span
- * lines); in a page, its prose. Every line of every in-scope file counts, the
- * existing tree as much as a change. Its exemptions come from the glossary too:
- * a path keeps a file's `…Row` names, and the quote rule strips a released
- * message's text on the pages it names, never the line. Each must keep
- * something, or it is stale. History, process, goals and root config stay out
- * of scope, same as the other terms.
+ * matches by shape rather than by one word: in code, a row name it declares,
+ * read with TypeScript's parser (`declaredNames`, one read per declaration
+ * kind, so a declaration may span lines and a use never counts); in a page, its
+ * prose; on any line of any in-scope file, its phrases. Every line of every
+ * in-scope file counts, the existing tree as much as a change. Its exemptions
+ * come from the glossary too: a path keeps a file's row names and phrases, and
+ * the quote rule strips a released message's text on the pages it names, never
+ * the line. Each must keep something, or it is stale. History, process, goals
+ * and root config stay out of scope, same as the other terms.
+ *
+ * ## The names a change adds
+ *
+ * A row local, parameter or property is not read over the whole tree yet: 2,170
+ * stay until FIX-2632 renames them. `--added-since <base>` reads what a change
+ * adds instead, as a per-file ratchet (FIX-2631 D1): a changed file may not
+ * declare more row names than its base version did. It reads the two commits
+ * (`gitReader`), never the working tree or a diff's hunks, so an edit to a line
+ * that already declares one is not new. Git's rename detection carries a moved
+ * file's names; a copy reads as new. The pre-push hook passes each pushed sha
+ * and its merge base with origin/main; CI passes `HEAD^1`.
  *
  * Run: node scripts/check-retired-terms.mjs [--root <dir>] [--list [term]] [--control]
- *   --root     scan another checkout (default: this repository)
- *   --list     print every counted line, or only one term's
- *   --control  plant lines that must be refused into the tree (in memory) and
- *              require each refused; exits 1 if any slips through
+ *      node scripts/check-retired-terms.mjs --added-since <base> [--head <sha>] [--root <dir>]
+ *   --root         scan another checkout (default: this repository)
+ *   --list         print every counted line, or only one term's
+ *   --control      plant lines that must be refused into the tree, and added
+ *                  names with a base text, all in memory; require each refused,
+ *                  each must-pass change passed, and a plant for every parser
+ *                  read; exits 1 otherwise
+ *   --added-since  the added reach only, from <base> to --head (default HEAD);
+ *                  a ref that does not resolve exits 1
  * Exits 1 on any counted line, unclassified file, stale exception or glossary
- * row out of place.
+ * row out of place. Needs `pnpm install` (the parser).
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 import {
   AREAS,
   GUARD_EXEMPTIONS as EXCEPTIONS,
@@ -73,6 +91,7 @@ import {
   TREE_EXEMPTIONS,
   TREE_RULES,
 } from "../docs/contributing/glossary.mjs";
+import { gitReader } from "./mechanism-exports.mjs";
 
 /** The glossary's areas, terms, exceptions and pins, re-exported for this guard's tests and codemods. */
 export { AREAS, EXCEPTIONS, PERSON_PINS, TERMS };
@@ -175,50 +194,203 @@ function matchLines(re, text) {
   return found;
 }
 
+const SCRIPT_KIND = { ts: ts.ScriptKind.TS, tsx: ts.ScriptKind.TSX, js: ts.ScriptKind.JS, jsx: ts.ScriptKind.JSX };
+const scriptKindOf = (path) => {
+  const ext = /\.[cm]?([jt]sx?)$/.exec(path)?.[1] ?? "ts";
+  return SCRIPT_KIND[ext];
+};
+const hasExport = (node) => (node !== undefined && ts.canHaveModifiers(node) ? ts.getModifiers(node) ?? [] : []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+/** The variable statement a declaration or a binding inside it belongs to, if any. */
+const statementOf = (node) => {
+  let n = node;
+  while (n !== undefined && !ts.isVariableStatement(n) && !ts.isSourceFile(n) && !ts.isBlock(n)) n = n.parent;
+  return n !== undefined && ts.isVariableStatement(n) ? n : undefined;
+};
+
+/**
+ * Each declaration the parser reads: which `read` it is (the `--control` plants name one each), the
+ * node it applies to, its name node, and its kind. `kind` is what the glossary's `treeKinds` names;
+ * an exported function or variable is `exported-value`, the same unexported one a `local`.
+ */
+export const NAME_READS = [
+  { read: "type-parameter", is: ts.isTypeParameterDeclaration, kind: () => "type-parameter" },
+  { read: "type-alias", is: ts.isTypeAliasDeclaration, kind: () => "type" },
+  { read: "interface", is: ts.isInterfaceDeclaration, kind: () => "type" },
+  { read: "enum", is: ts.isEnumDeclaration, kind: () => "type" },
+  { read: "class", is: (n) => ts.isClassDeclaration(n) || ts.isClassExpression(n), kind: () => "class" },
+  { read: "function", is: (n) => ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n), kind: (n) => (ts.isFunctionDeclaration(n) && hasExport(n) ? "exported-value" : "local") },
+  { read: "variable", is: (n) => ts.isVariableDeclaration(n) && ts.isIdentifier(n.name), kind: (n) => (hasExport(statementOf(n)) ? "exported-value" : "local") },
+  { read: "binding", is: (n) => ts.isBindingElement(n) && ts.isIdentifier(n.name), kind: (n) => (statementOf(n) !== undefined && hasExport(statementOf(n)) ? "exported-value" : "local") },
+  { read: "parameter", is: (n) => ts.isParameter(n) && ts.isIdentifier(n.name), kind: () => "parameter" },
+  // An import binds a new name only under an alias, a default or a namespace; `import { VersionedRow }` is a use.
+  { read: "import", is: (n) => (ts.isImportSpecifier(n) && n.propertyName !== undefined) || ts.isImportClause(n) || ts.isNamespaceImport(n), kind: () => "import" },
+  // `export { a as fooRow }` binds fooRow, a re-export too; `export { fooRow }` names a local; a plain `export { FooRow } from` is a use.
+  { read: "export-list", is: (n) => ts.isExportSpecifier(n) && (n.propertyName !== undefined || n.parent.parent.moduleSpecifier === undefined), kind: () => "export" },
+  {
+    read: "property",
+    is: (n) => ts.isPropertySignature(n) || ts.isPropertyDeclaration(n) || ts.isMethodDeclaration(n) || ts.isMethodSignature(n) || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n),
+    kind: () => "property",
+  },
+];
+
+/**
+ * Every name a file declares, as TypeScript's parser reads it (FIX-2631 D2): `{ name, kind, read, line }`,
+ * `line` 1-based, at the name. A use is never read: a property access, an object key, a plain import or
+ * re-export, a string.
+ * @param {string} path
+ * @param {string} text
+ * @param {typeof NAME_READS} [reads]
+ */
+export function declaredNames(path, text, reads = NAME_READS) {
+  const sf = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, scriptKindOf(path));
+  const out = [];
+  const visit = (node) => {
+    const r = reads.find((x) => x.is(node));
+    const nameNode = r === undefined ? undefined : node.name;
+    if (nameNode !== undefined && (ts.isIdentifier(nameNode) || ts.isPrivateIdentifier(nameNode) || ts.isStringLiteral(nameNode))) {
+      out.push({ name: nameNode.text.replace(/^#/, ""), kind: r.kind(node), read: r.read, line: sf.getLineAndCharacterOfPosition(nameNode.getStart(sf)).line + 1 });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+/** A rule's row names in a file: every kind, or only its whole-tree kinds. A file with no `row` in it is not parsed. */
+function rowNames(rule, path, text, { tree, reads }) {
+  if (!/row/i.test(text)) return [];
+  return declaredNames(path, text, reads).filter((d) => rule.rowName.test(d.name) && (!tree || rule.treeKinds.includes(d.kind)));
+}
+
 /**
  * The glossary's whole-tree retirements over one file, every line of it. A
- * file outside this guard's in-scope areas is ignored. In code: a type
- * declared with Row in its name (`declaresRow`), an exported value built on
- * Row, directly or through an export list (`exportsRow`, `exportsRowInList`, `exportsRowInPattern`), any name built on CollectionItem (`namesItem`), and a
- * lifecycle named State (`declaresState`); a kept `path` drops the four Row
- * matchers only. In a page: the rule's `prose`, once a quote rule has stripped
- * the released texts it names from a page it covers.
+ * file outside this guard's in-scope areas is ignored. In code: a row name of
+ * one of the rule's `treeKinds`, read by the parser (any type or class, an
+ * exported value, a name an export list binds, a type parameter), any name
+ * built on CollectionItem (`namesItem`), and a lifecycle named State
+ * (`declaresState`); a kept `path` drops the row names only. In a page: the
+ * rule's `prose`, once a quote rule has stripped the released texts it names
+ * from a page it covers. In every file, code or page or any other text: the
+ * rule's `phrases`, which a kept path keeps too.
  * @param {string} path
  * @param {string} text
  * @param {Record<string, number>} [kept] counts per exemption id, added to
+ * @param {{ reads?: typeof NAME_READS }} [options]
  * @returns {{ term: string; line: number; text: string }[]}
  */
-export function scanTreeRules(path, text, kept = {}) {
+export function scanTreeRules(path, text, kept = {}, { reads = NAME_READS } = {}) {
   const area = areaOf(path);
   if (area === undefined || !area.scope) return [];
   const lines = text.split("\n");
   const hits = [];
   for (const rule of TREE_RULES) {
     const keeps = exemptionsOf(rule);
+    const keptPath = keeps.find((e) => e.path?.test(path));
+    const keep = (n) => { kept[keptPath.id] = (kept[keptPath.id] ?? 0) + n; };
+    const quoting = keeps.filter((e) => e.pages?.test(path));
     const at = new Set();
     if (CODE_FILE.test(path)) {
-      const keptPath = keeps.find((e) => e.path?.test(path));
-      for (const re of [rule.declaresRow, rule.exportsRow, rule.exportsRowInList, rule.exportsRowInPattern]) {
-        const found = typeof re === "function" ? re(text).map((h) => ({ line: text.slice(0, h.index).split("\n").length, name: h.name })) : matchLines(re, text);
-        if (keptPath === undefined) for (const f of found) at.add(f.line);
-        else if (found.length > 0) kept[keptPath.id] = (kept[keptPath.id] ?? 0) + found.length;
-      }
+      const found = rowNames(rule, path, text, { tree: true, reads });
+      if (keptPath === undefined) for (const f of found) at.add(f.line);
+      else if (found.length > 0) keep(found.length);
       for (const re of [rule.namesItem, rule.declaresState]) for (const f of matchLines(re, text)) at.add(f.line);
-    } else if (DOC_FILE.test(path)) {
-      const quoting = keeps.filter((e) => e.pages?.test(path));
-      lines.forEach((raw, i) => {
-        let line = raw;
+    }
+    lines.forEach((raw, i) => {
+      let line = raw;
+      if (DOC_FILE.test(path)) {
         for (const e of quoting) {
           const next = e.quotes.reduce((l, re) => l.replace(re, " "), line);
           if (next !== line) kept[e.id] = (kept[e.id] ?? 0) + 1;
           line = next;
         }
         if (rule.prose.test(line)) at.add(i + 1);
-      });
-    }
+      }
+      if (rule.phrases.test(line)) {
+        if (keptPath === undefined) at.add(i + 1);
+        else keep(1);
+      }
+    });
     for (const n of [...at].sort((a, b) => a - b)) hits.push({ term: rule.id, line: n, text: (lines[n - 1] ?? "").trim().slice(0, 160) });
   }
   return hits;
+}
+
+/**
+ * The names one file's change adds (FIX-2631 D1): a row name counts as new when the file declares more
+ * row names, of any kind, than its base text did. So an edit to a line that already declares one passes,
+ * and so does a swap of one for another in the same file. A file in a kept path, or outside the in-scope
+ * code, adds none. Reported: each declaration of a name the head declares more often than the base.
+ * @param {string} path the file at the head
+ * @param {string | null} before its text at the base (`null`: the file is new)
+ * @param {string} after its text at the head
+ * @param {{ reads?: typeof NAME_READS; kept?: Record<string, number> }} [options]
+ * @returns {{ term: string; line: number; text: string; name: string }[]}
+ */
+export function addedRowNames(path, before, after, { reads = NAME_READS, kept = {} } = {}) {
+  const area = areaOf(path);
+  if (area === undefined || !area.scope || !CODE_FILE.test(path)) return [];
+  const hits = [];
+  for (const rule of TREE_RULES) {
+    if (rule.rowName === undefined) continue;
+    const head = rowNames(rule, path, after, { tree: false, reads });
+    const base = before === null ? [] : rowNames(rule, path, before, { tree: false, reads });
+    const keptPath = exemptionsOf(rule).find((e) => e.path?.test(path));
+    if (keptPath !== undefined) {
+      if (head.length > 0) kept[keptPath.id] = (kept[keptPath.id] ?? 0) + head.length;
+      continue;
+    }
+    if (head.length <= base.length) continue;
+    const baseCount = new Map();
+    for (const d of base) baseCount.set(d.name, (baseCount.get(d.name) ?? 0) + 1);
+    const seen = new Map();
+    const lines = after.split("\n");
+    for (const d of head) {
+      const n = (seen.get(d.name) ?? 0) + 1;
+      seen.set(d.name, n);
+      if (n > (baseCount.get(d.name) ?? 0)) hits.push({ term: rule.id, line: d.line, name: d.name, text: (lines[d.line - 1] ?? "").trim().slice(0, 160) });
+    }
+  }
+  return hits;
+}
+
+const gitOut = (root, args) => execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 1 << 28, stdio: ["ignore", "pipe", "pipe"] });
+
+/**
+ * The added reach over a commit range: every in-scope code file `head` changes against `base`, git's
+ * rename detection on (a moved file keeps its names; a copy reads as new). Reads the two commits,
+ * never the working tree or a diff's hunks. A ref that does not resolve throws: CI never skips.
+ * @param {string} root
+ * @param {string} base
+ * @param {string} [head]
+ */
+export function addedSince(root, base, head = "HEAD") {
+  const resolve = (ref) => {
+    try {
+      return gitOut(root, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]).trim();
+    } catch {
+      throw new Error(`--added-since: ${ref} does not resolve to a commit here; fetch it (CI checks out depth 2 for HEAD^1)`);
+    }
+  };
+  const [from, to] = [resolve(base), resolve(head)];
+  const fields = gitOut(root, ["diff", "--name-status", "-M", "-z", "--no-ext-diff", from, to]).split("\0").filter(Boolean);
+  const readFrom = gitReader(root, from);
+  const readTo = gitReader(root, to);
+  const hits = [];
+  const kept = {};
+  let changed = 0;
+  for (let i = 0; i < fields.length; ) {
+    const status = fields[i++];
+    const renamed = status.startsWith("R");
+    const oldPath = renamed ? fields[i++] : fields[i];
+    const path = fields[i++];
+    if (status.startsWith("D") || !CODE_FILE.test(path)) continue;
+    changed++;
+    const after = readTo(path);
+    if (after === null) continue;
+    const before = status.startsWith("A") ? null : readFrom(oldPath);
+    for (const h of addedRowNames(path, before, after, { kept })) hits.push({ path, area: areaOf(path)?.id, ...h });
+  }
+  return { base: from, head: to, changed, hits, kept, ok: hits.length === 0 };
 }
 
 /** The glossary's published terms: each is defined by exactly one row of the published page. */
@@ -245,9 +417,9 @@ export function checkGlossary(text) {
  * The census over a tree. Pure over its inputs, so a test hands it a fixture.
  * @param {{ files: Map<string, string>; paths: string[] }} tree every path, and
  *   the text of each one that reads as text
- * @param {{ extraExceptions?: object[] }} [options]
+ * @param {{ extraExceptions?: object[]; reads?: typeof NAME_READS }} [options] `reads`: the parser reads (a test drops one)
  */
-export function census({ files, paths }, { extraExceptions = [] } = {}) {
+export function census({ files, paths }, { extraExceptions = [], reads = NAME_READS } = {}) {
   const exceptions = [...EXCEPTIONS, ...extraExceptions];
   const unscoped = [];
   const areaCounts = {};
@@ -267,7 +439,7 @@ export function census({ files, paths }, { extraExceptions = [] } = {}) {
     const text = files.get(path);
     if (text === undefined) continue;
     for (const hit of scanFile(path, text, exceptions, stripped)) hits.push({ path, area: area.id, ...hit });
-    for (const hit of scanTreeRules(path, text, stripped)) hits.push({ path, area: area.id, ...hit });
+    for (const hit of scanTreeRules(path, text, stripped, { reads })) hits.push({ path, area: area.id, ...hit });
   }
   const stale = [...exceptions, ...TREE_EXEMPTIONS].filter((e) => !stripped[e.id]).map((e) => e.id);
   const glossaryText = files.get(GLOSSARY);
@@ -327,6 +499,21 @@ export const PLANTS = [
   { path: "packages/harness-manager/src/zz-planted.ts", line: "export async function readFooRow() {}", term: "collection-row" },
   { path: "packages/workspace/src/zz-planted.ts", line: 'export type FooState = "idle" | "done";', term: "collection-row" },
   { path: "apps/docs/docs/zz-collection-planted.md", line: "Each collection row is stored beside the worker.", term: "collection-row" },
+  // A row name of each whole-tree kind, one parser read each, so dropping any read lets its plant through (FIX-2631).
+  { path: "packages/workforce/src/zz-planted-type-alias.ts", line: "type FooRow = { id: string };", term: "collection-row", read: "type-alias" },
+  { path: "packages/workforce/src/zz-planted-interface.ts", line: "interface BarRow { id: string }", term: "collection-row", read: "interface" },
+  { path: "packages/workforce/src/zz-planted-enum.ts", line: "enum BazRow { A }", term: "collection-row", read: "enum" },
+  { path: "packages/workforce/src/zz-planted-class.ts", line: "const Q = class QuxRow {};", term: "collection-row", read: "class" },
+  { path: "packages/workforce/src/zz-planted-function.ts", line: "export function readFooRow() {}", term: "collection-row", read: "function" },
+  { path: "packages/workforce/src/zz-planted-variable.ts", line: "export const fooRowSchema = 1;", term: "collection-row", read: "variable" },
+  { path: "packages/workforce/src/zz-planted-binding.ts", line: "export const { list: listFooRows } = helpers;", term: "collection-row", read: "binding" },
+  { path: "packages/workforce/src/zz-planted-export-list.ts", line: "export { a as fooRow };", term: "collection-row", read: "export-list" },
+  { path: "packages/engine/src/zz-planted-type-parameter.ts", line: "function g<TRow extends object>() {}", term: "collection-row", read: "type-parameter" },
+  // One of the six phrases, on any line of any in-scope file: a comment, a test name, a figure, a contributor doc.
+  { path: "packages/workforce/src/zz-planted-phrase.ts", line: "// the subscription row is deleted when it ends", term: "collection-row" },
+  { path: "packages/orchestration/test/zz-planted-phrase.test.ts", line: 'it("reads each task\'s rows", () => {});', term: "collection-row" },
+  { path: "apps/docs/docs/zz-planted-phrase.svg", line: '<text x="1" y="1">The worker rows</text>', term: "collection-row" },
+  { path: "docs/contributing/zz-planted-phrase.md", line: "Write the project row back once.", term: "collection-row" },
   // A released quote is kept as text, not as a line: a second use beside it still counts.
   {
     path: "apps/docs/docs/zz-quote-planted.md",
@@ -338,6 +525,26 @@ export const PLANTS = [
   { path: ".agents/skills/zz-planted/SKILL.md", line: "Locality is decided by `isInProcessDispatcher`.", term: "isInProcessDispatcher" },
 ];
 
+/**
+ * The added reach's plants: a file's base text and its head text, in memory, no git. Each named one is a
+ * row name a change adds, through one parser read; each with `name: null` is a change the reach must
+ * pass (an edit to a line that already declares a row name, a swap, a kept path, a use).
+ */
+export const ADDED_PLANTS = [
+  { path: "packages/workforce/src/zz-added.ts", base: "", head: "const taskRow = 1;\n", name: "taskRow", read: "variable" },
+  { path: "packages/workforce/src/zz-added.ts", base: "", head: "const { list: taskRows } = x;\n", name: "taskRows", read: "binding" },
+  { path: "packages/workforce/src/zz-added.ts", base: "", head: "for (const row of list) use(row);\n", name: "row", read: "variable" },
+  { path: "packages/workforce/src/zz-added.ts", base: "", head: "function f(/* lead */ row: unknown) {}\n", name: "row", read: "parameter" },
+  { path: "packages/workforce/src/zz-added.ts", base: "", head: "function readTaskRow() {}\n", name: "readTaskRow", read: "function" },
+  { path: "packages/workforce/src/zz-added.ts", base: "", head: 'import * as rowLib from "./y";\n', name: "rowLib", read: "import" },
+  { path: "packages/workforce/src/zz-added.ts", base: "", head: "class C { private rowCount = 1; }\n", name: "rowCount", read: "property" },
+  { path: "packages/workforce/src/zz-added.ts", base: "const a = 1;\n", head: "const a = 1;\nconst ROW_ID = 2;\n", name: "ROW_ID", read: "variable" },
+  { path: "packages/workforce/src/zz-added.ts", base: "const row = 1;\n", head: "const row = 2;\n", name: null, why: "an edit to a line that already declares row" },
+  { path: "packages/workforce/src/zz-added.ts", base: "const row = 1;\n", head: "const taskRow = 1;\n", name: null, why: "a swap inside one file (D1)" },
+  { path: "packages/store-sqlite/src/zz-added.ts", base: "", head: "const row = 1;\n", name: null, why: "a store adapter keeps its rows" },
+  { path: "packages/workforce/src/zz-added.ts", base: "", head: "use(entry.row); call({ row }); const s = 'row';\n", name: null, why: "uses and a string" },
+];
+
 /** An exception that matches nothing, which the run must report stale. */
 export const STALE_PLANT = { id: "zz-planted-stale", terms: ["seat"], strip: /zz-never-matches/g, why: "planted" };
 
@@ -346,7 +553,7 @@ export const STALE_PLANT = { id: "zz-planted-stale", terms: ["seat"], strip: /zz
  * each, whether the census refused it.
  * @param {{ files: Map<string, string>; paths: string[] }} tree
  */
-export function control(tree) {
+export function control(tree, { reads = NAME_READS } = {}) {
   const files = new Map(tree.files);
   const paths = [...tree.paths];
   const lineOf = new Map();
@@ -357,12 +564,20 @@ export function control(tree) {
     files.set(plant.path, `${text}\n`);
     lineOf.set(plant, text.split("\n").length);
   }
-  const r = census({ files, paths }, { extraExceptions: [STALE_PLANT] });
+  const r = census({ files, paths }, { extraExceptions: [STALE_PLANT], reads });
   const results = PLANTS.filter((p) => p.term !== null).map((p) => {
     const line = lineOf.get(p);
     const refused = r.hits.some((h) => h.path === p.path && h.line === line && h.term === p.term);
-    return { what: `${p.path}:${line} (${p.term})`, refused };
+    return { what: `${p.path}:${line} (${p.term}${p.read ? `, read ${p.read}` : ""})`, refused };
   });
+  for (const p of ADDED_PLANTS) {
+    const hits = addedRowNames(p.path, p.base, p.head, { reads });
+    const refused = p.name === null ? hits.length === 0 : hits.some((h) => h.name === p.name);
+    results.push({ what: `added ${p.path} ${p.name === null ? `(${p.why})` : `${p.name} (read ${p.read})`}`, refused, passes: p.name === null });
+  }
+  // A read with no plant could be dropped and nothing here would notice.
+  const planted = new Set([...PLANTS, ...ADDED_PLANTS].map((p) => p.read).filter(Boolean));
+  for (const r of NAME_READS) results.push({ what: `the ${r.read} read has a plant`, refused: planted.has(r.read), passes: true });
   results.push({ what: "a second glossary row for Worker", refused: r.glossary.repeated.includes("Worker") });
   results.push({ what: "an exception that strips nothing", refused: r.stale.includes(STALE_PLANT.id) });
   results.push({ what: "a folder no area names", refused: r.unscoped.includes("zz-planted-folder/notes.md") });
@@ -389,14 +604,48 @@ function print(r) {
   if (r.ok) console.log("check-retired-terms: PASS · no retired term outside its exceptions, every exception strips something, every file has an area, one glossary row per term");
 }
 
+const argOf = (flag) => {
+  const i = process.argv.indexOf(flag);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+};
+
+/** The added reach, `--added-since <base> [--head <sha>]`: exits 1 on a new row name, and on a base or head that does not resolve. */
+function mainAdded(root, base) {
+  const head = argOf("--head") ?? "HEAD";
+  let r;
+  try {
+    r = addedSince(root, base, head);
+  } catch (err) {
+    console.error(`check-retired-terms: FAIL · ${err.message}`);
+    process.exitCode = 1;
+    return;
+  }
+  const rule = TREE_RULES.find((x) => x.rowName !== undefined);
+  for (const h of r.hits) console.log(`${h.path}:${h.line}  [${h.term}]  ${h.name} is a new row name (say ${rule.sayAdded})  ${h.text}`);
+  console.log(`added since ${r.base.slice(0, 10)} to ${r.head.slice(0, 10)}: ${r.changed} code files changed`);
+  for (const [id, n] of Object.entries(r.kept)) console.log(`exemption ${id}: ${n} kept`);
+  if (r.ok) console.log("check-retired-terms --added-since: PASS · no changed file declares more row names than its base did");
+  else console.error(`FAIL · ${r.hits.length} new row names in ${new Set(r.hits.map((h) => h.path)).size} files: say ${rule.sayAdded}`);
+  process.exitCode = r.ok ? 0 : 1;
+}
+
 function main() {
-  const at = process.argv.indexOf("--root");
-  const root = at >= 0 ? process.argv[at + 1] : ROOT;
+  const root = argOf("--root") ?? ROOT;
+  if (process.argv.includes("--added-since")) {
+    const base = argOf("--added-since");
+    if (base === undefined || base.startsWith("--")) {
+      console.error("check-retired-terms: FAIL · --added-since needs a base ref");
+      process.exitCode = 1;
+      return;
+    }
+    mainAdded(root, base);
+    return;
+  }
   const tree = readTrackedTree(root);
   if (process.argv.includes("--control")) {
     const { results, ok } = control(tree);
-    for (const x of results) console.log(`plant ${x.what}: ${x.refused ? "refused" : "SLIPPED THROUGH"}`);
-    console.log(ok ? "CONTROL PASS · every plant was refused" : "CONTROL FAIL");
+    for (const x of results) console.log(`plant ${x.what}: ${x.refused ? (x.passes ? "passed" : "refused") : x.passes ? "WRONGLY REFUSED" : "SLIPPED THROUGH"}`);
+    console.log(ok ? "CONTROL PASS · every plant was refused, every must-pass change passed, every read has a plant" : "CONTROL FAIL");
     process.exitCode = ok ? 0 : 1;
     return;
   }
