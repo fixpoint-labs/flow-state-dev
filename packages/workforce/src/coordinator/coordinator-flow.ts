@@ -130,9 +130,7 @@ import { doorTask, RESPOND_ACTION } from "../worker-door";
 import { declareBuiltInRoles, markRolePiece } from "../worker-roles";
 import { reportRescuedFailure } from "../error-reporter/rescued";
 import { verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
-import { SUBSCRIPTION_TOOLS } from "../subscriptions/keys";
-import { subscriptionResources } from "../subscriptions/rows";
-import { subscribeInputSchema, subscriptionTools, type SubscriptionProvider } from "../subscriptions/subscribe";
+import { workerRoutineVerbs } from "../routines/routines";
 import { ROUTED_FROM_STATE_KEY, SET_WORK_PROJECT_ACTION, WORK_PROJECT_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import { setWorkProjectAction } from "../projects/work-project";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
@@ -234,15 +232,16 @@ export interface CoordinatorFlowOptions {
    * five minutes ({@link ROUND_DEADLINE_MS}).
    */
   roundDeadlineMs?: number;
-  // FIX-2538 D1.
+  // FIX-2538 D1; FIX-2614.
   /**
-   * The providers a coordinator's conversation can follow a PR, an issue or a repository on: given,
-   * the flow takes the `subscribe` and `unsubscribe` actions, so its user
-   * (or the routine that saves one) follows one, `unmatched: true`
-   * to hear what no other subscription heard, under its `inferredWork:`.
-   * Omitted, a coordinator subscribes to nothing.
+   * `true`: the flow takes the four routine verbs as actions (`listRoutines`,
+   * `saveRoutine`, `pauseRoutine`, `deleteRoutine`), so its user keeps the
+   * routines that act through this conversation, among them an event routine
+   * with `unmatched: true` that hears what no other subscription heard, under
+   * its `inferredWork:`. Its providers are the ones `hireWorkforce`'s
+   * `routines.providers` names. Omitted, a coordinator keeps no routines.
    */
-  subscriptions?: { readonly providers: readonly SubscriptionProvider[] };
+  routines?: boolean;
 }
 
 /** What best fit's one call is asked. */
@@ -1695,15 +1694,17 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * wakes the turn, after that. The failure or cancel of one with no routed brief (a routed task's
    * follow-up) is in no round, and is heard as a filed task's is.
    */
-  // The seam a saved routine's event trigger calls through: the two subscription tools, as actions.
-  const subscriptionTool = options.subscriptions === undefined ? undefined : subscriptionTools({ providers: options.subscriptions.providers });
-  const subscriptionActions =
-    subscriptionTool === undefined
+  // The routine verbs, as actions: the ones that act through this conversation.
+  const routineVerbs = options.routines === true ? workerRoutineVerbs(installation) : undefined;
+  const routineActions =
+    routineVerbs === undefined
       ? undefined
-      : {
-          [SUBSCRIPTION_TOOLS.subscribe]: { inputSchema: subscribeInputSchema, block: subscriptionTool.subscribe },
-          [SUBSCRIPTION_TOOLS.unsubscribe]: { inputSchema: subscriptionTool.unsubscribe.inputSchema, block: subscriptionTool.unsubscribe }
-        };
+      : Object.fromEntries(
+          [routineVerbs.listRoutines, routineVerbs.saveRoutine, routineVerbs.pauseRoutine, routineVerbs.deleteRoutine].map((block) => [
+            block.name,
+            { inputSchema: block.inputSchema, block, description: block.description }
+          ])
+        );
 
   const boardEntries = sessionBoard.entries(
     turn.run,
@@ -1740,7 +1741,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       ...resources,
       ...(turn.bound.resources ?? {}),
       ...sessionBoard.resources,
-      ...(subscriptionActions === undefined ? {} : subscriptionResources)
+      ...(routineVerbs === undefined ? {} : routineVerbs.resources)
     },
     isolateUserState: options.agent?.isolateUserState ?? false,
     actions: {
@@ -1757,7 +1758,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       },
       [STANDING_RULES_ACTION]: standingRulesAction,
       [SET_WORK_PROJECT_ACTION]: setWorkProjectAction,
-      ...(subscriptionActions ?? {})
+      ...(routineActions ?? {})
     },
     // The task list, read with nothing stored (FIX-2286).
     reads: sessionBoard.reads,

@@ -29,6 +29,7 @@ import {
   SUBSCRIPTIONS_PATTERN,
   SUBSCRIPTIONS_RESOURCE
 } from "./keys";
+import { routineMakerSchema } from "../routines/listed-routine";
 
 /** The most terms a listed screen carries. */
 export const MAX_SCREEN_TERMS = 20;
@@ -94,10 +95,15 @@ export const subscriptionResourceStateSchema = screenSettingsSchema.extend({
   tenantId: z.string().min(1).optional(),
   /** `false` once it ended. The host's owner-run check reads it as off. */
   enabled: z.boolean(),
-  /** Why it ended: `unsubscribed`, `thread_closed`, `task_errored`, `task_cancelled`. */
+  /**
+   * Why it ended: `unsubscribed`, `thread_closed`, `task_errored`,
+   * `task_cancelled`, or `paused`, the one end a resume undoes.
+   */
   endedReason: z.string().optional(),
   endedAt: z.number().optional(),
-  at: z.number()
+  at: z.number(),
+  /** Who made it, as the routine list names them. Optional: one saved before it names none. */
+  madeBy: routineMakerSchema.optional()
 });
 
 export type SubscriptionResourceState = z.infer<typeof subscriptionResourceStateSchema>;
@@ -195,6 +201,22 @@ export const subscriptionIndexOf = (ctx: BlockContext) => declared<ThreadIndexRe
 
 /** A thread key as an index row's key: one path segment. */
 export const indexKeyOf = (thread: string) => encodeURIComponent(thread);
+
+/**
+ * A subscription's slot in a thread's index entry: its owner and its id. A declared routine's id
+ * (`cfg_…`) is the same for every user who has one, and the thread index is the org's, so the id
+ * alone would give two users one slot.
+ */
+export const indexSlotOf = (userId: string, id: string) => `${encodeURIComponent(userId)}:${id}`;
+
+/**
+ * The subscription id a slot names: the id after its owner, or a whole key written before slots
+ * named an owner (a bare id).
+ */
+export function subscriptionIdOfSlot(slot: string, entry: { readonly userId: string }): string {
+  const owner = `${encodeURIComponent(entry.userId)}:`;
+  return slot.startsWith(owner) ? slot.slice(owner.length) : slot;
+}
 
 /** A subscription's full storage key, as the host's owner-run check reads it. */
 export const subscriptionResourceKey = (id: string) => `${SUBSCRIPTIONS_PATTERN.replace("*", "")}${id}`;

@@ -249,10 +249,11 @@ describe("who hears what", () => {
 });
 
 describe("a subscription's end", () => {
-  it("hears nothing after it unsubscribed, and only its own session may end it", () =>
+  it("hears nothing after it unsubscribed, and only the worker it acts through may end it", () =>
     withHost(async (host) => {
       const one = await host.follower("alice");
-      const other = await host.follower("alice");
+      // Alice's conversation with another worker: a routine heard by eng.follower isn't its to end.
+      const other = await host.follower("alice", "eng.watcher");
       const { id } = (await host.subscribe("alice", one, { thread: PR })) as { id: string };
       expect(await host.unsubscribe("alice", other, id)).toEqual({ refused: expect.stringMatching(/^not_yours/) });
       expect(await host.unsubscribe("alice", one, id)).toEqual({ ended: id });

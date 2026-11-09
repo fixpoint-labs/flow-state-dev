@@ -1,9 +1,9 @@
 /**
- * Recurring work is a schedule that files an ordinary task (FIX-2085): a row in
+ * A clock routine is a schedule that files an ordinary task (FIX-2085): one in
  * the user's schedule collection, fired through the scheduled-dispatch
  * endpoint, files a task on the named worker's board in the user's own
  * conversation with it, through the board's own filing, as the user. The user's
- * list of schedules shows each one's next run, worked out from its cron.
+ * routine list shows each one's next run, worked out from its cron.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CronExpressionParser } from "cron-parser";
@@ -57,6 +57,22 @@ async function fire(h: BoardHost, key: string, body: Record<string, unknown> = {
 
 const roster = (h: BoardHost, action: string, input: unknown) => h.act(ALICE, `roster-${ALICE}`, action, input, "roster");
 
+/** Save a clock routine through the roster's `saveRoutine`, from a schedule written the way the collection stores it. */
+const saveClock = (h: BoardHost, schedule: { key: string; cron: string; timezone?: string; input: unknown }) =>
+  roster(h, "saveRoutine", {
+    name: schedule.key,
+    trigger: { clock: { cron: schedule.cron, ...(schedule.timezone === undefined ? {} : { timezone: schedule.timezone }) } },
+    task: schedule.input
+  });
+
+/** Alice's clock routines as `listRoutines` answers them: key, cron, zone and next run. */
+async function listClocks(h: BoardHost) {
+  const listed = (await roster(h, "listRoutines", {})).output as {
+    routines: Array<{ name: string; trigger: { clock?: { cron: string; timezone: string; nextRunAt: string | null } } }>;
+  };
+  return listed.routines.filter((r) => r.trigger.clock !== undefined).map((r) => ({ key: r.name, ...r.trigger.clock! }));
+}
+
 /** Alice's conversation with `worker`: its derived address, where her own message reaches it. */
 const conversationWith = (worker: string, flow = "coordinator") =>
   deriveWorkerSessionId({ userId: ALICE, orgId: ORG, flow, criteria: { worker } });
@@ -82,7 +98,7 @@ async function failures(h: BoardHost) {
 describe("a schedule that files a task", () => {
   it("files one ordinary task on the filer's board, as the user, and it runs", async () => {
     const h = boot();
-    expect((await roster(h, "saveSchedule", weekly)).output).toMatchObject({ ok: true });
+    expect((await saveClock(h, weekly)).output).toMatchObject({ ok: true });
 
     const fired = await fire(h, weekly.key, { nominalFireTime: MONDAY });
     expect(fired.status).toBe(202);
@@ -97,7 +113,7 @@ describe("a schedule that files a task", () => {
 
   it("answers the same scheduled time again as a duplicate, filing nothing more", async () => {
     const h = boot();
-    await roster(h, "saveSchedule", weekly);
+    await saveClock(h, weekly);
     expect((await fire(h, weekly.key, { nominalFireTime: MONDAY })).status).toBe(202);
     await h.settled();
     const again = await fire(h, weekly.key, { nominalFireTime: MONDAY });
@@ -113,7 +129,7 @@ describe("a schedule that files a task", () => {
 
   it("files nothing when the filer is not on the user's roster", async () => {
     const h = boot();
-    await roster(h, "saveSchedule", { ...weekly, input: { ...weekly.input, filer: "nobody" } });
+    await saveClock(h, { ...weekly, input: { ...weekly.input, filer: "nobody" } });
     await fire(h, weekly.key, { nominalFireTime: MONDAY });
     await h.settled();
     expect(await aliceTasks(h)).toHaveLength(0);
@@ -123,7 +139,7 @@ describe("a schedule that files a task", () => {
 
   it("files nothing when the assignee is the filer itself", async () => {
     const h = boot();
-    await roster(h, "saveSchedule", { ...weekly, input: { ...weekly.input, assignee: "lead" } });
+    await saveClock(h, { ...weekly, input: { ...weekly.input, assignee: "lead" } });
     await fire(h, weekly.key, { nominalFireTime: MONDAY });
     await h.settled();
     expect(await aliceTasks(h)).toHaveLength(0);
@@ -133,7 +149,7 @@ describe("a schedule that files a task", () => {
 
   it("files nothing when the assignee is not among the filer's delegates", async () => {
     const h = boot();
-    await roster(h, "saveSchedule", { ...weekly, input: { ...weekly.input, assignee: "eng.writer" } });
+    await saveClock(h, { ...weekly, input: { ...weekly.input, assignee: "eng.writer" } });
     await fire(h, weekly.key, { nominalFireTime: MONDAY });
     await h.settled();
     expect(await aliceTasks(h)).toHaveLength(0);
@@ -145,7 +161,7 @@ describe("a schedule that files a task", () => {
   it("files nothing, every fire, when it names no assignee and the filer has several delegates: no unassigned rows pile up", async () => {
     const h = boot();
     // pm has two delegates that take tasks, so no one of them is the default.
-    await roster(h, "saveSchedule", { ...weekly, input: { filer: "pm", goal: weekly.input.goal } });
+    await saveClock(h, { ...weekly, input: { filer: "pm", goal: weekly.input.goal } });
     await fire(h, weekly.key, { nominalFireTime: MONDAY });
     await h.settled();
     await fire(h, weekly.key, { nominalFireTime: NEXT_MONDAY });
@@ -163,26 +179,24 @@ describe("a schedule that files a task", () => {
 
   it("gives a fire that names no assignee to the filer's only delegate", async () => {
     const h = boot();
-    await roster(h, "saveSchedule", { ...weekly, input: { filer: "lead", goal: weekly.input.goal } });
+    await saveClock(h, { ...weekly, input: { filer: "lead", goal: weekly.input.goal } });
     expect((await fire(h, weekly.key, { nominalFireTime: MONDAY })).status).toBe(202);
     await h.settled();
     expect(await aliceTasks(h)).toEqual([expect.objectContaining({ goal: weekly.input.goal, assignee: "eng.tasker", status: "completed" })]);
   });
 });
 
-describe("the user's list of schedules", () => {
+describe("the user's clock routines, listed", () => {
   it("shows each schedule with its next run, worked out from its cron and time zone", async () => {
     // Pinned to a Wednesday noon UTC: the daily run (07:30 New York) is the next
     // morning, days before Monday 09:00 London. Left on the real clock, a Sunday
     // after 11:30 UTC puts the weekly run first and the order below flips.
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-21T12:00:00Z") });
     const h = boot();
-    await roster(h, "saveSchedule", weekly);
-    await roster(h, "saveSchedule", { ...weekly, key: "daily", cron: "30 7 * * *", timezone: "America/New_York" });
+    await saveClock(h, weekly);
+    await saveClock(h, { ...weekly, key: "daily", cron: "30 7 * * *", timezone: "America/New_York" });
     const before = Date.now();
-    const listed = (await roster(h, "listSchedules", {})).output as {
-      schedules: Array<{ key: string; cron: string; timezone: string; nextRunAt: string | null }>;
-    };
+    const listed = { schedules: await listClocks(h) };
     const byKey = Object.fromEntries(listed.schedules.map((s) => [s.key, s]));
     expect(Object.keys(byKey).sort()).toEqual(["adoption", "daily"]);
     const nextRun = (schedule: { cron: string; timezone: string }) =>
@@ -205,43 +219,42 @@ describe("the user's list of schedules", () => {
 
   it("shows a schedule added or removed on its next read", async () => {
     const h = boot();
-    const keys = async () =>
-      ((await roster(h, "listSchedules", {})).output as { schedules: Array<{ key: string }> }).schedules.map((s) => s.key);
+    const keys = async () => (await listClocks(h)).map((s) => s.key);
     expect(await keys()).toEqual([]);
-    await roster(h, "saveSchedule", weekly);
+    await saveClock(h, weekly);
     expect(await keys()).toEqual(["adoption"]);
-    await roster(h, "deleteSchedule", { key: "adoption" });
+    await roster(h, "deleteRoutine", { id: "clock:adoption" });
     expect(await keys()).toEqual([]);
   });
 
   it("refuses a schedule whose cron doesn't parse, writing nothing", async () => {
     const h = boot();
-    const saved = (await roster(h, "saveSchedule", { ...weekly, cron: "every monday" })).output as { ok: boolean; error?: string };
+    const saved = (await saveClock(h, { ...weekly, cron: "every monday" })).output as { ok: boolean; error?: string };
     expect(saved.ok).toBe(false);
     expect(saved.error).toMatch(/cron/);
-    expect(((await roster(h, "listSchedules", {})).output as { schedules: unknown[] }).schedules).toEqual([]);
+    expect((await listClocks(h))).toEqual([]);
   });
 
   it("refuses a cron that isn't exactly five fields, which would fire every second", async () => {
     const h = boot();
-    const saved = (await roster(h, "saveSchedule", { ...weekly, cron: "* * * * * *" })).output as { ok: boolean; error?: string };
+    const saved = (await saveClock(h, { ...weekly, cron: "* * * * * *" })).output as { ok: boolean; error?: string };
     expect(saved.ok).toBe(false);
     expect(saved.error).toMatch(/five fields/);
-    expect(((await roster(h, "listSchedules", {})).output as { schedules: unknown[] }).schedules).toEqual([]);
+    expect((await listClocks(h))).toEqual([]);
   });
 
   it("refuses a time zone the dispatch would refuse, so no saved schedule fails every fire", async () => {
     const h = boot();
     // cron-parser accepts "UTC+5"; the endpoint's zone check doesn't.
-    const saved = (await roster(h, "saveSchedule", { ...weekly, timezone: "UTC+5" })).output as { ok: boolean; error?: string };
+    const saved = (await saveClock(h, { ...weekly, timezone: "UTC+5" })).output as { ok: boolean; error?: string };
     expect(saved.ok).toBe(false);
     expect(saved.error).toMatch(/time zone/);
-    expect(((await roster(h, "listSchedules", {})).output as { schedules: unknown[] }).schedules).toEqual([]);
+    expect((await listClocks(h))).toEqual([]);
   });
 
   it("takes its fired record with it when deleted, so the key saved again starts fresh", async () => {
     const h = boot();
-    await roster(h, "saveSchedule", weekly);
+    await saveClock(h, weekly);
     expect((await fire(h, weekly.key, { nominalFireTime: NEXT_MONDAY })).status).toBe(202);
     await h.settled();
     const runtime = await h.state.getRuntime();
@@ -252,10 +265,10 @@ describe("the user's list of schedules", () => {
         `scheduled-fires/${ROSTER_FLOW}/${formatScheduleId(ORG, ALICE, weekly.key)}`
       );
     expect(await record()).toBeDefined();
-    await roster(h, "deleteSchedule", { key: weekly.key });
+    await roster(h, "deleteRoutine", { id: `clock:${weekly.key}` });
     expect(await record()).toBeUndefined();
     // Saved again under the same key, it is a new schedule: its time fires.
-    await roster(h, "saveSchedule", weekly);
+    await saveClock(h, weekly);
     expect((await fire(h, weekly.key, { nominalFireTime: NEXT_MONDAY })).status).toBe(202);
     await h.settled();
   });
@@ -268,10 +281,10 @@ describe("the user's list of schedules", () => {
       remove: async (id) => void removed.push(id.key),
       claimDue: async () => []
     };
-    const h = boot({ hire: { schedules: { index } } });
-    await roster(h, "saveSchedule", weekly);
+    const h = boot({ hire: { routines: { index } } });
+    await saveClock(h, weekly);
     expect(upserts.map((row) => [row.userId, row.orgId, row.key, row.cron])).toEqual([[ALICE, ORG, "adoption", weekly.cron]]);
-    await roster(h, "deleteSchedule", { key: "adoption" });
+    await roster(h, "deleteRoutine", { id: "clock:adoption" });
     expect(removed).toEqual(["adoption"]);
   });
 });
