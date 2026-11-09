@@ -14,7 +14,7 @@
  * - `labels`: the event carries one of the listed labels.
  * - `words`: the title or text holds one of the listed words, ignoring case.
  * - `allow`: the sender is one of the listed ids.
- * - `custom` (FIX-2537 D2): the app's function of that name, declared once on
+ * - `custom`: the app's function of that name, declared once on
  *   the provider, `(event, entry) => string | undefined`: a string refuses
  *   with it, `undefined` passes, and a throw (or any other answer, a promise
  *   included: nothing here awaits) refuses as `custom:<name>: failed`.
@@ -24,7 +24,7 @@
  * subscription. Every step answers in one verdict per subscription,
  * `{ subscription, pass, reason }`. A subscription with no verdict is refused.
  *
- * **The unheard seam** (FIX-2537 D1, read by FIX-2538): an event is unheard,
+ * **The unheard seam**: an event is unheard,
  * and may be forwarded as unmatched, only when every refusal was on its
  * content. {@link refusedOnContent} says which were: not `interest: unjudged`,
  * not a screen's `: failed`, not `no verdict`.

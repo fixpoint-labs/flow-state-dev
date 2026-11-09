@@ -3,7 +3,7 @@
  * A provider's service flow: routes each normalized event
  * to the sessions that subscribed to one of its threads, after code screens,
  * and asks a model only for the subscriptions that list `interest`, once per
- * routing run (FIX-2537).
+ * routing run.
  *
  * Two internal entries, on either side of a fence (D2):
  *
@@ -113,7 +113,7 @@ export type Routed = z.infer<typeof routedSchema>;
 /**
  * Whether no subscription heard a routed event, each by its own choice: every
  * verdict a refusal on the event's content, and none cut. Only such an event
- * may be forwarded as unmatched (FIX-2537 D1): one refused `interest:
+ * may be forwarded as unmatched: one refused `interest:
  * unjudged`, or by a screen that failed, was heard by nobody but not unheard,
  * so an outage forwards nothing.
  */

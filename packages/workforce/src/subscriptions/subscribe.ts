@@ -47,7 +47,7 @@ export interface SubscriptionProvider {
   canRead(thread: string, ctx: BlockContext): boolean | Promise<boolean>;
   /** The running user's own id at the provider, so their own actions are dropped (`own`). */
   self?(ctx: BlockContext): string | undefined | Promise<string | undefined>;
-  /** The app's own screens on this provider, declared once: its custom functions, and the model `interest` asks (FIX-2537). */
+  /** The app's own screens on this provider, declared once: its custom functions, and the model `interest` asks. */
   readonly screens?: SubscriptionScreens;
 }
 

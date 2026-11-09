@@ -42,9 +42,9 @@ const terms = z.array(z.string().min(1).max(100)).min(1).max(MAX_SCREEN_TERMS);
  * - `labels`: the event carries at least one of these labels.
  * - `words`: the event's title or text contains at least one of these words, ignoring case.
  * - `allow`: the event's sender is one of these ids.
- * - `custom`: the app's own screen of this name, declared once on the provider (FIX-2537 D2).
+ * - `custom`: the app's own screen of this name, declared once on the provider (D2).
  * - `interest`: a model judges whether the event matches the subscription's
- *   sentence, after every code screen passed it (FIX-2537 D1).
+ *   sentence, after every code screen passed it (D1).
  */
 export const listedScreenSchema = z.discriminatedUnion("screen", [
   z.object({ screen: z.literal("labels"), any: terms }).strict(),
