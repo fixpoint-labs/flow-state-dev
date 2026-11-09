@@ -1,5 +1,47 @@
 # @flow-state-dev/store-postgres
 
+## 0.5.0
+
+### Minor Changes
+
+- 95f3cce: **Breaking:** each store package's root carries what an app author imports, and a new `./host` entry carries what a host or adapter author builds with (FIX-2452). Nothing is deleted, and there are no aliases: an import from the root of a name that moved fails to compile with "has no exported member". Change the import path to `/host`.
+
+  - **`@flow-state-dev/store-sqlite`** keeps `sqliteStores`, `SQLiteStoreOptions` and `createSQLiteScheduleIndex`. Moved to **`@flow-state-dev/store-sqlite/host`**: `createSQLiteStores`, `SQLiteStoreRegistry`, the per-store constructors (`createSQLiteSessionStore`, `createSQLiteRequestStore`, `createSQLiteUserStore`, `createSQLiteOrgStore`, `createSQLiteActiveRequestRegistry`, `createSQLiteCheckpointStore`, `createSQLiteTraceStore`, `createSQLiteSuspensionStore`, `createSQLiteLeaseStore`, `createSQLiteWakeStore`), `SQLiteTraceStoreOptions`, `CreateSQLiteRequestStoreOptions`, `initializeSchema`, `initializeSchemaDDL` and `applyConnectionPragmas`.
+  - **`@flow-state-dev/store-postgres`** keeps `postgresStores`, `PostgresStoreOptions`, `PoolConfig` and `createPostgresScheduleIndex`. Moved to **`@flow-state-dev/store-postgres/host`**: `createPostgresStores`, `PostgresStoreRegistry`, the per-store constructors (`createPostgresSessionStore`, `createPostgresRequestStore`, `createPostgresUserStore`, `createPostgresOrgStore`, `createPostgresActiveRequestRegistry`, `createPostgresContentStore`, `createPostgresResourceStateStore`, `createPostgresCheckpointStore`, `createPostgresSuspensionStore`, `createPostgresLeaseStore`, `createPostgresWakeStore`), `initializeSchema`, `createPgPoolTx`, `QueryExecutor`, `TxClient` and `PostgresBus`.
+  - **`@flow-state-dev/engine`** keeps the adapters `inMemoryStores` and `filesystemStores`, and `StoreAdapter`, `StoresConfig`, `CapabilitySlot` and `CapabilitySlotMap`. Moved to **`@flow-state-dev/engine/host`**: the registry factories `createInMemoryStores` and `createFilesystemStores`, and the per-store constructors (`createInMemorySessionStore`, `createInMemoryRequestStore`, `createInMemoryUserStore`, `createInMemoryOrgStore`, `createInMemoryContentStore`, `createInMemoryResourceStateStore`, `createInMemoryTraceStore`, `createInMemorySuspensionStore`, `createInMemoryLeaseStore`, `createInMemoryWakeStore`, and the `createFilesystem…Store` constructors for session, request, user, org, content, resource state, trace and wake).
+
+  The two `initializeSchema` functions, one per store package, are no longer both on a package root.
+
+  Docs: FIX-2452. packages/store-sqlite/README.md and packages/store-postgres/README.md: the root's names, then a _For host and adapter authors_ section listing `./host` and its names. packages/engine/README.md: the store factories and per-store constructors listed under `@flow-state-dev/engine/host`, `inMemoryStores` and `filesystemStores` on the root. packages/vercel/README.md and packages/cli/README.md: any `createPostgresStores` or `createSQLiteStores` import comes from `/host`. `server/schedule-index.md` and `streaming/trace-channel.md`: the `./host` import paths. The package-roots page: the store-sqlite and store-postgres rows (the root for app authors, `./host` for host and adapter authors, the rule `engine/host` follows), and engine's row names its store factories on `engine/host`.
+
+### Patch Changes
+
+- Updated dependencies [2cb6326]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [819c2a5]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [1600ca1]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [74a7b9d]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [c82adfa]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+- Updated dependencies [13e3970]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/engine@0.6.0
+  - @flow-state-dev/scheduled@0.4.0
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,5 +1,69 @@
 # @flow-state-dev/testing
 
+## 0.4.0
+
+### Minor Changes
+
+- 78daf33: `testBlock` takes a `signal` (FIX-2458).
+
+  - **testing:** `testBlock(block, { input, signal })` runs the block under your `AbortSignal` as `ctx.signal`. Abort it to stop the run the way a host does, with a deadline or a user's stop, and check what the block does with it. `createTestContext({ signal })` takes it too. Without `signal`, the block runs as before, under a signal that never fires.
+
+  Docs: packages/testing/README.md (`signal` in `testBlock`'s options, with a short example that stops a run mid-way and reads the error)
+
+- 3ef3979: **Breaking:** package scaffolding leaves the roots, and names another package declares are re-exported, not copied (FIX-2449). No deprecated aliases.
+
+  - **react:** `reactPackageMarker`, `coreItemImportProof`, `CoreItemImportProof` and `CoreTypeImportProof` are removed. `RosterWorker` is no longer exported from `@flow-state-dev/react/workforce`; workforce's type of that name is unchanged. `FlowCardinality` is now core's type, re-exported, with the same two values.
+  - **testing:** `testingPackageMarker` is removed.
+  - **vercel:** `FlowApiRouter` is now engine's type, re-exported; its shape is unchanged.
+
+- 5ce9228: The run `run.answer` and `run.resume` return now carries the action's `output`, and, when it failed after the answer, its `error` as a `FlowError` with the same `code` and `message` a first `testFlow` run's error has. Both are read from the request's status route, as a client reads them (FIX-2460).
+
+  Docs: packages/testing/README.md (in the _Testing a step that waits for a person_ example, after `await run.answer({ action: "approve" })`, add `expect(after.output).toEqual({ refunded: 5 })`; one line that a run which fails after the answer comes back `failed` with `after.error`), apps/docs/docs/testing/testing-flows.md (the same `after.output` line in its _Testing a step that waits for a person_ section), apps/docs/docs/api/testing.md (`output` and `error` on the result of `answer` and `resume`)
+
+- 7a2bb7e: **Breaking:** the `@flow-state-dev/testing` root now holds what testing an app needs; benchmarking moves to `@flow-state-dev/testing/benchmark`, and `testBlock` covers sequencers and routers (FIX-2460).
+
+  - `runBenchmark`, `comparePatterns`, `baselineSubject`, `defineBenchmark`, `buildBenchmarkReport`, `renderScorecard`, `estimateCostUsd` and their types (`RunBenchmarkConfig`, `ComparePatternsConfig`, `SubjectCategoryStat`, `BenchmarkRanking`, `BenchmarkReport`, `BenchmarkRunResult`, `BenchmarkDefinition`, `BuildBenchmarkReportMeta`) are exported from `@flow-state-dev/testing/benchmark` only. So is the benchmark contract that was on `@flow-state-dev/core`: `BenchmarkTask`, `BenchmarkCategory`, `BenchmarkSubject`, `BenchmarkAdapter`, `BenchmarkAdapterOptions`, `BenchmarkRegistry`. There are no aliases: an old import fails to compile with "has no exported member"; change it to `from "@flow-state-dev/testing/benchmark"`. `fsdev benchmark` runs as before.
+  - `testSequencer` and `testRouter` are removed, with `TestSequencerResult` and `TestRouterResult`. Call `testBlock` instead: a sequencer's result carries `steps`, `sideChainResults` and `loopIterations`, typed when the block is a `SequencerDefinition`, and a router's carries `selectedRoute`, which is now absent (not `"unknown"`) when no route was chosen.
+  - `findImportsFromEntry`, `findNodeBuiltinsFromEntry` and `FindNodeBuiltinsOptions` are no longer published.
+
+  Docs: packages/testing/README.md (the benchmark section imports from `@flow-state-dev/testing/benchmark`; list the public subpaths `testing/benchmark` and `testing/conformance`; `testBlock` replaces `testSequencer` and `testRouter`, with `steps`, `sideChainResults`, `loopIterations` and `selectedRoute` on its result; drop the scanners; name the root helpers the README leaves out today: `runForTest(block, input, ctx)`, which runs one block against a context you built, `createReplayingRef` and its `ReplayingRef` type, an `updateState` double that replays an updater as a lost compare-and-set round does, so a test can show a state helper is replay-safe, the eval scorers `jsonPath` and `custom`, and `buildReport`, which builds an eval report from case results), apps/docs/docs/api/testing.md (same `testBlock` change; drop `testSequencer`, `testRouter`, their result types and the benchmark names from the root's list), apps/docs/docs/testing/overview.md and apps/docs/docs/testing/flow-integration-tests.md (`testBlock` for a sequencer or a router), packages/integration-tests/README.md (its opening names `testRouter`; say `testBlock`), apps/docs/docs/testing/benchmarks.md, apps/docs/docs/api/benchmarks.md and apps/docs/guides/choosing-patterns-with-benchmarks.md (import the harness and `BenchmarkTask` from `@flow-state-dev/testing/benchmark`, the registry from `@flow-state-dev/patterns/benchmark`), apps/docs/docs/api/package-roots.md (testing's row: the root is for testing an app and evals; its public subpaths are `testing/benchmark` and `testing/conformance`)
+
+- 298aae0: `testFlow` tests a step that waits for a person: it runs durably by default, so a `ctx.suspendForUser` or `ctx.suspend` stops the run with status `suspended` and the stop on `run.suspension`, and `run.answer({ action, data? })` and `run.resume(...)` continue it through the engine's own answer and resume routes, returning the run that followed (FIX-2460).
+
+  - `testFlow` takes `durable` (default `true`). With `durable: false`, a step that stops for a person fails the run, as it did before.
+  - The result carries `suspension`, the stop the run waits on, and `answer` / `resume`, which take `{ action, data?, suspensionId?, headers? }`. `suspensionId` defaults to the run's one pending stop. `headers` reach a flow's own `authentication.resolvePrincipal`.
+  - A refusal a screen would get (an action the stop doesn't allow, a second answer, data that fails the stop's schema, a stop that isn't there) throws a `StopRefusedError` carrying the route's `status` and message.
+  - The run that followed carries its status and the items emitted after the stop.
+  - `vi.useFakeTimers()` stalls an answer: the route waits on real timers.
+
+  Docs: packages/testing/README.md (a _Testing a step that waits for a person_ example: `testFlow` returns `suspended` with `run.suspension` matching `{ kind: "approval", message: "Refund 5?" }`, `await run.answer({ action: "approve" })` returns `completed`, a second answer throws `StopRefusedError` with status 409; `run.resume` for a developer's own `ctx.suspend`; the `durable` option; headers for a flow's own sign-in; the fake-timers note), apps/docs/docs/testing/testing-flows.md (the same _Testing a step that waits for a person_ section), apps/docs/docs/api/testing.md (`durable`, `suspension`, `answer`, `resume`, `TestFlowAnswer`, `StopRefusedError`), apps/docs/guides/human-in-the-loop.md (one line pointing to the testing section)
+
+### Patch Changes
+
+- Updated dependencies [2cb6326]
+- Updated dependencies [7a2bb7e]
+- Updated dependencies [ad80d4e]
+- Updated dependencies [9d8f2be]
+- Updated dependencies [0b56b1c]
+- Updated dependencies [819c2a5]
+- Updated dependencies [a06ad2d]
+- Updated dependencies [ec679dd]
+- Updated dependencies [4394069]
+- Updated dependencies [1600ca1]
+- Updated dependencies [c049036]
+- Updated dependencies [c049036]
+- Updated dependencies [74a7b9d]
+- Updated dependencies [3ef3979]
+- Updated dependencies [3ef3979]
+- Updated dependencies [c82adfa]
+- Updated dependencies [0454257]
+- Updated dependencies [85ca2a3]
+- Updated dependencies [95f3cce]
+- Updated dependencies [0454257]
+- Updated dependencies [13e3970]
+  - @flow-state-dev/core@0.6.0
+  - @flow-state-dev/engine@0.6.0
+
 ## 0.3.2
 
 ### Patch Changes
