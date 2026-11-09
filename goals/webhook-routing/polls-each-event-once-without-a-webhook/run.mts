@@ -166,7 +166,10 @@ function pushOracle(sub: FixtureSubscription): string[] {
 
 // ---- one boot of the app ------------------------------------------------------
 
-type Call = { user: string; thread: string; now: number; since?: number; unchanged: boolean };
+/** One fetch: who asked, for what, at which beat of the tick (the clock runs on a few seconds past each beat), and from when. */
+type Call = { user: string; thread: string; now: number; beat: number; since?: number; unchanged: boolean };
+/** The beat the tick is running: the minute the run last moved to. */
+let beat = 0;
 
 interface BootOptions {
   readonly db: string;
@@ -189,7 +192,7 @@ async function boot(options: BootOptions) {
       const visible = EVENTS.filter((e) => e.threads.includes(thread) && e.at <= now);
       const etag = `"${visible.length}"`;
       const unchanged = cursor.etags?.thread === etag;
-      calls.push({ user, thread, now, ...(cursor.since === undefined ? {} : { since: cursor.since }), unchanged });
+      calls.push({ user, thread, now, beat, ...(cursor.since === undefined ? {} : { since: cursor.since }), unchanged });
       if (unchanged) return { unchanged: true };
       return { events: visible.filter((e) => cursor.since === undefined || e.at >= cursor.since), through: now, etags: { thread: etag } };
     }
@@ -414,6 +417,7 @@ async function runTimeline(app: App, made: Awaited<ReturnType<typeof subscribeAl
       if (push) await app.route(EVENTS[next]!);
     }
     moveTo(t);
+    beat = t;
     await app.tick();
   }
   return unsubscribedAt;
@@ -467,10 +471,10 @@ await runGoal(async (failures, tell) => {
   const gradeFetches = (leg: string, calls: Call[]) => {
     tell.over(`${leg} · l · fetches`, calls);
     const byPair = new Map<string, number[]>();
-    for (const c of calls) byPair.set(`${c.user} ${c.thread}`, [...(byPair.get(`${c.user} ${c.thread}`) ?? []), c.now]);
+    for (const c of calls) byPair.set(`${c.user} ${c.thread}`, [...(byPair.get(`${c.user} ${c.thread}`) ?? []), c.beat]);
     for (const [pair, times] of byPair) {
-      // A fire runs a few seconds past its minute: two fetches a cadence apart are never under four and a half minutes apart.
-      const close = times.slice(1).filter((t, i) => t - times[i]! < 4.5 * MINUTE).length;
+      // By beat: two fetches a cadence apart are exactly a cadence of beats apart.
+      const close = times.slice(1).filter((t, i) => t - times[i]! < 5 * MINUTE).length;
       if (close > 0) failures.push(`${leg} · l: ${pair} was fetched ${close} time(s) within five minutes of its last fetch`);
     }
     const twoSessions = tell.over(`${leg} · l · alice's fetches of #412 (two sessions)`, calls.filter((c) => c.user === "alice" && c.thread === "github:acme/api#412"));
@@ -564,6 +568,7 @@ await runGoal(async (failures, tell) => {
     const first = await cold.seed("alice", entries);
     for (let t = T0; t <= T0 + 30 * MINUTE; t += MINUTE) {
       moveTo(t);
+      beat = t;
       await cold.tick();
     }
     const coldRows = (await cold.landed()).length;
@@ -582,6 +587,7 @@ await runGoal(async (failures, tell) => {
     declared = [entries[0]!];
     for (let t = T0 + 31 * MINUTE; t <= T0 + 50 * MINUTE; t += MINUTE) {
       moveTo(t);
+      beat = t;
       await warm.tick();
     }
     const after = await warm.rowsAt("alice", "workforce/subscriptions/*");

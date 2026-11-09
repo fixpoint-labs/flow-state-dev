@@ -6,9 +6,9 @@
 "@flow-state-dev/vercel": patch
 ---
 
-A session subscribed to a GitHub thread hears it with no webhook: the app polls, once per user and thread, at most every five minutes, through the same screens and delivery as push (FIX-2536).
+A session subscribed to a GitHub pull request or repository hears it with no webhook: the app polls, once per user and pull request (or repository), at most every five minutes, through the same screens and delivery as push (FIX-2536).
 
-- **workforce:** `defineSubscriptionServiceFlow` and `githubServiceFlow` take `poll: { index, everyMinutes?, declared? }`. Hand the same `poll` to `subscriptionTools` and `followPullRequest`, so a subscribe makes the user's poll row for its thread. `subscribe` takes `everyMinutes` (5, 10, 15, 20, 30 or 60; anything else is refused). `SubscriptionProvider` gains an optional `poll(thread, cursor, ctx)`; `githubSubscriptionProvider` implements it on the user's own token, with conditional requests. A delivery the host lost lands on a later poll, once; one that can't land is given up after three polls. Subscriptions a config declares are written once per entry under a stable id, so a restart adds none.
+- **workforce:** `defineSubscriptionServiceFlow` and `githubServiceFlow` take `poll: { index, everyMinutes?, declared? }`. Hand the same `poll` to `subscriptionTools` and `followPullRequest`, so a subscribe also schedules the user's poll. `subscribe` takes `everyMinutes` (5, 10, 15, 20, 30 or 60; anything else is refused). `SubscriptionProvider` gains an optional `poll`; `githubSubscriptionProvider` implements it on the user's own token, with conditional requests. A delivery the host lost lands on a later poll, once; one that can't land is given up after three polls. Subscriptions a config declares are written once per entry under a stable id, so a restart adds none.
 - **scheduled:** `runScheduleTick` and `startScheduleTick` (from `/collection`) claim a schedule index's due rows and dispatch each; `scheduleDispatchRequest` builds the dispatch call.
 - **core:** `SchedulesConfig` takes `index`, the schedule index a host ticks for the flow.
 - **node:** `serve()` ticks each minute for every flow whose `schedules.index` is set, dispatching through its own app (mount `createScheduledTransportAdapter()`; `CRON_SECRET` is sent as the bearer when set).

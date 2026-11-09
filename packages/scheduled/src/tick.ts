@@ -17,11 +17,11 @@
  * Engine-free: the caller supplies `dispatch`, which turns a due row and its
  * dispatch id into an HTTP status.
  */
-import type { ScheduleDueRow } from "@flow-state-dev/core/types";
+import type { ScheduleDueEntry } from "@flow-state-dev/core/types";
 import { formatScheduleId } from "./createResourceCollectionScheduleResolver";
 
 /** What one tick is run with. */
-export interface RunScheduleTickOptions<TRow extends ScheduleDueRow = ScheduleDueRow> {
+export interface RunScheduleTickOptions<TRow extends ScheduleDueEntry = ScheduleDueEntry> {
   /** The index to claim due rows from. */
   readonly index: { claimDue(now: number, limit?: number): Promise<readonly TRow[]> };
   /** Dispatch one due row under its dispatch id (`<orgId>/<userId>/<key>`); resolve to the HTTP status, `0` when it threw. */
@@ -41,7 +41,7 @@ export interface RunScheduleTickOptions<TRow extends ScheduleDueRow = ScheduleDu
  * only when the claim does, so a per-beat caller can answer 500 and its cron
  * retry with the rows still pending.
  */
-export async function runScheduleTick<TRow extends ScheduleDueRow>(options: RunScheduleTickOptions<TRow>): Promise<readonly TRow[]> {
+export async function runScheduleTick<TRow extends ScheduleDueEntry>(options: RunScheduleTickOptions<TRow>): Promise<readonly TRow[]> {
   const due = await options.index.claimDue(options.now ?? Date.now(), options.maxPerTick ?? 100);
   const notify = (row: TRow, status: number) => {
     try {
@@ -71,7 +71,7 @@ export async function runScheduleTick<TRow extends ScheduleDueRow>(options: RunS
 }
 
 /** What {@link startScheduleTick} is run with: a tick, and how often. */
-export interface StartScheduleTickOptions<TRow extends ScheduleDueRow = ScheduleDueRow> extends Omit<RunScheduleTickOptions<TRow>, "now"> {
+export interface StartScheduleTickOptions<TRow extends ScheduleDueEntry = ScheduleDueEntry> extends Omit<RunScheduleTickOptions<TRow>, "now"> {
   /** How often it ticks, in ms. Default 60000 (a minute, the finest cadence a cron names). `0` or less: never. */
   readonly intervalMs?: number;
   /** The clock each tick claims against. Default `Date.now`. */
@@ -91,7 +91,7 @@ export interface ScheduleTick {
  * overlapped: the next waits its turn. A claim that throws is logged and the
  * next tick tries again.
  */
-export function startScheduleTick<TRow extends ScheduleDueRow>(options: StartScheduleTickOptions<TRow>): ScheduleTick {
+export function startScheduleTick<TRow extends ScheduleDueEntry>(options: StartScheduleTickOptions<TRow>): ScheduleTick {
   const intervalMs = options.intervalMs ?? 60_000;
   const clock = options.clock ?? Date.now;
   let running: Promise<void> = Promise.resolve();
@@ -132,7 +132,7 @@ export function startScheduleTick<TRow extends ScheduleDueRow>(options: StartSch
 export function scheduleDispatchRequest(options: {
   readonly baseUrl: string;
   readonly flowKind: string;
-  readonly row: ScheduleDueRow;
+  readonly row: ScheduleDueEntry;
   readonly scheduleId: string;
   readonly secret?: string;
   /** The API mount prefix. Default `/api/flows`. */

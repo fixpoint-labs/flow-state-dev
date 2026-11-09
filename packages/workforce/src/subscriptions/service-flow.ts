@@ -78,11 +78,11 @@ import { indexEntryOf, unsubscribe, type SubscriptionProvider } from "./subscrib
 import {
   POLL_GIVE_UP_AFTER,
   pollKeyOf,
-  pollRowInputSchema,
-  pollRowState,
-  pollRowsOf,
+  pollScheduleInputSchema,
+  pollScheduleState,
+  pollSchedulesOf,
   subscriptionPolling,
-  type PollRowInput,
+  type PollScheduleInput,
   type SubscriptionPolling,
   type SubscriptionPollingOptions
 } from "./poll";
@@ -456,7 +456,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     throw new Error(`defineSubscriptionServiceFlow: "${provider.provider}" can't be polled: its provider has no poll.`);
   }
   const declared = options.poll?.declared;
-  // The poll rows ride along untyped: blocks reach them through `pollRowsOf`, which reads them as declared or not.
+  // The poll rows ride along untyped: blocks reach them through `pollSchedulesOf`, which reads them as declared or not.
   const pollResources = { ...subscriptionResources, ...workerMessagesResources, ...(polling?.resources ?? {}) } as typeof subscriptionResources & typeof workerMessagesResources;
 
   /** The running user's enabled subscriptions on `thread`, in the running org, under no tenant: the only ones its poll reaches (D1, ER-4). */
@@ -496,7 +496,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     resources: pollResources,
     execute: async ({ thread, key: rowKey }, ctx) => {
       const key = rowKey ?? pollKeyOf(thread);
-      const rowRef = await pollRowsOf(ctx)!.getOptional(key);
+      const rowRef = await pollSchedulesOf(ctx)!.getOptional(key);
       const row = rowRef?.state;
       if (rowRef === undefined || row === undefined || row.enabled === false) return { thread, key, screenings: [] };
       let subs = await liveOnThread(ctx, thread);
@@ -509,7 +509,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         await rowRef.setState({ ...row, enabled: false });
         return { thread, key, screenings: [] };
       }
-      const input = pollRowInputSchema.parse(row.input);
+      const input = pollScheduleInputSchema.parse(row.input);
       const owed = input.owed ?? [];
       const result = await provider.poll!(
         thread,
@@ -560,10 +560,10 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     resources: pollResources,
     execute: async ({ fetched: { thread, key }, screened: screenings }, ctx) => {
       const counts = { delivered: 0, screened: 0, owed: 0, gaveUp: 0 };
-      const rowRef = await pollRowsOf(ctx)!.getOptional(key);
+      const rowRef = await pollSchedulesOf(ctx)!.getOptional(key);
       const row = rowRef?.state;
       if (rowRef === undefined || row === undefined || row.enabled === false) return counts;
-      const input = pollRowInputSchema.parse(row.input);
+      const input = pollScheduleInputSchema.parse(row.input);
       const subs = new Map((await liveOnThread(ctx, thread)).map((s) => [s.id, s]));
       const toScreen = new Map<string, Array<[string, number, number]>>();
       const screen = (subscription: string, event: SubscriptionEvent) => {
@@ -670,7 +670,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       const minutes = Math.min(...[...subs.values()].map((s) => s.everyMinutes ?? polling!.everyMinutes));
       const { fetched: _fetched, owed: _owed, etags: _etags, polledThrough: _mark, ...rest } = input;
       const etags = owed.length === 0 ? (fetched?.etags ?? input.etags) : undefined;
-      const next: PollRowInput = {
+      const next: PollScheduleInput = {
         ...rest,
         ...(polledThrough === undefined ? {} : { polledThrough }),
         ...(etags === undefined ? {} : { etags }),
@@ -679,7 +679,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       if (subs.size === 0) {
         await rowRef.setState({ ...row, enabled: false, input: next });
       } else if (Number.isFinite(minutes) && minutes !== input.everyMinutes) {
-        await rowRef.setState(pollRowState(provider.provider, thread, minutes, next));
+        await rowRef.setState(pollScheduleState(provider.provider, thread, minutes, next));
       } else {
         await rowRef.setState({ ...row, input: next });
       }

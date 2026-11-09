@@ -22,7 +22,7 @@ import { z } from "zod";
 import { retryOnConflict } from "../projects/cas-retry";
 import { TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import { SUBSCRIPTION_TOOLS } from "./keys";
-import { POLL_CADENCES, ensurePollRow, subscriptionPolling, type SubscriptionPolling, type SubscriptionPollingOptions } from "./poll";
+import { POLL_CADENCES, ensurePollSchedule, subscriptionPolling, type SubscriptionPolling, type SubscriptionPollingOptions } from "./poll";
 import {
   indexKeyOf,
   listedScreenSchema,
@@ -227,7 +227,7 @@ export async function writeSubscription(ctx: BlockContext, row: SubscriptionReso
   await retryOnConflict(() => index.updateState((current) => ({ subscriptions: { ...current.subscriptions, [row.id]: indexEntryOf(row) } })));
   // Tenants aren't polled in v1 (FIX-2536).
   if (polling !== undefined && row.tenantId === undefined) {
-    await ensurePollRow(ctx, row.provider, row.thread, row.everyMinutes ?? polling.everyMinutes);
+    await ensurePollSchedule(ctx, row.provider, row.thread, row.everyMinutes ?? polling.everyMinutes);
   }
 }
 

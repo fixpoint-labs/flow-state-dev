@@ -14,7 +14,7 @@
  *   `input` carries the thread and the poll's own mark: `polledThrough`, the
  *   ETags, and the deliveries it still owes (D2). Not a subscription row:
  *   only `subscribe` and `unsubscribe` write those (ER-5).
- * - **Its life.** `subscribe` creates it or speeds it up ({@link ensurePollRow});
+ * - **Its life.** `subscribe` creates it or speeds it up ({@link ensurePollSchedule});
  *   a fire that finds no enabled subscription on the thread turns it off.
  *
  * An app polls by building one {@link subscriptionPolling} from its schedule
@@ -62,7 +62,7 @@ export function pollCron(key: string, minutes: number): string {
 export const pollKeyOf = (thread: string) => indexKeyOf(thread);
 
 /** What a poll row's `input` holds: the thread, and the poll's own mark (D2). */
-export const pollRowInputSchema = z.object({
+export const pollScheduleInputSchema = z.object({
   /** The row's own key, so its fire reads and writes the row it was dispatched for. */
   key: z.string().min(1).optional(),
   provider: z.string().min(1),
@@ -79,10 +79,10 @@ export const pollRowInputSchema = z.object({
   fetched: z.object({ through: z.number(), etags: z.record(z.string()).optional() }).optional()
 });
 
-export type PollRowInput = z.infer<typeof pollRowInputSchema>;
+export type PollScheduleInput = z.infer<typeof pollScheduleInputSchema>;
 
 /** A poll row as the schedule collection stores it, its `input` typed. */
-export type PollRow = Omit<ScheduleCollectionState, "input"> & { input: PollRowInput };
+export type PollScheduleState = Omit<ScheduleCollectionState, "input"> & { input: PollScheduleInput };
 
 /** What {@link subscriptionPolling} is built with. */
 export interface SubscriptionPollingOptions {
@@ -125,12 +125,12 @@ export function subscriptionPolling(options: SubscriptionPollingOptions | Subscr
 }
 
 /** The running user's poll rows, when the running block declares them. */
-export function pollRowsOf(ctx: BlockContext): ResourceCollectionRef<PollRow> | undefined {
-  return (ctx.resources as Record<string, unknown> | undefined)?.[SUBSCRIPTION_POLLS_RESOURCE] as ResourceCollectionRef<PollRow> | undefined;
+export function pollSchedulesOf(ctx: BlockContext): ResourceCollectionRef<PollScheduleState> | undefined {
+  return (ctx.resources as Record<string, unknown> | undefined)?.[SUBSCRIPTION_POLLS_RESOURCE] as ResourceCollectionRef<PollScheduleState> | undefined;
 }
 
 /** A poll row's state, for a thread at a cadence. */
-export function pollRowState(provider: string, thread: string, everyMinutes: number, input: Partial<PollRowInput> = {}): PollRow {
+export function pollScheduleState(provider: string, thread: string, everyMinutes: number, input: Partial<PollScheduleInput> = {}): PollScheduleState {
   return {
     cron: pollCron(input.key ?? pollKeyOf(thread), everyMinutes),
     kind: SUBSCRIPTION_POLL_HANDLER,
@@ -151,12 +151,12 @@ export function pollRowState(provider: string, thread: string, everyMinutes: num
  * Does nothing when the running block declares no poll rows (an app that
  * doesn't poll).
  */
-export async function ensurePollRow(ctx: BlockContext, provider: string, thread: string, everyMinutes: number): Promise<void> {
-  const rows = pollRowsOf(ctx);
+export async function ensurePollSchedule(ctx: BlockContext, provider: string, thread: string, everyMinutes: number): Promise<void> {
+  const rows = pollSchedulesOf(ctx);
   if (rows === undefined) return;
   const key = pollKeyOf(thread);
   const existing = (await rows.getOptional(key))?.state;
   if (existing !== undefined && existing.enabled !== false && existing.input.everyMinutes <= everyMinutes) return;
   const input = existing !== undefined && existing.enabled !== false ? existing.input : { polledThrough: Date.now() };
-  await rows.create(key, pollRowState(provider, thread, everyMinutes, { ...input, key }), { replace: true });
+  await rows.create(key, pollScheduleState(provider, thread, everyMinutes, { ...input, key }), { replace: true });
 }

@@ -34,6 +34,9 @@ const obj = (value: unknown): Json | undefined => (typeof value === "object" && 
 const list = (value: unknown): Json[] => (Array.isArray(value) ? value.flatMap((v) => (obj(v) === undefined ? [] : [v as Json])) : []);
 const ms = (value: unknown): number | undefined => (typeof value === "string" ? Date.parse(value) : undefined);
 
+/** The timeline events a poll rebuilds, by GitHub's own names. */
+const TIMELINE_ACTIONS = new Set(["assigned", "review_requested", "closed", "reopened"]);
+
 /** Poll one GitHub thread since the cursor. */
 export async function pollGitHubThread(
   call: GitHubCall,
@@ -101,7 +104,7 @@ export async function pollGitHubThread(
   for (const step of list(await get(`${repo}/issues/${n}/timeline?per_page=100`))) {
     const action = String(step.event ?? "");
     const at = step.created_at;
-    if (!after(ms(at)) || !["assigned", "review_requested", "closed", "reopened"].includes(action)) continue;
+    if (!after(ms(at)) || !TIMELINE_ACTIONS.has(action)) continue;
     push(eventType, {
       action,
       [key]: { ...subject, updated_at: at, ...(action === "closed" ? { closed_at: at } : {}) },

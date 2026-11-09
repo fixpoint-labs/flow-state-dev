@@ -247,7 +247,7 @@ export type SchedulesConfig = {
 };
 
 /** One due row a schedule index hands back: who it runs as, in which org, its key, and the time it fires for. */
-export type ScheduleDueRow = {
+export type ScheduleDueEntry = {
   userId: string;
   orgId?: string;
   key: string;
@@ -256,7 +256,7 @@ export type ScheduleDueRow = {
 
 /** What a host's tick needs of a schedule index: claim the rows due by `now`, advancing them. */
 export type ScheduleDueSource = {
-  claimDue(now: number, limit?: number): Promise<readonly ScheduleDueRow[]>;
+  claimDue(now: number, limit?: number): Promise<readonly ScheduleDueEntry[]>;
 };
 
 // ---------------------------------------------------------------------------
