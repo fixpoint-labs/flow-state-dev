@@ -37,7 +37,7 @@
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { REPO_ROOT, RUN_STAMP, assertPatched, describePatches, goalTmpDir, modulePatchEnv, runGoal, type ModulePatch } from "../../../lib/index.mts";
@@ -93,6 +93,8 @@ function copyOf(label: string, extra: Record<string, string> = {}): string {
   execFileSync("tar", ["-x", "-C", dir], { input: tar, maxBuffer: 1024 * 1024 * 1024 });
   for (const path of RULE_FILES) write(dir, path, readFileSync(join(REPO_ROOT, path), "utf8"));
   for (const [path, text] of Object.entries(extra)) write(dir, path, text);
+  // The guard reads names with TypeScript's parser (FIX-2631 D2); `node_modules` is gitignored, so the link is never committed.
+  symlinkSync(join(REPO_ROOT, "node_modules"), join(dir, "node_modules"));
   git(dir, ["init", "-q", "-b", "main"]);
   git(dir, ["add", "-A"]);
   git(dir, ["commit", "-q", "-m", `copy of ${commit}`]);
@@ -148,7 +150,7 @@ await runGoal(async (failures, tell) => {
   if (rowPackages.size < 2) failures.push(`control: the guard plants a FooRow type in ${rowPackages.size} package(s); it must plant one in more than one`);
   if (fooItem.length === 0) failures.push("control: the guard plants no useFooCollectionItem export");
   for (const p of tell.over("control: FooRow and useFooCollectionItem plants", [...fooRow, ...fooItem])) {
-    if (!new RegExp(`^plant ${p.path.replace(/[./]/g, "\\$&")}:\\d+ \\(${RULE}\\): refused$`, "m").test(control.out)) failures.push(`control: the guard's --control did not refuse ${p.path} (${p.line})`);
+    if (!new RegExp(`^plant ${p.path.replace(/[./]/g, "\\$&")}:\\d+ \\(${RULE}(?:, read [\\w-]+)?\\): refused$`, "m").test(control.out)) failures.push(`control: the guard's --control did not refuse ${p.path} (${p.line})`);
   }
   if (control.status !== 0) failures.push(`control: the guard's --control failed\n${control.out.split("\n").filter((l) => /SLIPPED|CONTROL/.test(l)).join("\n")}`);
   evidence.push(`control: FooRow refused in ${[...rowPackages].join(", ")}, useFooCollectionItem in ${fooItem.map((p) => packageOf(p.path)).join(", ")}`);
