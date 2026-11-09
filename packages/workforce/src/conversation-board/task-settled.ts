@@ -77,6 +77,7 @@ import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
 import { admitOwnTask, markAdmittedTask } from "./task-admission";
 import { anotherTurnWaitsOnItsPlan } from "./plan";
 import { noteTaskEndingRead, taskEndingReadsStateSchema } from "./task-ending-read";
+import { messageTurnStateSchema } from "../messages/hop";
 import { answerTextOf, delegateAnswerMetadata } from "./delegate-answer";
 
 /** A notice, as the entries take it. */
@@ -143,6 +144,14 @@ export interface TaskSettledOptions {
    * too, and then also lands as a line and wakes that turn.
    */
   readonly onRouted?: BlockDefinition<any, any>;
+  // FIX-2538.
+  /**
+   * The request state a turn this task's ending wakes starts with, read off
+   * the settled task (its server-written metadata), or `undefined` for none:
+   * written before any turn runs, so the turn's tools read it as they would
+   * on the turn that filed the task.
+   */
+  readonly turnStateOf?: (task: Task) => Record<string, unknown> | undefined;
 }
 
 /** What a conversation-result task's ending hands {@link TaskSettledOptions.onRouted}. */
@@ -405,13 +414,16 @@ export function taskSettledEntry(options: TaskSettledOptions) {
     inputSchema: taskNoticeSchema,
     outputSchema: settledSchema,
     sessionStateSchema: z.object(conversationBoardStateShape),
-    requestStateSchema: taskEndingReadsStateSchema,
+    requestStateSchema: taskEndingReadsStateSchema.merge(messageTurnStateSchema),
     resources: { ...taskChainResources, ...subscriptionResources },
     execute: async (notice: TaskNotice, ctx): Promise<Settled> => {
       if (notice.boardId !== CONVERSATION_LEDGER_ID) return { act: "none" };
       const ref = await ownConversationLedger(ctx);
       const row = ref?.get(notice.taskId);
       if (ref === undefined || row === undefined) return { act: "none" };
+      // Before any path that may wake a turn: the task says how that turn runs.
+      const turnState = options.turnStateOf?.(row);
+      if (turnState !== undefined) await ctx.request.atomicState(() => turnState);
       await beforeAcknowledge(ctx, notice);
       if (row.resultTo === "conversation" && notice.ending !== "retried" && notice.waitedOn !== true) {
         return settleConversationResult(ctx, ref, row, notice);

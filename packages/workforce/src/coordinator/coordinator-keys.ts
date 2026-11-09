@@ -11,6 +11,11 @@
 /** The coordinator flow's name. **Pinned**: a worker's `flow:` names it. */
 export const COORDINATOR_FLOW = "coordinator";
 
+/** The three settings of a coordinator's `inferredWork:`, for work nobody asked for. **Pinned**: a `WORKER.md` names them. */
+export const INFERRED_WORK_MODES = ["off", "observe", "auto"] as const;
+
+export type InferredWork = (typeof INFERRED_WORK_MODES)[number];
+
 /**
  * The component every routing decision is recorded under, and the name of
  * best fit's fit check (`../fit-check.ts`). **Pinned**: a client tells a

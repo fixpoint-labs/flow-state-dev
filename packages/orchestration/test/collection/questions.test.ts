@@ -364,6 +364,16 @@ describe.each([
       expect(holdIds(none.board.get("t6"))).toEqual([t6.holds![0]!.id]);
       expect(await none.board.claim("w")).toBeNull();
     });
+
+    it("never closes an untimed confirm, whatever the host's deadline: with no yes, the task never starts", async () => {
+      const due = await make({ holdDueMs: 5_000 });
+      const t7 = await due.board.createTask({ id: "t7", goal: "g", questions: [{ kind: "confirm", prompt: "Run it?", untimed: true }] });
+      expect(t7.holds![0]!.due).toBeUndefined();
+      due.clock.at += 30 * 86_400_000;
+      expect(await due.board.payHoldDeadlines!()).toEqual([]);
+      expect(holdIds(due.board.get("t7"))).toEqual([t7.holds![0]!.id]);
+      expect(await due.board.claim("w")).toBeNull();
+    });
   });
 
   describe("a line typed in the task's session (steerFromLine)", () => {
