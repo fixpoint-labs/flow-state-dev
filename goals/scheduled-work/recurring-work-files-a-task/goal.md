@@ -1,8 +1,8 @@
-# scheduled-work › it recurring work files a task
+# scheduled-work › a clock routine files a task
 
 **Issue:** FIX-2085 (epic FIX-2056). Its spec's goal: `specs/issues/FIX-2085/SPEC.md` → "The goal, and how we'll know it's met".
 
-**Outcome:** Alice's recurring work arrives as an ordinary task on the board she named, once per scheduled time across restarts and hosts, and she can see every schedule's next run.
+**Outcome:** Alice's clock routine arrives as an ordinary task on the board she named, once per scheduled time across restarts and hosts, and she can see every schedule's next run.
 
 **Input:** `fixtures/schedules.json`: a weekly cron (`0 9 * * 1`, `Europe/London`) that files "Refresh the adoption numbers" on `launch`'s board for `researcher`, a start date the four scheduled times are counted from (across the March clock change), and two more schedules in other zones for the list. Held-out: the scheduled times and next runs are worked out in `run.mts` by stepping minutes through the zone's wall clock with `Intl`, not with the library the implementation uses, so another cron, zone or start date must pass too. The app is a Workforce app over one SQLite file with two deterministic workers (launch says "Noted."; researcher works for 1.5 s and reports). Each step is its own process (`host.mts`) with its clock pinned to the moment it stands at; no schedule index is configured.
 
@@ -10,7 +10,7 @@
 
 - **a**: `a:accepted` a fire POSTed with the scheduler's secret and the scheduled time is accepted; `a:one-task-on-launch's-board` Alice's task list with launch then holds exactly one task; `a:the-schedule's-task` it is the schedule's goal, assigned to researcher; `a:it-runs` it ended completed; `a:ending-heard-once` launch's conversation ran exactly one ending request for it; `a:second-week's-task` the next week's fire files a second task, and `a:cancelled-like-any-task` Alice's `updateTask_tasks` with `status: "cancelled"` on it, while it works, leaves it cancelled.
 - **b**: `b:exactly-one-task` one scheduled time POSTed by two processes at once, again by a restarted one, and again 20 s late, files exactly one task; `b:early-files-nothing` an untimed POST a minute before the next time files nothing; `b:its-own-fire-still-files` that time's own fire then files one.
-- **c**: `c:shows-the-change` Alice's `listSchedules` shows exactly her schedules, before and after one is removed and one added, on the next read; `c:next-run` each one's `nextRunAt` equals the next time of its cron in its zone, from the host's clock.
+- **c**: `c:shows-the-change` Alice's `listRoutines` shows exactly her clock routines, before and after one is removed and one added, on the next read; `c:next-run` each one's `nextRunAt` equals the next time of its cron in its zone, from the host's clock.
 
 **Anti-game:** tasks are read through Alice's public task read (`listTasks_tasks` in her conversation with launch, over the router as Alice), never the collection. Schedules are written and read through the roster flow's actions as Alice. Fires go through the router with the scheduler's bearer secret, as a host's cron sends them. Launch's ending requests are read from the engine's request store, read-only, and counted by the task they name. The two concurrent hosts are two OS processes over one SQLite file, not two handlers in one process. A dispatch answer alone never passes a leg: leg b counts tasks in Alice's list. Every list an assertion grades is floored with `tell.over`, so an empty read is CAN'T TELL.
 
@@ -21,7 +21,7 @@
 **Controls:**
 
 - `GOAL_CONTROL=memory-dedupe` patches the endpoint's claim (`packages/scheduled/src/scheduledTime.ts`) to read and write the fired record in the process's own memory instead of the shared store: today's per-process dedupe. It must FAIL `b:exactly-one-task`. It also fails `b:early-files-nothing`, by the same cause: a fresh process doesn't know the time already fired. No leg has an isolating red state for the two.
-- Today's `main` has no schedule actions on the roster flow, so it fails leg a before any task (`a1:` setup, `saveSchedule` not defined) and leg c with it.
+- Today's `main` has no schedule actions on the roster flow, so it fails leg a before any task (`a1:` setup, the roster's save not defined) and leg c with it.
 
 ## Verdict log
 

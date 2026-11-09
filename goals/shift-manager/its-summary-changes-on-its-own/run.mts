@@ -43,7 +43,7 @@ import { createFlowState, runAction as runOnServer, type FlowState, type StoreAd
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { TaskInit } from "@flow-state-dev/orchestration/tasks";
-import { LIST_SCHEDULES_ACTION } from "@flow-state-dev/workforce/browser";
+import { LIST_ROUTINES_ACTION } from "@flow-state-dev/workforce/browser";
 import {
   createWorkerInstallation,
   defineSessionBoard,
@@ -232,7 +232,7 @@ function buildHost(stores: StoreAdapter): { state: FlowState; flows: Record<stri
     kind: PROBE_FLOW,
     actions: {
       harnessUsage: { inputSchema: z.object({}).passthrough(), block: answer("probe-usage", { harnesses: [] }) },
-      [LIST_SCHEDULES_ACTION]: { inputSchema: z.object({}).passthrough(), block: answer("probe-schedules", { schedules: [] }) },
+      [LIST_ROUTINES_ACTION]: { inputSchema: z.object({}).passthrough(), block: answer("probe-routines", { routines: [] }) },
     },
   } as never);
 
@@ -320,7 +320,7 @@ function mountProvider(on: Host) {
     useEffect(() => {
       if (loaded === undefined) return;
       shown.push({ at: Date.now(), readAt: loaded.readAt, needsYou: loaded.inbox.ok ? loaded.inbox.value.length : undefined, sessions: loaded.sessions.map((s) => s.id) });
-      void runAction(client, PROBE_FLOW, readerSessionId(client.userId, PROBE_FLOW), LIST_SCHEDULES_ACTION, {}).catch(() => {});
+      void runAction(client, PROBE_FLOW, readerSessionId(client.userId, PROBE_FLOW), LIST_ROUTINES_ACTION, {}).catch(() => {});
       void runUsageQuery(client, PROBE_FLOW).catch(() => {});
     }, [loaded, client]);
     return null;

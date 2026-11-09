@@ -44,7 +44,7 @@ describe("defineFlow", () => {
     // the supported shape and must survive instantiation untouched.
     const instance = flow({ id: "definition-transport-instance" });
 
-    expect(instance.webhooks?.stripe.on["invoice.paid"]).toBeDefined();
+    expect(instance.webhooks?.stripe.on?.["invoice.paid"]).toBeDefined();
   });
 
   it("returns callable flow type with defaults and merge-based overrides", () => {
@@ -379,7 +379,7 @@ describe("defineFlow", () => {
       })
     });
 
-    const webhookBlock = instance.webhooks!.stripe.on["invoice.paid"]!.block;
+    const webhookBlock = instance.webhooks!.stripe.on!["invoice.paid"]!.block;
     await runForTest(webhookBlock, {}, ctx);
     expect(onToolStarted).toHaveBeenCalledTimes(1);
   });

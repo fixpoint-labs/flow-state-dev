@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 468" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box, one routing point per provider with no model reading every event: the GitHub service flow, which takes events by webhook push or by polling on each user's own schedule rows, no more often than every 5 minutes, into one normalized event, the service action's input over WebhookInboundEvent; subscriptions, a user-scoped collection written only by the subscribe and unsubscribe tools, ended per ER-7, with a coding task subscribed to its PR when the PR opens; the screen chain, a sequencer that runs config screens first, the sender check among them and failing closed, then the app's custom screen blocks, then one Jev evaluator call per event, and no generator; delivery through sendMessage's exempt path with a server-set source label, an id per object, version and session, and a cap per subscription; and work modes on the coordinator for unmatched kinds, off, observe or auto. Composed in by the app: its custom screen blocks, its list of unmatched kinds to forward, and the coordinator's work mode, one key beside routing. Replaced in one line: sessionId on a GitHub webhook binding becomes a subscription on the thread key, and the GitHub guide's routing code becomes a subscribe call; other providers keep sessionId, as Q5 decided. Not built, below a fence: a generator in routing, the service flow filing tasks, a second messaging API or a roster worker, push to screens which is FIX-2367's, cross-provider identity, a Slack flow, as Q4 decided, long-term memory or a watchdog.">
+<svg viewBox="0 0 940 548" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box, one routing point per provider with no model reading every event: the GitHub service flow, which takes events by webhook push or by polling on each user's own schedule rows, one per thread, at the fastest of that user's cadences on it and no more often than every 5 minutes, into one normalized event, the service action's input over WebhookInboundEvent; subscriptions, a user-scoped collection written only by the subscribe and unsubscribe tools, which config-declared subscriptions seed through, ended per ER-7, with a coding task subscribed to its PR when the PR opens; the screen chain, a sequencer that runs config screens first, the sender check among them and failing closed, then the app's custom screen blocks, then one Jev evaluator call per event, and no generator; delivery through sendMessage's exempt path with a server-set source label, an id per object, version and session, and a cap per subscription; work modes on the coordinator for unmatched kinds, off, observe or auto; and routines, one name, list and tool set for every standing instruction that fires as its owner, on a clock or on an event, over the schedule rows and subscription rows, with no new store. Composed in by the app: its custom screen blocks, its list of unmatched kinds to forward, the coordinator's work mode, one key beside routing, and the routines it declares in config. Replaced in one line: sessionId on a GitHub webhook binding becomes a subscription on the thread key, and the GitHub guide's routing code becomes a subscribe call; other providers keep sessionId, as Q5 decided; and recurring work and subscriptions, two lists and two tool sets, become one list of routines, with subscription the name of the event trigger. Not built, below a fence: a generator in routing, the service flow filing tasks, a second messaging API or a roster worker, push to screens which is FIX-2367's, cross-provider identity, a Slack flow, as Q4 decided, long-term memory or a watchdog.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -19,22 +19,22 @@
     .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
     .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="468"/>
+  <rect class="bg" x="0" y="0" width="940" height="548"/>
 
   <g id="in-the-box">
-    <rect class="box" x="16" y="24" width="560" height="304" rx="5"/>
+    <rect class="box" x="16" y="24" width="560" height="384" rx="5"/>
     <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; ONE ROUTING POINT PER PROVIDER</text>
     <rect class="held" x="32" y="56" width="256" height="92" rx="4"/>
     <text class="t-b" x="44" y="78">the GitHub service flow</text>
     <text class="t-s" x="44" y="96">push &#183; the webhook binding</text>
-    <text class="t-s" x="44" y="112">poll &#183; each user's schedule rows, &#8805; 5 min</text>
+    <text class="t-s" x="44" y="112">poll &#183; per user and thread, &#8805; 5 min</text>
     <text class="t-s" x="44" y="128">one event shape &#183; the action's input</text>
     <text class="t-s" x="44" y="142">over WebhookInboundEvent</text>
     <rect class="held" x="300" y="56" width="260" height="92" rx="4"/>
     <text class="t-b" x="312" y="78">subscriptions</text>
     <text class="t-s" x="312" y="96">user-scoped &#183; a thread its user can read</text>
     <text class="t-s" x="312" y="112">written only by subscribe, unsubscribe</text>
-    <text class="t-s" x="312" y="128">end per ER-7</text>
+    <text class="t-s" x="312" y="128">config seeds them &#183; end per ER-7</text>
     <text class="t-s" x="312" y="142">a coding task follows its PR on open</text>
     <rect class="held" x="32" y="160" width="528" height="70" rx="4"/>
     <text class="t-b" x="44" y="182">the screen chain &#8212; a sequencer, first refusal stops it</text>
@@ -48,34 +48,42 @@
     <text class="t-b" x="312" y="264">work modes &#183; the coordinator</text>
     <text class="t-s" x="312" y="282">unmatched kinds &#8594; off, observe, auto</text>
     <text class="t-s" x="312" y="298">explicit requests run in every mode</text>
+    <rect class="held" x="32" y="326" width="528" height="70" rx="4"/>
+    <text class="t-b" x="44" y="348">routines &#8212; one name, one list, one tool set</text>
+    <text class="t-s" x="44" y="366">a standing instruction that fires as its owner &#183; one trigger, a clock or an event</text>
+    <text class="t-s" x="44" y="382">over the schedule rows and the subscription rows &#183; no new store</text>
   </g>
 
   <g id="composed-in">
-    <rect class="comp" x="592" y="24" width="332" height="118" rx="5"/>
+    <rect class="comp" x="592" y="24" width="332" height="134" rx="5"/>
     <text class="t-lbl" x="608" y="44">COMPOSED IN BY THE APP</text>
     <text class="t-b" x="608" y="66">its custom screen blocks</text>
     <text class="t-s" x="608" y="86">its list of unmatched kinds to forward</text>
     <text class="t-s" x="608" y="102">the work mode &#183; one key beside routing</text>
     <text class="t-s" x="608" y="118">a subscription's opt-in for outsiders</text>
+    <text class="t-s" x="608" y="134">the routines it declares in config</text>
   </g>
 
   <g id="replaced">
-    <rect class="repl" x="592" y="154" width="332" height="174" rx="5"/>
-    <text class="t-lbl" x="608" y="174">REPLACED IN ONE LINE</text>
-    <text class="t-b" x="608" y="198">sessionId(event) on GitHub</text>
-    <text class="t-s" x="608" y="216">&#8594; a subscription on the thread key</text>
-    <text class="t-b" x="608" y="246">per-app routing code</text>
-    <text class="t-s" x="608" y="264">in the GitHub guide</text>
-    <text class="t-s" x="608" y="280">&#8594; one subscribe call</text>
-    <text class="t-s" x="608" y="306">other providers keep sessionId &#183; Q5</text>
+    <rect class="repl" x="592" y="170" width="332" height="238" rx="5"/>
+    <text class="t-lbl" x="608" y="190">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="608" y="214">sessionId(event) on GitHub</text>
+    <text class="t-s" x="608" y="232">&#8594; a subscription on the thread key</text>
+    <text class="t-b" x="608" y="262">per-app routing code</text>
+    <text class="t-s" x="608" y="280">in the GitHub guide</text>
+    <text class="t-s" x="608" y="296">&#8594; one subscribe call</text>
+    <text class="t-s" x="608" y="320">other providers keep sessionId &#183; Q5</text>
+    <text class="t-b" x="608" y="350">recurring work, subscriptions</text>
+    <text class="t-s" x="608" y="368">two lists, two tool sets</text>
+    <text class="t-s" x="608" y="384">&#8594; one list of routines &#183; D12</text>
   </g>
 
   <g id="not-built">
-    <rect class="fence" x="16" y="344" width="908" height="108" rx="5"/>
-    <text class="t-non" x="32" y="364">NOT BUILT HERE &#8212; NOT DOING</text>
-    <text class="t-s" x="32" y="386">a generator in routing &#183; the service flow filing a task &#183; a second messaging API or a roster worker</text>
-    <text class="t-s" x="32" y="404">push to screens &#183; FIX-2367 &#183; identity mapped across providers</text>
-    <text class="t-s" x="32" y="422">a Slack service flow &#183; Slack-shaped events stay as fixture data &#183; Q4</text>
-    <text class="t-s" x="32" y="440">long-term memory &#183; a watchdog &#183; speculative background work</text>
+    <rect class="fence" x="16" y="424" width="908" height="108" rx="5"/>
+    <text class="t-non" x="32" y="444">NOT BUILT HERE &#8212; NOT DOING</text>
+    <text class="t-s" x="32" y="466">a generator in routing &#183; the service flow filing a task &#183; a second messaging API or a roster worker</text>
+    <text class="t-s" x="32" y="484">push to screens &#183; FIX-2367 &#183; identity mapped across providers</text>
+    <text class="t-s" x="32" y="502">a Slack service flow &#183; Slack-shaped events stay as fixture data &#183; Q4</text>
+    <text class="t-s" x="32" y="520">long-term memory &#183; a watchdog &#183; speculative background work</text>
   </g>
 </svg>

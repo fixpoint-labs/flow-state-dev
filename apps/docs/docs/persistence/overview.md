@@ -215,12 +215,12 @@ If your whole history was written by one development deployment, map it to `DEFA
 SELECT COUNT(*) FROM sessions WHERE org_id = '__fsd_default_org__';
 ```
 
-A non-zero count on an installation that has ever authenticated its callers is a stop. Rename that organization, completely and offline, to an id of your own before you go further: its sessions, requests, child sessions, schedule rows, org records, resource addresses and its mapping in your identity provider, preserving versions and deletion markers exactly as the per-adapter recipes above describe. Do not merge it into development data, and do not serve traffic in between. A configured resolver that returns the reserved id is refused at runtime, so leaving the collision in place fails closed rather than quietly sharing a boundary.
+A non-zero count on an installation that has ever authenticated its callers is a stop. Rename that organization, completely and offline, to an id of your own before you go further: its sessions, requests, child sessions, stored schedules, org records, resource addresses and its mapping in your identity provider, preserving versions and deletion markers exactly as the per-adapter recipes above describe. Do not merge it into development data, and do not serve traffic in between. A configured resolver that returns the reserved id is refused at runtime, so leaving the collision in place fails closed rather than quietly sharing a boundary.
 
 **Attributing organizations, once.** The same four steps, in the same order, against `org_id`:
 
 1. **Quiesce.** Stop the writers, and this time stop the schedulers and **drain the external queues** too. A job already enqueued carries the identity it was written with, and a job carrying no organization is refused when its worker picks it up. Let the queues empty rather than leaving work that cannot run. A job you cannot attribute stays stopped, or you retire it explicitly. Back up, and work on the copy.
-2. **Inventory.** `SELECT flow_kind, COUNT(*) FROM sessions WHERE org_id IS NULL GROUP BY flow_kind;` and the same over `requests`. Include child sessions, and include your **dynamic schedule rows**. A schedule stores the organization of the execution that created it, and dispatches from that stored value rather than from whoever's schedule gateway fires it, so an unattributed schedule cannot fire at all. Every row needs a destination organization you can defend from your own records.
+2. **Inventory.** `SELECT flow_kind, COUNT(*) FROM sessions WHERE org_id IS NULL GROUP BY flow_kind;` and the same over `requests`. Include child sessions, and include your **dynamic schedules**. A schedule stores the organization of the execution that created it, and dispatches from that stored value rather than from whoever's schedule gateway fires it, so an unattributed schedule cannot fire at all. Every row needs a destination organization you can defend from your own records.
 3. **Backfill.** Both places, in one statement, for the reason the owner backfill gives: a column updated on its own reverts the next time the record is written. SQLite:
 
    ```sql
@@ -239,7 +239,7 @@ A non-zero count on an installation that has ever authenticated its callers is a
    WHERE org_id IS NULL AND <your predicate>;
    ```
 
-   Run the same predicate over `requests` and over your schedule rows, so a request never lands in a different organization than its session and a schedule never fires into one.
+   Run the same predicate over `requests` and over your stored schedules, so a request never lands in a different organization than its session and a schedule never fires into one.
 
    Then **rebuild the schedule indexes one organization at a time.** A rebuild writes each schedule again, and a schedule whose stored state names no organization takes the organization doing the rebuild. Rebuild the whole table in one pass and every unattributed schedule silently becomes that organization's. Attribute the schedule state in the backfill above first, then rebuild per organization from the rows that name it.
 

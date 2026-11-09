@@ -122,8 +122,10 @@ async function recipientsLine(ctx: BlockContext, installation: WorkerInstallatio
  * worker. `controlTools`, so a worker's `tools:` line doesn't fence it out.
  *
  * @param flowKind The flow the sessions run on: where an answer comes back.
+ * @param refuses Why the running turn sends nothing, or `undefined` when it may:
+ *   read server-side on every send, before anything is written.
  */
-export function defineSendMessageCapability(installation: WorkerInstallation, flowKind: string) {
+export function defineSendMessageCapability(installation: WorkerInstallation, flowKind: string, refuses?: (ctx: BlockContext) => string | undefined) {
   const toolWith = (description: string) =>
     handler({
       name: SEND_MESSAGE_TOOL,
@@ -135,6 +137,8 @@ export function defineSendMessageCapability(installation: WorkerInstallation, fl
       resources: { ...installation.resources, ...workerMessagesResources, ...conversationLedgerResources },
       execute: async (input, ctx) => {
         const { to, text, inReplyTo, replyRequested, wait, deadline } = input;
+        const refused = refuses?.(ctx);
+        if (refused !== undefined) return { ok: false as const, error: refused };
         const message = { to, text, ...(inReplyTo === undefined ? {} : { inReplyTo }) };
         if (wait === true) {
           const outcome = await sendAndWaitForReply(ctx, installation, flowKind, { ...message, ...(deadline === undefined ? {} : { deadline }) }, SEND_MESSAGE_TOOL);

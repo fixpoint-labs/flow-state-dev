@@ -1,0 +1,80 @@
+<svg viewBox="0 0 940 372" role="img" aria-label="The guard reads the resource entry in two reaches. Every line of the tree: exported Row names as today, plus Row type parameters and six phrases such as task row and subscription row. Only the names a change adds to a file: row as a local, parameter or property, with 2,170 existing declarations left for FIX-2632. Store adapters, the engine's stores and UI list modules keep their rows in both reaches. The pre-push hook checks each pushed commit against its merge base with origin/main; CI passes the merge commit's first parent."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .whole { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .added { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .kept  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; stroke-dasharray:5 4; }
+    .base  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .chip  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .new   { fill:var(--surface); stroke:var(--accent); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+    .c-pro  { fill:var(--prose); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="372"/>
+
+  <g id="whole-tree">
+    <rect class="whole" x="16" y="16" width="640" height="132" rx="6"/>
+    <text class="t-lbl c-code" x="32" y="38">EVERY LINE OF THE TREE</text>
+    <text class="t-s" x="32" y="56">a name anywhere counts, old or new</text>
+    <rect class="chip" x="32" y="70" width="190" height="62" rx="4"/>
+    <text class="t-lbl" x="44" y="88">TODAY</text>
+    <text class="t-c" x="44" y="106">export … FooRow</text>
+    <text class="t-s" x="44" y="122">"collection row" on pages</text>
+    <rect class="new" x="234" y="70" width="190" height="62" rx="4"/>
+    <text class="t-lbl c-acc" x="246" y="88">+ ADDED · 0 ON MAIN</text>
+    <text class="t-c" x="246" y="106">&lt;TRow extends …&gt;</text>
+    <text class="t-s" x="246" y="122">a Row type parameter</text>
+    <rect class="new" x="436" y="70" width="206" height="62" rx="4"/>
+    <text class="t-lbl c-acc" x="448" y="88">+ ADDED · 222 LINES RENAMED</text>
+    <text class="t-c" x="448" y="106">task row · worker's rows</text>
+    <text class="t-s" x="448" y="122">six phrases, code and pages</text>
+  </g>
+
+  <g id="added-names">
+    <rect class="added" x="16" y="164" width="640" height="104" rx="6"/>
+    <text class="t-lbl c-acc" x="32" y="186">ONLY WHAT A CHANGE ADDS TO A FILE</text>
+    <text class="t-s" x="32" y="204">new when the file declares the name more often than its base did</text>
+    <rect class="new" x="32" y="216" width="300" height="40" rx="4"/>
+    <text class="t-c" x="44" y="240">const row · (rows) · rowId: string</text>
+    <rect class="chip" x="344" y="216" width="298" height="40" rx="4"/>
+    <text class="t-s" x="356" y="234">2,170 existing declarations stay</text>
+    <text class="t-s" x="356" y="249">FIX-2632 renames them, package by package</text>
+  </g>
+
+  <g id="kept">
+    <rect class="kept" x="672" y="16" width="252" height="252" rx="6"/>
+    <text class="t-lbl c-pro" x="688" y="38">KEPT · A ROW IS A ROW</text>
+    <text class="t-b" x="688" y="66">Store adapters</text>
+    <text class="t-s" x="688" y="84">packages/store-*</text>
+    <text class="t-b" x="688" y="114">The engine's stores</text>
+    <text class="t-s" x="688" y="132">packages/engine/src/stores</text>
+    <text class="t-b" x="688" y="162">UI list modules</text>
+    <text class="t-s" x="688" y="180">components/ · surfaces/</text>
+    <text class="t-s" x="688" y="214">both reaches skip them;</text>
+    <text class="t-s" x="688" y="230">no new exemption</text>
+  </g>
+
+  <g id="bases">
+    <rect class="base" x="16" y="284" width="446" height="72" rx="5"/>
+    <text class="t-lbl" x="32" y="305">PRE-PUSH HOOK · BASE</text>
+    <text class="t-c" x="32" y="325">merge-base origin/main &lt;each pushed sha&gt;</text>
+    <text class="t-s" x="32" y="343">none found: says so, skips the added reach</text>
+    <rect class="base" x="478" y="284" width="446" height="72" rx="5"/>
+    <text class="t-lbl" x="494" y="305">CI · EXPORT-CHECK JOB · BASE</text>
+    <text class="t-c" x="494" y="325">HEAD^1, depth 2</text>
+    <text class="t-s" x="494" y="343">does not resolve: the run fails</text>
+  </g>
+</svg>

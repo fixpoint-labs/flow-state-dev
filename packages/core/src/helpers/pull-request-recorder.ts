@@ -24,10 +24,16 @@
  * A row is written as soon as its call settles, which is what lets an open
  * page show it mid-turn. A write that fails is a status note; it never fails
  * the run.
+ *
+ * A host that must act on each newly recorded pull request in the request
+ * (a coding task following its pull request) registers with
+ * {@link whenPullRequestRecorded}; every writer in the request hands the pull
+ * requests it records to {@link pullRequestRecordedOf}'s callback, the
+ * recorder included, mid-turn.
  */
 import { handler } from "../blocks/handler";
 import type { RuntimeItem } from "../items/internal";
-import type { ResponseEmitterHandle } from "../types/block";
+import type { BlockContext, ResponseEmitterHandle } from "../types/block";
 import { onRequestEnded } from "../types/request-end";
 import {
   DEFAULT_PULL_REQUEST_RULES,
@@ -36,6 +42,8 @@ import {
   observedPullRequestsCollection,
   writePullRequests,
   type PullRequestCollection,
+  type PullRequestFollower,
+  type PullRequestRecordedCallback,
   type PullRequestRule,
 } from "../types/pull-requests";
 
@@ -60,6 +68,41 @@ export interface PullRequestRecorderContext {
 /** The running recorder of each request, by the request's response: its writes so far. */
 const recorders = new WeakMap<object, () => Promise<void>>();
 
+/** The callbacks a request registered for its newly recorded pull requests, by the request's response. */
+const recordedCallbacks = new WeakMap<object, PullRequestRecordedCallback[]>();
+
+// FIX-2535 D2.
+/**
+ * Call `callback` for each pull request any writer in this request records for
+ * the first time: the recorder as a create call settles, and a host's branch
+ * check. Register before the harness runs (a step ahead of it); a pull request
+ * recorded before it registered is not handed to it.
+ *
+ * @param response The request's response (`ctx.response`).
+ */
+export function whenPullRequestRecorded(response: unknown, callback: PullRequestRecordedCallback): void {
+  if (typeof response !== "object" || response === null) return;
+  const list = recordedCallbacks.get(response);
+  if (list === undefined) recordedCallbacks.set(response, [callback]);
+  else list.push(callback);
+}
+
+/**
+ * The `onRecorded` a writer in this request passes to `writePullRequests`:
+ * every callback registered with {@link whenPullRequestRecorded}, in order.
+ * `undefined` when none is.
+ *
+ * @param response The request's response (`ctx.response`).
+ */
+export function pullRequestRecordedOf(response: unknown): PullRequestRecordedCallback | undefined {
+  if (typeof response !== "object" || response === null) return undefined;
+  const list = recordedCallbacks.get(response);
+  if (list === undefined || list.length === 0) return undefined;
+  return async (pr) => {
+    for (const callback of list) await callback(pr);
+  };
+}
+
 /**
  * Resolves once every write this request's recorder has started has
  * finished; at once when the request has no recorder. A host writer that runs
@@ -70,6 +113,32 @@ const recorders = new WeakMap<object, () => Promise<void>>();
 export function pullRequestWritesSettled(response: unknown): Promise<void> {
   if (typeof response !== "object" || response === null) return Promise.resolve();
   return recorders.get(response)?.() ?? Promise.resolve();
+}
+
+/** The requests whose new pull requests already go to a follower, by the request's response. */
+const followed = new WeakSet<object>();
+
+// FIX-2535 D2.
+/**
+ * Hand each pull request this request records for the first time to
+ * `follower`, as `ctx`'s request: once per request, however often it is
+ * called. A host calls it before the harness runs (a coding task's step) and
+ * before its own writes, so a pull request any writer in the request records
+ * reaches it, mid-turn. What the follower throws is a status note, never a
+ * failed write.
+ */
+export function followRecordedPullRequests(ctx: BlockContext, follower: PullRequestFollower | undefined): void {
+  const response = ctx.response as unknown;
+  if (follower === undefined || typeof response !== "object" || response === null || followed.has(response)) return;
+  followed.add(response);
+  const follow = async (pr: Parameters<PullRequestRecordedCallback>[0]): Promise<void> => {
+    try {
+      await follower(ctx, pr);
+    } catch (err) {
+      note(ctx, `The pull request ${pr.url} is not being followed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  whenPullRequestRecorded(response, follow);
 }
 
 /** The context's status-note emitter, when it has one. */
@@ -115,7 +184,7 @@ export function recordPullRequests(ctx: PullRequestRecorderContext, options: Rec
     if (refs.length === 0) return;
     read.add(item.id);
     writes = writes.then(() =>
-      writePullRequests(collection, refs, { source: "tool", requestId }).catch((err: unknown) => {
+      writePullRequests(collection, refs, { source: "tool", requestId, onRecorded: pullRequestRecordedOf(response) }).catch((err: unknown) => {
         note(ctx, `A pull request was not recorded: ${err instanceof Error ? err.message : String(err)}`);
       }),
     );

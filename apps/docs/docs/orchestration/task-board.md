@@ -679,7 +679,7 @@ For a worker flow of your own, build the tool with `createReportProgress({ resol
 
 ## What a task's run spent
 
-A dispatched task's row carries what its runs spent: which harness and model ran it, and how many tokens it has used. A screen reads it from `listTasks` through [`taskToolActions`](#changing-tasks-from-outside-a-run), as `spend` on each row:
+A dispatched task carries what its runs spent: which harness and model ran it, and how many tokens it has used. A screen reads it from `listTasks` through [`taskToolActions`](#changing-tasks-from-outside-a-run), as `spend` on each row:
 
 ```ts
 { id: "t1", title: "Fix the login form", status: "in_progress",
@@ -763,7 +763,7 @@ Everything a task waits on a user for (a [question](#a-tasks-questions), a confi
 import { createInboxClient, inboxItems } from "@flow-state-dev/orchestration/inbox";
 
 const items = inboxItems({
-  rows,        // task rows: a board's listTasks, or a browser's read of the board
+  rows,        // the tasks: a board's listTasks, or a browser's read of the board
   suspensions, // asks a reader found in sessions
   flowOf,      // the flow that owns a session
 });
@@ -945,7 +945,7 @@ const onPieceEnded = sequencer({ name: "on-piece-ended", inputSchema: taskSettle
 
 `find` is called with the request's block context and returns the task's ledger (`ref`) and its row, or `undefined` to admit nothing. Read both from server-set state, such as session state your flow wrote, never from the request's input, and return a row only when its run is the current session. Put the admission first in the sequencer. It takes the task only while the row has a `keptOpenBy`; otherwise the request runs as usual and settles nothing. An admitted request works under the task's claim, so its task tools write as the worker, `reportProgress` included. A later request's answer becomes the task's output only when both hold: the admission has `answerCounts: true`, and the sequencer taps `noteTaskAnswer` after the step that produced the answer. `noteTaskAnswer` records the output of the step before it. Set `answerCounts: false` on an entry whose answer must never become the task's output.
 
-By default, the tasks a task filed keep it open. To change that, pass `endRules: { filedWorkKeepsOpen }` to `taskRequestAdmission`, and to [`taskLedgers`](#a-task-entry-served-by-many-boards) when your task entry takes its tasks through one. `filedWorkKeepsOpen` is an async predicate over the context, the task row and its ledger.
+By default, the tasks a task filed keep it open. To change that, pass `endRules: { filedWorkKeepsOpen }` to `taskRequestAdmission`, and to [`taskLedgers`](#a-task-entry-served-by-many-boards) when your task entry takes its tasks through one. `filedWorkKeepsOpen` is an async predicate over the context, the task and its ledger.
 
 ### Which session a task runs in
 
@@ -1383,7 +1383,7 @@ A board run produces these item streams:
 - `task-change`: one item per task transition (`added`, `claimed`, `completed`, `errored`, `cancelled`, and more). Keyed by `${collectionId}/${taskId}`, so the latest change for a task replaces the previous one.
 - `task-board-meta`: board-level state, keyed by `collectionId`. Emitted twice per run, once with `status: "active"` at start and once with `status: "completed"` at end. The completed item carries `terminationReason` and the `counts` snapshot.
 
-Renderers like `<TaskPlan />` subscribe to both: `task-board-meta` for the board-level status header, `task-change` for per-task rows.
+Renderers like `<TaskPlan />` subscribe to both: `task-board-meta` for the board-level status header, `task-change` for each task.
 
 A board that could not record a result emits one more item, `task-board-recorder-failure`. It carries no key, so each failure in a run is its own entry rather than replacing the last. See [When the board cannot record a result](#when-the-board-cannot-record-a-result).
 

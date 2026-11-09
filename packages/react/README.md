@@ -719,7 +719,7 @@ The workers it shows are the ones hired in the session's own organization. There
 
 `problems` is the list of workers a boot reload could not restore. Reloading a roster hands back the workers it made and a named entry for each row it could not, and that second list only exists on the server, so pass it down. `Roster` shows the count and the entries.
 
-A worker row carries `workerId`, `flow` (the kind it was hired into) and `instructions`. It does not carry the worker's settings.
+A worker entry carries `workerId`, `flow` (the kind it was hired into) and `instructions`. It does not carry the worker's settings.
 
 ### BoardColumns
 

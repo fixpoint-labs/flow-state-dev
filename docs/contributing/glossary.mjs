@@ -800,6 +800,36 @@ export const ENTRIES = [
       { id: "side-chain-tier-value", check: "side-chain", position: "tier-value", names: ["work"] },
     ],
   },
+
+  // Routines ----------------------------------------------------------------------------------
+  {
+    term: "Routine",
+    means: "A standing instruction that fires on its own as its owner, with exactly one trigger: a clock (recurring work) or an event (a subscription, pushed or polled).",
+    decision: "Owner, 2026-11-08; FIX-2471 D12; FIX-2614",
+    // FIX-2614 renamed the shipped surface: the four routine verbs and the routines capability replace the schedule
+    // actions and the subscription tools, with no aliases. "Schedule" and "subscription" stay, as the words
+    // for a clock trigger's stored resource and an event trigger's.
+    retires: [
+      { name: "subscriptionTools" },
+      { name: "SUBSCRIPTION_TOOLS" },
+      { name: "saveSchedule" },
+      { name: "listSchedules" },
+      { name: "deleteSchedule" },
+      { name: "LIST_SCHEDULES_ACTION" },
+      { name: "listedScheduleSchema" },
+      { name: "ListedSchedule" },
+      { name: "ScheduledWorkOptions" },
+      {
+        id: "recurring-work-prose",
+        check: "sweep",
+        reach: "meaning",
+        files: CODE_OR_PUBLISHED,
+        // The user-facing names a routine replaces: "recurring work" for a clock routine, and the
+        // "Scheduled work" screen that listed only those.
+        pattern: /\brecurring work\b|\bscheduled work\b/i,
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -840,6 +870,12 @@ const EXEMPTIONS = [
     why: "FIX-2246: the README's upgrade note, which says the door is gone and how its kept lines become steers; a page can't carry the marker",
   },
   {
+    path: /^packages\/workforce\/src\/subscriptions\/github\/normalize\.ts$/,
+    line: /^const (PR|ISSUE)_ACTIONS = new Set\(\[/,
+    rules: ["reopened-shape"],
+    why: "FIX-2535: GitHub's own `reopened` webhook action, which normalize matches by name; not the task entry's reopened shape",
+  },
+  {
     path: /^packages\/orchestration\/README\.md$/,
     line: /^`reopened: true` reads unmarked; while it is still open/,
     rules: ["reopened-shape"],
@@ -856,6 +892,19 @@ const EXEMPTIONS = [
     line: /\bteammates\.chief-of-staff\b|^\(file path\)$/,
     rules: ["shift-coordinator-names"],
     why: "FIX-2354: the Teammates lab's Lead keeps its stored worker id `teammates.chief-of-staff` (its folder and roster key): stored worker id — renaming strands persisted conversations (BP-030). The name a person reads is Lead",
+  },
+  {
+    path: /^\.changeset\/fix-2614-routines\.md$/,
+    rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "LIST_SCHEDULES_ACTION", "listedScheduleSchema"],
+    why: "FIX-2614: the release note that tells consumers what each retired schedule and subscription name became",
+  },
+  {
+    // User docs change only at release (docs/contributing/release-docs.md), so these pages document the
+    // released names until then. As FIX-2479 D4's released-quotes: /release-docs rewrites them from the
+    // changeset's Docs: line, and deletes this in the same PR.
+    path: /^(?:apps\/docs\/docs\/workforce\/delegating-work\.md|apps\/docs\/docs\/shift-manager\/overview\.md|packages\/workforce\/README\.md|packages\/shift-manager\/README\.md)$/,
+    rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "recurring-work-prose"],
+    why: "FIX-2614: published pages may name the released schedule and subscription surface until /release-docs rewrites them, and deletes this in the same PR",
   },
   {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
@@ -1257,14 +1306,16 @@ const EXEMPTIONS = [
   {
     id: "subscription-modules",
     terms: ["thread", "member", "kind"],
-    where: (path) => /^packages\/workforce\/(?:src\/subscriptions\/|test\/subscriptions-)/.test(path),
-    strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
-    why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there, and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
+    // FIX-2614: an event routine is a subscription, so the routine modules, tests and screen name its thread too.
+    where: (path) =>
+      /^packages\/workforce\/(?:src\/subscriptions\/|src\/routines\/|test\/subscriptions-|test\/routines\.test\.ts$)|^packages\/shift-manager\/(?:src\/lib\/routines\.ts|src\/surfaces\/Routines\.tsx|test\/routines-view\.test\.tsx)$/.test(path),
+    strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bMEMBER\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
+    why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there (GitHub's `MEMBER` association), and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
   },
   {
     id: "subscription-docs",
     terms: ["thread", "member", "kind"],
-    where: (path) => path === "packages/workforce/README.md" || path === "apps/docs/docs/workforce/messaging-workers.md",
+    where: (path) => path === "packages/workforce/README.md" || path === "apps/docs/docs/workforce/messaging-workers.md" || path === ".changeset/fix-2614-routines.md",
     // Only on a line that names the outside service, so a mailbox's thread elsewhere on the page still counts.
     strip: /\bSCREEN_KINDS\b|(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)(?=[^\n]*(?:subscri|provider|\bPR\b|pull request|repositor|outside|`thread`|canRead|github))|(?<=(?:subscri|provider|\bPR\b|pull request|repositor|outside|canRead|github)[^\n]*)(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)/g,
     why: "the subscription pages' outside thread, a sender's member role and an event's kind (FIX-2471), on lines that name the outside service",
