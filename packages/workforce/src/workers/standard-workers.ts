@@ -4,10 +4,11 @@
  * the same for every user, projected read-only.
  *
  * Nothing stores them. They are read from the loaded files each time, so a
- * deploy that changes a file changes the worker for everyone, and nothing a
- * user does at run time can write one: the projection has no write path, and
- * every write the worker model offers refuses a standard worker's id.
- * To change one for yourself, fork it.
+ * deploy that changes a file changes the worker for everyone who hasn't edited
+ * it, and nothing a user does at run time can write one: the projection has no
+ * write path. To change one for yourself, edit it: that copies it onto your
+ * own roster under the same id, and your copy is read before the file until
+ * you reset it.
  */
 import { defineProjectedResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";

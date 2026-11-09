@@ -12,6 +12,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import { App } from "../src/App";
 import { TEAMMATE_COLORS } from "../src/lib/looks";
+import type { TeammateEdit } from "../src/adapter";
 import { createFixtureLab } from "./fake-lab";
 
 // The script runs at a twentieth of real time.
@@ -794,30 +795,70 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(4));
 
     await screen.findByLabelText("Message tester");
-    fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit instructions" }));
-    const edit = screen.getByRole("form", { name: "Instructions for tester" });
+    fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit" }));
+    const edit = screen.getByRole("form", { name: "Edit tester" });
     const box = within(edit).getByLabelText("New instructions for tester");
+    // Nothing changed yet: the shortcut saves nothing.
+    await act(async () => fireEvent.keyDown(box, { key: "Enter", ctrlKey: true }));
+    expect(screen.getByRole("form", { name: "Edit tester" })).toBeTruthy();
     fireEvent.change(box, { target: { value: "Answer in one sentence." } });
     await act(async () => fireEvent.keyDown(box, { key: "Enter", ctrlKey: true }));
-    await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("form", { name: "Edit tester" })).toBeNull());
   });
 
-  it("hires a teammate you can talk to, changes its instructions from its panel, and fires it; the files' workers can't be", async () => {
+  // FIX-2526.
+  it("renames a teammate from the files, and the new name shows in the list, header, task lines and Messaged lines; Reset puts the file's name back", async () => {
+    const tasks = [{ filer: "teammates.chief-of-staff", id: "t-ask", to: "teammates.researcher", title: "Check the launch date", status: "running" as const }];
+    const lab = fast({ tasks });
+    const resets: string[] = [];
+    const resetTeammate = lab.resetTeammate;
+    lab.resetTeammate = async (worker) => {
+      resets.push(worker);
+      return resetTeammate(worker);
+    };
+    render(<App adapter={lab} />);
+    await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");
+    await within(conversation()).findByRole("button", { name: /^Messaged researcher: / });
+    expect(within(panel("Lead")).getByRole("button", { name: "Asked researcher to check the launch date" })).toBeTruthy();
+    // Not edited yet: nothing to reset.
+    fireEvent.click(workerRow("researcher"));
+    expect(within(panel("researcher")).queryByRole("button", { name: /Reset/ })).toBeNull();
+
+    fireEvent.click(within(panel("researcher")).getByRole("button", { name: "Edit" }));
+    const edit = within(panel("researcher")).getByRole("form", { name: "Edit researcher" });
+    fireEvent.change(within(edit).getByLabelText("Name of researcher"), { target: { value: "Ada" } });
+    await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save" })));
+
+    // The list and the header.
+    await waitFor(() => expect(workerRow("Ada")).not.toBeNull());
+    expect(workerRow("researcher")).toBeNull();
+    expect(within(conversation()).getByRole("heading", { name: "Ada" })).toBeTruthy();
+    // Lead's conversation: its Messaged line and its task line name Ada.
+    fireEvent.click(workerRow("Lead"));
+    expect(await within(conversation()).findByRole("button", { name: /^Messaged Ada: / })).toBeTruthy();
+    expect(within(panel("Lead")).getByRole("button", { name: "Asked Ada to check the launch date" })).toBeTruthy();
+
+    // Reset to default: the file's name is back everywhere, and there is nothing left to reset.
+    fireEvent.click(workerRow("Ada"));
+    await act(async () => fireEvent.click(within(panel("Ada")).getByRole("button", { name: "Reset Ada to default" })));
+    expect(resets).toEqual(["teammates.researcher"]);
+    await waitFor(() => expect(workerRow("researcher")).not.toBeNull());
+    expect(within(panel("researcher")).queryByRole("button", { name: /Reset/ })).toBeNull();
+  });
+
+  it("hires a teammate you can talk to, renames it and changes its instructions from its panel, and fires it; the files' workers can't be fired", async () => {
     const lab = fast();
-    // What the panel hands the adapter, whose editInstructions is the workforce client's edit: the next turn reads it.
-    const edits: [string, string][] = [];
-    const editInstructions = lab.editInstructions;
-    lab.editInstructions = async (worker, instructions) => {
-      edits.push([worker, instructions]);
-      return editInstructions(worker, instructions);
+    // What the panel hands the adapter, whose editTeammate is the workforce client's edit: the next turn reads it.
+    const edits: [string, TeammateEdit][] = [];
+    const editTeammate = lab.editTeammate;
+    lab.editTeammate = async (worker, edit) => {
+      edits.push([worker, edit]);
+      return editTeammate(worker, edit);
     };
     render(<App adapter={lab} />);
     await screen.findByLabelText("Message Lead");
-    // A worker from the files has no fire control, and its panel's Edit instructions says why it can't be used.
+    // A worker from the files has no fire control.
     expect(within(conversation()).queryByRole("button", { name: "Fire" })).toBeNull();
-    const locked = within(panel("Lead")).getByRole("button", { name: "Edit instructions" }) as HTMLButtonElement;
-    expect(locked.disabled).toBe(true);
-    expect(document.getElementById(locked.getAttribute("aria-describedby")!)?.textContent).toMatch(/can't be changed here yet/);
 
     fireEvent.click(screen.getByRole("button", { name: "Hire a teammate" }));
     const form = screen.getByRole("form", { name: "Hire a teammate" });
@@ -827,32 +868,37 @@ describe("the teammates screen", () => {
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(4));
     expect(await screen.findByLabelText("Message tester")).toBeTruthy();
 
-    fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit instructions" }));
-    const edit = within(panel("tester")).getByRole("form", { name: "Instructions for tester" });
-    // The name shows in the form but can't be changed yet, and the form says why.
+    fireEvent.click(within(panel("tester")).getByRole("button", { name: "Edit" }));
+    const edit = within(panel("tester")).getByRole("form", { name: "Edit tester" });
+    // The name starts as it is, and can be changed.
     const name = within(edit).getByLabelText("Name of tester") as HTMLInputElement;
-    expect([name.value, name.readOnly]).toEqual(["tester", true]);
-    expect(document.getElementById(name.getAttribute("aria-describedby")!)?.textContent).toMatch(/Renaming a teammate isn't possible yet/);
+    expect([name.value, name.readOnly]).toEqual(["tester", false]);
+    fireEvent.change(name, { target: { value: "QA Bot" } });
     fireEvent.change(within(edit).getByLabelText("New instructions for tester"), { target: { value: "Answer in one sentence." } });
-    await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save instructions" })));
-    await waitFor(() => expect(screen.queryByRole("form", { name: "Instructions for tester" })).toBeNull());
-    expect(edits).toEqual([["tester", "Answer in one sentence."]]);
+    await act(async () => fireEvent.click(within(edit).getByRole("button", { name: "Save" })));
+    // The id stays: only the name the list and header show changes.
+    expect(edits).toEqual([["tester", { name: "QA Bot", instructions: "Answer in one sentence." }]]);
+    await waitFor(() => expect(within(conversation()).getByRole("heading", { name: "QA Bot" })).toBeTruthy());
+    expect(workerRow("QA Bot")).not.toBeNull();
+    expect(screen.getByLabelText("Message QA Bot")).toBeTruthy();
+    // A teammate you hired has no file to go back to.
+    expect(within(panel("QA Bot")).queryByRole("button", { name: /Reset/ })).toBeNull();
 
     // Fire asks in a row under the header, with Keep focused; Keep leaves the teammate where it is.
     window.confirm = () => {
       throw new Error("Fire must not open a browser confirm");
     };
     fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" }));
-    const ask = within(conversation()).getByRole("group", { name: "Fire tester?" });
+    const ask = within(conversation()).getByRole("group", { name: "Fire QA Bot?" });
     await waitFor(() => expect(document.activeElement).toBe(within(ask).getByRole("button", { name: "Keep" })));
     fireEvent.click(within(ask).getByRole("button", { name: "Keep" }));
-    expect(within(conversation()).queryByRole("group", { name: "Fire tester?" })).toBeNull();
+    expect(within(conversation()).queryByRole("group", { name: "Fire QA Bot?" })).toBeNull();
     // Keeping puts focus back on the header's Fire, so the next Tab goes on from where the person was.
     expect(document.activeElement).toBe(within(conversation()).getByRole("button", { name: "Fire" }));
-    expect(workerRow("tester")).not.toBeNull();
+    expect(workerRow("QA Bot")).not.toBeNull();
     fireEvent.click(within(conversation()).getByRole("button", { name: "Fire" }));
-    await act(async () => fireEvent.click(within(within(conversation()).getByRole("group", { name: "Fire tester?" })).getByRole("button", { name: "Fire" })));
+    await act(async () => fireEvent.click(within(within(conversation()).getByRole("group", { name: "Fire QA Bot?" })).getByRole("button", { name: "Fire" })));
     await waitFor(() => expect(within(teammates()).getAllByRole("listitem")).toHaveLength(3));
-    expect(workerRow("tester")).toBeNull();
+    expect(workerRow("QA Bot")).toBeNull();
   });
 });

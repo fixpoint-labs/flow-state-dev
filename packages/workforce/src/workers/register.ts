@@ -116,7 +116,7 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
         problems.map((problem) => `  - ${problem}`).join("\n")
     );
   }
-  const { hire, fork, edit, fire } = createWorkerHireBlocks(installation);
+  const { hire, fork, edit, fire, reset } = createWorkerHireBlocks(installation);
   const scheduled = defineScheduledWork(installation, options.routines?.index);
   const routines = defineRoutineActions(installation, options.routines ?? {}, scheduled.resources);
   const roster = defineWorkerRosterFlow(
@@ -126,6 +126,7 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
       fork: { inputSchema: fork.inputSchema, block: fork },
       edit: { inputSchema: edit.inputSchema, block: edit },
       fire: { inputSchema: fire.inputSchema, block: fire },
+      reset: { inputSchema: reset.inputSchema, block: reset },
       ...routines.actions
     },
     { resources: routines.resources, schedules: scheduled.schedules, seed: routines.seed }

@@ -194,10 +194,10 @@ describe("finding or starting a session with a worker", () => {
     const roster = await h.client("alice").roster();
     // A fork names the worker it was forked from; a hire and a standard worker name none.
     expect(roster).toEqual([
-      { id: "planner-2", flow: OTHER, standard: false, description: "Plans.", forkedFrom: "planner", name: null, teamName: null, settings: {} },
-      { id: "scribe", flow: OTHER, standard: false, description: "Takes notes.", forkedFrom: null, name: null, teamName: null, settings: {} },
-      { id: "planner", flow: OTHER, standard: true, description: "Plans.", forkedFrom: null, name: null, teamName: null, settings: {} },
-      { id: "researcher", flow: FIXTURE, standard: true, description: "Finds things out.", forkedFrom: null, name: null, teamName: null, settings: {} }
+      { id: "planner-2", flow: OTHER, standard: false, description: "Plans.", forkedFrom: "planner", edited: false, name: null, teamName: null, settings: {} },
+      { id: "scribe", flow: OTHER, standard: false, description: "Takes notes.", forkedFrom: null, edited: false, name: null, teamName: null, settings: {} },
+      { id: "planner", flow: OTHER, standard: true, description: "Plans.", forkedFrom: null, edited: false, name: null, teamName: null, settings: {} },
+      { id: "researcher", flow: FIXTURE, standard: true, description: "Finds things out.", forkedFrom: null, edited: false, name: null, teamName: null, settings: {} }
     ]);
   });
 });

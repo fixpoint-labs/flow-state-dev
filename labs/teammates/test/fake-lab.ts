@@ -687,8 +687,22 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       return row;
     },
 
-    async editInstructions(workerId) {
-      if (!worker(workerId).row.own) throw new Error(`"${workerId}" is a standard worker`);
+    async editTeammate(workerId, { name }) {
+      // As the workforce's edit: a file's teammate becomes the user's copy, under the same id.
+      const w = worker(workerId);
+      const id = w.row.id;
+      if (name !== undefined) w.row = { ...w.row, name: name.trim() === "" ? id.slice(id.lastIndexOf(".") + 1) : name.trim() };
+      if (!w.row.own) w.row = { ...w.row, edited: true };
+      notify();
+    },
+
+    async resetTeammate(workerId) {
+      const w = worker(workerId);
+      const file = ROSTER.find((row) => row.id === workerId);
+      if (file === undefined) throw new Error(`"${workerId}" isn't a standard worker`);
+      if (!w.row.edited) throw new Error(`You haven't edited "${workerId}"`);
+      w.row = file;
+      notify();
     },
 
     async fire(workerId) {
