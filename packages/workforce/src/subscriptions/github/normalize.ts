@@ -114,8 +114,8 @@ export function githubMentions(body: string): string[] {
   const unquoted = body
     .replace(/```[\s\S]*?(```|$)/g, " ")
     .replace(/~~~[\s\S]*?(~~~|$)/g, " ")
-    // A code span opens with a run of backticks and closes at the next run of the same length.
-    .replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, " ")
+    // A code span opens with a run of backticks and closes at the next run of the same length, within its paragraph.
+    .replace(/(?<!`)(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)/g, " ")
     .split("\n")
     .filter((line) => !/^\s*>/.test(line))
     .join("\n");
