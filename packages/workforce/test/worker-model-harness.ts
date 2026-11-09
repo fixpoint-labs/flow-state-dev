@@ -89,6 +89,8 @@ export type TurnAnswer = {
   teamInstructions: string | null;
   tone: string;
   skills: string[];
+  /** Each skill's `SKILL.md`, in the order of `skills`. */
+  skillMds: string[];
   handbook: boolean;
   ledger: boolean;
   /** Only when the message is `roster`: the turn's roster, by id, name and whether it is standard. */
@@ -129,6 +131,7 @@ function workerFlow(flow: string, installation: WorkerInstallation) {
         teamInstructions: (config.teamInstructions as string | undefined) ?? null,
         tone: String(config.tone),
         skills: ((config.workerSkills as InitialSkill[] | undefined) ?? []).map((s) => s.name),
+        skillMds: ((config.workerSkills as InitialSkill[] | undefined) ?? []).map((s) => s.skillMd),
         handbook: worker.reaches("handbook"),
         ledger: worker.reaches("ledger"),
         ...(input.message === "roster"

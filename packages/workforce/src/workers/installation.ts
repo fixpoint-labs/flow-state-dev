@@ -536,7 +536,12 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     id: string,
     row: WorkerResourceState
   ): { ok: true; manifest: WorkerManifest } | { ok: false; problems: string[] } => {
-    const missing = row.skills.filter((name) => !skillCatalog.has(name));
+    // The user's copy of a standard worker keeps its file's reach: its own
+    // skills by name, where two workers' skills share one, and its packages.
+    const file = row.forkedFrom === id ? standard.get(id) : undefined;
+    const ownSkills = new Map((file?.skills ?? []).map((skill) => [skill.name, skill]));
+    const skillOf = (name: string) => ownSkills.get(name) ?? skillCatalog.get(name);
+    const missing = row.skills.filter((name) => skillOf(name) === undefined);
     if (missing.length > 0) {
       const registered = [...skillCatalog.keys()].sort().map((name) => `"${name}"`);
       const known = registered.length === 0 ? "It registers no skills" : `Skills it registers: ${registered.join(", ")}`;
@@ -555,9 +560,9 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         id,
         declared: declaredOf(row),
         body: row.instructions ?? "",
-        skills: row.skills.map((name) => skillCatalog.get(name)!),
+        skills: row.skills.map((name) => skillOf(name)!),
         ...(row.teamInstructions !== null ? { teamInstructions: row.teamInstructions } : {}),
-        packages: [...(options.packages ?? [])]
+        packages: [...(file?.packages ?? options.packages ?? [])]
       }
     };
   };

@@ -10,6 +10,8 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { bootHost, FIXTURE, messageOf, OTHER, skill, standardWorkers } from "./worker-model-harness";
+import type { InitialSkill } from "@flow-state-dev/core/types";
+import type { WorkerManifest } from "../src/manifest";
 
 function host(options: Parameters<typeof bootHost>[1] = {}) {
   const stores = createInMemoryStores();
@@ -314,6 +316,35 @@ describe("naming a worker, and editing a standard one", () => {
       ((await h.turn(user, id, "roster", OTHER)).output?.roster ?? []).filter((row) => row.id === "researcher");
     expect(await read("alice", mine.id)).toEqual([{ id: "researcher", name: "Ada", standard: true }]);
     expect(await read("bob", theirs.id)).toEqual([{ id: "researcher", name: null, standard: true }]);
+  });
+
+  it("the copy keeps its own file's skills and packages: a name-only edit changes nothing else about the turn", async () => {
+    // Two standard workers with a skill of one name and different content, and one
+    // that takes a package from its team's library: the installation-wide catalog
+    // and the org's packages would give the copy someone else's skill, or no package.
+    const own = (name: string, text: string): InitialSkill => ({ name, skillMd: `---\nname: ${name}\ndescription: ${name}\n---\n${text}` });
+    const escalation = { name: "escalation", path: "teams/sec/packages/escalation", level: "team" as const, team: "sec", description: "Escalation.", instructions: "Page the on-call." };
+    const standard: WorkerManifest[] = [
+      { id: "qa.tester", declared: { flow: FIXTURE, description: "Tests." }, body: "Test.", skills: [own("review", "Review for bugs.")] },
+      {
+        id: "sec.auditor",
+        declared: { flow: FIXTURE, description: "Audits.", packages: ["escalation"] },
+        body: "Audit.",
+        skills: [own("review", "Review for vulnerabilities.")],
+        packages: [escalation]
+      }
+    ];
+    const h = bootHost(createInMemoryStores(), { standard });
+    const app = h.client("alice");
+    const session = await app.ensureWorkerSession({ worker: "sec.auditor" });
+    const before = (await h.turn("alice", session.id)).output;
+    expect(before?.skillMds).toEqual([expect.stringContaining("Review for vulnerabilities.")]);
+
+    await app.edit({ id: "sec.auditor", name: "Auditor" });
+    const after = await h.turn("alice", session.id);
+    expect(after.error).toBeUndefined();
+    expect(after.output?.skillMds).toEqual(before?.skillMds);
+    expect(await rowOf(h, "alice", "sec.auditor")).toMatchObject([{ name: "Auditor", edited: true }]);
   });
 
   it("a later edit of the copy takes any field, like any row of the user's own", async () => {
