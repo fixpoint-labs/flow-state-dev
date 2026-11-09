@@ -112,7 +112,8 @@ const FENCE_CLOSE = /^ {0,3}(`+|~+)[ \t]*$/;
 
 /**
  * A body with its code blanked, read by CommonMark's rules for the two
- * constructs a mention hides in, line by line:
+ * constructs a mention hides in, line by line. CRLF and a lone CR end a line
+ * as LF does (GitHub's web editor writes CRLF):
  *
  * - **Fenced code blocks.** A line with up to 3 spaces of indent and a run of
  *   3 or more backticks or tildes opens one (a backtick fence's info string
@@ -137,7 +138,7 @@ function withoutCode(body: string): string {
     if (paragraph.length > 0) out.push(withoutCodeSpans(paragraph.join("\n")));
     paragraph = [];
   };
-  for (const line of body.split("\n")) {
+  for (const line of body.replace(/\r\n?/g, "\n").split("\n")) {
     if (fence !== undefined) {
       const close = FENCE_CLOSE.exec(line)?.[1];
       if (close !== undefined && close[0] === fence.char && close.length >= fence.length) fence = undefined;

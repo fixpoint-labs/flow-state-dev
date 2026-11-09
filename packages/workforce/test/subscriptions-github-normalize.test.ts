@@ -185,7 +185,16 @@ describe("addressed: the event asks the app's agent", () => {
     ["an unclosed fence runs to the end of the body", "Before\n\n```js\n@acme-agent run", undefined],
     ["a backtick run whose info string holds a backtick is no fence", "```foo`bar\n@acme-agent please", true],
     ["a run indented four spaces is no fence", "Note:\n    ```\n@acme-agent please fix the test", true],
-    ["a fence ends a paragraph, so a backtick before it pairs with nothing inside", "Don`t\n```\ncode\n```\n@acme-agent please", true]
+    ["a fence ends a paragraph, so a backtick before it pairs with nothing inside", "Don`t\n```\ncode\n```\n@acme-agent please", true],
+    // GitHub's web editor ends lines with CRLF; some clients with a lone CR. Either is a line ending, as LF is.
+    ["a CRLF tilde fence hides its mention", "~~~\r\n@acme-agent\r\n~~~", undefined],
+    ["a CRLF backtick fence hides its mention", "```\r\n@acme-agent run\r\n```", undefined],
+    ["a CRLF fence with a blank line inside hides its mention", "```\r\n\r\n@acme-agent run\r\n```", undefined],
+    ["a CRLF blank line ends a stray backtick's paragraph", "Don`t merge yet.\r\n\r\n@acme-agent please fix the test, see `foo`", true],
+    ["a lone-CR tilde fence hides its mention", "~~~\r@acme-agent\r~~~", undefined],
+    ["a lone-CR backtick fence hides its mention", "```\r@acme-agent run\r```", undefined],
+    ["a lone-CR fence with a blank line inside hides its mention", "```\r\r@acme-agent run\r```", undefined],
+    ["a lone-CR blank line ends a stray backtick's paragraph", "Don`t merge yet.\r\r@acme-agent please fix the test, see `foo`", true]
   ];
 
   it.each(MENTIONS)("%s", (_why, body, addressed) => {
