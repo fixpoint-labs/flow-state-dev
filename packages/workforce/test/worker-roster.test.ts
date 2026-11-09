@@ -389,4 +389,14 @@ describe("naming a worker, and editing a standard one", () => {
     expect(messageOf(moved.error)).toContain("keeps for declared workers");
     expect(await rowOf(h, "alice", "researcher")).toMatchObject([{ edited: false, name: null }]);
   });
+
+  it("a standard worker keeps its file's flow: board tasks are routed by the file, so an edit can't move it", async () => {
+    const h = host();
+    const moved = await h.rosterAction("alice", "edit", { id: "researcher", flow: OTHER, name: "Changed" });
+    expect(messageOf(moved.error)).toContain(`runs on "${FIXTURE}"`);
+    expect(await rowOf(h, "alice", "researcher")).toMatchObject([{ edited: false }]);
+    // Naming its own flow is no change, and the rest of the edit lands.
+    await h.rosterAction("alice", "edit", { id: "researcher", flow: FIXTURE, name: "Changed" });
+    expect(await rowOf(h, "alice", "researcher")).toMatchObject([{ edited: true, name: "Changed" }]);
+  });
 });

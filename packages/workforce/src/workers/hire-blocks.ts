@@ -56,6 +56,7 @@ const editInput = z
     id: z.string().min(1),
     /** A new display name; `null` clears it. The id never changes. */
     name: z.string().nullable().optional(),
+    /** A new flow. A standard worker keeps its file's: naming another is refused. */
     flow: z.string().min(1).optional(),
     description: z.string().nullable().optional(),
     instructions: z.string().nullable().optional(),
@@ -223,6 +224,11 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
       // The file's worker as it stands, before the edit: a flow kept for standard
       // workers stays read-only even when the edit names another flow.
       if (copying) check(input.id, current);
+      // Board tasks reach a standard worker on its file's flow, so its copy stays there.
+      const fileFlow = file === undefined ? undefined : rowFromStandard(file).flow;
+      if (fileFlow !== undefined && input.flow !== undefined && input.flow !== fileFlow) {
+        throw new Error(`"${input.id}" runs on "${fileFlow}", as its file declares, so its flow can't be changed. Nothing was written.`);
+      }
       const next: WorkerResourceState = {
         ...current,
         ...(input.name !== undefined ? { name: textOrNull(input.name) } : {}),

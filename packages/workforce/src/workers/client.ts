@@ -220,7 +220,8 @@ export interface WorkforceClient {
    * The worker's next turn reads the change; a turn already running keeps
    * what it started with. On a standard worker, the first edit copies it to
    * the user's own roster under the same id, and the change lands on that
-   * copy: its conversations, tasks and messages stay where they are.
+   * copy: its conversations, tasks and messages stay where they are. It
+   * keeps its file's flow, since board tasks reach it there.
    */
   edit(input: EditWorkerInput): Promise<{ id: string; flow: string }>;
   /**
