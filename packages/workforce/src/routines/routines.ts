@@ -435,7 +435,7 @@ async function deleteRoutine(ctx: BlockContext, caller: Caller, input: { id: str
 // ---- the seed ------------------------------------------------------------------
 
 /** What one seed pass did, by entry id. */
-interface SeedOutcome {
+export interface SeedOutcome {
   readonly written: string[];
   readonly unchanged: string[];
   readonly refused: string[];
@@ -448,7 +448,7 @@ interface SeedOutcome {
  * config is deleted. A refused entry (a hearer not on the roster, a thread the
  * user can't read) writes nothing and is tried again on the next pass.
  */
-async function seedDeclaredRoutines(
+export async function seedDeclaredRoutines(
   ctx: BlockContext,
   installation: WorkerInstallation,
   options: Pick<RoutinesOptions, "providers" | "declared">

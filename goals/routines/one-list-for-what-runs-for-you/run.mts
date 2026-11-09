@@ -20,7 +20,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   "schedules-only": [{ module: ROUTINES, from: String.raw`\.filter\(\(row\) => row\.enabled \|\| isPaused\(row\)\)\.map\(listedEvent\)`, to: ".filter(() => false).map(listedEvent)" }],
   // A pause turns the row off and leaves it in the thread index.
   "pause-keeps-index": [
-    { module: "packages/workforce/src/subscriptions/subscribe.ts", from: String.raw`if \(index\?\.state\.subscriptions\[id\] !== undefined\)`, to: 'if (reason !== "paused" && index?.state.subscriptions[id] !== undefined)' }
+    { module: "packages/workforce/src/subscriptions/subscribe.ts", from: String.raw`await dropFromIndex\(ctx, row\.thread, id\);`, to: 'if (reason !== "paused") await dropFromIndex(ctx, row.thread, id);' }
   ],
   // A seed writes every declared routine on, whatever the person paused.
   "seed-unpauses": [
@@ -28,7 +28,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
     { module: ROUTINES, from: String.raw`isPaused\(existing\) \? \{ paused: true`, to: "false ? { paused: true" }
   ],
   // A resume subscribes again without the row's task.
-  "resume-drops-task": [{ module: ROUTINES, from: String.raw`\.\.\.\(row\.taskId === undefined \? \{\} : \{ taskId: row\.taskId \}\)`, to: "" }]
+  "resume-drops-task": [{ module: ROUTINES, from: String.raw`\.\.\.\(row\.taskId === undefined \? \{\} : \{ taskId: row\.taskId \}\)`, to: "...{}" }]
 };
 
 if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {

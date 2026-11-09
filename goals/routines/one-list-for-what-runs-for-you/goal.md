@@ -40,3 +40,5 @@
 | 2026-11-09 | `21d31bc2c` | n/a | FAIL (expected) | `GOAL_CONTROL=pause-keeps-index`: `b:out-of-the-index`, `c:read-rechecked`, `f:keeps-the-pause` |
 | 2026-11-09 | `21d31bc2c` | n/a | FAIL (expected) | `GOAL_CONTROL=seed-unpauses`: `f:keeps-the-pause` (both seeded routines on, the event one back in the index) |
 | 2026-11-09 | `21d31bc2c` | n/a | FAIL (expected) | `GOAL_CONTROL=resume-drops-task`: `h:keeps-its-task` (the resumed row names no task) |
+| 2026-11-09 | `08e7e49f2` + controls repointed | n/a | PASS | After the review fixes (resume only over a paused row, tenant kept, reseed leaves the old index, shared clock rows): every leg as before |
+| 2026-11-09 | `08e7e49f2` + controls repointed | n/a | FAIL (expected) | All four controls fail as listed. `pause-keeps-index` now patches `unsubscribe`'s `dropFromIndex` call, and `resume-drops-task` spreads `{}` for the task, since the code they patched moved |
