@@ -1,4 +1,4 @@
-// FIX-2535 D1; epic FIX-2471.
+// FIX-2535 D1; FIX-2538; epic FIX-2471.
 /**
  * GitHub's service flow: the subscription service flow built for GitHub, with the
  * webhook service route declared (`webhooks: { github: { service } }`). A
@@ -46,6 +46,12 @@ export interface GitHubServiceFlowOptions {
   readonly capPerHour?: number;
   /** The most subscriptions one event is delivered to. */
   readonly maxOwnerRuns?: number;
+  /**
+   * The kinds of event forwarded to a coordinator that follows the thread
+   * `unmatched`, when no other subscription heard one (`["issue", "comment"]`).
+   * Unset, nothing is forwarded.
+   */
+  readonly forwards?: { readonly kinds: readonly string[] };
 }
 
 /** Build GitHub's service flow, with its webhook service route. */
@@ -61,6 +67,7 @@ export function githubServiceFlow(options: GitHubServiceFlowOptions) {
     ...(options.trustedBots === undefined ? {} : { trustedBots: options.trustedBots }),
     ...(options.capPerHour === undefined ? {} : { capPerHour: options.capPerHour }),
     ...(options.maxOwnerRuns === undefined ? {} : { maxOwnerRuns: options.maxOwnerRuns }),
+    ...(options.forwards === undefined ? {} : { forwards: options.forwards }),
     normalize: (event, at) =>
       normalizeGitHubEvent(
         {

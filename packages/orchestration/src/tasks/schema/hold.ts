@@ -150,4 +150,16 @@ export interface ExternalWait {
 }
 
 /** What a filer or a worker asks: a question's words, or a `confirm` with what its No does. */
-export type QuestionInit = { readonly kind: "question" | "confirm"; readonly prompt: string; readonly title?: string; readonly onNo?: ConfirmOnNo };
+export type QuestionInit = {
+  readonly kind: "question" | "confirm";
+  readonly prompt: string;
+  readonly title?: string;
+  readonly onNo?: ConfirmOnNo;
+  // FIX-2538.
+  /**
+   * No deadline, whatever the host's `userDeadlineMs`: the hold waits until
+   * the user answers it or the task is cancelled, so a deadline never releases
+   * the task without them. Set by server code only; the task tools never pass it.
+   */
+  readonly untimed?: true;
+};

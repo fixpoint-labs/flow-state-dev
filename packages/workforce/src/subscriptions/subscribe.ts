@@ -1,4 +1,4 @@
-// FIX-2534, epic ER-5; FIX-2614.
+// FIX-2534, epic ER-5; FIX-2614; FIX-2538 D1.
 /**
  * Subscribing and ending a subscription: the one
  * `subscribe` and the one `unsubscribe` everything that writes a subscription
@@ -15,6 +15,10 @@
  * then the thread index entry that mirrors its screen settings for the
  * service; a paused subscription is off and has no index entry.
  *
+ * `unmatched: true` (a coordinator's session only, `not_a_coordinator`
+ * elsewhere) makes a subscription that hears only what no ordinary
+ * subscription heard; see `defineSubscriptionServiceFlow`'s `forwards`.
+ *
  * `unsubscribe` turns the row off (`enabled: false`) and takes it out of the
  * index. A pause is an end with reason `paused`, the one a resume undoes. A
  * task's failure or cancel ends the subscriptions its session made, and a
@@ -26,6 +30,7 @@ import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
 import { retryOnConflict } from "../projects/cas-retry";
 import type { RoutineMaker } from "../routines/listed-routine";
 import { TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
+import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import {
   indexKeyOf,
   indexSlotOf,
@@ -66,6 +71,10 @@ export const subscribeInputSchema = z
           '{ screen: "allow", ids: [...] } (only these senders). Every listed screen must pass.'
       ),
     outsiders: z.literal(true).optional().describe("Also hear people outside the project (not members, collaborators or listed bots). Off by default."),
+    unmatched: z
+      .literal(true)
+      .optional()
+      .describe("Hear only the events on this thread that no other subscription heard, of the kinds the app forwards. A coordinator's only."),
     interest: z.string().min(1).max(500).describe("In one sentence, what you want to hear about, kept with the subscription.")
   })
   .strict();
@@ -181,6 +190,7 @@ const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   screens: row.screens,
   ...(row.outsiders === true ? { outsiders: true as const } : {}),
   ...(row.self === undefined ? {} : { self: row.self }),
+  ...(row.unmatched === true ? { unmatched: true as const } : {}),
   userId: row.userId,
   orgId: row.orgId,
   ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId })
@@ -273,6 +283,10 @@ async function writeSubscription(
     const view = await requestHostOf(ctx)?.sessions?.read(identity.id);
     flowKind = view === undefined ? undefined : (view.flowId ?? view.flowKind);
   }
+  // Only a coordinator reads `inferredWork`, so only its session hears what nobody else heard.
+  if (input.unmatched === true && flowKind !== COORDINATOR_FLOW) {
+    return { refused: "not_a_coordinator: only a coordinator's conversation can hear what no other subscription heard (unmatched)." };
+  }
   const tenantId = target === undefined ? tenantOf(ctx) : target.tenantId;
   const id = write.id ?? (await subscriptionIdOf(hears.sessionId, provider.provider, thread, tenantId));
   const self = await provider.self?.(ctx);
@@ -285,6 +299,7 @@ async function writeSubscription(
     screens: input.screens ?? [],
     ...(input.outsiders === true ? { outsiders: true as const } : {}),
     ...(self === undefined ? {} : { self }),
+    ...(input.unmatched === true ? { unmatched: true as const } : {}),
     interest: input.interest,
     sessionId: hears.sessionId,
     flow: flowKind ?? "",

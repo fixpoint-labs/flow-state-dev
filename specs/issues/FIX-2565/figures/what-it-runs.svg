@@ -1,0 +1,123 @@
+<svg viewBox="0 0 940 502" role="img" aria-label="What the closure runs: three legs in each of six chat surfaces. Leg a, two images: in every surface the reply names both, and a reload and a restart show both; in Shift Manager a task&#x27;s re-run names both too, and in the Teammates lab both a generator and a coding teammate do. Leg b, a PDF: the reply carries the PDF&#x27;s code word in every surface, on the Codex and Cursor pages from its extracted text, from both a generator and a coding worker in Shift Manager, and from both teammates in the Teammates lab. Leg c: three named refusals and nothing sent, everywhere."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .head   { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .old    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .same   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-bn   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; font-weight:600; }
+    .t-bg   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="502"/>
+  <g id="columns">
+    <rect class="head" x="16" y="14" width="908" height="28" rx="5"/>
+    <text class="t-lbl" x="170" y="32">LEG A · TWO IMAGES</text>
+    <text class="t-lbl" x="430" y="32">LEG B · A PDF</text>
+    <text class="t-lbl" x="690" y="32">LEG C · REFUSALS</text>
+  </g>
+  <g id="row-0">
+    <text class="t-lbl" x="24" y="76">KITCHEN SINK</text>
+    <text class="t-lbl" x="24" y="89">FLOW STATE CHAT</text>
+    <rect class="new" x="156" y="56" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="170" y="78">Reply names both</text>
+    <text class="t-s" x="170" y="96">reload, restart: both show</text>
+    <rect class="new" x="416" y="56" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="430" y="78">Reply has the code word</text>
+    <text class="t-s" x="430" y="96">a generator, PDF as a file</text>
+    <rect class="new" x="676" y="56" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="690" y="78">Three named refusals</text>
+    <text class="t-s" x="690" y="96">nothing sent</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="24" y="150">KITCHEN SINK</text>
+    <text class="t-lbl" x="24" y="163">CLAUDE CODE PAGE</text>
+    <rect class="new" x="156" y="130" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="170" y="152">Reply names both</text>
+    <text class="t-s" x="170" y="170">reload, restart: both show</text>
+    <rect class="new" x="416" y="130" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="430" y="152">Reply has the code word</text>
+    <text class="t-s" x="430" y="170">a document block</text>
+    <rect class="new" x="676" y="130" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="690" y="152">Three named refusals</text>
+    <text class="t-s" x="690" y="170">nothing sent</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="24" y="224">KITCHEN SINK</text>
+    <text class="t-lbl" x="24" y="237">CODEX, CURSOR</text>
+    <rect class="new" x="156" y="204" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="170" y="226">Reply names both</text>
+    <text class="t-s" x="170" y="244">reload, restart: both show</text>
+    <rect class="new" x="416" y="204" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="430" y="226">Reply has the code word</text>
+    <text class="t-s" x="430" y="244">from its extracted text, FIX-2520 D1</text>
+    <rect class="new" x="676" y="204" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="690" y="226">Three named refusals</text>
+    <text class="t-s" x="690" y="244">nothing sent</text>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="24" y="298">SHIFT MANAGER</text>
+    <rect class="new" x="156" y="278" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="170" y="300">Reply names both</text>
+    <text class="t-s" x="170" y="318">and a task&#x27;s re-run does too</text>
+    <rect class="new" x="416" y="278" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="430" y="300">Reply has the code word</text>
+    <text class="t-s" x="430" y="318">a generator and a coding worker</text>
+    <rect class="new" x="676" y="278" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="690" y="300">Three named refusals</text>
+    <text class="t-s" x="690" y="318">in every composer</text>
+  </g>
+  <g id="row-4">
+    <text class="t-lbl" x="24" y="372">CLAUDE CODE-</text>
+    <text class="t-lbl" x="24" y="385">STYLE LAB</text>
+    <rect class="new" x="156" y="352" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="170" y="374">Reply names both</text>
+    <text class="t-s" x="170" y="392">reload, restart: both show</text>
+    <rect class="new" x="416" y="352" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="430" y="374">Reply has the code word</text>
+    <text class="t-s" x="430" y="392">a Claude Code worker</text>
+    <rect class="new" x="676" y="352" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="690" y="374">Three named refusals</text>
+    <text class="t-s" x="690" y="392">nothing sent</text>
+  </g>
+  <g id="row-5">
+    <text class="t-lbl" x="24" y="446">TEAMMATES LAB</text>
+    <rect class="new" x="156" y="426" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="170" y="448">Both teammates name both</text>
+    <text class="t-s" x="170" y="466">one generator, one coding</text>
+    <rect class="new" x="416" y="426" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="430" y="448">Reply has the code word</text>
+    <text class="t-s" x="430" y="466">both teammates</text>
+    <rect class="new" x="676" y="426" width="248" height="60" rx="5"/>
+    <text class="t-bn" x="690" y="448">Three named refusals</text>
+    <text class="t-s" x="690" y="466">nothing sent</text>
+  </g>
+</svg>

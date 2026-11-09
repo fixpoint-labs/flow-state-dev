@@ -1,0 +1,104 @@
+<svg viewBox="0 0 940 502" role="img" aria-label="FIX-2518, before and after, six rows. The + button: built, and no app shows it; after, in the composer&#x27;s toolbar, focusable and labelled. Paste and drop: captured, then invisible; after, a thumbnail or chip at once, removable by click, Tab or Backspace. Limits: props with no defaults; after, defaults from contracts attachments, each refusal named in the composer. What send carries: data URLs with the bytes inside the request; after, references, downscaled and uploaded on attach. My line in the conversation: text only; after, text, thumbnails and chips. An app with its own composer: rebuilds it all or goes without; after, it installs useAttachments and AttachmentStrip with fsdev ui add."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .head   { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .old    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .same   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-bn   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; font-weight:600; }
+    .t-bg   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="502"/>
+  <g id="columns">
+    <rect class="head" x="16" y="14" width="908" height="28" rx="5"/>
+    <text class="t-lbl" x="194" y="32">TODAY</text>
+    <text class="t-lbl" x="572" y="32">AFTER</text>
+  </g>
+  <g id="row-0">
+    <text class="t-lbl" x="24" y="76">THE + BUTTON</text>
+    <rect class="old" x="180" y="56" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="78">Built, and no app shows it</text>
+    <text class="t-s" x="194" y="96">PromptInputActionAddAttachments</text>
+    <rect class="new" x="558" y="56" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="78">In the composer&#x27;s toolbar</text>
+    <text class="t-s" x="572" y="96">focusable, labelled, multi-select</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="24" y="150">PASTE</text>
+    <text class="t-lbl" x="24" y="163">AND DROP</text>
+    <rect class="old" x="180" y="130" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="152">Captured, then invisible</text>
+    <text class="t-s" x="194" y="170">the file is held where no one sees it</text>
+    <rect class="new" x="558" y="130" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="152">A thumbnail or chip at once</text>
+    <text class="t-s" x="572" y="170">remove by click, Tab or Backspace</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="24" y="224">LIMITS</text>
+    <rect class="old" x="180" y="204" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="226">Props with no defaults</text>
+    <text class="t-s" x="194" y="244">accept, maxFiles, maxFileSize</text>
+    <rect class="new" x="558" y="204" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="226">Defaults from contracts/attachments</text>
+    <text class="t-s" x="572" y="244">each refusal named in the composer</text>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="24" y="298">WHAT SEND</text>
+    <text class="t-lbl" x="24" y="311">CARRIES</text>
+    <rect class="old" x="180" y="278" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="300">Data URLs in message.files</text>
+    <text class="t-s" x="194" y="318">bytes inside the browser&#x27;s request</text>
+    <rect class="new" x="558" y="278" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="300">References in message.files</text>
+    <text class="t-s" x="572" y="318">downscaled and uploaded on attach, D1</text>
+  </g>
+  <g id="row-4">
+    <text class="t-lbl" x="24" y="372">MY LINE IN THE</text>
+    <text class="t-lbl" x="24" y="385">CONVERSATION</text>
+    <rect class="old" x="180" y="352" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="374">Text only</text>
+    <text class="t-s" x="194" y="392">message.tsx draws output_text</text>
+    <rect class="new" x="558" y="352" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="374">Text, thumbnails and chips</text>
+    <text class="t-s" x="572" y="392">file parts read through the read route</text>
+  </g>
+  <g id="row-5">
+    <text class="t-lbl" x="24" y="446">AN APP WITH ITS</text>
+    <text class="t-lbl" x="24" y="459">OWN COMPOSER</text>
+    <rect class="old" x="180" y="426" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="448">Rebuilds it all, or goes without</text>
+    <text class="t-s" x="194" y="466">Shift Manager, both labs</text>
+    <rect class="new" x="558" y="426" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="448">useAttachments and AttachmentStrip</text>
+    <text class="t-s" x="572" y="466">fsdev ui add attachments, D2</text>
+  </g>
+</svg>

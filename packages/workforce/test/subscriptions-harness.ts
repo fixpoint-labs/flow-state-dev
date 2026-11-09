@@ -104,6 +104,8 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   hold?: Promise<void>;
   /** The follower flow isolates its users' state (`isolateUserState`). */
   isolatedFollower?: boolean;
+  /** The service flow itself, in place of the one built from `service` (GitHub's own flow); its kind must be `github-service`. */
+  serviceFlow?: (installation: WorkerInstallation) => FlowInstance;
 };
 
 /** A board host with followers and a GitHub service flow. */
@@ -112,21 +114,26 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const standard: WorkerManifest[] = [
     ...boardWorkers({ lead: { delegates: ["eng.tasker", "eng.follower"] } }),
     { id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] },
-    { id: "eng.watcher", declared: { flow: "follower", description: "Watches threads." }, body: "", skills: [] }
+    { id: "eng.watcher", declared: { flow: "follower", description: "Watches threads." }, body: "", skills: [] },
+    ...(options.standard ?? [])
   ];
   const board = bootBoardHost({
     ...options,
     hire: { ...options.hire, routines: { providers: [github], ...options.hire?.routines } },
     standard,
+    // A coordinator's conversation keeps event routines too (its routine actions).
+    coordinatorRoutines: options.coordinatorRoutines ?? true,
     flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({
-      "github-service": defineSubscriptionServiceFlow({
-        kind: "github-service",
-        provider: github,
-        installation,
-        trustedBots: ["codex"],
-        ...(options.service ?? {})
-      })
+      "github-service":
+        options.serviceFlow?.(installation) ??
+        defineSubscriptionServiceFlow({
+          kind: "github-service",
+          provider: github,
+          installation,
+          trustedBots: ["codex"],
+          ...(options.service ?? {})
+        })
     }),
     adapters: [{ source: "subscriptions-test", createBindings: (h: InboundTransportHost) => ((host = h), {}) }, ...(options.adapters ?? [])]
   });
@@ -162,10 +169,10 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     return answer.ok ? { id: answer.routine.id.replace(/^event:/, "") } : { refused: answer.error };
   };
 
-  /** Save an event routine as `userId` in `sessionId`, as a model would; under `tenantId` when given. */
-  const subscribe = async (userId: string, sessionId: string, input: Record<string, unknown>, tenantId?: string) => {
+  /** Save an event routine as `userId` in `sessionId`, as a model would; under `tenantId` when given; on `flow` (a follower's by default). */
+  const subscribe = async (userId: string, sessionId: string, input: Record<string, unknown>, tenantId?: string, flow = "follower") => {
     const tool = { trigger: { event: { provider: "github", interest: "what happens on it", ...input } } };
-    if (tenantId === undefined) return asSubscription((await board.act(userId, sessionId, "saveRoutine", tool, "follower")).output);
+    if (tenantId === undefined) return asSubscription((await board.act(userId, sessionId, "saveRoutine", tool, flow)).output);
     const runtime = await board.state.getRuntime();
     const ran = (await runAction({
       flow: board.instances.follower!,
