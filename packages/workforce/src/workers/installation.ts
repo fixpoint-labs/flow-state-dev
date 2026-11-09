@@ -192,7 +192,7 @@ export interface RosterWorker {
   flow: string;
   /** Its description, or `null`. */
   description: string | null;
-  /** Its display name, its file's `name:`, or `null` when it has none (a user's own worker never does). */
+  /** Its display name: its row's `name`, or its file's `name:`; `null` when it has none. */
   name: string | null;
   /** Its team's display name, its `TEAM.md` `name:`, or `null` when it has none or no team. */
   teamName: string | null;
@@ -878,13 +878,16 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       return { id: workerId, standard: false, flow: "", description: null, name: null, teamName: null, delegates: [], problem: found.problem };
     }
     if (found.found === "own") {
+      // A row under a standard worker's id is the user's copy of it (FIX-2526):
+      // still that standard worker, on its team, as the user edited it.
+      const file = standard.get(workerId);
       return {
         id: workerId,
-        standard: false,
+        standard: file !== undefined,
         flow: found.flow,
         description: found.row.description,
-        name: null,
-        teamName: null,
+        name: found.row.name,
+        teamName: file?.teamName ?? null,
         delegates: declaredDelegates(found.row.settings),
         ...(found.standardOnly ? { problem: standardOnlyReason(found.flow, false) } : {})
       };

@@ -61,12 +61,21 @@ export type RosterEntry = {
   standard: boolean;
   /** What it is for, or `null`. */
   description: string | null;
-  /** Its display name, or `null` when it has none (a view shows its id). Only a standard worker has one. */
+  /**
+   * Its display name, or `null` when it has none (a view shows its id): the
+   * user's own row's `name`, else a standard worker's file's `name:`. Display
+   * only; the id stays its address.
+   */
   name: string | null;
   /** Its team's display name, or `null` when the team has none or the worker has no team. */
   teamName: string | null;
   /** For one of the user's own workers forked from a standard one: that worker's id. `null` otherwise. */
   forkedFrom: string | null;
+  /**
+   * A standard worker the user has edited: the row read is their own copy of
+   * it, under its id, until {@link WorkforceClient.reset}. `false` otherwise.
+   */
+  edited: boolean;
   /**
    * The settings its flow shows (`showSettings` where the app registers the
    * flow), with the worker's values: a coding worker's `harness`, say. Only
@@ -89,6 +98,8 @@ export type WorkerSessionEntry = {
 export type HireWorkerInput = {
   /** The new worker's id: one path segment, not a standard worker's. */
   id: string;
+  /** The name a user reads it by. Omitted, none: a view shows its id. */
+  name?: string;
   /** The worker flow it runs on. Omitted, `agent`. */
   flow?: string;
   description?: string;
@@ -102,6 +113,8 @@ export type HireWorkerInput = {
 /** A change to one of the user's own workers, as {@link WorkforceClient.edit} takes it: each field given replaces the stored one. */
 export type EditWorkerInput = {
   id: string;
+  /** A new display name; `null` clears it. The id never changes. */
+  name?: string | null;
   flow?: string;
   description?: string | null;
   instructions?: string | null;
@@ -205,9 +218,17 @@ export interface WorkforceClient {
   /**
    * Change one of the user's own workers, through the roster flow's `edit`.
    * The worker's next turn reads the change; a turn already running keeps
-   * what it started with. Rejects for a standard worker: fork it first.
+   * what it started with. On a standard worker, the first edit copies it to
+   * the user's own roster under the same id, and the change lands on that
+   * copy: its conversations, tasks and messages stay where they are.
    */
   edit(input: EditWorkerInput): Promise<{ id: string; flow: string }>;
+  /**
+   * Delete the user's copy of a standard worker, through the roster flow's
+   * `reset`, so its next turn reads the file again. Rejects for a worker that
+   * isn't standard, or one the user hasn't edited.
+   */
+  reset(id: string): Promise<{ id: string }>;
   /**
    * Fire one of the user's own workers, through the roster flow's `fire`. It
    * leaves the roster; its conversations stay readable, and a new turn there
@@ -346,16 +367,28 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
         flow: String(data.flow),
         standard: isStandard,
         description: typeof data.description === "string" ? data.description : null,
-        name: isStandard && typeof data.name === "string" ? data.name : null,
+        name: typeof data.name === "string" ? data.name : null,
         teamName: isStandard && typeof data.teamName === "string" ? data.teamName : null,
         forkedFrom: !isStandard && typeof data.forkedFrom === "string" ? data.forkedFrom : null,
+        edited: false,
         settings:
           typeof data.settings === "object" && data.settings !== null && !Array.isArray(data.settings)
             ? (data.settings as Record<string, unknown>)
             : {}
       };
     };
-    return [...own.map((item) => entry(item, false)), ...standard.map((item) => entry(item, true))];
+    const ownEntries = own.map((item) => entry(item, false));
+    const copies = new Map(ownEntries.map((row) => [row.id, row]));
+    // A standard worker the user edited is listed once, as their copy (FIX-2526):
+    // still standard, on its file's team, read from their row.
+    const standardEntries = standard.map((item) => {
+      const file = entry(item, true);
+      const copy = copies.get(file.id);
+      if (copy === undefined) return file;
+      copies.delete(file.id);
+      return { ...copy, standard: true, teamName: file.teamName, forkedFrom: null, edited: true };
+    });
+    return [...ownEntries.filter((row) => copies.has(row.id)), ...standardEntries];
   };
 
   /** The worker's flow on the roster: the user's own worker first, since a hire can't take a standard id. */
@@ -560,7 +593,8 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     hire: async (input) => (await runIn(ROSTER_FLOW, (await roster()).id, "hire", input)) as { id: string; flow: string },
     fork: async (from, id) => (await runIn(ROSTER_FLOW, (await roster()).id, "fork", { from, id })) as { id: string; flow: string },
     edit: async (input) => (await runIn(ROSTER_FLOW, (await roster()).id, "edit", input)) as { id: string; flow: string },
-    fire: async (id) => (await runIn(ROSTER_FLOW, (await roster()).id, "fire", { id })) as { id: string }
+    fire: async (id) => (await runIn(ROSTER_FLOW, (await roster()).id, "fire", { id })) as { id: string },
+    reset: async (id) => (await runIn(ROSTER_FLOW, (await roster()).id, "reset", { id })) as { id: string }
   };
   return client;
 }

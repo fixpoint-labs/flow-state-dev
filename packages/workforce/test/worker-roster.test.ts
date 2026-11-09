@@ -1,7 +1,8 @@
 /**
  * Holding a worker (FIX-1788 S3, S4, S9; V3, V8): hire, fork, edit and fire
- * are writes to the user's own roster, checked before they are made, and
- * standard workers can't be written at all.
+ * are writes to the user's own roster, checked before they are made. A
+ * standard worker's file is never written: an edit makes the user's own copy
+ * of it under the same id, and reset deletes the copy (FIX-2526).
  *
  * Real engine. Each leg reads what a caller gets back, what a turn runs as, or
  * what a second host sees, never a stored key.
@@ -27,11 +28,11 @@ describe("hiring a worker", () => {
     expect((await second.turn("alice", session.id)).output).toMatchObject({ worker: "scribe", tone: "terse" });
   });
 
-  it("BR-3 · refuses every write to a standard worker, naming it and suggesting a fork", async () => {
+  it("BR-3 · refuses a hire, fork or fire onto a standard worker, naming it and suggesting a fork", async () => {
     const h = host();
     for (const [verb, input] of [
       ["hire", { id: "researcher", flow: FIXTURE }],
-      ["edit", { id: "researcher", instructions: "changed" }],
+      ["fork", { from: "planner", id: "researcher" }],
       ["fire", { id: "researcher" }]
     ] as const) {
       const result = await h.rosterAction("alice", verb, input);
@@ -56,8 +57,8 @@ describe("hiring a worker", () => {
     await h.rosterAction("bob", "hire", { id: "scribe", flow: OTHER, instructions: "Bob's." });
     const alices = (await h.client("alice").roster()).filter((entry) => !entry.standard);
     const bobs = (await h.client("bob").roster()).filter((entry) => !entry.standard);
-    expect(alices).toEqual([{ id: "scribe", flow: FIXTURE, standard: false, description: null, forkedFrom: null, name: null, teamName: null, settings: {} }]);
-    expect(bobs).toEqual([{ id: "scribe", flow: OTHER, standard: false, description: null, forkedFrom: null, name: null, teamName: null, settings: {} }]);
+    expect(alices).toEqual([{ id: "scribe", flow: FIXTURE, standard: false, description: null, forkedFrom: null, edited: false, name: null, teamName: null, settings: {} }]);
+    expect(bobs).toEqual([{ id: "scribe", flow: OTHER, standard: false, description: null, forkedFrom: null, edited: false, name: null, teamName: null, settings: {} }]);
     const session = await h.client("alice").ensureWorkerSession({ worker: "scribe" });
     expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Alice's." });
   });
@@ -243,11 +244,105 @@ describe("hiring, editing and firing from an app", () => {
     expect(messageOf((await h.turn("alice", session.id)).error)).toContain('Worker "scribe" was fired');
   });
 
-  it("the client's edit and fire refuse a standard worker, writing nothing", async () => {
+  it("the client's fire refuses a standard worker, writing nothing", async () => {
     const h = host();
     const app = h.client("alice");
-    await expect(app.edit({ id: "researcher", instructions: "x" })).rejects.toThrow(/standard worker/);
     await expect(app.fire("researcher")).rejects.toThrow(/standard worker/);
-    expect((await app.roster()).filter((entry) => !entry.standard)).toEqual([]);
+    expect((await app.roster()).filter((entry) => !entry.standard || entry.edited)).toEqual([]);
+  });
+});
+
+// FIX-2526.
+describe("naming a worker, and editing a standard one", () => {
+  const rowOf = async (h: ReturnType<typeof host>, user: string, id: string) =>
+    (await h.client(user).roster()).filter((entry) => entry.id === id);
+
+  it("a name rides hire and edit to the roster, and a rename leaves the id and its conversation alone", async () => {
+    const h = host();
+    const app = h.client("alice");
+    await app.hire({ id: "tester", flow: FIXTURE, name: "Tess", instructions: "Test things." });
+    const session = await app.ensureWorkerSession({ worker: "tester" });
+    expect((await rowOf(h, "alice", "tester")).map((entry) => entry.name)).toEqual(["Tess"]);
+
+    await app.edit({ id: "tester", name: "QA Bot" });
+    expect(await rowOf(h, "alice", "tester")).toMatchObject([{ id: "tester", name: "QA Bot", standard: false, edited: false }]);
+    // The same conversation, the same worker, the instructions it had.
+    expect((await app.ensureWorkerSession({ worker: "tester" })).id).toBe(session.id);
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ worker: "tester", instructions: "Test things." });
+
+    await app.edit({ id: "tester", name: "   " });
+    expect((await rowOf(h, "alice", "tester")).map((entry) => entry.name)).toEqual([null]);
+  });
+
+  it("a row stored before names existed reads as having none (BP-030)", async () => {
+    const { parseWorkerResourceState } = await import("../src/workers/worker-row");
+    expect(parseWorkerResourceState({ flow: FIXTURE })).toMatchObject({ worker: { name: null } });
+  });
+
+  it("an edit to a standard worker is the user's copy under its id: the next turn on the same session runs it, and nobody else's does", async () => {
+    const h = host();
+    const app = h.client("alice");
+    const session = await app.ensureWorkerSession({ worker: "researcher" });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research carefully." });
+
+    await app.edit({ id: "researcher", name: "Ada", instructions: "Research twice." });
+    // The file's other settings, skills and team text came with the copy.
+    expect((await h.turn("alice", session.id)).output).toMatchObject({
+      worker: "researcher",
+      instructions: "Research twice.",
+      teamInstructions: "We cite sources.",
+      tone: "formal",
+      skills: ["cite"]
+    });
+    expect((await app.ensureWorkerSession({ worker: "researcher" })).id).toBe(session.id);
+    // Listed once, still standard, marked edited, under the new name.
+    expect(await rowOf(h, "alice", "researcher")).toMatchObject([
+      { id: "researcher", standard: true, edited: true, name: "Ada", forkedFrom: null, description: "Finds things out." }
+    ]);
+
+    const bobs = await h.client("bob").ensureWorkerSession({ worker: "researcher" });
+    expect((await h.turn("bob", bobs.id)).output).toMatchObject({ instructions: "Research carefully." });
+    expect(await rowOf(h, "bob", "researcher")).toMatchObject([{ edited: false, name: null }]);
+  });
+
+  it("the server roster, which the identity line reads, names the copy once with its new name, for its user only", async () => {
+    const h = host();
+    await h.client("alice").edit({ id: "researcher", name: "Ada" });
+    const mine = await h.client("alice").ensureWorkerSession({ worker: "planner" });
+    const theirs = await h.client("bob").ensureWorkerSession({ worker: "planner" });
+    const read = async (user: string, id: string) =>
+      ((await h.turn(user, id, "roster", OTHER)).output?.roster ?? []).filter((row) => row.id === "researcher");
+    expect(await read("alice", mine.id)).toEqual([{ id: "researcher", name: "Ada", standard: true }]);
+    expect(await read("bob", theirs.id)).toEqual([{ id: "researcher", name: null, standard: true }]);
+  });
+
+  it("a later edit of the copy takes any field, like any row of the user's own", async () => {
+    const h = host();
+    const app = h.client("alice");
+    await app.edit({ id: "researcher", instructions: "Research twice." });
+    await app.edit({ id: "researcher", skills: [], settings: { tone: "plain" } });
+    const session = await app.ensureWorkerSession({ worker: "researcher" });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research twice.", tone: "plain", skills: [] });
+  });
+
+  it("reset deletes the copy, so the next turn reads the file again; it refuses when there is nothing to reset", async () => {
+    const h = host();
+    const app = h.client("alice");
+    await app.edit({ id: "researcher", name: "Ada", instructions: "Research twice." });
+    await app.reset("researcher");
+    const session = await app.ensureWorkerSession({ worker: "researcher" });
+    expect((await h.turn("alice", session.id)).output).toMatchObject({ instructions: "Research carefully.", tone: "formal" });
+    expect(await rowOf(h, "alice", "researcher")).toMatchObject([{ standard: true, edited: false, name: null }]);
+
+    await expect(app.reset("researcher")).rejects.toThrow(/haven't edited "researcher"/);
+    await app.hire({ id: "tester", flow: FIXTURE });
+    await expect(app.reset("tester")).rejects.toThrow(/isn't a standard worker/);
+  });
+
+  it("a standard worker on a flow kept for standard workers can't be edited, and nothing is written", async () => {
+    const h = host({ standardOnly: true });
+    const refused = await h.rosterAction("alice", "edit", { id: "researcher", instructions: "x" });
+    expect(messageOf(refused.error)).toContain("keeps for declared workers");
+    expect(await rowOf(h, "alice", "researcher")).toMatchObject([{ edited: false }]);
   });
 });
