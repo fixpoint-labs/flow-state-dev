@@ -55,6 +55,8 @@
 
     // Loaded by `fsdev dev --config`, which no import reaches.
     "labs/claude-code-style/fsdev.config.mts",
+    // The layout tests' page: their Vite server loads it from index.html beside it.
+    "labs/claude-code-style/test/layout/page.tsx",
     // Loaded by `fsdev serve --config` when a closure pass runs on one model.
     "goals/closure-smarter-agents/haiku.config.mts",
 
