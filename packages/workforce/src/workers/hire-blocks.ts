@@ -218,10 +218,11 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
       // A standard worker's first edit starts from the copy a fork makes, under its own id.
       const file = installation.standardWorker(input.id);
       const stored = file === undefined ? undefined : await roster(ctx).getOptional(input.id);
-      const current =
-        file !== undefined && stored === undefined
-          ? { ...rowFromStandard(file, true), forkedFrom: input.id }
-          : await readOwn(ctx, input.id);
+      const copying = file !== undefined && stored === undefined;
+      const current = copying ? { ...rowFromStandard(file, true), forkedFrom: input.id } : await readOwn(ctx, input.id);
+      // The file's worker as it stands, before the edit: a flow kept for standard
+      // workers stays read-only even when the edit names another flow.
+      if (copying) check(input.id, current);
       const next: WorkerResourceState = {
         ...current,
         ...(input.name !== undefined ? { name: textOrNull(input.name) } : {}),

@@ -384,6 +384,9 @@ describe("naming a worker, and editing a standard one", () => {
     const h = host({ standardOnly: true });
     const refused = await h.rosterAction("alice", "edit", { id: "researcher", instructions: "x" });
     expect(messageOf(refused.error)).toContain("keeps for declared workers");
-    expect(await rowOf(h, "alice", "researcher")).toMatchObject([{ edited: false }]);
+    // Naming another flow doesn't get around it: the file's worker is checked before the edit.
+    const moved = await h.rosterAction("alice", "edit", { id: "researcher", flow: OTHER, name: "Changed" });
+    expect(messageOf(moved.error)).toContain("keeps for declared workers");
+    expect(await rowOf(h, "alice", "researcher")).toMatchObject([{ edited: false, name: null }]);
   });
 });
