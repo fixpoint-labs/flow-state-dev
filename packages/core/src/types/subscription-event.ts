@@ -22,7 +22,7 @@
  *   thread end, whether or not it reached them (ER-7 as amended).
  * - `addressed`: the event asks the app's agent (it mentions, assigns or
  *   requests review from a handle the app names). The provider's judgment
- *   from the raw payload, set by its `normalize`; never model input (BP-031).
+ *   from the raw payload, set by its `normalize`; never model input.
  */
 import { z } from "zod";
 

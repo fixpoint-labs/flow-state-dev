@@ -26,7 +26,7 @@
  * the run.
  *
  * A host that must act on each newly recorded pull request in the request
- * (a coding task following its pull request, FIX-2535 D2) registers with
+ * (a coding task following its pull request) registers with
  * {@link whenPullRequestRecorded}; every writer in the request hands its new
  * rows to {@link pullRequestRecordedOf}'s callback, the recorder included,
  * mid-turn.

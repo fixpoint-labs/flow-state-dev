@@ -7,7 +7,7 @@
  * within provider timeout budgets (Slack 3s, GitHub 10s) regardless of how
  * long the handler takes.
  *
- * A provider entry that is a **service route** (`service`, FIX-2535 D1) takes
+ * A provider entry that is a **service route** (`service`) takes
  * the same steps through the handshake, then normalizes the delivery and
  * routes each event through the flow's internal entry as the service
  * (`routeServiceEvent`), in the org the host's principal resolver names. The
@@ -282,7 +282,7 @@ export async function handleWebhook(
 /**
  * A verified delivery on a service route: normalized to zero or more events,
  * each routed through the flow's internal entry as `service:<provider>` in the
- * org the host's principal resolver names (BP-031: never from the payload).
+ * org the host's principal resolver names, never from the payload.
  * Each event's routing runs to its end (code only, no model), and each owner
  * run it names is awaited until the host recorded it, before the answer.
  */

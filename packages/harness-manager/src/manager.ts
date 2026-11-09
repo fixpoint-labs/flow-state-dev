@@ -4046,7 +4046,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // (a steer's stop, or the task's end) composes in beside it.
       abortSignal: (ctx) => {
         // Before the harness starts recording, so a pull request it opens is followed mid-turn.
-        followRecordedPullRequests(ctx as BlockContext, onPullRequestRecorded);
+        followRecordedPullRequests(ctx, onPullRequestRecorded);
         const deadline = AbortSignal.timeout(runTimeoutMs);
         // Armed for every step: a run may offer a live steer once it starts.
         const steer = watchForSteers(ctx);

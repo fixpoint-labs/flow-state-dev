@@ -6,7 +6,7 @@
  * name the same object at the same version.
  *
  * **The signature is pinned** ({@link normalizeGitHubEvent}): the webhook
- * route and FIX-2536's poll call the same function. A poll hands it the event
+ * route and the poll call the same function. A poll hands it the event
  * name and an object of the webhook payload's shape, built from the API
  * objects the payload embeds (a review, a comment, a check run, a pull
  * request or issue), so both read one field for each part.
@@ -30,7 +30,7 @@
  * lower-cased as `pullRequestKey` lower-cases. A check run on two pull requests
  * is one event per pull request; one on none is the repository's alone.
  *
- * **Kinds (pinned).** `review` (submitted), `comment` (created or edited, on an
+ * **The kinds (pinned).** `review` (submitted), `comment` (created or edited, on an
  * issue, a pull request, or a review line), `check` (a completed run), and
  * `pull_request` / `issue` (opened, closed, reopened, assigned, review
  * requested). Anything else normalizes to nothing.
@@ -43,7 +43,7 @@
  *
  * **`addressed`.** `true` when the event mentions one of the app's agent
  * handles (outside quoted lines and code), assigns one, or requests its review.
- * A person's mention of anyone else is never an ask.
+ * A mention of anyone else never asks the agent.
  */
 import { MAX_SUBSCRIPTION_EVENT_TEXT, type SubscriptionEvent } from "@flow-state-dev/core/types";
 

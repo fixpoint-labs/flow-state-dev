@@ -1,6 +1,6 @@
 // FIX-2535 D1; epic FIX-2471.
 /**
- * GitHub's service flow: FIX-2534's service flow built for GitHub, with the
+ * GitHub's service flow: the subscription service flow built for GitHub, with the
  * webhook service route declared (`webhooks: { github: { service } }`). A
  * signed GitHub delivery to `/<base>/<kind>/webhooks/github` is verified by
  * the host's transport, normalized here ({@link normalizeGitHubEvent}), and

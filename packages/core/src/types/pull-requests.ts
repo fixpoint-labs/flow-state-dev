@@ -23,7 +23,7 @@
  *   it: the recorder (`../helpers/pull-request-recorder`), a host's turn-end
  *   branch check, and a harness handle that names a pull request. Its
  *   `onRecorded` callback fires once per new row, which is how a session
- *   follows a pull request from the moment it is recorded (FIX-2535 D2).
+ *   follows a pull request from the moment it is recorded.
  *
  * It sits beside `./harness-plan` (what a run planned) and copies its shape: a
  * session-scoped, live, lazy collection a block declares and a page reads.

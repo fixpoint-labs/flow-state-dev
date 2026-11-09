@@ -9,7 +9,7 @@
  * `updated_at` would make a later API read look new too. Who sent it decides
  * the sender screen, which fails closed: an outsider's comment must not read
  * as a member's. And `addressed` is what FIX-2538 runs on in every mode, so a
- * quoted reply or a pasted snippet must never read as an ask.
+ * quoted reply or a pasted snippet must never read as asking the agent.
  */
 import { describe, expect, it } from "vitest";
 import { followPullRequest, githubMentions, githubThreadKey, normalizeGitHubEvent, pullRequestThread } from "../src/subscriptions";
@@ -166,7 +166,7 @@ describe("addressed: the event asks the app's agent", () => {
     expect(comment("cc @Acme-Agent[bot]").addressed).toBe(true);
   });
 
-  it("is not set by a quoted reply, fenced or inline code, an email address, or a mention of a person", () => {
+  it("is not set by a quoted reply, fenced or inline code, an email address, or a mention of anyone else", () => {
     expect(comment("> @acme-agent please fix\n\nI disagree with this").addressed).toBeUndefined();
     expect(comment("```\n@acme-agent run\n```").addressed).toBeUndefined();
     expect(comment("see `@acme-agent`").addressed).toBeUndefined();

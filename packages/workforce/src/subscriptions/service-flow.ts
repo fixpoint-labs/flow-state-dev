@@ -36,7 +36,7 @@
  * An ingestion (a verified webhook, a poll) normalizes each event and calls
  * `routeServiceEvent` with the routing entry. With `normalize`, the flow
  * declares the webhook service route for its provider
- * (`webhooks.<provider>.service`, FIX-2535 D1), so the webhook transport does
+ * (`webhooks.<provider>.service`), so the webhook transport does
  * that for a verified delivery, as GitHub's flow (`githubServiceFlow`) does.
  *
  * **One event's owner runs are capped** ({@link DEFAULT_MAX_OWNER_RUNS}): past
