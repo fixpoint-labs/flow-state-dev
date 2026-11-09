@@ -8,7 +8,7 @@
  * it, and nothing a user does at run time can write one: the projection has no
  * write path. To change one for yourself, edit it: that copies it onto your
  * own roster under the same id, and your copy is read before the file until
- * you reset it (FIX-2526).
+ * you reset it.
  */
 import { defineProjectedResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";

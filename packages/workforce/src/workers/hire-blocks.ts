@@ -10,7 +10,7 @@
  *
  * A standard worker's file is never written. Hire, fork and fire refuse a
  * standard worker's id. Edit on one makes the caller's own copy of it under
- * the same id (FIX-2526), the copy a fork makes, which the turn and the
+ * the same id, the copy a fork makes, which the turn and the
  * roster then read before the file; reset deletes that copy.
  */
 import { handler, type JsonObject } from "@flow-state-dev/core";

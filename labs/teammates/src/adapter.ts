@@ -23,7 +23,8 @@
  * | `watchWindow`       | the last answering request's `historyStart`, and the session's `historySummary` |
  * |                     | on each request notice and each notice of that resource                      |
  * | `hire`              | the workforce client's `hire`: a row on the user's roster                     |
- * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
+ * | `editTeammate`      | the workforce client's `edit`: name and instructions, on any teammate         |
+ * | `resetTeammate`     | the workforce client's `reset`: a file's teammate back as the file has it    |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
  * |                     | and the board's `listTasks` read (`taskActionName`), on each notice of the     |
@@ -123,14 +124,24 @@ export interface LabWorker {
   role: string;
   /** Coding tasks run on it: it is not a teammate, so it is off the list and has no conversation. */
   takesTasks?: boolean;
-  /** The user hired it: they can change its instructions or fire it. The files' workers can't be. */
+  /** The user hired it, so they can fire it. The files' workers can't be fired. */
   own?: boolean;
+  /** A file's worker the user has edited: they have their own copy, and can reset it to the file's. */
+  edited?: boolean;
   /** For a coding worker, its file's `harness:`, from the roster row's shown settings. */
   harness?: string;
   /** Its file's `icon:`, from the roster row's shown settings. */
   icon?: string;
   /** Its file's `color:`, a name from the lab's palette, from the roster row's shown settings. */
   color?: string;
+}
+
+/** What an edit changes: a name, instructions, or both. */
+export interface TeammateEdit {
+  /** Its new name; blank clears it, so the list shows its id. */
+  name?: string;
+  /** Its new instructions, in full. */
+  instructions?: string;
 }
 
 /** A teammate to hire from the page. */
@@ -427,8 +438,14 @@ export interface LabAdapter {
   watchWindow(sessionId: string, onChange: (mark: WindowMark | undefined) => void): Unsubscribe;
   /** Hire a teammate onto the user's roster, on the built-in agent flow. */
   hire(teammate: NewTeammate): Promise<LabWorker>;
-  /** Replace one of the user's own teammates' instructions, from its next turn on. */
-  editInstructions(worker: string, instructions: string): Promise<void>;
+  /**
+   * Rename a teammate or replace its instructions, from its next turn on. Any
+   * teammate: the first edit of a file's teammate makes the user's own copy
+   * of it, under the same id.
+   */
+  editTeammate(worker: string, edit: TeammateEdit): Promise<void>;
+  /** Put a file's teammate the user edited back as the file has it, from its next turn on. */
+  resetTeammate(worker: string): Promise<void>;
   /** Fire one of the user's own teammates: it leaves the roster, and its conversation stays readable. */
   fire(worker: string): Promise<void>;
   /**
@@ -1162,6 +1179,7 @@ function toWorkerRow(w: RosterEntry): LabWorker {
     role: w.description ?? "",
     ...(w.flow === CODER_FLOW ? { takesTasks: true } : {}),
     ...(w.standard ? {} : { own: true }),
+    ...(w.edited ? { edited: true } : {}),
     ...(typeof w.settings?.harness === "string" ? { harness: w.settings.harness } : {}),
     ...(typeof w.settings?.icon === "string" ? { icon: w.settings.icon } : {}),
     ...(typeof w.settings?.color === "string" ? { color: w.settings.color } : {}),
@@ -1509,8 +1527,15 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       workerIds.add(hired.id);
       return toWorkerRow(hired);
     },
-    async editInstructions(worker, instructions) {
-      await workforce.edit({ id: worker, instructions });
+    async editTeammate(worker, { name, instructions }) {
+      await workforce.edit({
+        id: worker,
+        ...(name !== undefined ? { name: name.trim() === "" ? null : name.trim() } : {}),
+        ...(instructions !== undefined ? { instructions } : {}),
+      });
+    },
+    async resetTeammate(worker) {
+      await workforce.reset(worker);
     },
     async fire(worker) {
       await workforce.fire(worker);

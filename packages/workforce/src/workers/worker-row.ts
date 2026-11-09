@@ -32,8 +32,9 @@ export const workerResourceStateSchema = z.object({
   /**
    * The name a user reads it by, or `null` when it has none (a view shows its
    * id). Display only: the id stays its address. Absent on rows stored before
-   * names existed, which read as `null` (BP-030).
+   * names existed, which read as `null`.
    */
+  // BP-030: tolerate rows stored before this field.
   name: z.string().nullable().default(null),
   /** One line saying what the worker is for. */
   description: z.string().nullable().default(null),

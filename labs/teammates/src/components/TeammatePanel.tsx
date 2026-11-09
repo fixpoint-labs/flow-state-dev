@@ -10,10 +10,11 @@ import { STALE_CLASS } from "./flow-state/connection-banner";
 import { costAmount, tokenCount } from "./flow-state/spend";
 import { TaskTime, taskCounts, taskSignal } from "./flow-state/task-signals";
 import { reasonLine, runsOn, taskLabel, taskLine, type Popup } from "./Popups";
-import { InstructionsForm } from "./TeammateForms";
+import { EditForm } from "./TeammateForms";
 
 /** The heading over each of the panel's sections. */
 const HEADING = "font-mono text-[10px] tracking-widest text-muted-foreground uppercase";
+const PANEL_BUTTON = "w-fit rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent disabled:opacity-40";
 
 /** How many of *Done*'s rows show before *Show all*: the newest few answer "what just finished?". */
 const DONE_SHOWN = 5;
@@ -165,35 +166,22 @@ export function TeammatePanel({
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{worker.name}</h2>
         </div>
         <p className="text-xs text-muted-foreground">{worker.role}</p>
-        {worker.own ? (
-          editing ? (
-            <InstructionsForm
-              name={worker.name}
-              onSave={async (instructions) => {
-                await adapter.editInstructions(worker.id, instructions);
-                setEditing(false);
-              }}
-              onCancel={() => setEditing(false)}
-            />
-          ) : (
-            <button type="button" onClick={() => setEditing(true)} className="w-fit rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent">
-              Edit instructions
-            </button>
-          )
+        {editing ? (
+          <EditForm
+            name={worker.name}
+            onSave={async (edit) => {
+              await adapter.editTeammate(worker.id, edit);
+              setEditing(false);
+            }}
+            onCancel={() => setEditing(false)}
+          />
         ) : (
-          <>
-            <button
-              type="button"
-              disabled
-              aria-describedby="standard-teammate"
-              className="w-fit rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase opacity-40"
-            >
-              Edit instructions
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setEditing(true)} className={PANEL_BUTTON}>
+              Edit
             </button>
-            <p id="standard-teammate" className="text-xs text-muted-foreground">
-              {worker.name} comes from the lab's files, so its instructions can't be changed here yet.
-            </p>
-          </>
+            {worker.edited ? <ResetButton name={worker.name} onReset={() => adapter.resetTeammate(worker.id)} /> : null}
+          </div>
         )}
       </section>
       <div className="flex-1 overflow-y-auto pb-4">
@@ -262,6 +250,38 @@ export function TeammatePanel({
  * for "running" ("working · 4m 12s", "quiet for 7m"), and an ended one's age
  * follows its status ("done · 12m ago").
  */
+/**
+ * Put a file's teammate the user edited back as the file has it: their copy
+ * goes, and its next turn reads the file's name and instructions.
+ */
+function ResetButton({ name, onReset }: { name: string; onReset: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const reset = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await onReset();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <button type="button" disabled={busy} onClick={() => void reset()} aria-label={`Reset ${name} to default`} className={PANEL_BUTTON}>
+        Reset to default
+      </button>
+      {error ? (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 function StatusWords({ task, now, stale }: { task: BoardTask; now: number; stale: boolean }) {
   if (task.view === undefined) return <>{task.status}</>;
   const time = <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={(kind) => taskPresentation(task, kind).tone} fallback={task.status} />;

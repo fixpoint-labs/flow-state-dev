@@ -2,7 +2,7 @@
  * Holding a worker (FIX-1788 S3, S4, S9; V3, V8): hire, fork, edit and fire
  * are writes to the user's own roster, checked before they are made. A
  * standard worker's file is never written: an edit makes the user's own copy
- * of it under the same id, and reset deletes the copy (FIX-2526).
+ * of it under the same id, and reset deletes the copy.
  *
  * Real engine. Each leg reads what a caller gets back, what a turn runs as, or
  * what a second host sees, never a stored key.
