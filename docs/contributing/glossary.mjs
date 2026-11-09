@@ -800,6 +800,17 @@ export const ENTRIES = [
       { id: "side-chain-tier-value", check: "side-chain", position: "tier-value", names: ["work"] },
     ],
   },
+
+  // Routines ----------------------------------------------------------------------------------
+  {
+    term: "Routine",
+    means: "A standing instruction that fires on its own as its owner, with exactly one trigger: a clock (recurring work) or an event (a subscription, pushed or polled).",
+    decision: "Owner, 2026-11-08; FIX-2471 D12",
+    // "Recurring work" and "schedule" as user-facing names retire when FIX-2614 renames the shipped
+    // surface: the code and published pages still say them until then, so retiring them here would fail
+    // every check on main. FIX-2614's implementation PR adds those retirements.
+    retires: [],
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
