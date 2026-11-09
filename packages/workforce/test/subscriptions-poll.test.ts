@@ -11,7 +11,7 @@
  * must not double a pinned repo on every restart (D3).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { configSubscriptionId } from "../src/subscriptions/seed";
+import { declaredSubscriptionKey } from "../src/subscriptions/poll";
 import { bootSubscriptionsHost, event, pollTimeline, type SubscriptionsHost } from "./subscriptions-harness";
 
 const PR = "github:acme/api#412";
@@ -29,6 +29,7 @@ beforeEach(() => {
   setNow(T0);
   pollTimeline.events = [];
   pollTimeline.calls = [];
+  pollTimeline.incomplete = false;
 });
 afterEach(() => vi.useRealTimers());
 
@@ -165,6 +166,19 @@ describe("the mark holds at what is still owed", () => {
     }));
 });
 
+describe("a poll that couldn't read everything", () => {
+  it("says so in each session on the thread, instead of dropping what it didn't reach in silence", () =>
+    withPolling(async (host) => {
+      const one = await host.follower("alice");
+      await host.subscribe("alice", one, { thread: PR });
+      pollTimeline.incomplete = true;
+      await run(host, 5);
+      const heard = await host.heard(one);
+      expect(heard).toHaveLength(1);
+      expect(heard[0]).toContain("busier than one poll reads");
+    }));
+});
+
 describe("a thread's closing", () => {
   it("sends nothing after a close whose send was lost, then lands the close and ends the subscription", () =>
     withPolling(async (host) => {
@@ -204,46 +218,31 @@ describe("a row's life", () => {
     }));
 });
 
-describe("config-declared subscriptions", () => {
-  const entry = (fields: { everyMinutes?: number; interest?: string } = {}) => ({
-    id: "api-pr",
-    owner: { userId: "alice", orgId: "acme" },
-    worker: "eng.follower",
-    trigger: { event: { provider: "github", thread: PR, interest: fields.interest ?? "the PR", ...(fields.everyMinutes === undefined ? {} : { everyMinutes: fields.everyMinutes }) } }
-  });
-
-  it("seeds one row under a stable id, adds nothing on a restart, and polls from the first boot", () => {
-    let declared = [entry()];
+describe("declared routines on a polled thread", () => {
+  // The seed is the routines' own; what polling owns is ending a declared row whose entry left config.
+  it("ends a declared routine's row at its next fire once its entry leaves config, and leaves a session's own subscription on", () => {
+    let declared = [{ id: "api-pr" }];
     return withPolling(
       async (host) => {
-        expect(await host.seed("alice", declared)).toEqual([{ id: await configSubscriptionId("github-service", "api-pr"), act: "written" }]);
-        expect(await host.seed("alice", declared)).toEqual([{ id: await configSubscriptionId("github-service", "api-pr"), act: "unchanged" }]);
-        expect(await host.subscriptionRows("alice")).toHaveLength(1);
-        expect(await host.pollRows("alice")).toHaveLength(1);
-        pollTimeline.events.push(reviewAt(T0 + 30_000));
+        const one = await host.follower("alice");
+        const own = ((await host.subscribe("alice", one, { thread: PR })) as { id: string }).id;
+        const key = await declaredSubscriptionKey("api-pr");
+        await host.storeAs("alice", own, key);
         await run(host, 5);
-        expect((await host.serviceRows("alice")).length).toBe(1);
-        // The entry leaves config: its row ends at the poll row's next fire.
+        expect((await host.subscriptionRows("alice")).find((r) => r.id === key)).toMatchObject({ enabled: true });
         declared = [];
         await run(host, 5);
-        const [row] = await host.subscriptionRows("alice");
-        expect(row).toMatchObject({ enabled: false, endedReason: "config_removed" });
+        const rows = await host.subscriptionRows("alice");
+        expect(rows.find((r) => r.id === key)).toMatchObject({ enabled: false, endedReason: "config_removed" });
+        expect(rows.find((r) => r.id === own)).toMatchObject({ enabled: true });
       },
       { declared: () => declared }
     );
   });
 
-  it("never turns back on a row someone ended while its entry is unchanged", () =>
-    withPolling(async (host) => {
-      const [first] = await host.seed("alice", [entry()]);
-      const runtime = await host.state.getRuntime();
-      // An ending the user caused: the row is off, its entry unchanged.
-      const key = `workforce/subscriptions/${first!.id}`;
-      const stored = await runtime.stores.resourceState.get("user", "alice:~org:acme", key);
-      await runtime.stores.resourceState.set("user", "alice:~org:acme", key, { ...(stored!.state as object), enabled: false, endedReason: "thread_closed" } as never, "any" as never);
-      expect(await host.seed("alice", [entry()])).toEqual([{ id: first!.id, act: "unchanged" }]);
-      expect(await host.seed("alice", [entry({ interest: "changed" })])).toEqual([{ id: first!.id, act: "written" }]);
-      const [row] = await host.subscriptionRows("alice");
-      expect(row).toMatchObject({ enabled: false, interest: "changed" });
-    }));
+  it("names a declared routine's row as the routines' seed does: cfg_ and a hash of the roster flow and the entry id", async () => {
+    const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode("workforce-roster\napi-pr")));
+    expect(await declaredSubscriptionKey("api-pr")).toBe(`cfg_${[...digest.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("")}`);
+  });
 });
+

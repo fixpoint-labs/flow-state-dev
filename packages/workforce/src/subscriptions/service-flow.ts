@@ -86,7 +86,7 @@ import {
   type SubscriptionPolling,
   type SubscriptionPollingOptions
 } from "./poll";
-import { SUBSCRIPTION_SEED_ENTRY, configSubscriptionId, declaredSubscriptionSchema, isConfigSubscriptionId, seedSubscription, type DeclaredSubscription } from "./seed";
+import { declaredSubscriptionKey, isDeclaredSubscriptionKey } from "./poll";
 import { createResourceCollectionScheduleResolver } from "@flow-state-dev/scheduled/collection";
 
 /** The default cap: the most messages one subscription sends in an hour. */
@@ -135,11 +135,13 @@ export interface SubscriptionServiceOptions {
 /** A service flow's polling: the app's polling, and the subscriptions its config declares. */
 export type SubscriptionServicePollOptions = (SubscriptionPollingOptions | SubscriptionPolling) & {
   /**
-   * The subscriptions the app's config declares (D3): a `cfg_` row on a polled
-   * thread whose entry is no longer here ends at its poll row's next fire.
-   * Omitted, config rows are left alone.
+   * The routines the app's config declares (`routines.declared`), read at each
+   * fire: a declared event routine's row (`cfg_…`) on a polled thread whose
+   * entry is no longer here ends at its poll row's next fire, as
+   * `config_removed`. Omitted, declared rows are left alone. Seeding them is
+   * the routines' own.
    */
-  readonly declared?: () => readonly DeclaredSubscription[];
+  readonly declared?: () => readonly { readonly id: string }[];
 };
 
 const deliverInputSchema = z.object({
@@ -501,9 +503,9 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       if (rowRef === undefined || row === undefined || row.enabled === false) return { thread, key, screenings: [] };
       let subs = await liveOnThread(ctx, thread);
       if (declared !== undefined) {
-        const kept = new Set(await Promise.all(declared().map((entry) => configSubscriptionId(options.kind, entry.id))));
-        for (const sub of subs.filter((s) => isConfigSubscriptionId(s.id) && !kept.has(s.id))) await unsubscribe(ctx, sub.id, "config_removed");
-        subs = subs.filter((s) => !isConfigSubscriptionId(s.id) || kept.has(s.id));
+        const kept = new Set(await Promise.all(declared().map((entry) => declaredSubscriptionKey(entry.id))));
+        for (const sub of subs.filter((s) => isDeclaredSubscriptionKey(s.id) && !kept.has(s.id))) await unsubscribe(ctx, sub.id, "config_removed");
+        subs = subs.filter((s) => !isDeclaredSubscriptionKey(s.id) || kept.has(s.id));
       }
       if (subs.length === 0) {
         await rowRef.setState({ ...row, enabled: false });
@@ -525,7 +527,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         await rowRef.setState({ ...row, input: rest });
         return { thread, key, screenings: [] };
       }
-      await rowRef.setState({ ...row, input: { ...rest, fetched: { through: result.through, ...(result.etags === undefined ? {} : { etags: { ...result.etags } }) } } });
+      await rowRef.setState({ ...row, input: { ...rest, fetched: { through: result.through, ...(result.etags === undefined ? {} : { etags: { ...result.etags } }), ...(result.incomplete === true ? { incomplete: true as const } : {}) } } });
       const cursors = new Map<string, SubscriptionCursor | undefined>();
       for (const sub of subs) cursors.set(sub.id, (await subscriptionCursorsOf(ctx).getOptional(sub.id))?.state);
       const events = result.events
@@ -649,6 +651,23 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       counts.owed = owed.length;
 
       const fetched = input.fetched;
+      // A provider that read less than everything since the mark says so; each session hears it, not silence.
+      if (fetched?.incomplete === true) {
+        for (const sub of subs.values()) {
+          await sendServiceMessage(
+            ctx,
+            installation,
+            options.kind,
+            {
+              sender: serviceSender(sub.provider),
+              to: { sessionId: sub.sessionId, flow: sub.flow, worker: sub.worker },
+              text: `${sub.thread} was busier than one poll reads: some of its events since the last poll may be missing here. Check it directly.`,
+              id: `sub_poll-incomplete@${fetched.through}:${sub.sessionId}`
+            },
+            "subscription-poll-settle"
+          ).catch(() => undefined);
+        }
+      }
       const polledThrough = owed.length > 0 ? Math.min(...owed.map(([, , , , at]) => at)) : (fetched?.through ?? input.polledThrough);
       for (const [subscription, entries] of toScreen) {
         const cursorRef = await subscriptionCursorsOf(ctx).getOptional(subscription);
@@ -713,21 +732,6 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           index: polling.index
         };
 
-  /** The running owner's declared subscriptions, each written once (D3). */
-  const seed = handler({
-    name: "subscription-seed",
-    inputSchema: z.object({ entries: z.array(declaredSubscriptionSchema) }),
-    outputSchema: z.object({ outcomes: z.array(z.object({ id: z.string(), act: z.string().optional(), refused: z.string().optional() })) }),
-    resources: { ...installation.resources, ...pollResources },
-    execute: async ({ entries }, ctx) => ({
-      outcomes: await Promise.all(
-        entries.map((entry) =>
-          seedSubscription(ctx, { flowKind: options.kind, providers: [provider], installation, ...(polling === undefined ? {} : { polling }) }, entry)
-        )
-      )
-    })
-  });
-
   const webhooks: WebhookConfig | undefined =
     options.normalize === undefined ? undefined : { [provider.provider]: { service: { entry: SUBSCRIPTION_ROUTE_ENTRY, normalize: options.normalize } } };
   return defineFlow({
@@ -739,8 +743,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     internal: {
       actions: {
         [SUBSCRIPTION_ROUTE_ENTRY]: { inputSchema: subscriptionEventSchema, block: route },
-        [SUBSCRIPTION_DELIVER_ENTRY]: { inputSchema: deliverInputSchema, block: deliver },
-        [SUBSCRIPTION_SEED_ENTRY]: { inputSchema: seed.inputSchema, block: seed }
+        [SUBSCRIPTION_DELIVER_ENTRY]: { inputSchema: deliverInputSchema, block: deliver }
       }
     }
   })();

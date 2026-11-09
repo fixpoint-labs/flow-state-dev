@@ -45,7 +45,6 @@ export {
   type SubscriptionProvider
 } from "./subscribe";
 export type { SubscriptionPolling, SubscriptionPollingOptions } from "./poll";
-export type { DeclaredSubscription } from "./seed";
 export { normalizeGitHubEvent, type GitHubEventInput, type GitHubNormalizeOptions } from "./github/normalize";
 export {
   githubSubscriptionProvider,

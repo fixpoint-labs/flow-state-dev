@@ -91,8 +91,6 @@ export const subscriptionResourceStateSchema = screenSettingsSchema.extend({
   // FIX-2536 D3; BP-030.
   /** How often, in minutes, it is polled when its app polls: one of `POLL_CADENCES`. Absent, the app's default. */
   everyMinutes: z.number().int().positive().optional(),
-  /** A `cfg_` row's hash of the fields its config entry owns: the seed writes again only when it changes (D3). */
-  configHash: z.string().optional(),
   /** Why it ended: `unsubscribed`, `thread_closed`, `task_errored`, `task_cancelled`, `config_removed`. */
   endedReason: z.string().optional(),
   endedAt: z.number().optional(),

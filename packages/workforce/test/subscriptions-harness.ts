@@ -37,7 +37,6 @@ import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
 import { parseNextFireAt, runScheduleTick, scheduleDispatchRequest, type ScheduleIndex, type ScheduleIndexEntry } from "@flow-state-dev/scheduled/collection";
 import { SUBSCRIPTION_POLLS_PATTERN } from "../src/subscriptions/keys";
 import { subscriptionPolling, type SubscriptionPolling } from "../src/subscriptions/poll";
-import { SUBSCRIPTION_SEED_ENTRY, type DeclaredSubscription } from "../src/subscriptions/seed";
 
 /** Users whose read access to private threads a test has taken away. */
 export const revoked = new Set<string>();
@@ -51,7 +50,7 @@ function readableBy(userId: string, thread: string): boolean {
  * What a polled provider has: the events it would return, by their own time,
  * and every poll it answered (who asked, for which thread, from when).
  */
-export const pollTimeline: { events: SubscriptionEvent[]; calls: Array<{ userId: string; thread: string; since?: number; etags: boolean }> } = {
+export const pollTimeline: { events: SubscriptionEvent[]; calls: Array<{ userId: string; thread: string; since?: number; etags: boolean }>; incomplete?: boolean } = {
   events: [],
   calls: []
 };
@@ -69,12 +68,12 @@ const github: SubscriptionProvider = {
     // The validator names what this thread holds up to now: unchanged answers `304`.
     const etag = `"${pollTimeline.events.filter((e) => e.threads.includes(thread) && e.at <= now).length}"`;
     if (cursor.etags?.thread === etag) return { unchanged: true };
-    return { events, through: now, etags: { thread: etag } };
+    return { events, through: now, etags: { thread: etag }, ...(pollTimeline.incomplete === true ? { incomplete: true as const } : {}) };
   }
 };
 
 /** A schedule index in memory, as a store's would behave: claim advances each due row past `now`. */
-export function memoryScheduleIndex(): ScheduleIndex & { rows: Map<string, ScheduleIndexEntry> } {
+function memoryScheduleIndex(): ScheduleIndex & { rows: Map<string, ScheduleIndexEntry> } {
   const rows = new Map<string, ScheduleIndexEntry>();
   const id = (r: { cell: string; key: string }) => `${r.cell}\n${r.key}`;
   return {
@@ -140,7 +139,7 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   /** What a `[hold]` task turn waits on. */
   hold?: Promise<void>;
   /** Poll (FIX-2536): an in-memory schedule index, the scheduled dispatch endpoint, and `tick`. */
-  poll?: { everyMinutes?: number; declared?: () => readonly DeclaredSubscription[] };
+  poll?: { everyMinutes?: number; declared?: () => readonly { readonly id: string }[] };
 };
 
 /** A board host with followers and a GitHub service flow. */
@@ -197,22 +196,17 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     await board.settled();
   };
 
-  /** Run the service flow's seed entry as `userId`, as a host does at startup for each owner (D3). */
-  const seed = async (userId: string, entries: readonly DeclaredSubscription[]) => {
+  /**
+   * Store a copy of `userId`'s subscription `from` under `key`, as the
+   * declared-routine seed writes one (`cfg_…`): a stand-in for that seed, which
+   * is the routines' own.
+   */
+  const storeAs = async (userId: string, from: string, key: string) => {
     const runtime = await board.state.getRuntime();
-    const ran = (await runAction({
-      flow: board.instances["github-service"]!,
-      actionName: SUBSCRIPTION_SEED_ENTRY,
-      source: "internal",
-      input: { entries },
-      userId,
-      orgId: ORG,
-      sessionId: `seed-${userId}`,
-      stores: runtime.stores,
-      runtimeConfig: { ...runtime.runtimeConfig }
-    })) as { output?: { outcomes: Array<Record<string, string>> }; error?: unknown };
-    if (ran.output === undefined) throw new Error(`seed failed: ${JSON.stringify(ran.error)}`);
-    return ran.output.outcomes;
+    const cell = `${userId}:~org:${ORG}`;
+    const prefix = SUBSCRIPTIONS_PATTERN.replace("*", "");
+    const row = await runtime.stores.resourceState.get("user", cell, `${prefix}${from}`);
+    await runtime.stores.resourceState.set("user", cell, `${prefix}${key}`, { ...(row!.state as object), id: key } as never, "any" as never);
   };
 
   /** `userId`'s poll rows, from the store. */
@@ -398,7 +392,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     index,
     tick,
     fires,
-    seed,
+    storeAs,
     pollRows
   };
 }

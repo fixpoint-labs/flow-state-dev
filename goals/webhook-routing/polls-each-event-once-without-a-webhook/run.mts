@@ -27,14 +27,12 @@ import {
   workerConfigSchema,
   workerMessagesResources,
   workerTaskEntry,
-  type DeclaredSubscription,
   type SubscriptionProvider,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
 import {
   SUBSCRIPTION_POLLS_PATTERN,
-  SUBSCRIPTION_SEED_ENTRY,
-  declaredSubscriptionSchema,
+  declaredSubscriptionKey,
   subscriptionPolling
 } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
@@ -78,14 +76,8 @@ const PATCHES: Record<string, ModulePatch[]> = {
     { module: SF, from: String.raw`\.\.\.\(owed\.length === 0 && input\.etags !== undefined \?`, to: "...(input.etags !== undefined ?" },
     { module: SF, from: String.raw`const etags = owed\.length === 0 \? \(fetched\?\.etags \?\? input\.etags\) : undefined;`, to: "const etags = fetched?.etags ?? input.etags;" }
   ],
-  // The seed writes a new row on every boot.
-  "seed-every-boot": [
-    {
-      module: "packages/workforce/src/subscriptions/seed.ts",
-      from: String.raw`return \`cfg_\$\{hex\(\(await sha\(\`\$\{flowKind\}\\n\$\{entryId\}\`\)\)\.slice\(0, 12\)\)\}\`;`,
-      to: "return `cfg_${hex((await sha(`${flowKind}\\n${entryId}\\n${Math.random()}`)).slice(0, 12))}`;"
-    }
-  ],
+  // A fire ignores the app's declared list: a declared routine that left config keeps polling.
+  "keep-removed": [{ module: SF, from: String.raw`      if \(declared !== undefined\) \{`, to: "      if (false) {" }],
   // A subscription's own cadence is ignored: every row polls at the default.
   "ignore-cadence": [
     { module: "packages/workforce/src/subscriptions/subscribe.ts", from: String.raw`row\.everyMinutes \?\? polling\.everyMinutes`, to: "polling.everyMinutes" },
@@ -174,7 +166,7 @@ let beat = 0;
 interface BootOptions {
   readonly db: string;
   readonly push?: boolean;
-  readonly declared?: () => readonly DeclaredSubscription[];
+  readonly declared?: () => readonly { readonly id: string }[];
   /** Delivery ids whose first dispatch is lost; whose take first fails; whose dispatch is always lost. */
   readonly losses?: { lost: Set<string>; untaken: Set<string>; never: Set<string> };
 }
@@ -353,8 +345,12 @@ async function boot(options: BootOptions) {
       runtimeConfig: { ...runtime.runtimeConfig }
     })) as { output?: any; error?: unknown };
   const act = (user: string, sessionId: string, action: string, input: unknown) => run(instances.follower!, user, sessionId, action, input);
-  const seed = async (user: string, entries: readonly DeclaredSubscription[]) =>
-    (await run(instances["github-service"]!, user, `seed-${user}`, SUBSCRIPTION_SEED_ENTRY, { entries }, "internal")).output?.outcomes as Array<Record<string, string>>;
+  /** Store a copy of `user`'s subscription `from` under `key`, as the declared routines' seed writes one. */
+  const storeAs = async (user: string, from: string, key: string) => {
+    const cell = `${user}:~org:${ORG}`;
+    const row = await runtime.stores.resourceState.get("user", cell, `workforce/subscriptions/${from}`);
+    await runtime.stores.resourceState.set("user", cell, `workforce/subscriptions/${key}`, { ...(row!.state as object), id: key } as never, "any" as never);
+  };
   const route = async (event: SubscriptionEvent) => {
     const routed = await routeServiceEvent(captured!, { flowKind: "github-service", entry: "routeSubscriptionEvent", input: event, principal: { userId: "service:github", orgId: ORG } });
     if (routed.error !== undefined) throw new Error(`routing failed: ${JSON.stringify(routed.error)}`);
@@ -380,7 +376,7 @@ async function boot(options: BootOptions) {
   const rowsAt = async (user: string, pattern: string) =>
     Object.values(await runtime.stores.resourceState.getByPrefix("user", `${user}:~org:${ORG}`, pattern.replace("*", ""))).map((v) => v.state as Record<string, any>);
 
-  return { calls, fires, tick, createFollower, act, seed, route, landed, rowsAt, injected, dispose: async () => (await state.dispose(), indexDb.close()) };
+  return { calls, fires, tick, createFollower, act, storeAs, route, landed, rowsAt, injected, dispose: async () => (await state.dispose(), indexDb.close()) };
 }
 
 // ---- the legs ----------------------------------------------------------------
@@ -555,17 +551,20 @@ await runGoal(async (failures, tell) => {
     await app.dispose();
   }
 
-  // ---- leg 4: config-declared, cold start and restart ---------------------------
+  // ---- leg 4: cadence, a restart, and a declared routine leaving config ---------
+  // The declared routines' seed is FIX-2614's; this leg stands in for its row (a cfg_ copy) and grades what polling owns.
   {
-    const entries: DeclaredSubscription[] = [
-      { id: "api-repo", owner: { userId: "alice", orgId: ORG }, worker: "eng.follower", trigger: { event: { provider: "github", thread: "github:acme/api", interest: "the repo", everyMinutes: 15 } } },
-      { id: "web-pr", owner: { userId: "alice", orgId: ORG }, worker: "eng.follower", trigger: { event: { provider: "github", thread: "github:acme/web#9", interest: "the web PR" } } }
-    ];
-    let declared: DeclaredSubscription[] = entries;
+    let declared: Array<{ id: string }> = [{ id: "web-pr" }];
     const db = join(SCRATCH, "leg4.sqlite");
     moveTo(T0 - 2 * MINUTE);
     const cold = await boot({ db, declared: () => declared });
-    const first = await cold.seed("alice", entries);
+    const repoSession = await cold.createFollower("alice");
+    const webSession = await cold.createFollower("alice");
+    await cold.act("alice", repoSession, "subscribe", { provider: "github", thread: "github:acme/api", interest: "the repo", everyMinutes: 15 });
+    const web = (await cold.act("alice", webSession, "subscribe", { provider: "github", thread: "github:acme/web#9", interest: "the web PR" })).output?.id as string;
+    const declaredKey = await declaredSubscriptionKey("web-pr");
+    await cold.storeAs("alice", web, declaredKey);
+    const three = await cold.act("alice", repoSession, "subscribe", { provider: "github", thread: "github:acme/web", interest: "too often", everyMinutes: 3 });
     for (let t = T0; t <= T0 + 30 * MINUTE; t += MINUTE) {
       moveTo(t);
       beat = t;
@@ -573,35 +572,34 @@ await runGoal(async (failures, tell) => {
     }
     const coldRows = (await cold.landed()).length;
     const coldFires = [...cold.fires];
+    const pollsBefore = (await cold.rowsAt("alice", SUBSCRIPTION_POLLS_PATTERN)).length;
     await cold.dispose();
-    // A restart: a new process over the same file seeds again.
+    // A restart: a new process over the same file adds no poll row, and the rows keep firing.
     const warm = await boot({ db, declared: () => declared });
-    const again = await warm.seed("alice", entries);
-    const subscriptions = await warm.rowsAt("alice", "workforce/subscriptions/*");
-    tell.over("leg 4 · j · first seed", first);
-    if (first.some((o) => o.act !== "written")) failures.push(`leg 4 · j: the cold start didn't write every entry: ${JSON.stringify(first)}`);
-    if (again.some((o) => o.act !== "unchanged")) failures.push(`leg 4 · j: the restart wrote again: ${JSON.stringify(again)}`);
-    if (subscriptions.length !== entries.length) failures.push(`leg 4 · j: ${subscriptions.length} subscription rows after a restart, for ${entries.length} entries`);
-    if (coldRows === 0) failures.push("leg 4 · j: config subscriptions heard nothing after a cold start");
-    // An entry leaves config: its row ends at its next fire.
-    declared = [entries[0]!];
+    const pollsAfter = (await warm.rowsAt("alice", SUBSCRIPTION_POLLS_PATTERN)).length;
+    tell.over("leg 4 · j · poll rows before the restart", Array.from({ length: pollsBefore }));
+    if (pollsAfter !== pollsBefore || pollsBefore !== 2) failures.push(`leg 4 · j: ${pollsBefore} poll row(s) before the restart, ${pollsAfter} after, for two threads`);
+    if (coldRows === 0) failures.push("leg 4 · j: the polled subscriptions heard nothing");
+    // The declared entry leaves config: its row ends at its next fire; the session's own subscription stays.
+    declared = [];
     for (let t = T0 + 31 * MINUTE; t <= T0 + 50 * MINUTE; t += MINUTE) {
       moveTo(t);
       beat = t;
       await warm.tick();
     }
     const after = await warm.rowsAt("alice", "workforce/subscriptions/*");
-    const removed = after.find((r) => r.thread === "github:acme/web#9");
+    const removed = after.find((r) => r.id === declaredKey);
     if (removed?.enabled !== false || removed.endedReason !== "config_removed") failures.push(`leg 4 · j: the removed entry's row is ${JSON.stringify({ enabled: removed?.enabled, endedReason: removed?.endedReason })}`);
-    // (k): the 15-minute entry fires 15 minutes apart; a cadence of 3 is refused.
+    if (after.find((r) => r.id === web)?.enabled !== true) failures.push("leg 4 · j: the session's own subscription ended with the declared one");
+    if (warm.fires.length === 0) failures.push("leg 4 · j: nothing fired after the restart");
+    // (k): the 15-minute row fires 15 minutes apart; a cadence of 3 is refused.
     const all = [...coldFires, ...warm.fires];
     const repoKey = encodeURIComponent("github:acme/api");
     const repoFires = tell.over("leg 4 · k · the 15-minute row's fires", all.filter((f) => f.key === repoKey));
     gradeFires("leg 4", all, (key) => (key === repoKey ? 15 : 5));
     if (repoFires.length < 3) failures.push(`leg 4 · k: the 15-minute row fired ${repoFires.length} time(s) in 50 minutes`);
-    const three = declaredSubscriptionSchema.safeParse({ ...entries[0], trigger: { event: { ...entries[0]!.trigger.event, everyMinutes: 3 } } });
-    if (three.success) failures.push("leg 4 · k: a cadence of 3 was accepted");
-    evidence.push(`leg 4: seeded ${first.length}, restart ${again.map((o) => o.act).join("/")}, the repo row fired ${repoFires.length} times`);
+    if (three.output?.id !== undefined) failures.push("leg 4 · k: a cadence of 3 was accepted");
+    evidence.push(`leg 4: ${pollsBefore} poll rows before a restart and ${pollsAfter} after; the repo row fired ${repoFires.length} times; the removed declared row ${removed?.endedReason}`);
     await warm.dispose();
   }
 

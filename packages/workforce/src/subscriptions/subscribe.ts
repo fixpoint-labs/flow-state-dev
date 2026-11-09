@@ -74,6 +74,8 @@ export type SubscriptionPollResult =
       /** The time it read up to, in ms: the next poll's mark when nothing is owed. */
       readonly through: number;
       readonly etags?: Readonly<Record<string, string>>;
+      /** The provider read less than everything since the mark (a list busier than it reads in one poll): the fire says so in each session. */
+      readonly incomplete?: true;
     };
 
 /** What `subscribe` takes: the tool's input. */
@@ -206,29 +208,18 @@ export async function subscribe(
   };
   if (row.flow.length === 0) return { refused: "no_session: this host can't read this session's record, so nothing could be delivered to it." };
   if (input.everyMinutes !== undefined) row.everyMinutes = input.everyMinutes;
-  await writeSubscription(ctx, row, polling);
-  return { id };
-}
-
-/**
- * The one write of a subscription row, for `subscribe` and the config seed
- * (ER-5): the row, its cursor, and, while it is on, the thread index entry
- * and (when the app polls and the session is under no tenant) the user's poll
- * row for the thread.
- */
-export async function writeSubscription(ctx: BlockContext, row: SubscriptionResourceState, polling?: SubscriptionPolling): Promise<void> {
-  const ref = await subscriptionsOf(ctx).getOrCreate(row.id, row);
+  const ref = await subscriptionsOf(ctx).getOrCreate(id, row);
   await ref.setState(row);
-  await subscriptionCursorsOf(ctx).getOrCreate(row.id, { seen: [], window: { start: 0, sent: 0 }, held: 0, inFlight: [], screened: [] });
-  if (!row.enabled) return;
+  await subscriptionCursorsOf(ctx).getOrCreate(id, { seen: [], window: { start: 0, sent: 0 }, held: 0, inFlight: [], screened: [] });
   // Other users' subscribes to this thread may write at once: `updateState`
   // runs again against the row that won, so every entry lands.
-  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(row.thread), { subscriptions: {} });
-  await retryOnConflict(() => index.updateState((current) => ({ subscriptions: { ...current.subscriptions, [row.id]: indexEntryOf(row) } })));
-  // Tenants aren't polled in v1 (FIX-2536).
+  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(thread), { subscriptions: {} });
+  await retryOnConflict(() => index.updateState((current) => ({ subscriptions: { ...current.subscriptions, [id]: indexEntryOf(row) } })));
+  // FIX-2536: the user's poll for the thread, when the app polls. Tenants aren't polled in v1.
   if (polling !== undefined && row.tenantId === undefined) {
-    await ensurePollSchedule(ctx, row.provider, row.thread, row.everyMinutes ?? polling.everyMinutes);
+    await ensurePollSchedule(ctx, row.provider, thread, row.everyMinutes ?? polling.everyMinutes);
   }
+  return { id };
 }
 
 /**

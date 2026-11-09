@@ -15,16 +15,18 @@
  *   ETags, and the deliveries it still owes (D2). Not a subscription row:
  *   only `subscribe` and `unsubscribe` write those (ER-5).
  * - **Its life.** `subscribe` creates it or speeds it up ({@link ensurePollSchedule});
- *   a fire that finds no enabled subscription on the thread turns it off.
+ *   a fire that finds no enabled subscription on the thread turns it off, and
+ *   ends a declared routine's row whose entry left config.
  *
  * An app polls by building one {@link subscriptionPolling} from its schedule
  * index and handing it to the service flow and to whatever subscribes
- * (`subscriptionTools`, `followPullRequest`, the config seed). One index is
- * one polling, so every flow that declares it declares the same collection.
+ * (`subscriptionTools`, `followPullRequest`). One index is one polling, so
+ * every flow that declares it declares the same collection.
  */
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { defineScheduleCollection, type ScheduleCollectionState, type ScheduleIndex } from "@flow-state-dev/scheduled/collection";
 import { z } from "zod";
+import { ROSTER_FLOW } from "../workers/keys";
 import { SUBSCRIPTION_POLL_HANDLER, SUBSCRIPTION_POLLS_PATTERN, SUBSCRIPTION_POLLS_RESOURCE } from "./keys";
 import { indexKeyOf } from "./rows";
 
@@ -32,13 +34,13 @@ import { indexKeyOf } from "./rows";
 export const POLL_CADENCES = [5, 10, 15, 20, 30, 60] as const;
 
 /** The cadence a subscription that names none polls at, unless the app names another. */
-export const DEFAULT_POLL_MINUTES = 5;
+const DEFAULT_POLL_MINUTES = 5;
 
 /** Polls a fire may still owe a delivery before it gives that event up (D2). */
 export const POLL_GIVE_UP_AFTER = 3;
 
 /** Throw unless `minutes` is one of {@link POLL_CADENCES}. */
-export function assertPollCadence(minutes: number, where: string): void {
+function assertPollCadence(minutes: number, where: string): void {
   if (!(POLL_CADENCES as readonly number[]).includes(minutes)) {
     throw new Error(`${where}: everyMinutes must be one of ${POLL_CADENCES.join(", ")}; got ${minutes}.`);
   }
@@ -52,7 +54,7 @@ function offsetOf(key: string, minutes: number): number {
 }
 
 /** The cron a row keyed `key` fires on every `minutes`: offset by its key, so its fires are exactly `minutes` apart. */
-export function pollCron(key: string, minutes: number): string {
+function pollCron(key: string, minutes: number): string {
   assertPollCadence(minutes, "pollCron");
   const offset = offsetOf(key, minutes);
   return minutes === 60 ? `${offset} * * * *` : `${offset}/${minutes} * * * *`;
@@ -76,7 +78,7 @@ export const pollScheduleInputSchema = z.object({
   /** Deliveries the poll still owes, as `[subscription, object, version, polls, at]`: given up after {@link POLL_GIVE_UP_AFTER}. */
   owed: z.array(z.tuple([z.string(), z.string(), z.number(), z.number(), z.number()])).optional(),
   /** What this fire's fetch reached, applied by its last step: its end and validators. */
-  fetched: z.object({ through: z.number(), etags: z.record(z.string()).optional() }).optional()
+  fetched: z.object({ through: z.number(), etags: z.record(z.string()).optional(), incomplete: z.literal(true).optional() }).optional()
 });
 
 export type PollScheduleInput = z.infer<typeof pollScheduleInputSchema>;
@@ -160,3 +162,14 @@ export async function ensurePollSchedule(ctx: BlockContext, provider: string, th
   const input = existing !== undefined && existing.enabled !== false ? existing.input : { polledThrough: Date.now() };
   await rows.create(key, pollScheduleState(provider, thread, everyMinutes, { ...input, key }), { replace: true });
 }
+
+// FIX-2614 (#4970) owns the declared routines and their seed. This is its
+// `declaredRoutineKey`, the same formula, until both land and this imports it.
+/** A declared routine's stored key: `cfg_` and a hash of the roster flow kind and the entry's id. */
+export async function declaredSubscriptionKey(entryId: string): Promise<string> {
+  const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${ROSTER_FLOW}\n${entryId}`)));
+  return `cfg_${[...digest.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** Whether a subscription row is a declared routine's: its key starts `cfg_`. */
+export const isDeclaredSubscriptionKey = (id: string) => id.startsWith("cfg_");
