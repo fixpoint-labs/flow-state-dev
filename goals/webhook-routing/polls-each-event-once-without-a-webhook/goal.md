@@ -32,7 +32,7 @@ Held-out: the expected set per session is the oracle FIX-2534's run restates, wr
 - `GOAL_CONTROL=hold-forever` never gives a delivery up. Must FAIL **(i)**.
 - `GOAL_CONTROL=etag-while-held` sends validators while a delivery is owed. Must FAIL **(e)**.
 - `GOAL_CONTROL=keep-removed` ignores the declared list at a fire. Must FAIL **(j)**.
-- `GOAL_CONTROL=ignore-cadence` polls every row at the default. Must FAIL **(k)**.
+- `GOAL_CONTROL=ignore-cadence` polls every row at the default. Must FAIL **(k)**: leg 4's 15-minute row fires 5 minutes apart (reported as leg 4 · c, the cadence check).
 - Today's `main` has none of the API this run imports, so it stops before grading; not run as a control.
 
 Not in this run: the spec's (g)/`no-screened` (a refused version judged once) and (h)/`outage-screened` (a screen down, then up) need a screen that can be down, which FIX-2537's evaluator screen brings; unit tests cover `screened` (`packages/workforce/test/subscriptions-poll.test.ts`). Leg 3's count of push refusals a poll judges again is not reported.
@@ -40,3 +40,12 @@ Not in this run: the spec's (g)/`no-screened` (a refused version judged once) an
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-09 | 5057fd05 | n/a | PASS | leg 1: 318 rows equal the oracle over 23 subscriptions (b8 refused), 215 fires, 215 fetches (63 unchanged, d), 0 fetches of an unreadable thread, alice's two sessions on #412 16 fetches; leg 2: 10 lost, 4 untaken and the never-taken one (3 dispatches) landed or given up as specified, 318 rows; leg 3: 319 rows pushed and polled, none twice; leg 4: 2 poll rows before and after a restart, the 15-minute row fired 3 times 15 minutes apart, the removed declared row `config_removed`. |
+| 2026-11-09 | 5057fd05 | n/a | FAIL (expected) | `GOAL_CONTROL=poll-per-subscription`: (l) on every multi-subscription thread (alice's repo 63 fetches within a cadence, #412 16); CAN'T TELL on leg 4 · k (its row is no longer keyed by thread). |
+| 2026-11-09 | 5057fd05 | n/a | FAIL (expected) | `GOAL_CONTROL=mark-moves`: (e) all 14 lost or untaken deliveries landed 0 times; (a) the same rows missing, and a11 6 extra (its lost close no longer holds the mark). |
+| 2026-11-09 | 5057fd05 | n/a | FAIL (expected) | `GOAL_CONTROL=walk-all`: (b) every row fired 0 minutes after its last fire. |
+| 2026-11-09 | 5057fd05 | n/a | FAIL (expected) | `GOAL_CONTROL=under-floor`: (b) every row fired 1 minute after its last fire. |
+| 2026-11-09 | 5057fd05 | n/a | FAIL (expected) | `GOAL_CONTROL=hold-forever`: (i) b5's never-taken check still owed, the mark held at it. |
+| 2026-11-09 | 5057fd05 | n/a | FAIL (expected) | `GOAL_CONTROL=etag-while-held`: (e) lost deliveries landed 0 times, the retry hidden by a `304`; (a) the same rows missing. |
+| 2026-11-09 | 5057fd05 | n/a | FAIL (expected) | `GOAL_CONTROL=keep-removed`: (j) the removed declared entry's row still on. |
+| 2026-11-09 | 5057fd05 | n/a | FAIL (expected) | `GOAL_CONTROL=ignore-cadence`: (c) leg 4's repo row fired 5 minutes after its last, not at its 15-minute cadence. |
