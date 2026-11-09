@@ -285,6 +285,7 @@ export async function handleExecuteAction(
 
     // Admitted: the session check passed and the request runs, so its files stay claimed.
     admitted = true;
+    await claimed.confirm();
 
     // Inline streaming: when the client sends Accept: text/event-stream, return
     // the SSE stream directly from the POST response. This keeps the action

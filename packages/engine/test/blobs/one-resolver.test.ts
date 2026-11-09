@@ -20,9 +20,9 @@ describe("resolveAttachment", () => {
     const id = newBlobId();
     const bytes = new Uint8Array([104, 105]);
     await blobs.put({ id, bytes, mediaType: "image/png", uploader: ALICE });
-    await blobs.claim(id, { uploader: ALICE, owner: sessionBlobOwner("s1") });
+    await blobs.claim(id, { uploader: ALICE, owner: sessionBlobOwner("s1"), send: "send-1" });
     const file = { type: "file" as const, mediaType: "image/png", data: toBlobRef(id) };
-    const resolved = await resolveAttachment(blobs, file, sessionBlobOwner("s1"));
+    const resolved = await resolveAttachment(blobs, file, { owner: sessionBlobOwner("s1"), user: ALICE });
     expect(resolved.bytes).toEqual(bytes);
     expect(resolved.base64()).toBe("aGk=");
   });
@@ -32,11 +32,11 @@ describe("resolveAttachment", () => {
     const id = newBlobId();
     await blobs.put({ id, bytes: new Uint8Array([1]), mediaType: "image/png", uploader: ALICE });
     const file = { type: "file" as const, mediaType: "image/png", data: toBlobRef(id) };
-    await expect(resolveAttachment(blobs, file, sessionBlobOwner("s1"))).rejects.toBeInstanceOf(AttachmentUnavailableError);
-    await blobs.claim(id, { uploader: ALICE, owner: sessionBlobOwner("s1") });
-    await expect(resolveAttachment(blobs, file, sessionBlobOwner("s2"))).rejects.toBeInstanceOf(AttachmentUnavailableError);
+    await expect(resolveAttachment(blobs, file, { owner: sessionBlobOwner("s1"), user: ALICE })).rejects.toBeInstanceOf(AttachmentUnavailableError);
+    await blobs.claim(id, { uploader: ALICE, owner: sessionBlobOwner("s1"), send: "send-1" });
+    await expect(resolveAttachment(blobs, file, { owner: sessionBlobOwner("s2"), user: ALICE })).rejects.toBeInstanceOf(AttachmentUnavailableError);
     await expect(
-      resolveAttachment(blobs, { ...file, data: "aGk=" }, sessionBlobOwner("s1"))
+      resolveAttachment(blobs, { ...file, data: "aGk=" }, { owner: sessionBlobOwner("s1"), user: ALICE })
     ).rejects.toBeInstanceOf(AttachmentUnavailableError);
   });
 });

@@ -11,6 +11,7 @@ import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "../
 import { createInMemoryStores, declareEphemeralDisk } from "../../src/host";
 import { createMemoryBlobStore } from "../../src/blobs/memory-blob-store";
 import { parseBlobRef } from "@flow-state-dev/core/attachments";
+import { AttachmentUnavailableError, resolveAttachment, sessionBlobOwner } from "../../src/blobs/attachments";
 
 /** Let an accepted send finish writing its session. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
@@ -121,7 +122,7 @@ describe("upload route", () => {
 
 describe("claiming and reading", () => {
   it("serves a claimed file to its session's reader, and 404s everyone else", async () => {
-    const { call, upload, send } = setup();
+    const { stores, call, upload, send } = setup();
     const attachment = await attachmentOf(await upload("alice"));
     const id = parseBlobRef(attachment.data)!;
 
@@ -130,6 +131,8 @@ describe("claiming and reading", () => {
 
     expect((await send("alice", "s_alice", [attachment])).status).toBe(202);
     await settle();
+    // Admitted, so no later refused send naming it can hand it back.
+    expect((await stores.blobs!.head(id))?.admitted).toBe(true);
 
     const mine = await call("GET", `blobs/${id}`, "alice");
     expect(mine.status).toBe(200);
@@ -204,5 +207,35 @@ describe("claiming and reading", () => {
     const id = parseBlobRef(attachment.data)!;
     expect(await stores.blobs!.head(id)).toBeUndefined();
     expect((await call("GET", `blobs/${id}`, "alice")).status).toBe(404);
+  });
+});
+
+describe("a claim racing a session's rebirth", () => {
+  it("never serves a file to a session owner who did not upload it", async () => {
+    const { stores, call, upload, send } = setup();
+    const attachment = await attachmentOf(await upload("alice"));
+    const id = parseBlobRef(attachment.data)!;
+    // Alice's straggling send claims her file into `s_taken` after the purge of
+    // Bob's create has run and before his session is written: the one window
+    // the purge cannot see.
+    const set = stores.session.set.bind(stores.session);
+    let raced = false;
+    stores.session.set = (async (...args: Parameters<typeof set>) => {
+      if (!raced) {
+        raced = true;
+        const claim = { uploader: { userId: "alice", orgId: "acme" }, owner: sessionBlobOwner("s_taken"), send: "late-send" };
+        expect(await stores.blobs!.claim(id, claim)).toBe("claimed");
+      }
+      return set(...args);
+    }) as typeof set;
+    expect((await send("bob", "s_taken", [])).status).toBe(202);
+    await settle();
+    expect(raced).toBe(true);
+    expect((await stores.blobs!.head(id))?.owner).toBe(sessionBlobOwner("s_taken"));
+
+    expect((await call("GET", `blobs/${id}`, "bob")).status).toBe(404);
+    // Nor can a block of Bob's session resolve it.
+    const bobs = { owner: sessionBlobOwner("s_taken"), user: { userId: "bob", orgId: "acme" } };
+    await expect(resolveAttachment(stores.blobs!, attachment, bobs)).rejects.toBeInstanceOf(AttachmentUnavailableError);
   });
 });

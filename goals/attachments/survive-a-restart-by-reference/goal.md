@@ -23,3 +23,4 @@
 | 2026-11-09 | fix/FIX-824-blob-storage, `memory-blobs` | n/a | FAIL (expected) | Only `reads`: all eleven ids answered 404 after the restart |
 | 2026-11-09 | fix/FIX-824-blob-storage, `owner-blind` | n/a | FAIL (expected) | Only `other-user`: Bob's eleven reads answered 200 |
 | 2026-11-09 | fix/FIX-824-blob-storage, by hand | n/a | FAIL (expected) | Blast radius: inline base64 in the message failed only `session-read` (43 468 bytes, 1 base64 run); a `store-sqlite` edit failed only `repo` |
+| 2026-11-09 | fix/FIX-824-blob-storage (review fixes: per-send claims, owner index, hourly sweep, uploader check on read) | n/a | PASS | Same evidence as the first PASS: 11/11 sha256-equal, session read 3 467 bytes with 11 references, Bob 11 × 404. `memory-blobs` again FAILs only `reads`; `owner-blind` again FAILs only `other-user` |

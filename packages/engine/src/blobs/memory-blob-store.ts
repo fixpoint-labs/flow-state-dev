@@ -3,7 +3,7 @@
  * attachments in memory too, so a restart drops both together.
  */
 import { isBlobId } from "@flow-state-dev/core/attachments";
-import { decideClaim, isSweepable, uploadedBy } from "./shared";
+import { decideClaim, decideConfirm, decideRelease, isSweepable, uploadedBy } from "./shared";
 import type { BlobRecord, BlobStore } from "./types";
 
 /** Build an in-memory blob store. `now` is for tests that move the clock. */
@@ -49,11 +49,15 @@ export function createMemoryBlobStore(options: { now?: () => number } = {}): Blo
       if (entry !== undefined && next !== undefined) entry.record = next;
       return result;
     },
-    async release(id, owner) {
+    async release(id, owner, send) {
       const entry = blobs.get(id);
-      if (entry === undefined || entry.record.owner !== owner) return;
-      const { owner: _released, ...held } = entry.record;
-      entry.record = held;
+      const next = decideRelease(entry?.record, owner, send);
+      if (entry !== undefined && next !== undefined) entry.record = next;
+    },
+    async confirm(id, owner, send) {
+      const entry = blobs.get(id);
+      const next = decideConfirm(entry?.record, owner, send);
+      if (entry !== undefined && next !== undefined) entry.record = next;
     },
     async deleteOwner(owner, options) {
       let deleted = 0;

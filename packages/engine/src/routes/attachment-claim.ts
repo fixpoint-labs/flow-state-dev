@@ -6,17 +6,24 @@
  * already sent with another conversation, is refused by name and nothing is
  * claimed.
  */
+import { randomUUID } from "node:crypto";
 import type { FileContent } from "@flow-state-dev/core/items";
-import { claimAttachments, releaseAttachments, sessionBlobOwner } from "../blobs/attachments";
+import { claimAttachments, confirmAttachments, releaseAttachments, sessionBlobOwner } from "../blobs/attachments";
 import type { BlobUploader } from "../blobs/types";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { StoreRegistry } from "../stores/types";
 import { jsonResponse, loadTenantSession, unknownSessionResponse } from "./route-utils";
 
-/** The outcome: a response to send instead of running, or a `release` to call if the send is refused later. */
-export type RequestAttachmentClaim = { refused: Response } | { release: () => Promise<void> };
+/**
+ * The outcome: a response to send instead of running, or the claim to settle
+ * once admission decides: `confirm` when the send is admitted, `release` when
+ * it is refused. A release hands back only what no other send relies on.
+ */
+export type RequestAttachmentClaim =
+  | { refused: Response }
+  | { confirm: () => Promise<void>; release: () => Promise<void> };
 
-const NOTHING_CLAIMED: RequestAttachmentClaim = { release: async () => undefined };
+const NOTHING_CLAIMED: RequestAttachmentClaim = { confirm: async () => undefined, release: async () => undefined };
 
 /**
  * Claim the files a request body's `attachments` names into its session.
@@ -71,7 +78,9 @@ export async function claimRequestAttachments(
   }
 
   const owner = sessionBlobOwner(resolveSessionStorageKey(sessionId, tenantId));
-  const outcome = await claimAttachments(blobs, attachments, { uploader, owner });
+  // One id per send, so a refused send undoes only its own claims.
+  const send = randomUUID();
+  const outcome = await claimAttachments(blobs, attachments, { uploader, owner, send });
   if ("refused" in outcome) {
     const { reason, index } = outcome.refused;
     if (reason === "invalid") return { refused: invalid(index) };
@@ -88,8 +97,11 @@ export async function claimRequestAttachments(
       refused: jsonResponse(404, { error: "attachment_not_found", index, message: "No such upload of yours." })
     };
   }
-  const ids = outcome.claimed;
-  return { release: () => releaseAttachments(blobs, ids, owner) };
+  const ids = outcome.held;
+  return {
+    confirm: () => confirmAttachments(blobs, ids, owner, send),
+    release: () => releaseAttachments(blobs, ids, owner, send)
+  };
 }
 
 function invalid(index: number): Response {

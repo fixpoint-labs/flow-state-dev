@@ -10,7 +10,9 @@
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { ATTACHMENT_LIMITS, isAttachmentMediaType, normalizeMediaType, toBlobRef } from "@flow-state-dev/core/attachments";
 import type { FileContent } from "@flow-state-dev/core/items";
+import { readableIn, sessionBlobOwner } from "../blobs/attachments";
 import { newBlobId } from "../blobs/shared";
+import { resolveSessionStorageKey } from "../stores/scope-keys";
 import type { HostDiskState } from "../blobs/host-disk";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import type { ResolvedPrincipal } from "../transports/types";
@@ -106,7 +108,13 @@ export async function handleGetBlob(
   if (session === undefined) return unknownBlobResponse();
 
   const found = await ctx.stores.blobs.read(route.blobId);
-  if (found === undefined) return unknownBlobResponse();
+  // The session's owner must be the file's uploader too: a straggling claim
+  // can land in a session id between its purge and its rebirth under another
+  // person, and that person reads no file of someone else's.
+  const user = { userId: session.userId, orgId: session.orgId ?? DEFAULT_ORG_ID };
+  if (found === undefined || !readableIn(found.record, sessionBlobOwner(resolveSessionStorageKey(sessionId, ctx.tenantId)), user)) {
+    return unknownBlobResponse();
+  }
   const { record, bytes } = found;
   const inline = record.mediaType.startsWith("image/");
   const disposition = `${inline ? "inline" : "attachment"}${record.filename === undefined ? "" : `; filename*=UTF-8''${encodeURIComponent(record.filename)}`}`;

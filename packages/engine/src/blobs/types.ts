@@ -29,6 +29,15 @@ export type BlobRecord = {
   uploader: BlobUploader;
   /** The owner a message claimed it into. Absent while it is held for its uploader. */
   owner?: string;
+  /**
+   * The sends that named it into `owner` and are not yet admitted or refused.
+   * A refused send hands the file back only when no other send is pending and
+   * none was admitted. Absent on a record written before sends were tracked,
+   * which reads as admitted.
+   */
+  pendingSends?: string[];
+  /** `true` once a send that named it was admitted: no later refusal hands it back. */
+  admitted?: boolean;
   /** Epoch ms of the upload. */
   createdAt: number;
 };
@@ -73,13 +82,20 @@ export interface BlobStore {
   head(id: string): Promise<BlobRecord | undefined>;
   /** The record and bytes for `id`, or `undefined`. */
   read(id: string): Promise<{ record: BlobRecord; bytes: Uint8Array } | undefined>;
-  /** Claim a held file into `owner`, for the uploader who holds it. */
-  claim(id: string, claim: { uploader: BlobUploader; owner: string }): Promise<BlobClaimResult>;
   /**
-   * Hand a claimed file back to its uploader: undoes a claim whose message
-   * was refused before it ran. Does nothing unless `owner` holds it.
+   * Claim a held file into `owner`, for the uploader who holds it, on behalf
+   * of `send` (an id the caller makes per message). A file `owner` already
+   * holds is `already-owned`, and `send` is recorded as relying on it too.
    */
-  release(id: string, owner: string): Promise<void>;
+  claim(id: string, claim: { uploader: BlobUploader; owner: string; send: string }): Promise<BlobClaimResult>;
+  /**
+   * `send` was refused before it ran: it no longer relies on the file. The
+   * file goes back to its uploader only when no other send relies on it and
+   * none was admitted with it. Does nothing unless `owner` holds it.
+   */
+  release(id: string, owner: string, send: string): Promise<void>;
+  /** `send` was admitted: the file stays with `owner` whatever later sends do. Does nothing unless `owner` holds it. */
+  confirm(id: string, owner: string, send: string): Promise<void>;
   /**
    * Delete every file `owner` holds. Returns how many went. `keepUploader`
    * spares the files that uploader claimed: a reborn session's purge keeps

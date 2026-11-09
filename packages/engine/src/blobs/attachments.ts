@@ -11,6 +11,7 @@
 import type { FileContent } from "@flow-state-dev/core/items";
 import { parseBlobRef } from "@flow-state-dev/core/attachments";
 import { uint8ArrayToBase64 } from "../streaming/binary";
+import { uploadedBy } from "./shared";
 import type { BlobRecord, BlobStore, BlobUploader } from "./types";
 
 /** The owner key for a session's files: its namespaced storage key, so the tenant is part of it. */
@@ -33,38 +34,55 @@ export type AttachmentRefusal = {
 
 /**
  * Claim every attachment a message names into `owner`, for the uploader who
- * holds them. All or nothing: on a refusal, the claims this call made are
- * released and the refusal names the first file refused.
+ * holds them, on behalf of one `send`. All or nothing: on a refusal, this
+ * send's claims are released and the refusal names the first file refused.
  *
- * Returns the ids this call claimed (not those `owner` already held), so a
- * caller whose message is then refused can {@link releaseAttachments} them.
+ * Returns the ids this send now relies on, those `owner` already held
+ * included, so the caller can {@link confirmAttachments} them once the send is
+ * admitted or {@link releaseAttachments} them if it is refused. A refusal
+ * hands back only what no other send relies on.
  */
 export async function claimAttachments(
   blobs: BlobStore,
   attachments: ReadonlyArray<FileContent>,
-  claim: { uploader: BlobUploader; owner: string }
-): Promise<{ claimed: string[] } | { refused: AttachmentRefusal }> {
+  claim: { uploader: BlobUploader; owner: string; send: string }
+): Promise<{ held: string[] } | { refused: AttachmentRefusal }> {
   const ids: string[] = [];
   for (const [index, attachment] of attachments.entries()) {
     const id = parseBlobRef(attachment.data);
     if (id === undefined) return { refused: { reason: "invalid", index } };
     ids.push(id);
   }
-  const claimed: string[] = [];
+  const held: string[] = [];
   for (const [index, id] of ids.entries()) {
     const result = await blobs.claim(id, claim);
-    if (result === "claimed") claimed.push(id);
-    if (result === "not-found" || result === "owned-elsewhere") {
-      await releaseAttachments(blobs, claimed, claim.owner);
+    if (result === "claimed" || result === "already-owned") held.push(id);
+    else {
+      await releaseAttachments(blobs, held, claim.owner, claim.send);
       return { refused: { reason: result, index } };
     }
   }
-  return { claimed };
+  return { held };
 }
 
-/** Hand claimed files back to their uploader: the message that claimed them was refused before it ran. */
-export async function releaseAttachments(blobs: BlobStore, ids: ReadonlyArray<string>, owner: string): Promise<void> {
-  for (const id of ids) await blobs.release(id, owner);
+/** `send` was refused before it ran: each file goes back to its uploader unless another send relies on it. */
+export async function releaseAttachments(
+  blobs: BlobStore,
+  ids: ReadonlyArray<string>,
+  owner: string,
+  send: string
+): Promise<void> {
+  for (const id of ids) await blobs.release(id, owner, send);
+}
+
+/** `send` was admitted: its files stay with `owner` whatever later sends do. */
+export async function confirmAttachments(
+  blobs: BlobStore,
+  ids: ReadonlyArray<string>,
+  owner: string,
+  send: string
+): Promise<void> {
+  for (const id of ids) await blobs.confirm(id, owner, send);
 }
 
 /** A file's bytes, for a model part or a harness. */
@@ -84,20 +102,34 @@ export class AttachmentUnavailableError extends Error {
 }
 
 /**
- * The one resolver: a stored file's reference to its bytes, for the owner the
- * caller is working in. A reference that another owner holds is unavailable,
- * so a crafted reference in one conversation can't read another's file.
+ * True when `record` may be read in the scope `owner`, whose person is `user`:
+ * the scope holds it, and that person uploaded it. A file is only ever claimed
+ * by its uploader into a scope they own, so a file whose uploader is not the
+ * scope's person landed there by a race with the scope's rebirth under someone
+ * else, and is no file of theirs.
+ */
+export function readableIn(record: BlobRecord, owner: string, user: BlobUploader): boolean {
+  return record.owner === owner && uploadedBy(record, user);
+}
+
+/**
+ * The one resolver: a stored file's reference to its bytes, for the scope the
+ * caller is working in. A reference that another scope holds, or that another
+ * person uploaded, is unavailable, so a crafted reference in one conversation
+ * can't read another's file.
  *
- * @throws {AttachmentUnavailableError} When `data` is no reference, or the file is gone or not `owner`'s.
+ * @throws {AttachmentUnavailableError} When `data` is no reference, or the file is gone or not readable in `scope` ({@link readableIn}).
  */
 export async function resolveAttachment(
   blobs: BlobStore,
   attachment: FileContent,
-  owner: string
+  scope: { owner: string; user: BlobUploader }
 ): Promise<ResolvedAttachment> {
   const id = parseBlobRef(attachment.data);
   const found = id === undefined ? undefined : await blobs.read(id);
-  if (found === undefined || found.record.owner !== owner) throw new AttachmentUnavailableError(attachment);
+  if (found === undefined || !readableIn(found.record, scope.owner, scope.user)) {
+    throw new AttachmentUnavailableError(attachment);
+  }
   const { record, bytes } = found;
   return { record, bytes, base64: () => uint8ArrayToBase64(bytes) };
 }

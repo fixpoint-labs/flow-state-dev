@@ -8,14 +8,22 @@
  * which the sweep takes. Ids are checked against the blob-id shape before
  * any path is built from one.
  *
+ * `owners/<hash of the owner>/<id>` is an index of each owner's files, so
+ * deleting a session's files reads that session's entries, not every file.
+ * An entry is made before the record names the owner and removed after it
+ * stops, so the index never misses a file; an entry left by a crash names a
+ * file the owner no longer holds, and is checked against the record and
+ * dropped.
+ *
  * Single-server by design: a host whose disk does not last, or a deploy on
  * more than one machine, configures a hosted adapter instead.
  */
+import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ATTACHMENT_LIMITS, isBlobId } from "@flow-state-dev/core/attachments";
 import type { StoreAdapter } from "../stores/store-adapter";
-import { createKeyedLock, decideClaim, isSweepable, uploadedBy } from "./shared";
+import { createKeyedLock, decideClaim, decideConfirm, decideRelease, isSweepable, uploadedBy } from "./shared";
 import type { BlobRecord, BlobStore } from "./types";
 
 /** Options for {@link localBlobStores} and {@link createLocalBlobStore}. */
@@ -26,15 +34,35 @@ export type LocalBlobStoreOptions = {
   now?: () => number;
 };
 
+/** How often an upload sweeps: unclaimed uploads live a day, so an hour late costs nothing. */
+const SWEEP_EVERY_MS = 60 * 60 * 1000;
+
 /** Build a blob store over a folder on this server's disk. */
 export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore {
   const rootDir = path.resolve(options.rootDir);
   const now = options.now ?? Date.now;
   const locked = createKeyedLock();
   let opened: Promise<void> | undefined;
+  let sweptAt: number | undefined;
 
   const binPath = (id: string): string => path.join(rootDir, `${id}.bin`);
   const recordPath = (id: string): string => path.join(rootDir, `${id}.json`);
+  const ownerDir = (owner: string): string =>
+    path.join(rootDir, "owners", createHash("sha256").update(owner).digest("hex"));
+
+  /** Index `id` under `owner`. Before the record names the owner, so the index never misses a file. */
+  const indexOwner = async (owner: string, id: string): Promise<void> => {
+    await mkdir(ownerDir(owner), { recursive: true });
+    await writeFile(path.join(ownerDir(owner), id), "");
+  };
+  const unindexOwner = (owner: string, id: string): Promise<void> => rm(path.join(ownerDir(owner), id), { force: true });
+
+  /** Write `next` over `previous`, keeping the owner index true across the write. */
+  const writeRecord = async (previous: BlobRecord | undefined, next: BlobRecord): Promise<void> => {
+    if (next.owner !== undefined && next.owner !== previous?.owner) await indexOwner(next.owner, next.id);
+    await writeWhole(recordPath(next.id), JSON.stringify(next));
+    if (previous?.owner !== undefined && previous.owner !== next.owner) await unindexOwner(previous.owner, next.id);
+  };
 
   const readRecord = async (id: string): Promise<BlobRecord | undefined> => {
     if (!isBlobId(id)) return undefined;
@@ -53,10 +81,11 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
     await rename(temp, file);
   };
 
-  const removeBlob = async (id: string): Promise<void> => {
+  const removeBlob = async (id: string, owner: string | undefined): Promise<void> => {
     // Record first, so a file stops existing before its bytes go.
     await rm(recordPath(id), { force: true });
     await rm(binPath(id), { force: true });
+    if (owner !== undefined) await unindexOwner(owner, id);
   };
 
   /**
@@ -65,9 +94,9 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
    * sessions, and a session create or delete reaches it, so a read-only working
    * folder must fail an upload and nothing else.
    */
-  const entries = async (): Promise<string[]> => {
+  const entries = async (dir = rootDir): Promise<string[]> => {
     try {
-      return await readdir(rootDir);
+      return await readdir(dir);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
@@ -76,6 +105,7 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
 
   const sweep = async (): Promise<void> => {
     const at = now();
+    sweptAt = at;
     const names = await entries();
     const recorded = new Set<string>();
     for (const name of names) {
@@ -86,7 +116,7 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
       recorded.add(id);
       if (isSweepable(record, at)) await locked(id, async () => {
         const current = await readRecord(id);
-        if (current !== undefined && isSweepable(current, now())) await removeBlob(id);
+        if (current !== undefined && isSweepable(current, now())) await removeBlob(id, current.owner);
       });
     }
     // Bytes whose record was never written (a crash mid-upload), and temp
@@ -119,7 +149,7 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
       if (!isBlobId(input.id)) throw new TypeError(`"${input.id}" is not a blob id`);
       await mkdir(rootDir, { recursive: true });
       await open();
-      await sweep();
+      if (sweptAt === undefined || now() - sweptAt >= SWEEP_EVERY_MS) await sweep();
       const record: BlobRecord = {
         id: input.id,
         mediaType: input.mediaType,
@@ -150,30 +180,42 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
     async claim(id, claim) {
       await open();
       return locked(id, async () => {
-        const { result, next } = decideClaim(await readRecord(id), claim);
-        if (next !== undefined) await writeWhole(recordPath(id), JSON.stringify(next));
+        const record = await readRecord(id);
+        const { result, next } = decideClaim(record, claim);
+        if (next !== undefined) await writeRecord(record, next);
         return result;
       });
     },
-    async release(id, owner) {
+    async release(id, owner, send) {
       await open();
       await locked(id, async () => {
         const record = await readRecord(id);
-        if (record === undefined || record.owner !== owner) return;
-        const { owner: _released, ...held } = record;
-        await writeWhole(recordPath(id), JSON.stringify(held));
+        const next = decideRelease(record, owner, send);
+        if (next !== undefined) await writeRecord(record, next);
+      });
+    },
+    async confirm(id, owner, send) {
+      await open();
+      await locked(id, async () => {
+        const record = await readRecord(id);
+        const next = decideConfirm(record, owner, send);
+        if (next !== undefined) await writeRecord(record, next);
       });
     },
     async deleteOwner(owner, options) {
       await open();
       let deleted = 0;
-      for (const name of await entries()) {
-        if (!name.endsWith(".json")) continue;
-        const id = name.slice(0, -".json".length);
+      for (const id of await entries(ownerDir(owner))) {
+        if (!isBlobId(id)) continue;
         const gone = await locked(id, async () => {
           const record = await readRecord(id);
-          if (record?.owner !== owner || uploadedBy(record, options?.keepUploader)) return false;
-          await removeBlob(id);
+          if (record?.owner !== owner) {
+            // An entry a crash left behind: the file is no longer this owner's.
+            await unindexOwner(owner, id);
+            return false;
+          }
+          if (uploadedBy(record, options?.keepUploader)) return false;
+          await removeBlob(id, owner);
           return true;
         });
         if (gone) deleted += 1;
@@ -183,8 +225,9 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
     async delete(id) {
       await open();
       return locked(id, async () => {
-        if ((await readRecord(id)) === undefined) return false;
-        await removeBlob(id);
+        const record = await readRecord(id);
+        if (record === undefined) return false;
+        await removeBlob(id, record.owner);
         return true;
       });
     }

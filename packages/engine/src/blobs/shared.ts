@@ -18,14 +18,43 @@ export function newBlobId(): string {
  */
 export function decideClaim(
   record: BlobRecord | undefined,
-  claim: { uploader: BlobUploader; owner: string }
+  claim: { uploader: BlobUploader; owner: string; send: string }
 ): { result: BlobClaimResult; next?: BlobRecord } {
   if (record === undefined) return { result: "not-found" };
   // Another person's upload reads as no upload at all.
   if (!uploadedBy(record, claim.uploader)) return { result: "not-found" };
-  if (record.owner === claim.owner) return { result: "already-owned" };
+  if (record.owner === claim.owner) {
+    // Kept for good already (an admitted send, or a record from before sends
+    // were tracked), or this send is already counted: nothing to write.
+    const pending = record.pendingSends;
+    if (record.admitted === true || pending === undefined || pending.includes(claim.send)) return { result: "already-owned" };
+    return { result: "already-owned", next: { ...record, pendingSends: [...pending, claim.send] } };
+  }
   if (record.owner !== undefined) return { result: "owned-elsewhere" };
-  return { result: "claimed", next: { ...record, owner: claim.owner } };
+  return { result: "claimed", next: { ...record, owner: claim.owner, pendingSends: [claim.send] } };
+}
+
+/**
+ * Decide a refused send's release. Returns the record to write, or
+ * `undefined` when nothing changes. The file goes back to its uploader only
+ * when `send` was the last send relying on it and none was admitted.
+ */
+export function decideRelease(record: BlobRecord | undefined, owner: string, send: string): BlobRecord | undefined {
+  if (record === undefined || record.owner !== owner || record.pendingSends === undefined) return undefined;
+  const pendingSends = record.pendingSends.filter((pending) => pending !== send);
+  if (pendingSends.length === 0 && record.admitted !== true) {
+    const { owner: _owner, pendingSends: _pending, admitted: _admitted, ...held } = record;
+    return held;
+  }
+  return pendingSends.length === record.pendingSends.length ? undefined : { ...record, pendingSends };
+}
+
+/** Decide an admitted send's confirmation: the record to write, or `undefined` when nothing changes. */
+export function decideConfirm(record: BlobRecord | undefined, owner: string, send: string): BlobRecord | undefined {
+  if (record === undefined || record.owner !== owner || record.pendingSends === undefined) return undefined;
+  const pendingSends = record.pendingSends.filter((pending) => pending !== send);
+  if (record.admitted === true && pendingSends.length === record.pendingSends.length) return undefined;
+  return { ...record, pendingSends, admitted: true };
 }
 
 /** True when `record` was uploaded by `uploader`, in user and organization. */
