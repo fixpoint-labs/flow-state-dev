@@ -161,7 +161,7 @@ A few things worth knowing about a row:
 
 - **Status is coarse on purpose.** Each node in the Trace tab carries the run's status. `active` means the work has not finished. It does not distinguish queued from running from paused waiting for someone. A run that has made no requests reads as `not started`.
 - **Labels can be missing.** The topic and the entry label are stamped when the session is created, and either can be absent. The row still renders — the session id is the address.
-- **The task link is a match, not a foreign key.** Where a run lines up with a task on a board in this session, the Tasks tab shows a link on that task's row. Where a task cannot be matched to exactly one run, no link is shown rather than a guessed one.
+- **The task link is a match, not a foreign key.** Where a run lines up with a task on a board in this session, the Tasks tab shows a link beside that task. Where a task cannot be matched to exactly one run, no link is shown rather than a guessed one.
 
 The lists are read when you open a session and when you refresh; they do not update on their own while you watch. See [Work that outlives the turn](/guides/background-work).
 

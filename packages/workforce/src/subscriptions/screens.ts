@@ -27,15 +27,19 @@
  * **The unheard seam**: an event is unheard,
  * and may be forwarded as unmatched, only when every refusal was on its
  * content. {@link refusedOnContent} says which were: not `interest: unjudged`,
- * not a screen's `: failed`, not `no verdict`.
+ * not a screen marked `failed`, not `no verdict`.
  */
 import { handler } from "@flow-state-dev/core";
 import { subscriptionEventSchema, type EvaluationModel, type SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { indexEntrySchema, type IndexEntry, type ScreenKind } from "./rows";
 
-/** One verdict: a subscription, whether it passed, and the screen that decided it and why. **Pinned** (D1). */
-export const screenVerdictSchema = z.object({ subscription: z.string().min(1), pass: z.boolean(), reason: z.string() });
+/**
+ * One verdict: a subscription, whether it passed, and the screen that decided it and why. **Pinned** (D1).
+ * `failed` marks a refusal by a screen that couldn't run (it threw, answered with no string, or isn't
+ * declared): it decided nothing about the event. Set only by the screens themselves, never read off a reason.
+ */
+export const screenVerdictSchema = z.object({ subscription: z.string().min(1), pass: z.boolean(), reason: z.string(), failed: z.literal(true).optional() });
 
 export type ScreenVerdict = z.infer<typeof screenVerdictSchema>;
 
@@ -94,16 +98,13 @@ export interface SubscriptionScreens {
 /** The reason a subscription is refused when its interest couldn't be judged: not on content. **Pinned** (D1). */
 export const INTEREST_UNJUDGED = "interest: unjudged";
 
-/** A screen's refusal for having failed, not for the event: `<screen>: failed`. **Pinned** (D1). */
-const FAILED_SCREEN = /: failed$/;
-
 /**
  * Whether a verdict refused the event on its content. `interest: unjudged`, a
- * screen that failed (`<screen>: failed`), and `no verdict` are not, so an
+ * screen that failed (marked `failed`), and `no verdict` are not, so an
  * outage leaves an event unheard by nobody's choice, never forwarded (D1).
  */
 export function refusedOnContent(verdict: ScreenVerdict): boolean {
-  return !verdict.pass && verdict.reason !== INTEREST_UNJUDGED && verdict.reason !== "no verdict" && !FAILED_SCREEN.test(verdict.reason);
+  return !verdict.pass && verdict.reason !== INTEREST_UNJUDGED && verdict.reason !== "no verdict" && verdict.failed !== true;
 }
 
 /** One config screen's answer for one subscription: `undefined` to pass, or why it refused. */
@@ -139,7 +140,9 @@ export function screenRefusal(kind: ScreenKind, event: SubscriptionEvent, entry:
 }
 
 /** A step over the undecided: `refusal` answers each, a refusal becomes a verdict, a pass stays undecided for the next. */
-function refusingStep(name: string, refusal: (event: SubscriptionEvent, entry: IndexEntry) => string | undefined) {
+type Refusal = string | { readonly reason: string; readonly failed: true } | undefined;
+
+function refusingStep(name: string, refusal: (event: SubscriptionEvent, entry: IndexEntry) => Refusal) {
   return handler({
     name,
     inputSchema: screeningSchema,
@@ -150,7 +153,8 @@ function refusingStep(name: string, refusal: (event: SubscriptionEvent, entry: I
       for (const candidate of screening.pending) {
         const refused = refusal(screening.event, candidate.entry);
         if (refused === undefined) pending.push(candidate);
-        else verdicts.push({ subscription: candidate.subscription, pass: false, reason: refused });
+        else if (typeof refused === "string") verdicts.push({ subscription: candidate.subscription, pass: false, reason: refused });
+        else verdicts.push({ subscription: candidate.subscription, pass: false, reason: refused.reason, failed: true });
       }
       return { ...screening, pending, verdicts };
     }
@@ -168,28 +172,37 @@ export function screenStep(kind: ScreenKind, options: ScreenOptions) {
 /** Whether `entry` lists the custom screen `name`. */
 const listsCustom = (entry: IndexEntry, name: string) => entry.screens.some((listed) => listed.screen === "custom" && listed.name === name);
 
+/** A custom screen that couldn't run: it threw, or answered with something other than a string or `undefined`. */
+const SCREEN_FAILED = { failed: true } as const;
+
 /**
- * One custom screen's answer for one subscription: `undefined` to pass, or why it refused. A throw, or an answer that isn't a string, is `failed`.
- * A promise answer is refused unawaited, its rejection consumed so it can't reach the host as an unhandled rejection.
+ * One custom screen's answer for one subscription: `undefined` to pass, the app's reason, or
+ * {@link SCREEN_FAILED} when the screen couldn't run. An app's own reason is never read as a failure,
+ * whatever it says.
  */
-function customRefusal(screen: CustomScreen["screen"], event: SubscriptionEvent, entry: IndexEntry): string | undefined {
+function customRefusal(screen: CustomScreen["screen"], event: SubscriptionEvent, entry: IndexEntry): string | typeof SCREEN_FAILED | undefined {
   let answer: unknown;
   try {
     answer = screen(event, entry);
   } catch {
-    return "failed";
+    return SCREEN_FAILED;
   }
   if (answer === undefined) return undefined;
   if (typeof answer === "string") return answer;
   if (typeof (answer as { then?: unknown } | null)?.then === "function") (answer as PromiseLike<unknown>).then(undefined, () => {});
-  return "failed";
+  return SCREEN_FAILED;
 }
 
-/** Run the custom screen `name` over the undecided that list it: a refusal becomes `custom:<name>: <why>`. */
+/** A custom screen's verdict reason: `custom:<name>: <why>`, or `custom:<name>: failed` marked failed. */
+function customVerdict(name: string, refused: string | typeof SCREEN_FAILED): Refusal {
+  return typeof refused === "string" ? `custom:${name}: ${refused}` : { reason: `custom:${name}: failed`, failed: true };
+}
+
+/** Run the custom screen `name` over the undecided that list it. */
 export function customScreenStep(name: string, custom: CustomScreen) {
   return refusingStep(`subscription-screen-custom-${name}`, (event, entry) => {
     const refused = listsCustom(entry, name) ? customRefusal(custom.screen, event, entry) : undefined;
-    return refused === undefined ? undefined : `custom:${name}: ${refused}`;
+    return refused === undefined ? undefined : customVerdict(name, refused);
   });
 }
 
@@ -201,12 +214,30 @@ const undeclaredCustom = (entry: IndexEntry, declared: readonly string[]) =>
 export const listsUndeclaredCustom = (declared: readonly string[]) => (screening: Screening) =>
   screening.pending.some((candidate) => undeclaredCustom(candidate.entry, declared) !== undefined);
 
-/** Refuse, as `custom:<name>: failed`, the undecided that list a custom screen the provider no longer declares: it can't run. */
+/** Refuse, as `custom:<name>: failed` marked failed, the undecided that list a custom screen the provider no longer declares: it can't run. */
 export function undeclaredCustomStep(declared: readonly string[]) {
   return refusingStep("subscription-screen-custom-undeclared", (_event, entry) => {
     const missing = undeclaredCustom(entry, declared);
-    return missing === undefined ? undefined : `custom:${missing.name}: failed`;
+    return missing === undefined ? undefined : { reason: `custom:${missing.name}: failed`, failed: true };
   });
+}
+
+/**
+ * Every custom screen `entry` lists, in the provider's declared order, then any it lists that the
+ * provider doesn't declare: the first refusal's reason, or `undefined` when all pass. Delivery reads it
+ * on the committed subscription, as routing's custom steps did on the index entry.
+ */
+export function customScreensRefusal(custom: Readonly<Record<string, CustomScreen>>, event: SubscriptionEvent, entry: IndexEntry): string | undefined {
+  for (const [name, screen] of Object.entries(custom)) {
+    if (!listsCustom(entry, name)) continue;
+    const refused = customRefusal(screen.screen, event, entry);
+    if (refused !== undefined) {
+      const verdict = customVerdict(name, refused);
+      return typeof verdict === "string" ? verdict : verdict!.reason;
+    }
+  }
+  const missing = undeclaredCustom(entry, Object.keys(custom));
+  return missing === undefined ? undefined : `custom:${missing.name}: failed`;
 }
 
 /** Every subscription still undecided after every screen it lists passed it. */

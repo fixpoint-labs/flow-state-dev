@@ -13,11 +13,11 @@ import { mockEvaluationModel } from "@flow-state-dev/testing";
 import { describe, expect, it } from "vitest";
 import {
   SUBSCRIPTION_INDEX_PATTERN,
-  subscriptionTools,
   unheard,
   type Routed,
   type SubscriptionScreens
 } from "../src/subscriptions";
+import { indexSlotOf } from "../src/subscriptions/rows";
 import { INTEREST_UNJUDGED } from "../src/subscriptions/screens";
 import { ORG } from "./conversation-board-harness";
 import { bootSubscriptionsHost, event, type SubscriptionsHost } from "./subscriptions-harness";
@@ -105,7 +105,7 @@ describe("custom screens", () => {
         const a = (await host.subscribe("alice", one, { thread: PR, screens: [{ screen: "custom", name: "throws" }] })) as { id: string };
         const b = (await host.subscribe("alice", two, { thread: PR, screens: [{ screen: "custom", name: "awaits" }] })) as { id: string };
         const { output, by } = verdictsOf(await host.route(event()));
-        expect(by.get(a.id)?.reason).toBe("custom:throws: failed");
+        expect(by.get(a.id)).toMatchObject({ reason: "custom:throws: failed", failed: true });
         expect(by.get(b.id)?.reason).toBe("custom:awaits: failed");
         expect(unheard(output)).toBe(false);
         expect(await host.heard(one)).toEqual([]);
@@ -135,13 +135,30 @@ describe("custom screens", () => {
     }
   });
 
-  it("are refused at subscribe by a name the provider doesn't declare, and listed in the tool's description", () =>
+  it("read as refused on content when an app's reason or a listed word ends in \": failed\": only a screen that failed is marked failed", () =>
+    withHost({ custom: { check: { describe: "says no", screen: () => "check: failed" } } }, async (host) => {
+      const one = await host.follower("alice");
+      const two = await host.follower("alice");
+      const a = (await host.subscribe("alice", one, { thread: PR, screens: [{ screen: "custom", name: "check" }] })) as { id: string };
+      const b = (await host.subscribe("alice", two, { thread: PR, screens: [{ screen: "words", any: ["build: failed"] }] })) as { id: string };
+      const { output, by } = verdictsOf(await host.route(event({ text: "All green." })));
+      expect(by.get(a.id)).toMatchObject({ pass: false, reason: "custom:check: check: failed" });
+      expect(by.get(b.id)?.reason).toBe("words: none of the words build: failed");
+      expect(by.get(a.id)).not.toHaveProperty("failed");
+      expect(unheard(output)).toBe(true);
+    }));
+
+  it("are refused by saveRoutine's event trigger for a name the provider doesn't declare, the refusal naming the ones it does", () =>
     withHost({ custom: stackTrace }, async (host) => {
       const one = await host.follower("alice");
       const refused = await host.subscribe("alice", one, { thread: PR, screens: [{ screen: "custom", name: "nope" }] });
-      expect(refused).toEqual({ refused: expect.stringMatching(/^no_screen: "nope".*stack-trace/) });
-      const tools = subscriptionTools({ providers: [{ provider: "github", canRead: () => true, screens: { custom: stackTrace } }] });
-      expect(tools.subscribe.description).toContain('github "stack-trace": the text holds a stack trace');
+      expect(refused).toEqual({ refused: expect.stringMatching(/no_screen: "nope".*stack-trace/) });
+    }));
+
+  it("are listed in the roster's saveRoutine description, so a model knows it may list one", () =>
+    withHost({ custom: stackTrace }, async (host) => {
+      const save = (host.instances.roster as unknown as { actions: Record<string, { description?: string }> }).actions.saveRoutine;
+      expect(save?.description).toContain('github "stack-trace": the text holds a stack trace');
     }));
 });
 
@@ -276,8 +293,8 @@ describe("the interest screen", () => {
       const runtime = await host.state.getRuntime();
       const indexes = await runtime.stores.resourceState.getByPrefix("org", ORG, SUBSCRIPTION_INDEX_PATTERN.replace("*", ""));
       const entries = Object.assign({}, ...Object.values(indexes).map((index) => (index.state as { subscriptions: Record<string, { interest?: string }> }).subscriptions));
-      expect(entries[listing.id].interest).toBe("about crash");
-      expect(entries[plain.id]).not.toHaveProperty("interest");
+      expect(entries[indexSlotOf("alice", listing.id)].interest).toBe("about crash");
+      expect(entries[indexSlotOf("alice", plain.id)]).not.toHaveProperty("interest");
     });
   });
 });
