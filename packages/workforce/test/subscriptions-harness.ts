@@ -1,5 +1,5 @@
 /**
- * A host for subscriptions on the real engine (FIX-2534): the board host's
+ * A host for subscriptions on the real engine (FIX-2534; screens, FIX-2537): the board host's
  * worker flows, a `follower` worker flow whose sessions subscribe (its
  * actions are the two subscription tools, so a test calls them as a model
  * would, with no model), and a GitHub service flow that routes events.
@@ -27,6 +27,7 @@ import {
   subscriptionResources,
   subscriptionTools,
   type SubscriptionProvider,
+  type SubscriptionScreens,
   type SubscriptionServiceOptions
 } from "../src/subscriptions";
 import type { WorkerManifest } from "../src/manifest";
@@ -51,7 +52,7 @@ const github: SubscriptionProvider = {
 
 const doorInput = z.object({ message: z.string() });
 
-function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined) {
+function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, github: SubscriptionProvider) {
   const tools = subscriptionTools({ providers: [github] });
   // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[hold]` waits on the
   // host's hold, then `[fail]` fails the task.
@@ -91,11 +92,14 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   service?: Partial<Omit<SubscriptionServiceOptions, "provider" | "installation" | "kind">>;
   /** What a `[hold]` task turn waits on. */
   hold?: Promise<void>;
+  /** The app's own screens on the GitHub provider: its custom functions and its interest model. */
+  screens?: SubscriptionScreens;
 };
 
 /** A board host with followers and a GitHub service flow. */
 export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   let host: InboundTransportHost | undefined;
+  const provider: SubscriptionProvider = options.screens === undefined ? github : { ...github, screens: options.screens };
   const standard: WorkerManifest[] = [
     ...boardWorkers({ lead: { delegates: ["eng.tasker", "eng.follower"] } }),
     { id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] }
@@ -103,11 +107,11 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const board = bootBoardHost({
     ...options,
     standard,
-    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
+    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, provider), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({
       "github-service": defineSubscriptionServiceFlow({
         kind: "github-service",
-        provider: github,
+        provider,
         installation,
         trustedBots: ["codex"],
         ...(options.service ?? {})

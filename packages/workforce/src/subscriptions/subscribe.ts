@@ -33,6 +33,7 @@ import {
   type SubscriptionResourceState
 } from "./rows";
 import { requestHostOf } from "@flow-state-dev/core/internal";
+import type { SubscriptionScreens } from "./screens";
 
 /**
  * A provider a session can subscribe on: its key, who may read a thread, and
@@ -46,6 +47,8 @@ export interface SubscriptionProvider {
   canRead(thread: string, ctx: BlockContext): boolean | Promise<boolean>;
   /** The running user's own id at the provider, so their own actions are dropped (`own`). */
   self?(ctx: BlockContext): string | undefined | Promise<string | undefined>;
+  /** The app's own screens on this provider, declared once: its custom functions, and the model `interest` asks (FIX-2537). */
+  readonly screens?: SubscriptionScreens;
 }
 
 /** What `subscribe` takes: the tool's input. */
@@ -59,10 +62,15 @@ export const subscribeInputSchema = z
       .optional()
       .describe(
         'Narrow what passes: { screen: "labels", any: [...] }, { screen: "words", any: [...] } (title or text, any case), ' +
-          '{ screen: "allow", ids: [...] } (only these senders). Every listed screen must pass.'
+          '{ screen: "allow", ids: [...] } (only these senders), { screen: "custom", name } (one of the app\'s own screens, listed in the tool\'s description), ' +
+          '{ screen: "interest" } (a model reads what the other screens passed against your interest sentence). Every listed screen must pass.'
       ),
     outsiders: z.literal(true).optional().describe("Also hear people outside the project (not members, collaborators or listed bots). Off by default."),
-    interest: z.string().min(1).max(500).describe("In one sentence, what you want to hear about, kept with the subscription.")
+    interest: z
+      .string()
+      .min(1)
+      .max(500)
+      .describe('In one sentence, what you want to hear about, kept with the subscription. Only the "interest" screen reads it.')
   })
   .strict();
 
@@ -105,8 +113,32 @@ const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   ...(row.self === undefined ? {} : { self: row.self }),
   userId: row.userId,
   orgId: row.orgId,
-  ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId })
+  ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId }),
+  // The sentence leaves the user's cell only when the `interest` screen will read it.
+  ...(row.screens.some((listed) => listed.screen === "interest") ? { interest: row.interest } : {})
 });
+
+/** Why `provider` can't run a screen `screens` lists, or `undefined` when it can run them all. */
+function unrunnableScreen(provider: SubscriptionProvider, screens: SubscribeInput["screens"]): string | undefined {
+  const custom = Object.keys(provider.screens?.custom ?? {});
+  for (const listed of screens ?? []) {
+    if (listed.screen === "custom" && !custom.includes(listed.name)) {
+      return `no_screen: "${listed.name}" isn't a screen on ${provider.provider}. Its screens: ${custom.join(", ") || "none"}.`;
+    }
+    if (listed.screen === "interest" && provider.screens?.interestModel === undefined) {
+      return `no_interest_model: ${provider.provider} has no model to judge an interest; list code screens only.`;
+    }
+  }
+  return undefined;
+}
+
+/** The custom screens each provider declares, as the subscribe tool's description lists them. */
+function customScreensLine(providers: readonly SubscriptionProvider[]): string {
+  const lines = providers.flatMap((p) =>
+    Object.entries(p.screens?.custom ?? {}).map(([name, custom]) => `${p.provider} "${name}": ${custom.describe}`)
+  );
+  return lines.length === 0 ? "" : ` Custom screens: ${lines.join("; ")}.`;
+}
 
 /**
  * Subscribe the running session to one thread.
@@ -126,6 +158,8 @@ export async function subscribe(ctx: BlockContext, providers: readonly Subscript
   if (!thread.startsWith(`${provider.provider}:`)) {
     return { refused: `wrong_provider: a ${provider.provider} thread key starts with "${provider.provider}:".` };
   }
+  const unrunnable = unrunnableScreen(provider, input.screens);
+  if (unrunnable !== undefined) return { refused: unrunnable };
   if (!(await provider.canRead(thread, ctx))) return { refused: `not_readable: you can't read "${thread}", so you can't follow it.` };
 
   const identity = ctx.session.identity as { id: string; userId?: string; orgId?: string; tenantId?: string };
@@ -223,7 +257,8 @@ export function subscriptionTools(options: { readonly providers: readonly Subscr
     name: SUBSCRIPTION_TOOLS.subscribe,
     description:
       "Follow one thread (a PR, an issue, a repo) so its events reach this conversation as messages from the service, " +
-      "each once. Name the thread key; list kinds and screens to hear less. Refused for a thread you can't read.",
+      "each once. Name the thread key; list kinds and screens to hear less. Refused for a thread you can't read." +
+      customScreensLine(options.providers),
     inputSchema: subscribeInputSchema,
     outputSchema: subscribeOutputSchema,
     resources: subscriptionResources,

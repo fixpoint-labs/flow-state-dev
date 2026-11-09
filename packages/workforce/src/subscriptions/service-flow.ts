@@ -1,13 +1,15 @@
-// FIX-2535; FIX-2534, epic D1.
+// FIX-2535; FIX-2534, epic D1; FIX-2537.
 /**
  * A provider's service flow: routes each normalized event
- * to the sessions that subscribed to one of its threads, in code, with no model.
+ * to the sessions that subscribed to one of its threads, after code screens,
+ * and asks a model only for the subscriptions that list `interest`, once per
+ * routing run (FIX-2537).
  *
  * Two internal entries, on either side of a fence (D2):
  *
  * - **Routing** ({@link SUBSCRIPTION_ROUTE_ENTRY}) runs as the service, in the
  *   org. It reads the thread index for each of the event's threads (it reads
- *   no user's cell), selects by provider and kind, runs the config screens,
+ *   no user's cell), selects by provider and kind, runs the screen chain (`chain.ts`),
  *   and returns the verdicts (at most {@link MAX_ROUTED_VERDICTS}) and an owner
  *   run for each subscription that passed. The host fires those
  *   (`routeServiceEvent`), each only once it has found the subscription's row
@@ -57,7 +59,8 @@ import {
   type SubscriptionCursor,
   type SubscriptionResourceState
 } from "./rows";
-import { configScreenChain, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
+import { screenChain } from "./chain";
+import { refusedOnContent, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
 import { unsubscribe, type SubscriptionProvider } from "./subscribe";
 
 /** The default cap: the most messages one subscription sends in an hour. */
@@ -106,6 +109,17 @@ const routedSchema = z.object({
 });
 
 export type Routed = z.infer<typeof routedSchema>;
+
+/**
+ * Whether no subscription heard a routed event, each by its own choice: every
+ * verdict a refusal on the event's content, and none cut. Only such an event
+ * may be forwarded as unmatched (FIX-2537 D1): one refused `interest:
+ * unjudged`, or by a screen that failed, was heard by nobody but not unheard,
+ * so an outage forwards nothing.
+ */
+export function unheard(routed: Pick<Routed, "verdicts" | "verdictsCut">): boolean {
+  return routed.verdictsCut === 0 && routed.verdicts.every(refusedOnContent);
+}
 
 const deliveredSchema = z.object({
   /** `inflight`: a copy of an event another delivery is still sending; that delivery's outcome decides. */
@@ -250,7 +264,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     }
   });
 
-  const screens = configScreenChain({ trustedBots: options.trustedBots ?? [] });
+  const screens = screenChain({ trustedBots: options.trustedBots ?? [], ...(provider.screens === undefined ? {} : { screens: provider.screens }) });
   const route = sequencer({ name: "subscription-route", inputSchema: subscriptionEventSchema })
     .step(nominate)
     .step(screens)
