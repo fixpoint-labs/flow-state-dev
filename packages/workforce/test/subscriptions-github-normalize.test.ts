@@ -171,6 +171,10 @@ describe("addressed: the event asks the app's agent", () => {
     expect(comment("> @acme-agent please fix\n\nI disagree with this").addressed).toBeUndefined();
     expect(comment("```\n@acme-agent run\n```").addressed).toBeUndefined();
     expect(comment("see `@acme-agent`").addressed).toBeUndefined();
+    // A double-backtick span holds a literal backtick; the mention inside it is code too.
+    expect(comment("run ``@acme-agent `fix` `` here").addressed).toBeUndefined();
+    expect(comment("``@acme-agent``").addressed).toBeUndefined();
+    expect(comment("``code`` then @acme-agent please").addressed).toBe(true);
     expect(comment("mail me at bob@acme-agent.dev").addressed).toBeUndefined();
     expect(comment("@carol can you look?").addressed).toBeUndefined();
   });

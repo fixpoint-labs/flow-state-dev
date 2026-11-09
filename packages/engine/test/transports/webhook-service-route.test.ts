@@ -22,18 +22,20 @@ import { handleWebhook } from "../../src/transports/webhook/routes";
 const SECRET = "gh_secret";
 const ORG = "acme";
 
-const eventSchema = z.object({ n: z.number(), fail: z.boolean().optional() }).passthrough();
+const eventSchema = z.object({ n: z.number(), fail: z.boolean().optional(), unfinished: z.boolean().optional() }).passthrough();
 const routed: Array<{ n: number; as: string; org: string | undefined }> = [];
 const delivered: string[] = [];
 
 const route = handler({
   name: "svc-route",
   inputSchema: eventSchema,
-  outputSchema: z.object({ ownerRuns: z.array(z.any()) }),
+  // Any output: a request that stopped before routing finished resolves with no output and no error.
+  outputSchema: z.any(),
   execute: async (input, ctx) => {
     const identity = ctx.session.identity as { userId: string; orgId?: string };
     routed.push({ n: input.n, as: identity.userId, org: identity.orgId });
     if (input.fail === true) throw new Error("routing broke");
+    if (input.unfinished === true) return undefined;
     return {
       ownerRuns: [{ flowKind: "svc", entry: "deliver", input: { note: `event ${input.n}` }, owner: { userId: "alice", orgId: ORG }, rowKey: "subs/s1" }]
     };
@@ -148,6 +150,17 @@ describe("the webhook service route", () => {
     try {
       const res = await post(host, signed({ items: [{ n: 1, fail: true }] }));
       expect(res.status).toBe(500);
+    } finally {
+      await dispose();
+    }
+  });
+
+  // A routing request the host stopped (a shutdown) resolves with no output and no error: never "routed to no one".
+  it("answers 503 when routing never finished, so a redelivery routes it", async () => {
+    const { host, dispose } = await boot();
+    try {
+      const res = await post(host, signed({ items: [{ n: 1, unfinished: true }] }));
+      expect(res.status).toBe(503);
     } finally {
       await dispose();
     }

@@ -11,8 +11,8 @@
  * the same steps through the handshake, then normalizes the delivery and
  * routes each event through the flow's internal entry as the service
  * (`routeServiceEvent`), in the org the host's principal resolver names. The
- * 202 waits until every owner run it names is durably recorded; a run the
- * host failed to record answers 503, so a redelivery sends it (the delivery
+ * 202 waits until every owner run it names is durably recorded; a routing
+ * that never finished, or a run the host failed to record, answers 503, so a redelivery sends it (the delivery
  * ids make a repeat land once).
  */
 import {
@@ -334,6 +334,11 @@ async function handleServiceRoute(
     if (routed.error !== undefined) {
       host.logger?.error?.("webhook service routing failed", { provider, eventType, error: errorMessage(routed.error) });
       return jsonResponse(500, { error: "route_failed" });
+    }
+    // Stopped before it finished (a shutdown): nothing says who should hear it, so it is retried, never acked.
+    if (routed.incomplete === true) {
+      host.logger?.error?.("webhook service routing did not finish", { provider, eventType });
+      return jsonResponse(503, { error: "route_incomplete" });
     }
     for (const run of routed.ownerRuns) {
       if (run.failed !== undefined) failed += 1;

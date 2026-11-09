@@ -106,15 +106,16 @@ function roleOf(sender: Json | undefined, association: unknown): SubscriptionEve
 }
 
 /**
- * The logins a body mentions, lower-cased, outside quoted lines, fenced and
- * inline code: a quoted reply or a pasted snippet asks no one. An `@` inside a
+ * The logins a body mentions, lower-cased, outside quoted lines, fenced code
+ * and code spans of any backtick length: a quoted reply or a pasted snippet asks no one. An `@` inside a
  * word (an email address) is no mention.
  */
 export function githubMentions(body: string): string[] {
   const unquoted = body
     .replace(/```[\s\S]*?(```|$)/g, " ")
     .replace(/~~~[\s\S]*?(~~~|$)/g, " ")
-    .replace(/`[^`\n]*`/g, " ")
+    // A code span opens with a run of backticks and closes at the next run of the same length.
+    .replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, " ")
     .split("\n")
     .filter((line) => !/^\s*>/.test(line))
     .join("\n");
