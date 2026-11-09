@@ -33,6 +33,25 @@ describe("runScheduleTick", () => {
     expect(statuses.sort()).toEqual([0, 202, 202]);
   });
 
+  it("stops dispatching once its signal aborts: nothing after the abort is sent", async () => {
+    const stop = new AbortController();
+    const dispatched: string[] = [];
+    await runScheduleTick({
+      index: { claimDue: async () => [entry("a"), entry("b"), entry("c")] },
+      concurrency: 1,
+      signal: stop.signal,
+      dispatch: async (_entry, id) => {
+        dispatched.push(id);
+        stop.abort();
+        return 202;
+      }
+    });
+    expect(dispatched).toEqual([formatScheduleId("acme", "alice", "a")]);
+    const claimDue = vi.fn(async () => []);
+    await runScheduleTick({ index: { claimDue }, signal: stop.signal, dispatch: async () => 202 });
+    expect(claimDue).not.toHaveBeenCalled();
+  });
+
   it("throws when the claim does, dispatching nothing", async () => {
     const dispatch = vi.fn();
     await expect(runScheduleTick({ index: { claimDue: async () => Promise.reject(new Error("down")) }, dispatch })).rejects.toThrow("down");

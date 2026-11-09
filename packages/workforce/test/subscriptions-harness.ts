@@ -50,7 +50,7 @@ function readableBy(userId: string, thread: string): boolean {
  * What a polled provider has: the events it would return, by their own time,
  * and every poll it answered (who asked, for which thread, from when).
  */
-export const pollTimeline: { events: SubscriptionEvent[]; calls: Array<{ userId: string; thread: string; since?: number; etags: boolean }>; incomplete?: boolean } = {
+export const pollTimeline: { events: SubscriptionEvent[]; calls: Array<{ userId: string; thread: string; since?: number; etags: boolean }>; incomplete?: boolean; overlapMs?: number } = {
   events: [],
   calls: []
 };
@@ -64,7 +64,9 @@ const github: SubscriptionProvider = {
     const userId = (ctx.session.identity as { userId: string }).userId;
     pollTimeline.calls.push({ userId, thread, ...(cursor.since === undefined ? {} : { since: cursor.since }), etags: cursor.etags !== undefined });
     const now = Date.now();
-    const events = pollTimeline.events.filter((e) => e.threads.includes(thread) && e.at <= now && (cursor.since === undefined || e.at >= cursor.since));
+    // A provider whose times are coarser than the mark reads back past it by `overlapMs`: repeats the fire must absorb.
+    const from = cursor.since === undefined ? undefined : cursor.since - (pollTimeline.overlapMs ?? 0);
+    const events = pollTimeline.events.filter((e) => e.threads.includes(thread) && e.at <= now && (from === undefined || e.at >= from));
     // The validator names what this thread holds up to now: unchanged answers `304`.
     const etag = `"${pollTimeline.events.filter((e) => e.threads.includes(thread) && e.at <= now).length}"`;
     if (cursor.etags?.thread === etag) return { unchanged: true };

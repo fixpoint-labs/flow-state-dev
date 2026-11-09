@@ -34,6 +34,8 @@ export interface RunScheduleTickOptions<TEntry extends ScheduleDueEntry = Schedu
   readonly concurrency?: number;
   /** Observe each dispatch: the schedule and its status (`0` when it threw, or the schedule names no org). Never throws back. */
   readonly onDispatch?: (entry: TEntry, status: number) => void;
+  /** Stop dispatching: checked before the claim and before each dispatch. A dispatch already sent finishes. */
+  readonly signal?: AbortSignal;
 }
 
 /**
@@ -42,6 +44,7 @@ export interface RunScheduleTickOptions<TEntry extends ScheduleDueEntry = Schedu
  * retry with the schedules still pending.
  */
 export async function runScheduleTick<TEntry extends ScheduleDueEntry>(options: RunScheduleTickOptions<TEntry>): Promise<readonly TEntry[]> {
+  if (options.signal?.aborted === true) return [];
   const due = await options.index.claimDue(options.now ?? Date.now(), options.maxPerTick ?? 100);
   const notify = (entry: TEntry, status: number) => {
     try {
@@ -51,6 +54,7 @@ export async function runScheduleTick<TEntry extends ScheduleDueEntry>(options: 
     }
   };
   await runWithConcurrency(due, Math.max(1, options.concurrency ?? 10), async (entry) => {
+    if (options.signal?.aborted === true) return;
     // A schedule with no org names no cell to fire from; the endpoint would refuse it.
     if (entry.orgId === undefined) {
       // eslint-disable-next-line no-console
@@ -82,7 +86,7 @@ export interface StartScheduleTickOptions<TEntry extends ScheduleDueEntry = Sche
 export interface ScheduleTick {
   /** Run one tick now, awaiting any already running first. */
   tick(): Promise<void>;
-  /** Stop ticking. Idempotent; resolves once a tick already running has settled. */
+  /** Stop ticking and tell a running tick to stop dispatching. Idempotent; resolves once that tick has settled. */
   dispose(): Promise<void>;
 }
 
@@ -96,11 +100,12 @@ export function startScheduleTick<TEntry extends ScheduleDueEntry>(options: Star
   const clock = options.clock ?? Date.now;
   let running: Promise<void> = Promise.resolve();
   let disposed = false;
+  const stop = new AbortController();
   const tick = (): Promise<void> => {
     running = running.then(async () => {
       if (disposed) return;
       try {
-        await runScheduleTick({ ...options, now: clock() });
+        await runScheduleTick({ ...options, now: clock(), signal: stop.signal });
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error("[flow-state/scheduled] claimDue failed; the next tick tries again", err);
@@ -115,6 +120,7 @@ export function startScheduleTick<TEntry extends ScheduleDueEntry>(options: Star
     tick,
     async dispose() {
       disposed = true;
+      stop.abort();
       if (timer !== undefined) clearInterval(timer);
       await running;
     }

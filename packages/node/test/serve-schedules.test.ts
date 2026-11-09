@@ -50,6 +50,27 @@ describe("serve() ticks a flow's schedule index", () => {
     expect(claims).toHaveLength(1);
   });
 
+  it("closes within its shutdown grace while a tick is stalled in its claim", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let claims = 0;
+    const flow = defineFlow({
+      kind: "stalled",
+      actions: { noop: { inputSchema: z.object({}), block: handler({ name: "stalled-noop", inputSchema: z.object({}), execute: () => ({}) }) } },
+      // A store that stopped answering: the claim never settles.
+      schedules: { index: { claimDue: () => ((claims += 1), new Promise<never>(() => undefined)) } }
+    })();
+    const flowState = createFlowState({ flows: { stalled: flow }, stores: { default: { primary: inMemoryStores() } } });
+    const handle = await serve(flowState, { port: 0, host: "127.0.0.1", handleSignals: false, shutdownGraceMs: 10 });
+    await flowState.getRuntime();
+    await settle();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(claims).toBe(1);
+    const started = Date.now();
+    const closed = await Promise.race([handle.close().then(() => "closed"), new Promise((resolve) => setTimeout(() => resolve("hung"), 2_000))]);
+    expect(closed).toBe("closed");
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
   it("starts no tick when the port is already in use", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const blocker = createServer();

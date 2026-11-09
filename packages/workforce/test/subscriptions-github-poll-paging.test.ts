@@ -25,9 +25,12 @@ const API_ROOT = "https://api.github.com";
 /** A fake GitHub: `api` by path, lists paged 100 at a time with a Link header, a 304 for an unchanged validator. */
 function fakeGitHub(api: Record<string, unknown>, options: { wrap?: Record<string, string> } = {}) {
   const asked: string[] = [];
+  /** Every URL asked, query included. */
+  const urls: string[] = [];
   const fetch = (async (url: string, init: { headers: Record<string, string> }) => {
     const u = new URL(url);
     const path = u.pathname;
+    urls.push(url);
     asked.push(`${path}${u.searchParams.has("page") ? `?page=${u.searchParams.get("page")}` : ""}`);
     if (!(path in api)) return new Response("{}", { status: 404 });
     const body = api[path];
@@ -43,7 +46,7 @@ function fakeGitHub(api: Record<string, unknown>, options: { wrap?: Record<strin
     if (pages > 1) headers.link = `<${API_ROOT}${path}?per_page=100&page=${pages}>; rel="last"`;
     return new Response(JSON.stringify(slice), { status: 200, headers });
   }) as unknown as typeof globalThis.fetch;
-  return { asked, provider: githubSubscriptionProvider({ token: () => "t", fetch }) };
+  return { asked, urls, provider: githubSubscriptionProvider({ token: () => "t", fetch }) };
 }
 
 function prApi(): Record<string, unknown> {
@@ -95,6 +98,22 @@ describe("a repository's poll and its webhook agree", () => {
     if ("unchanged" in polled) throw new Error("expected the comments");
     expect(polled.events.filter((e) => e.kind === "comment").every((e) => e.labels.includes("ops"))).toBe(true);
     expect(asked.filter((a) => a === "/repos/acme/api/issues/9")).toHaveLength(1);
+  });
+});
+
+describe("GitHub's whole-second times against a mark in ms", () => {
+  // GitHub stamps to the second; a mark later in that second must not drop the event for good.
+  it("hears a close in the same second as the mark, which it would otherwise read as before it", async () => {
+    const api = prApi();
+    api["/repos/acme/api/issues/412/timeline"] = [{ event: "closed", created_at: "2026-11-09T10:00:00Z", actor: user("alice") }];
+    const { provider, urls } = fakeGitHub(api);
+    const mark = Date.parse("2026-11-09T10:00:00Z") + 100;
+    const result = await provider.poll!(PR, { since: mark }, ctx);
+    if ("unchanged" in result) throw new Error("expected the close");
+    expect(result.events.map((e) => e.object.id)).toEqual([`pull_request:${PR}:closed:`]);
+    // The `since` GitHub is asked for is the mark's whole second too.
+    const comments = urls.find((u) => u.includes("/repos/acme/api/issues/412/comments"))!;
+    expect(new URL(comments).searchParams.get("since")).toBe("2026-11-09T10:00:00.000Z");
   });
 });
 

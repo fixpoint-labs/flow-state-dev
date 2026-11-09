@@ -30,6 +30,7 @@ beforeEach(() => {
   pollTimeline.events = [];
   pollTimeline.calls = [];
   pollTimeline.incomplete = false;
+  pollTimeline.overlapMs = 0;
 });
 afterEach(() => vi.useRealTimers());
 
@@ -198,6 +199,43 @@ describe("a thread's closing", () => {
       const heard = await host.heard(one);
       expect(heard).toHaveLength(1);
       expect(heard[0]).toContain("merged");
+      expect((await host.subscriptionRows("alice")).find((r) => r.id === id)).toMatchObject({ enabled: false, endedReason: "thread_closed" });
+    }));
+});
+
+describe("a poll that reads back past its mark", () => {
+  // A provider with whole-second times re-reads the mark's second: each event in it still lands once.
+  it("delivers an event the overlap fetches twice only once", () =>
+    withPolling(async (host) => {
+      const one = await host.follower("alice");
+      await host.subscribe("alice", one, { thread: PR });
+      // An overlap wider than a cadence: every poll fetches the review again.
+      pollTimeline.overlapMs = 10 * MINUTE;
+      const review = reviewAt(T0 + 30_000, { text: "in the overlap" });
+      pollTimeline.events.push(review);
+      await run(host, 20);
+      const refetched = pollTimeline.calls.filter((c) => c.since !== undefined && c.since - 10 * MINUTE <= review.at);
+      expect(refetched.length).toBeGreaterThanOrEqual(3);
+      expect(await host.heard(one)).toHaveLength(1);
+      expect(await host.serviceRows("alice")).toHaveLength(1);
+    }));
+});
+
+describe("the order a fetch is settled in", () => {
+  // A version counts one object's edits; only the events' own times order a thread.
+  it("delivers a comment that happened before a close, though the close's version is lower", () =>
+    withPolling(async (host) => {
+      const one = await host.follower("alice");
+      const id = ((await host.subscribe("alice", one, { thread: PR })) as { id: string }).id;
+      pollTimeline.events.push(
+        reviewAt(T0 + 40_000, { kind: "pull_request", title: "Pull request #412 merged", closes: true, object: { id: "pr-412-closed", version: 1 } }),
+        reviewAt(T0 + 20_000, { kind: "comment", text: "before the merge", object: { id: "comment-9", version: 50 } })
+      );
+      // Two polls: the second finds the close taken and ends the subscription.
+      await run(host, 10);
+      const heard = await host.heard(one);
+      expect(heard).toHaveLength(2);
+      expect(heard[0]).toContain("before the merge");
       expect((await host.subscriptionRows("alice")).find((r) => r.id === id)).toMatchObject({ enabled: false, endedReason: "thread_closed" });
     }));
 });

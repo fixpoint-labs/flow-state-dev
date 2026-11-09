@@ -288,8 +288,10 @@ export function serve(
       timer.unref?.();
     });
 
-    // A tick already dispatching settles before the stores close.
-    await ticks.dispose();
+    // A tick already dispatching settles before the stores close, within what is left of the grace: a
+    // stalled claim (a store that stopped answering) must not hold shutdown open. The tick was told to stop.
+    const tickGrace = Math.max(0, shutdownGraceMs - (Date.now() - closing));
+    await Promise.race([ticks.dispose(), new Promise<void>((resolveGrace) => setTimeout(resolveGrace, tickGrace).unref?.())]);
     // What is left of the grace bounds the wait for requests due wakes started.
     if (disposeOnClose) await dispose({ drainMs: Math.max(0, shutdownGraceMs - (Date.now() - closing)) });
   };

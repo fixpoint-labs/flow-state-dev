@@ -49,6 +49,9 @@ const ms = (value: unknown): number | undefined => (typeof value === "string" ? 
 /** The timeline events a poll rebuilds, by GitHub's own names. */
 const TIMELINE_ACTIONS = new Set(["assigned", "review_requested", "closed", "reopened"]);
 
+/** The resolution of GitHub's timestamps, in ms: whole seconds. */
+const GITHUB_TIME_RESOLUTION_MS = 1_000;
+
 /** The most pages one list is read to in one poll, its first included. */
 const MAX_PAGES = 5;
 
@@ -83,7 +86,9 @@ export async function pollGitHubThread(
   const [, owner, name, n] = match as unknown as [string, string, string, string | undefined];
   const repo = `/repos/${owner}/${name}`;
   const through = Date.now();
-  const since = cursor.since;
+  // GitHub stamps times to the second: an event later in the mark's own second reads as before it. Asked and
+  // filtered from the start of that second, so the overlap re-reads it; seen versions drop the repeats.
+  const since = cursor.since === undefined ? undefined : Math.floor(cursor.since / GITHUB_TIME_RESOLUTION_MS) * GITHUB_TIME_RESOLUTION_MS;
   const sinceParam = since === undefined ? "" : `&since=${encodeURIComponent(new Date(since).toISOString())}`;
   const etags: Record<string, string> = {};
   let moved = false;

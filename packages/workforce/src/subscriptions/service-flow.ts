@@ -532,7 +532,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       for (const sub of subs) cursors.set(sub.id, (await subscriptionCursorsOf(ctx).getOptional(sub.id))?.state);
       const events = result.events
         .filter((e) => e.provider === provider.provider && e.threads.includes(thread))
-        .sort((a, b) => a.object.version - b.object.version);
+        // By when each happened: a version counts one object's edits and orders nothing across objects.
+        .sort((a, b) => a.at - b.at || (a.object.id < b.object.id ? -1 : a.object.id > b.object.id ? 1 : 0) || a.object.version - b.object.version);
       const screenings: Screening[] = [];
       for (const event of events) {
         const candidates = subs
