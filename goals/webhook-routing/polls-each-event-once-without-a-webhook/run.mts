@@ -32,7 +32,6 @@ import {
 } from "@flow-state-dev/workforce";
 import {
   SUBSCRIPTION_POLLS_PATTERN,
-  declaredSubscriptionKey,
   subscriptionPolling
 } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
@@ -562,7 +561,9 @@ await runGoal(async (failures, tell) => {
     const webSession = await cold.createFollower("alice");
     await cold.act("alice", repoSession, "subscribe", { provider: "github", thread: "github:acme/api", interest: "the repo", everyMinutes: 15 });
     const web = (await cold.act("alice", webSession, "subscribe", { provider: "github", thread: "github:acme/web#9", interest: "the web PR" })).output?.id as string;
-    const declaredKey = await declaredSubscriptionKey("web-pr");
+    // The declared routines' key for entry web-pr, written again here, not imported: cfg_ and a hash of the roster flow and the entry id.
+    const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode("workforce-roster\nweb-pr")));
+    const declaredKey = `cfg_${[...digest.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
     await cold.storeAs("alice", web, declaredKey);
     const three = await cold.act("alice", repoSession, "subscribe", { provider: "github", thread: "github:acme/web", interest: "too often", everyMinutes: 3 });
     for (let t = T0; t <= T0 + 30 * MINUTE; t += MINUTE) {

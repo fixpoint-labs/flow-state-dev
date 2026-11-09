@@ -53,6 +53,15 @@ const MAX_PAGES = 5;
 /** Where the head commit of the pull request is kept between polls, beside the ETags. */
 const HEAD_KEY = "#head";
 
+/** Where a list's last page and its count are kept between polls, beside the ETags. */
+const LAST_PREFIX = "#last:";
+
+/** Items on a full page: every list is asked `per_page=100`. */
+const PAGE = 100;
+
+/** A request's validator key: its path without `since`, which moves with the mark. */
+const validatorKey = (path: string) => path.replace(/&since=[^&]*/, "");
+
 /** The last page a `Link` header names, or `undefined`. */
 function lastPageOf(link: string | null): number | undefined {
   const match = link === null ? null : /[?&]page=(\d+)[^>]*>;\s*rel="last"/.exec(link);
@@ -78,36 +87,93 @@ export async function pollGitHubThread(
   let moved = false;
   let incomplete = false;
 
-  /** GET `path`, conditional on its last ETag unless `full`: the body and its `Link`, or `undefined` when unchanged. */
+  /**
+   * GET `path`, conditional on its last ETag unless `full`: the body and its
+   * `Link`, or `undefined` when unchanged. A validator is kept by the path
+   * without its `since`, which moves with the mark every poll: an unchanged
+   * answer still comes back `304`.
+   */
   const get = async (path: string, full = false): Promise<{ body: unknown; link: string | null } | undefined> => {
-    const res = await call(ctx, path, full ? undefined : cursor.etags?.[path]);
+    const key = validatorKey(path);
+    const res = await call(ctx, path, full ? undefined : cursor.etags?.[key]);
     if (res === undefined) throw new Error("no GitHub token for the polling user");
     if (res.status === 304) {
-      if (cursor.etags?.[path] !== undefined) etags[path] = cursor.etags[path]!;
+      if (cursor.etags?.[key] !== undefined) etags[key] = cursor.etags[key]!;
       return undefined;
     }
     if (!res.ok) throw new Error(`GitHub ${path} answered ${res.status}`);
     const etag = res.headers.get("etag");
-    if (etag !== null) etags[path] = etag;
+    if (etag !== null) etags[key] = etag;
     return { body: await res.json(), link: res.headers.get("link") };
   };
 
   /**
-   * A list's items since the mark: its first page conditionally, then, when
-   * it has more, from its last page back until a page starts before the mark.
+   * A list's items since the mark. GitHub lists oldest first, so an append
+   * lands on the last page and leaves the first unchanged:
+   *
+   * - **First page moved:** read it, then from its last page back until a
+   *   page starts before the mark.
+   * - **First page `304`:** read the last page the previous poll knew, under
+   *   its own ETag, and forward while a page comes back full or names a later
+   *   last page (an append that rolled onto a new page).
+   *
+   * Each list's last page and how full it was are kept beside the ETags, as
+   * `#last:<path>` = `<page>:<count>`. A quiet list costs one `304` on its
+   * first page, and one on its last when it has more than one.
    */
-  const pages = async (path: string, timeOf: (item: Json) => number | undefined): Promise<Json[]> => {
+  const pages = async (path: string, timeOf: (item: Json) => number | undefined, itemsOf: (body: unknown) => Json[] = list): Promise<Json[]> => {
+    const lastKey = `${LAST_PREFIX}${validatorKey(path)}`;
+    const [knownLast, knownCount] = (cursor.etags?.[lastKey] ?? "1:0").split(":").map(Number) as [number, number];
+    const remember = (page: number, count: number) => (etags[lastKey] = `${page}:${count}`);
     const first = await get(path);
-    if (first === undefined) return [];
+
+    if (first === undefined) {
+      remember(knownLast, knownCount);
+      // The only page, not full: nothing was appended.
+      if (knownLast <= 1 && knownCount < PAGE) return [];
+      const out: Json[] = [];
+      let page = knownLast <= 1 ? 2 : knownLast;
+      let count = knownLast <= 1 ? 0 : knownCount;
+      for (let reads = 0; ; reads += 1) {
+        if (reads >= MAX_PAGES - 1) {
+          incomplete = true;
+          break;
+        }
+        const read = await get(`${path}&page=${page}`);
+        if (read !== undefined) {
+          moved = true;
+          const got = itemsOf(read.body);
+          out.push(...got);
+          count = got.length;
+          const named = lastPageOf(read.link);
+          if (named !== undefined && named > page) {
+            remember(page, count);
+            page += 1;
+            continue;
+          }
+        }
+        remember(page, count);
+        // Not full: the list ends on this page. Full: the next may have begun.
+        if (count < PAGE) break;
+        page += 1;
+        count = 0;
+      }
+      return out;
+    }
+
     moved = true;
-    const items = list(first.body);
+    const items = itemsOf(first.body);
     const last = lastPageOf(first.link);
-    if (last === undefined || last <= 1) return items;
+    if (last === undefined || last <= 1) {
+      remember(1, items.length);
+      return items;
+    }
     const later: Json[][] = [];
     let page = last;
     let reachedMark = false;
     while (page > 1 && later.length < MAX_PAGES - 1) {
-      const got = list((await get(`${path}&page=${page}`, true))?.body);
+      const got = itemsOf((await get(`${path}&page=${page}`, true))?.body);
+      if (page === last) remember(last, got.length);
       later.unshift(got);
       page -= 1;
       const oldest = got.map(timeOf).find((t) => t !== undefined);
@@ -162,10 +228,11 @@ export async function pollGitHubThread(
   const issueComments = await pages(`${repo}/issues/${n}/comments?per_page=100${sinceParam}`, (c) => ms(c.updated_at));
   const reviews = isPr ? await pages(`${repo}/pulls/${n}/reviews?per_page=100`, (r) => ms(r.submitted_at)) : [];
   const reviewComments = isPr ? await pages(`${repo}/pulls/${n}/comments?per_page=100${sinceParam}`, (c) => ms(c.updated_at)) : [];
-  // Asked every poll under its own ETag: a finished run changes neither the issue nor the pull request.
-  const runsRead = isPr && sha !== undefined ? await get(`${repo}/commits/${sha}/check-runs?per_page=100`) : undefined;
-  if (runsRead !== undefined) moved = true;
-  const runs = list(obj(runsRead?.body)?.check_runs);
+  // Asked every poll, paged like the rest: a finished run changes neither the issue nor the pull request.
+  const runs =
+    isPr && sha !== undefined
+      ? await pages(`${repo}/commits/${sha}/check-runs?per_page=100`, (r) => ms(r.completed_at) ?? ms(r.started_at), (body) => list(obj(body)?.check_runs))
+      : [];
 
   // Something moved: the subjects an event is rebuilt from are read in full, so it carries their labels, title and privacy.
   if (moved) {

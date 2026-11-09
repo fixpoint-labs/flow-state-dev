@@ -202,6 +202,20 @@ describe("a thread's closing", () => {
     }));
 });
 
+describe("a close that can never be sent", () => {
+  // A close ends its subscriptions whether or not it was delivered, as on push.
+  it("still ends the subscription when the close is given up after three polls", () =>
+    withPolling(async (host) => {
+      const one = await host.follower("alice");
+      const id = ((await host.subscribe("alice", one, { thread: PR })) as { id: string }).id;
+      pollTimeline.events.push(reviewAt(T0 + 20_000, { kind: "pull_request", title: "Pull request #412 merged", closes: true }));
+      const lost = await host.loseDispatches("onMessageReceived");
+      await run(host, 20);
+      lost.restore();
+      expect((await host.subscriptionRows("alice")).find((r) => r.id === id)).toMatchObject({ enabled: false, endedReason: "thread_closed" });
+    }));
+});
+
 describe("a row's life", () => {
   it("ends the poll row at its next fire once no subscription on it is on", () =>
     withPolling(async (host) => {
@@ -240,9 +254,9 @@ describe("declared routines on a polled thread", () => {
     );
   });
 
-  it("names a declared routine's row as the routines' seed does: cfg_ and a hash of the roster flow and the entry id", async () => {
-    const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode("workforce-roster\napi-pr")));
-    expect(await declaredSubscriptionKey("api-pr")).toBe(`cfg_${[...digest.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("")}`);
+  // The routines' `declaredRoutineKey` pins the same value: a drift in either formula fails one of the two.
+  it("names a declared routine's row as the routines' seed does: entry api-pr on workforce-roster is cfg_05562bf34a380505896ae059", async () => {
+    expect(await declaredSubscriptionKey("api-pr")).toBe("cfg_05562bf34a380505896ae059");
   });
 });
 

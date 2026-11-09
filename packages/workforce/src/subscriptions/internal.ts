@@ -11,4 +11,4 @@ export { FOLLOWED_PULL_REQUEST_KINDS, pullRequestThread } from "./github/follow-
 export { DEFAULT_MAX_OWNER_RUNS } from "./service-flow";
 // FIX-2536: polling's mechanics, for goals and FIX-2614's declared routines.
 export { SUBSCRIPTION_POLLS_PATTERN } from "./keys";
-export { POLL_CADENCES, declaredSubscriptionKey, subscriptionPolling } from "./poll";
+export { subscriptionPolling } from "./poll";

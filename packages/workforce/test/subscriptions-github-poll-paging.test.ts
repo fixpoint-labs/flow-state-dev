@@ -19,9 +19,11 @@ const SINCE = Date.parse("2026-11-09T10:00:00Z");
 const at = (minutes: number) => new Date(SINCE + minutes * 60_000).toISOString();
 const ctx = { session: { identity: { id: "s", userId: "alice", orgId: "acme" } } } as unknown as BlockContext;
 const user = (login: string) => ({ login, type: "User" });
+/** The API root a `Link` header names. */
+const API_ROOT = "https://api.github.com";
 
 /** A fake GitHub: `api` by path, lists paged 100 at a time with a Link header, a 304 for an unchanged validator. */
-function fakeGitHub(api: Record<string, unknown>) {
+function fakeGitHub(api: Record<string, unknown>, options: { wrap?: Record<string, string> } = {}) {
   const asked: string[] = [];
   const fetch = (async (url: string, init: { headers: Record<string, string> }) => {
     const u = new URL(url);
@@ -31,11 +33,14 @@ function fakeGitHub(api: Record<string, unknown>) {
     const body = api[path];
     const page = Number(u.searchParams.get("page") ?? "1");
     const pages = Array.isArray(body) ? Math.max(1, Math.ceil(body.length / 100)) : 1;
-    const slice = Array.isArray(body) ? body.slice((page - 1) * 100, page * 100) : body;
+    const items = Array.isArray(body) ? body.slice((page - 1) * 100, page * 100) : body;
+    // A list GitHub wraps in an object (check runs: `{ total_count, check_runs }`).
+    const field = options.wrap?.[path];
+    const slice = field === undefined ? items : { total_count: (body as unknown[]).length, [field]: items };
     const etag = `"${path}:${page}:${JSON.stringify(slice).length}"`;
     if (init.headers["if-none-match"] === etag) return new Response(null, { status: 304 });
     const headers: Record<string, string> = { etag };
-    if (pages > 1) headers.link = `<https://api.github.com${path}?per_page=100&page=${pages}>; rel="last"`;
+    if (pages > 1) headers.link = `<${API_ROOT}${path}?per_page=100&page=${pages}>; rel="last"`;
     return new Response(JSON.stringify(slice), { status: 200, headers });
   }) as unknown as typeof globalThis.fetch;
   return { asked, provider: githubSubscriptionProvider({ token: () => "t", fetch }) };
@@ -96,6 +101,55 @@ describe("GitHub's poll, quiet and busy", () => {
     expect(result.events.find((e) => e.closes === true)).toBeDefined();
     // The walk stops at the mark: page 2 holds everything after it, so page 1's old items cost nothing more.
     expect(asked.filter((a) => a.startsWith("/repos/acme/api/issues/412/timeline"))).toEqual(["/repos/acme/api/issues/412/timeline", "/repos/acme/api/issues/412/timeline?page=2"]);
+  });
+
+  it("hears a close appended to a long list whose first page came back 304", async () => {
+    const api = prApi();
+    const timeline: unknown[] = Array.from({ length: 150 }, (_, i) => ({ event: "labeled", created_at: at(-500 + i), actor: user("alice") }));
+    api["/repos/acme/api/issues/412/timeline"] = timeline;
+    const { provider } = fakeGitHub(api);
+    const first = await provider.poll!(PR, { since: SINCE }, ctx);
+    if ("unchanged" in first) throw new Error("expected a first read");
+    timeline.push({ event: "closed", created_at: at(5), actor: user("alice") });
+    const second = await provider.poll!(PR, { since: SINCE, etags: first.etags! }, ctx);
+    if ("unchanged" in second) throw new Error("the close on page 2 was hidden by page 1's 304");
+    expect(second.events.map((e) => e.object.id)).toEqual([`pull_request:${PR}:closed:`]);
+  });
+
+  it("hears what rolled onto a new page when the last page it knew was full", async () => {
+    const api = prApi();
+    const timeline: unknown[] = Array.from({ length: 100 }, (_, i) => ({ event: "labeled", created_at: at(-500 + i), actor: user("alice") }));
+    api["/repos/acme/api/issues/412/timeline"] = timeline;
+    const { provider } = fakeGitHub(api);
+    const first = await provider.poll!(PR, { since: SINCE }, ctx);
+    if ("unchanged" in first) throw new Error("expected a first read");
+    timeline.push({ event: "review_requested", created_at: at(3), actor: user("alice"), requested_reviewer: user("bob") });
+    const second = await provider.poll!(PR, { since: SINCE, etags: first.etags! }, ctx);
+    if ("unchanged" in second) throw new Error("the new page was hidden by page 1's 304");
+    expect(second.events.map((e) => e.object.id)).toEqual([`pull_request:${PR}:review_requested:bob`]);
+  });
+
+  it("costs a quiet long list one 304 on its first page and one on its last, with a moving mark", async () => {
+    const api = prApi();
+    api["/repos/acme/api/issues/412/timeline"] = Array.from({ length: 150 }, (_, i) => ({ event: "labeled", created_at: at(-500 + i), actor: user("alice") }));
+    const { provider, asked } = fakeGitHub(api);
+    const first = await provider.poll!(PR, { since: SINCE }, ctx);
+    if ("unchanged" in first) throw new Error("expected a first read");
+    asked.length = 0;
+    // The mark moved since the first poll: the lists that take `since` are still asked conditionally.
+    const second = await provider.poll!(PR, { since: SINCE + 60_000, etags: first.etags! }, ctx);
+    expect(second).toEqual({ unchanged: true });
+    expect(asked.filter((a) => a.startsWith("/repos/acme/api/issues/412/timeline"))).toEqual(["/repos/acme/api/issues/412/timeline", "/repos/acme/api/issues/412/timeline?page=2"]);
+  });
+
+  it("reads a head commit's check runs past their first page", async () => {
+    const api = prApi();
+    const runs = Array.from({ length: 101 }, (_, i) => ({ id: i + 1, name: `job-${i}`, status: "completed", conclusion: "success", completed_at: at(1), app: { slug: "github-actions" } }));
+    api["/repos/acme/api/commits/abc/check-runs"] = runs;
+    const { provider } = fakeGitHub(api, { wrap: { "/repos/acme/api/commits/abc/check-runs": "check_runs" } });
+    const result = await provider.poll!(PR, { since: SINCE }, ctx);
+    if ("unchanged" in result) throw new Error("expected events");
+    expect(result.events.filter((e) => e.kind === "check")).toHaveLength(101);
   });
 
   it("says so when a list is busier than the walk reads, instead of dropping what it didn't reach", async () => {

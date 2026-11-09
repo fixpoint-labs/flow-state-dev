@@ -199,7 +199,8 @@ export function serve(
     servesPush: options.push !== false,
   });
   const push = servePush(app, options);
-  const ticks = serveScheduleTicks(app, honoApp.fetch, options.basePath ?? "/api/flows");
+  // Started once the bind succeeds: a server that failed to listen has no handle to stop a tick.
+  let ticks: { dispose(): Promise<void> } = { dispose: async () => undefined };
 
   // Static assets + SPA fallback for the DevTool UI, GET-only (Hono also answers
   // HEAD). Registered after the portable app's health/API routes, so it only
@@ -311,6 +312,7 @@ export function serve(
       },
       (info) => {
         server.off("error", onError);
+        ticks = serveScheduleTicks(app, honoApp.fetch, options.basePath ?? "/api/flows");
         // Only take ownership of process signals once the bind succeeds, so a
         // failed listen (e.g. EADDRINUSE) doesn't leave teardown handlers — which
         // would dispose the FlowState — registered for a server that never started.

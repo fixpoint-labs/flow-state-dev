@@ -646,6 +646,13 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
             },
             "subscription-poll-settle"
           ).catch(() => undefined);
+          // A close ends its subscriptions whether or not it was delivered, as on push: nothing after it is owed.
+          if (closedThreadOf(event) === sub.thread) {
+            await unsubscribe(ctx, subscription, "thread_closed");
+            subs.delete(subscription);
+            for (let i = owed.length - 1; i >= 0; i -= 1) if (owed[i]![0] === subscription) owed.splice(i, 1);
+            break;
+          }
         }
       }
       counts.owed = owed.length;
