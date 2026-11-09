@@ -12,7 +12,7 @@
  * Operations (JSON array in `GOAL_OPS`):
  *   { op: "save", schedule }       Alice saves a clock routine (roster `saveRoutine`)
  *   { op: "delete", key }          Alice removes one (`deleteRoutine`)
- *   { op: "list" }                 Alice's clock routines (`listRoutines`), as the old list's rows
+ *   { op: "list" }                 Alice's clock routines (`listRoutines`), in the old list's shape
  *   { op: "fire", key, at? }       the scheduler POSTs the schedule's dispatch, with `at` as its time or none
  *   { op: "settle" }               wait until no request is running
  *   { op: "tasks" }                Alice's tasks with launch (`listTasks_tasks`)
@@ -148,7 +148,7 @@ try {
         results.push({ op: "delete", out: await roster("deleteRoutine", { id: `clock:${op.key}` }) });
         break;
       case "list": {
-        // The run grades the rows the list used to answer: key, cron, zone, next run.
+        // The run grades what the list used to answer: key, cron, zone, next run.
         const listed = (await roster("listRoutines", {})) as { routines?: Array<{ name: string; trigger: { clock?: { cron: string; timezone: string; nextRunAt: string | null } } }> };
         const schedules = (listed.routines ?? []).filter((r) => r.trigger.clock !== undefined).map((r) => ({ key: r.name, ...r.trigger.clock! }));
         results.push({ op: "list", now: new Date().toISOString(), out: { schedules } });

@@ -7,7 +7,7 @@
  *   `{ cron, timezone, kind: "task", input: { filer, goal, assignee, ... } }`.
  *   `input.filer` names the worker whose board the task lands on; the rest of
  *   `input` is the task, as the board's filing takes it. `metadata.madeBy`
- *   names who made it, when the row says.
+ *   names who made it, when the schedule says.
  * - **The fire.** The roster flow resolves a dispatch id to its row
  *   (`createResourceCollectionScheduleResolver`), and the endpoint fires each
  *   scheduled time at most once. The `task` handler runs as the
@@ -17,7 +17,7 @@
  *   (derived on the server), opening it when absent. That entry files
  *   through the board's own filing. No model turn decides what lands (D1).
  * - **The verbs.** The routine verbs (`../routines`) list, save, pause and
- *   delete these rows; a paused one is `enabled: false`. A row's next run is
+ *   delete these schedules; a paused one is `enabled: false`. A schedule's next run is
  *   worked out from its cron and time zone at read (D3), so the list needs no
  *   schedule index.
  * - **The index.** Optional. Given one, the collection mirrors every write
@@ -73,7 +73,7 @@ export const scheduledTaskInputSchema = z
 
 export type ScheduledTaskInput = z.infer<typeof scheduledTaskInputSchema>;
 
-/** A schedule row as the collection stores it. */
+/** A schedule as the collection stores it. */
 export type StoredSchedule = {
   cron: string;
   kind: string;
@@ -85,10 +85,10 @@ export type StoredSchedule = {
   metadata?: Record<string, unknown>;
 };
 
-/** When `row` is next due, worked out from its cron and zone now; `null` while it is off or its cron doesn't parse. */
-export function nextRunOf(row: StoredSchedule): string | null {
-  if (row.enabled === false) return null;
-  const next = parseNextFireAt(row.cron, row.timezone ?? "UTC");
+/** When `schedule` is next due, worked out from its cron and zone now; `null` while it is off or its cron doesn't parse. */
+export function nextRunOf(schedule: StoredSchedule): string | null {
+  if (schedule.enabled === false) return null;
+  const next = parseNextFireAt(schedule.cron, schedule.timezone ?? "UTC");
   return next === null ? null : new Date(next).toISOString();
 }
 
@@ -136,7 +136,7 @@ export async function removeSchedule(ctx: BlockContext, key: string): Promise<vo
  */
 export function scheduleResources(index?: ScheduleIndex) {
   // Shared across flows, as the subscriptions are: a worker flow that isolates its users' state
-  // still writes the rows the roster lists and fires.
+  // still writes the schedules the roster lists and fires.
   const collection = defineScheduleCollection({ pattern: SCHEDULES_PATTERN, flowIsolation: false, ...(index === undefined ? {} : { index }) });
   // The dispatch endpoint's record of each schedule's last fired time, in the
   // same cell: read by no one here, deleted with its schedule.

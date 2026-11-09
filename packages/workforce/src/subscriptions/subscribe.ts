@@ -7,13 +7,13 @@
  *
  * `subscribe` writes for the session that will hear: the running one, or a
  * `target` its caller derived on the server (the user's own event routine, the
- * conversation's derived address; a resume, the stored row's). It selects by
+ * conversation's derived address; a resume, the saved subscription's). It selects by
  * provider, one thread key and optional kinds (epic D6), and refuses a thread
  * its user can't read, checked as that user on the provider's `canRead`
  * (ER-4). The session, the worker, the task and the user come from the turn's
- * own session or that target, never from the input. It writes the row, then
- * the thread index entry that mirrors the row's screen settings for the
- * service; a paused write writes the row off and no index entry.
+ * own session or that target, never from the input. It writes the subscription,
+ * then the thread index entry that mirrors its screen settings for the
+ * service; a paused subscription is off and has no index entry.
  *
  * `unsubscribe` turns the row off (`enabled: false`) and takes it out of the
  * index. A pause is an end with reason `paused`, the one a resume undoes. A
@@ -28,6 +28,7 @@ import type { RoutineMaker } from "../routines/listed-routine";
 import { TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import {
   indexKeyOf,
+  indexSlotOf,
   listedScreenSchema,
   subscriptionCursorsOf,
   subscriptionIndexOf,
@@ -92,58 +93,64 @@ export interface SubscribeTarget {
   readonly taskId?: string;
   /**
    * The tenant that session runs under; omitted, none. A target's tenant wins over the running
-   * session's: a resume from another tenant's roster keeps the row's.
+   * session's: a resume from another tenant's roster keeps the saved subscription's.
    */
   readonly tenantId?: string;
 }
 
-/** How a server-side caller writes the row. Never a model's input. */
+/** How a server-side caller writes the subscription. Never a model's input. */
 export interface SubscribeWrite {
-  /** The row's id: a resume's stored one, or a declared routine's `cfg_` key. Omitted, derived from session and thread. */
+  /** The subscription's id: a resume's saved one, or a declared routine's `cfg_` key. Omitted, derived from session and thread. */
   readonly id?: string;
-  /** Who made it, kept on the row. */
+  /** Who made it, kept with the subscription. */
   readonly madeBy?: RoutineMaker;
 }
 
 /**
- * Which life a write gives the row, decided against the row as committed at the write
- * ({@link nextRow}):
+ * Which life a write gives a subscription, decided against the saved subscription at the write
+ * ({@link nextEntry}):
  *
- * - `fresh`: a subscribe, a new act: the row is on.
- * - `keep`: a seed's write of the config's fields over the committed row, by the seed rules below;
- *   a new row is on.
- * - `resume`: on, only over a paused row.
+ * - `fresh`: a subscribe, a new act: the subscription is on.
+ * - `keep`: a seed's write of the config's fields over the saved subscription, by the seed rules below;
+ *   a new one is on.
+ * - `resume`: only `enabled`, over a paused subscription on the thread the resume checked; every other
+ *   field stays as committed.
  */
 type Life = "fresh" | "keep" | "resume";
 
 /**
- * The transition rules every write and end of a subscription goes through, against the committed
- * row, so no interleaving of them leaves a row its writers didn't agree on:
+ * The transition rules every write and end of a subscription goes through, against the saved
+ * subscription, so no interleaving of them leaves one its writers didn't agree on:
  *
  * - a terminal end (any reason but `paused`) is sticky: only a fresh subscribe starts a new life,
- *   and a resume or a pause leaves an ended row ended;
+ *   and a resume or a pause leaves an ended subscription ended;
  * - a seed keeps the user's pause always; it keeps an end only while the thread is unchanged,
  *   since an end belongs to the thread it ended on (a closed PR says nothing of a new one); and a
- *   row ended `config_removed` comes back on when its entry returns. These are the only ways an
- *   ended row comes back short of a fresh subscribe;
- * - a pause applies only to an enabled row;
- * - a resume applies only to a paused row;
- * - an end applies to an enabled or a paused row.
+ *   subscription ended `config_removed` comes back on when its entry returns. These are the only ways
+ *   an ended subscription comes back short of a fresh subscribe;
+ * - a pause applies only to an enabled subscription;
+ * - a resume applies only to a paused subscription, and only while its thread is the one whose read
+ *   access it checked; it turns it on and changes nothing else;
+ * - an end applies to an enabled or a paused subscription.
  *
- * `undefined` leaves the row as it is.
+ * `undefined` leaves the subscription as it is.
  */
-function nextRow(current: SubscriptionResourceState | undefined, row: SubscriptionResourceState, life: Life): SubscriptionResourceState | undefined {
-  if (life === "fresh") return row;
-  if (life === "resume") return current !== undefined && isPaused(current) ? row : undefined;
-  if (current === undefined || current.enabled) return row;
+function nextEntry(current: SubscriptionResourceState | undefined, wanted: SubscriptionResourceState, life: Life): SubscriptionResourceState | undefined {
+  if (life === "fresh") return wanted;
+  if (life === "resume") {
+    if (current === undefined || !isPaused(current) || current.provider !== wanted.provider || current.thread !== wanted.thread) return undefined;
+    const { endedReason: _why, endedAt: _when, ...kept } = current;
+    return { ...kept, enabled: true };
+  }
+  if (current === undefined || current.enabled) return wanted;
   // A seed keeps a pause always; an end only on the thread it ended on, and not config's own.
-  if (!isPaused(current) && (current.endedReason === "config_removed" || current.thread !== row.thread)) return row;
-  const { enabled: _on, endedReason: _why, endedAt: _when, ...fields } = row;
+  if (!isPaused(current) && (current.endedReason === "config_removed" || current.thread !== wanted.thread)) return wanted;
+  const { enabled: _on, endedReason: _why, endedAt: _when, ...fields } = wanted;
   return { ...fields, enabled: false, ...(current.endedReason === undefined ? {} : { endedReason: current.endedReason }), ...(current.endedAt === undefined ? {} : { endedAt: current.endedAt }) };
 }
 
-/** {@link nextRow}'s rule for an end: a pause only of an enabled row; any other end of an enabled or paused one. */
-function endedRow(current: SubscriptionResourceState, reason: SubscriptionEnd, at: number): SubscriptionResourceState | undefined {
+/** {@link nextEntry}'s rule for an end: a pause only of an enabled subscription; any other end of an enabled or paused one. */
+function endedEntry(current: SubscriptionResourceState, reason: SubscriptionEnd, at: number): SubscriptionResourceState | undefined {
   const ends = reason === "paused" ? current.enabled : current.enabled || isPaused(current);
   return ends ? { ...current, enabled: false, endedReason: reason, endedAt: at } : undefined;
 }
@@ -194,7 +201,7 @@ function hearer(ctx: BlockContext, target: SubscribeTarget | undefined): { refus
  *
  * @param providers The providers a session may subscribe on.
  * @param target The session that hears, when it isn't the running one.
- * @param write The row's id, maker and pause, from server code.
+ * @param write The subscription's id and maker, from server code.
  */
 export async function subscribe(
   ctx: BlockContext,
@@ -207,7 +214,7 @@ export async function subscribe(
 }
 
 /**
- * Resume a paused subscription from its stored row: `subscribe`'s write, taken only while the row
+ * Resume a paused subscription from its saved state: `subscribe`'s write, taken only while it
  * is still paused. Not on the package's surface: the routine verbs call it.
  */
 export async function resumeSubscription(
@@ -221,8 +228,8 @@ export async function resumeSubscription(
 }
 
 /**
- * A seed's write of a declared routine: the config's fields, over the row's committed on, paused
- * or ended state (a new row is on). Not on the package's surface: the routine seed calls it.
+ * A seed's write of a declared routine: the config's fields, over the saved subscription's on,
+ * paused or ended state (a new one is on). Not on the package's surface: the routine seed calls it.
  */
 export async function seedSubscription(
   ctx: BlockContext,
@@ -292,18 +299,22 @@ async function writeSubscription(
     ...(write.madeBy === undefined ? {} : { madeBy: write.madeBy })
   };
   if (row.flow.length === 0) return { refused: "no_session: this host can't read this session's record, so nothing could be delivered to it." };
-  const rows = subscriptionsOf(ctx);
-  const ref = life === "resume" ? await rows.getOptional(id) : await rows.getOrCreate(id, row);
+  const saved = subscriptionsOf(ctx);
+  const ref = life === "resume" ? await saved.getOptional(id) : await saved.getOrCreate(id, row);
   if (ref === undefined) return { refused: "ended: it no longer exists." };
   // One committed transition: what it replaced, and what it left.
   const moved = await retryOnConflict(() =>
     updateStateWith<SubscriptionResourceState, { prior: SubscriptionResourceState; now: SubscriptionResourceState }>(ref, (current) => {
-      const next = nextRow(current, row, life);
+      const next = nextEntry(current, row, life);
       return { state: next ?? current, result: { prior: current, now: next ?? current } };
     })
   );
   if (moved === undefined) return { refused: "ended: it no longer exists." };
-  if (life === "resume" && !moved.now.enabled) return { refused: "ended: it ended while it was resuming, so it stays ended." };
+  if (life === "resume" && !moved.now.enabled) {
+    return isPaused(moved.now)
+      ? { refused: "changed: its settings changed while it was resuming, so it stays paused. Resume it again." }
+      : { refused: "ended: it ended while it was resuming, so it stays ended." };
+  }
   await subscriptionCursorsOf(ctx).getOrCreate(id, { seen: [], window: { start: 0, sent: 0 }, held: 0 });
   // The same id on a new thread (a declared routine's entry changed): the thread the write replaced
   // loses its entry, or its stale screen settings keep nominating it there.
@@ -313,40 +324,57 @@ async function writeSubscription(
 }
 
 /**
- * The thread index entry for `row`, as committed: there if and only if the row is on. An end that
+ * The thread index entry for `subscription`, as saved: there if and only if it is on. An end that
  * lands between this write and the index's is read back committed, and takes the entry out.
  */
-export async function syncIndex(ctx: BlockContext, row: SubscriptionResourceState): Promise<void> {
-  if (!row.enabled) {
-    await dropFromIndex(ctx, row.thread, row.id);
+export async function syncIndex(ctx: BlockContext, subscription: SubscriptionResourceState): Promise<void> {
+  if (!subscription.enabled) {
+    await dropFromIndex(ctx, subscription.thread, subscription.id);
     return;
   }
   // Other users' subscribes to this thread may write at once: `updateState`
-  // runs again against the row that won, so every entry lands.
-  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(row.thread), { subscriptions: {} });
-  await retryOnConflict(() => index.updateState((current) => ({ subscriptions: { ...current.subscriptions, [row.id]: indexEntryOf(row) } })));
-  const ref = await subscriptionsOf(ctx).getOptional(row.id);
-  const now = ref === undefined ? undefined : await readCommitted(ref, (committed) => committed);
-  if (now === undefined || !now.enabled || now.thread !== row.thread) await dropFromIndex(ctx, row.thread, row.id);
-}
-
-/** Take subscription `id` out of `thread`'s index row, when it is there. */
-export async function dropFromIndex(ctx: BlockContext, thread: string, id: string): Promise<void> {
-  const index = await subscriptionIndexOf(ctx).getOptional(indexKeyOf(thread));
-  if (index?.state.subscriptions[id] === undefined) return;
+  // runs again against the subscription that won, so every entry lands.
+  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(subscription.thread), { subscriptions: {} });
+  const slot = indexSlotOf(subscription.userId, subscription.id);
   await retryOnConflict(() =>
     index.updateState((current) => {
-      const { [id]: _gone, ...rest } = current.subscriptions;
+      // A bare-id entry of this owner's, from before slots named one, gives way to the slot.
+      const { [subscription.id]: legacy, ...rest } = current.subscriptions;
+      const others = legacy !== undefined && legacy.userId !== subscription.userId ? { [subscription.id]: legacy } : {};
+      return { subscriptions: { ...rest, ...others, [slot]: indexEntryOf(subscription) } };
+    })
+  );
+  const ref = await subscriptionsOf(ctx).getOptional(subscription.id);
+  const now = ref === undefined ? undefined : await readCommitted(ref, (committed) => committed);
+  if (now === undefined || !now.enabled || now.thread !== subscription.thread) await dropFromIndex(ctx, subscription.thread, subscription.id);
+}
+
+/**
+ * Take the running user's subscription `id` out of `thread`'s index entry: its slot, and a bare-id
+ * entry of theirs written before slots named an owner. Another user's entry under the same id
+ * (a declared routine's `cfg_` id) stays.
+ */
+export async function dropFromIndex(ctx: BlockContext, thread: string, id: string): Promise<void> {
+  const userId = (ctx.session.identity as { userId?: string }).userId;
+  if (userId === undefined) return;
+  const slot = indexSlotOf(userId, id);
+  const mine = (subscriptions: Record<string, IndexEntry>) => subscriptions[slot] !== undefined || subscriptions[id]?.userId === userId;
+  const index = await subscriptionIndexOf(ctx).getOptional(indexKeyOf(thread));
+  if (index === undefined || !mine(index.state.subscriptions)) return;
+  await retryOnConflict(() =>
+    index.updateState((current) => {
+      const { [slot]: _gone, ...rest } = current.subscriptions;
+      if (rest[id]?.userId === userId) delete rest[id];
       return { subscriptions: rest };
     })
   );
 }
 
-/** Whether `row` is paused: off, with the one end a resume undoes. */
-export const isPaused = (row: SubscriptionResourceState): boolean => !row.enabled && row.endedReason === "paused";
+/** Whether `subscription` is paused: off, with the one end a resume undoes. */
+export const isPaused = (subscription: SubscriptionResourceState): boolean => !subscription.enabled && subscription.endedReason === "paused";
 
 /**
- * End one of the running user's subscriptions, as committed: off on its row,
+ * End one of the running user's subscriptions, as saved: off,
  * out of the index. A pause ends only an enabled one; any other end ends an
  * enabled or a paused one; an ended one stays as it ended.
  *
@@ -356,14 +384,14 @@ export async function unsubscribe(ctx: BlockContext, id: string, reason: Subscri
   return (await endSubscription(ctx, id, reason)) === "enabled";
 }
 
-/** {@link unsubscribe}, answering what the row was when the end applied, or `undefined` when it didn't. */
+/** {@link unsubscribe}, answering what the subscription was when the end applied, or `undefined` when it didn't. */
 async function endSubscription(ctx: BlockContext, id: string, reason: SubscriptionEnd): Promise<"enabled" | "paused" | undefined> {
   const ref = await subscriptionsOf(ctx).getOptional(id);
   if (ref === undefined) return undefined;
   const at = Date.now();
   const outcome = await retryOnConflict(() =>
     updateStateWith<SubscriptionResourceState, { was: "enabled" | "paused" | undefined; thread: string }>(ref, (current) => {
-      const next = endedRow(current, reason, at);
+      const next = endedEntry(current, reason, at);
       return { state: next ?? current, result: { was: next === undefined ? undefined : current.enabled ? "enabled" : "paused", thread: current.thread } };
     })
   );
@@ -385,7 +413,7 @@ export async function endTaskSubscriptions(ctx: BlockContext, taskId: string, en
   // and a subscription's key names its session and thread, not its task.
   for (const ref of await subscriptionsOf(ctx).list()) {
     if (ref.state.taskId !== taskId) continue;
-    // Decided on the committed row, whatever this request's snapshot says.
+    // Decided on the saved subscription, whatever this request's snapshot says.
     if ((await endSubscription(ctx, ref.state.id, reason)) !== undefined) ended += 1;
   }
   return ended;

@@ -3,13 +3,13 @@
  * Routines: a standing instruction that fires on its own as its owner, with
  * exactly one trigger, over the two collections that exist (D1).
  *
- * - **A clock routine** is a schedule row (`../schedules`), keyed by its name;
+ * - **A clock routine** is a schedule (`../schedules`), keyed by its name;
  *   its id is `clock:<key>`. Paused is `enabled: false`.
- * - **An event routine** is a subscription row (`../subscriptions`); its id is
+ * - **An event routine** is a subscription (`../subscriptions`); its id is
  *   `event:<subscription id>`. It is written only through `subscribe` and
  *   `unsubscribe` (ER-5): a pause is `unsubscribe` with reason `paused`, and a
- *   resume is `subscribe` from the stored row, which checks read access again
- *   (ER-4) and keeps the row's task, so a resumed task routine still ends when
+ *   resume turns the saved subscription back on, after checking read access again
+ *   (ER-4), keeping its task, so a resumed task routine still ends when
  *   its task fails.
  *
  * Four verbs over both: `listRoutines`, `saveRoutine`, `pauseRoutine` (one
@@ -142,7 +142,7 @@ export interface DeclaredRoutine {
 export interface RoutinesOptions {
   /**
    * A schedule index (a polling or BullMQ one) to mirror every clock routine
-   * into, for a tick to find due rows. Omitted, the host's own cron POSTs to
+   * into, for a tick to find due schedules. Omitted, the host's own cron POSTs to
    * each schedule's dispatch endpoint. Give `routineTools` the same one.
    */
   readonly index?: ScheduleIndex;
@@ -204,48 +204,49 @@ export async function declaredRoutineKey(entryId: string): Promise<string> {
 interface ScheduleCollection {
   list(prefix?: string): Promise<Array<{ path: string; state: StoredSchedule }>>;
   getOptional(key: string): Promise<(UpdateStateRunner<StoredSchedule> & { state: StoredSchedule }) | undefined>;
+  getOrCreate(key: string, state: StoredSchedule): Promise<UpdateStateRunner<StoredSchedule> & { state: StoredSchedule }>;
   create(key: string, state: StoredSchedule, options: { replace: true }): Promise<unknown>;
 }
 const schedulesOf = (ctx: BlockContext) => (ctx.resources as unknown as Record<string, ScheduleCollection>)[SCHEDULES_RESOURCE]!;
 
-const makerOfSchedule = (row: StoredSchedule): RoutineMaker | undefined => {
-  const parsed = routineMakerSchema.safeParse(row.metadata?.madeBy);
+const makerOfSchedule = (schedule: StoredSchedule): RoutineMaker | undefined => {
+  const parsed = routineMakerSchema.safeParse(schedule.metadata?.madeBy);
   return parsed.success ? parsed.data : undefined;
 };
 
-const filerOf = (row: StoredSchedule): string => {
-  const filer = (row.input as { filer?: unknown } | undefined)?.filer;
+const filerOf = (schedule: StoredSchedule): string => {
+  const filer = (schedule.input as { filer?: unknown } | undefined)?.filer;
   return typeof filer === "string" ? filer : "";
 };
 
-function listedClock(key: string, row: StoredSchedule): ListedRoutine {
-  const madeBy = makerOfSchedule(row);
+function listedClock(key: string, schedule: StoredSchedule): ListedRoutine {
+  const madeBy = makerOfSchedule(schedule);
   return {
     id: `${CLOCK_ROUTINE_PREFIX}${key}`,
     name: key,
-    worker: filerOf(row),
-    paused: row.enabled === false,
+    worker: filerOf(schedule),
+    paused: schedule.enabled === false,
     ...(madeBy === undefined ? {} : { madeBy }),
-    ...(row.description === undefined ? {} : { description: row.description }),
-    trigger: { clock: { cron: row.cron, timezone: row.timezone ?? "UTC", nextRunAt: nextRunOf(row) } },
-    task: row.input
+    ...(schedule.description === undefined ? {} : { description: schedule.description }),
+    trigger: { clock: { cron: schedule.cron, timezone: schedule.timezone ?? "UTC", nextRunAt: nextRunOf(schedule) } },
+    task: schedule.input
   };
 }
 
-function listedEvent(row: SubscriptionResourceState): ListedRoutine {
+function listedEvent(subscription: SubscriptionResourceState): ListedRoutine {
   return {
-    id: `${EVENT_ROUTINE_PREFIX}${row.id}`,
-    name: row.thread,
-    worker: row.worker,
-    paused: !row.enabled,
-    ...(row.madeBy === undefined ? {} : { madeBy: row.madeBy }),
+    id: `${EVENT_ROUTINE_PREFIX}${subscription.id}`,
+    name: subscription.thread,
+    worker: subscription.worker,
+    paused: !subscription.enabled,
+    ...(subscription.madeBy === undefined ? {} : { madeBy: subscription.madeBy }),
     trigger: {
       event: {
-        provider: row.provider,
-        thread: row.thread,
-        ...(row.kinds === undefined ? {} : { kinds: row.kinds }),
-        screens: row.screens,
-        interest: row.interest
+        provider: subscription.provider,
+        thread: subscription.thread,
+        ...(subscription.kinds === undefined ? {} : { kinds: subscription.kinds }),
+        screens: subscription.screens,
+        interest: subscription.interest
       }
     }
   };
@@ -268,7 +269,7 @@ const isDeclared = (key: string, madeBy: RoutineMaker | undefined) => madeBy?.by
 async function listRoutinesOf(ctx: BlockContext, caller: Caller): Promise<ListedRoutine[]> {
   const clocks = (await schedulesOf(ctx).list()).map((ref) => listedClock(scheduleKeyOf(ref.path), ref.state));
   // Paused event routines list; ended ones don't.
-  const events = (await subscriptionsOf(ctx).list()).map((ref) => ref.state).filter((row) => row.enabled || isPaused(row)).map(listedEvent);
+  const events = (await subscriptionsOf(ctx).list()).map((ref) => ref.state).filter((subscription) => subscription.enabled || isPaused(subscription)).map(listedEvent);
   const due = (r: ListedRoutine) =>
     "clock" in r.trigger ? (r.trigger.clock.nextRunAt === null ? Number.MAX_SAFE_INTEGER : Date.parse(r.trigger.clock.nextRunAt)) : Number.POSITIVE_INFINITY;
   const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -282,29 +283,29 @@ function parseRoutineId(id: string): { clock: string } | { event: string } | und
   return undefined;
 }
 
-/** An event routine's row, live or paused; an ended one is no routine. */
-async function eventRow(ctx: BlockContext, id: string): Promise<SubscriptionResourceState | undefined> {
-  const row = (await subscriptionsOf(ctx).getOptional(id))?.state;
-  return row !== undefined && (row.enabled || isPaused(row)) ? row : undefined;
+/** An event routine's saved subscription, live or paused; an ended one is no routine. */
+async function savedSubscription(ctx: BlockContext, id: string): Promise<SubscriptionResourceState | undefined> {
+  const subscription = (await subscriptionsOf(ctx).getOptional(id))?.state;
+  return subscription !== undefined && (subscription.enabled || isPaused(subscription)) ? subscription : undefined;
 }
 
-/** `subscribe`'s input, from a stored row: what a resume writes again. */
-const subscribeInputOf = (row: SubscriptionResourceState): SubscribeInput => ({
-  provider: row.provider,
-  thread: row.thread,
-  ...(row.kinds === undefined ? {} : { kinds: row.kinds }),
-  screens: row.screens,
-  ...(row.outsiders === true ? { outsiders: true as const } : {}),
-  interest: row.interest
+/** `subscribe`'s input, from a saved subscription: what a resume checks again. */
+const subscribeInputOf = (subscription: SubscriptionResourceState): SubscribeInput => ({
+  provider: subscription.provider,
+  thread: subscription.thread,
+  ...(subscription.kinds === undefined ? {} : { kinds: subscription.kinds }),
+  screens: subscription.screens,
+  ...(subscription.outsiders === true ? { outsiders: true as const } : {}),
+  interest: subscription.interest
 });
 
-/** The session a stored row hears in, so a resume keeps its session and its task. */
-const targetOf = (row: SubscriptionResourceState): SubscribeTarget => ({
-  sessionId: row.sessionId,
-  flow: row.flow,
-  worker: row.worker,
-  ...(row.taskId === undefined ? {} : { taskId: row.taskId }),
-  ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId })
+/** The session a subscription subscription hears in, so a resume keeps its session and its task. */
+const targetOf = (subscription: SubscriptionResourceState): SubscribeTarget => ({
+  sessionId: subscription.sessionId,
+  flow: subscription.flow,
+  worker: subscription.worker,
+  ...(subscription.taskId === undefined ? {} : { taskId: subscription.taskId }),
+  ...(subscription.tenantId === undefined ? {} : { tenantId: subscription.tenantId })
 });
 
 /**
@@ -349,7 +350,7 @@ async function saveRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, in
     const problem = clockProblem(cron, timezone);
     if (problem !== undefined) return refused(problem);
     // Saving turns it on: a save is the user (or a worker) asking for it now.
-    const row: StoredSchedule = {
+    const schedule: StoredSchedule = {
       cron,
       kind: TASK_SCHEDULE_HANDLER,
       input: { ...input.task, filer },
@@ -358,8 +359,8 @@ async function saveRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, in
       ...(input.description === undefined ? {} : { description: input.description }),
       metadata: { madeBy }
     };
-    await schedulesOf(ctx).create(input.name, row, { replace: true });
-    return { ok: true, routine: listedClock(input.name, row) };
+    await schedulesOf(ctx).create(input.name, schedule, { replace: true });
+    return { ok: true, routine: listedClock(input.name, schedule) };
   }
 
   const { everyMinutes, ...event } = input.trigger.event;
@@ -369,7 +370,7 @@ async function saveRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, in
   const cadence = cadenceProblem(everyMinutes);
   if (cadence !== undefined) return refused(cadence);
   // A valid cadence is checked and not yet kept: every provider today pushes,
-  // and the poll that would honour it writes its own row (FIX-2536).
+  // and the poll that would honour it keeps its own schedule (FIX-2536).
   let target: SubscribeTarget | undefined;
   if (caller.by === "user") {
     if (input.worker === undefined) return refused("no_hearer: name the worker whose conversation hears it, in worker. Nothing was saved.");
@@ -382,8 +383,8 @@ async function saveRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, in
   }
   const outcome = await subscribe(ctx, deps.providers, event, target, { madeBy });
   if ("refused" in outcome) return refused(outcome.refused);
-  const row = await eventRow(ctx, outcome.id);
-  return row === undefined ? refused(`no_routine: "${outcome.id}" wasn't written.`) : { ok: true, routine: listedEvent(row) };
+  const subscription = await savedSubscription(ctx, outcome.id);
+  return subscription === undefined ? refused(`no_routine: "${outcome.id}" wasn't written.`) : { ok: true, routine: listedEvent(subscription) };
 }
 
 async function pauseRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, input: { id: string; paused: boolean }): Promise<RoutineOutcome> {
@@ -393,30 +394,30 @@ async function pauseRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, i
     const ref = await schedulesOf(ctx).getOptional(parsed.clock);
     if (ref === undefined) return noRoutine(input.id);
     if (!reaches(caller, filerOf(ref.state))) return notYours(input.id);
-    // Only `enabled`, on the row as committed: a row deleted meanwhile stays deleted, and a save
+    // Only `enabled`, on the saved schedule: one deleted meanwhile stays deleted, and a save
     // that landed meanwhile keeps its cron.
-    const row = await retryOnConflict(() =>
+    const schedule = await retryOnConflict(() =>
       updateStateWith<StoredSchedule, StoredSchedule | undefined>(ref, (current) =>
         current?.cron === undefined ? { state: current, result: undefined } : { state: { ...current, enabled: !input.paused }, result: { ...current, enabled: !input.paused } }
       )
     );
-    return row === undefined ? noRoutine(input.id) : { ok: true, routine: listedClock(parsed.clock, row) };
+    return schedule === undefined ? noRoutine(input.id) : { ok: true, routine: listedClock(parsed.clock, schedule) };
   }
-  const row = await eventRow(ctx, parsed.event);
-  if (row === undefined) return noRoutine(input.id);
-  if (!reaches(caller, row.worker)) return notYours(input.id);
+  const subscription = await savedSubscription(ctx, parsed.event);
+  if (subscription === undefined) return noRoutine(input.id);
+  if (!reaches(caller, subscription.worker)) return notYours(input.id);
   if (input.paused) {
-    await unsubscribe(ctx, row.id, "paused");
-  } else if (!row.enabled) {
-    // The resume is a subscribe from the stored row: read access checked again,
+    await unsubscribe(ctx, subscription.id, "paused");
+  } else if (!subscription.enabled) {
+    // The resume turns the subscription subscription back on: read access checked again,
     // the same session and task, the same id and maker.
-    const outcome = await resumeSubscription(ctx, deps.providers, subscribeInputOf(row), targetOf(row), {
-      id: row.id,
-      ...(row.madeBy === undefined ? {} : { madeBy: row.madeBy })
+    const outcome = await resumeSubscription(ctx, deps.providers, subscribeInputOf(subscription), targetOf(subscription), {
+      id: subscription.id,
+      ...(subscription.madeBy === undefined ? {} : { madeBy: subscription.madeBy })
     });
     if ("refused" in outcome) return refused(`${outcome.refused} It stays paused.`);
   }
-  const now = await eventRow(ctx, row.id);
+  const now = await savedSubscription(ctx, subscription.id);
   return now === undefined ? noRoutine(input.id) : { ok: true, routine: listedEvent(now) };
 }
 
@@ -424,18 +425,18 @@ async function deleteRoutine(ctx: BlockContext, caller: Caller, input: { id: str
   const parsed = parseRoutineId(input.id);
   if (parsed === undefined) return noRoutine(input.id);
   if ("clock" in parsed) {
-    const row = (await schedulesOf(ctx).getOptional(parsed.clock))?.state;
-    if (row === undefined) return noRoutine(input.id);
-    if (!reaches(caller, filerOf(row))) return notYours(input.id);
-    if (isDeclared(parsed.clock, makerOfSchedule(row))) return declaredRefusal(input.id, "deleted");
+    const schedule = (await schedulesOf(ctx).getOptional(parsed.clock))?.state;
+    if (schedule === undefined) return noRoutine(input.id);
+    if (!reaches(caller, filerOf(schedule))) return notYours(input.id);
+    if (isDeclared(parsed.clock, makerOfSchedule(schedule))) return declaredRefusal(input.id, "deleted");
     await removeSchedule(ctx, parsed.clock);
     return { ok: true };
   }
-  const row = await eventRow(ctx, parsed.event);
-  if (row === undefined) return noRoutine(input.id);
-  if (!reaches(caller, row.worker)) return notYours(input.id);
-  if (isDeclared(row.id, row.madeBy)) return declaredRefusal(input.id, "deleted");
-  await unsubscribe(ctx, row.id, "unsubscribed");
+  const subscription = await savedSubscription(ctx, parsed.event);
+  if (subscription === undefined) return noRoutine(input.id);
+  if (!reaches(caller, subscription.worker)) return notYours(input.id);
+  if (isDeclared(subscription.id, subscription.madeBy)) return declaredRefusal(input.id, "deleted");
+  await unsubscribe(ctx, subscription.id, "unsubscribed");
   return { ok: true };
 }
 
@@ -450,8 +451,8 @@ export interface SeedOutcome {
 
 /**
  * Seed the app's declared routines into the running user's collections: each
- * entry for every user, or only its owner. A row is written only when missing
- * or changed, and a change keeps the row's pause. A clock row whose entry left
+ * entry for every user, or only its owner. A routine is written only when missing
+ * or changed, and a change keeps its pause. A clock routine whose entry left
  * config is deleted. A refused entry (a hearer not on the roster, a thread the
  * user can't read) writes nothing and is tried again on the next pass.
  */
@@ -474,7 +475,7 @@ export async function seedDeclaredRoutines(
     const trigger = triggerSchema.parse(entry.trigger);
     try {
       if ("clock" in trigger) {
-        // An entry that was an event routine under this key: that row ends, as config removed it.
+        // An entry that was an event routine under this key: that subscription ends, as config removed it.
         const was = (await subscriptionsOf(ctx).getOptional(key))?.state;
         if (was !== undefined && (was.enabled || isPaused(was))) await unsubscribe(ctx, key, "config_removed");
         const existing = (await schedulesOf(ctx).getOptional(key))?.state;
@@ -489,9 +490,15 @@ export async function seedDeclaredRoutines(
           outcome.unchanged.push(entry.id);
           continue;
         }
-        // Only the config's fields: a pause the user set stays.
-        const row: StoredSchedule = { ...owned, kind: TASK_SCHEDULE_HANDLER, enabled: existing?.enabled ?? true, metadata: { madeBy } };
-        await schedulesOf(ctx).create(key, row, { replace: true });
+        // Only the config's fields, applied to the saved schedule: `enabled` (a pause the user set,
+        // even one that landed after the read above) stays; a new one is on.
+        const ref = await schedulesOf(ctx).getOrCreate(key, { ...owned, kind: TASK_SCHEDULE_HANDLER, enabled: true, metadata: { madeBy } });
+        await retryOnConflict(() =>
+          updateStateWith<StoredSchedule, true>(ref, (current) => {
+            const { timezone: _zone, description: _about, ...kept } = current;
+            return { state: { ...kept, ...owned, kind: TASK_SCHEDULE_HANDLER, metadata: { ...(current.metadata ?? {}), madeBy } }, result: true };
+          })
+        );
         outcome.written.push(entry.id);
         continue;
       }
@@ -514,22 +521,22 @@ export async function seedDeclaredRoutines(
         worker: target.worker,
         sessionId: target.sessionId
       });
-      // An unchanged entry writes nothing, even over a row its thread ended; one that left config
+      // An unchanged entry writes nothing, even over a subscription its thread ended; one that left config
       // and is back turns on again.
       if (existing !== undefined && existing.endedReason !== "config_removed" && deepEqual(withoutUndefined({ ...subscribeInputOf(existing), worker: existing.worker, sessionId: existing.sessionId }), wanted)) {
         outcome.unchanged.push(entry.id);
         continue;
       }
-      // The config's fields over the row's committed state: a pause, or an end, stays.
+      // The config's fields over the saved subscription's state: a pause, or an end, stays.
       const written = await seedSubscription(ctx, options.providers ?? [], event, target, { id: key, madeBy });
       (("refused" in written ? outcome.refused : outcome.written) as string[]).push(entry.id);
     } catch {
       outcome.refused.push(entry.id);
     }
   }
-  // A clock row whose entry left config goes with it. An event row's ends at
+  // A clock routine whose entry left config goes with it. An event routine's ends at
   // its next poll (FIX-2536), so a pushed one stays until then.
-  // Filtered at the source: an app that never declared one reads no rows here.
+  // Filtered at the source: an app that never declared one reads nothing here.
   for (const ref of await schedulesOf(ctx).list(DECLARED_ROUTINE_KEY_PREFIX)) {
     const key = scheduleKeyOf(ref.path);
     if (key.startsWith(DECLARED_ROUTINE_KEY_PREFIX) && !keys.has(key) && makerOfSchedule(ref.state)?.by === "app") await removeSchedule(ctx, key);
@@ -537,7 +544,7 @@ export async function seedDeclaredRoutines(
   return outcome;
 }
 
-/** `value` without its `undefined` fields, so a stored row and an entry compare by what they hold. */
+/** `value` without its `undefined` fields, so a saved routine and an entry compare by what they hold. */
 function withoutUndefined<T extends Record<string, unknown>>(value: T): Partial<T> {
   return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
@@ -650,7 +657,7 @@ export function defineRoutineActions(installation: WorkerInstallation, options: 
   const actions: Record<string, ActionConfig> = Object.fromEntries(
     Object.entries(blocks).map(([verb, block]) => [verb, { inputSchema: block.inputSchema, block, description: block.description }])
   );
-  // Installed with no entries too: a clock row seeded by an entry since removed is cleaned up.
+  // Installed with no entries too: a clock routine seeded by an entry since removed is cleaned up.
   const seed = handler({
     name: "workforce-seed-declared-routines",
     inputSchema: z.unknown(),

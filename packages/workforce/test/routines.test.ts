@@ -1,6 +1,6 @@
 /**
- * Routines (FIX-2614): one list and four verbs over clock routines (schedule
- * rows) and event routines (subscription rows), for the user on the roster
+ * Routines (FIX-2614): one list and four verbs over clock routines (schedules)
+ * and event routines (subscriptions), for the user on the roster
  * flow and for a worker through its tools, plus the app's declared routines.
  *
  * Why these matter: the user trusts the list to show everything that runs as
@@ -18,6 +18,7 @@ import { bootSubscriptionsHost, event, github, revoked, type SubscriptionsHost }
 import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import { ROSTER_FLOW } from "../src/workers/keys";
 import { SUBSCRIPTION_INDEX_PATTERN } from "../src/subscriptions/keys";
+import { indexSlotOf, subscriptionIdOfSlot } from "../src/subscriptions/rows";
 import { declaredRoutineKey, type DeclaredRoutine } from "../src/routines";
 import type { SubscriptionProvider } from "../src/subscriptions";
 
@@ -109,8 +110,9 @@ async function fire(h: SubscriptionsHost, key: string, user = "alice") {
 /** The subscription ids the org's thread index names for `thread`, from the store. */
 async function indexed(h: SubscriptionsHost, thread: string) {
   const runtime = await h.state.getRuntime();
-  const row = await runtime.stores.resourceState.get("org", ORG, `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(thread)}`);
-  return Object.keys((row?.state as { subscriptions?: Record<string, unknown> } | undefined)?.subscriptions ?? {});
+  const index = await runtime.stores.resourceState.get("org", ORG, `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(thread)}`);
+  const slots = (index?.state as { subscriptions?: Record<string, { userId: string }> } | undefined)?.subscriptions ?? {};
+  return Object.entries(slots).map(([slot, entry]) => subscriptionIdOfSlot(slot, entry));
 }
 
 /** Alice's conversation with the follower worker, as a user's event routine derives it. */
@@ -153,7 +155,7 @@ describe("one list over every writer", () => {
     const h = boot();
     const chat = await h.follower("alice");
     const { id } = (await h.subscribe("alice", chat, { thread: PR })) as { id: string };
-    // As `main` wrote it: no maker on the row.
+    // As `main` wrote it: no maker on the subscription.
     const runtime = await h.state.getRuntime();
     const cell = `alice:~org:${ORG}`;
     const key = `workforce/subscriptions/${id}`;
@@ -248,7 +250,7 @@ describe("pause, resume and delete", () => {
     expect(routed.ownerRuns.map((run) => run.run.owner.tenantId)).toEqual(["tenant-a"]);
   });
 
-  it("a resume racing a delete leaves it deleted: no row back on, no index entry back", async () => {
+  it("a resume racing a delete leaves it deleted: nothing back on, no index entry back", async () => {
     const gated = gatedGithub();
     const h = boot({ provider: gated.provider });
     const routine = ok<Listed>((await roster(h, "alice", "saveRoutine", { trigger: { event: { provider: "github", thread: PR, interest: "reviews" } }, worker: "eng.follower" })).output);
@@ -274,11 +276,11 @@ describe("pause, resume and delete", () => {
     const filed = await h.act("alice", conv, "createTask_tasks", { goal: `open the PR [subscribe:${PR}] [hold] [fail]`, assignee: "eng.follower" });
     expect(filed.error, messageOf(filed.error)).toBeUndefined();
     for (let i = 0; i < 500 && (await h.subscriptionRows("alice")).length === 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
-    const [row] = await h.subscriptionRows("alice");
-    const id = `event:${row!.id}`;
+    const [subscription] = await h.subscriptionRows("alice");
+    const id = `event:${subscription!.id}`;
     ok((await roster(h, "alice", "pauseRoutine", { id, paused: true })).output);
     ok((await roster(h, "alice", "pauseRoutine", { id, paused: false })).output);
-    expect((await h.subscriptionRows("alice"))[0]).toMatchObject({ enabled: true, taskId: row!.taskId });
+    expect((await h.subscriptionRows("alice"))[0]).toMatchObject({ enabled: true, taskId: subscription!.taskId });
     open();
     await h.settled();
     expect((await h.subscriptionRows("alice")).map((r) => [r.enabled, r.endedReason])).toEqual([[false, "task_errored"]]);
@@ -318,15 +320,15 @@ async function holdWrite(h: SubscriptionsHost, when: (key: string, state: Record
 const saveOnPr = (h: SubscriptionsHost) =>
   roster(h, "alice", "saveRoutine", { trigger: { event: { provider: "github", thread: PR, interest: "reviews" } }, worker: "eng.follower" });
 
-describe("every transition is decided on the committed row", () => {
+describe("every transition is decided on the saved entry", () => {
   it("a clock routine's pause that a delete overtakes doesn't bring the schedule back", async () => {
     const h = boot();
     const chat = await h.follower("alice");
-    const saved = ok<Listed>((await h.act("alice", chat, "saveRoutine", { name: "standup", trigger: { clock: { cron: "0 9 * * 1" } }, task: { goal: "Post the standup" } }, "follower")).output);
+    const made = ok<Listed>((await h.act("alice", chat, "saveRoutine", { name: "standup", trigger: { clock: { cron: "0 9 * * 1" } }, task: { goal: "Post the standup" } }, "follower")).output);
     const gap = await holdWrite(h, (key, state) => key === "workforce/schedules/standup" && state.enabled === false);
-    const pausing = roster(h, "alice", "pauseRoutine", { id: saved.id, paused: true });
+    const pausing = roster(h, "alice", "pauseRoutine", { id: made.id, paused: true });
     await gap.reached;
-    expect((await h.act("alice", chat, "deleteRoutine", { id: saved.id }, "follower")).output).toEqual({ ok: true });
+    expect((await h.act("alice", chat, "deleteRoutine", { id: made.id }, "follower")).output).toEqual({ ok: true });
     gap.release();
     await pausing;
     expect(await list(h)).toEqual([]);
@@ -335,18 +337,18 @@ describe("every transition is decided on the committed row", () => {
   it("a clock routine's pause that a save overtakes keeps the save's cron", async () => {
     const h = boot();
     const chat = await h.follower("alice");
-    const saved = ok<Listed>((await h.act("alice", chat, "saveRoutine", { name: "standup", trigger: { clock: { cron: "0 9 * * 1" } }, task: { goal: "Post the standup" } }, "follower")).output);
+    const made = ok<Listed>((await h.act("alice", chat, "saveRoutine", { name: "standup", trigger: { clock: { cron: "0 9 * * 1" } }, task: { goal: "Post the standup" } }, "follower")).output);
     const gap = await holdWrite(h, (key, state) => key === "workforce/schedules/standup" && state.enabled === false);
-    const pausing = roster(h, "alice", "pauseRoutine", { id: saved.id, paused: true });
+    const pausing = roster(h, "alice", "pauseRoutine", { id: made.id, paused: true });
     await gap.reached;
     ok((await h.act("alice", chat, "saveRoutine", { name: "standup", trigger: { clock: { cron: "30 8 * * 1-5" } }, task: { goal: "Post the standup" } }, "follower")).output);
     gap.release();
     await pausing;
     const [routine] = await list(h);
-    expect(routine).toMatchObject({ id: saved.id, paused: true, trigger: { clock: { cron: "30 8 * * 1-5" } } });
+    expect(routine).toMatchObject({ id: made.id, paused: true, trigger: { clock: { cron: "30 8 * * 1-5" } } });
   });
 
-  it("an end that lands between a subscribe's row write and its index write leaves no index entry", async () => {
+  it("an end that lands between a subscribe's subscription write and its index write leaves no index entry", async () => {
     const h = boot();
     const index = `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(PR)}`;
     const gap = await holdWrite(h, (key, state) => key === index && Object.keys((state.subscriptions as object | undefined) ?? {}).length > 0);
@@ -361,7 +363,7 @@ describe("every transition is decided on the committed row", () => {
     expect(await indexed(h, PR)).toEqual([]);
   });
 
-  it("a pause that a delete overtakes stays a delete: the row isn't paused, and a resume can't bring it back", async () => {
+  it("a pause that a delete overtakes stays a delete: it isn't paused, and a resume can't bring it back", async () => {
     const h = boot();
     const routine = ok<Listed>((await saveOnPr(h)).output);
     const gap = await holdWrite(h, (key, state) => key.startsWith("workforce/subscriptions/") && state.endedReason === "paused");
@@ -382,9 +384,9 @@ describe("every transition is decided on the committed row", () => {
     const conv = await h.conversation("alice", "lead");
     await h.act("alice", conv, "createTask_tasks", { goal: `open the PR [subscribe:${PR}] [hold] [fail]`, assignee: "eng.follower" });
     for (let i = 0; i < 500 && (await h.subscriptionRows("alice")).length === 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
-    const [row] = await h.subscriptionRows("alice");
+    const [subscription] = await h.subscriptionRows("alice");
     const gap = await holdWrite(h, (key, state) => key.startsWith("workforce/subscriptions/") && state.endedReason === "paused");
-    const pausing = roster(h, "alice", "pauseRoutine", { id: `event:${row!.id}`, paused: true });
+    const pausing = roster(h, "alice", "pauseRoutine", { id: `event:${subscription!.id}`, paused: true });
     await gap.reached;
     // The task fails, and its retry, while the pause waits.
     open();
@@ -394,33 +396,52 @@ describe("every transition is decided on the committed row", () => {
     await h.settled();
     const after = (await h.subscriptionRows("alice"))[0]!;
     expect(after.endedReason).toBe("task_errored");
-    expect((await roster(h, "alice", "pauseRoutine", { id: `event:${row!.id}`, paused: false })).output).toMatchObject({ ok: false });
+    expect((await roster(h, "alice", "pauseRoutine", { id: `event:${subscription!.id}`, paused: false })).output).toMatchObject({ ok: false });
   });
 });
 
-describe("the index heals from the rows", () => {
-  it("an index entry whose screens are stale passes nothing the row's own screens refuse", async () => {
+describe("the index heals from the saved subscriptions", () => {
+  it("an index from before owner slots, keyed by the bare id, still routes, and a write moves it to its slot", async () => {
+    const h = boot();
+    const chat = await h.follower("alice");
+    const { id } = (await h.subscribe("alice", chat, { thread: PR })) as { id: string };
+    const runtime = await h.state.getRuntime();
+    const key = `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(PR)}`;
+    const slots = () => runtime.stores.resourceState.get("org", ORG, key).then((index) => Object.keys((index!.state as { subscriptions: object }).subscriptions));
+    const entry = ((await runtime.stores.resourceState.get("org", ORG, key))!.state as { subscriptions: Record<string, object> }).subscriptions[indexSlotOf("alice", id)];
+    await runtime.stores.resourceState.set("org", ORG, key, { subscriptions: { [id]: entry } } as never, "any");
+    await h.route(event({ text: "through the legacy entry" }));
+    expect(await h.heard(chat)).toHaveLength(1);
+    // Paused, then resumed: the bare-id entry goes with the pause, and the resume writes the slot.
+    ok((await h.act("alice", chat, "pauseRoutine", { id: `event:${id}`, paused: true }, "follower")).output);
+    expect(await slots()).toEqual([]);
+    ok((await h.act("alice", chat, "pauseRoutine", { id: `event:${id}`, paused: false }, "follower")).output);
+    expect(await slots()).toEqual([indexSlotOf("alice", id)]);
+  });
+
+  it("an index entry whose screens are stale passes nothing the subscription's own screens refuse", async () => {
     const h = boot();
     const chat = await h.follower("alice");
     const { id } = (await h.subscribe("alice", chat, { thread: PR, screens: [{ screen: "allow", ids: ["hubot"] }] })) as { id: string };
-    // As a racing write could leave it: the entry without the row's allow screen.
+    // As a racing write could leave it: the entry without the subscription's allow screen.
     const runtime = await h.state.getRuntime();
     const key = `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(PR)}`;
     const index = (await runtime.stores.resourceState.get("org", ORG, key))!.state as { subscriptions: Record<string, Record<string, unknown>> };
-    await runtime.stores.resourceState.set("org", ORG, key, { subscriptions: { [id]: { ...index.subscriptions[id], screens: [] } } } as never, "any");
+    // Written under the bare id, as an index from before owner slots: it is read the same way.
+    await runtime.stores.resourceState.set("org", ORG, key, { subscriptions: { [id]: { ...index.subscriptions[indexSlotOf("alice", id)], screens: [] } } } as never, "any");
     await h.route(event({ text: "from octocat, not an allowed sender" }));
     expect(await h.heard(chat)).toEqual([]);
   });
 
-  it("an index entry on a thread its row left is taken out by the next event that finds it", async () => {
+  it("an index entry on a thread its subscription left is taken out by the next event that finds it", async () => {
     const h = boot();
     const chat = await h.follower("alice");
     const { id } = (await h.subscribe("alice", chat, { thread: PR })) as { id: string };
     const runtime = await h.state.getRuntime();
     const prKey = `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(PR)}`;
-    const entry = ((await runtime.stores.resourceState.get("org", ORG, prKey))!.state as { subscriptions: Record<string, unknown> }).subscriptions[id];
+    const entry = ((await runtime.stores.resourceState.get("org", ORG, prKey))!.state as { subscriptions: Record<string, unknown> }).subscriptions[indexSlotOf("alice", id)];
     const stale = "github:acme/api#77";
-    await runtime.stores.resourceState.set("org", ORG, `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(stale)}`, { subscriptions: { [id]: { ...(entry as object), thread: stale } } } as never, "any");
+    await runtime.stores.resourceState.set("org", ORG, `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(stale)}`, { subscriptions: { [indexSlotOf("alice", id)]: { ...(entry as object), thread: stale } } } as never, "any");
     await h.route(event({ threads: ["github:acme/api", stale], text: "on the thread it left" }));
     expect(await h.heard(chat)).toEqual([]);
     expect(await indexed(h, stale)).toEqual([]);
@@ -503,12 +524,12 @@ describe("the app's declared routines", () => {
     const first = boot({ declared: declared(), stores });
     const [event] = (await list(first)).filter((r) => r.id.startsWith("event:"));
     const sub = event!.id.slice("event:".length);
-    // As the poll ends a row whose entry left config: off, `config_removed`, out of the index.
+    // As the poll ends a subscription whose entry left config: off, `config_removed`, out of the index.
     const runtime = await first.state.getRuntime();
     const cell = `alice:~org:${ORG}`;
     const key = `workforce/subscriptions/${sub}`;
-    const row = (await runtime.stores.resourceState.get("user", cell, key))!.state as Record<string, unknown>;
-    await runtime.stores.resourceState.set("user", cell, key, { ...row, enabled: false, endedReason: "config_removed", endedAt: Date.now() } as never, "any");
+    const subscription = (await runtime.stores.resourceState.get("user", cell, key))!.state as Record<string, unknown>;
+    await runtime.stores.resourceState.set("user", cell, key, { ...subscription, enabled: false, endedReason: "config_removed", endedAt: Date.now() } as never, "any");
     await runtime.stores.resourceState.set("org", ORG, `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(PR)}`, { subscriptions: {} } as never, "any");
     await first.dispose();
     host = undefined;
@@ -534,10 +555,10 @@ describe("the app's declared routines", () => {
     (entries[1]!.trigger as { event: { thread: string } }).event.thread = thread;
     const h = boot({ declared: entries, stores });
     const event = (await list(h)).find((r) => r.id.startsWith("event:"));
-    return { h, event, row: (await h.subscriptionRows("alice")).find((r) => r.id.startsWith("cfg_")) };
+    return { h, event, subscription: (await h.subscriptionRows("alice")).find((r) => r.id.startsWith("cfg_")) };
   }
 
-  /** End the declared event routine's row as its thread's closing would, out of the index. */
+  /** End the declared event routine as its thread's closing would, out of the index. */
   async function closeThread(h: SubscriptionsHost) {
     await h.route(event({ kind: "pull_request", text: "Merged.", closes: true }));
   }
@@ -546,12 +567,12 @@ describe("the app's declared routines", () => {
     const stores = inMemoryStores();
     const first = await reseed(stores, PR);
     await closeThread(first.h);
-    expect(first.h ? (await first.h.subscriptionRows("alice")).find((r) => r.id === first.row!.id) : undefined).toMatchObject({ enabled: false, endedReason: "thread_closed" });
+    expect(first.h ? (await first.h.subscriptionRows("alice")).find((r) => r.id === first.subscription!.id) : undefined).toMatchObject({ enabled: false, endedReason: "thread_closed" });
     await first.h.dispose();
     host = undefined;
     const moved = await reseed(stores, "github:acme/api#999");
-    expect(moved.row).toMatchObject({ thread: "github:acme/api#999", enabled: true });
-    expect(await indexed(moved.h, "github:acme/api#999")).toContain(moved.row!.id);
+    expect(moved.subscription).toMatchObject({ thread: "github:acme/api#999", enabled: true });
+    expect(await indexed(moved.h, "github:acme/api#999")).toContain(moved.subscription!.id);
   });
 
   it("a declared event routine the user paused stays paused when config moves it to a new thread", async () => {
@@ -561,7 +582,7 @@ describe("the app's declared routines", () => {
     await first.h.dispose();
     host = undefined;
     const moved = await reseed(stores, "github:acme/api#999");
-    expect(moved.row).toMatchObject({ thread: "github:acme/api#999", enabled: false, endedReason: "paused" });
+    expect(moved.subscription).toMatchObject({ thread: "github:acme/api#999", enabled: false, endedReason: "paused" });
     expect(await indexed(moved.h, "github:acme/api#999")).toEqual([]);
   });
 
@@ -581,11 +602,11 @@ describe("the app's declared routines", () => {
   });
 
   it("keys a declared entry by the pinned formula the poll keys it by too", async () => {
-    // cfg_ + the first 12 bytes of sha256("workforce-roster\n" + id), as hex: FIX-2536's poll ends rows by this key.
+    // cfg_ + the first 12 bytes of sha256("workforce-roster\n" + id), as hex: FIX-2536's poll ends subscriptions by this key.
     expect(await declaredRoutineKey("api-pr")).toBe("cfg_05562bf34a380505896ae059");
   });
 
-  it("drops the old trigger's row when a declared entry switches from a clock to an event, and back", async () => {
+  it("drops the old trigger's routine when a declared entry switches from a clock to an event, and back", async () => {
     const stores = inMemoryStores();
     const clock = declared()[0]!;
     const asEvent: DeclaredRoutine = { id: clock.id, trigger: { event: { provider: "github", thread: PR, interest: "reviews" } }, worker: "eng.follower" };
@@ -608,14 +629,15 @@ describe("the app's declared routines", () => {
     const first = boot({ declared: declared(), stores });
     const [ev] = (await list(first)).filter((r) => r.id.startsWith("event:"));
     const sub = ev!.id.slice("event:".length);
-    // A stale entry on #77 for a row on #412: an event on #77 heals it.
+    // A stale entry on #77 for a subscription on #412: an event on #77 heals it.
     const runtime = await first.state.getRuntime();
     const prKey = `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(PR)}`;
     const movedKey = `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(moved)}`;
-    const entry = ((await runtime.stores.resourceState.get("org", ORG, prKey))!.state as { subscriptions: Record<string, object> }).subscriptions[sub]!;
-    await runtime.stores.resourceState.set("org", ORG, movedKey, { subscriptions: { [sub]: { ...entry, thread: moved } } } as never, "any");
-    // Hold the heal's delete; while it waits, a reseed (another host over the same store) moves the row to #77.
-    const gap = await holdWrite(first, (k, state) => k === movedKey && !Object.hasOwn((state.subscriptions as object | undefined) ?? {}, sub));
+    const slot = indexSlotOf("alice", sub);
+    const entry = ((await runtime.stores.resourceState.get("org", ORG, prKey))!.state as { subscriptions: Record<string, object> }).subscriptions[slot]!;
+    await runtime.stores.resourceState.set("org", ORG, movedKey, { subscriptions: { [slot]: { ...entry, thread: moved } } } as never, "any");
+    // Hold the heal's delete; while it waits, a reseed (another host over the same store) moves the subscription to #77.
+    const gap = await holdWrite(first, (k, state) => k === movedKey && !Object.hasOwn((state.subscriptions as object | undefined) ?? {}, slot));
     const routing = first.route(event({ threads: ["github:acme/api", moved], text: "on #77" }));
     await gap.reached;
     const entries = declared();
@@ -627,6 +649,67 @@ describe("the app's declared routines", () => {
     expect((await second.subscriptionRows("alice")).find((r) => r.id === sub)).toMatchObject({ thread: moved, enabled: true });
     expect(await indexed(second, moved)).toContain(sub);
     await first.dispose();
+  });
+
+  it("a reseed of a declared clock routine that a pause overtakes keeps the pause", async () => {
+    const stores = inMemoryStores();
+    const first = boot({ declared: declared(), stores });
+    const [clock] = (await list(first)).filter((r) => r.id.startsWith("clock:"));
+    const key = `workforce/schedules/${clock!.name}`;
+    // A redeploy changes the cron; hold its seed's write, and pause on the first host meanwhile.
+    const second = bootSubscriptionsHost({
+      stores: stores as never,
+      adapters: [createScheduledTransportAdapter()],
+      hire: { routines: { providers: [github], declared: declared("30 7 * * *") } }
+    });
+    const gap = await holdWrite(second, (k, state) => k === key && state.cron === "30 7 * * *");
+    const seeding = second.act("alice", "roster-alice", "listRoutines", {}, "roster");
+    await gap.reached;
+    ok((await roster(first, "alice", "pauseRoutine", { id: clock!.id, paused: true })).output);
+    gap.release();
+    await seeding;
+    // Read on the redeployed host: the first one, still on the old config, would seed it back.
+    const after = (((await second.act("alice", "roster-alice", "listRoutines", {}, "roster")).output as { routines: Listed[] }).routines).find((r) => r.id === clock!.id);
+    expect(after).toMatchObject({ paused: true, trigger: { clock: { cron: "30 7 * * *" } } });
+    await second.dispose();
+  });
+
+  it("a resume that a reseed overtakes doesn't roll the config back, and the routine stays paused", async () => {
+    const stores = inMemoryStores();
+    const gated = gatedGithub();
+    const first = boot({ declared: declared(), stores, provider: gated.provider });
+    const [ev] = (await list(first)).filter((r) => r.id.startsWith("event:"));
+    const sub = ev!.id.slice("event:".length);
+    ok((await roster(first, "alice", "pauseRoutine", { id: ev!.id, paused: true })).output);
+    gated.arm();
+    const resuming = roster(first, "alice", "pauseRoutine", { id: ev!.id, paused: false });
+    await gated.atGate;
+    // A redeploy moves the entry to #999 while the resume waits on its read check.
+    const moved = declared();
+    (moved[1]!.trigger as { event: { thread: string } }).event.thread = "github:acme/api#999";
+    const second = bootSubscriptionsHost({ stores: stores as never, adapters: [createScheduledTransportAdapter()], hire: { routines: { providers: [github], declared: moved } } });
+    await second.act("alice", "roster-alice", "listRoutines", {}, "roster");
+    gated.open();
+    expect((await resuming).output).toMatchObject({ ok: false, error: expect.stringMatching(/^changed/) });
+    expect((await first.subscriptionRows("alice")).find((r) => r.id === sub)).toMatchObject({ thread: "github:acme/api#999", enabled: false, endedReason: "paused" });
+    expect(await indexed(first, PR)).not.toContain(sub);
+    await second.dispose();
+  });
+
+  it("two users' copies of one declared event routine each hear the event, and one's pause leaves the other's", async () => {
+    const h = boot({ declared: declared() });
+    const [alices] = (await list(h, "alice")).filter((r) => r.id.startsWith("event:"));
+    const [bobs] = (await list(h, "bob")).filter((r) => r.id.startsWith("event:"));
+    // The same cfg_ id for both: subscriptions are per user, the thread index is the org's.
+    expect(alices!.id).toBe(bobs!.id);
+    const hearer = (user: string) => deriveWorkerSessionId({ userId: user, orgId: ORG, flow: "follower", criteria: { worker: "eng.follower" } });
+    await h.route(event({ text: "first review" }));
+    expect(await h.heard(await hearer("alice"))).toHaveLength(1);
+    expect(await h.heard(await hearer("bob"))).toHaveLength(1);
+    ok((await roster(h, "alice", "pauseRoutine", { id: alices!.id, paused: true })).output);
+    await h.route(event({ text: "second review" }));
+    expect(await h.heard(await hearer("alice"))).toHaveLength(1);
+    expect(await h.heard(await hearer("bob"))).toHaveLength(2);
   });
 
   it("refuses a declared routine that would never fire before anything registers", () => {

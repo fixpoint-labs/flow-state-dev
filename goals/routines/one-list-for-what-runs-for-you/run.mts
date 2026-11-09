@@ -17,18 +17,24 @@ const ROUTINES = "packages/workforce/src/routines/routines.ts";
 /** The controls: each degrades one behaviour in the code under test, as it loads. */
 const PATCHES: Record<string, ModulePatch[]> = {
   // The list reads the schedule collection only: no event routine lists.
-  "schedules-only": [{ module: ROUTINES, from: String.raw`\.filter\(\(row\) => row\.enabled \|\| isPaused\(row\)\)\.map\(listedEvent\)`, to: ".filter(() => false).map(listedEvent)" }],
-  // A pause turns the row off and leaves it in the thread index.
+  "schedules-only": [{ module: ROUTINES, from: String.raw`\.filter\(\(subscription\) => subscription\.enabled \|\| isPaused\(subscription\)\)\.map\(listedEvent\)`, to: ".filter(() => false).map(listedEvent)" }],
+  // A pause turns the subscription off and leaves it in the thread index.
   "pause-keeps-index": [
     { module: "packages/workforce/src/subscriptions/subscribe.ts", from: String.raw`await dropFromIndex\(ctx, outcome\?\.thread \?\? ref\.state\.thread, id\);`, to: 'if (reason !== "paused") await dropFromIndex(ctx, outcome?.thread ?? ref.state.thread, id);' }
   ],
   // A seed writes every declared routine on, whatever the person paused.
   "seed-unpauses": [
-    { module: ROUTINES, from: String.raw`enabled: existing\?\.enabled \?\? true`, to: "enabled: true" },
+    { module: ROUTINES, from: String.raw`state: \{ \.\.\.kept, \.\.\.owned, kind: TASK_SCHEDULE_HANDLER,`, to: "state: { ...kept, ...owned, enabled: true, kind: TASK_SCHEDULE_HANDLER," },
     { module: ROUTINES, from: String.raw`await seedSubscription\(ctx, `, to: "await subscribe(ctx, " }
   ],
-  // A resume subscribes again without the row's task.
-  "resume-drops-task": [{ module: ROUTINES, from: String.raw`\.\.\.\(row\.taskId === undefined \? \{\} : \{ taskId: row\.taskId \}\)`, to: "...{}" }]
+  // A resume turns it back on without its task.
+  "resume-drops-task": [
+    {
+      module: "packages/workforce/src/subscriptions/subscribe.ts",
+      from: String.raw`return \{ \.\.\.kept, enabled: true \};`,
+      to: "{ const { taskId: _task, ...rest } = kept; return { ...rest, enabled: true }; }"
+    }
+  ]
 };
 
 if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {
@@ -121,11 +127,19 @@ async function fire(h: SubscriptionsHost, user: string, key: string, cron: strin
 const on = (thread: string, text: string, fields: Record<string, unknown> = {}) =>
   event({ threads: [thread.split("#")[0]!, thread], text, url: `https://github.com/${thread.slice("github:".length)}`, ...fields });
 
-/** The subscription ids the org's thread index names for `thread`, read from the store. */
+/**
+ * The subscription ids the org's thread index names for `thread` and A, read from the store. B's
+ * copy of a declared routine shares A's id, and is B's to pause.
+ */
 async function indexed(h: SubscriptionsHost, thread: string): Promise<string[]> {
   const runtime = await h.state.getRuntime();
-  const row = await runtime.stores.resourceState.get("org", ORG, `workforce/subscription-index/${encodeURIComponent(thread)}`);
-  return Object.keys((row?.state as { subscriptions?: Record<string, unknown> } | undefined)?.subscriptions ?? {});
+  const index = await runtime.stores.resourceState.get("org", ORG, `workforce/subscription-index/${encodeURIComponent(thread)}`);
+  // Each slot names its owner, then the subscription id (a bare id is an index from before slots).
+  const slots = (index?.state as { subscriptions?: Record<string, { userId: string }> } | undefined)?.subscriptions ?? {};
+  return Object.entries(slots).filter(([, entry]) => entry.userId === A).map(([slot, entry]) => {
+    const owner = `${encodeURIComponent(entry.userId)}:`;
+    return slot.startsWith(owner) ? slot.slice(owner.length) : slot;
+  });
 }
 
 /** A user's stored routines, both collections, read from the store: live or paused. */
@@ -168,22 +182,22 @@ await runGoal(async (failures, tell) => {
     const lead = await h.conversation(A, "lead");
     const filed = await h.act(A, lead, "createTask_tasks", { goal: `open the PR [subscribe:${F.taskThread}] [hold] [fail]`, assignee: "eng.follower" });
     if (filed.error !== undefined) throw new Error(`setup: filing the task failed: ${JSON.stringify(filed.error)}`);
-    let taskRow: { id: string; taskId?: string } | undefined;
-    for (let i = 0; i < 500 && taskRow === undefined; i += 1) {
-      taskRow = (await h.subscriptionRows(A)).find((r) => r.thread === F.taskThread) as typeof taskRow;
-      if (taskRow === undefined) await new Promise((resolve) => setTimeout(resolve, 10));
+    let taskSub: { id: string; taskId?: string } | undefined;
+    for (let i = 0; i < 500 && taskSub === undefined; i += 1) {
+      taskSub = (await h.subscriptionRows(A)).find((r) => r.thread === F.taskThread) as typeof taskSub;
+      if (taskSub === undefined) await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    if (taskRow === undefined) throw new Error("setup: the task never subscribed");
-    made.push(`event:${taskRow.id}`);
-    // Rows as `main`'s code wrote them: a schedule with no maker, a subscription with no maker.
+    if (taskSub === undefined) throw new Error("setup: the task never subscribed");
+    made.push(`event:${taskSub.id}`);
+    // As `main`'s code saved them: a schedule with no maker, a subscription with no maker.
     const runtime = await h.state.getRuntime();
     const cellA = `${A}:~org:${ORG}`;
     await runtime.stores.resourceState.set("user", cellA, `workforce/schedules/${F.legacy.key}`, { cron: F.legacy.cron, kind: "task", input: F.clock.task, enabled: true, orgId: ORG } as never, "any");
     made.push(`clock:${F.legacy.key}`);
     const legacySub = (await h.subscribe(A, chat, { thread: F.legacy.thread })) as { id: string };
     const legacyKey = `workforce/subscriptions/${legacySub.id}`;
-    const legacyRow = (await runtime.stores.resourceState.get("user", cellA, legacyKey))!.state as Record<string, unknown>;
-    const { madeBy: _drop, ...asMain } = legacyRow;
+    const legacySaved = (await runtime.stores.resourceState.get("user", cellA, legacyKey))!.state as Record<string, unknown>;
+    const { madeBy: _drop, ...asMain } = legacySaved;
     await runtime.stores.resourceState.set("user", cellA, legacyKey, asMain as never, "any");
     made.push(`event:${legacySub.id}`);
 
@@ -205,21 +219,21 @@ await runGoal(async (failures, tell) => {
     evidence.push(`a: ${listedIds.length} listed = stored, ${made.length} from writers + ${appMade.length} seeded; e: B lists ${bList.length} (its own seeds)`);
 
     // ---- (h) a task's routine, paused then resumed, ends with its task ----
-    const taskId = `event:${taskRow.id}`;
+    const taskId = `event:${taskSub.id}`;
     saved(await roster(h, A, "pauseRoutine", { id: taskId, paused: true }), "pausing the task's routine");
     saved(await roster(h, A, "pauseRoutine", { id: taskId, paused: false }), "resuming the task's routine");
-    // The resumed row still names its task, before the task's own turn could write it again: a
+    // The resumed subscription still names its task, before the task's own turn could write it again: a
     // failed task's retry subscribes afresh, so the ending alone can't tell a dropped task apart.
-    const resumed = (await h.subscriptionRows(A)).find((r) => r.id === taskRow!.id);
-    if (resumed?.enabled !== true || resumed.taskId !== taskRow.taskId) {
-      failures.push(`h:keeps-its-task — the resumed row is ${JSON.stringify({ enabled: resumed?.enabled, taskId: resumed?.taskId })}, wanted on with task ${taskRow.taskId}`);
+    const resumed = (await h.subscriptionRows(A)).find((r) => r.id === taskSub!.id);
+    if (resumed?.enabled !== true || resumed.taskId !== taskSub.taskId) {
+      failures.push(`h:keeps-its-task — the resumed subscription is ${JSON.stringify({ enabled: resumed?.enabled, taskId: resumed?.taskId })}, wanted on with task ${taskSub.taskId}`);
     }
     releaseTask();
     await h.settled();
-    const ended = (await h.subscriptionRows(A)).find((r) => r.id === taskRow!.id);
-    if (ended?.enabled !== false || ended.endedReason !== "task_errored") failures.push(`h:ends-with-its-task — after the task failed the row is ${JSON.stringify({ enabled: ended?.enabled, endedReason: ended?.endedReason })}`);
+    const ended = (await h.subscriptionRows(A)).find((r) => r.id === taskSub!.id);
+    if (ended?.enabled !== false || ended.endedReason !== "task_errored") failures.push(`h:ends-with-its-task — after the task failed the saved is ${JSON.stringify({ enabled: ended?.enabled, endedReason: ended?.endedReason })}`);
 
-    // ---- (g) main's rows fire ----
+    // ---- (g) main's schedule and subscription fire ----
     const firedLegacy = await fire(h, A, F.legacy.key, F.legacy.cron);
     if (tasksRun(h) !== 1) failures.push(`g:fires — the legacy schedule answered ${firedLegacy} and ran ${tasksRun(h)} tasks`);
     await h.route(on(F.legacy.thread, "legacy review"));
@@ -265,7 +279,7 @@ await runGoal(async (failures, tell) => {
     if ((await h.heard(hearer)).some((m) => m.includes("after delete"))) failures.push("d:nothing-fires — the deleted event routine delivered");
     evidence.push("b–d, h: paused fired nothing and left the index; resumed fired; resume without read refused; task routine ended task_errored after pause and resume; deleted fired nothing");
 
-    // ---- (f) seeded twice: one routine; a change reaches the row and keeps its pause ----
+    // ---- (f) seeded twice: one routine; a change reaches it and keeps its pause ----
     for (const r of (await listOf(h, A)).filter((r) => r.madeBy?.by === "app")) {
       saved(await roster(h, A, "pauseRoutine", { id: r.id, paused: true }), `pausing ${r.id}`);
     }
@@ -289,8 +303,8 @@ await runGoal(async (failures, tell) => {
       if (round === "changed") {
         const clock = seeded.find((r) => "clock" in r.trigger);
         const ev = seeded.find((r) => "event" in r.trigger);
-        if (clock?.trigger.clock.cron !== F.changed.clockCron) failures.push(`f:change-reaches-the-row — the clock routine's cron is ${clock?.trigger.clock.cron}`);
-        if (ev?.trigger.event.interest !== F.changed.eventInterest) failures.push(`f:change-reaches-the-row — the event routine's interest is ${ev?.trigger.event.interest}`);
+        if (clock?.trigger.clock.cron !== F.changed.clockCron) failures.push(`f:change-reaches-the-routine — the clock routine's cron is ${clock?.trigger.clock.cron}`);
+        if (ev?.trigger.event.interest !== F.changed.eventInterest) failures.push(`f:change-reaches-the-routine — the event routine's interest is ${ev?.trigger.event.interest}`);
         const thread = (F.declared.find((d) => "event" in d.trigger)!.trigger as { event: { thread: string } }).event.thread;
         if ((await indexed(again, thread)).length !== 0) failures.push("f:keeps-the-pause — the paused seeded event routine is back in the thread index");
       }
@@ -298,6 +312,6 @@ await runGoal(async (failures, tell) => {
       await again.dispose();
     }
   }
-  evidence.push("f: two restarts, one row per entry, paused kept, the changed cron and interest reached the rows");
+  evidence.push("f: two restarts, one routine per entry, paused kept, the changed cron and interest reached the routines");
   return { failures, evidence: evidence.join("; ") };
 });

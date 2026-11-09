@@ -1,5 +1,5 @@
 /**
- * A clock routine is a schedule that files an ordinary task (FIX-2085): a row in
+ * A clock routine is a schedule that files an ordinary task (FIX-2085): one in
  * the user's schedule collection, fired through the scheduled-dispatch
  * endpoint, files a task on the named worker's board in the user's own
  * conversation with it, through the board's own filing, as the user. The user's
@@ -57,7 +57,7 @@ async function fire(h: BoardHost, key: string, body: Record<string, unknown> = {
 
 const roster = (h: BoardHost, action: string, input: unknown) => h.act(ALICE, `roster-${ALICE}`, action, input, "roster");
 
-/** Save a clock routine through the roster's `saveRoutine`, from a schedule written the way the row stores it. */
+/** Save a clock routine through the roster's `saveRoutine`, from a schedule written the way the collection stores it. */
 const saveClock = (h: BoardHost, schedule: { key: string; cron: string; timezone?: string; input: unknown }) =>
   roster(h, "saveRoutine", {
     name: schedule.key,

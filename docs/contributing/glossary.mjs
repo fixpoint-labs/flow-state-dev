@@ -808,7 +808,7 @@ export const ENTRIES = [
     decision: "Owner, 2026-11-08; FIX-2471 D12; FIX-2614",
     // FIX-2614 renamed the shipped surface: the four routine verbs and `routineTools` replace the schedule
     // actions and the subscription tools, with no aliases. "Schedule" and "subscription" stay, as the words
-    // for a clock trigger's row and an event trigger's.
+    // for a clock trigger's stored resource and an event trigger's.
     retires: [
       { name: "subscriptionTools" },
       { name: "SUBSCRIPTION_TOOLS" },

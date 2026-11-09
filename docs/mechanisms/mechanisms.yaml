@@ -723,7 +723,7 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: routines
-    job: See and stop everything that fires on its own as a user, in one list. A routine has one trigger, a clock (a schedule row that files a task) or an event (a subscription row); four verbs, listRoutines, saveRoutine, pauseRoutine and deleteRoutine, reach both, as roster actions for the user and as routineTools for a worker. The app's declared routines are seeded per user under cfg_ keys and can only be paused.
+    job: See and stop everything that fires on its own as a user, in one list. A routine has one trigger, a clock (a schedule that files a task) or an event (a subscription); four verbs, listRoutines, saveRoutine, pauseRoutine and deleteRoutine, reach both, as roster actions for the user and as routineTools for a worker. The app's declared routines are seeded per user under cfg_ keys and can only be paused.
     package: "@flow-state-dev/workforce"
     anchor: routineTools
     file: packages/workforce/src/routines/routines.ts

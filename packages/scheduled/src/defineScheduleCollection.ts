@@ -63,8 +63,8 @@ const SCHEDULE_RESOURCE_SCHEMA = z.object({
   enabled: z.boolean().default(true),
   // FIX-2614; BP-030.
   /**
-   * The writer's own fields, kept with the row and never read here: the
-   * resolver, the index and dispatch ignore them. Optional, so a row from
+   * The writer's own fields, kept with the schedule and never read here: the
+   * resolver, the index and dispatch ignore them. Optional, so a schedule from
    * before it reads as it always did.
    */
   metadata: z.record(z.string(), z.unknown()).optional()
@@ -90,7 +90,7 @@ export interface DefineScheduleCollectionOptions {
   /**
    * The collection's own `flowIsolation`. Omitted, it follows the declaring
    * flow's `isolateUserState`, as any collection does. `false` keeps one set
-   * of rows for the user across flows, so a row written by one flow is read
+   * of schedules for the user across flows, so one written by one flow is read
    * and fired by another.
    */
   flowIsolation?: boolean;

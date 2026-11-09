@@ -54,7 +54,7 @@ describe("the routine list", () => {
     expect(toRoutines({ routines: [off, weekly, review] }).map((r) => r.id)).toEqual(["clock:paused", "clock:adoption", "event:sub_1"]);
   });
 
-  it("leaves out a row that isn't a routine", () => {
+  it("leaves out an answer that isn't a routine", () => {
     expect(toRoutines({ routines: [weekly, { id: 1 }, null] }).map((r) => r.id)).toEqual(["clock:adoption"]);
     expect(toRoutines(undefined)).toEqual([]);
   });

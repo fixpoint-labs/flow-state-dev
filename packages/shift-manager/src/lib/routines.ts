@@ -34,15 +34,15 @@ const text = (value: unknown): string | null => (typeof value === "string" && va
 
 /**
  * The routines a list read answered, in the order it answered them (clock
- * routines soonest next run first, then event routines). Each row is parsed by
- * Workforce's own schema; a row that doesn't parse is left out.
+ * routines soonest next run first, then event routines). Each is parsed by
+ * Workforce's own schema; one that doesn't parse is left out.
  */
 export function toRoutines(output: unknown): Routine[] {
-  const rows = (output as { routines?: unknown } | null | undefined)?.routines;
-  if (!Array.isArray(rows)) return [];
+  const listed = (output as { routines?: unknown } | null | undefined)?.routines;
+  if (!Array.isArray(listed)) return [];
   const routines: Routine[] = [];
-  for (const row of rows) {
-    const parsed = listedRoutineSchema.safeParse(row);
+  for (const item of listed) {
+    const parsed = listedRoutineSchema.safeParse(item);
     if (!parsed.success) continue;
     const r = parsed.data;
     const task = (r.task ?? {}) as Record<string, unknown>;

@@ -52,6 +52,7 @@ import {
   indexKeyOf,
   subscriptionCursorsOf,
   subscriptionIndexOf,
+  subscriptionIdOfSlot,
   subscriptionResources,
   subscriptionResourceKey,
   subscriptionsOf,
@@ -203,6 +204,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       const named = new Set<string>();
       for (const thread of event.threads) {
         const row = await index.getOptional(indexKeyOf(thread));
+        // A candidate is its slot (owner and id) while it is screened: two users' copies of one
+        // declared routine share an id. Its owner run names the id alone.
         for (const [subscription, entry] of Object.entries(row?.state.subscriptions ?? {})) {
           if (named.has(subscription) || entry.provider !== event.provider || entry.thread !== thread) continue;
           named.add(subscription);
@@ -226,13 +229,13 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       const runFor = (candidate: Screening["pending"][number], endOnly: boolean): Routed["ownerRuns"][number] => ({
         flowKind: options.kind,
         entry: SUBSCRIPTION_DELIVER_ENTRY,
-        input: { subscription: candidate.subscription, event, ...(endOnly ? { endOnly: true as const } : {}) },
+        input: { subscription: subscriptionIdOfSlot(candidate.subscription, candidate.entry), event, ...(endOnly ? { endOnly: true as const } : {}) },
         owner: {
           userId: candidate.entry.userId,
           orgId: candidate.entry.orgId,
           ...(candidate.entry.tenantId === undefined ? {} : { tenantId: candidate.entry.tenantId })
         },
-        rowKey: subscriptionResourceKey(candidate.subscription)
+        rowKey: subscriptionResourceKey(subscriptionIdOfSlot(candidate.subscription, candidate.entry))
       });
       for (const candidate of nominated) {
         // A subscription with no verdict is refused.
@@ -241,7 +244,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           pass: false,
           reason: "no verdict"
         };
-        if (recorded.length < MAX_ROUTED_VERDICTS) recorded.push(verdict);
+        // Recorded by subscription id, as before slots: the slot is the index's own.
+        if (recorded.length < MAX_ROUTED_VERDICTS) recorded.push({ ...verdict, subscription: subscriptionIdOfSlot(verdict.subscription, candidate.entry) });
         if (!verdict.pass) continue;
         delivered.add(candidate.subscription);
         ownerRuns.push(runFor(candidate, false));
@@ -372,12 +376,12 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       const identity = ctx.session.identity as { userId?: string; orgId?: string };
       // The row decides: this user's, this org's, on, and on this event's thread.
       const row: SubscriptionResourceState | undefined = (await subscriptionsOf(ctx).getOptional(subscription))?.state;
-      // The index only nominates, and an entry can outlive what its row now says (an end, a move
-      // to another thread, screens a racing write replaced). The row decides; an entry it doesn't
+      // The index only nominates, and an entry can outlive what the saved subscription now says (an
+      // end, a move to another thread, screens a racing write replaced). The subscription decides; an entry it doesn't
       // back is taken out here, so the index heals on the next event that finds it.
       const heal = async () => {
         for (const thread of event.threads) if (thread !== row?.thread || row?.enabled !== true) await dropFromIndex(ctx, thread, subscription);
-        // Then the index as the committed row has it, not as this delivery read it: a resume or a
+        // Then the index as the saved subscription has it, not as this delivery read it: a resume or a
         // reseed that landed meanwhile gets its entry back.
         const ref = await subscriptionsOf(ctx).getOptional(subscription);
         const now = ref === undefined ? undefined : await readCommitted(ref, (committed) => committed);
@@ -392,7 +396,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         await heal();
         return { act: "refused", reason: "not this subscription's thread" };
       }
-      // The screens again, on the row's own settings: the index entry routing nominated by can be stale.
+      // The screens again, on the subscription's own settings: the index entry routing nominated by can be stale.
       if (endOnly !== true) {
         for (const kind of SCREEN_KINDS) {
           const refused = screenRefusal(kind, event, row, { trustedBots: options.trustedBots ?? [] });
