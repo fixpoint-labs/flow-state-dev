@@ -70,7 +70,9 @@ export function interestAsks(screening: Screening): InterestAsk[] {
   for (const candidate of screening.pending) {
     if (!listsInterest(candidate.entry)) continue;
     const quote = quotedInterest(candidate.entry.interest!);
-    byQuote.set(quote, [...(byQuote.get(quote) ?? []), candidate.subscription]);
+    const askers = byQuote.get(quote);
+    if (askers === undefined) byQuote.set(quote, [candidate.subscription]);
+    else askers.push(candidate.subscription);
   }
   return [...byQuote].map(([quote, askers], i) => ({ id: `interest_${i}`, quote, askers }));
 }
@@ -88,18 +90,18 @@ function eventAsOutsideContent(event: SubscriptionEvent): string {
 }
 
 /**
- * Decide the askers from what the call left: a yes passes on (still
- * undecided, for the screens after), a no refuses, and a failed call, or a
- * question it left unanswered, refuses `interest: unjudged`.
+ * Decide the askers from what the call left: a yes passes (the judgment is
+ * the last screen), a no refuses, and a failed call, or a question it left
+ * unanswered, refuses `interest: unjudged`.
  */
 function judged(screening: Screening, answer: unknown): Screening {
   const answers = failedCallSchema.safeParse(answer).success ? undefined : (answer as { answers?: Record<string, BooleanAnswer | undefined> }).answers;
-  const outcome = new Map<string, ScreenVerdict | "pass">();
+  const outcome = new Map<string, ScreenVerdict>();
   for (const ask of interestAsks(screening)) {
     const probability = answers?.[ask.id]?.probability;
     for (const subscription of ask.askers) {
       if (typeof probability !== "number") outcome.set(subscription, { subscription, pass: false, reason: INTEREST_UNJUDGED });
-      else if (probability >= PASS_PROBABILITY) outcome.set(subscription, "pass");
+      else if (probability >= PASS_PROBABILITY) outcome.set(subscription, { subscription, pass: true, reason: "interest: matches" });
       else outcome.set(subscription, { subscription, pass: false, reason: "interest: not what it asked for" });
     }
   }
@@ -107,7 +109,7 @@ function judged(screening: Screening, answer: unknown): Screening {
   const verdicts = [...screening.verdicts];
   for (const candidate of screening.pending) {
     const decided = outcome.get(candidate.subscription);
-    if (decided === undefined || decided === "pass") pending.push(candidate);
+    if (decided === undefined) pending.push(candidate);
     else verdicts.push(decided);
   }
   return { ...screening, pending, verdicts };
