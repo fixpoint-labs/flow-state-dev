@@ -168,7 +168,10 @@ export function screenStep(kind: ScreenKind, options: ScreenOptions) {
 /** Whether `entry` lists the custom screen `name`. */
 const listsCustom = (entry: IndexEntry, name: string) => entry.screens.some((listed) => listed.screen === "custom" && listed.name === name);
 
-/** One custom screen's answer for one subscription: `undefined` to pass, or why it refused. A throw, or an answer that isn't a string, is `failed`. */
+/**
+ * One custom screen's answer for one subscription: `undefined` to pass, or why it refused. A throw, or an answer that isn't a string, is `failed`.
+ * A promise answer is refused unawaited, its rejection consumed so it can't reach the host as an unhandled rejection.
+ */
 function customRefusal(screen: CustomScreen["screen"], event: SubscriptionEvent, entry: IndexEntry): string | undefined {
   let answer: unknown;
   try {
@@ -177,7 +180,9 @@ function customRefusal(screen: CustomScreen["screen"], event: SubscriptionEvent,
     return "failed";
   }
   if (answer === undefined) return undefined;
-  return typeof answer === "string" ? answer : "failed";
+  if (typeof answer === "string") return answer;
+  if (typeof (answer as { then?: unknown } | null)?.then === "function") (answer as PromiseLike<unknown>).then(undefined, () => {});
+  return "failed";
 }
 
 /** Run the custom screen `name` over the undecided that list it: a refusal becomes `custom:<name>: <why>`. */

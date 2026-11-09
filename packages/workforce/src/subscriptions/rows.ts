@@ -129,7 +129,7 @@ export const indexEntrySchema = screenSettingsSchema.extend({
   orgId: z.string().min(1),
   tenantId: z.string().min(1).optional(),
   /**
-   * The row's sentence, mirrored only for a subscription that lists
+   * The subscription's sentence, mirrored only for a subscription that lists
    * `interest`. An entry without one reads as not listing it (an entry from
    * before the screen has none).
    */

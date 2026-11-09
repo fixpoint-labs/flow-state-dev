@@ -309,13 +309,13 @@ async function world(modelUp: boolean): Promise<Measured> {
 
   const landed: Measured["landed"] = [];
   for (const user of ["alice", "bob"]) {
-    const rows = await runtime.stores.resourceState.getByPrefix("user", `${user}:~org:${ORG}`, WORKER_MESSAGES_PATTERN.replace("*", ""));
-    for (const value of Object.values(rows)) {
-      const row = value.state as { id: string; from: string; toSession: string; status: string };
-      if (!row.from.startsWith("service:")) continue;
-      const base = row.id.endsWith(`:${row.toSession}`) ? row.id.slice(0, -(row.toSession.length + 1)) : row.id;
+    const messages = await runtime.stores.resourceState.getByPrefix("user", `${user}:~org:${ORG}`, WORKER_MESSAGES_PATTERN.replace("*", ""));
+    for (const value of Object.values(messages)) {
+      const message = value.state as { id: string; from: string; toSession: string; status: string };
+      if (!message.from.startsWith("service:")) continue;
+      const base = message.id.endsWith(`:${message.toSession}`) ? message.id.slice(0, -(message.toSession.length + 1)) : message.id;
       const [object, version] = base.slice("sub_".length).split("@");
-      landed.push({ session: row.toSession, key: `${decodeURIComponent(object!)}@${version}`, status: row.status });
+      landed.push({ session: message.toSession, key: `${decodeURIComponent(object!)}@${version}`, status: message.status });
     }
   }
   const textOf = (item: any): string => (typeof item.text === "string" ? item.text : ((item.content ?? []) as Array<{ text?: string }>).map((p) => p.text ?? "").join(""));
@@ -400,9 +400,9 @@ await runGoal(async (failures, tell) => {
   if (SUBSCRIPTIONS.some((s) => listsInterest(s) && endOf(s) !== Number.POSITIVE_INFINITY)) failures.push("setup: an interest subscription ends mid-fixture, which the question oracle doesn't model");
   for (const [name, m] of [["up", up], ["down", down]] as const) {
     const modelUp = name === "up";
-    // (a) Each session's rows equal the oracle's, delivered, one message item each.
+    // (a) Each session's messages equal the oracle's, delivered, one message item each.
     tell.over(`a · ${name} · expected deliveries`, SUBSCRIPTIONS.flatMap((s) => expectedFor(s, modelUp)));
-    tell.over(`a · ${name} · rows landed`, m.landed);
+    tell.over(`a · ${name} · messages landed`, m.landed);
     for (const sub of SUBSCRIPTIONS) {
       const got = m.landed.filter((l) => l.session === m.sessions.get(sub.label));
       const want = expectedFor(sub, modelUp);
@@ -411,8 +411,8 @@ await runGoal(async (failures, tell) => {
         const extra = got.map((g) => g.key).filter((k) => !want.includes(k));
         failures.push(`a · ${name}: ${sub.label} got ${got.length}, expected ${want.length} (missing ${missing.slice(0, 3).join(", ") || "none"}; extra ${extra.slice(0, 3).join(", ") || "none"})`);
       }
-      if (got.some((g) => g.status !== "delivered")) failures.push(`a · ${name}: ${sub.label} has a row not delivered`);
-      if ((m.items.get(sub.label) ?? 0) !== got.length) failures.push(`a · ${name}: ${sub.label}'s session holds ${m.items.get(sub.label)} message item(s) for ${got.length} row(s)`);
+      if (got.some((g) => g.status !== "delivered")) failures.push(`a · ${name}: ${sub.label} has a message not delivered`);
+      if ((m.items.get(sub.label) ?? 0) !== got.length) failures.push(`a · ${name}: ${sub.label}'s session holds ${m.items.get(sub.label)} message item(s) for ${got.length} message(s)`);
     }
     for (const run of m.runs) if (run.error !== undefined) failures.push(`${name}: routing ${keyOf(run.event)} failed: ${run.error}`);
 

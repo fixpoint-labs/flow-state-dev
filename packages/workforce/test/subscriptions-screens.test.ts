@@ -112,6 +112,29 @@ describe("custom screens", () => {
       }
     ));
 
+  // A promise that rejects after routing refused it must not reach the host as an unhandled rejection: Node's default kills the process.
+  it("refuse as failed an async screen that rejects, and leave no unhandled rejection to crash the host", async () => {
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", record);
+    try {
+      await withHost(
+        { custom: { rejects: { describe: "rejects", screen: (async () => { throw new Error("async boom"); }) as never } } },
+        async (host) => {
+          const one = await host.follower("alice");
+          const sub = (await host.subscribe("alice", one, { thread: PR, screens: [{ screen: "custom", name: "rejects" }] })) as { id: string };
+          const { by } = verdictsOf(await host.route(event()));
+          expect(by.get(sub.id)?.reason).toBe("custom:rejects: failed");
+        }
+      );
+      // Node reports an unhandled rejection after the microtask queue drains: give it a macrotask turn.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", record);
+    }
+  });
+
   it("are refused at subscribe by a name the provider doesn't declare, and listed in the tool's description", () =>
     withHost({ custom: stackTrace }, async (host) => {
       const one = await host.follower("alice");
@@ -251,8 +274,8 @@ describe("the interest screen", () => {
       const listing = (await host.subscribe("alice", one, { thread: PR, screens: [{ screen: "interest" }], interest: "about crash" })) as { id: string };
       const plain = (await host.subscribe("alice", two, { thread: PR, interest: "a private note" })) as { id: string };
       const runtime = await host.state.getRuntime();
-      const rows = await runtime.stores.resourceState.getByPrefix("org", ORG, SUBSCRIPTION_INDEX_PATTERN.replace("*", ""));
-      const entries = Object.assign({}, ...Object.values(rows).map((r) => (r.state as { subscriptions: Record<string, { interest?: string }> }).subscriptions));
+      const indexes = await runtime.stores.resourceState.getByPrefix("org", ORG, SUBSCRIPTION_INDEX_PATTERN.replace("*", ""));
+      const entries = Object.assign({}, ...Object.values(indexes).map((index) => (index.state as { subscriptions: Record<string, { interest?: string }> }).subscriptions));
       expect(entries[listing.id].interest).toBe("about crash");
       expect(entries[plain.id]).not.toHaveProperty("interest");
     });
