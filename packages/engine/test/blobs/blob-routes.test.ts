@@ -198,6 +198,18 @@ describe("claiming and reading", () => {
     expect((await send("alice", "s_alice", [attachment])).status).toBe(202);
   });
 
+  // Confirming is bookkeeping after the request already runs. A 500 there would
+  // tell the client its send failed, and a retry would start a second run.
+  it("answers an admitted send as accepted even when confirming its files fails", async () => {
+    const { stores, upload, send } = setup();
+    const attachment = await attachmentOf(await upload("alice"));
+    stores.blobs!.confirm = () => Promise.reject(new Error("disk full"));
+    expect((await send("alice", "s_alice", [attachment])).status).toBe(202);
+    await settle();
+    // Still pending, so no refused send can hand it back: it stays in the session.
+    expect((await stores.blobs!.head(parseBlobRef(attachment.data)!))?.owner).toBe(sessionBlobOwner("s_alice"));
+  });
+
   it("deletes a session's files with the session", async () => {
     const { stores, call, upload, send } = setup();
     const attachment = await attachmentOf(await upload("alice"));
