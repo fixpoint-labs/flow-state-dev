@@ -296,12 +296,12 @@ describe("pullRequestRefFromUrl", () => {
 });
 
 // FIX-2535 D2: a coding session follows its pull request from the write that records it.
-describe("writePullRequests — onRecorded, once per new row", () => {
-  it("hands a new row to onRecorded after it is written, and never a repeat sighting of it", async () => {
+describe("writePullRequests — onRecorded, once per newly recorded pull request", () => {
+  it("hands a newly recorded pull request to onRecorded after it is written, and never a repeat sighting of it", async () => {
     const collection = memoryCollection();
     const recorded: Array<{ key: string; written: boolean }> = [];
     const onRecorded = (pr: { key: string }) => {
-      // The row is already there: a follower that reads it finds it.
+      // The entry is already there: a follower that reads it finds it.
       recorded.push({ key: pr.key, written: collection.rows.has(pr.key) });
     };
     await writePullRequests(collection, [ref(), ref({ number: 89, url: "https://github.com/acme/app/pull/89" })], { source: "tool", onRecorded });

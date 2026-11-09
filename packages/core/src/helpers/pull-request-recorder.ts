@@ -27,9 +27,9 @@
  *
  * A host that must act on each newly recorded pull request in the request
  * (a coding task following its pull request) registers with
- * {@link whenPullRequestRecorded}; every writer in the request hands its new
- * rows to {@link pullRequestRecordedOf}'s callback, the recorder included,
- * mid-turn.
+ * {@link whenPullRequestRecorded}; every writer in the request hands the pull
+ * requests it records to {@link pullRequestRecordedOf}'s callback, the
+ * recorder included, mid-turn.
  */
 import { handler } from "../blocks/handler";
 import type { RuntimeItem } from "../items/internal";
@@ -68,15 +68,15 @@ export interface PullRequestRecorderContext {
 /** The running recorder of each request, by the request's response: its writes so far. */
 const recorders = new WeakMap<object, () => Promise<void>>();
 
-/** The callbacks a request registered for its new pull-request rows, by the request's response. */
+/** The callbacks a request registered for its newly recorded pull requests, by the request's response. */
 const recordedCallbacks = new WeakMap<object, PullRequestRecordedCallback[]>();
 
 // FIX-2535 D2.
 /**
  * Call `callback` for each pull request any writer in this request records for
  * the first time: the recorder as a create call settles, and a host's branch
- * check. Register before the harness runs (a step ahead of it); a row written
- * before it registered is not handed to it.
+ * check. Register before the harness runs (a step ahead of it); a pull request
+ * recorded before it registered is not handed to it.
  *
  * @param response The request's response (`ctx.response`).
  */

@@ -22,7 +22,7 @@
  * - {@link writePullRequests} — the one write path. Every writer goes through
  *   it: the recorder (`../helpers/pull-request-recorder`), a host's turn-end
  *   branch check, and a harness handle that names a pull request. Its
- *   `onRecorded` callback fires once per new row, which is how a session
+ *   `onRecorded` callback fires once per newly recorded pull request, which is how a session
  *   follows a pull request from the moment it is recorded.
  *
  * It sits beside `./harness-plan` (what a run planned) and copies its shape: a
@@ -391,13 +391,13 @@ export interface PullRequestCollection {
   upsert(key: string, update: Record<string, unknown>): Promise<unknown>;
 }
 
-/** A pull request a writer recorded for the first time: the ref, and its row's key. */
+/** A pull request a writer recorded for the first time: the ref, and its entry's key. */
 export interface RecordedPullRequest extends PullRequestRef {
-  /** The row's key: {@link pullRequestKey}. */
+  /** The entry's key: {@link pullRequestKey}. */
   readonly key: string;
 }
 
-/** Called once per new row a write records. */
+/** Called once per pull request a write records for the first time. */
 export type PullRequestRecordedCallback = (pr: RecordedPullRequest) => void | Promise<void>;
 
 // FIX-2535 D2.
@@ -424,8 +424,8 @@ export interface WritePullRequestsOptions {
   // FIX-2535 D2.
   /**
    * Called once for each key this write records for the first time, after its
-   * row is written, and never for a row that was already there. Awaited, in
-   * order; what it throws, the write throws (after the row landed).
+   * entry is written, and never for an entry that was already there. Awaited, in
+   * order; what it throws, the write throws (after the entry landed).
    */
   readonly onRecorded?: PullRequestRecordedCallback;
 }
