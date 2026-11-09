@@ -203,7 +203,9 @@ const hasExport = (node) => (node !== undefined && ts.canHaveModifiers(node) ? t
 /** The variable statement a declaration or a binding inside it belongs to, if any. */
 const statementOf = (node) => {
   let n = node;
-  while (n !== undefined && !ts.isVariableStatement(n) && !ts.isSourceFile(n) && !ts.isBlock(n)) n = n.parent;
+  // A function or a class is a boundary: what an arrow, a method or a class inside an exported
+  // initializer binds is its own, not the export's (`export const ids = xs.map(({ row }) => row)`).
+  while (n !== undefined && !ts.isVariableStatement(n) && !ts.isSourceFile(n) && !ts.isBlock(n) && !ts.isFunctionLike(n) && !ts.isClassLike(n)) n = n.parent;
   return n !== undefined && ts.isVariableStatement(n) ? n : undefined;
 };
 
@@ -226,9 +228,21 @@ export const NAME_READS = [
   { read: "import", is: (n) => (ts.isImportSpecifier(n) && n.propertyName !== undefined) || ts.isImportClause(n) || ts.isNamespaceImport(n), kind: () => "import" },
   // `export { a as fooRow }` binds fooRow, a re-export too; `export { fooRow }` names a local; a plain `export { FooRow } from` is a use.
   { read: "export-list", is: (n) => ts.isExportSpecifier(n) && (n.propertyName !== undefined || n.parent.parent.moduleSpecifier === undefined), kind: () => "export" },
+  // `import row = require("./x")` binds row.
+  { read: "import-equals", is: ts.isImportEqualsDeclaration, kind: () => "import" },
+  // `namespace rowSpace {}` and `module rowSpace {}`; `declare module "row-lib"` names a path, which the name check below drops.
+  { read: "namespace", is: (n) => ts.isModuleDeclaration(n) && ts.isIdentifier(n.name), kind: (n) => (hasExport(n) ? "exported-value" : "local") },
+  // `export * as FooRow from "./x"` binds FooRow, as an export-list alias does.
+  { read: "namespace-export", is: ts.isNamespaceExport, kind: () => "export" },
   {
     read: "property",
-    is: (n) => ts.isPropertySignature(n) || ts.isPropertyDeclaration(n) || ts.isMethodDeclaration(n) || ts.isMethodSignature(n) || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n),
+    // A method or an accessor is a declaration where a class owns it; in an object literal it is a key, a use,
+    // the same as `{ row: () => {} }`. A property or method signature belongs to an interface or a type literal.
+    is: (n) =>
+      ts.isPropertySignature(n) ||
+      ts.isPropertyDeclaration(n) ||
+      ts.isMethodSignature(n) ||
+      ((ts.isMethodDeclaration(n) || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n)) && ts.isClassLike(n.parent)),
     kind: () => "property",
   },
 ];
@@ -377,6 +391,7 @@ export function addedSince(root, base, head = "HEAD") {
   const readTo = gitReader(root, to);
   const hits = [];
   const kept = {};
+  const unread = [];
   let changed = 0;
   for (let i = 0; i < fields.length; ) {
     const status = fields[i++];
@@ -386,11 +401,15 @@ export function addedSince(root, base, head = "HEAD") {
     if (status.startsWith("D") || !CODE_FILE.test(path)) continue;
     changed++;
     const after = readTo(path);
-    if (after === null) continue;
     const before = status.startsWith("A") ? null : readFrom(oldPath);
+    // A file the diff names and the reader can't read is a hole, never a pass.
+    if (after === null || (before === null && !status.startsWith("A"))) {
+      unread.push(path);
+      continue;
+    }
     for (const h of addedRowNames(path, before, after, { kept })) hits.push({ path, area: areaOf(path)?.id, ...h });
   }
-  return { base: from, head: to, changed, hits, kept, ok: hits.length === 0 };
+  return { base: from, head: to, changed, hits, kept, unread, ok: hits.length === 0 && unread.length === 0 };
 }
 
 /** The glossary's published terms: each is defined by exactly one row of the published page. */
@@ -509,6 +528,9 @@ export const PLANTS = [
   { path: "packages/workforce/src/zz-planted-binding.ts", line: "export const { list: listFooRows } = helpers;", term: "collection-row", read: "binding" },
   { path: "packages/workforce/src/zz-planted-export-list.ts", line: "export { a as fooRow };", term: "collection-row", read: "export-list" },
   { path: "packages/engine/src/zz-planted-type-parameter.ts", line: "function g<TRow extends object>() {}", term: "collection-row", read: "type-parameter" },
+  { path: "packages/workforce/src/zz-planted-namespace-export.ts", line: 'export * as FooRows from "./x";', term: "collection-row", read: "namespace-export" },
+  // Must pass: what a function inside an exported initializer binds is its own, not the export's.
+  { path: "packages/workforce/src/zz-planted-pass.ts", line: "export const ids = [].map(({ row }: { row: { id: string } }) => row.id);", term: "collection-row", pass: true },
   // One of the six phrases, on any line of any in-scope file: a comment, a test name, a figure, a contributor doc.
   { path: "packages/workforce/src/zz-planted-phrase.ts", line: "// the subscription row is deleted when it ends", term: "collection-row" },
   { path: "packages/orchestration/test/zz-planted-phrase.test.ts", line: 'it("reads each task\'s rows", () => {});', term: "collection-row" },
@@ -539,6 +561,9 @@ export const ADDED_PLANTS = [
   { path: "packages/workforce/src/zz-added.ts", base: "", head: 'import * as rowLib from "./y";\n', name: "rowLib", read: "import" },
   { path: "packages/workforce/src/zz-added.ts", base: "", head: "class C { private rowCount = 1; }\n", name: "rowCount", read: "property" },
   { path: "packages/workforce/src/zz-added.ts", base: "const a = 1;\n", head: "const a = 1;\nconst ROW_ID = 2;\n", name: "ROW_ID", read: "variable" },
+  { path: "packages/workforce/src/zz-added.ts", base: "", head: 'import rowLib = require("./x");\n', name: "rowLib", read: "import-equals" },
+  { path: "packages/workforce/src/zz-added.ts", base: "", head: "namespace rowSpace {}\n", name: "rowSpace", read: "namespace" },
+  { path: "packages/workforce/src/zz-added.ts", base: "", head: "const obj = { row() {}, get rows() { return []; }, taskRow: () => 1 };\n", name: null, why: "an object literal's keys" },
   { path: "packages/workforce/src/zz-added.ts", base: "const row = 1;\n", head: "const row = 2;\n", name: null, why: "an edit to a line that already declares row" },
   { path: "packages/workforce/src/zz-added.ts", base: "const row = 1;\n", head: "const taskRow = 1;\n", name: null, why: "a swap inside one file (D1)" },
   { path: "packages/store-sqlite/src/zz-added.ts", base: "", head: "const row = 1;\n", name: null, why: "a store adapter keeps its rows" },
@@ -567,8 +592,10 @@ export function control(tree, { reads = NAME_READS } = {}) {
   const r = census({ files, paths }, { extraExceptions: [STALE_PLANT], reads });
   const results = PLANTS.filter((p) => p.term !== null).map((p) => {
     const line = lineOf.get(p);
-    const refused = r.hits.some((h) => h.path === p.path && h.line === line && h.term === p.term);
-    return { what: `${p.path}:${line} (${p.term}${p.read ? `, read ${p.read}` : ""})`, refused };
+    const hit = r.hits.some((h) => h.path === p.path && h.line === line && h.term === p.term);
+    // A `pass` plant must not be counted: `refused` reads as "held", as for the added reach's must-pass plants.
+    if (p.pass) return { what: `${p.path}:${line} (${p.term}, must pass)`, refused: !hit, passes: true };
+    return { what: `${p.path}:${line} (${p.term}${p.read ? `, read ${p.read}` : ""})`, refused: hit };
   });
   for (const p of ADDED_PLANTS) {
     const hits = addedRowNames(p.path, p.base, p.head, { reads });
@@ -624,8 +651,9 @@ function mainAdded(root, base) {
   for (const h of r.hits) console.log(`${h.path}:${h.line}  [${h.term}]  ${h.name} is a new row name (say ${rule.sayAdded})  ${h.text}`);
   console.log(`added since ${r.base.slice(0, 10)} to ${r.head.slice(0, 10)}: ${r.changed} code files changed`);
   for (const [id, n] of Object.entries(r.kept)) console.log(`exemption ${id}: ${n} kept`);
+  if (r.unread.length > 0) console.error(`UNREAD (the diff names them, the reader found no text): ${r.unread.join(", ")}`);
   if (r.ok) console.log("check-retired-terms --added-since: PASS · no changed file declares more row names than its base did");
-  else console.error(`FAIL · ${r.hits.length} new row names in ${new Set(r.hits.map((h) => h.path)).size} files: say ${rule.sayAdded}`);
+  else console.error(`FAIL · ${r.hits.length} new row names in ${new Set(r.hits.map((h) => h.path)).size} files: say ${rule.sayAdded} · ${r.unread.length} changed files unread`);
   process.exitCode = r.ok ? 0 : 1;
 }
 

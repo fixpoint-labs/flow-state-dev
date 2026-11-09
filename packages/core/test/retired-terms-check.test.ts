@@ -466,6 +466,55 @@ describe("TypeScript's parser reads every declaration kind, and a use never", ()
     expect(names("export function readRow() {} function writeRow() {}")).toEqual(["function:exported-value:readRow", "function:local:writeRow"]);
   });
 
+  it("reads a binding inside a function in an exported initializer as a local, not an exported value", () => {
+    // The export's statement is outside the function: what the function binds is no name a consumer meets.
+    expect(names("export const f = ({ row }) => row;")).toEqual(["variable:exported-value:f", "binding:local:row"]);
+    // The inline type literal's members are declarations too, properties, not exported values.
+    expect(names("export const ids = [].map(({ row }: { row: { id: string } }) => row.id);")).toEqual([
+      "variable:exported-value:ids",
+      "binding:local:row",
+      "property:property:row",
+      "property:property:id",
+    ]);
+    expect(names("export const g = (list) => {\n  return list.map(({ taskRow }) => taskRow);\n};")).toEqual(["variable:exported-value:g", "parameter:parameter:list", "binding:local:taskRow"]);
+    // An object-literal method and a class method in an exported initializer: the same boundary.
+    expect(names("export const o = { m({ row }) { return row; } };")).toEqual(["variable:exported-value:o", "binding:local:row"]);
+    // A class's method is a declaration the class owns; what it binds is still its own.
+    expect(names("export const K = class { m({ row }) { return row; } };")).toEqual(["variable:exported-value:K", "property:property:m", "binding:local:row"]);
+    // And the whole-tree reach leaves them alone, while a destructuring export is still refused.
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const ids = [].map(({ row }: { row: { id: string } }) => row.id);\n")).toEqual([]);
+    expect(resourceHits("packages/workforce/src/zz.ts", "export const { fooRow } = x;\n")).toEqual(["1:export const { fooRow } = x;"]);
+  });
+
+  it("reads a method or accessor only where a class or a type declares it, never an object literal's key", () => {
+    // An object key is a use (the glossary): `{ row() {} }` is the same key as `{ row: () => {} }`.
+    expect(names("const obj = { row() {} };")).toEqual(["variable:local:obj"]);
+    expect(names("const obj = { get row() { return 1; }, set rowId(v) {} };")).toEqual(["variable:local:obj", "parameter:parameter:v"]);
+    expect(names("const obj = { row: () => {} };")).toEqual(["variable:local:obj"]);
+    expect(added("packages/workforce/src/zz.ts", null, "const obj = { row() {}, get rows() { return []; }, taskRow: () => 1 };\n")).toEqual([]);
+    // In a class or an interface it is a declaration.
+    expect(names("class C { row() {} get rowId() { return 1; } }\ninterface I { taskRow(): void }")).toEqual([
+      "class:class:C",
+      "property:property:row",
+      "property:property:rowId",
+      "interface:type:I",
+      "property:property:taskRow",
+    ]);
+  });
+
+  it("reads an import-equals, a namespace and a namespace re-export, which bind names too", () => {
+    expect(names('import rowLib = require("./x");')).toEqual(["import-equals:import:rowLib"]);
+    expect(names("namespace rowSpace {}\nexport namespace FooRows {}\nmodule barRow {}")).toEqual([
+      "namespace:local:rowSpace",
+      "namespace:exported-value:FooRows",
+      "namespace:local:barRow",
+    ]);
+    // An ambient module named by a string is a module's path, not a name.
+    expect(names('declare module "row-lib" {}')).toEqual([]);
+    expect(names('export * as FooRow from "./x";')).toEqual(["namespace-export:export:FooRow"]);
+    expect(resourceHits("packages/workforce/src/zz.ts", 'export * as FooRow from "./x";\n')).toEqual(['1:export * as FooRow from "./x";']);
+  });
+
   it("reads an import only when it binds a name, and an export list only when it is not a plain re-export", () => {
     expect(names('import { VersionedRow } from "./v"; import { b as barRows } from "./x"; import rowDefault from "./d";')).toEqual([
       "import:import:barRows",
@@ -554,6 +603,23 @@ describe("the added reach reads two real commits, as the hook and CI run it", ()
         expect(r.ok).toBe(false);
         expect([...new Set(r.hits.map((h) => `${h.path}:${h.name}`))].sort()).toEqual(["packages/workforce/src/copy.ts:rows", "packages/workforce/src/fresh.ts:taskRow"]);
       }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a changed file whose name git would quote, so a non-ASCII path cannot pass unread", () => {
+    // Git quotes a non-ASCII path in a line listing; a reader that matches it to the diff's name reads nothing.
+    const dir = repo({ "packages/workforce/src/a.ts": "const a = 1;\n" });
+    try {
+      write(dir, { "packages/workforce/src/café.ts": "const row = 1;\n", "packages/workforce/src/tab\tname.ts": "const taskRow = 1;\n" });
+      git(dir, "add", "-A");
+      git(dir, "commit", "-q", "-m", "head");
+      const r = since(dir, "HEAD^1") as Run & { unread: string[] };
+      expect(r.ok).toBe(false);
+      expect(r.hits.map((h) => `${h.path}:${h.name}`).sort()).toEqual(["packages/workforce/src/café.ts:row", "packages/workforce/src/tab\tname.ts:taskRow"]);
+      // Both were read: none fell through to the unread list.
+      expect(r.unread).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
