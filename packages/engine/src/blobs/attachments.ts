@@ -4,7 +4,7 @@
  * reference into bytes.
  *
  * **The resolver is the only reader of bytes.** Every model-message build and
- * every harness hand-off calls {@link resolveAttachment}; nothing else decodes
+ * every harness given a file calls {@link resolveAttachment}; nothing else decodes
  * `FileContent.data` or parses the reference by hand
  * (`test/blobs/one-resolver.test.ts` holds that).
  */
