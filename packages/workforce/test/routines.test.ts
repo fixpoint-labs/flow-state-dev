@@ -319,6 +319,33 @@ const saveOnPr = (h: SubscriptionsHost) =>
   roster(h, "alice", "saveRoutine", { trigger: { event: { provider: "github", thread: PR, interest: "reviews" } }, worker: "eng.follower" });
 
 describe("every transition is decided on the committed row", () => {
+  it("a clock routine's pause that a delete overtakes doesn't bring the schedule back", async () => {
+    const h = boot();
+    const chat = await h.follower("alice");
+    const saved = ok<Listed>((await h.act("alice", chat, "saveRoutine", { name: "standup", trigger: { clock: { cron: "0 9 * * 1" } }, task: { goal: "Post the standup" } }, "follower")).output);
+    const gap = await holdWrite(h, (key, state) => key === "workforce/schedules/standup" && state.enabled === false);
+    const pausing = roster(h, "alice", "pauseRoutine", { id: saved.id, paused: true });
+    await gap.reached;
+    expect((await h.act("alice", chat, "deleteRoutine", { id: saved.id }, "follower")).output).toEqual({ ok: true });
+    gap.release();
+    await pausing;
+    expect(await list(h)).toEqual([]);
+  });
+
+  it("a clock routine's pause that a save overtakes keeps the save's cron", async () => {
+    const h = boot();
+    const chat = await h.follower("alice");
+    const saved = ok<Listed>((await h.act("alice", chat, "saveRoutine", { name: "standup", trigger: { clock: { cron: "0 9 * * 1" } }, task: { goal: "Post the standup" } }, "follower")).output);
+    const gap = await holdWrite(h, (key, state) => key === "workforce/schedules/standup" && state.enabled === false);
+    const pausing = roster(h, "alice", "pauseRoutine", { id: saved.id, paused: true });
+    await gap.reached;
+    ok((await h.act("alice", chat, "saveRoutine", { name: "standup", trigger: { clock: { cron: "30 8 * * 1-5" } }, task: { goal: "Post the standup" } }, "follower")).output);
+    gap.release();
+    await pausing;
+    const [routine] = await list(h);
+    expect(routine).toMatchObject({ id: saved.id, paused: true, trigger: { clock: { cron: "30 8 * * 1-5" } } });
+  });
+
   it("an end that lands between a subscribe's row write and its index write leaves no index entry", async () => {
     const h = boot();
     const index = `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(PR)}`;
@@ -556,6 +583,50 @@ describe("the app's declared routines", () => {
   it("keys a declared entry by the pinned formula the poll keys it by too", async () => {
     // cfg_ + the first 12 bytes of sha256("workforce-roster\n" + id), as hex: FIX-2536's poll ends rows by this key.
     expect(await declaredRoutineKey("api-pr")).toBe("cfg_05562bf34a380505896ae059");
+  });
+
+  it("drops the old trigger's row when a declared entry switches from a clock to an event, and back", async () => {
+    const stores = inMemoryStores();
+    const clock = declared()[0]!;
+    const asEvent: DeclaredRoutine = { id: clock.id, trigger: { event: { provider: "github", thread: PR, interest: "reviews" } }, worker: "eng.follower" };
+    const first = boot({ declared: [clock], stores });
+    expect((await list(first)).map((r) => r.id.split(":")[0])).toEqual(["clock"]);
+    await first.dispose();
+    host = undefined;
+    const second = boot({ declared: [asEvent], stores });
+    expect((await list(second)).map((r) => r.id.split(":")[0])).toEqual(["event"]);
+    await second.dispose();
+    host = undefined;
+    const third = boot({ declared: [clock], stores });
+    expect((await list(third)).map((r) => r.id.split(":")[0])).toEqual(["clock"]);
+    expect(await indexed(third, PR)).toEqual([]);
+  });
+
+  it("a heal that a reseed overtakes leaves the moved routine indexed on its new thread", async () => {
+    const stores = inMemoryStores();
+    const moved = "github:acme/api#77";
+    const first = boot({ declared: declared(), stores });
+    const [ev] = (await list(first)).filter((r) => r.id.startsWith("event:"));
+    const sub = ev!.id.slice("event:".length);
+    // A stale entry on #77 for a row on #412: an event on #77 heals it.
+    const runtime = await first.state.getRuntime();
+    const prKey = `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(PR)}`;
+    const movedKey = `${SUBSCRIPTION_INDEX_PATTERN.replace("*", "")}${encodeURIComponent(moved)}`;
+    const entry = ((await runtime.stores.resourceState.get("org", ORG, prKey))!.state as { subscriptions: Record<string, object> }).subscriptions[sub]!;
+    await runtime.stores.resourceState.set("org", ORG, movedKey, { subscriptions: { [sub]: { ...entry, thread: moved } } } as never, "any");
+    // Hold the heal's delete; while it waits, a reseed (another host over the same store) moves the row to #77.
+    const gap = await holdWrite(first, (k, state) => k === movedKey && !Object.hasOwn((state.subscriptions as object | undefined) ?? {}, sub));
+    const routing = first.route(event({ threads: ["github:acme/api", moved], text: "on #77" }));
+    await gap.reached;
+    const entries = declared();
+    (entries[1]!.trigger as { event: { thread: string } }).event.thread = moved;
+    const second = boot({ declared: entries, stores });
+    await list(second);
+    gap.release();
+    await routing;
+    expect((await second.subscriptionRows("alice")).find((r) => r.id === sub)).toMatchObject({ thread: moved, enabled: true });
+    expect(await indexed(second, moved)).toContain(sub);
+    await first.dispose();
   });
 
   it("refuses a declared routine that would never fire before anything registers", () => {

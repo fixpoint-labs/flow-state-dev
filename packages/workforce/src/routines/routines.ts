@@ -25,7 +25,8 @@
  * delete refuse naming why. A seed keeps a pause.
  */
 import { handler } from "@flow-state-dev/core";
-import { deepEqual } from "@flow-state-dev/core/helpers";
+import { deepEqual, updateStateWith, type UpdateStateRunner } from "@flow-state-dev/core/helpers";
+import { retryOnConflict } from "../projects/cas-retry";
 import type { ActionConfig, BlockContext } from "@flow-state-dev/core/types";
 import type { ScheduleIndex } from "@flow-state-dev/scheduled/collection";
 import { z } from "zod";
@@ -202,7 +203,7 @@ export async function declaredRoutineKey(entryId: string): Promise<string> {
 /** The schedule collection, as the verbs use it. */
 interface ScheduleCollection {
   list(prefix?: string): Promise<Array<{ path: string; state: StoredSchedule }>>;
-  getOptional(key: string): Promise<{ state: StoredSchedule } | undefined>;
+  getOptional(key: string): Promise<(UpdateStateRunner<StoredSchedule> & { state: StoredSchedule }) | undefined>;
   create(key: string, state: StoredSchedule, options: { replace: true }): Promise<unknown>;
 }
 const schedulesOf = (ctx: BlockContext) => (ctx.resources as unknown as Record<string, ScheduleCollection>)[SCHEDULES_RESOURCE]!;
@@ -392,9 +393,14 @@ async function pauseRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, i
     const ref = await schedulesOf(ctx).getOptional(parsed.clock);
     if (ref === undefined) return noRoutine(input.id);
     if (!reaches(caller, filerOf(ref.state))) return notYours(input.id);
-    const row = { ...ref.state, enabled: !input.paused };
-    if (ref.state.enabled !== row.enabled) await schedulesOf(ctx).create(parsed.clock, row, { replace: true });
-    return { ok: true, routine: listedClock(parsed.clock, row) };
+    // Only `enabled`, on the row as committed: a row deleted meanwhile stays deleted, and a save
+    // that landed meanwhile keeps its cron.
+    const row = await retryOnConflict(() =>
+      updateStateWith<StoredSchedule, StoredSchedule | undefined>(ref, (current) =>
+        current?.cron === undefined ? { state: current, result: undefined } : { state: { ...current, enabled: !input.paused }, result: { ...current, enabled: !input.paused } }
+      )
+    );
+    return row === undefined ? noRoutine(input.id) : { ok: true, routine: listedClock(parsed.clock, row) };
   }
   const row = await eventRow(ctx, parsed.event);
   if (row === undefined) return noRoutine(input.id);
@@ -468,6 +474,9 @@ export async function seedDeclaredRoutines(
     const trigger = triggerSchema.parse(entry.trigger);
     try {
       if ("clock" in trigger) {
+        // An entry that was an event routine under this key: that row ends, as config removed it.
+        const was = (await subscriptionsOf(ctx).getOptional(key))?.state;
+        if (was !== undefined && (was.enabled || isPaused(was))) await unsubscribe(ctx, key, "config_removed");
         const existing = (await schedulesOf(ctx).getOptional(key))?.state;
         const owned = {
           cron: trigger.clock.cron,
@@ -487,6 +496,8 @@ export async function seedDeclaredRoutines(
         continue;
       }
       const { everyMinutes: _cadence, ...event } = trigger.event;
+      // An entry that was a clock routine under this key: its schedule goes.
+      if ((await schedulesOf(ctx).getOptional(key)) !== undefined) await removeSchedule(ctx, key);
       const target = await conversationWith(ctx, installation, entry.worker!);
       if ("refused" in target) {
         outcome.refused.push(entry.id);

@@ -37,7 +37,7 @@
  * `routeServiceEvent` with the routing entry, as GitHub's does.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { updateStateWith } from "@flow-state-dev/core/helpers";
+import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
 import { subscriptionEventSchema, type BlockContext, type SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { WorkerMessageResourceState } from "../messages/log-row";
@@ -60,7 +60,7 @@ import {
 } from "./rows";
 import { configScreenChain, screenRefusal, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
 import { SCREEN_KINDS } from "./rows";
-import { dropFromIndex, unsubscribe, type SubscriptionProvider } from "./subscribe";
+import { dropFromIndex, syncIndex, unsubscribe, type SubscriptionProvider } from "./subscribe";
 
 /** The default cap: the most messages one subscription sends in an hour. */
 export const DEFAULT_SUBSCRIPTION_CAP_PER_HOUR = 30;
@@ -377,6 +377,11 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       // back is taken out here, so the index heals on the next event that finds it.
       const heal = async () => {
         for (const thread of event.threads) if (thread !== row?.thread || row?.enabled !== true) await dropFromIndex(ctx, thread, subscription);
+        // Then the index as the committed row has it, not as this delivery read it: a resume or a
+        // reseed that landed meanwhile gets its entry back.
+        const ref = await subscriptionsOf(ctx).getOptional(subscription);
+        const now = ref === undefined ? undefined : await readCommitted(ref, (committed) => committed);
+        if (now?.enabled === true) await syncIndex(ctx, now);
       };
       if (row === undefined || !row.enabled) {
         await heal();

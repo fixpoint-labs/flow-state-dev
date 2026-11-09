@@ -316,7 +316,7 @@ async function writeSubscription(
  * The thread index entry for `row`, as committed: there if and only if the row is on. An end that
  * lands between this write and the index's is read back committed, and takes the entry out.
  */
-async function syncIndex(ctx: BlockContext, row: SubscriptionResourceState): Promise<void> {
+export async function syncIndex(ctx: BlockContext, row: SubscriptionResourceState): Promise<void> {
   if (!row.enabled) {
     await dropFromIndex(ctx, row.thread, row.id);
     return;
