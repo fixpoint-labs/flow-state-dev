@@ -126,7 +126,7 @@ export interface FollowUp {
   /** The filer's name, as the button says it. */
   name: string;
   /** Close the popup, open the filer's conversation, and add `text` to its composer, unsent. */
-  ask: (text: string) => void;
+  start: (text: string) => void;
 }
 
 /** What a follow-up puts in the filer's composer: the task by its title, and room for what to do next. */
@@ -365,7 +365,7 @@ function TaskOutcomeActions({ task, followUp }: { task: BoardTask; followUp?: Fo
         </button>
       )}
       {followUp === undefined ? null : (
-        <button type="button" onClick={() => followUp.ask(followUpText(task))} className={button}>
+        <button type="button" onClick={() => followUp.start(followUpText(task))} className={button}>
           Ask {followUp.name} to follow up
         </button>
       )}

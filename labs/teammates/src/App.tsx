@@ -195,8 +195,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   }, []);
   // Words a task popup's follow-up hands the composer of the conversation that filed the task.
   const [prefill, setPrefill] = useState<{ sessionId: string; text: string; n: number }>();
-  // Counts every ask, so a composer that stayed open never mistakes a new one for the one it took.
-  const asks = useRef(0);
+  // Counts every follow-up, so a composer that stayed open never mistakes a new one for the one it took.
+  const followUps = useRef(0);
   // Who filed the open task: the worker whose conversation it is, when that conversation is on the roster.
   const filer = popup?.kind === "task" ? Object.entries(sessions).find(([, session]) => session === popup.sessionId)?.[0] : undefined;
   const followUp = useMemo<FollowUp | undefined>(() => {
@@ -204,12 +204,12 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     const session = popup.sessionId;
     return {
       name: nameOf(filer),
-      ask: (text) => {
+      start: (text) => {
         how.current = "push";
         setPopup(undefined);
         setSelected(filer);
-        asks.current += 1;
-        setPrefill({ sessionId: session, text, n: asks.current });
+        followUps.current += 1;
+        setPrefill({ sessionId: session, text, n: followUps.current });
       },
     };
   }, [filer, popup, nameOf]);
