@@ -45,6 +45,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@octokit/webhooks-examples": "7.6.1",
     "@types/node": "^22.10.5",
     "@types/pg": "^8.11.0",
     "@types/react": "^19.2.14",
