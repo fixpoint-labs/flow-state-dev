@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 510" role="img" aria-label="What's in the box. In the box, blob storage: a blob storage adapter with a local-disk default, and upload and read routes. The framework: attachments beside the input as references, one limits set checked by the server, file parts on the user line after a reload and a restart, file parts to a generator. Harnesses and documents: a turn's files reach Claude Code, Codex and Cursor; a task's brief keeps its files. The composer: the plus picker, paste, drop, previews, remove, downscaling, refusals and upload. A fence: bytes live in the blob store and a message carries only references; a serverless deploy configures a hosted adapter. Composed in by the app: its composer's look, which actions write a user line, and which blob adapter it runs. Replaced in one line: Kitchen Sink's text-only submit and sendTurn's string. Not built: files in model replies, audio and video, a file library, drive pickers, Word and Excel, upload once, hosted adapters."
+<svg viewBox="0 0 940 510" role="img" aria-label="What's in the box. In the box, blob storage: a blob storage adapter with a local-disk default, and upload and read routes. The framework: attachments beside the input as references, one limits set checked by the server, file parts on the user line after a reload and a restart, file parts to a generator. Harnesses and documents: a turn's files reach Claude Code, Codex and Cursor; a task's brief keeps its files. The composer: the plus picker, paste, drop, previews, remove, downscaling, refusals and upload. A fence: bytes live in the blob store and a message carries only references; a serverless deploy configures a hosted adapter. Composed in by the app: its composer's look, which actions write a user line, and which blob adapter it runs. Replaced in one line: Kitchen Sink's text-only submit and sendTurn's string. Not built: files in model replies, audio and video, a file library across sessions, drive pickers, Word and Excel, upload once, hosted adapters."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -83,7 +83,7 @@
     <text class="t-tag c-gone" x="32" y="398">NOT BUILT</text>
     <text class="t-b" x="32" y="428">Files in model replies</text>
     <text class="t-b" x="252" y="428">Audio and video</text>
-    <text class="t-b" x="472" y="428">A file library, or reuse</text>
+    <text class="t-b" x="472" y="428">A file library across sessions</text>
     <text class="t-b" x="692" y="428">Cloud drive pickers</text>
     <text class="t-b" x="32" y="464">Word and Excel</text>
     <text class="t-s" x="32" y="480">cut on 2026-11-05, a later issue</text>

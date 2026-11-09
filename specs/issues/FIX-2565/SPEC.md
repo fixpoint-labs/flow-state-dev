@@ -9,7 +9,7 @@
 | **chats in Kitchen Sink, Shift Manager or a lab** | The three legs below, in each of the five chats |
 | **runs a coding worker on Claude Code, Codex or Cursor** | Leg a on each Kitchen Sink harness page and in the Claude Code-style lab; the harness's reply names both images |
 | **files a task in Shift Manager with a screenshot** | Files it, lets the worker run, re-runs it: both runs name the image; deletes it: the file's read is 404 |
-| **builds a flow on FSD** | A fresh flow with `userMessage`, sent two images through `@flow-state-dev/client` on the default local store; reply names both, and again after a restart |
+| **builds a flow on FSD** | A fresh flow with `userMessage` that includes the attachments block (FIX-2634), sent two images through `@flow-state-dev/client` on the default local store; reply names both, and again after a restart, when the session's `attachments` list still holds both, references only |
 | **builds its own composer** | `fsdev ui add attachments` into a fresh Next.js app; paste, refuse an 11th image, send references |
 
 This issue builds nothing. It proves the assembled set does what the epic set out to do, and
@@ -85,6 +85,7 @@ fixed there.
 |---|---|
 | `goals/closure-smarter-agents/`, the last closure's runner (`closure.mts`, a folder per app) | **Builds on** its layout and its per-app runners |
 | FIX-824's and FIX-2518's goal checks | **Re-runs** them, unchanged but for the one accepted dependency |
+| FIX-2634's attachments block | **Includes** it in the *builds a flow on FSD* journey; no app includes it in this epic |
 
 | Adds | Existing piece considered | Why it doesn't fit / how composed |
 |---|---|---|
