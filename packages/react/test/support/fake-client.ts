@@ -119,7 +119,8 @@ export function fakeClient(parts: FakeClientParts): Client {
     }),
     requests: { interrupted: async () => missing("requests.interrupted") },
     subscribe: (topics, options) => parts.subscribe?.(topics, options) ?? { close() {} },
-    transcribe: async () => missing("transcribe")
+    transcribe: async () => missing("transcribe"),
+    upload: async () => missing("upload")
   };
 }
 
