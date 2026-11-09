@@ -1,4 +1,4 @@
-// FIX-2534.
+// FIX-2534; FIX-2537.
 /**
  * Subscriptions' rows: the subscription, its cursor, and the thread
  * index entry, with the collections they live in and how a block reaches them.
@@ -43,11 +43,16 @@ const terms = z.array(z.string().min(1).max(100)).min(1).max(MAX_SCREEN_TERMS);
  * - `labels`: the event carries at least one of these labels.
  * - `words`: the event's title or text contains at least one of these words, ignoring case.
  * - `allow`: the event's sender is one of these ids.
+ * - `custom`: the app's own screen of this name, declared once on the provider (D2).
+ * - `interest`: a model judges whether the event matches the subscription's
+ *   sentence, after every code screen passed it (D1).
  */
 export const listedScreenSchema = z.discriminatedUnion("screen", [
   z.object({ screen: z.literal("labels"), any: terms }).strict(),
   z.object({ screen: z.literal("words"), any: terms }).strict(),
-  z.object({ screen: z.literal("allow"), ids: terms }).strict()
+  z.object({ screen: z.literal("allow"), ids: terms }).strict(),
+  z.object({ screen: z.literal("custom"), name: z.string().min(1).max(100) }).strict(),
+  z.object({ screen: z.literal("interest") }).strict()
 ]);
 
 export type ListedScreen = z.infer<typeof listedScreenSchema>;
@@ -78,7 +83,7 @@ const screenSettingsSchema = z.object({
 /** One subscription. Server-written: the session, worker, task and user come from the subscribing turn, never from the tool's input. */
 export const subscriptionResourceStateSchema = screenSettingsSchema.extend({
   id: z.string().min(1),
-  /** The sentence the subscriber gave: kept, for the screens a later issue adds. */
+  /** The sentence the subscriber gave. The `interest` screen quotes it to the model, when listed. */
   interest: z.string(),
   /** The session that hears. */
   sessionId: z.string().min(1),
@@ -134,7 +139,13 @@ export type SubscriptionCursor = z.infer<typeof subscriptionCursorSchema>;
 export const indexEntrySchema = screenSettingsSchema.extend({
   userId: z.string().min(1),
   orgId: z.string().min(1),
-  tenantId: z.string().min(1).optional()
+  tenantId: z.string().min(1).optional(),
+  /**
+   * The subscription's sentence, mirrored only for a subscription that lists
+   * `interest`. An entry without one reads as not listing it (an entry from
+   * before the screen has none).
+   */
+  interest: z.string().optional()
 });
 
 export type IndexEntry = z.infer<typeof indexEntrySchema>;

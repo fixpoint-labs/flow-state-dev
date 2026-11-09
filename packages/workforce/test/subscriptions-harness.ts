@@ -1,5 +1,5 @@
 /**
- * A host for subscriptions on the real engine (FIX-2534): the board host's
+ * A host for subscriptions on the real engine (FIX-2534; screens, FIX-2537): the board host's
  * worker flows, a `follower` worker flow whose sessions subscribe (its
  * actions are the four routine verbs a worker's tools run, so a test calls them
  * as a model would, with no model), and a GitHub service flow that routes
@@ -30,6 +30,7 @@ import {
   subscribe,
   subscriptionResources,
   type SubscriptionProvider,
+  type SubscriptionScreens,
   type SubscriptionServiceOptions
 } from "../src/subscriptions";
 import { createRoutinesCapability } from "../src/routines";
@@ -102,6 +103,8 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   service?: Partial<Omit<SubscriptionServiceOptions, "provider" | "installation" | "kind">>;
   /** What a `[hold]` task turn waits on. */
   hold?: Promise<void>;
+  /** The app's own screens on the GitHub provider: its custom functions and its interest model. */
+  screens?: SubscriptionScreens;
   /** The follower flow isolates its users' state (`isolateUserState`). */
   isolatedFollower?: boolean;
   /** The service flow itself, in place of the one built from `service` (GitHub's own flow); its kind must be `github-service`. */
@@ -111,6 +114,7 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
 /** A board host with followers and a GitHub service flow. */
 export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   let host: InboundTransportHost | undefined;
+  const provider: SubscriptionProvider = options.screens === undefined ? github : { ...github, screens: options.screens };
   const standard: WorkerManifest[] = [
     ...boardWorkers({ lead: { delegates: ["eng.tasker", "eng.follower"] } }),
     { id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] },
@@ -119,7 +123,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   ];
   const board = bootBoardHost({
     ...options,
-    hire: { ...options.hire, routines: { providers: [github], ...options.hire?.routines } },
+    hire: { ...options.hire, routines: { providers: [provider], ...options.hire?.routines } },
     standard,
     // A coordinator's conversation keeps event routines too (its routine actions).
     coordinatorRoutines: options.coordinatorRoutines ?? true,
@@ -129,7 +133,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
         options.serviceFlow?.(installation) ??
         defineSubscriptionServiceFlow({
           kind: "github-service",
-          provider: github,
+          provider,
           installation,
           trustedBots: ["codex"],
           ...(options.service ?? {})

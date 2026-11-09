@@ -45,6 +45,7 @@ import {
 } from "../schedules/scheduled-work";
 import { subscriptionResources, subscriptionsOf, type SubscriptionResourceState } from "../subscriptions/rows";
 import {
+  customScreensLine,
   isPaused,
   resumeSubscription,
   seedSubscription,
@@ -698,7 +699,9 @@ export function defineRoutineActions(installation: WorkerInstallation, options: 
   const all = { ...installation.resources, ...resources, ...subscriptionResources };
   const blocks = verbBlocks(all, { providers: options.providers ?? [], installation }, () => ({ by: "user" }), {
     list: "The user's routines, clock and event, each with who made it, its trigger, whether it is paused, and a clock routine's next run.",
-    save: "Save a routine: a clock trigger that files a task each time it is due, or an event trigger a worker's conversation hears. Saving a clock routine's name again replaces it.",
+    save:
+      "Save a routine: a clock trigger that files a task each time it is due, or an event trigger a worker's conversation hears. Saving a clock routine's name again replaces it." +
+      customScreensLine(options.providers ?? []),
     pause: "Pause or resume one of the user's routines. A resume checks read access to an event routine's thread again.",
     delete: "Delete one of the user's routines. An app's own routine can only be paused."
   });

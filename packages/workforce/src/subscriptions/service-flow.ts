@@ -1,13 +1,15 @@
-// FIX-2535; FIX-2534, epic D1; FIX-2538.
+// FIX-2535; FIX-2534, epic D1; FIX-2537; FIX-2538.
 /**
  * A provider's service flow: routes each normalized event
- * to the sessions that subscribed to one of its threads, in code, with no model.
+ * to the sessions that subscribed to one of its threads, after code screens,
+ * and asks a model only for the subscriptions that list `interest`, once per
+ * routing run.
  *
  * Two internal entries, on either side of a fence (D2):
  *
  * - **Routing** ({@link SUBSCRIPTION_ROUTE_ENTRY}) runs as the service, in the
  *   org. It reads the thread index for each of the event's threads (it reads
- *   no user's cell), selects by provider and kind, runs the config screens,
+ *   no user's cell), selects by provider and kind, runs the screen chain (`chain.ts`),
  *   and returns the verdicts (at most {@link MAX_ROUTED_VERDICTS}) and an owner
  *   run for each subscription that passed. The host fires those
  *   (`routeServiceEvent`), each only once it has found the subscription's row
@@ -83,7 +85,8 @@ import {
   type SubscriptionCursor,
   type SubscriptionResourceState
 } from "./rows";
-import { configScreenChain, refusedOnContent, screenRefusal, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
+import { screenChain } from "./chain";
+import { customScreensRefusal, refusedOnContent, screenRefusal, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
 import { SCREEN_KINDS } from "./rows";
 import { dropFromIndex, syncIndex, unsubscribe, type SubscriptionProvider } from "./subscribe";
 
@@ -168,6 +171,17 @@ const routedSchema = z.object({
 });
 
 export type Routed = z.infer<typeof routedSchema>;
+
+/**
+ * Whether no subscription heard a routed event, each by its own choice: every
+ * verdict a refusal on the event's content, and none cut. Only such an event
+ * may be forwarded as unmatched: one refused `interest:
+ * unjudged`, or by a screen that failed, was heard by nobody but not unheard,
+ * so an outage forwards nothing.
+ */
+export function unheard(routed: Pick<Routed, "verdicts" | "verdictsCut">): boolean {
+  return routed.verdictsCut === 0 && routed.verdicts.every(refusedOnContent);
+}
 
 const deliveredSchema = z.object({
   /** `inflight`: a copy of an event another delivery is still sending; that delivery's outcome decides. */
@@ -358,7 +372,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     }
   });
 
-  const screens = configScreenChain({ trustedBots: options.trustedBots ?? [] });
+  const screens = screenChain({ trustedBots: options.trustedBots ?? [], ...(provider.screens === undefined ? {} : { screens: provider.screens }) });
   const route = sequencer({ name: "subscription-route", inputSchema: subscriptionEventSchema })
     .step(nominate)
     .step(screens)
@@ -509,17 +523,24 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       if (endOnly !== true && (forward !== undefined) !== (row.unmatched === true)) {
         return { act: "refused", reason: row.unmatched === true ? "an unmatched subscription hears only what nobody else heard" : "not an unmatched subscription" };
       }
-      // The screens again, on the subscription's own settings: the index entry routing nominated by can be stale.
+      // The code screens again, on the subscription's own settings: the index entry routing nominated by can be stale.
+      // Config and custom screens only: `interest` was judged once, in routing, and isn't asked again per delivery.
       if (endOnly !== true) {
-        for (const kind of SCREEN_KINDS) {
-          const refused = screenRefusal(kind, event, row, { trustedBots: options.trustedBots ?? [] });
-          if (refused === undefined) continue;
+        const refusals = [
+          ...SCREEN_KINDS.map((kind) => {
+            const refused = screenRefusal(kind, event, row, { trustedBots: options.trustedBots ?? [] });
+            return refused === undefined ? undefined : `${kind}: ${refused}`;
+          }),
+          customScreensRefusal(provider.screens?.custom ?? {}, event, row)
+        ];
+        const refused = refusals.find((r) => r !== undefined);
+        if (refused !== undefined) {
           // A closing event still ends it, as routing's end-only run would have.
           if (closedThreadOf(event) === row.thread) {
             await unsubscribe(ctx, subscription, "thread_closed");
             return { act: "ended" };
           }
-          return { act: "refused", reason: `${kind}: ${refused}` };
+          return { act: "refused", reason: refused };
         }
       }
       const closes = closedThreadOf(event) === row.thread;
