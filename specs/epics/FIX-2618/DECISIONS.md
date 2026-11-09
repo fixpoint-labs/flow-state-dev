@@ -204,12 +204,16 @@ Round 1's two-path fork and its declared write rule are gone.
   version; on a refusal it re-runs the updater on the returned state. A pin toggles in one line:
   `pins.update((s) => ({ pinned: toggle(s.pinned, id) }))`.
 
-**Its session:** one per resource per owner (a user resource's per-user session, an org
-resource's per-org one), found or made by the server, shared by a collection's entries. It is the
-session `ownSession("pins")` makes by hand today, now never named by the client. **Its request:**
-yes, like any action, each write records a request and its trace: per pin click a request row, a
-trace and an action's latency. It buys an audit trail of who changed what, and the same path,
-notices and checks as a rich flow. Accepted.
+**Its session:** one per resource per caller, server-owned, found or made from the resource and
+the verified caller, and shared by a collection's entries. A session belongs to one user
+(`assertSessionAdmitted` refuses any other), so for a user resource it is the owner's own, the
+one `ownSession("pins")` makes by hand today; for an org resource each writing user gets their
+own, and the write lands in the org-scoped resource. Sessions stay user-owned (FIX-1788) with no
+ownership change. The effect: an org resource's write history is spread across its writers'
+sessions, and its audit trail is the union of their requests, which a view can read. **Its
+request:** yes, like any action, attributed to the caller: per pin click a request row, a trace
+and an action's latency. It buys an audit trail of who changed what, and the same path, notices
+and checks as a rich flow. Accepted.
 
 **FIX-1945 D1 holds as written.** Its rules record allows client reads only, so no write skips
 the validator holding the cap and the stale-edit check. Nothing here adds a route: the record

@@ -13,7 +13,7 @@ export const pins = defineResource({
   scope: "user",
   stateSchema: z.object({ pinned: z.array(z.string()).max(50).default([]) }),
   client: { state: { read: true } },
-  runBy: "default",                                   // the framework's default write flow, one session per user
+  runBy: "default",                                   // the framework's default write flow, one session per caller
   canWrite: ({ next }) => new Set(next.pinned).size === next.pinned.length,   // optional, run inside that flow
 });
 
