@@ -6,13 +6,24 @@
  * dispatch → 202. The handler runs asynchronously, so the 202 returns well
  * within provider timeout budgets (Slack 3s, GitHub 10s) regardless of how
  * long the handler takes.
+ *
+ * A provider entry that is a **service route** (`service`, FIX-2535 D1) takes
+ * the same steps through the handshake, then normalizes the delivery and
+ * routes each event through the flow's internal entry as the service
+ * (`routeServiceEvent`), in the org the host's principal resolver names. The
+ * 202 waits until every owner run it names is durably recorded; a run the
+ * host failed to record answers 503, so a redelivery sends it (the delivery
+ * ids make a repeat land once).
  */
-import type {
-  WebhookConfig,
-  WebhookEventBinding,
-  WebhookInboundEvent,
-  WebhookSubscriptionConfig
+import {
+  isWebhookServiceConfig,
+  type WebhookBindingsConfig,
+  type WebhookConfig,
+  type WebhookEventBinding,
+  type WebhookInboundEvent,
+  type WebhookServiceRoute
 } from "@flow-state-dev/core/types";
+import { routeServiceEvent } from "../../durability/owner-runs";
 import type { InboundRequestEnvelope, InboundTransportHost, ResolvedPrincipal } from "../types";
 import { PrincipalResolutionError } from "../errors";
 import { concurrencyRefusalResponse } from "../../routes/concurrency-refusal";
@@ -122,6 +133,11 @@ export async function handleWebhook(
     if (ack !== null) {
       return new Response(ack, { status: 200 });
     }
+  }
+
+  // 5. A service route: normalize, then route each event to its subscribers.
+  if (isWebhookServiceConfig(sub)) {
+    return handleServiceRoute(req, host, { flowKind, provider, route: sub.service, event });
   }
 
   // 5. Match the event to a declarative `on` binding.
@@ -262,6 +278,76 @@ export async function handleWebhook(
   });
 }
 
+// FIX-2535 D1.
+/**
+ * A verified delivery on a service route: normalized to zero or more events,
+ * each routed through the flow's internal entry as `service:<provider>` in the
+ * org the host's principal resolver names (BP-031: never from the payload).
+ * Each event's routing runs to its end (code only, no model), and each owner
+ * run it names is awaited until the host recorded it, before the answer.
+ */
+async function handleServiceRoute(
+  req: Request,
+  host: InboundTransportHost,
+  delivery: {
+    readonly flowKind: string;
+    readonly provider: string;
+    readonly route: WebhookServiceRoute;
+    readonly event: WebhookInboundEvent;
+  }
+): Promise<Response> {
+  const { flowKind, provider, route, event } = delivery;
+  const eventType = event.eventType;
+  let events: readonly unknown[];
+  try {
+    events = route.normalize(event, { received: Date.now() });
+  } catch (err) {
+    host.logger?.warn?.("webhook service `normalize` threw — refusing the delivery", { provider, eventType, error: errorMessage(err) });
+    return jsonResponse(400, { error: "invalid_payload" });
+  }
+  if (events.length === 0) return jsonResponse(202, { status: "ignored", provider, eventType });
+
+  const metadata = {
+    webhook: { provider, eventType, ...(event.deliveryId !== undefined ? { deliveryId: event.deliveryId } : {}) }
+  };
+  let principal: ResolvedPrincipal;
+  try {
+    principal = await host.resolvePrincipal({
+      source: WEBHOOK_TRANSPORT_SOURCE,
+      request: req,
+      rawBody: event.rawBody,
+      envelope: { flowKind, action: route.entry, metadata, input: undefined }
+    });
+  } catch (err) {
+    if (err instanceof PrincipalResolutionError) {
+      return jsonResponse(err.status, { error: "unauthorized", message: err.message });
+    }
+    throw err;
+  }
+
+  const service = { userId: `service:${provider}`, orgId: principal.orgId };
+  let fired = 0;
+  let refused = 0;
+  let failed = 0;
+  for (const input of events) {
+    const routed = await routeServiceEvent(host, { flowKind, entry: route.entry, input, principal: service });
+    if (routed.error !== undefined) {
+      host.logger?.error?.("webhook service routing failed", { provider, eventType, error: errorMessage(routed.error) });
+      return jsonResponse(500, { error: "route_failed" });
+    }
+    for (const run of routed.ownerRuns) {
+      if (run.failed !== undefined) failed += 1;
+      else if (run.refused !== undefined) refused += 1;
+      else fired += 1;
+    }
+  }
+  if (failed > 0) {
+    host.logger?.error?.("webhook service owner runs were not durably recorded", { provider, eventType, failed });
+    return jsonResponse(503, { error: "dispatch_not_durable", failed });
+  }
+  return jsonResponse(202, { status: "accepted", provider, eventType, events: events.length, ownerRuns: fired, refused });
+}
+
 /**
  * Match an event to its declarative `on[eventType]` binding, gated by `when`.
  * Returns `null` when nothing matches (the event is acknowledged and ignored).
@@ -272,7 +358,7 @@ export async function handleWebhook(
  * `input`/`sessionId` (the post-match invocation phase) stay a hard 500.
  */
 function matchBinding(
-  sub: WebhookSubscriptionConfig,
+  sub: WebhookBindingsConfig,
   event: WebhookInboundEvent,
   logger: InboundTransportHost["logger"]
 ): WebhookEventBinding | null {

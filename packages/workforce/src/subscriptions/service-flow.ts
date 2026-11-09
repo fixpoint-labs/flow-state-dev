@@ -34,11 +34,25 @@
  * doesn't redeliver loses it).
  *
  * An ingestion (a verified webhook, a poll) normalizes each event and calls
- * `routeServiceEvent` with the routing entry, as GitHub's does.
+ * `routeServiceEvent` with the routing entry. With `normalize`, the flow
+ * declares the webhook service route for its provider
+ * (`webhooks.<provider>.service`, FIX-2535 D1), so the webhook transport does
+ * that for a verified delivery, as GitHub's flow (`githubServiceFlow`) does.
+ *
+ * **One event's owner runs are capped** ({@link DEFAULT_MAX_OWNER_RUNS}): past
+ * the cap, a subscription that passed its screens is refused with the cap as
+ * its reason, so a thread with thousands of followers can't stall a delivery.
+ * The runs a closing names to end subscriptions are not capped.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import { subscriptionEventSchema, type BlockContext, type SubscriptionEvent } from "@flow-state-dev/core/types";
+import {
+  subscriptionEventSchema,
+  type BlockContext,
+  type SubscriptionEvent,
+  type WebhookConfig,
+  type WebhookServiceRoute
+} from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { WorkerMessageResourceState } from "../messages/log-row";
 import { messageLogOf, workerMessagesResources } from "../messages/message-log";
@@ -63,6 +77,9 @@ import { unsubscribe, type SubscriptionProvider } from "./subscribe";
 /** The default cap: the most messages one subscription sends in an hour. */
 export const DEFAULT_SUBSCRIPTION_CAP_PER_HOUR = 30;
 
+/** The default cap on one event's deliveries: the most subscriptions it reaches. */
+export const DEFAULT_MAX_OWNER_RUNS = 100;
+
 const HOUR_MS = 60 * 60 * 1000;
 
 /** The most verdicts routing records of one event; past it, only their count. */
@@ -79,6 +96,16 @@ export interface SubscriptionServiceOptions {
   readonly trustedBots?: readonly string[];
   /** The most messages one subscription sends in an hour; past it, events are held and counted. */
   readonly capPerHour?: number;
+  /** The most subscriptions one event is delivered to; past it, refused with the cap as the reason. Default {@link DEFAULT_MAX_OWNER_RUNS}. */
+  readonly maxOwnerRuns?: number;
+  // FIX-2535 D1.
+  /**
+   * The provider's webhook delivery as normalized events. Given, the flow
+   * declares the webhook service route for `provider.provider`, and a verified
+   * delivery is routed through this flow's routing entry. Unset, only an
+   * ingestion that calls `routeServiceEvent` itself (a poll) routes to it.
+   */
+  readonly normalize?: WebhookServiceRoute["normalize"];
 }
 
 const deliverInputSchema = z.object({
@@ -180,6 +207,7 @@ function withSeen(cursor: SubscriptionCursor, object: SubscriptionEvent["object"
 export function defineSubscriptionServiceFlow(options: SubscriptionServiceOptions) {
   const { provider, installation } = options;
   const cap = options.capPerHour ?? DEFAULT_SUBSCRIPTION_CAP_PER_HOUR;
+  const maxOwnerRuns = options.maxOwnerRuns ?? DEFAULT_MAX_OWNER_RUNS;
 
   // ---- routing, as the service ---------------------------------------------
 
@@ -239,8 +267,11 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           pass: false,
           reason: "no verdict"
         };
-        if (recorded.length < MAX_ROUTED_VERDICTS) recorded.push(verdict);
-        if (!verdict.pass) continue;
+        // Past the cap, a passing subscription is refused: the event reaches no more sessions.
+        const capped = verdict.pass && delivered.size >= maxOwnerRuns;
+        const kept = capped ? { ...verdict, pass: false, reason: `cap: this event already reaches ${maxOwnerRuns} subscriptions` } : verdict;
+        if (recorded.length < MAX_ROUTED_VERDICTS) recorded.push(kept);
+        if (!kept.pass) continue;
         delivered.add(candidate.subscription);
         ownerRuns.push(runFor(candidate, false));
       }
@@ -384,9 +415,12 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     }
   });
 
+  const webhooks: WebhookConfig | undefined =
+    options.normalize === undefined ? undefined : { [provider.provider]: { service: { entry: SUBSCRIPTION_ROUTE_ENTRY, normalize: options.normalize } } };
   return defineFlow({
     kind: options.kind,
     actions: {},
+    ...(webhooks === undefined ? {} : { webhooks }),
     resources: { ...subscriptionResources, ...workerMessagesResources },
     internal: {
       actions: {

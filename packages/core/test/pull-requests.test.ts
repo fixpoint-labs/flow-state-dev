@@ -294,3 +294,21 @@ describe("pullRequestRefFromUrl", () => {
     expect(pullRequestRefFromUrl("https://github.com/acme/app/issues/3")).toBeNull();
   });
 });
+
+// FIX-2535 D2: a coding session follows its pull request from the write that records it.
+describe("writePullRequests — onRecorded, once per new row", () => {
+  it("hands a new row to onRecorded after it is written, and never a repeat sighting of it", async () => {
+    const collection = memoryCollection();
+    const recorded: Array<{ key: string; written: boolean }> = [];
+    const onRecorded = (pr: { key: string }) => {
+      // The row is already there: a follower that reads it finds it.
+      recorded.push({ key: pr.key, written: collection.rows.has(pr.key) });
+    };
+    await writePullRequests(collection, [ref(), ref({ number: 89, url: "https://github.com/acme/app/pull/89" })], { source: "tool", onRecorded });
+    await writePullRequests(collection, [ref({ state: "merged" })], { source: "branch", onRecorded });
+    expect(recorded).toEqual([
+      { key: "github.com/acme/app/88", written: true },
+      { key: "github.com/acme/app/89", written: true },
+    ]);
+  });
+});

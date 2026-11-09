@@ -21,13 +21,16 @@
  *   tool calls already returned. Core holds no forge client.
  * - {@link writePullRequests} — the one write path. Every writer goes through
  *   it: the recorder (`../helpers/pull-request-recorder`), a host's turn-end
- *   branch check, and a harness handle that names a pull request.
+ *   branch check, and a harness handle that names a pull request. Its
+ *   `onRecorded` callback fires once per new row, which is how a session
+ *   follows a pull request from the moment it is recorded (FIX-2535 D2).
  *
  * It sits beside `./harness-plan` (what a run planned) and copies its shape: a
  * session-scoped, live, lazy collection a block declares and a page reads.
  */
 import { z } from "zod";
 import type { RuntimeItem } from "../items/internal";
+import type { BlockContext, DeclaredResourceEntry } from "./block";
 import { defineResourceCollection } from "./resource-collection";
 import { planKeySegment } from "./harness-plan";
 
@@ -388,6 +391,29 @@ export interface PullRequestCollection {
   upsert(key: string, update: Record<string, unknown>): Promise<unknown>;
 }
 
+/** A pull request a writer recorded for the first time: the ref, and its row's key. */
+export interface RecordedPullRequest extends PullRequestRef {
+  /** The row's key: {@link pullRequestKey}. */
+  readonly key: string;
+}
+
+/** Called once per new row a write records. */
+export type PullRequestRecordedCallback = (pr: RecordedPullRequest) => void | Promise<void>;
+
+// FIX-2535 D2.
+/**
+ * What a host hands a coding session to act on each pull request it records
+ * for the first time, in the request that records it (workforce's
+ * `followPullRequest`, which subscribes the session to the pull request). Run
+ * as the session's own user, in the writer's request; what it throws is a
+ * status note, never a failed run. `resources` are the collections it writes,
+ * declared beside the session's own so the request carries them.
+ */
+export interface PullRequestFollower {
+  (ctx: BlockContext, pr: RecordedPullRequest): void | Promise<void>;
+  readonly resources?: Readonly<Record<string, DeclaredResourceEntry>>;
+}
+
 /** What a writer says about the refs it writes. */
 export interface WritePullRequestsOptions {
   /** How they were found. */
@@ -395,6 +421,13 @@ export interface WritePullRequestsOptions {
   /** The request that opened them, when the writer knows it. */
   readonly requestId?: string | null;
   readonly now?: () => number;
+  // FIX-2535 D2.
+  /**
+   * Called once for each key this write records for the first time, after its
+   * row is written, and never for a row that was already there. Awaited, in
+   * order; what it throws, the write throws (after the row landed).
+   */
+  readonly onRecorded?: PullRequestRecordedCallback;
 }
 
 /**
@@ -408,6 +441,7 @@ export interface WritePullRequestsOptions {
  * - `state` is kept current: a sighting that names one replaces the stored
  *   one, so a read that saw the pull request merged or closed lands on the row.
  * - A `tool` sighting upgrades a `branch` row's `source`.
+ * - A new key, once written, is handed to `onRecorded`.
  *
  * Writes run one after another, so two refs to one key in a call never race.
  * Throws what the store throws; a caller that must not fail on bookkeeping
@@ -435,6 +469,7 @@ export async function writePullRequests(
     const prior = (await collection.getOptional(key))?.state;
     if (prior === undefined) {
       await collection.upsert(key, { ...sighting, source: options.source, firstSeenAt: now() });
+      await options.onRecorded?.({ ...ref, key });
       continue;
     }
     const update: Record<string, unknown> = {};

@@ -44,9 +44,12 @@ import {
 import {
   OBSERVED_PULL_REQUESTS,
   observedPullRequestsCollection,
+  followRecordedPullRequests,
+  pullRequestRecordedOf,
   pullRequestRefFromUrl,
   writePullRequests,
   type PullRequestCollection,
+  type PullRequestFollower,
 } from "@flow-state-dev/core/harness";
 import type {
   HarnessRunOutcome,
@@ -606,6 +609,17 @@ export interface ManagerOptions {
    * one does, the task stays open.
    */
   awaitPullRequests?: boolean;
+  // FIX-2535 D2.
+  /**
+   * Act on each pull request a run records for the first time, in the
+   * request that records it: mid-turn, as the harness's create call settles,
+   * or at the branch check or the accept that opened it. workforce's
+   * `followPullRequest({ providers })` subscribes the run's session to the
+   * pull request, so its reviews, comments and CI reach the session from that
+   * moment, including a check that completes before the turn ends. Unset,
+   * nothing follows a pull request. A follower that throws is a status note.
+   */
+  onPullRequestRecorded?: PullRequestFollower;
   /**
    * Open the brief of a task that names an issue with the issue's spec, read
    * from the run's checkout once it is provisioned (`./issue-spec`). Off by
@@ -1441,6 +1455,7 @@ async function recordLandedPullRequest(ctx: BlockContext, landed: Extract<Landed
     await writePullRequests(collection, [{ ...link, state: "open", branch: landed.branch }], {
       source: "branch",
       requestId: ctx.request.identity.id,
+      onRecorded: pullRequestRecordedOf(ctx.response),
     });
   } catch (error) {
     ctx.emit.status(`The pull request was not recorded: ${error instanceof Error ? error.message : String(error)}`, { transient: false });
@@ -1713,6 +1728,8 @@ export function resolveOwnership(options: {
 function createManagerCapability(options: {
   /** The capability's name: the fixed board's id, or the manager's name when it has none. */
   name: string;
+  /** What the follower writes, declared beside the run's own collections. */
+  followerResources?: Readonly<Record<string, DeclaredResourceEntry>>;
   /** The fixed board's ledger collection id — also the accessor the fence reads it under. */
   boardCollectionId: string | undefined;
   /** The fixed board's ledger declaration — the same object the board itself registers. */
@@ -1746,9 +1763,11 @@ function createManagerCapability(options: {
       ...(boardCollectionId !== undefined && boardCollection !== undefined
         ? { [boardCollectionId]: boardCollection }
         : {}),
+      ...(options.followerResources ?? {}),
     },
   });
 }
+
 
 /**
  * The pull requests on the run's branch, added to the run session's record
@@ -1804,6 +1823,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     judge,
     reviewChanges = false,
     awaitPullRequests = false,
+    onPullRequestRecorded,
     issueSpec,
     approveTools = false,
     tenant,
@@ -1977,6 +1997,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     name: boardCollectionId ?? `${name}:by-claim`,
     boardCollectionId,
     boardCollection,
+    ...(onPullRequestRecorded?.resources !== undefined ? { followerResources: onPullRequestRecorded.resources } : {}),
   });
 
   /**
@@ -2941,6 +2962,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const state = managerState(harnessCtxState(ctx));
       const identity = identityOf(ctx, harnessCtxState(ctx));
       const succeeded = handle.status === "completed";
+      followRecordedPullRequests(ctx, onPullRequestRecorded);
       await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       /**
@@ -3265,6 +3287,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       await holdWork(ctx).catch(() => undefined);
       await saveKeptFiles(ctx).catch(() => undefined);
       // A failed run's pull requests are still its own.
+      followRecordedPullRequests(ctx, onPullRequestRecorded);
       await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       const reason = error instanceof Error ? error.message : String(error);
@@ -3779,7 +3802,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           }
           await reviewed("accepted", outcome.landed);
           ctx.emit.status(landedLine(outcome.landed), { transient: false });
-          if (outcome.landed.kind === "pull-request") await recordLandedPullRequest(ctx, outcome.landed);
+          if (outcome.landed.kind === "pull-request") {
+            followRecordedPullRequests(ctx, onPullRequestRecorded);
+            await recordLandedPullRequest(ctx, outcome.landed);
+          }
           return input;
         }
 
@@ -4019,6 +4045,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // path forwards into the query's abort controller. The row's watch
       // (a steer's stop, or the task's end) composes in beside it.
       abortSignal: (ctx) => {
+        // Before the harness starts recording, so a pull request it opens is followed mid-turn.
+        followRecordedPullRequests(ctx as BlockContext, onPullRequestRecorded);
         const deadline = AbortSignal.timeout(runTimeoutMs);
         // Armed for every step: a run may offer a live steer once it starts.
         const steer = watchForSteers(ctx);
