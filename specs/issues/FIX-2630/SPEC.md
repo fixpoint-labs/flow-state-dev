@@ -113,7 +113,7 @@ heard. A one-follower topic still works as an address; the publisher gets nothin
 |---|---|
 | **The job, "tell whoever follows a thing that it happened".** `subscriptions` closest; `change-bus` (screens, never what), `event-actors` (tasks, one run), `dispatcher`, `worker-messages` (a named recipient). `publish(`, `.notify(` in `packages/`: bus and vendor hits | **Not a new way:** a third ingestion into `subscriptions` |
 | FIX-2534's routing, screens, cursor (`subscriptions/service-flow.ts`) | **Builds on**, unchanged |
-| The hop count (`messages/hop.ts`, budget 6) | **Reuses** as the loop guard ([D2](DECISIONS.md#d2)) |
+| The hop count (`messages/hop.ts`; budget 6 in `messages/message-limits.ts`) | **Reuses** as the loop guard ([D2](DECISIONS.md#d2)) |
 | FIX-441's `.notify(topic)` (Canceled Aug 2026, for Relay) | **Not revived:** its subscriber was a flow running a block, on a bus |
 | FIX-1197 Relay (Canceled Sep 2026; FIX-1302 replaced it) | **Answered:** it ruled out fan-out because "an unaddressed message has nowhere to run". A subscription row names where |
 | FIX-825, in-session topic reactors (Backlog) | **Left apart:** blocks in one session, not sessions hearing each other |

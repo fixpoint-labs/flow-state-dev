@@ -38,8 +38,8 @@ run a block. That is FIX-825's reactor, not this.
 | | |
 |---|---|
 | **Instead of** | A causation chain on the event with its own depth cap of about 5 (the issue's recommendation) |
-| **Because** | The hop count (`messages/hop.ts`) already stops a ring of messages at `DEFAULT_MESSAGE_BUDGET` 6. A publish is a send: it pays one place, however many hear it, and its delivery lands at the event's hop plus 1, not the owner run's. A second cap lets a ring alternating message and publish stay under both |
-| **Locks in** | An optional `hop` on the event, set only by the publish (absent reads 0, BP-030). Past the budget a publish is refused with the budget's reason. The limit is `messageLimits.budget`: 6, not 5 |
+| **Because** | The hop count (`messages/hop.ts`) already stops a ring of messages at `DEFAULT_MESSAGE_BUDGET` 6 (`messages/message-limits.ts`). A publish is a send: it pays one place, however many hear it, and its delivery lands at the event's hop plus 1, not the owner run's. A second cap lets a ring alternating message and publish stay under both |
+| **Locks in** | An optional `hop` on the event, set only by the publish (absent reads 0, BP-030). Past the budget a publish is refused with the budget's reason. The limit is `messageLimitsOf(installation).budget` (`hireWorkforce`'s `messages.budget`): 6, not 5 |
 
 ![D2: the message budget, chosen, beside a causation chain; decided by a ring that alternates a message and a publish](figures/d2-hop-budget.svg)
 
