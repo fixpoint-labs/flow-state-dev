@@ -1,0 +1,104 @@
+<svg viewBox="0 0 940 502" role="img" aria-label="FIX-2522, before and after, six rows. Every composer: text only; after, the plus button, paste, drop and the strip inside ComposerShell. sendTurn: message through the door; after, attachments beside it, the door&#x27;s input unchanged. A new task with files: the worker never sees them; after, files on the task row in the board&#x27;s scope, fixed at start. A task filed from a message gets the turn&#x27;s files too, copied into the board&#x27;s scope. Every run of the task gets the brief&#x27;s text and files. A failed send keeps its files for Retry too."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .head   { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .old    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .same   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-bn   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; font-weight:600; }
+    .t-bg   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="502"/>
+  <g id="columns">
+    <rect class="head" x="16" y="14" width="908" height="28" rx="5"/>
+    <text class="t-lbl" x="194" y="32">TODAY</text>
+    <text class="t-lbl" x="572" y="32">AFTER</text>
+  </g>
+  <g id="row-0">
+    <text class="t-lbl" x="24" y="76">EVERY</text>
+    <text class="t-lbl" x="24" y="89">COMPOSER</text>
+    <rect class="old" x="180" y="56" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="78">Text only</text>
+    <text class="t-s" x="194" y="96">ComposerShell, TurnComposer</text>
+    <rect class="new" x="558" y="56" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="78">+, paste, drop, the strip</text>
+    <text class="t-s" x="572" y="96">useAttachments inside ComposerShell</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="24" y="150">SENDTURN</text>
+    <rect class="old" x="180" y="130" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="152">{ message } through the door</text>
+    <text class="t-s" x="194" y="170">message: string</text>
+    <rect class="new" x="558" y="130" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="152">{ message }, attachments beside it</text>
+    <text class="t-s" x="572" y="170">the door&#x27;s input is unchanged</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="24" y="224">A NEW TASK</text>
+    <text class="t-lbl" x="24" y="237">WITH FILES</text>
+    <rect class="old" x="180" y="204" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="226">The worker never sees them</text>
+    <text class="t-s" x="194" y="244">the row&#x27;s context is a string</text>
+    <rect class="new" x="558" y="204" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="226">Files on the task row</text>
+    <text class="t-s" x="572" y="244">the board&#x27;s scope; fixed at start, D1</text>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="24" y="298">A TASK FILED</text>
+    <text class="t-lbl" x="24" y="311">FROM A MESSAGE</text>
+    <rect class="old" x="180" y="278" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="300">Gets the text</text>
+    <text class="t-s" x="194" y="318">context, from the coordinator</text>
+    <rect class="new" x="558" y="278" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="300">Gets the turn&#x27;s files too</text>
+    <text class="t-s" x="572" y="318">copied into the board&#x27;s scope</text>
+  </g>
+  <g id="row-4">
+    <text class="t-lbl" x="24" y="372">EVERY RUN</text>
+    <text class="t-lbl" x="24" y="385">OF THE TASK</text>
+    <rect class="old" x="180" y="352" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="374">The brief&#x27;s text</text>
+    <text class="t-s" x="194" y="392">a re-run re-reads the row</text>
+    <rect class="new" x="558" y="352" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="374">The brief&#x27;s text and files</text>
+    <text class="t-s" x="572" y="392">handed on by FIX-2519</text>
+  </g>
+  <g id="row-5">
+    <text class="t-lbl" x="24" y="446">A FAILED SEND</text>
+    <rect class="old" x="180" y="426" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="448">Its text kept for Retry</text>
+    <text class="t-s" x="194" y="466">FIX-2371</text>
+    <rect class="new" x="558" y="426" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="448">Its files kept for Retry too</text>
+    <text class="t-s" x="572" y="466">the same draft</text>
+  </g>
+</svg>
