@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { commandsRun, runSummaryLine, type BoardTask, type LabAdapter, type LabTalk, type LabWorker, type SessionStep, type WorkingNow } from "../adapter";
+import { attemptDurationMs, commandsRun, runSummaryLine, type BoardTask, type LabAdapter, type LabTalk, type LabWorker, type SessionStep, type WorkingNow } from "../adapter";
 import type { RecordedWork } from "@flow-state-dev/harness-manager/browser";
 import { harnessName } from "../lib/harness";
+import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import type { Look } from "../lib/looks";
 import { useWatch } from "../lib/use-watch";
@@ -251,9 +252,12 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
       })}
       {/* The run's result is its last entry. */}
       {task?.result || task?.landed ? (
-        <section aria-label="Result" data-step="result" data-tone={task.status} className={cn("rounded-md border border-dashed px-3 py-2 text-sm", RESULT_TONE[task.status])}>
-          {task.result ? <MarkdownText text={task.result} /> : null}
-          {task.landed === undefined ? null : <LandedOutcome landed={task.landed} />}
+        // The box's border takes the task's colour from the lab's one reader of it; the words keep the body colour.
+        <section aria-label="Result" data-step="result" data-tone={taskPresentation(task).word} className={cn("rounded-md border border-dashed border-current px-3 py-2 text-sm", taskPresentation(task).tone)}>
+          <div className="text-foreground">
+            {task.result ? <MarkdownText text={task.result} /> : null}
+            {task.landed === undefined ? null : <LandedOutcome landed={task.landed} />}
+          </div>
         </section>
       ) : task?.status === "done" ? (
         // Done with nothing written is not a plain success: say so, where the result would be.
@@ -268,14 +272,6 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
     </SessionOverlay>
   );
 }
-
-/** The result box's colour, by how the task ended: a failed task's result is never a success's green. */
-const RESULT_TONE: Record<BoardTask["status"], string> = {
-  done: "border-success/60 bg-success/5",
-  running: "border-success/60 bg-success/5",
-  failed: "border-destructive/60 bg-destructive/5",
-  cancelled: "border-border bg-muted/40",
-};
 
 /** How many file chips show before the rest fold into "+N more". */
 const CHIPS_SHOWN = 8;
@@ -307,7 +303,7 @@ export function useRecordedFiles(adapter: LabAdapter, task: BoardTask): Recorded
   return read !== undefined && read.run === run ? read.files : undefined;
 }
 
-/** "Edited 2 files · ran 5 commands", and a chip per file the run recorded, named by its file name. */
+/** "Edited 2 files · ran 5 commands · 2m 14s", and a chip per file the run recorded, named by its file name. */
 function TaskSummary({ adapter, task, steps }: { adapter: LabAdapter; task: BoardTask; steps: readonly SessionStep[] }) {
   const files = useRecordedFiles(adapter, task) ?? null;
   // One per path (a steer or a review's changes record the path again), and only a path an edit landed on:
@@ -317,6 +313,7 @@ function TaskSummary({ adapter, task, steps }: { adapter: LabAdapter; task: Boar
   const line = runSummaryLine({
     files: files === null ? null : { count: rows.length, truncated: files.truncated },
     commands: commandsRun(steps, task.runRequestId),
+    durationMs: attemptDurationMs(task),
   });
   if (line === "") return null;
   const shown = rows.slice(0, CHIPS_SHOWN);

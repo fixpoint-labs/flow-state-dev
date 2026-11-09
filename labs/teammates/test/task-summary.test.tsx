@@ -12,15 +12,17 @@
  *
  * Red states produced before this was trusted: count the run's edit steps
  * instead of the recorded files, and the Codex case fails; colour the result
- * green whatever the status, and the failed-tone case fails; prefill the open
+ * box apart from the lab's one task colour (green whatever the status), and the
+ * failed-tone case fails; prefill the open
  * conversation rather than the filer's, and the follow-up case fails; count
  * every recorded row, and a file whose every edit failed reads as edited; let
  * the composer keep the follow-up after taking it, and switching away and back
- * adds it twice.
+ * adds it twice; time the duration from the task's first start, and a retry
+ * reads as the whole task's time.
  */
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { commandsRun, runSummaryLine, runSteps, toBoardTask, type BoardTask } from "../src/adapter";
+import { attemptDurationMs, commandsRun, runSummaryLine, runSteps, toBoardTask, type BoardTask } from "../src/adapter";
 import { App } from "../src/App";
 import { useRecordedFiles } from "../src/components/Popups";
 import type { LabAdapter } from "../src/adapter";
@@ -70,6 +72,15 @@ describe("a run's summary line", () => {
     expect(runSummaryLine({ files: null, commands: 0 })).toBe("");
   });
 
+  it("times this attempt from its run's start to the task's end, and not while it runs", () => {
+    // A retry: the task first started at 1_000; this attempt's run started at 50_000 and the task ended at 184_000.
+    const ended = toBoardTask({ id: "t1", status: "completed", assignee: "x", title: "t", startedAt: 1_000, run: { sessionId: "s1", requestId: "q2", attempt: 2, startedAt: 50_000 } });
+    const view = { times: { completedAt: 184_000 } } as BoardTask["view"];
+    expect(attemptDurationMs({ ...ended, view })).toBe(134_000);
+    expect(attemptDurationMs({ ...ended, status: "running", view })).toBeUndefined();
+    expect(attemptDurationMs({ ...ended, view: undefined })).toBeUndefined();
+  });
+
   it("carries the run's request beside its session, so the recorded work can be read", () => {
     const task = toBoardTask({ id: "t1", status: "completed", assignee: "x", title: "t", run: { sessionId: "s1", requestId: "q9", attempt: 1 } });
     expect([task.runSessionId, task.runRequestId]).toEqual(["s1", "q9"]);
@@ -93,7 +104,7 @@ describe("a coding task's popup", () => {
     render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
     const popup = await openTask("Claude Code");
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
-    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toBe("Edited 1 file · ran 1 command"));
+    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toMatch(/^Edited 1 file · ran 1 command · \d+s$/));
     const chips = within(popup).getByRole("list", { name: "Files changed" });
     expect(within(chips).getByText("README.md").getAttribute("title")).toBe("/work/README.md");
     expect(within(popup).getByRole("region", { name: "Result" }).getAttribute("data-tone")).toBe("done");
@@ -110,7 +121,7 @@ describe("a coding task's popup", () => {
     render(<App adapter={lab} />);
     const popup = await openTask("Claude Code");
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
-    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toBe("Edited 1 file · ran 1 command"));
+    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toMatch(/^Edited 1 file · ran 1 command · \d+s$/));
     expect(within(popup).queryByText("LICENSE")).toBeNull();
   });
 
@@ -124,7 +135,7 @@ describe("a coding task's popup", () => {
     render(<App adapter={lab} />);
     const popup = await openTask("Claude Code");
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
-    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toBe("Edited 1 file · ran 1 command"));
+    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toMatch(/^Edited 1 file · ran 1 command · \d+s$/));
     expect(within(popup).getAllByText("README.md").filter((el) => el.hasAttribute("data-file-chip"))).toHaveLength(1);
   });
 
@@ -132,7 +143,7 @@ describe("a coding task's popup", () => {
     render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
     const popup = await openTask("Codex");
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
-    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toBe("Ran 2 commands"));
+    await waitFor(() => expect(popup.querySelector("[data-summary-line]")?.textContent).toMatch(/^Ran 2 commands · \d+s$/));
     expect(within(popup).queryByRole("list", { name: "Files changed" })).toBeNull();
   });
 
@@ -197,7 +208,10 @@ describe("a filed task's popup, opened by its address", () => {
 
   it("colours a failed task's result as failed, not as a success", async () => {
     const popup = await open(failed);
-    expect(within(popup).getByRole("region", { name: "Result" }).getAttribute("data-tone")).toBe("failed");
+    const result = within(popup).getByRole("region", { name: "Result" });
+    expect(result.getAttribute("data-tone")).toBe("failed");
+    // The colour is the lab's one task colour, the same red its row and card use.
+    expect(result.className).toContain("text-destructive");
   });
 
   it("prefills the filer's conversation, not the one that was open, and keeps what was typed there", async () => {

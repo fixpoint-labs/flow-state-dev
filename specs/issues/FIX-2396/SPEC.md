@@ -23,12 +23,12 @@ opening a step, and gives two ways to act on the outcome.**
   packages, FIX-2555, D1); the summary on the task's line in the thread.
 - **Not done if:** the files come from anywhere but the package's recorded-work reader, the
   duration shows on a task still running, the result's tone is decided in the popup rather than
-  by the lab's one task-state helper, or the follow-up button types into a conversation other
+  by the lab's one task-presentation helper, or the follow-up button types into a conversation other
   than the one that filed the task.
 
 **Depends on FIX-2395 (#4717), which lands first.** It adds the task times to the board's
 `listTasks` read and through `toBoardTask` (today `taskRowView.times` arrives null from that
-read, so no duration could show), and `lib/task-state.ts`, the lab's one word-and-tone helper for
+read, so no duration could show), and `lib/task-presentation.ts` (`taskPresentation`), the lab's one word-and-tone helper for
 a task. This issue reads both and adds neither. Its implementation stacks on FIX-2395's.
 
 ```mermaid
@@ -39,7 +39,7 @@ flowchart LR
   F --> H["popup summary line"]
   N --> H
   D --> H
-  S["lib/task-state.ts<br/>(FIX-2395)"] --> C["result tone"]
+  S["lib/task-presentation.ts<br/>(FIX-2395)"] --> C["result tone"]
   B["task ended"] --> A["Copy · Follow up"]
 ```
 
@@ -68,7 +68,7 @@ flowchart LR
   read again when the task ends; a pure `runSummaryLine` puts files, commands and duration in
   words.
 - `labs/teammates/src/components/Popups.tsx`: the task popup draws the summary line and chips,
-  takes the result's tone from `lib/task-state.ts`, and adds Copy and the follow-up button.
+  takes the result's tone from `lib/task-presentation.ts` (`taskPresentation`), and adds Copy and the follow-up button.
 - `labs/teammates/src/App.tsx`, `Conversation.tsx`, `Composer.tsx`: a follow-up selects the
   filing conversation and hands its composer the words to add. Props, not `saveDraft` alone:
   `saveDraft` leaves a box that is already open showing what it showed, and the filer's
@@ -78,7 +78,7 @@ flowchart LR
 ## What's already here, and the debt
 
 - **Reused:** `readRecordedWork` from `@flow-state-dev/harness-manager/browser` (FIX-2385, which
-  names this issue as a consumer) for the files; FIX-2395's task times and `lib/task-state.ts`;
+  names this issue as a consumer) for the files; FIX-2395's task times and `lib/task-presentation.ts` (`taskPresentation`);
   the registry's `durationText` (already copied into the lab) for `2m 14s`; `useDraft`'s
   per-conversation draft for the prefill. Commands are counted from the steps the popup already
   watches, by tool name in the registry's `TOOL_VERB_MAP` ("ran a command"), the vocabulary the step groups already use; no tool args are re-parsed.

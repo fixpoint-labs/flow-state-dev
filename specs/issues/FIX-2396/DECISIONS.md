@@ -60,7 +60,7 @@
 - **E3 · Chips show the file's name**, the full path as their title; past eight, a `+N more` chip.
 - **E4 · Copy copies the result, else the error.** A task with neither shows no Copy.
 - **E5 · Status tone applies to every task popup**, coding or not, read from FIX-2395's
-  `lib/task-state.ts`: the popup doesn't become another place that colours status. The summary
+  `lib/task-presentation.ts` (`taskPresentation`): the popup doesn't become another place that colours status. The summary
   line is for coding tasks.
 - **E6 · Follow up and Copy show once the task ended** (done, failed or cancelled).
 - **E7 · No changeset:** the Teammates lab is private.

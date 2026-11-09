@@ -370,6 +370,17 @@ export function runSummaryLine({ files, commands, durationMs }: RunSummary): str
   return line.charAt(0).toUpperCase() + line.slice(1);
 }
 
+/**
+ * How long this attempt ran: from its start (the run link's, so a retry times
+ * itself, not the task's first start) to when the task ended. `undefined`
+ * while it runs, or when either end is missing.
+ */
+export function attemptDurationMs(task: Pick<BoardTask, "status" | "startedAt" | "view">): number | undefined {
+  const end = task.view?.times.completedAt;
+  if (task.status === "running" || task.startedAt === undefined || end == null || end < task.startedAt) return undefined;
+  return end - task.startedAt;
+}
+
 /** What a conversation shows now. */
 export interface ConversationView {
   entries: ConversationEntry[];
