@@ -78,7 +78,7 @@ async function eventually(check: () => boolean, withinMs: number, what: string):
 }
 
 /** Until `taskId`'s notice is delivered: the notice turn ran, cleared its marker and ended. */
-async function untilDelivered(state: ReturnType<typeof runtimeFor>, flow: Parameters<typeof rows>[1], taskId: string): Promise<void> {
+async function untilDelivered(state: ReturnType<typeof runtimeFor>, flow: Parameters<typeof storedTasks>[1], taskId: string): Promise<void> {
   const owed = (row: { metadata?: Record<string, unknown> } | undefined) =>
     Object.entries(row?.metadata ?? {}).some(([key, value]) => key.startsWith("noticeOwed:") && value !== null);
   for (const deadline = Date.now() + 5_000; owed((await storedTasks(state, flow)).find((row) => row.id === taskId)); ) {
