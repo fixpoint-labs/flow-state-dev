@@ -310,8 +310,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
   );
   Object.assign(instances, options.plainFlows ?? {}, options.plainFlowsOf?.(installation) ?? {});
-  const judgment = options.judgment ?? mockGenerator({ script: [{ when: () => true, then: { text: QUIET_TURN } }] });
-  const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });
+  const judgment = options.judgment ?? mockGenerator({ name: "coordinator-judgment", script: [{ when: () => true, then: { text: QUIET_TURN } }] });
+  const agentAnswer = options.agentAnswer ?? mockGenerator({ name: "agent-answer", script: [] });
   const models = createMockModelResolver({
     evaluators: {
       [COORDINATOR_ROUTE]: mockEvaluationModel({ answers: { worker: { type: "choice", choice: "eng.tasker" } } })

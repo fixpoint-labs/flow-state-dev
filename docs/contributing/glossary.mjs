@@ -893,6 +893,14 @@ const EXEMPTIONS = [
     why: "FIX-2614: the release note that tells consumers what each retired schedule and subscription name became",
   },
   {
+    // User docs change only at release (docs/contributing/release-docs.md), so these pages document the
+    // released names until then. As FIX-2479 D4's released-quotes: /release-docs rewrites them from the
+    // changeset's Docs: line, and deletes this in the same PR.
+    path: /^(?:apps\/docs\/docs\/workforce\/delegating-work\.md|apps\/docs\/docs\/shift-manager\/overview\.md|packages\/workforce\/README\.md|packages\/shift-manager\/README\.md)$/,
+    rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "recurring-work-prose"],
+    why: "FIX-2614: published pages may name the released schedule and subscription surface until /release-docs rewrites them, and deletes this in the same PR",
+  },
+  {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
     rules: ["human-reasons"],
     why: "FIX-2151: the release note that tells consumers which old reasons to replace",

@@ -13,7 +13,7 @@
  * user's routines: their schedules (`workforce/schedules/*`), which its
  * `schedules` fires, and their subscriptions (`workforce/subscriptions/*`);
  * its routine actions list and write both, and each request first seeds the
- * app's declared routines (`seed`, when the app declares any).
+ * app's declared routines (`seed`), and cleans up the ones config dropped.
  *
  * Its own kind (`workforce-roster`), so a listing of a worker flow's sessions
  * never shows a roster session. It takes no create check: a roster session

@@ -169,6 +169,9 @@ describe("a Lab Shift Manager can't reach", () => {
     expect(screen.queryByTestId("sidebar")).toBeNull();
     expect(screenEl.textContent).not.toMatch(/organization/);
     down = false;
+    // The screen can commit before its passive effects run, and Retry's handler is wired in one.
+    // Flush them, so the click can't land on the no-op it starts with.
+    await act(async () => {});
     act(() => fireEvent.click(screen.getByTestId("unreachable-retry")));
     await screen.findByTestId("sidebar");
   });

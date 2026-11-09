@@ -87,6 +87,13 @@ export interface DefineScheduleCollectionOptions {
    * schema.
    */
   index?: ScheduleIndex;
+  /**
+   * The collection's own `flowIsolation`. Omitted, it follows the declaring
+   * flow's `isolateUserState`, as any collection does. `false` keeps one set
+   * of rows for the user across flows, so a row written by one flow is read
+   * and fired by another.
+   */
+  flowIsolation?: boolean;
 }
 
 /**
@@ -105,7 +112,8 @@ export function defineScheduleCollection(
     // admitted under, and a reschedule that omits it keeps it, so the resolver
     // has the stored target it requires and the schedule fires (BR-19,
     // FIX-1545).
-    stampOrgId: true
+    stampOrgId: true,
+    ...(opts.flowIsolation === undefined ? {} : { flowIsolation: opts.flowIsolation })
   };
 
   const { index } = opts;

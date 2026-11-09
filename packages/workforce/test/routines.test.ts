@@ -19,6 +19,7 @@ import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import { ROSTER_FLOW } from "../src/workers/keys";
 import { SUBSCRIPTION_INDEX_PATTERN } from "../src/subscriptions/keys";
 import type { DeclaredRoutine } from "../src/routines";
+import type { SubscriptionProvider } from "../src/subscriptions";
 
 const PR = "github:acme/api#412";
 const PRIVATE = "github:acme/private#7";
@@ -36,14 +37,44 @@ afterEach(async () => {
   host = undefined;
 });
 
-function boot(options: { declared?: DeclaredRoutine[]; stores?: ReturnType<typeof inMemoryStores>; hold?: Promise<void> } = {}) {
+function boot(
+  options: {
+    declared?: DeclaredRoutine[];
+    stores?: ReturnType<typeof inMemoryStores>;
+    hold?: Promise<void>;
+    provider?: SubscriptionProvider;
+    isolatedFollower?: boolean;
+  } = {}
+) {
   host = bootSubscriptionsHost({
     adapters: [createScheduledTransportAdapter()],
-    hire: { routines: { providers: [github], ...(options.declared === undefined ? {} : { declared: options.declared }) } },
+    hire: { routines: { providers: [options.provider ?? github], ...(options.declared === undefined ? {} : { declared: options.declared }) } },
     ...(options.stores === undefined ? {} : { stores: options.stores }),
-    ...(options.hold === undefined ? {} : { hold: options.hold })
+    ...(options.hold === undefined ? {} : { hold: options.hold }),
+    ...(options.isolatedFollower === true ? { isolatedFollower: true } : {})
   });
   return host;
+}
+
+/** `github`, whose read check waits on a gate the test opens: a request parks there mid-resume. */
+function gatedGithub() {
+  let reached!: () => void;
+  let open!: () => void;
+  const atGate = new Promise<void>((resolve) => (reached = resolve));
+  const gate = new Promise<void>((resolve) => (open = resolve));
+  let armed = false;
+  const provider: SubscriptionProvider = {
+    ...github,
+    canRead: async (thread, ctx) => {
+      if (armed) {
+        armed = false;
+        reached();
+        await gate;
+      }
+      return github.canRead(thread, ctx);
+    }
+  };
+  return { provider, arm: () => (armed = true), atGate, open: () => open() };
 }
 
 const roster = (h: SubscriptionsHost, user: string, action: string, input: unknown) => h.act(user, `roster-${user}`, action, input, "roster");
@@ -135,6 +166,16 @@ describe("one list over every writer", () => {
   });
 });
 
+describe("a worker flow that isolates its users' state", () => {
+  it("still writes the clock routine the roster lists and fires", async () => {
+    const h = boot({ isolatedFollower: true });
+    const chat = await h.follower("alice");
+    ok((await h.act("alice", chat, "saveRoutine", { name: "standup", trigger: { clock: { cron: "0 9 * * 1" } }, task: { goal: "Post the standup" } }, "follower")).output);
+    expect((await list(h)).map((r) => r.id)).toEqual(["clock:standup"]);
+    expect((await h.act("alice", chat, "listRoutines", {}, "follower")).output).toMatchObject({ routines: [{ id: "clock:standup" }] });
+  });
+});
+
 describe("pause, resume and delete", () => {
   it("a paused clock routine files nothing; resumed, it files again; deleted, it is gone", async () => {
     const h = boot();
@@ -194,6 +235,36 @@ describe("pause, resume and delete", () => {
     expect((await roster(h, "alice", "pauseRoutine", { id: routine.id, paused: false })).output).toEqual({ ok: false, error: expect.stringMatching(/^not_readable/) });
     expect((await list(h))[0]).toMatchObject({ id: routine.id, paused: true });
     expect(await indexed(h, PRIVATE)).toEqual([]);
+  });
+
+  it("a tenant's routine, resumed from a roster in no tenant, stays under its tenant and still reaches its session", async () => {
+    const h = boot();
+    const chat = await h.followerInTenant("alice", "tenant-a");
+    const { id } = (await h.subscribe("alice", chat, { thread: PR }, "tenant-a")) as { id: string };
+    ok((await roster(h, "alice", "pauseRoutine", { id: `event:${id}`, paused: true })).output);
+    ok((await roster(h, "alice", "pauseRoutine", { id: `event:${id}`, paused: false })).output);
+    expect((await h.subscriptionRows("alice"))[0]).toMatchObject({ id, enabled: true, tenantId: "tenant-a" });
+    const routed = await h.route(event({ text: "after a resume elsewhere" }));
+    expect(routed.ownerRuns.map((run) => run.run.owner.tenantId)).toEqual(["tenant-a"]);
+  });
+
+  it("a resume racing a delete leaves it deleted: no row back on, no index entry back", async () => {
+    const gated = gatedGithub();
+    const h = boot({ provider: gated.provider });
+    const routine = ok<Listed>((await roster(h, "alice", "saveRoutine", { trigger: { event: { provider: "github", thread: PR, interest: "reviews" } }, worker: "eng.follower" })).output);
+    const sub = routine.id.slice("event:".length);
+    ok((await roster(h, "alice", "pauseRoutine", { id: routine.id, paused: true })).output);
+    gated.arm();
+    const resuming = roster(h, "alice", "pauseRoutine", { id: routine.id, paused: false });
+    await gated.atGate;
+    // The delete lands while the resume waits on the read check: from a worker's tools, another session.
+    const chat = await h.follower("alice");
+    expect((await h.act("alice", chat, "deleteRoutine", { id: routine.id }, "follower")).output).toEqual({ ok: true });
+    gated.open();
+    expect((await resuming).output).toMatchObject({ ok: false, error: expect.stringMatching(/^ended/) });
+    expect((await h.subscriptionRows("alice")).find((r) => r.id === sub)).toMatchObject({ enabled: false, endedReason: "unsubscribed" });
+    expect(await indexed(h, PR)).not.toContain(sub);
+    expect(await list(h)).toEqual([]);
   });
 
   it("a task's routine, paused then resumed, still ends when its task fails", async () => {
@@ -257,6 +328,32 @@ describe("the app's declared routines", () => {
     expect(listed.find((r) => r.id.startsWith("clock:"))).toMatchObject({ trigger: { clock: { cron: "30 7 * * *" } } });
     expect(listed.find((r) => r.id.startsWith("event:"))).toMatchObject({ trigger: { event: { interest: "only reviews" } } });
     expect(await indexed(second, PR)).toEqual([]);
+  });
+
+  it("moves a declared event routine to its new thread: the old thread's index entry goes", async () => {
+    const stores = inMemoryStores();
+    const first = boot({ declared: declared(), stores });
+    const [event] = (await list(first)).filter((r) => r.id.startsWith("event:"));
+    const sub = event!.id.slice("event:".length);
+    expect(await indexed(first, PR)).toContain(sub);
+    await first.dispose();
+    host = undefined;
+    const moved = declared();
+    (moved[1]!.trigger as { event: { thread: string } }).event.thread = "github:acme/api#999";
+    const second = boot({ declared: moved, stores });
+    await list(second);
+    expect(await indexed(second, PR)).not.toContain(sub);
+    expect(await indexed(second, "github:acme/api#999")).toContain(sub);
+  });
+
+  it("cleans up a declared clock routine once config declares none at all", async () => {
+    const stores = inMemoryStores();
+    const first = boot({ declared: declared(), stores });
+    expect((await list(first)).some((r) => r.id.startsWith("clock:cfg_"))).toBe(true);
+    await first.dispose();
+    host = undefined;
+    const second = boot({ declared: [], stores });
+    expect((await list(second)).filter((r) => r.id.startsWith("clock:"))).toEqual([]);
   });
 
   it("refuses a declared routine that would never fire before anything registers", () => {

@@ -53,7 +53,7 @@ export const github: SubscriptionProvider = {
 
 const doorInput = z.object({ message: z.string() });
 
-function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined) {
+function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, isolated: boolean) {
   const tools = routineTools({ providers: [github] });
   // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[hold]` waits on the
   // host's hold, then `[fail]` fails the task.
@@ -74,6 +74,7 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
   });
   return defineFlow({
     kind: "follower",
+    ...(isolated ? { isolateUserState: true } : {}),
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
@@ -92,6 +93,8 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   service?: Partial<Omit<SubscriptionServiceOptions, "provider" | "installation" | "kind">>;
   /** What a `[hold]` task turn waits on. */
   hold?: Promise<void>;
+  /** The follower flow isolates its users' state (`isolateUserState`). */
+  isolatedFollower?: boolean;
 };
 
 /** A board host with followers and a GitHub service flow. */
@@ -105,7 +108,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const board = bootBoardHost({
     ...options,
     standard,
-    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
+    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({
       "github-service": defineSubscriptionServiceFlow({
         kind: "github-service",

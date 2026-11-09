@@ -125,7 +125,7 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
       fire: { inputSchema: fire.inputSchema, block: fire },
       ...routines.actions
     },
-    { resources: routines.resources, schedules: scheduled.schedules, ...(routines.seed === undefined ? {} : { seed: routines.seed }) }
+    { resources: routines.resources, schedules: scheduled.schedules, seed: routines.seed }
   );
   copies.push(roster() as unknown as FlowInstance);
   return copies;

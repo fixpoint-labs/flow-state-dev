@@ -49,7 +49,7 @@ import { ROSTER_FLOW } from "../workers/keys";
 import { FILE_SCHEDULED_TASK_ENTRY, SCHEDULES_PATTERN, SCHEDULES_RESOURCE, TASK_SCHEDULE_HANDLER } from "./keys";
 
 /** The accessor a flow declares the dispatch endpoint's fired records under. */
-export const FIRED_RECORDS_RESOURCE = "workforceScheduledFires";
+const FIRED_RECORDS_RESOURCE = "workforceScheduledFires";
 
 /**
  * The task a fire files: the worker whose board it lands on, and the task as
@@ -135,12 +135,15 @@ export async function removeSchedule(ctx: BlockContext, key: string): Promise<vo
  * @param index A schedule index to mirror every write into.
  */
 export function scheduleResources(index?: ScheduleIndex) {
-  const collection = defineScheduleCollection({ pattern: SCHEDULES_PATTERN, ...(index === undefined ? {} : { index }) });
+  // Shared across flows, as the subscriptions are: a worker flow that isolates its users' state
+  // still writes the rows the roster lists and fires.
+  const collection = defineScheduleCollection({ pattern: SCHEDULES_PATTERN, flowIsolation: false, ...(index === undefined ? {} : { index }) });
   // The dispatch endpoint's record of each schedule's last fired time, in the
   // same cell: read by no one here, deleted with its schedule.
   const firedRecords = defineResourceCollection({
     pattern: FIRED_RECORDS_PATTERN,
     scope: "user",
+    flowIsolation: false,
     stateSchema: z.object({ lastFiredAt: z.number() }).passthrough()
   });
   return { [SCHEDULES_RESOURCE]: collection, [FIRED_RECORDS_RESOURCE]: firedRecords };
@@ -218,6 +221,3 @@ export function defineScheduledWork(installation: WorkerInstallation, index?: Sc
     schedules
   };
 }
-
-/** Clock routines for one installation, as {@link defineScheduledWork} builds it. */
-export type ScheduledWork = ReturnType<typeof defineScheduledWork>;

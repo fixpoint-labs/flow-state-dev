@@ -22,6 +22,7 @@
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { updateStateWith } from "@flow-state-dev/core/helpers";
 import { retryOnConflict } from "../projects/cas-retry";
 import type { RoutineMaker } from "../routines/listed-routine";
 import { TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
@@ -89,6 +90,11 @@ export interface SubscribeTarget {
   readonly worker: string;
   /** The task that session works: its failure or cancel ends the subscription. */
   readonly taskId?: string;
+  /**
+   * The tenant that session runs under; omitted, none. A target's tenant wins over the running
+   * session's: a resume from another tenant's roster keeps the row's.
+   */
+  readonly tenantId?: string;
 }
 
 /** How a server-side caller writes the row. Never a model's input. */
@@ -99,6 +105,11 @@ export interface SubscribeWrite {
   readonly madeBy?: RoutineMaker;
   /** Write it paused: off, with reason `paused`, and no index entry (a seed that keeps a pause). */
   readonly paused?: true;
+  /**
+   * Write only over a paused row, compared against the row as it is at the write (a resume). A row
+   * that ended meanwhile (deleted, its task failed) stays ended, and nothing is indexed.
+   */
+  readonly onlyIfPaused?: true;
 }
 
 /**
@@ -179,7 +190,7 @@ export async function subscribe(
     const view = await requestHostOf(ctx)?.sessions?.read(identity.id);
     flowKind = view === undefined ? undefined : (view.flowId ?? view.flowKind);
   }
-  const tenantId = tenantOf(ctx);
+  const tenantId = target === undefined ? tenantOf(ctx) : target.tenantId;
   const id = write.id ?? (await subscriptionIdOf(hears.sessionId, provider.provider, thread, tenantId));
   const self = await provider.self?.(ctx);
   const at = Date.now();
@@ -205,16 +216,45 @@ export async function subscribe(
     ...(write.madeBy === undefined ? {} : { madeBy: write.madeBy })
   };
   if (row.flow.length === 0) return { refused: "no_session: this host can't read this session's record, so nothing could be delivered to it." };
-  const ref = await subscriptionsOf(ctx).getOrCreate(id, row);
-  await ref.setState(row);
+  const rows = subscriptionsOf(ctx);
+  const before = (await rows.getOptional(id))?.state;
+  if (write.onlyIfPaused === true) {
+    const ref = await rows.getOptional(id);
+    if (ref === undefined) return { refused: "ended: it no longer exists." };
+    const written = await retryOnConflict(() =>
+      updateStateWith<SubscriptionResourceState, boolean>(ref, (current) => (isPaused(current) ? { state: row, result: true } : { state: current, result: false }))
+    );
+    if (written !== true) return { refused: "ended: it ended while it was resuming, so it stays ended." };
+  } else {
+    const ref = await rows.getOrCreate(id, row);
+    await ref.setState(row);
+  }
   await subscriptionCursorsOf(ctx).getOrCreate(id, { seen: [], window: { start: 0, sent: 0 }, held: 0 });
+  // The same id on a new thread (a declared routine's entry changed): the old thread's entry goes,
+  // or its stale screen settings keep nominating it there.
+  if (before !== undefined && before.thread !== thread) await dropFromIndex(ctx, before.thread, id);
   // A paused row is in no index: nothing routes to it until it resumes.
   if (write.paused === true) return { id };
   // Other users' subscribes to this thread may write at once: `updateState`
   // runs again against the row that won, so every entry lands.
   const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(thread), { subscriptions: {} });
   await retryOnConflict(() => index.updateState((current) => ({ subscriptions: { ...current.subscriptions, [id]: indexEntryOf(row) } })));
+  // An end that landed between the row's write and the index's takes its entry back out.
+  const now = (await rows.getOptional(id))?.state;
+  if (now === undefined || !now.enabled) await dropFromIndex(ctx, thread, id);
   return { id };
+}
+
+/** Take subscription `id` out of `thread`'s index row, when it is there. */
+async function dropFromIndex(ctx: BlockContext, thread: string, id: string): Promise<void> {
+  const index = await subscriptionIndexOf(ctx).getOptional(indexKeyOf(thread));
+  if (index?.state.subscriptions[id] === undefined) return;
+  await retryOnConflict(() =>
+    index.updateState((current) => {
+      const { [id]: _gone, ...rest } = current.subscriptions;
+      return { subscriptions: rest };
+    })
+  );
 }
 
 /** Whether `row` is paused: off, with the one end a resume undoes. */
@@ -233,15 +273,7 @@ export async function unsubscribe(ctx: BlockContext, id: string, reason: Subscri
   const row = ref.state;
   if (row.enabled || (isPaused(row) && reason !== "paused")) await ref.setState({ ...row, enabled: false, endedReason: reason, endedAt: Date.now() });
   // Out of the index even when the row was already off: a stop between the two writes leaves it there.
-  const index = await subscriptionIndexOf(ctx).getOptional(indexKeyOf(row.thread));
-  if (index?.state.subscriptions[id] !== undefined) {
-    await retryOnConflict(() =>
-      index.updateState((current) => {
-        const { [id]: _gone, ...rest } = current.subscriptions;
-        return { subscriptions: rest };
-      })
-    );
-  }
+  await dropFromIndex(ctx, row.thread, id);
   return row.enabled;
 }
 

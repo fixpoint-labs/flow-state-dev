@@ -87,7 +87,7 @@ const triggerSchema = z.union([z.object({ clock: clockTriggerSchema }).strict(),
 const routineTaskSchema = scheduledTaskInputSchema.partial({ filer: true });
 
 /** What `saveRoutine` takes. */
-export const saveRoutineInputSchema = z
+const saveRoutineInputSchema = z
   .object({
     name: z.string().min(1).optional().describe("A clock routine's name, its key: saving one that exists replaces it. An event routine takes none."),
     trigger: triggerSchema.describe("Exactly one trigger: { clock: { cron, timezone } } or { event: { provider, thread, kinds, screens, interest } }."),
@@ -97,7 +97,7 @@ export const saveRoutineInputSchema = z
   })
   .strict();
 
-export type SaveRoutineInput = z.infer<typeof saveRoutineInputSchema>;
+type SaveRoutineInput = z.infer<typeof saveRoutineInputSchema>;
 
 const pauseRoutineInputSchema = z
   .object({
@@ -199,7 +199,7 @@ export async function declaredRoutineKey(entryId: string): Promise<string> {
 
 /** The schedule collection, as the verbs use it. */
 interface ScheduleCollection {
-  list(): Promise<Array<{ path: string; state: StoredSchedule }>>;
+  list(prefix?: string): Promise<Array<{ path: string; state: StoredSchedule }>>;
   getOptional(key: string): Promise<{ state: StoredSchedule } | undefined>;
   create(key: string, state: StoredSchedule, options: { replace: true }): Promise<unknown>;
 }
@@ -300,7 +300,8 @@ const targetOf = (row: SubscriptionResourceState): SubscribeTarget => ({
   sessionId: row.sessionId,
   flow: row.flow,
   worker: row.worker,
-  ...(row.taskId === undefined ? {} : { taskId: row.taskId })
+  ...(row.taskId === undefined ? {} : { taskId: row.taskId }),
+  ...(row.tenantId === undefined ? {} : { tenantId: row.tenantId })
 });
 
 /**
@@ -314,7 +315,9 @@ async function conversationWith(ctx: BlockContext, installation: WorkerInstallat
   const identity = ctx.session.identity as { userId?: string; orgId?: string };
   if (identity.userId === undefined || identity.orgId === undefined) return { refused: "no_identity: a routine needs a user and an organization." };
   const sessionId = await deriveWorkerSessionId({ userId: identity.userId, orgId: identity.orgId, flow: found.flow, criteria: { worker } });
-  return { sessionId, flow: found.flow, worker };
+  // The conversation is in the tenant the user is working in now: the roster session's.
+  const tenantId = (identity as { tenantId?: string }).tenantId;
+  return { sessionId, flow: found.flow, worker, ...(tenantId === undefined || tenantId.length === 0 ? {} : { tenantId }) };
 }
 
 // ---- the verbs -----------------------------------------------------------------
@@ -401,6 +404,7 @@ async function pauseRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, i
     // the same session and task, the same id and maker.
     const outcome = await subscribe(ctx, deps.providers, subscribeInputOf(row), targetOf(row), {
       id: row.id,
+      onlyIfPaused: true,
       ...(row.madeBy === undefined ? {} : { madeBy: row.madeBy })
     });
     if ("refused" in outcome) return refused(`${outcome.refused} It stays paused.`);
@@ -431,7 +435,7 @@ async function deleteRoutine(ctx: BlockContext, caller: Caller, input: { id: str
 // ---- the seed ------------------------------------------------------------------
 
 /** What one seed pass did, by entry id. */
-export interface SeedOutcome {
+interface SeedOutcome {
   readonly written: string[];
   readonly unchanged: string[];
   readonly refused: string[];
@@ -444,7 +448,7 @@ export interface SeedOutcome {
  * config is deleted. A refused entry (a hearer not on the roster, a thread the
  * user can't read) writes nothing and is tried again on the next pass.
  */
-export async function seedDeclaredRoutines(
+async function seedDeclaredRoutines(
   ctx: BlockContext,
   installation: WorkerInstallation,
   options: Pick<RoutinesOptions, "providers" | "declared">
@@ -515,7 +519,8 @@ export async function seedDeclaredRoutines(
   }
   // A clock row whose entry left config goes with it. An event row's ends at
   // its next poll (FIX-2536), so a pushed one stays until then.
-  for (const ref of await schedulesOf(ctx).list()) {
+  // Filtered at the source: an app that never declared one reads no rows here.
+  for (const ref of await schedulesOf(ctx).list(DECLARED_ROUTINE_KEY_PREFIX)) {
     const key = scheduleKeyOf(ref.path);
     if (key.startsWith(DECLARED_ROUTINE_KEY_PREFIX) && !keys.has(key) && makerOfSchedule(ref.state)?.by === "app") await removeSchedule(ctx, key);
   }
@@ -635,16 +640,13 @@ export function defineRoutineActions(installation: WorkerInstallation, options: 
   const actions: Record<string, ActionConfig> = Object.fromEntries(
     Object.entries(blocks).map(([verb, block]) => [verb, { inputSchema: block.inputSchema, block, description: block.description }])
   );
-  const declared = options.declared ?? [];
-  const seed =
-    declared.length === 0
-      ? undefined
-      : handler({
-          name: "workforce-seed-declared-routines",
-          inputSchema: z.unknown(),
-          outputSchema: z.object({ written: z.array(z.string()), unchanged: z.array(z.string()), refused: z.array(z.string()) }),
-          resources: all as never,
-          execute: async (_input, ctx) => seedDeclaredRoutines(ctx, installation, options)
-        });
+  // Installed with no entries too: a clock row seeded by an entry since removed is cleaned up.
+  const seed = handler({
+    name: "workforce-seed-declared-routines",
+    inputSchema: z.unknown(),
+    outputSchema: z.object({ written: z.array(z.string()), unchanged: z.array(z.string()), refused: z.array(z.string()) }),
+    resources: all as never,
+    execute: async (_input, ctx) => seedDeclaredRoutines(ctx, installation, options)
+  });
   return { actions, seed, resources: all };
 }
