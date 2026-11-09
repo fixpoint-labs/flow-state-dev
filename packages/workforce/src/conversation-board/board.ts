@@ -121,7 +121,7 @@ import {
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { markDispatcher } from "@flow-state-dev/core/types";
 import { requestHostOf, dispatchThroughSeam } from "@flow-state-dev/core/internal";
-import { carriedHopState, freshHopMark, heldFromFiling, hopMarkOf, sessionUserLinesOf, turnHopMark } from "../messages/hop";
+import { carriedHopState, freshHopMark, heldFromFiling, hopMarkOf, INFERRED_FORWARD_METADATA, sessionUserLinesOf, turnHopMark } from "../messages/hop";
 import type { BlockContext, BlockDefinition, DispatchAddress } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
@@ -217,6 +217,15 @@ export interface ConversationBoardOptions {
    * conversation is handed here, which attaches the message and files it.
    */
   routes?: RoutedFiling;
+  // FIX-2538 D2.
+  /**
+   * The confirm a filing on the running turn waits on (its prompt), and the
+   * marker the task carries for it, or `undefined` when it files as asked:
+   * read on every write that files a task (one, a batch, a routed one),
+   * server-side, so a model can't file around it. A step for
+   * the worker itself, which nothing could confirm, is refused on such a turn.
+   */
+  holdsFiling?: (ctx: BlockContext, init: TaskInit) => { readonly prompt: string; readonly metadata: Record<string, unknown> } | undefined;
   // FIX-2240.
   /**
    * The messages the session sent that are still owed: the pass's
@@ -245,6 +254,43 @@ export interface RoutedFiling {
    * checked as a filing is, so a refusal throws `TaskWriteRefusedError`.
    */
   file(ctx: BlockContext, init: TaskInit): Promise<Task>;
+}
+
+/**
+ * `init`, waiting on the confirm `holdsFiling` names for the running turn; or
+ * as given when it names none. Its marker is written with the task's other
+ * server-written metadata ({@link heldMarker}), after a caller's is cut. The
+ * board's confirm is always its own: a No cancels and no deadline closes it.
+ * A caller's question with the same prompt is replaced by it, never kept in
+ * its place (a caller's confirm may let the work go on after a No), so
+ * applying this twice files one confirm.
+ */
+function heldAs<T extends TaskInit>(holdsFiling: ConversationBoardOptions["holdsFiling"], ctx: BlockContext, init: T): T {
+  const held = holdsFiling?.(ctx, init);
+  if (held === undefined) return init;
+  const others = (init.questions ?? []).filter((q) => q.prompt !== held.prompt);
+  return {
+    ...init,
+    questions: [...others, { kind: "confirm" as const, prompt: held.prompt, onNo: "cancel" as const, untimed: true as const }]
+  };
+}
+
+/** The marker `holdsFiling` names for `init` on the running turn, for the task's metadata; none when it holds nothing. */
+function heldMarker(holdsFiling: ConversationBoardOptions["holdsFiling"], ctx: BlockContext, init: TaskInit): Record<string, unknown> {
+  return holdsFiling?.(ctx, init)?.metadata ?? {};
+}
+
+/**
+ * Whether the user answered the board's confirm on an inferred task: the hold
+ * its marker names by prompt, answered by the user's own steer. The confirm
+ * cancels on a No before any answer is kept, so an answer kept is the yes. A
+ * marker that names no prompt reads as no yes.
+ */
+function saidYes(task: Task): boolean {
+  const prompt = (task.metadata?.[INFERRED_FORWARD_METADATA] as { confirm?: unknown } | undefined)?.confirm;
+  if (typeof prompt !== "string") return false;
+  const confirm = (task.holds ?? []).find((hold) => hold.source.kind === "task" && hold.ask.kind === "confirm" && hold.ask.prompt === prompt);
+  return confirm !== undefined && (task.steers ?? []).some((steer) => steer.answers === confirm.id && steer.from === "user");
 }
 
 /** A new task's id, minted before its add so its place in the chain is reserved first. */
@@ -847,6 +893,7 @@ const passStateOf = (ctx: BlockContext): PassState => (ctx.request.state ?? {}) 
  * the actions, and the ledger.
  */
 export function defineConversationBoard(options: ConversationBoardOptions) {
+  const heldAsTurnSays = <T extends TaskInit>(ctx: BlockContext, init: T): T => heldAs(options.holdsFiling, ctx, init);
   // FIX-2081.
   /**
    * Who a filing in the running session can name, read now: its delegates
@@ -1258,6 +1305,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // (FIX-2106); a task held from its filing starts a fresh chain (FIX-2238).
       const metadata = {
         ...(given ?? {}),
+        ...heldMarker(options.holdsFiling, ctx, init),
         ...(owner === undefined ? {} : { [PIECE_OF]: owner }),
         [FILED_HOP]: heldFromFiling(init) ? freshHopMark(ctx) : turnHopMark(ctx),
         [FILED_PROJECT]: project
@@ -1288,7 +1336,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
     const createTask: TaskCollectionRef["createTask"] = async (filing) => {
       // A caller never writes the session a target resolved to.
-      const { targetSessionId: _resolved, ...init } = filing;
+      const { targetSessionId: _resolved, ...asked } = filing;
+      const init = heldAsTurnSays(ctx, asked);
       checkFiling(init);
       // On a turn routing a message, a filing whose result goes to the
       // conversation is a routed task: its layer attaches the message.
@@ -1358,6 +1407,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ? {}
         : {
             async retry(id: string) {
+              // A retry of a cancelled inferred task the user never said yes to would start work its
+              // confirm never released (a No cancels before any answer is kept). Filed again, it waits on their yes.
+              const task = ref.get(id);
+              if (task?.status === "cancelled" && task.metadata?.[INFERRED_FORWARD_METADATA] !== undefined && !saidYes(task)) {
+                throw new TaskWriteRefusedError(
+                  "inferred_needs_a_yes",
+                  `task "${id}" was inferred from an event nobody asked about, and was cancelled before the user said yes, so it can't be retried. File it again; it waits on their yes. Nothing was changed.`
+                );
+              }
               await owePass(ctx);
               const outcome = await ref.retry!(id);
               if (outcome.outcome === "recorded" && hasStartable(ref, id)) await triggerPass(ctx);
@@ -1428,7 +1486,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         assertUniqueIds(inits);
         assertIdsFree(inits, (id) => ref.get(id));
         // A caller never writes the session a target resolved to.
-        const unresolved = inits.map(({ targetSessionId: _resolved, ...init }) => ({ ...init, id: init.id ?? newTaskId() }));
+        const unresolved = inits.map(({ targetSessionId: _resolved, ...init }) => ({ ...heldAsTurnSays(ctx, init), id: init.id ?? newTaskId() }));
         const ordered = dependencyOrder(unresolved);
         const filedWith = new Map(ordered.map((init) => [init.id, init]));
         for (const init of ordered) checkFiling(init, filedWith);
@@ -1486,6 +1544,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     /** Every check a step passes before anything is written. */
     const checkStep = (init: TaskInit): void => {
       if (!routesSelf) throw stepFromItsOwnTurn(self);
+      // A step runs in this request, so nothing could confirm it: work a turn's filings wait on goes to a delegate.
+      if (options.holdsFiling?.(ctx, init) !== undefined) {
+        throw new TaskWriteRefusedError(
+          "step_needs_a_yes",
+          "what you file on this turn waits on the user's yes, and a step for yourself runs now, so it can't. File it for a delegate; it starts once they say yes. Nothing was filed."
+        );
+      }
       if (isSteppingTurn(ctx)) {
         throw new TaskWriteRefusedError(
           "no_step_while_stepping",
@@ -1938,9 +2003,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // no board marker in its metadata, and the session's own project in its input.
     // The filing turn's hop count, which the task's turn starts at (FIX-2106).
     const { stamp, own } = await filedProjectFor(ctx);
-    const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: heldFromFiling(filing) ? freshHopMark(ctx) : turnHopMark(ctx), [FILED_PROJECT]: stamp };
+    const metadata = { ...callerMetadata(filing.metadata), ...heldMarker(options.holdsFiling, ctx, filing), [FILED_HOP]: heldFromFiling(filing) ? freshHopMark(ctx) : turnHopMark(ctx), [FILED_PROJECT]: stamp };
     const input = ownProjectIn(filing.input, own);
-    const { metadata: _metadata, input: _input, ...rest } = filing;
+    const { metadata: _metadata, input: _input, ...rest } = heldAsTurnSays(ctx, filing);
     const init: TaskInit & { id: string } = {
       ...rest,
       metadata,
