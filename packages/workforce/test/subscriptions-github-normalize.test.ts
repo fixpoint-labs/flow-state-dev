@@ -212,4 +212,22 @@ describe("the thread key and the follower", () => {
   it("declares the subscription collections it writes, so a coding task's request carries them", () => {
     expect(Object.keys(followPullRequest({ providers: [] }).resources ?? {})).toContain("workforceSubscriptions");
   });
+
+  // A pull request the branch check first finds already closed or merged has had its closing
+  // event, which ended only the subscriptions there were then: one made now would never end.
+  it("doesn't subscribe to a pull request recorded already closed or merged, and still subscribes to an open one", async () => {
+    const asked: string[] = [];
+    const provider = { provider: "github", canRead: (thread: string) => (asked.push(thread), false) };
+    const followed: string[] = [];
+    const follow = followPullRequest({ providers: [provider], onFollowed: (pr) => void followed.push(pr.state ?? "") });
+    const ctx = { session: { state: { workerId: "eng.coder" }, identity: { id: "s1", userId: "alice", orgId: "acme" } } } as never;
+    const recorded = (number: number, state: string) => ({ host: "github.com", owner: "Acme", name: "API", number, url: `u${number}`, key: `k${number}`, state });
+    await follow(ctx, recorded(1, "closed"));
+    await follow(ctx, recorded(2, "merged"));
+    expect(asked).toEqual([]);
+    expect(followed).toEqual([]);
+    await expect(follow(ctx, recorded(3, "open"))).rejects.toThrow(/not_readable/);
+    expect(asked).toEqual(["github:acme/api#3"]);
+    expect(followed).toEqual(["open"]);
+  });
 });
