@@ -710,7 +710,7 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: subscriptions
-    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it (five config kinds and the app's own custom functions); a subscription that lists `interest` is judged by one evaluator call per routing run, a yes or no per distinct sentence, only after code passed it, and a failed call refuses it unjudged, never as unheard. A provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. The two tools are the only writers of a subscription; a PR's closing and a task's failure or cancel end one.
+    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it (five config screens and the app's own custom functions); a subscription that lists `interest` is judged by one evaluator call per routing run, a yes or no per distinct sentence, only after code passed it, and a failed call refuses it unjudged, never as unheard. A provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. The two tools are the only writers of a subscription; a PR's closing and a task's failure or cancel end one.
     package: "@flow-state-dev/workforce"
     anchor: subscriptionTools
     file: packages/workforce/src/subscriptions/subscribe.ts
