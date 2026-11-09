@@ -17,7 +17,7 @@
 **Run:** `pnpm tsx goals/webhook-routing/inferred-work-waits-in-observe/run.mts`
 **Controls:**
 - `GOAL_CONTROL=no-gate` patches the board's write to add no confirm. Must FAIL **(b)** and **(g)**: inferred tasks hold no confirm, and the plain ones run.
-- Today's `main` (no forwards at all) fails **(c)** and **(d)**: nothing is forwarded, so nothing is filed. Not scripted as a control: on `main` the coordinator has no `subscribe` action, so the run stops at its setup.
+- Today's `main` (no forwards at all) fails **(c)** and **(d)**: nothing is forwarded, so nothing is filed. Not scripted as a control: on `main` the coordinator keeps no event routine, so the run stops at its setup.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

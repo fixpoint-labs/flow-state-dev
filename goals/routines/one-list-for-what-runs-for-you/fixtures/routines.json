@@ -1,0 +1,29 @@
+{
+  "a": "alice",
+  "b": "bob",
+  "clock": {
+    "name": "adoption",
+    "cron": "0 9 * * 1",
+    "timezone": "UTC",
+    "task": { "filer": "lead", "goal": "Refresh the adoption numbers", "assignee": "eng.tasker" }
+  },
+  "workerClock": { "name": "standup", "cron": "30 8 * * 1-5", "task": { "goal": "Post the standup notes" } },
+  "personThread": "github:acme/api#412",
+  "workerThread": "github:acme/api#9",
+  "taskThread": "github:acme/api#77",
+  "privateThread": "github:acme/private-api#3",
+  "legacy": { "key": "legacy-weekly", "cron": "0 10 * * 2", "thread": "github:acme/api#500" },
+  "declared": [
+    {
+      "id": "weekly-digest",
+      "trigger": { "clock": { "cron": "0 7 * * 1", "timezone": "UTC" } },
+      "task": { "filer": "lead", "goal": "Write the weekly digest", "assignee": "eng.tasker" }
+    },
+    {
+      "id": "api-reviews",
+      "trigger": { "event": { "provider": "github", "thread": "github:acme/api#600", "kinds": ["review"], "interest": "Reviews on the API's release PR", "everyMinutes": 15 } },
+      "worker": "eng.follower"
+    }
+  ],
+  "changed": { "clockCron": "0 6 * * 1", "eventInterest": "Only reviews, and only on the release PR" }
+}

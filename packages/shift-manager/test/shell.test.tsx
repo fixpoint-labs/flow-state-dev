@@ -169,6 +169,9 @@ describe("a Lab Shift Manager can't reach", () => {
     expect(screen.queryByTestId("sidebar")).toBeNull();
     expect(screenEl.textContent).not.toMatch(/organization/);
     down = false;
+    // The screen can commit before its passive effects run, and Retry's handler is wired in one.
+    // Flush them, so the click can't land on the no-op it starts with.
+    await act(async () => {});
     act(() => fireEvent.click(screen.getByTestId("unreachable-retry")));
     await screen.findByTestId("sidebar");
   });
@@ -929,7 +932,7 @@ describe("Jump to from the keyboard", () => {
   it("reaches every screen the sidebar does, by the name it shows there", async () => {
     await openApp("/inbox");
     await screen.findByTestId("jump-tip");
-    const screens: Array<[string, string]> = [["Usage", "/usage"], ["Scheduled work", "/schedules"], ["Messages", "/messages"], ["Settings", "/settings"]];
+    const screens: Array<[string, string]> = [["Usage", "/usage"], ["Routines", "/routines"], ["Messages", "/messages"], ["Settings", "/settings"]];
     for (const [name, path] of screens) {
       act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
       act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: name } }));
