@@ -209,4 +209,4 @@ export {
   useVoice,
   type UseVoiceOptions,
   type VoiceState
-} from "./voice";
+} from "./voice/useVoice";

@@ -4,13 +4,13 @@
  *
  * These value names were on the root with no outside reader. `deriveSuspensions`
  * has one, Shift Manager, which is our own package, so it moves to
- * `@flow-state-dev/react/internal`. The rest have no reader beyond react itself
- * (`useVoice` drives the recorder, player and speech primitives;
- * `useSuspensionForm` reads the schema analysis; the interrupt keys own their
- * window), so they leave public surface. No alias stays on the root: an old
- * import breaks on purpose. Their types follow the same split; the export
- * check (`scripts/check-root-exports.mjs`) holds those, since a type has no
- * runtime key to assert on here.
+ * `@flow-state-dev/react/internal`. The other two have no reader beyond react
+ * itself (`useSuspensionForm` reads the schema analysis; the interrupt keys
+ * own their window), so they leave public surface. The voice primitives move
+ * to `@flow-state-dev/react/voice` (`voice-subpath.test.ts`). No alias stays on
+ * the root: an old import breaks on purpose. Their types follow the same
+ * split; the export check (`scripts/check-root-exports.mjs`) holds those,
+ * since a type has no runtime key to assert on here.
  */
 import { describe, expect, it } from "vitest";
 import * as internal from "../src/internal";
@@ -19,11 +19,7 @@ import * as root from "../src";
 const OFF_ROOT = [
   "deriveSuspensions",
   "analyzeResumeSchema",
-  "INTERRUPT_WINDOW_MS",
-  "createAudioRecorder",
-  "createAudioPlayer",
-  "createSpeechRecognition",
-  "isSpeechRecognitionAvailable"
+  "INTERRUPT_WINDOW_MS"
 ];
 
 describe("@flow-state-dev/react root", () => {
