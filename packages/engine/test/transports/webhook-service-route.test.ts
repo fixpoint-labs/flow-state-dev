@@ -114,7 +114,7 @@ describe("the webhook service route", () => {
         { n: 1, as: "service:github", org: ORG },
         { n: 2, as: "service:github", org: ORG }
       ]);
-      // No session is made from the event: the only sessions are the service's routing one and the row's owner-run one.
+      // No session is made from the event: the only sessions are the service's routing one and the subscription's owner-run one.
       const sessions = (await host.stores.session.list({})).map((s) => s.id);
       expect(sessions.every((id) => id.startsWith("service-route:") || id.startsWith("owner-run:"))).toBe(true);
     } finally {

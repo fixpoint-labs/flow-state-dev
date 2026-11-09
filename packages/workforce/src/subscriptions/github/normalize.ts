@@ -105,17 +105,85 @@ function roleOf(sender: Json | undefined, association: unknown): SubscriptionEve
   return "outsider";
 }
 
+/** A fence's opening line: up to 3 spaces, then a run of 3 or more backticks or tildes, then its info string. */
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+/** A line that can close a fence: up to 3 spaces, a run, then nothing but spaces. */
+const FENCE_CLOSE = /^ {0,3}(`+|~+)[ \t]*$/;
+
 /**
- * The logins a body mentions, lower-cased, outside quoted lines, fenced code
- * and code spans of any backtick length: a quoted reply or a pasted snippet asks no one. An `@` inside a
- * word (an email address) is no mention.
+ * A body with its code blanked, read by CommonMark's rules for the two
+ * constructs a mention hides in, line by line:
+ *
+ * - **Fenced code blocks.** A line with up to 3 spaces of indent and a run of
+ *   3 or more backticks or tildes opens one (a backtick fence's info string
+ *   may not hold a backtick). It closes only on a line holding a run of the
+ *   same character at least as long, with up to 3 spaces of indent and nothing
+ *   after it but spaces. Unclosed, it runs to the end of the body. A fence ends
+ *   the paragraph before it.
+ * - **Code spans**, within a paragraph (the lines between blank lines and
+ *   fences): a run of N backticks opens one, which closes only at the next run
+ *   of exactly N. An unmatched run is literal text.
+ *
+ * Indented code blocks (4 or more spaces) are not read as code: a GitHub
+ * comment rarely holds a mention in one, and telling one from a paragraph's
+ * indented continuation line needs the full block structure. A mention there
+ * still reads as a mention. Backslash escapes are not read either.
+ */
+function withoutCode(body: string): string {
+  const out: string[] = [];
+  let paragraph: string[] = [];
+  let fence: { char: string; length: number } | undefined;
+  const endParagraph = () => {
+    if (paragraph.length > 0) out.push(withoutCodeSpans(paragraph.join("\n")));
+    paragraph = [];
+  };
+  for (const line of body.split("\n")) {
+    if (fence !== undefined) {
+      const close = FENCE_CLOSE.exec(line)?.[1];
+      if (close !== undefined && close[0] === fence.char && close.length >= fence.length) fence = undefined;
+      out.push("");
+      continue;
+    }
+    const open = FENCE_OPEN.exec(line);
+    if (open !== null && !(open[1]![0] === "`" && open[2]!.includes("`"))) {
+      endParagraph();
+      fence = { char: open[1]![0]!, length: open[1]!.length };
+      out.push("");
+    } else if (line.trim() === "") {
+      endParagraph();
+      out.push(line);
+    } else {
+      paragraph.push(line);
+    }
+  }
+  endParagraph();
+  return out.join("\n");
+}
+
+/** One paragraph with its code spans blanked: a run of N backticks pairs with the next run of exactly N. */
+function withoutCodeSpans(text: string): string {
+  const runs = [...text.matchAll(/`+/g)].map((run) => ({ start: run.index, length: run[0].length }));
+  let result = "";
+  let from = 0;
+  for (let i = 0; i < runs.length; i++) {
+    const open = runs[i]!;
+    const j = runs.findIndex((run, k) => k > i && run.length === open.length);
+    if (j === -1) continue;
+    result += `${text.slice(from, open.start)} `;
+    from = runs[j]!.start + open.length;
+    i = j;
+  }
+  return result + text.slice(from);
+}
+
+/**
+ * The logins a body mentions, lower-cased, outside quoted lines and code
+ * (fenced blocks and code spans, as {@link withoutCode} reads them): a quoted
+ * reply or a pasted snippet asks no one. An `@` inside a word (an email
+ * address) is no mention.
  */
 export function githubMentions(body: string): string[] {
-  const unquoted = body
-    .replace(/```[\s\S]*?(```|$)/g, " ")
-    .replace(/~~~[\s\S]*?(~~~|$)/g, " ")
-    // A code span opens with a run of backticks and closes at the next run of the same length, within its paragraph.
-    .replace(/(?<!`)(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)/g, " ")
+  const unquoted = withoutCode(body)
     .split("\n")
     .filter((line) => !/^\s*>/.test(line))
     .join("\n");

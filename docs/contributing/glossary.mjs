@@ -854,7 +854,7 @@ const EXEMPTIONS = [
     path: /^packages\/workforce\/src\/subscriptions\/github\/normalize\.ts$/,
     line: /^const (PR|ISSUE)_ACTIONS = new Set\(\[/,
     rules: ["reopened-shape"],
-    why: "FIX-2535: GitHub's own `reopened` webhook action, which normalize matches by name; not the task row's reopened shape",
+    why: "FIX-2535: GitHub's own `reopened` webhook action, which normalize matches by name; not the task entry's reopened shape",
   },
   {
     path: /^packages\/workforce\/src\/subscriptions\/github\/poll\.ts$/,

@@ -11,7 +11,8 @@
  * itself. A merge or close ends the subscription (ER-7 as amended); the
  * session's other subscriptions stay.
  *
- * A pull request on a host other than `github.com` is not followed.
+ * A pull request on a host other than `github.com` is not followed, nor one
+ * recorded already closed or merged.
  */
 import type { PullRequestFollower, RecordedPullRequest } from "@flow-state-dev/core/harness";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -43,7 +44,9 @@ export function followPullRequest(options: FollowPullRequestOptions): PullReques
   const polling = options.poll === undefined ? undefined : subscriptionPolling(options.poll);
   const follower = async (ctx: BlockContext, pr: RecordedPullRequest): Promise<void> => {
     const thread = pullRequestThread(pr);
-    if (thread === undefined) return;
+    // Recorded already closed or merged (the branch check found it late): its closing event has
+    // passed, so nothing would end a subscription made now.
+    if (thread === undefined || pr.state === "closed" || pr.state === "merged") return;
     const outcome = await subscribe(
       ctx,
       options.providers,

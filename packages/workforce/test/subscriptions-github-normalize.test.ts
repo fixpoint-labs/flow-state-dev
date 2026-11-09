@@ -162,24 +162,34 @@ describe("addressed: the event asks the app's agent", () => {
       { agentHandles: ["acme-agent[bot]"] }
     )[0]!;
 
-  it("is set by a mention of an agent handle", () => {
-    expect(comment("@acme-agent please fix the test").addressed).toBe(true);
-    expect(comment("cc @Acme-Agent[bot]").addressed).toBe(true);
-  });
+  // Whether a body asks the agent, by CommonMark's reading of code: a pasted snippet or a quoted reply asks no one, and
+  // text a code construct only looks like it hides must still ask. Each case says why it reads as it does.
+  const MENTIONS: ReadonlyArray<readonly [why: string, body: string, addressed: true | undefined]> = [
+    ["a mention of an agent handle asks it", "@acme-agent please fix the test", true],
+    ["a handle in any case, with [bot], asks it", "cc @Acme-Agent[bot]", true],
+    ["a quoted reply asks no one", "> @acme-agent please fix\n\nI disagree with this", undefined],
+    ["a fenced block hides its mention", "```\n@acme-agent run\n```", undefined],
+    ["a code span hides its mention", "see `@acme-agent`", undefined],
+    ["a double-backtick span holds a literal backtick, and its mention", "run ``@acme-agent `fix` `` here", undefined],
+    ["a double-backtick span alone hides its mention", "``@acme-agent``", undefined],
+    ["a closed span hides nothing after it", "``code`` then @acme-agent please", true],
+    ["a stray backtick doesn't cross a blank line to the next paragraph", "Don`t merge yet.\n\n@acme-agent please fix the test, see `foo`", true],
+    ["a stray backtick doesn't cross two blank lines either", "Don`t merge yet.\n\n@acme-agent please fix the test\n\nsee `foo`", true],
+    ["an email address is no mention", "mail me at bob@acme-agent.dev", undefined],
+    ["a mention of anyone else asks no agent", "@carol can you look?", undefined],
+    ["a four-backtick fence holding a triple-backtick example hides it all", "````\n```\n@acme-agent\n```\n````", undefined],
+    ["a tilde fence closes on tildes, not on the backticks it holds", "~~~\nuse ```\n~~~\n@acme-agent please fix", true],
+    ["a tilde fence holding backticks hides its mention", "~~~\n```\n@acme-agent\n~~~", undefined],
+    ["a closing fence shorter than the opener doesn't close it", "````\nexample\n```\n@acme-agent please\n````", undefined],
+    ["a fence line with text after the run doesn't close it", "```\nx\n``` not a close\n@acme-agent please", undefined],
+    ["an unclosed fence runs to the end of the body", "Before\n\n```js\n@acme-agent run", undefined],
+    ["a backtick run whose info string holds a backtick is no fence", "```foo`bar\n@acme-agent please", true],
+    ["a run indented four spaces is no fence", "Note:\n    ```\n@acme-agent please fix the test", true],
+    ["a fence ends a paragraph, so a backtick before it pairs with nothing inside", "Don`t\n```\ncode\n```\n@acme-agent please", true]
+  ];
 
-  it("is not set by a quoted reply, fenced or inline code, an email address, or a mention of anyone else", () => {
-    expect(comment("> @acme-agent please fix\n\nI disagree with this").addressed).toBeUndefined();
-    expect(comment("```\n@acme-agent run\n```").addressed).toBeUndefined();
-    expect(comment("see `@acme-agent`").addressed).toBeUndefined();
-    // A double-backtick span holds a literal backtick; the mention inside it is code too.
-    expect(comment("run ``@acme-agent `fix` `` here").addressed).toBeUndefined();
-    expect(comment("``@acme-agent``").addressed).toBeUndefined();
-    expect(comment("``code`` then @acme-agent please").addressed).toBe(true);
-    // A code span never crosses a blank line: a stray backtick doesn't swallow the next paragraph's mention.
-    expect(comment("Don`t merge yet.\n\n@acme-agent please fix the test, see `foo`").addressed).toBe(true);
-    expect(comment("Don`t merge yet.\n\n@acme-agent please fix the test\n\nsee `foo`").addressed).toBe(true);
-    expect(comment("mail me at bob@acme-agent.dev").addressed).toBeUndefined();
-    expect(comment("@carol can you look?").addressed).toBeUndefined();
+  it.each(MENTIONS)("%s", (_why, body, addressed) => {
+    expect(comment(body).addressed).toBe(addressed);
   });
 
   it("is set by assigning an agent handle or requesting its review", () => {
@@ -211,5 +221,23 @@ describe("the thread key and the follower", () => {
 
   it("declares the subscription collections it writes, so a coding task's request carries them", () => {
     expect(Object.keys(followPullRequest({ providers: [] }).resources ?? {})).toContain("workforceSubscriptions");
+  });
+
+  // A pull request the branch check first finds already closed or merged has had its closing
+  // event, which ended only the subscriptions there were then: one made now would never end.
+  it("doesn't subscribe to a pull request recorded already closed or merged, and still subscribes to an open one", async () => {
+    const asked: string[] = [];
+    const provider = { provider: "github", canRead: (thread: string) => (asked.push(thread), false) };
+    const followed: string[] = [];
+    const follow = followPullRequest({ providers: [provider], onFollowed: (pr) => void followed.push(pr.state ?? "") });
+    const ctx = { session: { state: { workerId: "eng.coder" }, identity: { id: "s1", userId: "alice", orgId: "acme" } } } as never;
+    const recorded = (number: number, state: string) => ({ host: "github.com", owner: "Acme", name: "API", number, url: `u${number}`, key: `k${number}`, state });
+    await follow(ctx, recorded(1, "closed"));
+    await follow(ctx, recorded(2, "merged"));
+    expect(asked).toEqual([]);
+    expect(followed).toEqual([]);
+    await expect(follow(ctx, recorded(3, "open"))).rejects.toThrow(/not_readable/);
+    expect(asked).toEqual(["github:acme/api#3"]);
+    expect(followed).toEqual(["open"]);
   });
 });
