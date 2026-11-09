@@ -3,9 +3,9 @@
 [Spec](SPEC.md) · **Decisions**
 
 The calls above any single issue, and what each locks in for the twelve children. D1 to D3 are
-the sign-off. O1 to O5 are open holds for the owner: each revisits or extends an earlier
-sign-off, which the owner has said may be reopened, and each keeps the earlier decision's reason
-in view. The rest were decided while drafting and are recorded so no child reopens them.
+the sign-off. O3 was decided by the owner in review. O1, O2, O4 and O5 are open holds for the
+owner: each revisits or extends an earlier sign-off, which the owner has said may be reopened,
+and each keeps the earlier decision's reason in view. The rest were decided while drafting and are recorded so no child reopens them.
 
 ## The tree
 
@@ -17,7 +17,9 @@ flowchart TD
   D2 -.->|"rejected"| X2["one spec set for all twelve"]
   E --> D3["D3 · lab adapters stop growing once siblings amend"]
   D3 -.->|"rejected"| X3["grow until kits land"]
-  E --> O["O1 to O5 · open for the owner"]
+  E --> O3["O3 · every client write through a flow · decided by the owner"]
+  O3 -.->|"rejected"| X4["a direct write rule beside runBy"]
+  E --> O["O1, O2, O4, O5 · open for the owner"]
 ```
 
 <a name="d1"></a>
@@ -174,48 +176,48 @@ so the rename is cheap now and dearer with each app.
 It comes down to what the client must know: with a view, nothing but the view.
 
 <a name="o3"></a>
-## O3 · Open · How does a client write a user or org resource: directly under a write rule, or through a flow? · generalizes FIX-1788, revisits FIX-1945 D1
+## O3 · Decided · Every client write goes through a flow; plain data takes the default write flow · generalizes FIX-1788, keeps FIX-1945 D1
 
-**In plain terms.** Reading is settled either way: a user or org resource is read by scope and
-key, with no session. Writing has two paths, and the question is which resources get which
-([example](examples/resource-runBy.md)):
+Decided by the owner in review ([6742479932](https://github.com/fixpoint-labs/flow-state-dev/pull/4964#issuecomment-6742479932): "no separate direct-write path… the simple
+case needs to feel like editing a file"), with the architect's follow-up ([6742490134](https://github.com/fixpoint-labs/flow-state-dev/pull/4964#issuecomment-6742490134)).
+Round 1's two-path fork and its declared write rule are gone.
 
-- **Path 1, a declared write rule.** For plain CRUD such as pins, the client writes the resource
-  directly, like a file. The server runs the resource's validators first: its schema, the owner
-  fence, and an optional `canWrite` hook. No flow exists for it.
-- **Path 2, `runBy`.** For a resource where a flow does real work (a dashboard, one session per
-  artifact), the resource names the flow that runs it and the client sends that session an
-  action. It is the general form of FIX-1788's worker.
+| | |
+|---|---|
+| **Instead of** | A declared write rule that writes the resource directly, beside `runBy` · or a hand-written flow per writable resource, as the labs' pins flow is today |
+| **Because** | A second write path is a second place to keep the validators, and a write that skips them is the defect FIX-1945 D1 exists to prevent. The default write flow makes the plain case one line, so a second path buys nothing |
+| **Locks in** | `runBy` is the only way a client writes a user or org resource; with none, it can't. Schema, owner fence and optional `canWrite` run inside the flow, never as a route of their own. A request per write. FIX-296's session-addressed `client.content.*` routes stay |
 
-**The options.** *Both, each where it fits.* *`runBy` only:* pins keep a per-user flow session.
-*A write rule only:* the dashboard's refresh becomes a write that something else notices.
+**One mechanism, two kinds of flow** ([example](examples/resource-runBy.md)):
 
-**The trade-off.** A flow used as a CRUD system for pins is ceremony: a session, a flow and two
-actions to toggle a list. But a write that skips its validators is the defect FIX-1945 D1 exists
-to prevent (the skills drawer's generic client write skipped the cap and the stale-edit check).
-A write rule keeps that reason, since the validators run server-side on every write, and it
-narrows the earlier line "no generic client writes" to "no *unvalidated* client writes". `runBy`
-brings new lifecycle (creation races, deletes, a resource whose flow is gone); the write rule
-brings a second write path to keep in step with the first. Today's session-scope
-`client.content.*` routes (FIX-296) stay either way.
+- **`runBy: "default"`** names the framework's default write flow: actions that set, patch and
+  delete fields under the resource's schema, owner fence (owner from the verified principal,
+  [ER-3](#who-owns-what)) and optional `canWrite`. It replaces the labs' pins flow and `listPins`.
+  A field rather than a `client: { write: true }` flag: one field says who writes, and a flag
+  would read as the direct write this removes.
+- **`runBy: { flow }`** names the app's own flow where it does real work: the dashboard takes
+  data in and builds the resource. Same route, same send.
+- **Client helpers** reach either: `fsd.resource(ref).update(patch)`, `.set`, `.delete`,
+  `useResource(ref)` with the same setters, and `.send("refresh", input)` for a flow's own
+  actions. A pin: `await fsd.resource(pins).update({ pinned: [...pinned, id] })`.
 
-**My recommendation: both paths, each where it fits.** A write rule for plain CRUD; `runBy` where
-a flow does work. A resource with neither cannot be written from a client. The owner has said
-both that pins through a flow is the wrong design and that some resources do need their flow, so
-this is **awaiting the owner**. The goal check holds under any answer: leg a checks for a pin
-written through its validated path, whichever path O3 picks.
+**Its session:** one per resource per owner (a user resource's per-user session, an org
+resource's per-org one), found or made by the server, shared by a collection's entries. It is the
+session `ownSession("pins")` makes by hand today, now never named by the client. **Its request:**
+yes, like any action, each write records a request and its trace: per pin click a request row, a
+trace and an action's latency. It buys an audit trail of who changed what, and the same path,
+notices and checks as a rich flow. Accepted.
 
-**What would change my mind.** A validator a write rule can't express (one that needs other
-resources, or a run) turning out to be common. Then those resources take `runBy`, and the rule
-stays small or goes.
+**FIX-1945 D1 holds as written.** Its rules record allows client reads only, so no write skips
+the validator holding the cap and the stale-edit check. Nothing here adds a route: the record
+takes no `runBy`, so it stays read-only.
 
-**What being wrong costs.** Low for reads, which are additive. Moderate for writes: a write rule
-too weak for its resource lets bad data in, and a wrong `runBy` lifecycle shows as duplicate
-sessions, as it does today.
+**What would change my mind.** Request rows proving costly. Then the default flow records less,
+never a direct path. **What being wrong costs:** low, slower plain writes, tunable in one path.
 
-![O3: both paths, recommended, a write rule for plain CRUD and runBy where a flow does work, beside runBy only and a write rule only. Decides it: every client write still runs its validators. Price: two write paths, and find-or-make session lifecycle. Flips if most validators need a run](figures/open-runby.svg)
+![O3, decided: every client write goes through a flow, runBy with a default write flow, chosen, beside a direct write rule beside runBy. Decides it: the validators live inside one path. A pin is one line either way. Price: a request per write, which is also the audit trail. Flips if request rows prove costly](figures/o3-one-write-path.svg)
 
-It comes down to validators: a write rule that runs them is safe; one that skips them is not.
+It comes down to validators: in one path they can't be skipped; in two, one path forgets them.
 
 <a name="o4"></a>
 ## O4 · Open · Ids on notices: accept the one-hour window? · revisits FIX-2428 D2, extends FIX-2367 D2
@@ -297,7 +299,7 @@ the stage-2 specs.
 | ER-1 | One hook computes an answer for a screen: the view. `reads` and scope `derived` go with no alias; nothing that does the same job is added beside views | FIX-2623 builds · FIX-2551, FIX-2627, FIX-2628 use | The stage-2 cross-spec review; the closure |
 | ER-2 | A view never writes (its context refuses writes and dispatch, as a read's does today). Every byte a client sees comes through a checked read or view; a notice carries ids, never rows | FIX-2623 builds · FIX-2624, FIX-2625 use | Each child's spec review; the closure |
 | ER-3 | A session-free read or view takes user and org from the verified principal, never from the body, query or headers (BP-031) | FIX-2624 builds · FIX-2623 uses | FIX-2623's and FIX-2624's spec review |
-| ER-4 | No unvalidated client write is added. A client writes a user or org resource only under its declared write rule (schema, owner fence, optional `canWrite`, all run server-side) or by sending an action to its `runBy` session; with neither, it can't. Session-scope `client.content.*` stays as it is. Wording waits for [O3](#o3) | FIX-2624 builds · FIX-2626, FIX-2628 use | The stage-2 cross-spec review |
+| ER-4 | No direct client-write path is added. A client writes a user or org resource by scope only through a flow: an action on its `runBy` session, the default write flow or the app's own; with no `runBy`, it can't. Schema, owner fence and `canWrite` run inside the flow ([O3](#o3)). FIX-296's session-addressed `client.content.*` routes stay as they are | FIX-2624 builds · FIX-2626, FIX-2628 use | The stage-2 cross-spec review |
 | ER-5 | A kit holds only existing pieces (flows, views, resources, capabilities, blocks, workers, a client half, config, slots). It reaches another kit only through slots that kit publishes, never patches one, and a host can turn off what it contributes. Slots are few, typed, and published only by the kit that owns the concept. A flow a user installs and configures is copied, never also exported ([O1](#o1)) | FIX-2626 builds · FIX-2627, FIX-2628 use | FIX-2627's spec review; closure leg b |
 | ER-6 | Data the server computes is typed by its view's output schema (`ViewOutput`). An app hand-writes only what its screen computes | FIX-2623 builds · FIX-2627, FIX-2628 use | FIX-2628's spec review; closure leg a |
 | ER-7 | One live read in the client: the coalescer and the path rule live in one place, and `useView` and every package watch sit on it | FIX-2551 builds · FIX-2623, FIX-2627 use | The stage-2 reuse review |
@@ -312,7 +314,7 @@ the stage-2 specs.
 | `defineFlow`'s config (`reads` → `views`) and the export ratchet | FIX-2623, FIX-2626, FIX-2447 | FIX-2623 removes `reads` with no alias; `defineView`, `useView`, `fsd.resource` and `defineKit` enter FIX-2447's ratchet in the PR that adds them |
 | The client's live read and `client.subscribe` | FIX-2551, FIX-2623, FIX-2625, FIX-2367 | FIX-2551 lands the coalescer; FIX-2623 builds `useView` on it; FIX-2625 adds keys to it. None adds a topic or a poll (FIX-2367 ER-2, ER-3) |
 | The engine's read routes and the endpoint table | FIX-2623, FIX-2624, FIX-2619 | The view route and the scope-addressed resource routes land in their children; FIX-2619's table is updated by whichever lands second |
-| The resource definition (`client` config, `runBy`) | FIX-2624, FIX-2626, FIX-2628 | FIX-2624 owns the fields; a kit and the app kit only declare them |
+| The resource definition (`client` config, `runBy`) | FIX-2624, FIX-2626, FIX-2628 | FIX-2624 owns the fields and the default write flow; a kit and the app kit only declare them |
 | The workforce roster watch | FIX-2412, FIX-2623, FIX-2627 | FIX-2623 moves it onto a view; FIX-2627 ships that view in the workforce kit |
 | The coding worker flow | FIX-2627, FIX-1907, teammates' `coder.ts` | FIX-2627 merges the two labs' routing into one flow; FIX-1907's harness session flow factory feeds it, and lands first |
 | The glossary | FIX-2619, FIX-2623, FIX-2626, FIX-2600 | FIX-2619 adds the entries and narrows FIX-2246's; later children edit their own entry in their PR (FIX-2600 ER-2) |
@@ -325,10 +327,9 @@ Engineering calls, carried from the design review where they were decided withou
 
 - **No separate view definer beside reads.** A view is the rename of a read, never a second hook.
 - **Notice ids are hints.** A full read is always the fallback.
-- **No unvalidated client writes.** Phrased precisely: every client write runs its validators,
-  under a write rule or through `runBy` ([O3](#o3)); the existing session-scope
-  `client.content.*` routes (FIX-296, with grants) stay, and FIX-1945's rules record keeps client
-  writes off.
+- **No generic client writes.** Every client write goes through a flow ([O3](#o3)); FIX-296's existing
+  session-addressed `client.content.*` routes (with grants) stay, and FIX-1945's rules
+  record keeps client writes off.
 - **The concept doc comes first,** and names wait for the glossary.
 - **FIX-2551 is a child, not absorbed.** It already says what it delivers; FIX-2623's `useView`
   builds on it.
@@ -371,7 +372,7 @@ objective or the division.
    read set at run time instead of declaring it.
 3. **Other shapes.** Four epics in order ([D1](#d1)); no kit, a better install API ([O1](#o1),
    FIX-2622 tests it); inferred dependencies (the Convex shape, recorded below); a write rule on
-   the resource ([O3](#o3)), now one of O3's two paths.
+   the resource, rejected by the owner in [O3](#o3).
 4. **New factors.** FIX-2466 is building on no-row notices now, so [O4](#o4) is time-bound.
    FIX-2447's export ratchet and FIX-2600's glossary are live; both are seams above.
 5. **Necessity.** Yes at this size, with FIX-2622's collapse trigger. The leaner set drops
@@ -401,5 +402,8 @@ objective or the division.
   amendments); the collapse dropped claude-code-style's migration (FIX-2628 narrows instead).
   The architect review: kits split into a library half and a copied half ([O1](#o1)), and pins
   take a write rule, not a flow ([O3](#o3), now a two-path fork). Both are pending the owner.
+- **Review round 2 (2026-11-09)** — the owner decided [O3](#o3): every write through a flow, with
+  a default write flow and one-line client helpers ([6742479932](https://github.com/fixpoint-labs/flow-state-dev/pull/4964#issuecomment-6742479932)); the architect asked for
+  the goal check to fail on any direct write path ([6742490134](https://github.com/fixpoint-labs/flow-state-dev/pull/4964#issuecomment-6742490134)). The write rule is gone.
 
-**Open:** [O1](#o1) · [O2](#o2) · [O3](#o3) · [O4](#o4) · [O5](#o5).
+**Open:** [O1](#o1) · [O2](#o2) · [O4](#o4) · [O5](#o5). **Decided in review:** [O3](#o3).

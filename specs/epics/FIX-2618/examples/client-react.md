@@ -15,3 +15,13 @@ function MissionPage({ missionId }: { missionId: string }) {
 
 // Underneath: client.live over the view's notices; a notice with keys re-runs just those rows.
 ```
+
+A write is one line too, and still goes through a flow: the resource's `runBy`, here the default write flow ([O3](../DECISIONS.md#o3)).
+
+```tsx
+function PinButton({ taskId }: { taskId: string }) {
+  const pins = useResource(app.resources.pins);                                     // direct read, no session
+  return <Pin on={pins.value?.pinned.includes(taskId)}
+              onClick={() => pins.update({ pinned: [...(pins.value?.pinned ?? []), taskId] })} />;  // an action on its runBy flow
+}
+```
