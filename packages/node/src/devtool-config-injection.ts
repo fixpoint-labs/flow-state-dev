@@ -6,7 +6,7 @@
  * dev secret — never leaves the operator's machine. The production `serve`
  * path passes no config and this is never applied.
  */
-import type { DevToolConnectionConfig } from "@flow-state-dev/engine";
+import type { DevToolConnectionConfig } from "@flow-state-dev/engine/host";
 
 const GLOBAL = "window.__FSD_DEVTOOL_CONFIG__";
 

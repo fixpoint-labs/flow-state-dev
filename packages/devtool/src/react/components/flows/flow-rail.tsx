@@ -1,5 +1,6 @@
+// FIX-1477 S7.
 /**
- * The developer tool's flow rail (FIX-1477 S7).
+ * The developer tool's flow rail.
  *
  * The drill-down itself is `FlowNavigator`, shipped from
  * `@flow-state-dev/react`. What lives in this file is the tool's SKIN — a

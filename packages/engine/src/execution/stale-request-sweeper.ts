@@ -52,9 +52,10 @@ export type CreateStaleRequestSweeperOptions = {
    * Default: 10000 (10s) — matches `runAction`'s default.
    */
   registryHeartbeatMs?: number;
+  // FIX-2166.
   /**
    * The internal entries of the flow a request ran on, so a request this sweep
-   * marks interrupted brings its session's wakes forward (FIX-2166). See
+   * marks interrupted brings its session's wakes forward. See
    * `detectInterruptedRequests`.
    */
   wakeEntriesOf?: (record: RequestRecord) => readonly string[];

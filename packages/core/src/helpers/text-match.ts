@@ -1,8 +1,9 @@
+// FIX-836.
 /**
  * Text-matching and ID-generation helpers shared across @flow-state-dev packages.
  *
  * Originally duplicated between @thought-fabric/core and @flow-state-dev/memory;
- * hoisted here to eliminate the duplication (FIX-836).
+ * hoisted here to eliminate the duplication.
  */
 
 /** Generate a short random alphanumeric ID. */

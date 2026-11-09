@@ -15,12 +15,14 @@
 import { Hono } from "hono";
 import {
   createInProcessFetch,
-  dispatchDedicatedRoute,
   disposeFlowApiRouter,
-  isFlowState,
-  type FlowApiRouter,
-  type FlowState,
+  type FlowState
 } from "@flow-state-dev/engine";
+import {
+  dispatchDedicatedRoute,
+  isFlowState,
+  type FlowApiRouter
+} from "@flow-state-dev/engine/host";
 
 /** Options for {@link createServerApp}. Defaults match `createFlowApiRouter`. */
 export interface ServerAppOptions {

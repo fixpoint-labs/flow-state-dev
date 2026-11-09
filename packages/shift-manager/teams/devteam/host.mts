@@ -42,22 +42,20 @@ import {
   createBearerSecretPrincipalResolver,
   createFlowState,
   createInProcessFetch,
-  ensureSessionRecord,
   PrincipalResolutionError,
   resolveUserStorageKey,
   runAction,
-  type FlowState,
-  type PrincipalResolver,
+  type FlowState
 } from "@flow-state-dev/engine";
+import { ensureSessionRecord, type PrincipalResolver } from "@flow-state-dev/engine/host";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import {
   encodeUserSegment,
   type BlockContext,
   type FlowInstance,
-  type HarnessBlock,
-  type HarnessUsageReader,
   type ModelResolver,
 } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessUsageReader } from "@flow-state-dev/core/harness";
 import {
   commandCheck,
   harnessDrainBudgetMs,
@@ -95,7 +93,6 @@ import {
   mergeWorkerFlows,
   openInventory,
   resourcesFromDocs,
-  WORKSTREAM_OPENED_ENTRY,
   type CreateProjectInput,
   type CreateProjectOutput,
   type HireOptions,
@@ -318,7 +315,7 @@ function projectSetup(installation: WorkerInstallation) {
  * workstream's session. Read before the flows are built, which need the
  * writes' tools in their catalogs.
  */
-const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
+const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: { actions: { onWorkstreamOpened: {} } } }));
 
 /** The project tools, by the names the Shift Coordinator's and the project coordinator's `tools:` lines spell. */
 const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "setBrief", "openWorkstream", "editWorkstream", "listProjects"];

@@ -19,7 +19,7 @@ import type { WorkerManifest } from "../manifest";
 import type { WorkerInstallation } from "./installation";
 import { WORKERS_RESOURCE } from "./keys";
 import { standardWorkerFlow } from "./standard-workers";
-import { parseWorkerRow, workerRowSchema, type WorkerRow } from "./worker-row";
+import { parseWorkerResourceState, workerResourceStateSchema, type WorkerResourceState } from "./worker-row";
 
 const workerId = z.string().min(1).regex(/^[^/~][^/]*$/, "a worker id is one path segment and can't start with ~");
 
@@ -81,12 +81,12 @@ function textOrNull(value: string | null | undefined): string | null {
 }
 
 /** A standard worker's configuration as a row of the caller's own, copied (D3). */
-function rowFromStandard(manifest: WorkerManifest): WorkerRow {
+function rowFromStandard(manifest: WorkerManifest): WorkerResourceState {
   const settings: Record<string, unknown> = { ...manifest.declared };
   delete settings.flow;
   delete settings.description;
   const description = manifest.declared.description;
-  return workerRowSchema.parse({
+  return workerResourceStateSchema.parse({
     flow: standardWorkerFlow(manifest, AGENT_FLOW),
     description: typeof description === "string" ? description : null,
     instructions: textOrNull(manifest.body),
@@ -122,14 +122,14 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     }
   };
 
-  const check = (id: string, row: WorkerRow): void => {
+  const check = (id: string, row: WorkerResourceState): void => {
     const problems = installation.configurationProblems(id, row);
     if (problems.length > 0) {
       throw new Error(`Worker "${id}" ${problems.join("; ")}. Nothing was written.`);
     }
   };
 
-  const write = async (ctx: BlockContext, id: string, row: WorkerRow): Promise<void> => {
+  const write = async (ctx: BlockContext, id: string, row: WorkerResourceState): Promise<void> => {
     try {
       await roster(ctx).create(id, row as unknown as JsonObject);
     } catch (error) {
@@ -140,12 +140,12 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     }
   };
 
-  const readOwn = async (ctx: BlockContext, id: string): Promise<WorkerRow> => {
+  const readOwn = async (ctx: BlockContext, id: string): Promise<WorkerResourceState> => {
     const stored = await roster(ctx).getOptional(id);
     if (stored === undefined) throw new Error(`No worker "${id}" on your roster.`);
-    const parsed = parseWorkerRow(stored.state);
+    const parsed = parseWorkerResourceState(stored.state);
     if ("problem" in parsed) throw new Error(`Worker "${id}" can't be read: ${parsed.problem}.`);
-    return parsed.row;
+    return parsed.worker;
   };
 
   const hire = handler({
@@ -155,7 +155,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
       refuseStandard(input.id, "hire over");
-      const row = workerRowSchema.parse({
+      const row = workerResourceStateSchema.parse({
         flow: input.flow ?? AGENT_FLOW,
         description: input.description ?? null,
         instructions: textOrNull(input.instructions),
@@ -194,7 +194,7 @@ export function createWorkerHireBlocks(installation: WorkerInstallation): Worker
     execute: async (input, ctx) => {
       refuseStandard(input.id, "edit");
       const current = await readOwn(ctx, input.id);
-      const next: WorkerRow = {
+      const next: WorkerResourceState = {
         ...current,
         ...(input.flow !== undefined ? { flow: input.flow } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),

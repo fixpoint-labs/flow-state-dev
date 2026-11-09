@@ -1,5 +1,35 @@
 # @flow-state-dev/store-postgres
 
+## 0.4.0
+
+### Minor Changes
+
+- d3eaa00: `postgresStores` now backs the `bus` slot, so on a host with more than one process over one Postgres a session view open on one process sees a change saved on another as soon as it is saved, and an idle view costs the database nothing. Each process with an open view holds one listening connection from `liveTailPool` and pings itself through it every 2 s; it reports `crossesProcesses: true` only while the ping comes back, so behind a transaction pooler (or after a silent drop) views keep the once-a-second read, and the process logs one warning naming the fix (a `liveTailPool` on a direct connection string). `createPostgresStores` returns the bus as `registry.bus`, and `close()` hands its connection back before ending the pools. Without a tail pool (`liveTailPool: null`, `{ pool }` without one, `{ executor }`) the bus stays in process. In `@flow-state-dev/engine`, `withChangeBus` now refuses stores that already publish to a different bus instead of publishing to both, a write's notice reaches subscribers one microtask sooner, and a notice that can't be assembled is debug-logged (FIX-2427).
+- 45c158b: Resource state stores can keep index entries, so a collection can later be looked up by a declared field without reading its rows (FIX-2532, first of three changes).
+
+  - **engine:** `ResourceStateStore.set` takes an optional sixth argument, `{ indexEntries }`, and the store may have an optional `indexes` member (`state`, `beginBuild`, `completeBuild`, `findKeys`). New types: `ResourceIndexEntry`, `ResourceStateSetOptions`, `ResourceIndexBuildState`, `ResourceIndexBuildEntry`, `ResourceStateIndexes`. Both are optional, so an existing adapter or test double still type-checks and behaves as before. `createResourceStateStoreConformanceTests` takes `indexes: true` to run the index cases against a store that implements them. The memory and filesystem stores implement no index verbs.
+  - **store-sqlite / store-postgres:** implement the index verbs, with two new tables, `resource_index` and `resource_index_built`, created on open like every other table. Every resource write now also maintains them in the same commit, so **a database opened with `skipSchemaInit: true` must have had `initializeSchema` run against this version first**, or resource writes fail. On Postgres a successful `set` then runs one more statement that clears build markers its write could not see, so it costs one extra round trip.
+
+### Patch Changes
+
+- Updated dependencies [531bf32]
+- Updated dependencies [05a7022]
+- Updated dependencies [c67aa49]
+- Updated dependencies [4d3f49e]
+- Updated dependencies [a1386ea]
+- Updated dependencies [46e4297]
+- Updated dependencies [d3eaa00]
+- Updated dependencies [f1e6315]
+- Updated dependencies [45c158b]
+- Updated dependencies [bc65135]
+- Updated dependencies [65ee4c5]
+- Updated dependencies [da4a4bb]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/engine@0.5.0
+  - @flow-state-dev/core@0.5.0
+  - @flow-state-dev/scheduled@0.3.2
+
 ## 0.3.1
 
 ### Patch Changes

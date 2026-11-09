@@ -18,7 +18,7 @@
  * the file is moved aside, never deleted, and the boot says where.
  */
 import { existsSync, renameSync } from "node:fs";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 
 /** The org id the lab used before its id became a legal address segment. */
 export const LEGACY_LAB_ORG_ID = "org_devforce_lab";

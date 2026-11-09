@@ -36,12 +36,12 @@ import {
   TaskBoardReportFailureError,
 } from "../../src/task-board/blocks/recorder-failure";
 import {
-  createStateBackedTaskCollection,
   startLeaseRenewal,
   ticketForClaim,
   type RenewalTimer,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import {
   openLeaseRenewalScope,
   stampLeaseRenewal,

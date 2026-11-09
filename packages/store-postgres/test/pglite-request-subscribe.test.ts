@@ -15,7 +15,7 @@ import {
   createPostgresRequestStore,
   initializeSchema,
   type QueryExecutor
-} from "../src";
+} from "../src/host";
 import { createRequestStoreConformanceTests } from "@flow-state-dev/engine/testing";
 
 const POLL_INTERVAL_MS = 25;

@@ -7,10 +7,9 @@ import type {
   InboundTransportAdapter,
   InboundTransportHost,
   InboundRequestEnvelope,
-  TransportBindings,
-  ResolvedPrincipal,
-  PrincipalResolutionContext
-} from "../../src";
+  TransportBindings
+} from "../../src/host";
+import type { ResolvedPrincipal, PrincipalResolutionContext } from "@flow-state-dev/core/types";
 
 describe("inbound transport contract types", () => {
   it("a minimal adapter is implementable", () => {

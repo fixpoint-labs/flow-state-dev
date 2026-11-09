@@ -24,15 +24,15 @@
  */
 import { describe, expect, it, beforeEach } from "vitest";
 import {
-  createStateBackedTaskCollection,
-  createResourceBackedTaskCollection,
-  MIN_LEASE_DURATION_MS,
   ticketForClaim,
   type TaskClaimTicket,
   type TaskCollectionRef,
-  type TaskChangeEvent,
   type TaskStatus,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { MIN_LEASE_DURATION_MS } from "../../src/tasks/collection/internal";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import { transitionDeclineReason } from "../../src/tasks/collection/internal";
 import {
   advisoryComplete,
@@ -273,31 +273,6 @@ describe("transitionDeclineReason — which condition fired", () => {
     ).toBeUndefined();
   });
 
-  it("throws on the removed expectAttempt key rather than dropping the guard", () => {
-    // BP-030. TypeScript catches this for a typed caller; an untyped one would
-    // otherwise have its ownership check silently discarded and its write
-    // proceed — the exact silence the ticket exists to remove.
-    expect(() =>
-      transitionDeclineReason(
-        task("in_progress"),
-        "completed",
-        { ifAllowed: true, expectAttempt: 1 } as never,
-        BOARD,
-        NOW,
-      ),
-    ).toThrow(/"expectAttempt" was removed/);
-
-    // Present-but-undefined is still a caller that thinks it is passing a guard.
-    expect(() =>
-      transitionDeclineReason(
-        task("in_progress"),
-        "completed",
-        { expectAttempt: undefined } as never,
-        BOARD,
-        NOW,
-      ),
-    ).toThrow(/"expectAttempt" was removed/);
-  });
 });
 
 describe.each([

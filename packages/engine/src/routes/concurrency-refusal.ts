@@ -1,10 +1,11 @@
+// FIX-1837.
 /**
  * The one answer a transport route gives a caller whose dispatch the
  * concurrency arbiter refused under `reject`.
  *
  * A refusal reaches a route through the handle's `accepted`, on every
  * backend: the host takes the place only after the caller's ownership has been
- * checked (FIX-1837). Routes also call this from the `catch` around
+ * checked. Routes also call this from the `catch` around
  * `host.dispatch`, so a refusal thrown there could not get a different answer
  * for the same duplicate.
  */

@@ -30,6 +30,10 @@ the slice. Escalating it is correct behaviour; deciding it inline is the failure
 
 - Implement ONLY this slice. Don't start the next one; don't refactor outside its scope.
 - Follow existing codebase patterns; don't invent conventions.
+- Before writing a helper, search for one that already does the job: the package's own `src`,
+  then `@flow-state-dev/core/internal` and `@flow-state-dev/engine/internal`, where FSD's
+  shared seams live once they are off the public roots. Reuse or extend what you find; a second
+  copy under a new name is a duplicate no check catches.
 - Use the assigned approved merged spec revision: its goal, decisions, *Decided, not asked*,
   and what's-already-here rows. A set retained in the older shape may also carry
   `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md` or `EVOLUTION.md`; read those too. Approved intent

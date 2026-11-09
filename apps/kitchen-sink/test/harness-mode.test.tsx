@@ -189,8 +189,8 @@ function fakeServer(rows: Array<{ id: string; kind: string; title: string } & Re
 /** A mode's models: two, the first preselected. */
 const TWO_MODELS: ModelChoices = {
   models: [
-    { id: "model-a", label: "Model A" },
-    { id: "model-b", label: "Model B" },
+    { id: "model-a", label: "Model A", isDefault: true },
+    { id: "model-b", label: "Model B", isDefault: false },
   ],
   defaultId: "model-a",
   reason: null,
@@ -264,6 +264,26 @@ describe("V6 · a harness mode's frame", () => {
     fireEvent.click(screen.getByTestId("new-session"));
     await waitFor(() => expect(server.created).toHaveLength(1));
     expect(server.created[0]!.state).toEqual({ model: "model-b" });
+  });
+
+  it("a pick the list no longer holds falls back to the default, so New session never sends a stale model", async () => {
+    const server = fakeServer([]);
+    const { rerender } = mount(server);
+    fireEvent.change(screen.getByTestId("model-picker"), { target: { value: "model-b" } });
+    // The list changes under the mounted frame and drops the picked model.
+    rerender(
+      <HarnessFrame
+        label="Codex"
+        flowKind="codex-session"
+        models={{ models: [{ id: "model-c", label: "Model C", isDefault: true }], defaultId: "model-c", reason: null, fallbackId: null }}
+        client={clientOf(server)}
+        stream={(sessionId) => <p data-testid="opened">{sessionId}</p>}
+      />,
+    );
+    expect((screen.getByTestId("model-picker") as HTMLSelectElement).value).toBe("model-c");
+    fireEvent.click(screen.getByTestId("new-session"));
+    await waitFor(() => expect(server.created).toHaveLength(1));
+    expect(server.created[0]!.state).toEqual({ model: "model-c" });
   });
 
   it("with no model to offer, New session is off and the reason shows; a short list shows its reason too", async () => {

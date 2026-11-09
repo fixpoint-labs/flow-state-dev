@@ -11,8 +11,9 @@
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createExecutionContext, createInMemoryStores } from "../src";
-import type { SessionRecord } from "../src";
+import { createExecutionContext } from "../src";
+import { createInMemoryStores } from "../src/host";
+import type { SessionRecord } from "../src/host";
 import type { JsonObject } from "@flow-state-dev/core/types";
 
 type Ctx = Awaited<ReturnType<typeof createExecutionContext>>;

@@ -1,5 +1,6 @@
 "use client";
 
+// FIX-1989; FIX-2239.
 /**
  * Tool calls as background, not content.
  *
@@ -14,8 +15,7 @@
  *
  * A `sendMessage` call is talk, not background: it is its own line, *To
  * <recipient>: <text>*, with a link to Messages, and a refused one says it
- * wasn't sent and why (FIX-1989). One that waits for the answer (a call,
- * FIX-2239) reads *Asked <recipient>* and shows the reply under it, or says no
+ * wasn't sent and why. One that waits for the answer (a call) reads *Asked <recipient>* and shows the reply under it, or says no
  * answer came by its deadline.
  *
  * This is Shift Manager's own presentation: `flow-state/tool.tsx` is the
@@ -34,12 +34,13 @@ import { RouteLink } from "./RouteLink";
 import { chatAssistantRenderers } from "./flow-state/chat-assistant";
 import { CoordinatorRoute } from "./CoordinatorRoute";
 import { ReceivedMessage } from "./ReceivedMessage";
+import { MessageOrBrief } from "./TaskBrief";
 import { TaskBoardMeta } from "./TaskBoardMeta";
 import { ToolInput, ToolOutput } from "./flow-state/tool";
 
-type CallState = "pending" | "running" | "waiting" | "completed" | "error" | "retried";
+type CallStatus = "pending" | "running" | "waiting" | "completed" | "error" | "retried";
 
-function stateOf(item: ToolOutputItem): CallState {
+function stateOf(item: ToolOutputItem): CallStatus {
   if (isSuspensionWait(item)) return "waiting";
   switch (item.status) {
     case "in_progress":
@@ -58,7 +59,7 @@ function stateOf(item: ToolOutputItem): CallState {
  * completed is `retried`. Only the tool name is compared, not the arguments,
  * and a retry in another run doesn't count.
  */
-function statesInRun(items: readonly ToolOutputItem[]): CallState[] {
+function statesInRun(items: readonly ToolOutputItem[]): CallStatus[] {
   return items.map((item, i) => {
     const state = stateOf(item);
     if (state !== "error") return state;
@@ -68,7 +69,7 @@ function statesInRun(items: readonly ToolOutputItem[]): CallState[] {
 }
 
 /** The worst state in a run: any failure not retried, else any call waiting, else any call still going, else done. */
-function runState(states: readonly CallState[]): CallState {
+function runState(states: readonly CallStatus[]): CallStatus {
   if (states.includes("error")) return "error";
   if (states.includes("waiting")) return "waiting";
   if (states.some((s) => s === "running" || s === "pending")) return "running";
@@ -86,7 +87,7 @@ function argsOf(item: ToolOutputItem): unknown {
 }
 
 /** "Used discover", "Using discover…" while it runs, "discover failed" when it did, "discover is waiting" while it waits, "Tried discover" when a retry did it. */
-function callLabel(name: string, state: CallState): string {
+function callLabel(name: string, state: CallStatus): string {
   if (state === "error") return `${name} failed`;
   if (state === "retried") return `Tried ${name}`;
   if (state === "waiting") return `${name} is waiting`;
@@ -121,7 +122,7 @@ function CallDetails({ item }: { item: ToolOutputItem }) {
 }
 
 /** The muted line and its chevron, opening to `children`. */
-function QuietLine({ label, state, nested = false, children }: { label: string; state: CallState; nested?: boolean; children: ReactNode }) {
+function QuietLine({ label, state, nested = false, children }: { label: string; state: CallStatus; nested?: boolean; children: ReactNode }) {
   return (
     <Collapsible className="group/quiet not-prose w-full" data-testid={nested ? "tool-row" : "tool-group"} data-state-kind={state}>
       <CollapsibleTrigger className="inline-flex max-w-full items-center gap-1 text-left text-sm text-muted-foreground hover:text-foreground">
@@ -137,7 +138,8 @@ function isMessageCall(item: ToolOutputItem): boolean {
   return item.toolCall?.name === SEND_MESSAGE_TOOL;
 }
 
-/** Who a message call names: a worker's id, a task, or a conversation (FIX-2160). */
+// FIX-2160.
+/** Who a message call names: a worker's id, a task, or a conversation. */
 function messageTargetLabel(to: unknown): string {
   if (typeof to === "string") return to;
   const target = (typeof to === "object" && to !== null ? to : {}) as { task?: unknown; session?: unknown };
@@ -146,7 +148,8 @@ function messageTargetLabel(to: unknown): string {
   return "another worker";
 }
 
-/** What a waited send's answer says under its line: the reply, or why none came yet (FIX-2318). */
+// FIX-2318.
+/** What a waited send's answer says under its line: the reply, or why none came yet. */
 function waitOutcomeLine(output: { status?: unknown; reply?: unknown; recipient?: unknown } | undefined): string | null {
   if (output?.status === "answered" && typeof output.reply === "string") return output.reply;
   if (output?.status === "running") {
@@ -294,9 +297,11 @@ export function ToolLine({ item }: { item: ToolOutputItem }) {
   return <ToolLineGroup items={[item]} />;
 }
 
-/** The chat registry with tool calls drawn as quiet lines. */
+/** The chat registry with tool calls drawn as quiet lines and a task's brief folded. */
 export const shiftManagerRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
+  // A task's brief folds to one line; every other message is the registry's copy.
+  message: MessageOrBrief,
   tool_output: ToolLine,
   // A coordinator's routing record, drawn apart from the conversation's lines.
   // Its task board, with each row opening that task's session. Another

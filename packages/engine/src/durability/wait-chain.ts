@@ -1,5 +1,6 @@
+// FIX-2082; FIX-2239.
 /**
- * The engine's half of a wait (FIX-2082): the depth a chain of waits reaches,
+ * The engine's half of a wait: the depth a chain of waits reaches,
  * the host's deadline bounds, and the resume a waited-on request's parent is
  * owed when that request ends.
  *
@@ -35,23 +36,25 @@
  * ended before its parent parked is caught as the parent parks.
  *
  * A gate may also wait on a request of its own session that nobody dispatched:
- * a message queued behind a request stopped for a person (FIX-2239). That
+ * a message queued behind a request stopped for a person. That
  * request ends only by a run that resumed it (the person answered, stopped it,
  * or let it expire), so the run of a resumed request looks in its own session
  * too. A request that never parked costs nothing more.
  */
 import {
   isUserSuspension,
-  isWaitGate,
   taskDispatchInputSchema,
+  type SuspensionRecord
+} from "@flow-state-dev/core/types";
+import {
+  isWaitGate,
   waitGateDataOf,
   type RequestWaits,
-  type SuspensionRecord,
   type WaitDeadlines,
   type WaitGateBinding,
   type WaitOutcome,
-  type WaitRow
-} from "@flow-state-dev/core/types";
+  type TaskAddress
+} from "@flow-state-dev/core/internal";
 import type { ActiveRequestEntry, RequestRecord, StoreRegistry, WakeStore } from "../stores/types";
 import { isFresh } from "../context/liveness-read";
 import type { DurabilityProvider } from "./types";
@@ -113,31 +116,31 @@ export function installWaits(
 }
 
 /**
- * The row a request works, as the engine can tell it: a request a task
+ * The task a request works, as the engine can tell it: a request a task
  * dispatch started (its trusted source is `task`) carries the claim envelope
  * the board minted as its input. `undefined` for any other request; a caller
  * that knows more (a later request working the same task) says so itself.
  *
  * Its ledger is left unknown (`board: ""`): the envelope names the board,
  * whose id can differ from the ledger's that a wait names, so the walk
- * matches this row by task id.
+ * matches this task by task id.
  */
-export function ownRowOf(source: string | undefined, metadata: unknown, input: unknown): WaitRow | undefined {
+export function ownTaskOf(source: string | undefined, metadata: unknown, input: unknown): TaskAddress | undefined {
   if (source !== TASK_SOURCE || readDispatchStamp(source, metadata) === undefined) return undefined;
   const parsed = taskDispatchInputSchema.safeParse(input);
   return parsed.success ? { board: "", taskId: parsed.data.taskId } : undefined;
 }
 
 /**
- * Whether two rows are the same: the same task id on the same ledger, or the
+ * Whether two task addresses are the same: the same task id on the same ledger, or the
  * same task id where either ledger is unknown (`""`).
  */
-function sameRow(a: { readonly board: string; readonly taskId: string }, b: { readonly board: string; readonly taskId: string }): boolean {
+function sameTask(a: { readonly board: string; readonly taskId: string }, b: { readonly board: string; readonly taskId: string }): boolean {
   return a.taskId === b.taskId && (a.board === "" || b.board === "" || a.board === b.board);
 }
 
 /** The request that dispatched a request and waits on it, and the row it works. */
-export type WaiterOf = { readonly requestId: string; readonly own?: WaitRow };
+export type WaiterOf = { readonly requestId: string; readonly own?: TaskAddress };
 
 /**
  * The sender that waits on a request it dispatched (`dispatcher({ wait: true })`),
@@ -160,7 +163,7 @@ export function waitedByOf(source: string | undefined, metadata: unknown): Waite
 type ParkedWait = {
   readonly requestId: string;
   readonly binding: WaitGateBinding;
-  readonly own: WaitRow | undefined;
+  readonly own: TaskAddress | undefined;
 };
 
 /** The deepest a walk goes before it stops counting: past this the answer is "too deep" whatever it is. */
@@ -175,7 +178,7 @@ const WALK_LIMIT = 64;
 export async function waitChainDepth(
   provider: Pick<DurabilityProvider, "listSuspended">,
   userId: string,
-  running: { readonly requestId: string; readonly own: WaitRow | undefined },
+  running: { readonly requestId: string; readonly own: TaskAddress | undefined },
   binding: WaitGateBinding | undefined,
   waitedBy?: WaiterOf
 ): Promise<number> {
@@ -187,15 +190,15 @@ export async function waitChainDepth(
     if (data === undefined) continue;
     parked.push({ requestId: record.requestId, binding: data.binding, own: data.own });
   }
-  const waitsOn = (wait: ParkedWait, work: { own?: WaitRow; requestId?: string }): boolean =>
+  const waitsOn = (wait: ParkedWait, work: { own?: TaskAddress; requestId?: string }): boolean =>
     "taskId" in wait.binding
-      ? work.own !== undefined && sameRow(wait.binding, work.own)
+      ? work.own !== undefined && sameTask(wait.binding, work.own)
       : work.requestId !== undefined && wait.binding.requestId === work.requestId;
 
   // Above: whoever waits on this request's work, then on theirs.
   let above = 0;
   const seen = new Set<string>([running.requestId]);
-  for (let at: { requestId: string; own: WaitRow | undefined } = running; above < WALK_LIMIT; ) {
+  for (let at: { requestId: string; own: TaskAddress | undefined } = running; above < WALK_LIMIT; ) {
     const parkedWaiter = parked.find((wait) => waitsOn(wait, { requestId: at.requestId, ...(at.own ? { own: at.own } : {}) }));
     // The sender of a waited dispatch waits on it from the start, parked yet or not.
     const waiter =
@@ -211,7 +214,7 @@ export async function waitChainDepth(
     if (depth >= WALK_LIMIT) return depth;
     let deepest = 0;
     for (const wait of parked) {
-      const works = "taskId" in work ? wait.own !== undefined && sameRow(wait.own, work) : wait.requestId === work.requestId;
+      const works = "taskId" in work ? wait.own !== undefined && sameTask(wait.own, work) : wait.requestId === work.requestId;
       if (!works || path.has(wait.requestId)) continue;
       deepest = Math.max(deepest, 1 + below(wait.binding, depth + 1, new Set([...path, wait.requestId])));
     }
@@ -228,16 +231,17 @@ export function createRequestWaits(inputs: {
   readonly userId: string;
   readonly requestId: string;
   /** The row this request works, as the engine reads it off its own dispatch. */
-  readonly own: WaitRow | undefined;
+  readonly own: TaskAddress | undefined;
   /** The sender that waits on this request, when a waited dispatch started it. */
   readonly waitedBy?: WaiterOf;
   /** The running request's session: `ended` answers only for requests in it. */
   readonly sessionId: string;
   /** A request's record, with its item log, from the request store. */
   readonly readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "tenantId" | "items"> | undefined>;
+  // FIX-2166.
   /**
-   * How `running` tells a request whose process died from one still running
-   * (FIX-2166): its registry entry's heartbeat, read against the host's stale
+   * How `running` tells a request whose process died from one still running:
+   * its registry entry's heartbeat, read against the host's stale
    * threshold, the one past which the stale-request sweep marks it
    * interrupted. Absent where heartbeats can't say (they are off, or beat
    * slower than half the threshold): there `running` reads the record alone.
@@ -258,9 +262,11 @@ export function createRequestWaits(inputs: {
     readonly staleThresholdMs: number;
     readonly now: () => number;
   };
-  /** `owingPark` (FIX-2269), built on the host's wakes (`park-owed.ts`). */
+  // FIX-2269.
+  /** `owingPark`, built on the host's wakes (`park-owed.ts`). */
   readonly owingPark?: RequestWaits["owingPark"];
-  /** The host's wakes, where `ended` reads a park an interrupted request owes (FIX-2269). */
+  // FIX-2269.
+  /** The host's wakes, where `ended` reads a park an interrupted request owes. */
   readonly wakes?: WakeStore;
 }): RequestWaits {
   // An `in_progress` record whose heartbeat stopped past the stale threshold

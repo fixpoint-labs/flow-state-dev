@@ -20,7 +20,7 @@ import {
   createContentStoreConformanceTests,
   createResourceStateStoreConformanceTests
 } from "@flow-state-dev/engine/testing";
-import { createSQLiteStores } from "../src";
+import { createSQLiteStores } from "../src/host";
 import { createSQLiteContentStore } from "../src/content-store";
 import { createSQLiteResourceStateStore } from "../src/resource-state-store";
 import { initializeSchema } from "../src/schema";

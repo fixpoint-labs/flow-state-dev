@@ -1,3 +1,4 @@
+// BP-033.
 /**
  * `readProjectFiles`: a member's read of the files a project keeps.
  *
@@ -5,8 +6,8 @@
  * user reads them. It finds the project by its address (a private one only
  * in the caller's own user scope), checks the session's owner against the
  * row's `members` (`membership-gate.ts`), then lists only
- * `project-files/<projectId>/…` at that visibility, filtered at the source
- * (BP-033), never the whole collection. It returns each file's path and size,
+ * `project-files/<projectId>/…` at that visibility, filtered at the source,
+ * never the whole collection. It returns each file's path and size,
  * never its body: a handler's output is logged as the tool result, so a body
  * here would land whole in the session log and the model's context.
  */

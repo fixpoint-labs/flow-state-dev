@@ -10,11 +10,12 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
-import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core";
-import { codexAgent, INTERNAL_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
+import { isAbortLike } from "@flow-state-dev/core";
+import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import { codexAgent, INTERNAL_CODEX_SDK_VERSION_READER, type CodexAgentOptions } from "../src/agent";
 import { CodexAgentAbortedError, CodexAgentConfigError, CodexAgentRunError } from "../src/errors";
 import {
-  TESTED_SDK_VERSION,
+  TESTED_CODEX_SDK,
   type CodexAgentHandle,
 
   type CodexThreadEvent,
@@ -22,7 +23,7 @@ import {
 
 /** Every spec below builds against a stubbed version gate; slice 1 owns the gate itself. */
 const GATE_OFF = {
-  [INTERNAL_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_SDK_VERSION }),
+  [INTERNAL_CODEX_SDK_VERSION_READER]: () => ({ kind: "version", version: TESTED_CODEX_SDK.range }),
 } as CodexAgentOptions;
 
 interface Recorder {
@@ -577,6 +578,46 @@ describe("codexAgent — the endings", () => {
 });
 
 describe("codexAgent — cancellation", () => {
+
+  // A host tells a stop from a failure with core's `isAbortLike`, whatever
+  // stopped it: harness-manager stops runs with a deadline (a TimeoutError),
+  // a plain Error for a steer, and no reason at all. A stop that read as a
+  // failure would be retried as one, and a harness used as a generator's tool
+  // would hand the model a failed call instead of stopping it.
+  it.each([
+    ["no reason", undefined],
+    ["a timeout", new DOMException("The deadline passed.", "TimeoutError")],
+    ["a plain Error", new Error("stopped for a steer")],
+  ])("is abort-like by core's reader for a stop with %s, and keeps the thread to resume", async (_label, reason) => {
+    const { resolve } = scripted(async function* () {
+      yield { type: "thread.started", thread_id: "thr_1" } as CodexThreadEvent;
+      await new Promise((r) => setTimeout(r, 10_000));
+    });
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+    const runtime = await createTestContext({});
+    const ac = new AbortController();
+    (runtime.ctx as { signal?: AbortSignal }).signal = ac.signal;
+    setTimeout(() => ac.abort(reason), 20);
+
+    const thrown = await Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never)).catch((e: unknown) => e);
+    expect(isAbortLike(thrown)).toBe(true);
+    expect(thrown).toBeInstanceOf(CodexAgentAbortedError);
+    expect((thrown as CodexAgentAbortedError).sessionId).toBe("thr_1");
+    // The signal's own reason travels with the stop, for a host that wants to know why.
+    expect((thrown as CodexAgentAbortedError).reason).toBe(ac.signal.reason);
+  }, 15_000);
+
+  it("is abort-like when the signal had fired before the run started", async () => {
+    const { resolve } = scripted(OK_STREAM);
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+    const runtime = await createTestContext({});
+    const ac = new AbortController();
+    ac.abort(new Error("stopped before it started"));
+    (runtime.ctx as { signal?: AbortSignal }).signal = ac.signal;
+    const thrown = await Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never)).catch((e: unknown) => e);
+    expect(isAbortLike(thrown)).toBe(true);
+    expect((thrown as CodexAgentAbortedError).sessionId).toBeNull();
+  });
   it("throws WHEN THE SIGNAL FIRES, without waiting for the vendor's stream to close", async () => {
     // The POC's finding (§9): the SDK's own rejection waits for the CLI's
     // stdout to close, so a subprocess the CLI spawned can hold it open past

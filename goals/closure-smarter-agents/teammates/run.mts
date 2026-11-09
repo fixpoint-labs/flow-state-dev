@@ -1,6 +1,6 @@
 /**
  * Goal check: the closure's seven asks in the Teammates lab (FIX-2541). A user
- * of the lab asks Chief of Staff the date, a one-line question, a task its
+ * of the lab asks Lead the date, a one-line question, a task its
  * skill fits, a code change, and (after a long conversation) a decision made
  * at its start; and asks researcher a multi-file question and a knowledge
  * question over the working folder. Each reply is graded on what the user
@@ -9,14 +9,16 @@
  * Real path, real model: the lab served by `fsdev serve` from its folder on a
  * fresh SQLite store, its working folder a scratch git checkout holding the
  * draw's files, every ask over the public client. The coder ask runs Claude
- * Code and needs its sign-in.
+ * Code and needs its sign-in, or, on Haiku (`GOAL_HAIKU=1`), the key every
+ * other ask runs on (`../model.mts`).
  *
  * Run:  GOAL_PASS=cut pnpm tsx goals/closure-smarter-agents/teammates/run.mts
- *       GOAL_PASS=control (serves 0df5c85) · GOAL_PASS=wrap (sets nothing)
+ *       GOAL_PASS=control (serves 0df5c85) · GOAL_PASS=wrap (sets nothing) · GOAL_HAIKU=1 (on Haiku)
  *       GOAL_ASKS=date,sizing (a subset) · GOAL_RUNS · GOAL_FOLD_TURNS_MAX
  */
 import { join } from "node:path";
 import { askAfterFold, askWorker, clientFor, gitRepository, heldSkills, runChecks, runClosure, serveFsdev, skillFiles, type AppDriver } from "../closure.mts";
+import { claudeCodeSettings } from "../model.mts";
 
 const USER = "u_closure";
 const LEAD = "teammates.chief-of-staff";
@@ -29,11 +31,15 @@ const driver: AppDriver = {
   plant: (d, p) => skillFiles(join(tree(p.root), "teams", "teammates", "workers", "chief-of-staff"), d.skill, p.switches),
   start: async (d, p, scratch) => {
     const store = join(scratch, "teammates.sqlite");
-    // The working folder: a git checkout holding the draw's files and the coder ask's failing check.
-    const workdir = gitRepository(join(scratch, "workdir"), { ...d.files, [d.coder.file]: d.coder.script });
+    // The working folder: a git checkout holding the draw's files, the coder ask's failing check, and on
+    // Haiku the project settings that set its Claude Code runs to Haiku.
+    const workdir = gitRepository(join(scratch, "workdir"), { ...d.files, [d.coder.file]: d.coder.script, ...claudeCodeSettings(p.model) });
     const served = await serveFsdev({
       root: p.root,
       cwd: lab(p.root),
+      // Named, not found in the folder: on Haiku it is the config `haiku.config.mts` loads.
+      args: ["--config", join(lab(p.root), "fsdev.config.mts")],
+      model: p.model,
       logTo: join(scratch, "server.log"),
       env: {
         TEAMMATES_STORE: store,

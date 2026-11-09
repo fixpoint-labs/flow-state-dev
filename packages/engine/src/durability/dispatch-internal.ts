@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * The host-side start of an internal entry as a named principal: the one
  * dispatch skeleton a wake's fire (`fireWakeThrough`), an owner run
@@ -5,10 +6,10 @@
  *
  * Internal source, no response emitter (nobody is attached), and the
  * principal's org and tenant on the envelope. The caller decides who the
- * principal is, from a trusted record, never from a request's input (BP-031).
+ * principal is, from a trusted record, never from a request's input.
  */
 import { INTERNAL_SOURCE } from "../execution/transport-sources";
-import type { DispatchHandle, InboundTransportHost } from "../transports/types";
+import type { InboundDispatchHandle, InboundTransportHost } from "../transports/types";
 
 /** Who an internal run is, as its caller resolved it. */
 export interface InternalPrincipal {
@@ -30,7 +31,7 @@ export interface InternalDispatch {
 }
 
 /** Start `run` through `host` as `run.as`, fire-and-forget. */
-export function dispatchInternalAs(host: Pick<InboundTransportHost, "dispatch">, run: InternalDispatch): DispatchHandle {
+export function dispatchInternalAs(host: Pick<InboundTransportHost, "dispatch">, run: InternalDispatch): InboundDispatchHandle {
   const { userId, orgId, tenantId } = run.as;
   return host.dispatch({
     source: INTERNAL_SOURCE,

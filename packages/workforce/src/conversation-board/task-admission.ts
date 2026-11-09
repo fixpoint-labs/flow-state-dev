@@ -1,6 +1,7 @@
+// FIX-2077.
 /**
- * The requests a task session runs for its task beside the `work` entry
- * (FIX-2077): a notice of a piece's ending (`onTaskSettled`), the check entry
+ * The requests a task session runs for its task beside the `work` entry:
+ * a notice of a piece's ending (`onTaskSettled`), the check entry
  * and the turn a late steer is owed. While the task waits, each is admitted
  * for it through orchestration's `taskRequestAdmission`, and the task is
  * checked at its end (rule 6), as at the end of `work`. A worker's message
@@ -20,13 +21,14 @@
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, ConcurrencyConfig } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { runningTaskOf } from "@flow-state-dev/orchestration";
-import { afterTaskCheck, taskRequestAdmission, type TaskEndRules } from "@flow-state-dev/orchestration/task-board";
-import { filedWorkKeepsOpen, keepsFilerOpen, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import { runningTaskOf, afterTaskCheck, keepsFilerOpen } from "@flow-state-dev/orchestration/internal";
+import { taskRequestAdmission, type TaskEndRules } from "@flow-state-dev/orchestration/task-board";
+import { filedWorkKeepsOpen, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { boardAboveOf } from "./board-above";
 import { CHECK_TASK_ENTRY, PIECE_OF, STEER_TURN_ENTRY } from "./board-entries";
 import { conversationLedgerAt, conversationLedgerResources, ledgerAboveOf, ownConversationLedger } from "./ledger";
 import { anotherTurnWaitsOnItsPlan } from "./plan";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** The running row this session works, on the board above it (`./board-above`), or none. */
 async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task } | undefined> {
@@ -54,9 +56,10 @@ export function piecesHold(board: TaskCollectionRef, taskId: string): boolean {
   return board.list().some((row) => row.filedByTask == null && row.metadata?.[PIECE_OF] === taskId && keepsFilerOpen(row));
 }
 
+// FIX-2086 D2.
 /**
  * What else holds a task session's task open, beside its own request (rule
- * 6), and the entry that runs the turn a late steer is owed (FIX-2086 D2).
+ * 6), and the entry that runs the turn a late steer is owed.
  */
 export const conversationEndRules: TaskEndRules = {
   filedWorkKeepsOpen: async (ctx, task) => {
@@ -84,7 +87,7 @@ export function checkTaskEntry(concurrency: ConcurrencyConfig) {
       await afterTaskCheck(ctx, async () => {
         const own = await ownTaskRow(ctx);
         if (own !== undefined && own.row.keptOpenBy == null) return;
-        const wakes = ctx.requestHost?.wakes;
+        const wakes = requestHostOf(ctx)?.wakes;
         const read = await wakes?.read(CHECK_TASK_ENTRY);
         if (wakes !== undefined && read !== undefined) await wakes.settle(CHECK_TASK_ENTRY, read, null);
       });
@@ -99,13 +102,14 @@ export function checkTaskEntry(concurrency: ConcurrencyConfig) {
   };
 }
 
+// FIX-2113.
 /**
  * Admit the running request for this session's task while it waits: first in
  * the entry's sequencer, `.tap(admitOwnTask(...))`. The entry's flow declares
  * the conversation ledger (the session factory's resources).
  *
  * @param answerCounts Whether the entry's turn answer can be the task's result (a woken turn's can; the check entry, which runs no turn, can't).
- * @param options.unlessAnotherTurnWaits Admit nothing while another request in the session waits on a step of its own plan (a steer's turn, FIX-2113).
+ * @param options.unlessAnotherTurnWaits Admit nothing while another request in the session waits on a step of its own plan (a steer's turn).
  */
 export function admitOwnTask(name: string, answerCounts: boolean, options: { readonly unlessAnotherTurnWaits?: boolean } = {}) {
   return taskRequestAdmission({
@@ -133,8 +137,7 @@ export function markAdmittedTask(name: string) {
     transient: true,
     inputSchema: z.unknown(),
     resources: { ...conversationLedgerResources },
-    execute: async (_input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (_input, ctx) => {
       const running = await runningTaskOf(ledgerAboveOf, ctx);
       if (running !== undefined) ctx._markTaskScope?.(running.row.id);
     }

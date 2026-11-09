@@ -19,8 +19,7 @@
  * withdrawal by one refresh; best case nothing is lost.
  */
 
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { ResourceCollectionRef, InitialSkill } from "@flow-state-dev/core/types";
 import { skillFileKey, skillManifestKey } from "../collection";
 import { parseSkillMd } from "../skill-md";
 

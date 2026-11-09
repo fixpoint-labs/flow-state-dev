@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/store-sqlite",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "SQLite-backed persistent store for flow-state-dev.",
   "keywords": [
     "ai",
@@ -30,6 +30,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "default": "./src/host.ts"
     }
   },
   "license": "MIT",
@@ -45,6 +49,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./host": {
+        "types": "./dist/host.d.ts",
+        "default": "./dist/host.js"
       }
     }
   },

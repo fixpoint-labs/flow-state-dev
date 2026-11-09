@@ -7,9 +7,10 @@
  * wait slot is released.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** Where one request stands: running its own work, parked on a person or a wait, or ended (its process died too). */
-export type RequestState = "running" | "parked" | "ended";
+export type RequestStanding = "running" | "parked" | "ended";
 
 /**
  * Read where each of `ids` stands, in one read of each engine record.
@@ -31,12 +32,12 @@ export type RequestState = "running" | "parked" | "ended";
 export async function requestStates(
   ctx: BlockContext,
   ids: readonly string[]
-): Promise<Readonly<Partial<Record<string, RequestState>>> | undefined> {
-  const waits = ctx.requestHost?.waits;
+): Promise<Readonly<Partial<Record<string, RequestStanding>>> | undefined> {
+  const waits = requestHostOf(ctx)?.waits;
   if (ids.length === 0 || (waits?.running === undefined && waits?.ended === undefined)) return undefined;
   const unique = [...new Set(ids)];
   const [running, ended] = await Promise.all([waits.running?.(unique), waits.ended?.(unique)]);
-  const states: Partial<Record<string, RequestState>> = {};
+  const states: Partial<Record<string, RequestStanding>> = {};
   for (const id of unique) {
     if (running?.[id] === true) states[id] = "running";
     else if (ended?.[id] === true || (running !== undefined && ended === undefined)) states[id] = "ended";
@@ -45,8 +46,9 @@ export async function requestStates(
   return states;
 }
 
+// FIX-2123.
 /**
- * Whether a request of this session has stopped running (FIX-2123), as the
+ * Whether a request of this session has stopped running, as the
  * engine records it ({@link requestStates}). A host that keeps no such record
  * answers `true`: there a notice's taker is never waited on.
  */
@@ -55,9 +57,10 @@ export async function hasEnded(ctx: BlockContext, requestId: string): Promise<bo
   return states === undefined || states[requestId] === "ended";
 }
 
+// FIX-2123, FIX-2240.
 /**
- * What a request may do with a delivery another request may have taken
- * (FIX-2123, FIX-2240): take it as its own, leave it to a taker still
+ * What a request may do with a delivery another request may have taken:
+ * take it as its own, leave it to a taker still
  * running or parked, or take it over from a taker that ended without
  * finishing it (its block failed, or its process died).
  */

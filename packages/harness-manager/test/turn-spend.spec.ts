@@ -18,8 +18,13 @@
  *     first run spent.
  */
 import { DEFAULT_ORG_ID, generator, handler, sequencer } from "@flow-state-dev/core";
-import { reportHarnessSpend, type HarnessBlock, type HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { continueRequest, createCheckpointDurabilityProvider, createFlowRegistry, createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import {
+  reportHarnessSpend,
+  type HarnessBlock,
+  type HarnessCallbackContext,
+} from "@flow-state-dev/core/harness";
+import { continueRequest, createCheckpointDurabilityProvider, createFlowRegistry, runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 

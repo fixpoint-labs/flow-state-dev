@@ -1,17 +1,17 @@
 /**
- * The Inbox's holds: what a task row holds for the user, and whether the
+ * The Inbox's holds: what holds a task for the user, and whether the
  * Inbox can answer each. Inside the read; not published.
  */
 import { isTerminalStatus, type TaskStatus } from "../tasks/schema/task-status";
-import { openHolds } from "../tasks/collection/holds";
+import { isOwnHold, isSuspensionHold, openHolds } from "../tasks/collection/holds";
 import type { Task } from "../tasks/schema/task";
-import type { InboxHold, InboxRow, InboxSuspension } from "./types";
+import type { InboxHold, InboxTaskInput, InboxSuspension } from "./types";
 
 /** Why a hold in a session that names no owning flow can't be answered. */
 export const NO_FLOW_UNANSWERABLE =
   "This ask can't be answered from the Inbox: its session was written before sessions recorded their owning flow, so there is no flow to answer it through.";
 
-/** Why a row hold whose board the reader can't place can't be answered. */
+/** Why an own hold whose board the reader can't place can't be answered. */
 export const NO_BOARD_UNANSWERABLE =
   "This question can't be answered from the Inbox: the reader couldn't name the board's session and flow it is answered through.";
 
@@ -21,7 +21,7 @@ export function taskItemId(board: string, taskId: string): string {
 }
 
 /** Whether a row is still open: not completed, errored or cancelled. */
-export function isOpenRow(row: InboxRow): boolean {
+export function isOpenTask(row: InboxTaskInput): boolean {
   return !isTerminalStatus(row.status as TaskStatus);
 }
 
@@ -49,35 +49,39 @@ export function holdOfSuspension<TDetail>(s: InboxSuspension<TDetail>): InboxHol
 }
 
 /**
- * A row's open holds for the user (`actor: "user"`), by the one predicate the
+ * A task's open holds for the user (`actor: "user"`), by the one predicate the
  * board reads (`openHolds`): its questions and confirms, answered through the
  * board, and its run's stop for a person, answered through the engine in the
  * session its run link names.
  */
 export function openUserHolds<TDetail>(
-  row: InboxRow,
+  row: InboxTaskInput,
   flowOf: (sessionId: string) => string | null | undefined,
   foundFor: (suspensionId: string) => InboxSuspension<TDetail> | undefined = () => undefined,
 ): InboxHold<TDetail>[] {
+  // A caller may hand rows it never parsed (a replayed stream item, a raw store read): `openHolds` and `isOwnHold` read a hold's marker forward.
   const open = openHolds({ status: row.status, holds: row.holds ?? undefined, steers: row.steers ?? undefined } as Pick<Task, "status" | "holds" | "steers">);
   const holds: InboxHold<TDetail>[] = [];
   for (const hold of open) {
     if (hold.actor !== "user") continue;
     const title = hold.ask.title !== undefined ? { title: hold.ask.title } : {};
     const due = hold.due !== undefined ? { due: hold.due } : {};
-    if (hold.source.kind === "row") {
+    if (isOwnHold(hold)) {
+      // An external wait is the system's (FIX-2578): never a person's to answer here.
+      const kind = hold.ask.kind;
+      if (kind === "external") continue;
       const holder = row.holder ?? null;
       holds.push(
         withAnswerable<TDetail>({
           id: hold.id,
           source: {
-            kind: "row",
+            kind: "task",
             flowId: holder === null ? null : (flowOf(holder.sessionId) ?? null),
             sessionId: holder?.sessionId ?? null,
             action: holder?.action ?? null,
             taskId: row.id,
           },
-          ask: { kind: hold.ask.kind, prompt: hold.ask.prompt, ...title },
+          ask: { kind, prompt: hold.ask.prompt, ...title },
           openedAt: hold.openedAt,
           ...due,
         }),
@@ -85,7 +89,7 @@ export function openUserHolds<TDetail>(
       continue;
     }
     // A task run's stop: its answer goes to the run's session, where it is parked.
-    if (row.run == null) continue;
+    if (!isSuspensionHold(hold) || row.run == null) continue;
     const found = foundFor(hold.source.suspensionId);
     const flowId = flowOf(row.run.sessionId) ?? found?.flowId ?? null;
     holds.push(

@@ -1,3 +1,4 @@
+// FIX-814.
 /**
  * Deterministic blockInstanceId construction and parsing.
  *
@@ -20,7 +21,7 @@
  * (`blockPathBranch`) — percent-escape the reserved characters `% / [ ] :`
  * before embedding, so an opaque call id or branch name cannot inject a path
  * delimiter. This keeps both exact-equality and prefix matching over the
- * logical path unambiguous (FIX-814): a sibling call id containing `]`, `[`,
+ * logical path unambiguous: a sibling call id containing `]`, `[`,
  * `/`, or `:` can never collide with, or be misread as nested under, another
  * call's path.
  */
@@ -131,6 +132,7 @@ export function blockPathObserver(hook: string): string {
   return `observer[${escapeSegmentValue(hook)}]`;
 }
 
+// FIX-814.
 /**
  * Formats a generator-tool segment. Each tool call gets its own path step
  * so durable execution can correlate individual tool invocations. `callId`
@@ -140,7 +142,7 @@ export function blockPathObserver(hook: string): string {
  * Both `toolName` and `callId` are user/provider-controlled and therefore
  * percent-escaped before embedding: an opaque call id containing `]`, `[`,
  * `/`, or `:` cannot inject a delimiter that would let a sibling call's path
- * be misread as a prefix of another's (FIX-814). Callers that fold a
+ * be misread as a prefix of another's. Callers that fold a
  * model-step index into the disambiguator (e.g. `` `${stepNumber}:${callId}` ``)
  * rely on the embedded `:` being escaped here.
  */

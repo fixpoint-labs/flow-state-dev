@@ -98,7 +98,7 @@ async function entriesOf(who: Connected, project: ProjectAt): Promise<Entry[]> {
   const out: Entry[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < 20; page += 1) {
-    const listed = await who.resources.listCollectionItems(session, ref, cursor === undefined ? {} : { cursor });
+    const listed = await who.resources.listCollectionResources(session, ref, cursor === undefined ? {} : { cursor });
     for (const item of listed.items as Array<{ topic: string; clientData?: Record<string, any> }>) {
       const parts = item.topic.split("/");
       const at = parts.findIndex((p) => p.startsWith("~"));
@@ -127,7 +127,7 @@ async function entriesOf(who: Connected, project: ProjectAt): Promise<Entry[]> {
 async function projectsOf(who: Connected): Promise<{ shared: Array<Record<string, any>>; private: Array<Record<string, any>> }> {
   const session = await sessionOn(who, ROSTER);
   const read = async (ref: string) => {
-    const listed = await who.resources.listCollectionItems(session, ref, {});
+    const listed = await who.resources.listCollectionResources(session, ref, {});
     return (listed.items as Array<{ clientData?: Record<string, any> }>).map((i) => i.clientData ?? {});
   };
   return { shared: await read("projects"), private: await read("privateProjects") };
@@ -818,10 +818,10 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
       const bobSession = await sessionOn(bob, ROSTER);
       const bobRows = await rowsOf(bob, bobSession, WORKERS);
       if (bobRows.rows.some((x) => named(x.topic, fork))) r.fail("c2", `${readsHers}: the worker collection through his session holds it`);
-      const byKey = await refusal(() => bob.resources.getCollectionItemState(bobSession, bobRows.ref, `workforce/workers/${fork}`));
+      const byKey = await refusal(() => bob.resources.getCollectionResourceState(bobSession, bobRows.ref, `workforce/workers/${fork}`));
       if (byKey.status === undefined && byKey.value != null) r.fail("c2", `${readsHers}: read back by key: ${show(byKey.value)}`);
       else r.saw("c2", `Bob reading it by key: ${byKey.status === undefined ? "not found" : `refused, ${byKey.status}`}`);
-      const through = await refusal(() => bob.resources.listCollectionItems(rosterSession, "workforceWorkers"));
+      const through = await refusal(() => bob.resources.listCollectionResources(rosterSession, "workforceWorkers"));
       if (through.status === undefined) r.fail("c2", `${readsHers}: listed through Alice's own roster session`);
       const bobFork = `${word()}-${hex()}`;
       const made = await act(bob, ROSTER, bobSession, "fork", { from: from.id, id: bobFork });
@@ -915,7 +915,7 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
       const bp = await projectsOf(bob);
       if ([...bp.shared, ...bp.private].some((p) => p.id === Q.id)) r.fail("c5", `Bob lists Alice's private project \`${Q.id}\``);
       const bobRoster = await sessionOn(bob, ROSTER);
-      const byKey = await refusal(() => bob.resources.getCollectionItemState(bobRoster, "privateProjects", `projects/${Q.id}`));
+      const byKey = await refusal(() => bob.resources.getCollectionResourceState(bobRoster, "privateProjects", `projects/${Q.id}`));
       if (byKey.status === undefined && byKey.value != null) r.fail("c5", `Bob read Alice's private project by key: ${show(byKey.value)}`);
       const pc = await refusal(() => bob.workforce.ensureWorkerSession({ worker: PROJECT_COORDINATOR, projectId: Q } as never));
       if (pc.status === undefined) r.fail("c5", `Bob opened a project coordinator on Alice's private project: \`${(pc.value as SessionSummary).id}\``);

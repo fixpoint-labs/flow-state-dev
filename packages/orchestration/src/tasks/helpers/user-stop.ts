@@ -1,9 +1,10 @@
+// FIX-2129; FIX-2133.
 /**
- * A task whose run waits for a user (FIX-2129): its cancel, and the debt the
+ * A task whose run waits for a user: its cancel, and the debt the
  * cancel owes that run.
  *
  * The claim gate mirrors the stop on the row (a suspension hold in
- * `Task.holds`, FIX-2133) in the write that drops its lease. Any write
+ * `Task.holds`) in the write that drops its lease. Any write
  * that then ends the row (a cancel, a cascade's cancel) owes the parked run
  * its `cancelled` resume, on the board's existing owed-resume mark
  * (`Task.resumeOwed`), in that same write, with the mirror it is owed to kept
@@ -20,7 +21,8 @@
  * Either way the block reads `{ cancelled: true }` and runs to its end, and
  * the row keeps nothing it writes. The resume never goes over HTTP.
  */
-import { requireRequestHost, type BlockContext, type ResumeWaitResult } from "@flow-state-dev/core/types";
+import { type BlockContext } from "@flow-state-dev/core/types";
+import { requestHostOf, requireRequestHost, type ResumeWaitResult } from "@flow-state-dev/core/internal";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import { openHolds, isSuspensionHold, suspensionHoldOf } from "../collection/holds";
@@ -56,7 +58,7 @@ export async function cancelAndResume(
   options?: CancelOptions
 ): Promise<TaskWriteOutcome> {
   const row = collection.get(id);
-  const resumeWait = ctx.requestHost?.resumeWait;
+  const resumeWait = requestHostOf(ctx)?.resumeWait;
   // The mirror stays while a later request runs for the task (a notice), with `keptOpenBy` cleared.
   const stop = row === undefined ? undefined : openHolds(row).find(isSuspensionHold);
   if (row === undefined || stop === undefined || resumeWait === undefined) {

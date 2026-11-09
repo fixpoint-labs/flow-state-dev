@@ -11,7 +11,7 @@ import {
   useClientData,
   useRequestStream,
   useResourceCollection,
-  useResourceCollectionItem,
+  useCollectionResource,
   useResourceCollectionList,
   useResourceManifest,
   useSession
@@ -46,7 +46,7 @@ describe("hook exports and types", () => {
   it("FIX-427 collection hooks are exported as functions", () => {
     expect(typeof useResourceCollection).toBe("function");
     expect(typeof useResourceCollectionList).toBe("function");
-    expect(typeof useResourceCollectionItem).toBe("function");
+    expect(typeof useCollectionResource).toBe("function");
     expect(typeof useResourceManifest).toBe("function");
   });
 });

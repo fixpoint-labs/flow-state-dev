@@ -34,7 +34,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { defineFlow, sequencer } from "@flow-state-dev/core";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
+import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
 import { codexAgent } from "@flow-state-dev/codex";
 import type { CodexAgentHandle } from "@flow-state-dev/codex";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";

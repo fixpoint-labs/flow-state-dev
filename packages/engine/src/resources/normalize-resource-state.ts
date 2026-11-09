@@ -182,6 +182,7 @@ function applyWriteWrapper(
   }
 }
 
+// BP-030.
 /**
  * Require a value the write path is about to store to be a **fixed point** of
  * its own schema — parsing it again must yield that same value.
@@ -205,7 +206,7 @@ function applyWriteWrapper(
  *
  * The check is therefore on the parse's *stability*, not on whether the parse
  * changed anything. Rejecting any change would break the normalization the read
- * path depends on (BP-030): that is exactly how a row written before its schema
+ * path depends on: that is exactly how a row written before its schema
  * gained a defaulted field acquires that field.
  *
  * **Assumed: a schema's parse is a pure function of its input.** That is what

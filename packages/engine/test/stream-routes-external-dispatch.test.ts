@@ -15,10 +15,12 @@ import { z } from "zod";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import { createInboundTransportHost } from "../src/host";
 import { handleRequestStream } from "../src/routes/stream-routes";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";

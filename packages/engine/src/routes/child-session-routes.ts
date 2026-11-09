@@ -1,6 +1,7 @@
+// FIX-1010, FIX-1440.
 /**
  * `GET /sessions/:sessionId/children` — the provenance index for one session:
- * which dispatch runs were started from it (FIX-1010, FIX-1440).
+ * which dispatch runs were started from it.
  *
  * It is one of two doors to the same work, and the pair is the point. A
  * dispatch run is an ordinary session of its flow and is listed as one —
@@ -193,10 +194,12 @@ export type ChildSessionSummary = {
 type ChildSessionRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
-  /** Tenant id from the request header (FIX-682). */
+  // FIX-682.
+  /** Tenant id from the request header. */
   tenantId?: string;
+  // FIX-1012.
   /**
-   * Largest `limit` this listing accepts (FIX-1012). Absent →
+   * Largest `limit` this listing accepts. Absent →
    * {@link CHILD_LIST_MAX_LIMIT}.
    */
   maxListLimit?: number;
@@ -207,9 +210,10 @@ type ChildSessionRouteContext = {
   checkedSession?: SessionRecord | null;
 };
 
+// BP-031.
 /**
  * The identity every read on this route conjoins, taken from the **stored
- * parent record** rather than from the principal (BP-031) — the parent is
+ * parent record** rather than from the principal — the parent is
  * already resolved and tenant-checked, so these are trusted server-side
  * values, and they work on the framework default resolver where no principal
  * exists.
@@ -248,8 +252,9 @@ export function parentIdentity(
   };
 }
 
+// FIX-1010.
 /**
- * Resolve one job's status with two bounded reads (FIX-1010).
+ * Resolve one job's status with two bounded reads.
  *
  * **Read 1 — the existence check, issued unordered.** "Does a non-terminal run
  * exist" has no ordering in it, so it cannot be inverted by a tie, a late
@@ -394,6 +399,7 @@ export async function resolveActiveDispatchRuns(
   return active;
 }
 
+// BP-030.
 /**
  * Project the two labels the dispatch seam stamps onto the row.
  *
@@ -404,7 +410,7 @@ export async function resolveActiveDispatchRuns(
  * issue's to build.
  *
  * Both stay optional on the wire, and the guard is `== null` rather than a
- * truthiness check (BP-030): a child written before the fields existed reads
+ * truthiness check: a child written before the fields existed reads
  * `undefined`, a store that nulls absent keys hands back `null`, and both mean
  * *unlabelled* — a row a UI shows without a name, never an error. An ordinary
  * child session that is not background work has neither, which is the same

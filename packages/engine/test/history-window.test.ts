@@ -14,7 +14,8 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { createExecutionContext, createInMemoryStores, runAction } from "../src";
+import { createExecutionContext, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 
 const noopHandler = handler({ name: "noop", execute: () => "ok" });

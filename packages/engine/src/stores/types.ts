@@ -5,15 +5,16 @@ import type {
   SuspensionFilter,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import type { HarnessRunSpend, JsonObject, ModelUsageEntry } from "@flow-state-dev/core/types";
-import type { ExpectedVersion as SharedExpectedVersion } from "@flow-state-dev/core/helpers";
+import type { JsonObject, ModelUsageEntry } from "@flow-state-dev/core/types";
+import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
+import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
   BlockTraceItem,
   RequestStreamEvent,
   RouterDecisionItem,
   StateSnapshotItem
 } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { Lease, LeaseOptions } from "../durability/types";
 import type { ChangeBus } from "../bus/types";
 
@@ -44,27 +45,30 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   flowId?: string;
   userId: string;
   orgId?: string;
+  // FIX-682.
   /**
-   * Bare tenant id this session belongs to (FIX-682). The session record's
+   * Bare tenant id this session belongs to. The session record's
    * `id` is already tenant-namespaced (`${tenantId}:${sessionId}`); this field
    * keeps the bare tenant for cross-reference and `SessionListOptions.tenantId`
    * filtering. Undefined for single-tenant sessions.
    */
   tenantId?: string;
+  // FIX-1009; BP-030.
   /**
-   * Bare id of the session this session belongs to (FIX-1009). Undefined for a
+   * Bare id of the session this session belongs to. Undefined for a
    * top-level session — one a person started — which is every session that
    * exists today. A record persisted before this field existed reads back as
    * `undefined`, and a store that nulls absent keys hands back `null`; both
-   * mean top-level, so readers must guard with `== null` (BP-030).
+   * mean top-level, so readers must guard with `== null`.
    *
    * Bare, not tenant-namespaced, matching {@link RequestRecord.sessionId}:
    * isolation comes from conjoining `tenantId` in the list filter, not from
    * namespacing this field.
    */
   parentSessionId?: string;
+  // FIX-1068; BP-030.
   /**
-   * The lineage this session belongs to (FIX-1068) — the address every resource
+   * The lineage this session belongs to — the address every resource
    * it declares `sharedToLineage` stores under.
    *
    * **Minted, not derived.** A root session mints one when its record is
@@ -79,14 +83,15 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * with no owner or incarnation conjoined into it.
    *
    * Absent on records written before this field existed. Those are read as their
-   * own lineage keyed by their session storage key (BP-030) — safe because a
+   * own lineage keyed by their session storage key — safe because a
    * *recreated* session always gets a record that carries the field, so two
    * records can never both fall back to one id.
    */
   lineageId?: string;
+  // FIX-1010; BP-030.
   /**
    * Human-readable name for the body of work a child session was
-   * dispatched for (FIX-1010). Stamped by the dispatch seam
+   * dispatched for. Stamped by the dispatch seam
    * (`context/create-request-host.ts`) from the key the child was
    * derived from — **never** from {@link SessionRecord.metadata}, which is the
    * caller's own free-form bag and can say anything.
@@ -105,7 +110,7 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * a read of these fields to any decision path reintroduces that hazard and
    * is the change this note exists to stop.
    *
-   * Optional and additive (BP-030). A child written before this field existed
+   * Optional and additive. A child written before this field existed
    * reads back `undefined`, a store that nulls absent keys hands back `null`,
    * and an adopted legacy child is never backfilled — all three mean
    * *unlabelled*, which is a row a UI shows without a name, not an error. Guard
@@ -136,8 +141,9 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   userId: string;
   sessionId?: string;
   orgId?: string;
+  // FIX-682.
   /**
-   * Bare tenant id this request ran under (FIX-682). `sessionId` stays bare;
+   * Bare tenant id this request ran under. `sessionId` stays bare;
    * isolation of cross-turn history comes from filtering `request.list` by
    * the session's request scope (`sessionRequestScope`: `sessionId`,
    * `tenantId`, owner, organization and flow) rather than from namespacing the
@@ -145,6 +151,7 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * single-tenant requests.
    */
   tenantId?: string;
+  // BP-030.
   /**
    * Which request this record is, among every request that has held its id.
    *
@@ -161,12 +168,13 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * Absent on records written before this field existed. Read it through
    * `resolveRequestIncarnation` (`stores/scope-keys.ts`), which derives a
    * stable value for those from `createdAt`, under a prefix no minted token
-   * uses (BP-030). Surfaced to blocks as `ctx.request.incarnation`.
+   * uses. Surfaced to blocks as `ctx.request.incarnation`.
    */
   incarnation?: string;
+  // FIX-438.
   /**
    * Provenance of the inbound transport that produced this request.
-   * Set from `InboundRequestEnvelope.source` (FIX-438). Open string —
+   * Set from `InboundRequestEnvelope.source`. Open string —
    * documented known-set: `http` | `mcp` | `webhook` | `scheduled` |
    * `notification`. Reads of records persisted before this field existed
    * default to `"http"` in the store implementations.
@@ -174,15 +182,17 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   source: string;
   status: RequestStatus;
   startedAtMs: number;
+  // FIX-1613; BP-030.
   /**
-   * Where the turns this request read begin (FIX-1613): the first past turn
+   * Where the turns this request read begin: the first past turn
    * its history window held, when earlier turns had fallen out of it. A
    * screen draws its divider before that request and says the turns above it
    * are out of view. Absent when every earlier turn was in the window, and on
-   * records written before this field existed (guard with `== null`, BP-030).
+   * records written before this field existed (guard with `== null`).
    */
   historyStart?: { requestId: string };
   completedAtMs?: number;
+  // BP-030.
   /**
    * When the request's run finished writing under this id: set as the run's
    * last write, after `onFinished`, which follows the terminal status.
@@ -190,7 +200,7 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * - `null`: written by a version that stamps it, and the run has not
    *   finished (it is still running, or died before stamping; the
    *   stale-request sweep stamps a dead one).
-   * - absent: written before this field existed (BP-030), so whether the run
+   * - absent: written before this field existed, so whether the run
    *   finished is unknown. Tell the two apart with `=== null`, never truthiness.
    *
    * Session retention deletes a request only once this is set, so a run's
@@ -217,8 +227,9 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   items?: RuntimeItem[];
   interruptedAt?: number;
+  // FIX-1026.
   /**
-   * Whether cancellation has been requested for this request (FIX-1026).
+   * Whether cancellation has been requested for this request.
    *
    * **Readable here, but NOT writable through {@link RequestStore.set}.** A
    * full record handed to `set` cannot change the stored value in either
@@ -236,13 +247,14 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   abortRequested?: boolean;
   abortedAt?: number;
+  // FIX-1661; BP-030.
   /**
    * What the action came to, written in the same record write as the final
-   * status (FIX-1661). Built only by `buildRequestActionResult`
+   * status. Built only by `buildRequestActionResult`
    * (`execution/request-action-result.ts`), so every writer of a final status
    * fills it the same way.
    *
-   * Read absence by status (BP-030; guard with `== null`):
+   * Read absence by status (guard with `== null`):
    *
    * - `completed`, `incomplete` or `failed` with no `result` — no result was
    *   recorded: a record written before this field existed.
@@ -253,9 +265,10 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * such as `{ ok: false }` belongs to whoever reads it).
    */
   result?: RequestActionResult;
+  // FIX-2145.
   /**
-   * What the request's model calls spent before it last suspended, by model
-   * (FIX-2145). Written by the engine when the request suspends, or when its
+   * What the request's model calls spent before it last suspended, by model.
+   * Written by the engine when the request suspends, or when its
    * client went away and that run's ending has handed the spend on; a resume or
    * continuation starts its spend ledger from it, so
    * `ctx.request.tokenUsage` and the action's token budget count the whole
@@ -269,18 +282,20 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * no settlement counted any, so every trace in the log counts.
    */
   spentThroughItemIndex?: number;
+  // BP-030.
   /**
    * The harness runs the request had spent when {@link RequestRecord.spentByModel}
    * was written, as each was last reported. A resume or continuation starts
    * its ledger's total from them, so a reader of the whole request's spend
    * still counts a run an earlier ending handed on. Absent on a record written
-   * before it existed: no earlier harness run is carried (BP-030).
+   * before it existed: no earlier harness run is carried.
    */
   spentHarnessRuns?: HarnessRunSpend[];
 };
 
+// FIX-1661.
 /**
- * A request's action result, as its record stores it (FIX-1661).
+ * A request's action result, as its record stores it.
  *
  * Carries the same keys as `ExecutionResult`'s `output` and `error`. The
  * values can differ: the record stores a JSON copy of the output (a `Date`
@@ -313,6 +328,7 @@ export type RequestActionResult = {
   error?: { code: string; message: string };
 };
 
+// FIX-1661.
 /**
  * Fields {@link RequestStore.setFieldsIfStatus} may write.
  *
@@ -330,7 +346,7 @@ export type RequestActionResult = {
  *
  * `status` and `result` are writable only together, as a
  * {@link ConditionalStatusTransition}: a final status always lands with the
- * result built for it (FIX-1661), so a write carries both or neither.
+ * result built for it, so a write carries both or neither.
  */
 export type ConditionalRequestFields =
   | (ConditionalRequestBodyFields & { status?: never; result?: never })
@@ -358,9 +374,10 @@ type ConditionalRequestBodyFields = Partial<
   >
 >;
 
+// FIX-1128.
 /**
- * A status change a {@link RequestStore.setFieldsIfStatus} write may carry
- * (FIX-1128): the record moves to `status` only while its current status is
+ * A status change a {@link RequestStore.setFieldsIfStatus} write may carry:
+ * the record moves to `status` only while its current status is
  * one the predicate allows, decided in the same atomic step.
  *
  * Build it with `settledRecordFields`, which pairs a status with its result.
@@ -402,8 +419,9 @@ export type OrgRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<
   resources?: Record<string, JsonObject>;
 };
 
+// FIX-1009.
 /**
- * Which sessions a listing returns, by parentage (FIX-1009). Three modes, each
+ * Which sessions a listing returns, by parentage. Three modes, each
  * a **named** value so none is reachable only by omission or by a sentinel:
  *
  * - `"top-level"` — only sessions with no parent, i.e. the ones a person
@@ -425,13 +443,15 @@ export type SessionListOptions = {
    */
   flowId?: string;
   userId?: string;
+  // FIX-682.
   /**
-   * Tenant filter (FIX-682). See {@link RequestListOptions.tenantId} for the
+   * Tenant filter. See {@link RequestListOptions.tenantId} for the
    * present-vs-absent exact-match semantics — they are identical here.
    */
   tenantId?: string;
+  // FIX-1010.
   /**
-   * Org filter (FIX-1010). Same present-vs-absent exact-match semantics as
+   * Org filter. Same present-vs-absent exact-match semantics as
    * `tenantId`: present (including an explicit `undefined`) exact-matches
    * NULL-safely, absent applies no filter.
    *
@@ -442,8 +462,9 @@ export type SessionListOptions = {
    * adoption). Additive: every existing caller omits the key and is unchanged.
    */
   orgId?: string;
+  // FIX-1009.
   /**
-   * Parentage filter (FIX-1009). **Omitting this narrows to `"top-level"`** —
+   * Parentage filter. **Omitting this narrows to `"top-level"`** —
    * a caller that asks for nothing gets only the sessions a person started.
    *
    * Note the asymmetry with `tenantId` in this same object, which is the thing
@@ -465,8 +486,9 @@ export type SessionListOptions = {
    * never after it. Field names are plain identifiers.
    */
   state?: Readonly<Record<string, string>>;
+  // FIX-1010.
   /**
-   * Sort key for the returned (and limited) set, descending (FIX-1010).
+   * Sort key for the returned (and limited) set, descending.
    *
    * - `"updatedAt"` (default) — today's behaviour, byte for byte.
    * - `"createdAt"` — orders by `(createdAt, id)`, both **immutable**, so a
@@ -501,8 +523,9 @@ export type RequestListOptions = {
    */
   sessionId?: string | readonly string[];
   userId?: string;
+  // FIX-682.
   /**
-   * Tenant filter (FIX-682). Exact-match isolation with deliberate
+   * Tenant filter. Exact-match isolation with deliberate
    * present-vs-absent semantics, because tenant records and no-tenant records
    * can share a bare `sessionId`:
    * - When the `tenantId` key is **present on the options object** (including an
@@ -515,15 +538,17 @@ export type RequestListOptions = {
    * (carrying the current request's tenant, possibly `undefined`).
    */
   tenantId?: string;
+  // FIX-1010.
   /**
-   * Org filter (FIX-1010). Same present-vs-absent NULL-safe exact-match
+   * Org filter. Same present-vs-absent NULL-safe exact-match
    * semantics as `tenantId`; see {@link SessionListOptions.orgId} for why the
    * column needed an option at all.
    */
   orgId?: string;
+  // FIX-1010.
   /**
    * Status filter. A single status matches by equality (unchanged); an array
-   * matches **set membership** (FIX-1010), so "is any run of this session
+   * matches **set membership**, so "is any run of this session
    * non-terminal" is one read rather than one read per member.
    *
    * An empty array matches nothing — it is a filter that excludes everything,
@@ -532,6 +557,7 @@ export type RequestListOptions = {
   status?: RequestStatus | readonly RequestStatus[];
   limit?: number;
   offset?: number;
+  // FIX-1010.
   /**
    * Sort key for the returned (and limited) set, descending. `"updatedAt"`
    * (default) preserves prior behavior. `"startedAtMs"` orders by
@@ -542,7 +568,7 @@ export type RequestListOptions = {
    * equivalent `created_at` column (set to `startedAtMs` at creation, never
    * mutated).
    *
-   * `"none"` returns the matching set **unordered** (FIX-1010). It is a
+   * `"none"` returns the matching set **unordered**. It is a
    * correctness bound rather than an optimisation: an existence check
    * (`limit: 1` over a status set) that sorts is unbounded in the one
    * dimension it selects on — a session accumulates non-terminal records
@@ -615,9 +641,9 @@ export type OrgListOptions = {
  *    is meaningless there and **throws** rather than conflicting.
  *
  * Defined once in `@flow-state-dev/contracts` beside the write-version guards
- * that consume it; this is the same type under the engine's name.
+ * that consume it, and re-exported here: one declaration, not an alias.
  */
-export type ExpectedVersion = SharedExpectedVersion;
+export type { ExpectedVersion };
 
 /**
  * Outcome of a CAS-aware `Store.set`. Encodes conflict as data rather than
@@ -632,6 +658,7 @@ export type SetResult<TRecord> =
       conflict: { currentValue: TRecord | undefined; currentVersion: number };
     };
 
+// FIX-85; FIX-83.
 /**
  * Optional CAS-aware delta verbs adapters may implement to avoid full-record
  * UPDATEs on single-field scope-state writes. All verbs target the record's
@@ -640,8 +667,8 @@ export type SetResult<TRecord> =
  *
  * Adapters MAY implement none, some, or all of these. The CAS persist
  * callback feature-detects per call and falls back to `set` with the full
- * record when a verb is absent (capability advertisement). Once FIX-85
- * (Upstash) and FIX-83 (Mongo) ship, those adapters implement the verbs as
+ * record when a verb is absent (capability advertisement). Once Upstash and
+ * Mongo adapters ship, they implement the verbs as
  * required — the optional-in-v1 stance is a migration concession to existing
  * SQLite and filesystem adapters.
  *
@@ -753,11 +780,12 @@ export interface SessionStore extends DeltaStoreOps<SessionRecord> {
 
 export interface RequestStore extends DeltaStoreOps<RequestRecord> {
   get(id: string): Promise<RequestRecord | undefined>;
+  // FIX-1026; FIX-1735; FIX-1750.
   /**
    * See `SessionStore.set` for CAS semantics.
    *
-   * **`set` ignores {@link RequestRecord.abortRequested} in both directions**
-   * (FIX-1026): the stored value survives a full record that omits it, and a
+   * **`set` ignores {@link RequestRecord.abortRequested} in both directions**:
+   * the stored value survives a full record that omits it, and a
    * full record that carries it cannot set one. Adapters must hold this
    * themselves — the compiler will not, because the field is still on the
    * record type for reading. An adapter that "helpfully" honours the field on
@@ -766,8 +794,8 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * the flag, so honouring it means erasing a cancellation nobody intended to
    * touch. Write it with {@link RequestStore.setFieldsIfStatus}.
    *
-   * **A `set` whose record leaves `items` off keeps the stored items**
-   * (FIX-1735). The request-state write is a full-record write built from the
+   * **A `set` whose record leaves `items` off keeps the stored items**.
+   * The request-state write is a full-record write built from the
    * snapshot the run took when it started, so it leaves `items` off rather
    * than hand back that snapshot's. An adapter that keeps items on the record
    * and replaces the whole record on `set` would drop every item persisted
@@ -776,7 +804,7 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * that carries `items` may still replace them.
    *
    * **A `set` that settles a request lands the `items` it carries in the same
-   * write as its status** (FIX-1750), so no reader sees a final status
+   * write as its status**, so no reader sees a final status
    * without the items it settled with. An adapter that keeps items apart from
    * the record row writes them in the row write's transaction, and only if
    * that write lands. A `set` with a non-terminal status may leave `items` to
@@ -822,23 +850,23 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
   ): Promise<ConditionalWriteResult>;
   list(options?: RequestListOptions): Promise<RequestRecord[]>;
 
+  // FIX-811; FIX-1735; FIX-839.
   /**
    * Persist the current items for an in-progress request.
    * Non-blocking from the caller's perspective — the backend handles async flushing.
    * The write that settles a request carries its final items itself (see
    * {@link RequestStore.set}); this is the path for items while it runs.
    *
-   * Merge-by-id contract (FIX-811): persisting items MUST union the supplied
+   * Merge-by-id contract: persisting items MUST union the supplied
    * items into the stored set by `id` (last-write-wins per id), never replacing
    * the full set. Order is preserved — existing items keep their position, new
    * ids append. This lets a same-request continuation (suspend → resume under
    * the same id) persist only its post-resume items while a `get` still returns
    * the full pause→continue history. The in-memory and filesystem adapters
    * merge onto the record (`mergeItemsById`); the SQL adapters UPSERT. Items
-   * persisted while the request runs are readable before it settles
-   * (FIX-1735).
+   * persisted while the request runs are readable before it settles.
    *
-   * Content-update contract (FIX-839): "last-write-wins per id" is by item
+   * Content-update contract: "last-write-wins per id" is by item
    * CONTENT, not object reference. The runtime mutates a single item object in
    * place across its lifecycle (e.g. a block_trace `in_progress → completed`),
    * so an adapter that diffs incrementally by object reference would drop the
@@ -855,19 +883,21 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    */
   flushItems(requestId: string): Promise<void>;
 
+  // FIX-685.
   /**
    * Count the items persisted for a request without materializing them.
    * Matches what `get(id)` would surface as `items.length` — including the
    * legacy dual-read union of pre-migration blob items with child-table
    * rows — but adapters with a dedicated items table answer with an indexed
-   * COUNT instead of loading item payloads (FIX-685). Returns 0 for an
+   * COUNT instead of loading item payloads. Returns 0 for an
    * unknown request. Reflects flushed writes only; callers that just
    * persisted items should `flushItems` first.
    */
   countItems(requestId: string): Promise<number>;
 
+  // FIX-1026.
   /**
-   * Whether cancellation has been requested for this request (FIX-1026).
+   * Whether cancellation has been requested for this request.
    *
    * The narrow read behind the running process's abort poll: it answers the
    * one question the poll asks without materializing the request. Same
@@ -887,10 +917,11 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    */
   isAbortRequested(requestId: string): Promise<boolean>;
 
+  // FIX-1026; FIX-1128.
   /**
    * Apply `fields` to a request only while its status is one of
    * `allowedStatuses`, evaluating the predicate and the write as one atomic
-   * step inside the adapter (FIX-1026).
+   * step inside the adapter.
    *
    * The verb `RequestStore` was missing. Two things make it necessary rather
    * than convenient:
@@ -908,8 +939,7 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * an abort-shaped `markAborted()` — because the same shape is
    * *"change these fields only if the record is still in this state."*
    *
-   * `fields` may also move the status (a {@link ConditionalStatusTransition},
-   * FIX-1128): the record moves from an allowed status to `fields.status` in
+   * `fields` may also move the status (a {@link ConditionalStatusTransition}): the record moves from an allowed status to `fields.status` in
    * the same atomic step, with the paired `result`. This is how the
    * stale-request sweep marks a request `interrupted` without overwriting one
    * that finished between its read and its write. The returned `status` is
@@ -983,8 +1013,9 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
     options: SubscribeToEventsOptions
   ): AsyncIterableIterator<RequestStreamEvent>;
 
+  // FIX-402.
   /**
-   * Lookup the memoized result of a `ctx.runOnce(key, fn)` call (FIX-402).
+   * Lookup the memoized result of a `ctx.runOnce(key, fn)` call.
    * Returns `{ found: false }` when no record exists for this `(requestId,
    * key)` pair. The stored value is opaque JSON — the caller is responsible
    * for any type coercion. Implementations should treat misses as cheap
@@ -995,8 +1026,9 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
     key: string
   ): Promise<{ found: boolean; value?: unknown }>;
 
+  // FIX-402.
   /**
-   * Persist the result of a `ctx.runOnce(key, fn)` call (FIX-402). The
+   * Persist the result of a `ctx.runOnce(key, fn)` call. The
    * value replaces any prior record for this `(requestId, key)` pair —
    * callers serialize execution per key so a late writer overwriting an
    * earlier success is benign (they computed the same fn).
@@ -1032,10 +1064,11 @@ export interface SubscribeToEventsOptions {
    * `1000`.
    */
   maxPendingEvents?: number;
+  // FIX-811.
   /**
    * When `true`, a `request.suspended` event is treated as a checkpoint, not
-   * a stream terminal: the iterator yields it and keeps following the request
-   * (FIX-811). Set by the attach route only when a continuation lease is held,
+   * a stream terminal: the iterator yields it and keeps following the request.
+   * Set by the attach route only when a continuation lease is held,
    * so a same-request continuation (resume / crash-recovery `continue`) can be
    * streamed through to its real terminal. The true terminals
    * (`completed`/`failed`/`incomplete`/`aborted`) still end the iterator, and
@@ -1090,8 +1123,9 @@ export type ActiveRequestEntry = {
   sessionId?: string;
   userId: string;
   orgId?: string;
+  // FIX-682.
   /**
-   * Bare tenant id this request runs under (FIX-682). Carried so recovery can
+   * Bare tenant id this request runs under. Carried so recovery can
    * re-dispatch the retry within the same tenant's session. Undefined for
    * single-tenant requests.
    */
@@ -1102,9 +1136,10 @@ export type ActiveRequestEntry = {
   metadata?: Record<string, unknown>;
   startedAt: number;
   lastHeartbeatAt: number;
+  // FIX-999; BP-030.
   /**
    * When the entry was registered at enqueue time for an EXTERNAL runner
-   * and no worker has claimed it yet (FIX-999).
+   * and no worker has claimed it yet.
    *
    * Present means "accepted into a queue, not yet being worked on". For such an
    * entry `lastHeartbeatAt` measures how long the job has waited, not how long
@@ -1114,8 +1149,8 @@ export type ActiveRequestEntry = {
    *
    * **Absent means claimed (or in-process), which is the legacy shape.** An
    * entry written before this field existed, and every entry `runAction`
-   * writes, omits it and is governed by `lastHeartbeatAt` exactly as before
-   * (BP-030). Guard with `!= null`, never truthiness — `0` is a valid instant.
+   * writes, omits it and is governed by `lastHeartbeatAt` exactly as before.
+   * Guard with `!= null`, never truthiness — `0` is a valid instant.
    *
    * The claim transition needs no separate write: `runAction` re-registers the
    * whole entry when the worker picks the job up, and that replacement simply
@@ -1125,9 +1160,10 @@ export type ActiveRequestEntry = {
 };
 
 export interface ActiveRequestRegistry {
+  // FIX-999.
   /**
    * Whether entries written by one process are visible to every other process
-   * in the deployment (FIX-999).
+   * in the deployment.
    *
    * Read it with {@link isRegistrySharedAcrossProcesses}, never directly:
    * **absent means NOT shared.** An adapter compiled against the older contract
@@ -1167,8 +1203,9 @@ export interface ActiveRequestRegistry {
  */
 export type ContentScopeType = "session" | "user" | "org";
 
+// FIX-1068.
 /**
- * The scope kind a resource row is STORED under (FIX-1068).
+ * The scope kind a resource row is STORED under.
  *
  * Wider than {@link ContentScopeType}, which is the scope a resource is
  * DECLARED at. The two differ for exactly one case: a session-scoped resource
@@ -1298,7 +1335,7 @@ export type ResourceStateSetOptions = {
  * has cleared it since. `built`: the index holds an entry for every live row
  * the collection covers.
  */
-export type ResourceIndexBuildState = "unbuilt" | "building" | "built";
+export type ResourceIndexBuildStatus = "unbuilt" | "building" | "built";
 
 /** One row's entries, as a build found them. */
 export type ResourceIndexBuildEntry = {
@@ -1341,7 +1378,7 @@ export interface ResourceStateIndexes {
     scopeId: string,
     collection: string,
     index: string
-  ): Promise<ResourceIndexBuildState>;
+  ): Promise<ResourceIndexBuildStatus>;
 
   /**
    * Record that a build of `index` has begun in this scope (its state becomes
@@ -1380,6 +1417,7 @@ export interface ResourceStateIndexes {
   ): Promise<string[]>;
 }
 
+// FIX-689.
 /**
  * Separates resource state persistence from scope record persistence.
  *
@@ -1387,7 +1425,7 @@ export interface ResourceStateIndexes {
  * `ContentStore`, and covers both single-resource and collection-instance
  * state uniformly. Each resource's state is a `JsonObject` written under its
  * own key, so a mutation to one resource never rewrites the whole scope
- * record. It shares `ContentStore`'s keyed storage pattern (FIX-689), but the
+ * record. It shares `ContentStore`'s keyed storage pattern, but the
  * two stores deliberately diverge on concurrency — see below.
  *
  * ## Concurrency: compare-and-swap, not last-write-wins
@@ -1556,6 +1594,7 @@ export interface ResourceStateStore {
    */
   deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 
+  // FIX-1000.
   /**
    * Remove a scope instance's **tombstoned** rows outright, so each of those
    * keys reads as one that was never written. Live rows are not touched, and
@@ -1605,7 +1644,7 @@ export interface ResourceStateStore {
    * is what every fresh context sends for a key it holds no version for — then
    * finds no row and recreates the key. Checking for an existing record first
    * narrows this to a true create race but cannot close it; only a **scope
-   * generation** can, which is tracked and specced as FIX-1000 ("A create
+   * generation** can, which is tracked separately ("A create
    * racing session deletion lands in a purged, caller-reusable scope — fence
    * the scope generation"). Callers must know they are choosing between that
    * and the permanent brick the other order causes.
@@ -1620,17 +1659,18 @@ export interface ResourceStateStore {
   indexes?: ResourceStateIndexes;
 }
 
+// FIX-401; FIX-141; see FIX-401 spec.
 /**
- * Durable sequencer checkpoint store (FIX-401).
+ * Durable sequencer checkpoint store.
  *
  * Latest-only persistence: identity is `(requestId, blockInstanceId)`. Each
- * write overwrites any prior record. The Phase 2 resume runtime (FIX-141)
+ * write overwrites any prior record. The Phase 2 resume runtime
  * reads the latest checkpoint to find the resume point — no enumeration
  * needed since identity is fully scoped.
  *
  * GC is per-instance: each sequencer's terminal state_snapshot triggers a
  * `delete` for its own instance. No `listForRequest` / `pruneBefore` /
- * `stepHistory` — those are explicitly out of scope (see FIX-401 spec).
+ * `stepHistory` — those are explicitly out of scope.
  */
 export interface CheckpointStore {
   /** `false` when this store keeps nothing past the process. Absent means it persists. */
@@ -1666,6 +1706,7 @@ export type TraceEvent = {
   item: BlockTraceItem | RouterDecisionItem | StateSnapshotItem;
 };
 
+// FIX-511.
 /**
  * Per-request trace event log. Implementations are responsible for bounded
  * retention — callers should not assume unbounded history.
@@ -1675,7 +1716,7 @@ export type TraceEvent = {
  * cursor reads via `fromSequence` (exclusive lower bound). `listRequestIds`
  * returns the request IDs currently retained, in insertion order.
  *
- * TODO(FIX-511): cross-process live tail.
+ * TODO: cross-process live tail.
  */
 export interface TraceStore {
   appendEvent(requestId: string, event: TraceEvent): Promise<void>;
@@ -1684,8 +1725,9 @@ export interface TraceStore {
   listRequestIds(): Promise<string[]>;
 }
 
+// FIX-140.
 /**
- * Suspension record persistence (FIX-140). Stores suspension metadata
+ * Suspension record persistence. Stores suspension metadata
  * created by ctx.suspend() for later resolution via the resume endpoint.
  */
 export interface SuspensionStore {
@@ -1717,8 +1759,9 @@ export interface SuspensionStore {
   pruneTerminalBefore(cutoffMs: number, limit: number): Promise<number>;
 }
 
+// FIX-140.
 /**
- * Lease persistence for preventing concurrent resume (FIX-140). Each
+ * Lease persistence for preventing concurrent resume. Each
  * lease is keyed by requestId; only one active (non-expired) lease per
  * request at a time.
  */
@@ -1743,8 +1786,9 @@ export interface LeaseStore {
   pruneExpired(): Promise<void>;
 }
 
+// FIX-2078 D1.
 /**
- * Where a wake is kept: one per session and internal entry (FIX-2078 D1).
+ * Where a wake is kept: one per session and internal entry.
  * `tenantId` is part of the key, so two tenants' sessions under one id never
  * share a wake.
  */
@@ -1773,8 +1817,9 @@ export type WakeInput = WakeKey & {
   readonly landBy: number;
 };
 
+// FIX-2078 D1.
 /**
- * A wake (FIX-2078 D1): a debt's due time the engine keeps, fired by the
+ * A wake: a debt's due time the engine keeps, fired by the
  * durability sweeper until a pass in its session clears it. Written before the
  * write that owes, so a crash between the two leaves a wake that pays nothing,
  * never a debt with no wake.
@@ -1786,8 +1831,9 @@ export type WakeRecord = WakeInput & {
   readonly updatedAt: number;
 };
 
+// FIX-2078 D1.
 /**
- * Wake persistence (FIX-2078 D1). Optional on the store registry: an adapter
+ * Wake persistence. Optional on the store registry: an adapter
  * written before it still type-checks and loads, and a host whose stores keep
  * no wakes logs once and pays debts on its fast paths only.
  *
@@ -1823,13 +1869,15 @@ export type StoreRegistry = {
   traces: TraceStore;
   suspensions: SuspensionStore;
   leases: LeaseStore;
+  // FIX-2078 D1.
   /**
-   * Debts' due times (FIX-2078 D1). Optional: a host checks for it once at
+   * Debts' due times. Optional: a host checks for it once at
    * start, and without it keeps the fast paths only.
    */
   wakes?: WakeStore;
+  // FIX-2426.
   /**
-   * The change bus (FIX-2426): request and session writes publish a notice
+   * The change bus: request and session writes publish a notice
    * on their session's topic, and the session stream wakes on it. Optional
    * on a registry you build yourself; every entry that takes one
    * (`resolveStores`, `runAction`, BullMQ's job processor, `fsdev`) fills an
@@ -1838,11 +1886,12 @@ export type StoreRegistry = {
   bus?: ChangeBus;
 };
 
+// FIX-406 6B.
 /**
  * Payload delivered to an `onPersistError` observable when a store adapter's
  * background write fails. `store` names the adapter ("request", "traces",
  * "activeRequests"), `id` is the affected record key (typically a requestId),
- * and `error` is the underlying write failure (FIX-406 6B).
+ * and `error` is the underlying write failure.
  */
 export type PersistErrorInfo = {
   store: string;

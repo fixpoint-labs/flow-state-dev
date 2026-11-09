@@ -27,6 +27,7 @@ import {
   clearDraft,
   useDraft,
   useHarnessLines,
+  useJumpToLatest,
   useSession,
   SuspensionResolverProvider,
   type SessionView,
@@ -35,9 +36,9 @@ import {
   OBSERVED_PLAN,
   OBSERVED_PLAN_LIST,
   harnessConversationNamespace,
-  planRowsPrefix,
+  planResourcesPrefix,
   readPlanTarget,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/harness";
 
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import {
@@ -45,7 +46,6 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-  ScrollOnNewRequest,
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
@@ -75,7 +75,7 @@ import {
   turnNumbers,
   turnWaitingOnApproval,
   type PlanMarkerItem,
-  type PlanRowItem,
+  type PlanEntry,
   type TurnNotice,
   type TurnStatus,
 } from "@/lib/harness-turn";
@@ -150,7 +150,23 @@ function SessionBody({
   }, [heldBy]);
   // Lines reach the run in the order they were typed, and the page stays on
   // the running turn while a line's turn waits behind it.
-  const lines = useHarnessLines(session, { sendOne: sendLineOnce });
+  // The user's line rises when it lands. Only a line that goes out as a turn of its own lands as one: a
+  // line the running turn takes joins it, and a send left waiting for it would raise the next user line
+  // shown, which may not be this user's.
+  const feed = useJumpToLatest({ resetKey: sessionId });
+  const { sent } = feed;
+  const sendOne = useCallback(
+    (prompt: string, running: boolean, sender: LineSender) =>
+      sendLineOnce(prompt, running, {
+        ...sender,
+        turn: async (text) => {
+          sent();
+          return await sender.turn(text);
+        },
+      }),
+    [sent],
+  );
+  const lines = useHarnessLines(session, { sendOne });
   const [lastLine, setLastLine] = useState<LineOutcome | null>(null);
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
@@ -200,16 +216,15 @@ function SessionBody({
             {bound ?? "none yet"}
           </span>
         </div>
-        <Conversation className="min-h-0 flex-1" data-testid="conversation">
+        <Conversation className="min-h-0 flex-1" data-testid="conversation" feed={feed}>
           {/* An answer to a card goes through the session, so the turn it resumes streams in here. */}
-          <SuspensionResolverProvider resolve={session.resumeSuspension}>
+          <SuspensionResolverProvider resolve={session.answerSuspension}>
           <SessionItemsProvider value={session.items}>
             <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
               {session.isLoading ? (
                 <SessionConversationLoading />
               ) : (
                 <>
-                  <ScrollOnNewRequest items={session.items} />
                   {session.items.length === 0 && (
                     <ConversationEmptyState title={label} description={`Each turn continues the same ${label} conversation.`} />
                   )}
@@ -518,7 +533,7 @@ function TurnPlan(props: TurnPlanProps) {
     return (
       <PlanRows
         {...props}
-        rowsPrefix={planRowsPrefix(turn.requestId)}
+        resourcesPrefix={planResourcesPrefix(turn.requestId)}
         markers={runMarkers}
         conversation={null}
         whenEmpty={source.whenEmpty === null ? null : conversationOf(source.whenEmpty)}
@@ -528,7 +543,7 @@ function TurnPlan(props: TurnPlanProps) {
   // A flow that declares the rows but no markers has no marker, and no pointer, to read.
   if (markerRef === undefined) return show([]);
   return (
-    <MarkersUnder session={session} markerRef={markerRef} prefix={planRowsPrefix(turn.requestId, OBSERVED_PLAN_LIST)} render={show} />
+    <MarkersUnder session={session} markerRef={markerRef} prefix={planResourcesPrefix(turn.requestId, OBSERVED_PLAN_LIST)} render={show} />
   );
 }
 
@@ -541,11 +556,11 @@ function TurnPlan(props: TurnPlanProps) {
 function ConversationPlan(props: TurnPlanProps & { markerRef: string; namespace: string }) {
   const { session, turn, records, turnsByRequest, markerRef, namespace } = props;
   const earliest = earliestTurnOf(records, (id) => harnessConversationNamespace(id) === namespace);
-  const rowsPrefix = `${OBSERVED_PLAN}/${namespace}/`;
+  const resourcesPrefix = `${OBSERVED_PLAN}/${namespace}/`;
   const show = (markers: readonly PlanMarkerItem[], predates: boolean) => (
     <PlanRows
       {...props}
-      rowsPrefix={rowsPrefix}
+      resourcesPrefix={resourcesPrefix}
       markers={markers.filter((m) => m.topic === namespace)}
       conversation={{ turns: turnsByRequest, predates }}
     />
@@ -562,7 +577,7 @@ function ConversationPlan(props: TurnPlanProps & { markerRef: string; namespace:
           <MarkersUnder
             session={session}
             markerRef={markerRef}
-            prefix={planRowsPrefix(earliest, OBSERVED_PLAN_LIST)}
+            prefix={planResourcesPrefix(earliest, OBSERVED_PLAN_LIST)}
             render={(first) => show(markers, readPlanTarget(earliest, first).kind !== "conversation")}
           />
         )
@@ -578,12 +593,12 @@ function PlanRows({
   turn,
   ended,
   planRef,
-  rowsPrefix,
+  resourcesPrefix,
   markers,
   conversation,
   whenEmpty = null,
 }: TurnPlanProps & {
-  rowsPrefix: string;
+  resourcesPrefix: string;
   markers: readonly PlanMarkerItem[];
   conversation: { turns: ReadonlyMap<string, number>; predates: boolean } | null;
   /** Shown instead once the read finds no rows and there are no markers. */
@@ -594,13 +609,13 @@ function PlanRows({
   const rows = useResourceCollectionList<{ title?: string | null; status?: string | null; requestId?: string | null }>(
     session,
     planRef,
-    { topicPrefix: rowsPrefix, limit: PLAN_ROW_LIMIT },
+    { topicPrefix: resourcesPrefix, limit: PLAN_ROW_LIMIT },
   );
   if (rows.error !== undefined) {
     return <p className="text-sm text-destructive">The plan can't be read: {rows.error.message}</p>;
   }
-  const rowItems: PlanRowItem[] = rows.items
-    .filter((item) => ownTopic(rowsPrefix, item.topic))
+  const rowItems: PlanEntry[] = rows.items
+    .filter((item) => ownTopic(resourcesPrefix, item.topic))
     .map((item) => ({
       topic: item.topic,
       title: item.clientData?.title ?? null,

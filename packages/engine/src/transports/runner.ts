@@ -28,8 +28,9 @@ export interface DispatchEnvelope {
   input: unknown;
   userId: string;
   sessionId?: string;
+  // FIX-1442.
   /**
-   * The organization the run belongs to. Required (FIX-1442): a runner
+   * The organization the run belongs to. Required: a runner
    * hands work to a worker that runs BELOW principal resolution, so the
    * envelope is the only place that worker can learn the organization from.
    * A durable job written before this field existed is refused on the way
@@ -47,9 +48,10 @@ export interface DispatchEnvelope {
    * being non-recoverable. See `InboundRequestEnvelope.resolvedActionCore`.
    */
   resolvedActionCore?: ActionCore;
+  // FIX-1634.
   /**
    * The run's place on its concurrency key, taken by the dispatching host
-   * before the job was enqueued (FIX-1634). Present only when the host
+   * before the job was enqueued. Present only when the host
    * arbitrates external dispatch over a backend the worker shares: the worker
    * waits for the place's turn before running and gives it back when the job
    * is done for good.
@@ -67,9 +69,10 @@ export interface DispatchEnvelope {
    * backend.
    */
   leasePlace?: LeasePlace | null;
+  // FIX-1836.
   /**
    * How the job reaches its turn, when not by waiting in line for
-   * `leasePlace` (FIX-1836). Set by the host from the entry's policy:
+   * `leasePlace`. Set by the host from the entry's policy:
    *
    *   - `{ kind: "now" }` — `hold`: `leasePlace` has its turn already. The
    *     worker runs the job at once, renews the place while it runs, and gives
@@ -92,12 +95,13 @@ export type LeaseTurn = { kind: "now" } | { kind: "when-free"; key: string };
  * Handle returned by FlowRunner.dispatch(). Exposes the request id
  * and a promise that resolves when execution finishes, plus an abort hook.
  */
-export interface FlowDispatchHandle {
+export interface RunnerHandle {
   readonly requestId: string;
   readonly finished: Promise<ExecutionResult>;
+  // FIX-982.
   /**
    * Resolves once the request is *accepted* — registered and discoverable —
-   * without waiting for the run (FIX-982). Rejects with the run's own error
+   * without waiting for the run. Rejects with the run's own error
    * when it dies before getting that far.
    *
    * Optional because a runner is free not to distinguish the two, but the
@@ -119,7 +123,7 @@ export interface FlowRunner {
   dispatch(
     envelope: DispatchEnvelope,
     bridge?: StreamBridge
-  ): Promise<FlowDispatchHandle>;
+  ): Promise<RunnerHandle>;
   close(): Promise<void>;
 }
 
@@ -128,7 +132,7 @@ export interface FlowRunner {
  * events emitted by the response emitter so the web process can forward
  * them to SSE clients without transformation.
  */
-export interface StreamEvent {
+export interface StreamBridgeEvent {
   id?: string;
   event: string;
   data: string;
@@ -138,7 +142,7 @@ export interface StreamEvent {
  * Publisher side of the bridge — used by the worker to push events.
  */
 export interface StreamPublisher {
-  publishEvent(event: StreamEvent): Promise<void>;
+  publishEvent(event: StreamBridgeEvent): Promise<void>;
   publishTerminal(result: ExecutionResult): Promise<void>;
   close(): Promise<void>;
 }
@@ -147,7 +151,7 @@ export interface StreamPublisher {
  * Subscriber side of the bridge — used by the web process to receive events.
  */
 export interface StreamSubscriber {
-  events(): AsyncIterable<StreamEvent>;
+  events(): AsyncIterable<StreamBridgeEvent>;
   completed: Promise<ExecutionResult>;
   abort(): void;
   close(): Promise<void>;

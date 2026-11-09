@@ -66,8 +66,13 @@
  */
 import { defineCapability, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import type { BlockContext, HarnessUsageReader, HarnessUsageReading, HarnessUsageReport } from "@flow-state-dev/core/types";
-import { harnessUsageWindowSchema } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type {
+  HarnessUsageReader,
+  HarnessUsageReading,
+  HarnessUsageReport,
+} from "@flow-state-dev/core/harness";
+import { harnessUsageWindowSchema } from "@flow-state-dev/core/harness";
 import { z } from "zod";
 import { assertSafeSegment, hashKeySegment } from "./workspace";
 
@@ -89,8 +94,9 @@ const storedUsageWindowSchema = harnessUsageWindowSchema.extend({
   origin: z.enum(["read", "run"]).default("read"),
 });
 
+// BP-023/BP-030.
 /**
- * One harness's usage record. Every field defaults (BP-023/BP-030), so a row
+ * One harness's usage record. Every field defaults, so a row
  * written under an older shape still parses rather than blanking.
  */
 export const harnessUsageStateSchema = z.object({
@@ -289,15 +295,15 @@ export function applyRunWindow(stored: HarnessUsageState, report: HarnessUsageRe
 }
 
 /** One window as the query returns it: the stored reading, its age, and whether its reset has passed. */
-export type HarnessUsageWindowRow = z.infer<typeof storedUsageWindowSchema> & { ageMs: number; rolledOver: boolean };
+export type HarnessUsageWindowView = z.infer<typeof storedUsageWindowSchema> & { ageMs: number; rolledOver: boolean };
 
 /** One harness as the query returns it. */
-export interface HarnessUsageRow {
+export interface HarnessUsageView {
   harness: string;
   status: HarnessUsageState["status"];
   reason: string | null;
   plan: string | null;
-  windows: HarnessUsageWindowRow[];
+  windows: HarnessUsageWindowView[];
   checkedAt: number | null;
   /** How old the stored reading is, or `null` when there is none. */
   ageMs: number | null;
@@ -325,7 +331,7 @@ export async function readHarnessUsage(
   ctx: BlockContext,
   now: number,
   expected: readonly string[] = [],
-): Promise<HarnessUsageRow[]> {
+): Promise<HarnessUsageView[]> {
   const stored = new Map<string, HarnessUsageState>();
   for (const ref of await collectionOf(ctx).list()) {
     stored.set(harnessFromPath(ref.path), harnessUsageStateSchema.parse(ref.state ?? {}));
@@ -369,7 +375,7 @@ export interface HarnessUsageActionOptions {
  * one flow: `actions: { harnessUsage: harnessUsageAction({ readers }) }`.
  *
  * Input `{ refresh?: boolean }`. Output `{ harnesses }`, one
- * {@link HarnessUsageRow} per harness. Zero-model. A refresh that fails or
+ * {@link HarnessUsageView} per harness. Zero-model. A refresh that fails or
  * times out still answers, with the stored rows and a `refreshError`.
  */
 export function harnessUsageAction(options: HarnessUsageActionOptions) {

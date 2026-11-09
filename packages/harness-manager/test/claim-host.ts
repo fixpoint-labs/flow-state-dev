@@ -20,23 +20,23 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { defineCapability, defineFlow, handler } from "@flow-state-dev/core";
-import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
-import type { BlockContext, BlockDefinition, HarnessBlock } from "@flow-state-dev/core/types";
+import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
-  taskLedgerResources,
   getOrCreateTaskCollection,
-  openRowHolds,
   resolveResourceCollection,
   type Task,
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
+import { taskLedgerResources, openOwnHolds, steerFromLine } from "@flow-state-dev/orchestration/internal";
 import { taskLedgers } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,
   harnessTaskInputSchema,
-  readRunRow,
+  readRunRecord,
   runRecordCollection,
   type CompletionRunContext,
   type HarnessFeeds,
@@ -153,15 +153,22 @@ export interface HostOptions {
   beforePrompt?: (ctx: BlockContext) => Promise<unknown>;
   /** The resolver a `claim` host's manager is given. Default: the conversations ledger, at the claim's partition. */
   ledgers?: (ledgerId: string, ctx: BlockContext, partition: string | undefined) => Promise<TaskCollectionRef | undefined>;
+  /**
+   * Another host's folder and stores, so this host is that one after a
+   * restart: a new manager and engine over the same rows, records and checkouts.
+   */
+  restartOf?: { readonly dir: string; readonly stores: unknown };
 }
 
 /** Build one host. */
 export function claimHost(options: HostOptions) {
-  const dir = mkdtempSync(join(tmpdir(), "harness-manager-claim-host-"));
-  dirs.push(dir);
+  const dir = options.restartOf?.dir ?? mkdtempSync(join(tmpdir(), "harness-manager-claim-host-"));
   const sourceRepo = join(dir, "repo");
-  mkdirSync(sourceRepo, { recursive: true });
-  seedRepo(sourceRepo);
+  if (options.restartOf === undefined) {
+    dirs.push(dir);
+    mkdirSync(sourceRepo, { recursive: true });
+    seedRepo(sourceRepo);
+  }
 
   const fixedLedger = defineTaskCollection({ id: FIXED_BOARD, scope: "user" as const });
   const conversations = defineTaskCollection({
@@ -240,8 +247,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       if (ref.get(input.id) === undefined) {
         await ref.createTask({
           id: input.id,
@@ -261,8 +267,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       const claimed = await ref.claim("drain", { leaseDurationMs: 120_000, eligibility: (t) => t.id === input.id });
       return claimed === null ? null : (JSON.parse(JSON.stringify(claimed)) as unknown);
     },
@@ -274,8 +279,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       const found = ref.get(input.id);
       return found === undefined ? null : (JSON.parse(JSON.stringify(found)) as unknown);
     },
@@ -287,12 +291,33 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       const row = ref.get(input.id);
-      const hold = row === undefined ? undefined : openRowHolds(row)[0];
+      const hold = row === undefined ? undefined : openOwnHolds(row)[0];
       if (hold === undefined) return { outcome: "declined", reason: "no-open-question" };
       return ref.answer!(input.id, { questionId: hold.id, message: input.answer, from: "user", by: ALICE });
+    },
+  });
+  // A line typed in the task's session, as its door writes it (`steerFromLine`): a steer, or the answer to what the row waits on.
+  const line = handler({
+    name: "claim-host-line",
+    inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string(), message: z.string() }),
+    outputSchema: z.unknown(),
+    uses: [ledgerResources],
+    execute: async (input, ctx) => {
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
+      return (await steerFromLine(ref, input.id, input.message, ctx as never)) ?? null;
+    },
+  });
+  // A steer from the board, as the Inbox's steer and an app's Steer box write it (`updateTask`'s message).
+  const steer = handler({
+    name: "claim-host-steer",
+    inputSchema: z.object({ ledgerId: z.string(), partition: z.string().optional(), id: z.string(), message: z.string() }),
+    outputSchema: z.unknown(),
+    uses: [ledgerResources],
+    execute: async (input, ctx) => {
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
+      return ref.steer!(input.id, { message: input.message, from: "user", by: ALICE });
     },
   });
   const cancel = handler({
@@ -301,8 +326,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
-      const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
+      const ref = (await ledgerAt(ctx, input.ledgerId, input.partition))!;
       return ref.cancel(input.id, "cancelled by the test");
     },
   });
@@ -311,7 +335,7 @@ export function claimHost(options: HostOptions) {
     inputSchema: z.object({ topic: z.string() }),
     outputSchema: z.unknown(),
     resources: { runs: runRecordCollection },
-    execute: async (input, ctx) => (await readRunRow(ctx as never, input.topic)) ?? null,
+    execute: async (input, ctx) => (await readRunRecord(ctx as never, input.topic)) ?? null,
   });
   // Write a run record as it stands, as an earlier version of the manager left it.
   const putRecordBlock = handler({
@@ -332,6 +356,8 @@ export function claimHost(options: HostOptions) {
       claim: { block: claim },
       row: { block: rowAction },
       answer: { block: answer },
+      line: { block: line },
+      steer: { block: steer },
       cancel: { block: cancel },
       records: { block: records },
       putRecord: { block: putRecordBlock },
@@ -354,9 +380,10 @@ export function claimHost(options: HostOptions) {
       },
     },
   } as never)({ id: "claim-host" } as never);
+  const stores = options.restartOf?.stores ?? inMemoryStores();
   const state = createFlowState({
     flows: { "claim-host": flow },
-    stores: { test: { primary: inMemoryStores() } },
+    stores: { test: { primary: stores } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
     ...(options.durable === true ? { durable: true } : {}),
@@ -460,6 +487,7 @@ export function claimHost(options: HostOptions) {
     seen,
     answersSeen,
     dir,
+    stores,
   };
 }
 

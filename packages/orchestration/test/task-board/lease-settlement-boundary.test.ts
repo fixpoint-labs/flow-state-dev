@@ -26,12 +26,12 @@ import {
   createRecordSuccess,
 } from "../../src/task-board/blocks/record-result";
 import {
-  createStateBackedTaskCollection,
   startLeaseRenewal,
   ticketForClaim,
   type RenewalTimer,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import {
   openLeaseRenewalScope,
   stampLeaseRenewal,

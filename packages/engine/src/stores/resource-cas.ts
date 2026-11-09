@@ -82,11 +82,6 @@ import {
   ResourceDeletedError
 } from "../errors/flow-error";
 
-// Re-exported here for the same reason `cas.ts` re-exports
-// `ConcurrentModificationError`: these are part of this driver's contract, and
-// a caller that catches one should not have to reach into the errors module to
-// name it. `stores/index.ts` and the package root re-export them onward.
-export { ResourceAlreadyExistsError, ResourceDeletedError };
 import type { ExpectedVersion, SetResult, VersionedResourceState } from "./types";
 
 const DEFAULT_MAX_RETRIES = 3;

@@ -1,17 +1,16 @@
+// FIX-2534, epic FIX-2471.
 /**
- * Subscriptions (FIX-2534, epic FIX-2471): a session follows a thread, and
+ * Subscriptions: a session follows a thread, and
  * each event on it reaches that session once, from the service, after code
  * screens, as a message. `subscriptionTools` are the two tools; a provider's
  * `defineSubscriptionServiceFlow` routes and delivers; an ingestion calls the
- * engine's `routeServiceEvent` with {@link SUBSCRIPTION_ROUTE_ENTRY}.
+ * engine's `routeServiceEvent` with the entry `routeSubscriptionEvent`.
  */
 export {
   SUBSCRIPTION_CURSORS_PATTERN,
   SUBSCRIPTION_CURSORS_RESOURCE,
-  SUBSCRIPTION_DELIVER_ENTRY,
   SUBSCRIPTION_INDEX_PATTERN,
   SUBSCRIPTION_INDEX_RESOURCE,
-  SUBSCRIPTION_ROUTE_ENTRY,
   SUBSCRIPTION_TOOLS,
   SUBSCRIPTIONS_PATTERN,
   SUBSCRIPTIONS_RESOURCE,
@@ -23,11 +22,11 @@ export {
   listedScreenSchema,
   subscriptionCursorSchema,
   subscriptionResources,
-  subscriptionRowSchema,
+  subscriptionResourceStateSchema,
   type ListedScreen,
   type ScreenKind,
   type SubscriptionCursor,
-  type SubscriptionRow
+  type SubscriptionResourceState
 } from "./rows";
 export { screenRefusal, screenVerdictSchema, screenVerdictsSchema, type ScreenVerdict } from "./screens";
 export {

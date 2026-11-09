@@ -55,7 +55,7 @@ export default defineFlow({
 Run from your project root:
 
 ```bash
-fsdev dev
+pnpm fsdev dev
 ```
 
 Output looks like:
@@ -75,7 +75,7 @@ The DevTool opens in your browser. Work down the navigator: open your flow, crea
 If your flows live somewhere non-standard, use `--flow-dir`:
 
 ```bash
-fsdev dev --flow-dir ./lib/workflows
+pnpm fsdev dev --flow-dir ./lib/workflows
 ```
 
 This flag is repeatable. When specified, the default `src/flows/` and `flows/` discovery is skipped.
@@ -85,7 +85,7 @@ This flag is repeatable. When specified, the default `src/flows/` and `flows/` d
 During development you might want a faster or cheaper model. `--model` overrides the model for every generator that runs in the server's own process:
 
 ```bash
-fsdev dev --model openai/gpt-6-luna
+pnpm fsdev dev --model openai/gpt-6-luna
 ```
 
 Background work handed to a queue runs in another process, under that process's own model configuration. See [Model overrides](/docs/cli/overview#model-overrides).

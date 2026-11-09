@@ -1,5 +1,6 @@
+// FIX-2078 D1.
 /**
- * In-memory WakeStore (FIX-2078 D1), for development and tests. One wake per
+ * In-memory WakeStore, for development and tests. One wake per
  * (tenant, session, entry); see `WakeStore` for the coalescing and the
  * version rule.
  */

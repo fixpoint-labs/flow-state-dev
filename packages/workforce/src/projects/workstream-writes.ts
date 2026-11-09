@@ -1,10 +1,11 @@
+// BR-42; FIX-1793 BR-21a; BR-38.
 /**
  * The workstream writes: `openWorkstream` and `updateWorkstream`, as app
  * actions, and `updateWorkstream`, `editWorkstream` and `listLeads` as tools.
  *
  * **Opening one.** The caller names a project by its address, an id, a title
  * and a lead from their own roster: a worker on a lead flow that lists
- * delegates, since a lead runs its workstream through them (BR-42).
+ * delegates, since a lead runs its workstream through them.
  * `listLeads` lists the ones that can. On a shared project only its members may
  * open one. The entry is the caller's: keyed by their owner segment, so no one
  * else can write it (`workstream-collections.ts`). Then the lead's workstream
@@ -19,7 +20,7 @@
  * named its session. Its lead doesn't change: an open naming another lead is
  * refused.
  *
- * **Its project coordinator's record** (FIX-1793 BR-21a). When the
+ * **Its project coordinator's record**. When the
  * installation names a project coordinator, each open workstream is one
  * delegate record on its owner's coordinator for the project: the lead, with
  * the workstream's address as its target. An open (and opening it again)
@@ -30,8 +31,8 @@
  * when it is (`project-coordinator.ts`). An open made in the owner's
  * coordinator's own turn, with its `openWorkstream` tool, writes the record
  * in that turn instead, since a dispatch into the session it runs in would
- * land after the turn, and the dispatch that follows would find no record
- * (BR-38). The coordinator holds at most
+ * land after the turn, and the dispatch that follows would find no record.
+ * The coordinator holds at most
  * `MAX_DELEGATES` records, so an owner with that many open workstreams in a
  * project is refused another before anything is written (BR-21b).
  *
@@ -60,7 +61,7 @@
 
 import { dispatcher, dispatchHandleSchema, handler, router, sequencer } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import { DispatchRefusedError, type ActionConfig, type BlockDefinition, type ResourceRef } from "@flow-state-dev/core/types";
+import { DispatchRefusedError, type ActionConfig, type BlockContext, type BlockDefinition, type ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { MAX_DELEGATES } from "../delegates/delegate-keys";
 import { withWrittenBy, type SharedWriteContext } from "../shared-resource";
@@ -89,8 +90,8 @@ import {
   type WorkstreamObjective,
   type WorkstreamView
 } from "./workstream-collections";
-import { leadsWorkstreams, WORKSTREAM_OPENED_ENTRY } from "./workstream-lead";
-import { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
+import { leadsWorkstreams } from "./workstream-lead";
+import { parseWorkstreamRef, WORKSTREAM_OPENED_ENTRY, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
 import { ALL_DELEGATES } from "../delegates/delegate-keys";
 
 /** What a write hands on for its coordinator's record: none, or the change and the record. */
@@ -386,10 +387,11 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     }
   }
   const leadFlowNames = new Set(options.leadFlows.map((flow) => flow.kind));
+  // BR-42.
   /**
    * Why a worker on the caller's roster can't lead, or `undefined` when it
    * can: it runs on a lead flow, and it lists delegates, since a lead runs its
-   * workstream through them (BR-42).
+   * workstream through them.
    */
   const leadProblem = (worker: RosterWorker): string | undefined => {
     if (worker.problem !== undefined) return `can't lead a workstream: ${worker.problem}`;
@@ -569,7 +571,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
    * is a record, a done one isn't. `before` is `undefined` for an open.
    */
   const recordFor = async (
-    ctx: WriteContext,
+    ctx: BlockContext,
     workstream: WorkstreamView,
     before: string | undefined
   ): Promise<RecordChange | undefined> => {
@@ -593,7 +595,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     // lead may have left the roster since.
     const here = before === undefined || change === "remove";
     if (here && coordinatorSessionId === (ctx.session.identity as { id?: string }).id) {
-      await changeWorkstreamRecordHere(ctx as never, record, options.installation);
+      await changeWorkstreamRecordHere(ctx, record, options.installation);
       return undefined;
     }
     return { ...record, coordinatorSessionId };

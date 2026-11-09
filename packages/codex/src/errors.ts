@@ -8,7 +8,7 @@
  * Every one of them is FATAL for the run that raised it. A turn the model
  * failed is not here: that is an outcome on the handle, not a throw (§9).
  */
-import type { ClassifiedHarnessError, HarnessFailureKind } from "@flow-state-dev/core/types";
+import type { ClassifiedHarnessError, HarnessFailureKind } from "@flow-state-dev/core/harness";
 
 /**
  * The optional `@openai/codex-sdk` peer dependency is not installed. Raised on
@@ -23,45 +23,6 @@ export class CodexSdkNotInstalledError extends Error {
         "The `@openai/codex-sdk` package is not installed. Add it as a dependency, or pass a `resolveCodexClient` that supplies a Codex client.",
     );
     this.name = "CodexSdkNotInstalledError";
-  }
-}
-
-/**
- * An installed `@openai/codex-sdk` that is not the version this package was
- * tested against. Raised when the block is BUILT, so a host cannot start a run
- * on an untested wire and discover the mismatch from a malformed item stream.
- *
- * There is deliberately no override: the upgrade path is a release of this
- * package, which is what makes every Codex bump a tested one.
- */
-export class CodexSdkVersionMismatchError extends Error {
-  readonly code = "CODEX_SDK_VERSION_MISMATCH";
-  /**
-   * @param installed the version found, or `null` when an SDK is present but its
-   *   version could not be established. The gate refuses in BOTH cases: "there
-   *   is nothing installed" is safe, "I cannot tell what is installed" is not,
-   *   and a gate that passed the second would let an unchecked wire run.
-   * @param unreadableReason why the version could not be read, when it could not.
-   */
-  constructor(
-    readonly installed: string | null,
-    readonly tested: string,
-    readonly unreadableReason?: string,
-  ) {
-    super(
-      (installed === null
-        ? `\`@openai/codex-sdk\` is installed but its version could not be determined (${unreadableReason ?? "reason unknown"}), and @flow-state-dev/codex is tested against exactly ${tested}. `
-        : `\`@openai/codex-sdk\` ${installed} is installed, but @flow-state-dev/codex is tested against exactly ${tested}. `) +
-        "Codex's JSONL wire is experimental and can change in a lockstep CLI+SDK release, so this package refuses to run against a version it has not checked. " +
-        (installed === null
-          ? // Deliberately NOT offering `resolveCodexClient` as the escape: the
-            // gate runs when the block is built, before any client is resolved,
-            // so supplying one does not get past it. An error that names a way
-            // out that does not work is worse than one that names none.
-            `Install \`@openai/codex-sdk\` ${tested} in a layout this package can read.`
-          : `Pin \`@openai/codex-sdk\` to ${tested}, or take a release of @flow-state-dev/codex that tests ${installed}.`),
-    );
-    this.name = "CodexSdkVersionMismatchError";
   }
 }
 
@@ -127,19 +88,36 @@ export function isUnknownThreadFailure(reason: string, resumeId: string): boolea
   return reason.includes(`no rollout found for thread id ${resumeId}`);
 }
 
+// LAB-152 §9.
 /**
- * The caller's signal fired. A cancelled run is a throw and never a handle
- * (LAB-152 §9), and this class is what distinguishes "you stopped it" from "it
- * broke" for a manager deciding whether to retry.
+ * The caller's signal fired. A cancelled run is a throw and never a handle,
+ * and this is what tells "you stopped it" from "it broke" for a
+ * manager deciding whether to retry.
+ *
+ * A host tells it with core's `isAbortLike`, whatever stopped the run: the
+ * root of its `cause` chain is always an `AbortError`, whose message is the
+ * signal's reason. The reason itself (a deadline's `TimeoutError`, a plain
+ * `Error`, or none) is on {@link reason}.
  */
 export class CodexAgentAbortedError extends Error {
   readonly code = "CODEX_AGENT_ABORTED";
-  constructor(readonly sessionId: string | null) {
+  constructor(
+    readonly sessionId: string | null,
+    /** The stopping signal's reason, as the caller gave it. */
+    readonly reason?: unknown,
+  ) {
     super(
       sessionId === null
         ? "The Codex run was aborted before it named a thread."
         : `The Codex run was aborted. Thread ${sessionId} can be resumed.`,
+      { cause: stopCause(reason) },
     );
     this.name = "CodexAgentAbortedError";
   }
+}
+
+/** An `AbortError` carrying a stop's reason as its message: the root of every stop's `cause` chain. */
+function stopCause(reason: unknown): DOMException {
+  const said = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
+  return new DOMException(said === "" ? "This operation was aborted." : said, "AbortError");
 }

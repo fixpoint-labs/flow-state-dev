@@ -12,14 +12,12 @@ import {
   sequencer
 } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { NetworkError } from "../src/errors/flow-error";
-import {
-  createInMemoryStores,
-  createResponseEmitter,
-  runAction
-} from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
+import { createResponseEmitter } from "../src/host";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 

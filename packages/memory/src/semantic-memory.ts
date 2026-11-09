@@ -52,11 +52,12 @@ export const semanticMemoryStateSchema = z.object({
 /** The full semantic memory state. */
 export type SemanticMemoryState = z.infer<typeof semanticMemoryStateSchema>
 
+// FIX-745.
 /**
  * Create a semantic memory resource definition with the given scope.
  * Follows the same factory pattern as `createEpisodicMemoryResource`.
  *
- * When `relations` is passed (relations tier enabled, FIX-745), the resource
+ * When `relations` is passed (relations tier enabled), the resource
  * declares an `edges` slot so the framework injects an `edges: Edge[]` field
  * into the state and attaches the `ResourceEdgeApi` to the live ref. When it
  * is omitted, the resource carries no `edges` field and no edge API — the

@@ -4,7 +4,7 @@
  */
 import { afterAll } from "vitest";
 import { createRequestRetentionConformanceTests } from "@flow-state-dev/engine/testing";
-import { createSQLiteStores, type SQLiteStoreRegistry } from "../src/index";
+import { createSQLiteStores, type SQLiteStoreRegistry } from "../src/host";
 
 const open: SQLiteStoreRegistry[] = [];
 

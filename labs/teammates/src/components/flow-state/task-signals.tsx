@@ -7,7 +7,7 @@ import { durationText } from "./spend";
 /*
  * A task row's time, and whether its run has stopped answering, as one short
  * signal; and a list's per-state counts. Read from what the board's
- * `listTasks` action answers for a row: orchestration's `taskRowView` of it,
+ * `listTasks` action answers for a row: orchestration's `taskView` of it,
  * its run link's `startedAt`, and its `leaseUntil`.
  *
  * - **working · 4m 12s**: a running row, timed from this attempt's run start
@@ -22,9 +22,9 @@ import { durationText } from "./spend";
  * The item runs no timer: the app passes `now`, from its own clock.
  */
 
-/** What the signal reads of a row: orchestration's `TaskRowView` fits. */
+/** What the signal reads of a row: orchestration's `TaskView` fits. */
 export interface TaskSignalView {
-  /** `taskRowView`'s `state`: queued, held, running, waiting, failed, done or cancelled. */
+  /** `taskView`'s `state`: queued, held, running, waiting, failed, done or cancelled. */
   state: string;
   times: { updatedAt: number | null; completedAt: number | null };
 }

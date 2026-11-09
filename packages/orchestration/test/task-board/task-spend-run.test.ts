@@ -12,12 +12,24 @@
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM, reportHarnessSpend, type ActionCore, type BlockContext, type RequestSpend } from "@flow-state-dev/core/types";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
+import {
+  type ActionCore,
+  type BlockContext
+} from "@flow-state-dev/core/types";
+import {
+  REQUEST_END_SEAM,
+  REQUEST_SPEND_SEAM,
+  type RequestSpend
+} from "@flow-state-dev/core/internal";
+import { reportHarnessSpend } from "@flow-state-dev/core/harness";
+import { runAction } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { z } from "zod";
-import { createTaskGate, SPEND_TICK_MS, taskWorkerInputSchema } from "../../src/task-board";
+import { SPEND_TICK_MS, taskWorkerInputSchema } from "../../src/task-board";
+import { createTaskGate } from "../../src/task-board/task-entry";
 import { admitClaimedTask } from "../../src/task-board/task-request";
-import { createResourceBackedTaskCollection, taskSpendView, ticketForClaim, type Task, type TaskSpendView } from "../../src/tasks";
+import { taskSpendView, ticketForClaim, type Task, type TaskSpendView } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
 import { createFakeResourceCollection } from "../helpers";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

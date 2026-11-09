@@ -5,8 +5,8 @@
  * time and renders clearly in DevTool.
  */
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext, DefinedResource } from "@flow-state-dev/core/types";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import type { DefinedResource } from "@flow-state-dev/core/types";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { coerceText } from "../../shared/coerce";
 import {
@@ -49,7 +49,7 @@ export function createRecordContribution(opts: {
       });
 
       const collection = await getOrCreateTaskCollection({
-        ctx: ctx as unknown as BlockContext,
+        ctx: ctx,
         backing: "state",
         collectionId: opts.collectionId,
         state: ctx.sequencer!,

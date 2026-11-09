@@ -65,4 +65,36 @@ describe("listTasks and a task's spend", () => {
     const told = (await runForTest(toolNamed(buildTaskToolsList(ownStateResolver), "listTasks"), {} as never, ctx)) as { tasks: Array<Record<string, unknown>> };
     for (const row of told.tasks) expect("updatedAt" in row).toBe(false);
   });
+
+  // A reader shows how long a task has run and orders ended tasks by when they ended: the
+  // action carries the row's times, the model's tool doesn't (it has no use for them).
+  it("answers each row's filed, started and ended times on the action, and leaves them off the tool", async () => {
+    const { ctx } = buildDelegationCtx({ self: false });
+    const ref = (await ownStateResolver(ctx as never))!;
+    await ref.createTask({ id: "t_one", goal: "Fix the login form" });
+    await ref.createTask({ id: "t_two", goal: "Write the notes" });
+    const claimed = (await ref.claim("w", { leaseDurationMs: 10_000 }))!;
+
+    const actions = taskToolActions("desk", ownStateResolver);
+    const caller = { ...(ctx as object), user: { identity: { userId: "u1" } } };
+    const read = async () =>
+      Object.fromEntries(((await runForTest(actions["listTasks_desk"]!.block as never, {} as never, caller as never)) as { tasks: Array<Record<string, unknown>> }).tasks.map((t) => [t.id, t]));
+    const other = claimed.id === "t_one" ? "t_two" : "t_one";
+    let byId = await read();
+    const started = ref.get(claimed.id)!;
+    expect(started.startedAt).toBeTypeOf("number");
+    expect(byId[claimed.id]).toMatchObject({ createdAt: started.createdAt, startedAt: started.startedAt });
+    expect("completedAt" in byId[claimed.id]!).toBe(false);
+    // A task that hasn't started has no start time to show.
+    expect(byId[other]!.createdAt).toBe(ref.get(other)!.createdAt);
+    expect("startedAt" in byId[other]!).toBe(false);
+
+    await ref.complete(claimed.id, { done: true } as never, { claim: ticketForClaim(ref.collectionId, claimed) });
+    byId = await read();
+    expect(byId[claimed.id]!.completedAt).toBe(ref.get(claimed.id)!.completedAt);
+    expect(byId[claimed.id]!.completedAt).toBeTypeOf("number");
+
+    const told = (await runForTest(toolNamed(buildTaskToolsList(ownStateResolver), "listTasks"), {} as never, ctx)) as { tasks: Array<Record<string, unknown>> };
+    for (const row of told.tasks) for (const field of ["createdAt", "startedAt", "completedAt"]) expect(field in row).toBe(false);
+  });
 });

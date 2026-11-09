@@ -8,13 +8,13 @@ module, `goals/lib/task-signals.mts`.
 stopped, and sees how long each running task has worked on this attempt, from the teammate's
 panel, without opening the task or asking a model.
 
-**Input:** coding tasks filed on Chief of Staff's conversation board through its own `createTask`
+**Input:** coding tasks filed on Lead's conversation board through its own `createTask`
 action, as a screen files one, for `teammates.cursor` on the lab's scripted harness
 (`GOAL_HARNESS=stub`, a 4-minute pause before each step). It is **held-out**: no worker file, flow
 or page names the tasks' titles or goals.
 
 **Signal:** `fsdev dev --app @flow-state-dev/teammates` on a fresh store over a scratch git
-checkout, one browser on Chief of Staff's panel. Each leg grades the row's words on the page
+checkout, one browser on Lead's panel. Each leg grades the row's words on the page
 against the board's own `listTasks` row.
 
 - **clock**: a task runs 30 s, is cancelled and retried. Within 20 s its row reads `working · …`
@@ -36,7 +36,7 @@ against the board's own `listTasks` row.
 compared with the board's row. A row the board took back before the page could be read is CAN'T
 TELL (`tell.over`), not PASS; so are no reads of the alive row.
 
-**Model:** n/a. The server gets no model credential; Chief of Staff's turns woken by a task's
+**Model:** n/a. The server gets no model credential; Lead's turns woken by a task's
 ending fail without one, and nothing here waits on them.
 
 **Run:** `pnpm tsx goals/teammates-lab/tells-a-stopped-task-from-a-working-one/run.mts` (about
@@ -65,3 +65,5 @@ each runs only the leg it must fail):
 | 2026-11-04 | 2d5b2b75 | n/a | PASS | clock 0 s against 1 s, then 4 s; alive 80 reads over 240 s, all working, 6 lease deadlines; quiet `quiet for 4m` 0.4 s after the server answered (after a reload), lease lapsed 126 s before |
 | 2026-11-05 | e8c6a3e0 (the board read's stale gate) | n/a | PASS | clock 0 s against 1 s, then 4 s; alive 80 reads over 240 s, all working, 7 lease deadlines; quiet `quiet for 4m` 243 s after the kill, lease lapsed 126 s before |
 | 2026-11-05 | e8c6a3e0 | n/a | FAIL (control `never-quiet`) | quiet only: 207 fresh reads of a row lapsed by up to 181 s read `working · …`, last `5m 0s` |
+| 2026-11-07 | 9478c9ce (the lead renamed `teammates.lead`) | n/a | PASS | clock 0 s against 1 s since the retry's run started, then 4 s; alive 79 reads over 237 s, all working, 6 lease deadlines; quiet `quiet for 4m` 243 s after the kill (0.5 s after the server answered, after a reload), lease lapsed 124 s before |
+| 2026-11-07 | 8f6629e4 (stored id `teammates.chief-of-staff` kept, name Lead) | n/a | PASS | clock 0 s against 1 s since the retry's run started, then 4 s; alive 79 reads over 237 s, all working, 6 lease deadlines; quiet `quiet for 4m` 243 s after the kill (0.5 s after the server answered, after a reload), lease lapsed 123 s before |

@@ -65,7 +65,14 @@ back after the run, and by the next run if the machine killed this one (`closure
 **Sweep** (`verdict/run.mts`): no app's `WORKER.md` carries date, "done" or length guidance of its own
 (epic ER-3). Reported on every pass; a failure at the wrap.
 
-**Model:** real, each app's own (through the AI Gateway); coder asks on Claude Code.
+**Model:** real. By default each app's own (through the AI Gateway), coder asks on Claude Code's
+own sign-in and model. With `GOAL_HAIKU=1`, every app's agents run on Haiku on Anthropic directly
+(`model.mts`): each app is served through `haiku.config.mts`, which loads the app's own config and
+answers every model it names, generators and evaluators, with `anthropic/claude-haiku-5-5`, keyed by
+`MY_ANTHROPIC_API_KEY`; the served process gets no gateway key, and Claude Code gets the same key and
+runs Haiku (the project's `.claude/settings.json`; Kitchen Sink's session model). Each sheet result is
+stamped with its models (`app` or the Haiku id) beside its commit, and the verdict refuses a pass whose
+sheets mix them.
 
 **Run** (one pass = all four, then the verdict):
 
@@ -75,6 +82,9 @@ GOAL_PASS=control pnpm tsx goals/closure-smarter-agents/<app>/run.mts   # serves
 GOAL_PASS=cut     pnpm tsx goals/closure-smarter-agents/<app>/run.mts   # this checkout
 GOAL_PASS=wrap    pnpm tsx goals/closure-smarter-agents/<app>/run.mts   # sets nothing
 GOAL_PASS=<pass>  pnpm tsx goals/closure-smarter-agents/verdict/run.mts
+
+# On Haiku: the same commands with GOAL_HAIKU=1 (every app script of a pass, so its sheets agree)
+GOAL_HAIKU=1 GOAL_PASS=cut pnpm tsx goals/closure-smarter-agents/<app>/run.mts
 ```
 
 `GOAL_ASKS=date,sizing` runs a subset (the sheet keeps the other asks only when they ran on the same commit; the verdict refuses sheets from another commit, or a mix), `GOAL_RUNS` the number of
@@ -83,9 +93,10 @@ most filler turns before the fold question (default 200). The fold ask sends fil
 session's record shows its earliest turns out of the window the server applies, then three more;
 it reads that window off the record, never assumes one.
 
-**Needs:** `AI_GATEWAY_API_KEY`; a Claude Code sign-in, on a non-root host for Kitchen Sink (its
-Claude Code mode is off as root); Kitchen Sink's multi-file and knowledge asks need its
-specialist's search and fetch tools (FIX-2496).
+**Needs:** `AI_GATEWAY_API_KEY` and a Claude Code sign-in; or, with `GOAL_HAIKU=1`,
+`MY_ANTHROPIC_API_KEY` alone (the Anthropic key, for the agents and Claude Code both). Either way, a
+non-root host for Kitchen Sink (its Claude Code mode is off as root); Kitchen Sink's multi-file and
+knowledge asks need its specialist's search and fetch tools (FIX-2496).
 
 **Controls:** the control pass itself (`GOAL_PASS=control`): each ask must fail at least one run
 in at least one app where it runs.

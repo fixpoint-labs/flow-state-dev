@@ -7,7 +7,9 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createInMemoryStores, createResponseEmitter, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
+import { createResponseEmitter } from "../src/host";
 
 const noop = handler({
   name: "noop",

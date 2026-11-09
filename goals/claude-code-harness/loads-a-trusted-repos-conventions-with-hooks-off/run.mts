@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { claudeCodeAgent, type SdkAgentHandle } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent, type ClaudeCodeAgentHandle } from "@flow-state-dev/claude-code";
 import { testBlock } from "@flow-state-dev/testing";
 import { runGoal } from "../../lib/index.mts";
 
@@ -69,7 +69,7 @@ async function ask(dir: string, prompt: string, disallowedTools: string[]): Prom
   });
   const { error, output } = await testBlock(block, { input: { prompt } });
   if (error) return `(run failed: ${String(error.message).slice(0, 200)})`;
-  return String((output as SdkAgentHandle | undefined)?.finalMessage ?? "(no answer)").trim();
+  return String((output as ClaudeCodeAgentHandle | undefined)?.finalMessage ?? "(no answer)").trim();
 }
 
 await runGoal(async (failures) => {

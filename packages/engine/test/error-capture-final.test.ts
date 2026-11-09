@@ -3,7 +3,8 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
-import { createInMemoryStores, runAction, type StoreRegistry } from "../src";
+import { runAction, type StoreRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { ErrorCaptureEvent } from "../src/errors/error-capture";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 

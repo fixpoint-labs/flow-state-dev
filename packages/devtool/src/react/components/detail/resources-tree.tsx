@@ -1,3 +1,4 @@
+// FIX-1481.
 /**
  * Renders the privileged debug resource tree.
  *
@@ -5,11 +6,11 @@
  * groups omitted), each group a hairline card list with one `<ResourceRow>`
  * per `DebugResourceEntry`. Single resources expand
  * inline to a `<ResourceStateView>`. Collections expand to a paginated list
- * of items (`useDebugCollectionItems`) with per-item state views.
+ * of items (`useDebugCollectionResources`) with per-item state views.
  *
  * A row whose resource cannot be written at all carries a read-only mark
  * beside its scope badge, and both permission settings are in the row's
- * detail (FIX-1481). See {@link ReadOnlyBadge} for what the mark means and
+ * detail. See {@link ReadOnlyBadge} for what the mark means and
  * {@link PermissionsLine} for the question it deliberately does not answer.
  */
 import { useEffect, useState } from "react";
@@ -21,7 +22,7 @@ import type {
 } from "@flow-state-dev/client";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { useDebugCollectionItems } from "../../hooks/use-debug-collection-items";
+import { useDebugCollectionResources } from "../../hooks/use-debug-collection-resources";
 import { useDebugResourceContent } from "../../hooks/use-debug-resource-content";
 import { ResourceStateView } from "./resource-state-view";
 
@@ -288,7 +289,7 @@ function CollectionBody({
   reloadTick: number;
 }) {
   const [filter, setFilter] = useState("");
-  const { items, isLoading, error, hasMore, loadMore, refresh } = useDebugCollectionItems(
+  const { items, isLoading, error, hasMore, loadMore, refresh } = useDebugCollectionResources(
     sessionId,
     entry.primaryName,
     { topicFilter: filter, pageSize: 50 }
@@ -331,7 +332,7 @@ function CollectionBody({
       )}
       <div className="flex flex-col divide-y divide-fs-ink/10 border border-fs-ink/20 bg-fs-card empty:hidden">
         {items.map((item) => (
-          <CollectionItemRow
+          <CollectionResourceRow
             key={item.storageKey}
             sessionId={sessionId}
             resourceRef={entry.primaryName}
@@ -353,7 +354,7 @@ function CollectionBody({
   );
 }
 
-function CollectionItemRow({
+function CollectionResourceRow({
   sessionId,
   resourceRef,
   item

@@ -1,5 +1,6 @@
+// FIX-2080 D2.
 /**
- * The two cascades, and how a board pays one (FIX-2080 D2).
+ * The two cascades, and how a board pays one.
  *
  * When a task fails for good or is cancelled, nothing may wait on it for
  * good, and when a task fails, retries or is cancelled, nothing it filed may
@@ -29,8 +30,9 @@ import type { TaskEnding } from "./ending";
 /** The label a cascade's cancel carries, which pattern outputs read as `"skipped"`. */
 export const SKIPPED_LABEL = "skipped";
 
+// FIX-2080 D2.
 /**
- * A board's payer for the tasks a task filed (FIX-2080 D2): which endings owe
+ * A board's payer for the tasks a task filed: which endings owe
  * it, and how it pays. Declared on the board (`defineTaskCollection({
  * cascadeFiled })`), and bound to the running context when the board is
  * resolved.
@@ -140,14 +142,15 @@ export async function payCascadeAfterWrite(writes: CascadeWrites, row: Task | un
   }
 }
 
+// FIX-2136.
 /**
  * A touch of the board, its second half: cancel every unstarted row (pending
  * or held) whose dependency has failed or been cancelled. An ending records
  * its debt from the rows its own process has seen, so a dependent filed by
  * another process can be missed; the touch reads the committed rows and
  * catches it. The filer's `onTaskSettled` touches before it acts on a
- * failure's or a cancel's notice, so that notice names such a dependent
- * (FIX-2136). A dependency whose own debt isn't due yet is left to the
+ * failure's or a cancel's notice, so that notice names such a dependent.
+ * A dependency whose own debt isn't due yet is left to the
  * ending's pass that is paying it. Repeats until a pass cancels nothing, so
  * a chain goes in one touch.
  *

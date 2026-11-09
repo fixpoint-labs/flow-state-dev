@@ -1,5 +1,6 @@
+// FIX-2427.
 /**
- * The Postgres change bus (FIX-2427): notices cross processes on `LISTEN` /
+ * The Postgres change bus: notices cross processes on `LISTEN` /
  * `NOTIFY`, through the Postgres the stores already use.
  *
  * - **Publish.** A notice reaches this process's own subscribers at once, in
@@ -31,7 +32,7 @@
  * wake, never a lost one.
  */
 import { randomUUID } from "node:crypto";
-import { createInMemoryBus, type BusTopic, type ChangeBus, type ChangeListener, type ChangeNotice } from "@flow-state-dev/engine";
+import { createInMemoryBus, type BusTopic, type ChangeBus, type ChangeListener, type ChangeNotice } from "@flow-state-dev/engine/host";
 import type { Pool } from "pg";
 import type { QueryExecutor } from "./types";
 import { openListen, reconnectDelay, type ListenConnection } from "./listen";

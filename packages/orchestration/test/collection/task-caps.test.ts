@@ -12,10 +12,10 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createStateBackedTaskCollection,
   TaskCapExceededError,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
 import { createFakeSequencerState } from "../helpers";
 
 function makeCollection(

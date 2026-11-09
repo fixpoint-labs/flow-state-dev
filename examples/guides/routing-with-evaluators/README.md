@@ -22,8 +22,8 @@ the skill activator pick a skill with an evaluator.
 
 ## Run it with fsdev
 
-Run these from this directory (`examples/guides/routing-with-evaluators`): `fsdev` finds its
-config in the current directory only.
+Run these from this directory (`examples/guides/routing-with-evaluators`), after `pnpm install`
+in the repository: `fsdev` finds its config in the current directory only. To run it outside this repository, copy it out with [the recipe](https://github.com/fixpoint-labs/flow-state-dev/blob/main/examples/README.md#copy-an-example-out) first.
 
 | Action | Needs | What you should see |
 |---|---|---|
@@ -33,10 +33,10 @@ config in the current directory only.
 | `activate` | `AI_GATEWAY_API_KEY` | A slash command or keyword wins first; otherwise the skill whose description fits, or none when the model answers "no skill". An evaluator error fails the action |
 
 ```bash
-pnpm fsdev run routing-with-evaluators classify -i '{"message":"I was charged twice for March"}'
-pnpm fsdev run routing-with-evaluators route -i '{"message":"I was charged twice for March and need it reversed today"}'
-pnpm fsdev run routing-with-evaluators routeWithoutConfidence -i '{"message":"I was charged twice for March"}'
-pnpm fsdev run routing-with-evaluators activate -i '{"message":"Nothing will load for anyone on our team since this morning, is something broken on your side?"}'
+npx fsdev run routing-with-evaluators classify -i '{"message":"I was charged twice for March"}'
+npx fsdev run routing-with-evaluators route -i '{"message":"I was charged twice for March and need it reversed today"}'
+npx fsdev run routing-with-evaluators routeWithoutConfidence -i '{"message":"I was charged twice for March"}'
+npx fsdev run routing-with-evaluators activate -i '{"message":"Nothing will load for anyone on our team since this morning, is something broken on your side?"}'
 ```
 
 `routeWithoutConfidence` passes OpenAI's evaluation model as an instance. With `OPENAI_API_KEY`
@@ -47,10 +47,10 @@ OpenAI-compatible endpoint: the gateway serves Jev as an evaluation model string
 ## Test it
 
 ```bash
-pnpm --filter @flow-state-dev/example-guide-routing-with-evaluators test
-pnpm --filter @flow-state-dev/example-guide-routing-with-evaluators typecheck
+npm test
+npm run typecheck
 ```
 
 The tests pass scripted evaluation models from `@flow-state-dev/testing` to `createRoutingFlow`,
-so they need no key. `test/guide.test.ts` also checks that every code block in the guide is cut
-from these files.
+so they need no key. Inside the repository, `test/guide.test.ts` also checks that every code block
+in the guide is cut from these files; a copy has no guide page, so it skips that check.

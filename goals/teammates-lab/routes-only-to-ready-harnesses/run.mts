@@ -1,6 +1,6 @@
 /**
  * Goal check: the Teammates lab knows which coding harnesses can run on this
- * machine, says so at start, reads it again on request, and Chief of Staff
+ * machine, says so at start, reads it again on request, and Lead
  * files coding work only on a ready one (FIX-2391). Against
  * `fsdev dev --app @flow-state-dev/teammates`, over HTTP. See goal.md for the
  * contract.
@@ -13,7 +13,7 @@
  * - *re-check*: the `harness-readiness` flow's `read` returns Codex not ready
  *   with a remedy; after the SDK's own program logs in with a dummy key into
  *   that `CODEX_HOME`, `{ refresh: true }` returns it ready.
- * - *routes*: asked to have Codex change the README, Chief of Staff files no
+ * - *routes*: asked to have Codex change the README, Lead files no
  *   task on the Codex worker, and its reply says what to run.
  *
  * Controls (same command): `GOAL_CONTROL=no-readiness-context` takes the
@@ -93,7 +93,7 @@ async function codexLogin(codexHome: string): Promise<void> {
   });
 }
 
-/** Say `line` to Chief of Staff, wait until no request of the user's is open for 20s, and return what came after. */
+/** Say `line` to Lead, wait until no request of the user's is open for 20s, and return what came after. */
 async function ask(fsd: Fsd, line: string) {
   const session = await createWorkforceClient(fsd).ensureWorkerSession({ worker: fixture.lead });
   const before = (await itemsOf(fsd, session.id)).length;
@@ -156,7 +156,7 @@ await runGoal(async (failures, tell) => {
 
       // *routes*: before the login, so Codex is still not ready.
       const { reply, filed } = await ask(me, fixture.asks[randomInt(0, fixture.asks.length)]!);
-      if (reply.trim() === "") throw new Error(`run ${n}: Chief of Staff gave no reply, nothing to grade`);
+      if (reply.trim() === "") throw new Error(`run ${n}: Lead gave no reply, nothing to grade`);
       const onCodex = filed.filter((call) => call.includes(fixture.codexWorker));
       if (onCodex.length > 0) fail(`routes: a task was filed on ${fixture.codexWorker}: ${onCodex[0]!.slice(0, 400)}`);
       if (!reply.includes(fixture.remedy)) fail(`routes: the reply doesn't say to run \`${fixture.remedy}\`: ${JSON.stringify(reply.slice(0, 500))}`);

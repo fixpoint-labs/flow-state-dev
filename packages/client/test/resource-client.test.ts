@@ -1,6 +1,6 @@
 /**
- * Tests for the FIX-427 client methods: listCollectionItems,
- * getCollectionItemState, getResourceManifest. URL construction, response
+ * Tests for the FIX-427 client methods: listCollectionResources,
+ * getCollectionResourceState, getResourceManifest. URL construction, response
  * shape, and error pass-through.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -8,7 +8,7 @@ import {
   createClient,
   type ClientFetch,
   type CollectionListPage,
-  type CollectionItemState,
+  type CollectionResourceState,
   type ResourceManifest
 } from "../src";
 
@@ -19,7 +19,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-describe("listCollectionItems", () => {
+describe("listCollectionResources", () => {
   it("builds the URL with limit/cursor/topicPrefix and parses the response", async () => {
     const page: CollectionListPage = {
       items: [{ topic: "artifacts/a.md", clientData: { title: "A" } }],
@@ -28,7 +28,7 @@ describe("listCollectionItems", () => {
     const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(page));
     const client = createClient({ userId: "devuser", baseUrl: "", fetcher }).resources;
 
-    const result = await client.listCollectionItems("sess_1", "artifacts", {
+    const result = await client.listCollectionResources("sess_1", "artifacts", {
       limit: 50,
       cursor: "artifacts/prev",
       topicPrefix: "artifacts/a"
@@ -46,7 +46,7 @@ describe("listCollectionItems", () => {
     const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(page));
     const client = createClient({ userId: "devuser", baseUrl: "", fetcher }).resources;
 
-    await client.listCollectionItems("sess_1", "artifacts");
+    await client.listCollectionResources("sess_1", "artifacts");
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "/api/flows/sessions/sess_1/resources/artifacts"
     );
@@ -57,19 +57,19 @@ describe("listCollectionItems", () => {
       jsonResponse({ error: "forbidden" }, 403)
     );
     const client = createClient({ userId: "devuser", baseUrl: "", fetcher }).resources;
-    await expect(client.listCollectionItems("sess_1", "artifacts")).rejects.toThrow();
+    await expect(client.listCollectionResources("sess_1", "artifacts")).rejects.toThrow();
   });
 });
 
-describe("getCollectionItemState", () => {
+describe("getCollectionResourceState", () => {
   it("returns the item when present", async () => {
-    const item: CollectionItemState = {
+    const item: CollectionResourceState = {
       topic: "artifacts/a.md",
       clientData: { title: "A" }
     };
     const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(item));
     const client = createClient({ userId: "devuser", baseUrl: "", fetcher }).resources;
-    const result = await client.getCollectionItemState("sess_1", "artifacts", "a.md");
+    const result = await client.getCollectionResourceState("sess_1", "artifacts", "a.md");
     expect(result).toEqual(item);
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "/api/flows/sessions/sess_1/resources/artifacts/a.md"
@@ -79,7 +79,7 @@ describe("getCollectionItemState", () => {
   it("returns null when the topic is absent (server returns 200 + null body)", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => jsonResponse(null));
     const client = createClient({ userId: "devuser", baseUrl: "", fetcher }).resources;
-    const result = await client.getCollectionItemState("sess_1", "artifacts", "missing");
+    const result = await client.getCollectionResourceState("sess_1", "artifacts", "missing");
     expect(result).toBeNull();
   });
 });

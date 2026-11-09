@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * `<TaskPlan />` — generalized renderer for any TaskCollection (FIX-445).
+ * `<TaskPlan />` — generalized renderer for any TaskCollection.
  *
  * Subscribes to two component item types:
  *   - `task-change` — per-task lifecycle, latest-wins per `${collectionId}/${taskId}`.

@@ -1,5 +1,6 @@
+// FIX-2078; FIX-1794 S6; FIX-2083; FIX-2106; FIX-1817; FIX-2077.
 /**
- * The `work` task entry a worker flow takes tasks through (FIX-1794 S6): the
+ * The `work` task entry a worker flow takes tasks through: the
  * task as one turn of the worker, behind the claim gate, and the notice its
  * ending owes, sent to the conversation that filed it.
  *
@@ -8,25 +9,25 @@
  *   user's scope only. Every check a board's gate runs (row, attempt, identity,
  *   status, assignee, lease, run link) runs on the ledger the hand-over names.
  *   A session takes tasks only from the conversation it was opened for, and a
- *   workstream's session the routed tasks filed for it there (FIX-2083).
- * - **A routed task** (FIX-2083). Its turn reads the message it hands on, as
+ *   workstream's session the routed tasks filed for it there.
+ * - **A routed task**. Its turn reads the message it hands on, as
  *   written (`../coordinator/routed-brief`), and its model is shown the
  *   conversation's recent lines for that turn when the flow's generator reads
  *   `routedTaskHistory`.
- * - **Its hop count** (FIX-2106). The turn starts at the worker-message hop
+ * - **Its hop count**. The turn starts at the worker-message hop
  *   count and chain its filing recorded on the row, read off the row the gate
  *   verified, so a message from it counts on in its filer's exchange, in an
  *   ongoing session as in one of its own. A row filed before rows recorded
  *   one reads the session's count, as before.
- * - **The message** (FIX-1817). The task as filed is the turn's user item,
+ * - **The message**. The task as filed is the turn's user item,
  *   so it is part of the session's history; on the attempt an answer to the
  *   worker's question re-queued, the answer is, labelled as one.
  * - **The ending.** The gate settles the row through the ledger, whose ending
  *   recorder marks the notice owed in that same write (orchestration's notice
  *   module).
- * - **The notice** (FIX-2078). The gate's ending is delivered by
+ * - **The notice**. The gate's ending is delivered by
  *   orchestration in that write's own pass: the filer's wake first, then the
- *   notice to the session that filed the task. Before FIX-2078, after the gate,
+ *   notice to the session that filed the task. In older versions, after the gate,
  *   on success or failure, each notice the
  *   session's task still owes (the task the hand-over named at the session's
  *   birth, and the follow-ups that run after it in the same session, one at
@@ -39,7 +40,7 @@
  *   for the conversation's next touch of its board. A conversation whose
  *   worker was fired accepts the send and then refuses to run it: the notice
  *   stays owed, and this session never hears of that refusal.
- * - **Its pieces** (FIX-2077). A turn that files pieces on the task
+ * - **Its pieces**. A turn that files pieces on the task
  *   session's own board leaves its task running when it ends, with no lease
  *   (`keptOpenBy: "filed"`); the turn each piece's ending wakes runs for the
  *   task (`./task-admission`), and the request after which no piece holds it
@@ -57,6 +58,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { routedFromStateSchema } from "../workers/routed-from";
 import { DISPATCH_ENTRY, FILED_HOP } from "./board-entries";
 import { hopMarkOf, messageTurnStateSchema, startTurnAtHop } from "../messages/hop";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
@@ -140,12 +142,13 @@ export type WorkerTaskEntryOptions = {
     }
 );
 
+// FIX-2082 D2.
 /**
  * The ledger resolver a `work` entry's gate uses for a conversation's board,
  * and the one a harness manager takes for boards it resolves per claim: the
  * conversation ledger at `partition`, at the running user's scope, for the
  * conversation the running session was opened for, or, for a worker's step
- * filed `session: "new"` (FIX-2082 D2), the plan ledger at that same
+ * filed `session: "new"`, the plan ledger at that same
  * partition; or, for another conversation's ledger, only when the row it names
  * was filed for this very session (a routed task for a workstream, whose
  * filing resolved its session: `Task.targetSessionId`, server-written).
@@ -188,22 +191,23 @@ const noteRoutedFrom = handler({
   inputSchema: z.unknown(),
   outputSchema: z.object({}),
   resources: { ...routedSessionResources },
-  sessionStateSchema: z.object({ [ROUTED_FROM_STATE_KEY]: z.string().min(1).optional() }),
+  sessionStateSchema: z.object({ [ROUTED_FROM_STATE_KEY]: routedFromStateSchema }),
   execute: async (_task: unknown, ctx) => {
     const state = (ctx.session.state ?? {}) as Record<string, unknown>;
     if (typeof state[FILING_SESSION_STATE_KEY] === "string") return {};
-    const claim = currentWorkerClaim(ctx as never);
+    const claim = currentWorkerClaim(ctx);
     const partition = claim?.collectionId === CONVERSATION_LEDGER_ID ? claim.partition : undefined;
     if (partition === undefined) return {};
-    await noteRoutedSession(ctx as never, ctx.session.identity.id, { partition, taskId: claim!.taskId });
+    await noteRoutedSession(ctx, ctx.session.identity.id, { partition, taskId: claim!.taskId });
     if (state[ROUTED_FROM_STATE_KEY] !== partition) await ctx.session.patchState({ [ROUTED_FROM_STATE_KEY]: partition });
     return {};
   }
 });
 
+// FIX-2106.
 /**
  * Start the task's turn at the hop count and chain its filing recorded on the
- * row (FIX-2106): read off the row the gate just verified, through the ledger
+ * row: read off the row the gate just verified, through the ledger
  * the claim names, never off the dispatch's payload. A row with none (one
  * filed before rows recorded it, or a step) leaves the turn at its session's.
  */
@@ -213,11 +217,11 @@ const startAtFiledHop = handler({
   outputSchema: z.object({}),
   requestStateSchema: messageTurnStateSchema,
   execute: async (_task: unknown, ctx) => {
-    const claim = currentWorkerClaim(ctx as never);
+    const claim = currentWorkerClaim(ctx);
     if (claim === undefined) return {};
-    const ledger = await conversationLedgers(claim.collectionId, ctx as never, claim.partition, claim.taskId);
+    const ledger = await conversationLedgers(claim.collectionId, ctx, claim.partition, claim.taskId);
     const mark = hopMarkOf(ledger?.get(claim.taskId)?.metadata?.[FILED_HOP]);
-    if (mark !== undefined) await startTurnAtHop(ctx as never, mark.hop, mark.chain);
+    if (mark !== undefined) await startTurnAtHop(ctx, mark.hop, mark.chain);
     return {};
   }
 });
@@ -298,7 +302,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   const block =
     options.block !== undefined
       ? base.step(
-          (task: TaskWorkerInput, ctx): WorkerTaskBlockInput => ({ ...task, claim: verifiedClaimOf(ctx as never, name) }),
+          (task: TaskWorkerInput, ctx): WorkerTaskBlockInput => ({ ...task, claim: verifiedClaimOf(ctx, name) }),
           options.block
         )
       : base

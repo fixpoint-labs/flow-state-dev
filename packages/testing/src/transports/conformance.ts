@@ -15,10 +15,9 @@ import { describe, it, expect } from "vitest";
 import type {
   InboundRequestEnvelope,
   InboundTransportAdapter,
-  InboundTransportHost,
-  ResolvedPrincipal,
-  PrincipalResolutionContext
-} from "@flow-state-dev/engine";
+  InboundTransportHost
+} from "@flow-state-dev/engine/host";
+import type { ResolvedPrincipal, PrincipalResolutionContext } from "@flow-state-dev/core/types";
 
 /**
  * Snapshot of a dispatch call captured by the mock host. Adapters under
@@ -48,7 +47,7 @@ export type CreateMockTransportHostOptions = {
 
 /**
  * Build a host suitable for adapter tests. Records every dispatch and
- * principal resolution; returns a no-op `DispatchHandle` so adapters can
+ * principal resolution; returns a no-op `InboundDispatchHandle` so adapters can
  * be exercised without spinning up the runtime.
  */
 export function createMockTransportHost(

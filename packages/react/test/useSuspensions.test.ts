@@ -2,7 +2,7 @@
  * Behavioral tests for useSuspensions (FIX-276).
  *
  * The react package has no DOM/render harness by convention (see the note in
- * useResourceCollectionItem-overlay.test.ts), so the hook's two testable units
+ * useCollectionResource-overlay.test.ts), so the hook's two testable units
  * are exercised directly as pure functions:
  *  - `deriveSuspensions` — the `useMemo` derivation over `session.items`.
  *  - `resolveSuspension` — the body the `approve`/`reject` callbacks wrap,
@@ -176,7 +176,7 @@ describe("resolveSuspension", () => {
     return { resolve, inFlight, markStart, markEnd, setError };
   }
 
-  it("streams the resume with { suspensionId, requestId, action, data } for approve", async () => {
+  it("streams the answer with { suspensionId, requestId, action, data } for approve, and no resumedBy", async () => {
     const h = harness();
     const item = suspension({ requestId: "req_99" });
 
@@ -185,7 +185,6 @@ describe("resolveSuspension", () => {
       item,
       action: "approve",
       data: { note: "looks good" },
-      resumedBy: "op_1",
       markStart: h.markStart,
       markEnd: h.markEnd,
       setError: h.setError
@@ -195,8 +194,7 @@ describe("resolveSuspension", () => {
       suspensionId: "sus_1",
       requestId: "req_99",
       action: "approve",
-      data: { note: "looks good" },
-      resumedBy: "op_1"
+      data: { note: "looks good" }
     });
     expect(h.setError).toHaveBeenCalledWith(null);
   });

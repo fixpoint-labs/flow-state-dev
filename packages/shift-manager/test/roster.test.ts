@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { pickedTeam, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import { parseRoute, pathFor } from "../src/lib/routes";
-import { GENERAL_TEAM, inboxSection, toBoardRow, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
+import { GENERAL_TEAM, inboxSection, toBoardTaskView, toWorker, type Ask, type BoardTaskView, type Worker } from "../src/lib/reads";
 
 const ORG = "acme";
 
@@ -49,7 +49,7 @@ describe("BR-13a, BR-13b: which group a worker sits in", () => {
 });
 
 /** A loaded snapshot of `workers`, one conversation's board holding `rows`, and `asks` (or asks that failed). */
-function snapshotOf(workers: Worker[], rows: BoardRow[], asks: Ask[] | "failed" = []) {
+function snapshotOf(workers: Worker[], rows: BoardTaskView[], asks: Ask[] | "failed" = []) {
   const read = {
     readAt: 0,
     sessions: [],
@@ -63,16 +63,16 @@ function snapshotOf(workers: Worker[], rows: BoardRow[], asks: Ask[] | "failed" 
 }
 
 const worker = (id: string) => toWorker({ id, kind: "worker" })!;
-const row = (id: string, status: string, assignee: string | null): BoardRow =>
-  toBoardRow("s_desk.tasks", "s_desk", id, { id, title: id, status, assignee });
+const row = (id: string, status: string, assignee: string | null): BoardTaskView =>
+  toBoardTaskView("s_desk.tasks", "s_desk", id, { id, title: id, status, assignee });
 /** A running row held on a question for you (FIX-2131): what a task waiting on you is. */
-const waiting = (id: string, assignee: string | null): BoardRow =>
-  toBoardRow("s_desk.tasks", "s_desk", id, {
+const waiting = (id: string, assignee: string | null): BoardTaskView =>
+  toBoardTaskView("s_desk.tasks", "s_desk", id, {
     id,
     title: id,
     status: "in_progress",
     assignee,
-    holds: [{ id: `q-${id}`, actor: "user", openedAt: 1, source: { kind: "row", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
+    holds: [{ id: `q-${id}`, actor: "user", openedAt: 1, source: { kind: "task", closedBy: [{ by: "answer" }] }, ask: { kind: "question", prompt: "Which one?" } }],
   });
 const ask = (workerId: string | null, suspensionId: string): Ask =>
   ({ sessionId: `s_${suspensionId}`, workerId, flowId: workerId, parentSessionId: null, kind: "approval", item: { suspensionId }, since: 0, unanswerable: null }) as unknown as Ask;

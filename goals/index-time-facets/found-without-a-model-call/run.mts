@@ -27,12 +27,14 @@ import {
 } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import {
-  createInMemoryStores,
-  createModelResolver,
-  createResponseEmitter,
   runAction,
-  type StoreRegistry,
+  type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
+import { createModelResolver } from "@flow-state-dev/core";
+import { createResponseEmitter } from "@flow-state-dev/engine/host";
 import { z } from "zod";
 import {
   ticketQuestions,

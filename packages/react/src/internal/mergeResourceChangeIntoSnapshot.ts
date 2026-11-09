@@ -1,8 +1,9 @@
+// FIX-739.
 /**
  * Pure reducer that folds a `live: true` `resource_change` SSE item into the
  * React layer's cached `SessionStateSnapshotResponse`, so `useResource` and
- * `useResourceCollectionItem` surface mid-stream resource updates without an
- * HTTP refetch (FIX-739). The resource-side analog of
+ * `useCollectionResource` surface mid-stream resource updates without an
+ * HTTP refetch. The resource-side analog of
  * `mergeStateChangeIntoSnapshot`.
  *
  * Unlike `state_change`, a resource delta is the **full projected `clientData`**

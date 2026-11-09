@@ -1,6 +1,5 @@
 /**
- * Re-export shim: the internal item surface (RuntimeItem, BlockValueInternal, refBlockValue, resolveBlockValueInternal, parseBlockInstanceId) now lives in `@flow-state-dev/contracts`.
- * Preserved at this path so `@flow-state-dev/core/items*` consumers (and
- * core-internal deep imports) resolve unchanged. See packages/contracts.
+ * Core's own path to the internal item surface (RuntimeItem, BlockValueInternal, refBlockValue, resolveBlockValueInternal, parseBlockInstanceId), which lives in `@flow-state-dev/contracts`.
+ * Not a published entry: other packages read it from `@flow-state-dev/core/internal`. See packages/contracts.
  */
 export * from "@flow-state-dev/contracts/items/internal";

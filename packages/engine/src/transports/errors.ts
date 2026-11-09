@@ -21,9 +21,10 @@ export class PrincipalResolutionError extends Error {
   }
 }
 
+// FIX-1442.
 /**
  * Thrown when TRUSTED code submits an identity with no usable organization
- * (FIX-1442) — a direct `runAction`, a pre-resolved adapter envelope, a CLI
+ * — a direct `runAction`, a pre-resolved adapter envelope, a CLI
  * seed, a queued job replayed from a durable substrate.
  *
  * Distinct from {@link PrincipalResolutionError}, which answers an inbound

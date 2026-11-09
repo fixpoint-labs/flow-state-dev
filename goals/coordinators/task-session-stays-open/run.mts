@@ -196,7 +196,7 @@ function openQuestionOf(t: StoredTask | undefined): { id: string; ask: { kind: s
   const row = t as (StoredTask & { holds?: Array<{ id: string; source: { kind: string }; ask: { kind: string; prompt: string } }>; steers?: Array<{ answers?: string }> }) | undefined;
   if (row?.status !== "in_progress") return undefined;
   const answered = new Set((row.steers ?? []).flatMap((s) => (s.answers === undefined ? [] : [s.answers])));
-  return row.holds?.find((h) => h.source.kind === "row" && !answered.has(h.id));
+  return row.holds?.find((h) => h.source.kind === "task" && !answered.has(h.id));
 }
 
 // ---- grading ----------------------------------------------------------------------------

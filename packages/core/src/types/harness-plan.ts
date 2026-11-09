@@ -1,3 +1,4 @@
+// BP-030.
 /**
  * The run's plan record: one shape every coding harness writes its own to-do
  * list into, and one writer for harnesses whose plan arrives as a whole list.
@@ -13,7 +14,7 @@
  * - {@link OBSERVED_PLAN} / {@link observedPlanCollection} /
  *   {@link observedPlanItemStateSchema} — the plan rows. The key and fields
  *   are the ones `@flow-state-dev/claude-code` shipped before the shape moved
- *   here, so rows already stored still read (BP-030). Fields stay nullable; a
+ *   here, so rows already stored still read. Fields stay nullable; a
  *   new one is added, never changed.
  * - {@link OBSERVED_PLAN_LIST} / {@link observedPlanListCollection} — one
  *   marker per run namespace saying whether the run's plan is `writing`,
@@ -58,6 +59,7 @@ export type ObservedOutcome = "pending" | "applied" | "failed";
 /** Runtime validator for {@link ObservedOutcome}. */
 export const observedOutcomeSchema = z.enum(["pending", "applied", "failed"]);
 
+// BP-023.
 /**
  * One plan row, keyed `<run namespace>/<item>`: the harness's own item id, or
  * the item's place in the list when the harness reports none (see
@@ -66,7 +68,7 @@ export const observedOutcomeSchema = z.enum(["pending", "applied", "failed"]);
  * `status` and `previousStatus` are free strings, not an enum: the vocabulary
  * belongs to the harness, and a value we have never seen records as itself
  * rather than throwing. `status` stays null until the harness reports one.
- * Every field is nullable with a null default (BP-023) so a row written by an
+ * Every field is nullable with a null default so a row written by an
  * older or newer shape still parses.
  */
 export const observedPlanItemStateSchema = z.object({
@@ -168,7 +170,7 @@ export const observedPlanListCollection = defineResourceCollection({
  * itself raw, which is what `a/b` encodes to now.
  *
  * A writer builds a run's namespace from it (`<planKeySegment(requestId)>/<run>`);
- * a reader finds a request's rows with {@link planRowsPrefix}, which uses it.
+ * a reader finds a request's rows with {@link planResourcesPrefix}, which uses it.
  */
 export function planKeySegment(value: string): string {
   const escaped = value
@@ -193,7 +195,7 @@ export function planKeySegment(value: string): string {
  * @param requestId The request whose rows to select, as the framework names it.
  * @param key Which collection: the plan rows (default) or the list markers.
  */
-export function planRowsPrefix(
+export function planResourcesPrefix(
   requestId: string,
   key: typeof OBSERVED_PLAN | typeof OBSERVED_PLAN_LIST = OBSERVED_PLAN,
 ): string {
@@ -427,16 +429,17 @@ export interface PlanMarkerRead {
   readonly conversation?: string | null;
 }
 
+// BP-030.
 /**
  * Where to read one request's plan, from that request's run markers (the
- * markers listed under {@link planRowsPrefix}`(requestId, OBSERVED_PLAN_LIST)`).
+ * markers listed under {@link planResourcesPrefix}`(requestId, OBSERVED_PLAN_LIST)`).
  *
  * - `conversation` — a run of the request left a pointer: the plan is the
- *   conversation's, its rows under `rowsPrefix` and its marker keyed
+ *   conversation's, its rows under `resourcesPrefix` and its marker keyed
  *   `namespace`.
  * - `run` — no run left one: the request was recorded before plans were kept
- *   per conversation (BP-030), or it never confirmed a conversation. Its own
- *   rows are under `rowsPrefix` and its markers are the ones passed in, as
+ *   per conversation, or it never confirmed a conversation. Its own
+ *   rows are under `resourcesPrefix` and its markers are the ones passed in, as
  *   before.
  *
  * With several pointers (a retried block), the last run's wins, by key order.
@@ -445,13 +448,13 @@ export interface PlanMarkerRead {
 export function readPlanTarget(
   requestId: string,
   markers: readonly PlanMarkerRead[],
-): { readonly kind: "conversation"; readonly namespace: string; readonly rowsPrefix: string } | { readonly kind: "run"; readonly rowsPrefix: string } {
+): { readonly kind: "conversation"; readonly namespace: string; readonly resourcesPrefix: string } | { readonly kind: "run"; readonly resourcesPrefix: string } {
   const pointer = markers
     .filter((m) => typeof m.conversation === "string" && m.conversation.length > 0)
     .sort((a, b) => a.topic.localeCompare(b.topic, "en", { numeric: true }))
     .at(-1)?.conversation;
   if (typeof pointer === "string") {
-    return { kind: "conversation", namespace: pointer, rowsPrefix: `${OBSERVED_PLAN}/${pointer}/` };
+    return { kind: "conversation", namespace: pointer, resourcesPrefix: `${OBSERVED_PLAN}/${pointer}/` };
   }
-  return { kind: "run", rowsPrefix: planRowsPrefix(requestId) };
+  return { kind: "run", resourcesPrefix: planResourcesPrefix(requestId) };
 }

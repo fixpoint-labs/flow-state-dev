@@ -1,6 +1,7 @@
+// FIX-2239.
 /**
  * `waitOnRequest` — park the running request on the one wait gate, bound to a
- * request that already exists, and map how that request ended (FIX-2239).
+ * request that already exists, and map how that request ended.
  *
  * The park half of `dispatcher({ wait: true })`: it sends nothing. A caller
  * that dispatches sends first, under its own `runOnce` key, then waits here; a
@@ -10,6 +11,7 @@
  */
 import type { BlockContext } from "../types/block";
 import { parkOnWait } from "../types/wait-gate";
+import { requestHostOf } from "../types/request-host";
 
 /** Arguments to {@link waitOnRequest}. */
 export type WaitOnRequestInput = {
@@ -56,7 +58,7 @@ export type RequestWaitOutcome =
  * that first, and this throws without `ctx.runOnce` or `RequestHost.waits`.
  */
 export async function waitOnRequest(ctx: BlockContext, input: WaitOnRequestInput): Promise<RequestWaitOutcome> {
-  const waits = ctx.requestHost?.waits;
+  const waits = requestHostOf(ctx)?.waits;
   if (waits === undefined || ctx.runOnce === undefined) {
     throw new Error("waitOnRequest needs a host that can hold a wait (ctx.runOnce and RequestHost.waits).");
   }

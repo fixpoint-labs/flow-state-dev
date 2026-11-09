@@ -12,7 +12,7 @@
  * and again after a later touch, so a second copy shows.
  */
 import { describe, expect, it } from "vitest";
-import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
@@ -166,7 +166,7 @@ describe("a task held on a question (FIX-2131)", () => {
       // Nothing ended: the filer is told the question (FIX-2241), and no notice.
       const held = (await host.row("alice", filing, filed.taskId!))!;
       expect(held.status).toBe("in_progress");
-      const question = held.holds!.find((hold) => hold.source.kind === "row")!;
+      const question = held.holds!.find((hold) => hold.source.kind === "task")!;
       expect(await linesAbout(host, conv, goal)).toEqual([expect.stringContaining(`answers: "${question.id}"`)]);
       const answered = await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, answers: question.id, message: "eu" });
       expect(answered.output).toMatchObject({ ok: true });

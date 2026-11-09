@@ -314,8 +314,21 @@ export function coverageProblems(sheet: Sheet, pass: Pass): string[] {
   return out;
 }
 
-/** Each graded result's app, ask and the commit it ran on, as a sheet file records them. */
-export type SheetStamp = { app: App; ask: Ask; commit?: string };
+/** Each graded result's app, ask, and the commit and models it ran on, as a sheet file records them. */
+export type SheetStamp = { app: App; ask: Ask; commit?: string; model?: string };
+
+/**
+ * Why a pass's sheets can't be read as one pass on one model: a result with
+ * no model recorded, or results on more than one (`model.mts` →
+ * `ClosureModel`). Empty when every result ran on the same model.
+ */
+export function sheetModelProblems(stamps: readonly SheetStamp[]): string[] {
+  const out: string[] = [];
+  const models = new Set(stamps.map((s) => s.model ?? "(none)"));
+  if (models.size > 1) out.push(`the sheets mix ${models.size} models: ${[...models].join(", ")}`);
+  for (const s of stamps) if (s.model === undefined) out.push(`${s.app} ${s.ask}: no model recorded`);
+  return out;
+}
 
 /**
  * Why a pass's sheets can't be read as one pass: a result with no commit, a

@@ -43,7 +43,7 @@ export {
 
 export {
   type ScheduleIndex,
-  type ScheduleIndexRow
+  type ScheduleIndexEntry
 } from "./scheduleIndex";
 
 export {

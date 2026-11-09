@@ -7,16 +7,18 @@
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createFlowApiRouter, createFlowRegistry, createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
+import { createFlowApiRouter, createFlowRegistry, createFlowState, inMemoryStores, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 const probe = handler({
   name: "probe",
   inputSchema: z.object({}).passthrough(),
   outputSchema: z.any(),
   execute: (_input, ctx) => ({
-    hasWaitSweeper: ctx.requestHost?.hasWaitSweeper === true,
-    resumeWait: typeof ctx.requestHost?.resumeWait === "function"
+    hasWaitSweeper: requestHostOf(ctx)?.hasWaitSweeper === true,
+    resumeWait: typeof requestHostOf(ctx)?.resumeWait === "function"
   })
 });
 const flow = defineFlow({ kind: "probe", actions: { probe: { block: probe } } })({ id: "probe" });

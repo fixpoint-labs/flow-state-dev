@@ -1,6 +1,6 @@
 {
   "name": "@flow-state-dev/testing",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Test harnesses and mocks for flow-state-dev blocks and flows.",
   "keywords": [
     "ai",
@@ -31,9 +31,17 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
+    "./benchmark": {
+      "types": "./dist/benchmark/index.d.ts",
+      "default": "./src/benchmark/index.ts"
+    },
     "./conformance": {
       "types": "./dist/transports/conformance.d.ts",
       "default": "./src/transports/conformance.ts"
+    },
+    "./bundle": {
+      "types": "./dist/bundle.d.ts",
+      "default": "./src/bundle.ts"
     }
   },
   "license": "MIT",
@@ -49,6 +57,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./benchmark": {
+        "types": "./dist/benchmark/index.d.ts",
+        "default": "./dist/benchmark/index.js"
       },
       "./conformance": {
         "types": "./dist/transports/conformance.d.ts",

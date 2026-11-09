@@ -29,13 +29,13 @@ import { dispatcher, handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createResourceBackedTaskCollection,
   defineTaskCollection,
   ticketForClaim,
   type TaskCollectionRef,
   type TaskWorker,
   type TaskWriteOutcome,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 import type { JsonObject } from "@flow-state-dev/core";
 import type { ResourceRef } from "@flow-state-dev/core/types";

@@ -5,11 +5,11 @@ import {
   isTerminalStatus,
   isTransitionAllowed,
   allowedTransitionsFrom,
-  assertTransitionAllowed,
   IllegalTaskTransitionError,
-  matchesFilter,
   type Task,
 } from "../../src/tasks";
+import { assertTransitionAllowed } from "../../src/tasks/schema/task-status";
+import { matchesFilter } from "../../src/tasks/schema/task-init";
 
 const baseTask = (overrides: Partial<Task> = {}): Task => ({
   id: "t1",

@@ -25,7 +25,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { Boxes } from "lucide-react";
 import { useDevTool } from "../../context/devtool-context";
-import { readEveryPage, workerInventoryRef, toWorkerRow, type InventoryRead } from "../../lib/inventory";
+import { readEveryPage, workerInventoryRef, toWorkerView, type InventoryRead } from "../../lib/inventory";
 import { TabsContent, TabsTrigger } from "../ui/tabs";
 
 /** The tab's value in the workspace `Tabs`. */
@@ -128,7 +128,7 @@ function InventoryView({ sessionId, inventoryRef }: { sessionId: string; invento
               </tr>
             </thead>
             <tbody>
-              {rows.map(toWorkerRow).map((worker) => (
+              {rows.map(toWorkerView).map((worker) => (
                 <tr key={worker.id} className="border-b border-fs-ink/12 align-top last:border-b-0 hover:bg-fs-ink/5">
                   <td className="px-3 py-2 font-fs-mono text-[11.5px] text-fs-ink">{worker.id}</td>
                   <td className="py-2 pr-3 font-fs-mono text-[11.5px] text-fs-ink2">{worker.kind ?? "unknown"}</td>

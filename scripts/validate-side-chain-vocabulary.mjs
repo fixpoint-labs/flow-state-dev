@@ -108,11 +108,13 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { Project, Node } from "ts-morph";
+import { SIDE_CHAIN, SIDE_CHAIN_EXEMPT_FILES, escapeRe } from "../docs/contributing/glossary.mjs";
 
 const rootDir = process.cwd();
 
 /**
- * The retired names, in full. This is a DENYLIST, and it is closed.
+ * The retired names, in full, read from the glossary (`docs/contributing/glossary.mjs`,
+ * the Side chain entry). This is a DENYLIST, and it is closed.
  *
  * An earlier version of this check banned the *token* — any identifier whose
  * camel-split contained `work`, minus a few allowlisted concepts. That rule was
@@ -135,52 +137,7 @@ const rootDir = process.cwd();
  * The property to preserve, and the one the fixtures pin: adding `scheduleWork`
  * to this repo tomorrow must not fail CI, and reintroducing `.work()` must.
  */
-const RETIRED_NAMES = new Set([
-  // The three DSL verbs distinctive enough to ban in any position.
-  "workIf",
-  "waitForWork",
-  "forEachBackground",
-  // The request-scoped pool — published `core` and `engine` surface.
-  "RequestWorkPool",
-  "RequestWorkPoolResult",
-  "RequestWorkPoolDrainOptions",
-  "RequestWorkPoolDrainAllOptions",
-  "RequestWorkPoolDrainToQuiescenceOptions",
-  "RequestWorkPoolImpl",
-  "RequestWorkTaskMeta",
-  "getRequestWorkPool",
-  "createRequestWorkPool",
-  "drainRequestWorkPool",
-  "_requestWorkPool",
-  "requestWorkPool",
-  // The tier-2 abort signal — a top-level `core` export.
-  "composeBackgroundSignal",
-  "_requestBackgroundSignal",
-  "withBackgroundSignal",
-  // The test harness — published `testing` surface.
-  "WorkTrace",
-  // The flow-level config this rename DELETED. Listed so it cannot return by
-  // the back door under its old name.
-  "WorkConfig",
-  // Internal types that named the tier.
-  "SequencerWorkTask",
-  "WaitForWorkOptions",
-  "BackgroundCallShape",
-  "WorkOptions",
-  "WorkResult",
-  "RunBackgroundResult",
-  // Internal helpers and constants that named the tier, all of which lived in
-  // a `packages/*/src` tree before the rename.
-  "dispatchWorkTask",
-  "buildWorkTraces",
-  "runBackground",
-  "backgroundTaskCtx",
-  "backgroundSignalOverride",
-  "backgroundController",
-  "DEFAULT_BACKGROUND_CONCURRENCY",
-  // DevTool.
-  "BackgroundBadge",
-]);
+const RETIRED_NAMES = new Set(SIDE_CHAIN.any);
 
 /**
  * Where the denylist deliberately STOPS.
@@ -220,7 +177,7 @@ const RETIRED_NAMES = new Set([
  * else's model is this check's business. Callability is the discriminator, and
  * it needs no type information to read.
  */
-const RETIRED_CALLABLE_MEMBERS = new Set(["work"]);
+const RETIRED_CALLABLE_MEMBERS = new Set(SIDE_CHAIN.called ?? []);
 
 /**
  * Contract fields, refused only where the contract is DECLARED.
@@ -239,7 +196,7 @@ const RETIRED_CALLABLE_MEMBERS = new Set(["work"]);
  * typechecked, it is not caught by anything, and that gap is real. Under-reaching with the boundary written down beats taxing
  * every domain model in the repo.
  */
-const RETIRED_CONTRACT_FIELDS = new Set(["workGroupId", "backgroundTasks", "workResults"]);
+const RETIRED_CONTRACT_FIELDS = new Set(SIDE_CHAIN["contract-field"] ?? []);
 
 /** The packages whose `src` owns a persisted or published contract. */
 const CONTRACT_PACKAGES = /packages[/\\](contracts|core|engine|testing)[/\\]src[/\\]/;
@@ -328,24 +285,26 @@ export const retiredNames = [
  * surface is a decision someone has to make out loud. The list is asserted by
  * name in the fixtures so it cannot quietly become an escape hatch — the
  * invariant that matters is that it is closed and named, not that it is one.
+ * The files are the glossary's side-chain exemption, and the glossary refuses to
+ * load unless it holds exactly these two.
  */
-const EXEMPT_FILES = [
-  "packages/devtool/test/legacy-phase-record.test.ts",
-  "packages/engine/test/side-chain-rename-continuation.test.ts",
-];
-
-if (EXEMPT_FILES.length !== 2) {
-  console.error(
-    `[side-chain-vocabulary] The exemption list must hold exactly the two rename-boundary tests; found ${EXEMPT_FILES.length}.`
-  );
-  process.exit(1);
-}
+const EXEMPT_FILES = SIDE_CHAIN_EXEMPT_FILES;
 
 /** Exported so a test can pin the exemption by name. */
 export const exemptFiles = EXEMPT_FILES;
 
 /** Op literals that become block-path segments or default block names. */
-const PATH_OP_LITERALS = new Set(["work", "workIf", "forEachBackground"]);
+const PATH_OP_LITERALS = new Set(SIDE_CHAIN["path-op"] ?? []);
+/** The op literals as one regex alternation, for the segment, template and regex forms of E4. */
+const OPS = [...PATH_OP_LITERALS].map(escapeRe).join("|");
+/** E2: the string values that stood for the tier. */
+const TIER_VALUES = new Set(SIDE_CHAIN["tier-value"] ?? []);
+/** E4: an already-built segment literal, `op[index]`. */
+const SEGMENT_LITERAL = new RegExp(`^(${OPS})\\[\\d+\\]$`);
+/** E4: a template default name's head, `op:`. */
+const TEMPLATE_HEAD = new RegExp(`^(${OPS}):`);
+/** E4: a block path asserted as a regex, `/\/op\[\d+\]$/`, written in the regex literal's own source. */
+const REGEX_SEGMENT = new RegExp(`(^|\\/|\\\\\\/)(${OPS})\\\\\\[(?![a-zA-Z])`);
 /**
  * Path builders, each mapped to the position of ITS OWN `op` argument.
  *
@@ -472,7 +431,7 @@ function isCompleteStringLiteral(node) {
  * `FlowErrorScope` ship the retired term, which is where this started.
  */
 function isRetiredTierLiteral(literal) {
-  if (literal.getLiteralValue() !== "work") return false;
+  if (!TIER_VALUES.has(literal.getLiteralValue())) return false;
   const { parent, node: held } = effectiveParent(literal);
   if (parent === undefined) return false;
 
@@ -481,8 +440,17 @@ function isRetiredTierLiteral(literal) {
   // can see it — and a fixture renamed without its assertion is a test that
   // now pins the retired spelling. Narrowed to the enclosing STATEMENT
   // mentioning the field, so an unrelated `"work"` in the same file is not
-  // swept up.
-  const statement = literal.getFirstAncestor((a) => Node.isExpressionStatement(a));
+  // swept up. The NEAREST statement of any kind: an `if (…["work"]…)` inside a
+  // callback otherwise walks up to the call holding the whole callback, and a
+  // worker's `work` entry name reads as a tier assertion because the callback
+  // mentions `.phase` lines away.
+  const nearest = literal.getFirstAncestor((a) => Node.isStatement(a));
+  // An assertion stands as an expression, is returned, or is held in a const.
+  const statement =
+    nearest !== undefined &&
+    (Node.isExpressionStatement(nearest) || Node.isReturnStatement(nearest) || Node.isVariableStatement(nearest))
+      ? nearest
+      : undefined;
   if (statement !== undefined && /\.(phase|scope)\b/.test(statement.getText())) return true;
 
   // A tier passed positionally into a provenance/phase builder:
@@ -621,7 +589,7 @@ function collectFindings(project, relativePath) {
         // The first version used `\d*\]?` with no `$`, which matched
         // `"work[shop"`, `"work[abc]"` and `"work[0]suffix"` — a false positive
         // in a gate, the direction this check has already had to correct twice.
-        if (/^(work|workIf|forEachBackground)\[\d+\]$/.test(node.getLiteralValue())) {
+        if (SEGMENT_LITERAL.test(node.getLiteralValue())) {
           record(node, "E4", `segment literal "${node.getLiteralValue()}"`);
           return;
         }
@@ -658,7 +626,7 @@ function collectFindings(project, relativePath) {
       // E4 — template default names, `work:${block.name}`.
       if (Node.isTemplateExpression(node) && inSequencerSrc) {
         const head = node.getHead().getLiteralText();
-        if (/^(work|workIf|forEachBackground):/.test(head)) {
+        if (TEMPLATE_HEAD.test(head)) {
           record(node, "E4", `\`${head}\${…}\``);
         }
         return;
@@ -679,7 +647,7 @@ function collectFindings(project, relativePath) {
         // segment. Same over-reach the segment rule had, found by auditing the
         // other pattern-shaped rules after review caught that one rather than
         // waiting to be told about this one.
-        if (/(^|\/|\\\/)(work|workIf|forEachBackground)\\\[(?![a-zA-Z])/.test(source)) {
+        if (REGEX_SEGMENT.test(source)) {
           record(node, "E4", source.slice(0, 40));
         }
       }
@@ -721,7 +689,7 @@ const PREFILTER = new RegExp(
     // preceded by a letter. The lookbehind is what keeps `framework`,
     // `network`, `teamwork` and `homework` out — they contain `work` but can
     // never BE the member `work`, so parsing them buys nothing.
-    ...[...RETIRED_NAMES, ...RETIRED_CALLABLE_MEMBERS, ...RETIRED_CONTRACT_FIELDS].map(
+    ...[...RETIRED_NAMES, ...RETIRED_CALLABLE_MEMBERS, ...RETIRED_CONTRACT_FIELDS, ...PATH_OP_LITERALS].map(
       (n) => `(?<![A-Za-z])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`
     ),
     // E2's literal, in any quote style JavaScript allows.
@@ -734,7 +702,7 @@ const PREFILTER = new RegExp(
     // the most ordinary word here, so that is a plausible future call), E2
     // would still fire on the literal while the filter stopped admitting its
     // file. Cheap insurance against a change made two files away.
-    "[\"'`]work[\"'`]",
+    ...[...TIER_VALUES].map((v) => `["'\`]${v}["'\`]`),
   ].join("|")
 );
 

@@ -11,11 +11,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DEFAULT_LOCAL_USER_ID } from "@flow-state-dev/core";
+import { DEFAULT_LOCAL_USER_ID } from "@flow-state-dev/core/types";
 import { executeDevCommand, type DevServer } from "../src/commands/dev";
 import { executeRunCommand } from "../src/commands/run";
 
-vi.mock("@flow-state-dev/devtool", () => ({ getAssetPath: () => tmpdir() }));
+vi.mock("@flow-state-dev/devtool", () => ({ getDevToolAssetPath: () => tmpdir() }));
 
 const fixtureDir = resolve(import.meta.dirname, "fixtures", "durable");
 

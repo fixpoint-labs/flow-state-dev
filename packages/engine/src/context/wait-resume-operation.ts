@@ -13,13 +13,15 @@
  * `durability/resume-wait-gate.ts`, which the durability sweep also calls to
  * resume a wait past its deadline with `wait_timed_out`.
  */
-import { isWaitGate } from "@flow-state-dev/core/types";
+import { isWaitGate } from "@flow-state-dev/core/internal";
+import type {
+  SuspensionRecord
+} from "@flow-state-dev/core/types";
 import type {
   WaitOutcome,
   ResumeWaitResult,
-  SuspensionAddress,
-  SuspensionRecord
-} from "@flow-state-dev/core/types";
+  SuspensionAddress
+} from "@flow-state-dev/core/internal";
 import { resumeWaitGate, type WaitResumeDeps } from "../durability/resume-wait-gate";
 import { cancelUserSuspension } from "../durability/cancel-user-suspension";
 import { ownsRecord, type OwnerIdentity } from "./record-owner";

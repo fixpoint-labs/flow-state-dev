@@ -10,17 +10,17 @@
  * and say whether a request is still running.
  */
 import { describe, expect, it } from "vitest";
-import type { RequestSpend } from "@flow-state-dev/core/types";
+import type { RequestSpend } from "@flow-state-dev/core/internal";
 import {
-  createResourceBackedTaskCollection,
-  createStateBackedTaskCollection,
-  requestSpendView,
   taskSpendView,
   ticketForClaim,
-  type TaskChangeEvent,
   type TaskClaimTicket,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { createResourceBackedTaskCollection } from "../../src/tasks/collection/resource-backed";
+import { createStateBackedTaskCollection } from "../../src/tasks/collection/state-backed";
+import { requestSpendView } from "../../src/tasks/spend";
+import type { TaskChangeEvent } from "../../src/tasks/collection/change-event";
 import { createCapturedChanges, createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 const NONE: RequestSpend = { byModel: {}, harnessRuns: [] };

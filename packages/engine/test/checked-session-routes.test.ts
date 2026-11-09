@@ -25,10 +25,13 @@ import {
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
   disposeFlowApiRouter
 } from "../src";
-import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
+import type { RequestRecord, SessionRecord } from "../src/host";
+import type { StoreRegistry } from "../src";
 import { routeSubject } from "../src/routes/route-auth";
 import { listFlowRoutes, matchFlowRoute } from "../src/routes/router";
 import { resourceScopeIds, toIsolationFlow } from "../src/stores/scope-keys";

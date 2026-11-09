@@ -84,7 +84,8 @@ export interface GatewayConfig {
  */
 export type GatewayEntry = GatewayConfig | unknown;
 
-export interface RetryPolicy {
+/** How the model resolver retries one model before falling back to the next. Not a block's `RetryPolicy`. */
+export interface ModelRetryPolicy {
   /** Max attempts per model before falling back. Default: 2. */
   maxAttemptsPerModel?: number;
   /** Base delay between retries in ms. Default: 1000. */

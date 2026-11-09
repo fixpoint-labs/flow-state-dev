@@ -13,12 +13,12 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  taskClaimTicketSchema,
   ticketForClaim,
   type DefinedTaskCollection,
   type Task,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { taskClaimTicketSchema } from "../../src/tasks/claim-ticket";
 import { resolveTaskPartition } from "../../src/tasks/collection/partition";
 import { createFakeResourceCollection } from "../helpers";
 
@@ -88,7 +88,7 @@ describe("resolving a partitioned ledger", () => {
         collectionId: LEDGER,
         collection: storeFor(partitioned()),
       })
-    ).rejects.toThrow(/keeps its rows per partition .* never read whole/);
+    ).rejects.toThrow(/keeps its tasks per partition .* never read whole/);
   });
 
   it("refuses a partition on a ledger declared without one", async () => {

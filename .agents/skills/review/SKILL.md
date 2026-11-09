@@ -71,6 +71,9 @@ approving adds a way to do a job". A bug-route change has no spec, so everything
      the most consequential: a coherence break usually means reshaping the approach, not
      patching lines. Tell it glue between our own mechanisms is a finding against the model
      ([`orchestration.md`](../../../docs/contributing/orchestration.md#compose-existing-pieces)).
+     Tell it to check each new public name against [`docs/contributing/glossary.mjs`](../../../docs/contributing/glossary.mjs): a name that uses a word an entry
+     retires, or a coined public term with no entry, is a finding. No check can tell a new
+     term from a new name, so review owns that half.
    - **Restraint** → run `second-look` on the target.
    - **Reuse** → run `reuse-review` on the target (spec, epic, or implementation
      change). Do not skip it on a spec because Restraint already ran.

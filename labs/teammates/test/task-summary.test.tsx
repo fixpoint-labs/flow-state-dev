@@ -7,7 +7,7 @@
  * steps; a harness that records none (Codex and Cursor today) gets no file
  * part, never "0 files". The result box takes how the task ended: a failed
  * task's result is never a success's green. Once it ended, Copy copies the
- * result (else the error), and "Ask Chief of Staff to follow up" opens the
+ * result (else the error), and "Ask Lead to follow up" opens the
  * conversation that filed it with the task named in its composer, unsent.
  *
  * Red states produced before this was trusted: count the run's edit steps
@@ -76,9 +76,9 @@ describe("a run's summary line", () => {
   });
 });
 
-/** Ask Chief of Staff to have `agent` fix the typo; open its popup. */
+/** Ask Lead to have `agent` fix the typo; open its popup. */
 async function openTask(agent = "Codex") {
-  const box = await screen.findByLabelText("Message Chief of Staff");
+  const box = await screen.findByLabelText("Message Lead");
   await act(async () => {
     fireEvent.change(box, { target: { value: `Have ${agent} fix the typo in the README's first line.` } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -151,9 +151,9 @@ describe("a coding task's popup", () => {
     render(<App adapter={createFixtureLab({ speed: 0.05 })} />);
     const popup = await openTask();
     await within(popup).findByRole("region", { name: "Result" }, { timeout: 3000 });
-    fireEvent.click(within(popup).getByRole("button", { name: "Ask Chief of Staff to follow up" }));
+    fireEvent.click(within(popup).getByRole("button", { name: "Ask Lead to follow up" }));
     expect(screen.queryByRole("dialog", { name: TASK })).toBeNull();
-    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     await waitFor(() => expect(box.value).toBe(`Follow up on "Fix the typo in the README's first line": `));
   });
 });
@@ -203,21 +203,21 @@ describe("a filed task's popup, opened by its address", () => {
   it("prefills the filer's conversation, not the one that was open, and keeps what was typed there", async () => {
     window.localStorage.setItem(`teammates:draft:conversation:${LEAD}`, "Also check the dates.");
     const popup = await open({ ...failed, filer: LEAD }, "teammates.researcher");
-    fireEvent.click(within(popup).getByRole("button", { name: "Ask Chief of Staff to follow up" }));
-    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    fireEvent.click(within(popup).getByRole("button", { name: "Ask Lead to follow up" }));
+    const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     await waitFor(() => expect(box.value).toBe(`Also check the dates.\n\nFollow up on "Draft the PM role": `));
     expect(screen.queryByLabelText("Message researcher")).toBeNull();
   });
 
   it("adds the follow-up once: switching away and back doesn't add it again", async () => {
     const popup = await open(failed);
-    fireEvent.click(within(popup).getByRole("button", { name: "Ask Chief of Staff to follow up" }));
+    fireEvent.click(within(popup).getByRole("button", { name: "Ask Lead to follow up" }));
     const ask = `Follow up on "Draft the PM role": `;
-    await waitFor(async () => expect(((await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement).value).toBe(ask));
+    await waitFor(async () => expect(((await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement).value).toBe(ask));
     fireEvent.click(within(screen.getByRole("navigation", { name: "Workers" })).getByRole("button", { name: /researcher/ }));
     await screen.findByLabelText("Message researcher");
-    fireEvent.click(within(screen.getByRole("navigation", { name: "Workers" })).getByRole("button", { name: /Chief of Staff/ }));
-    const box = (await screen.findByLabelText("Message Chief of Staff")) as HTMLTextAreaElement;
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Workers" })).getByRole("button", { name: /Lead/ }));
+    const box = (await screen.findByLabelText("Message Lead")) as HTMLTextAreaElement;
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(box.value).toBe(ask);
   });

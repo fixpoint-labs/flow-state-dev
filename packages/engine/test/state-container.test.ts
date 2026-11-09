@@ -1,11 +1,8 @@
 import type { StateContainer } from "@flow-state-dev/core/types";
 import { describe, expect, it, vi } from "vitest";
-import {
-  ConcurrentModificationError,
-  createScopeStateOps,
-  createStateContainer,
-  runWithCAS
-} from "../src";
+import { ConcurrentModificationError } from "../src";
+import { createScopeStateOps, createStateContainer } from "../src/stores/state-container";
+import { runWithCAS } from "../src/stores/cas";
 import type { CASPersist } from "../src/stores/cas";
 
 describe("state container and CAS", () => {

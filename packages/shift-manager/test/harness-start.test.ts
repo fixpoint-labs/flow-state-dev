@@ -13,7 +13,7 @@
  *   - keep the start's rows for a refresh: the re-check case fails.
  */
 import { describe, expect, it } from "vitest";
-import type { HarnessReadiness } from "@flow-state-dev/core/types";
+import type { HarnessReadiness } from "@flow-state-dev/core/harness";
 import { HARNESS_ENV, RUN_MINUTES_ENV, SCRIPTED_RUN_TIMEOUT_MS, startHarness, type HarnessChoice } from "../teams/devteam/harness.mts";
 
 /** Start with `value` as the variable and a check that answers `answers` in turn; report what happened. */

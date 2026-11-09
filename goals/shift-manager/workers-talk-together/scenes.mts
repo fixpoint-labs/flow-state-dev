@@ -217,7 +217,7 @@ export async function sceneAC(world: World, servers: Servers, walked: Walked): P
 }
 
 /** The midway questions a row has ever had, answered or not. */
-const everAsked = (row: TaskRow | undefined): TaskRow[] => ((row?.holds ?? []) as TaskRow[]).filter((h) => h.source?.kind === "row" && h.midway === true);
+const everAsked = (row: TaskRow | undefined): TaskRow[] => ((row?.holds ?? []) as TaskRow[]).filter((h) => h.source?.kind === "task" && h.midway === true);
 
 /** Scene ed: a call parked while a midway question reaches its filer, and a ring runs on its own line. */
 export async function sceneED(world: World, walked: Walked, run: { ring: boolean; question: boolean }): Promise<LegResult> {

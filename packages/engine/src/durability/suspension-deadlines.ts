@@ -1,6 +1,7 @@
+// FIX-2063 D3.
 /**
  * A suspension deadline written in this process, heard by the sweeper on the
- * same provider (FIX-2063 D3). A gate another process writes is seen at the
+ * same provider. A gate another process writes is seen at the
  * next tick.
  */
 import type { DurabilityProvider } from "./types";

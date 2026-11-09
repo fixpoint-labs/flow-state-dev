@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite/host";
 import { LAB_ORG_ID, LAB_USER_ID } from "../teams/devteam/host.mts";
 import { workerSessionId } from "../teams/devteam/ask.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";

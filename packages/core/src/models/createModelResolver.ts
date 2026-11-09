@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 import type { GeneratorModel, ModelResolver, ResolveModelCallOptions } from "../types/model";
 import type { EvaluationModel } from "../types/evaluation";
 import type {
-  RetryPolicy,
+  ModelRetryPolicy,
   GatewayConfig,
   GatewayEntry,
   ProviderPreference,
@@ -55,7 +55,7 @@ export interface CreateModelResolverOptions {
    */
   gateways?: Record<string, GatewayEntry>;
   /** Retry policy for fallback arrays and intents. */
-  retryPolicy?: RetryPolicy;
+  retryPolicy?: ModelRetryPolicy;
   /**
    * AI SDK provider instances. Keys are provider prefixes used in model strings,
    * both `name/model` and the pinned `name:model` (`"triage:native"`).
@@ -109,7 +109,7 @@ export interface CreateModelResolverOptions {
 // Defaults
 // ---------------------------------------------------------------------------
 
-const DEFAULT_RETRY_POLICY: Required<RetryPolicy> = {
+const DEFAULT_RETRY_POLICY: Required<ModelRetryPolicy> = {
   maxAttemptsPerModel: 2,
   baseDelayMs: 1000,
   maxDelayMs: 10000,
@@ -683,8 +683,8 @@ function applyOverrides(
  * - `"intent/name"` — resolve a configured intent to a fallback model
  *   (e.g., `"intent/chat"`)
  *
- * The removed `gateway/provider/model` form throws, naming its colon spelling:
- * at construction for config strings, on first resolve for any other.
+ * Any other shape (a three-part slash string, say) throws as an invalid
+ * format: at construction for config strings, on first resolve for any other.
  */
 export function createModelResolver(
   options?: CreateModelResolverOptions
@@ -712,7 +712,7 @@ export function createModelResolver(
     );
   }
 
-  const retryPolicy: Required<RetryPolicy> = {
+  const retryPolicy: Required<ModelRetryPolicy> = {
     ...DEFAULT_RETRY_POLICY,
     ...options?.retryPolicy,
   };
@@ -767,12 +767,13 @@ export function createModelResolver(
   const intentCacheKey = (name: string, pref: ProviderPreference | undefined) =>
     `${name}::${(normalizePreference(pref) ?? []).join("|")}`;
 
+  // FIX-609.
   /**
    * Sync availability check for the auto-loaded (package) direct-provider
    * path. True when the provider has an API key and its package resolves on
    * disk. Module resolution (not execution) keeps this synchronous — the
    * three sync decision points depend on it: the intent candidate filter,
-   * the direct→gateway fall-through (FIX-609), and public `resolveId`.
+   * the direct→gateway fall-through, and public `resolveId`.
    * Explicit provider instances are handled separately by the caller.
    */
   function isPackageProviderAvailable(providerName: string): boolean {

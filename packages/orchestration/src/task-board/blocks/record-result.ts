@@ -1,9 +1,10 @@
+// BP-012; BP-011; FIX-951; FIX-981; FIX-963; FIX-989; FIX-1472.
 /**
  * Result-recorder blocks for the Task Board worker pipeline.
  *
  * Two blocks, each scoped to one outcome:
  *
- * - `recordSuccess` — `.tap()`-shaped (per BP-012, no `outputSchema`,
+ * - `recordSuccess` — `.tap()`-shaped (no `outputSchema`,
  *   no `return input`). Reads `currentClaim` from worker state, takes
  *   the worker's output as input, calls `collection.complete`. Clears
  *   `currentClaim` (and the `currentLedger` beside it) when done so a stale claim can't leak into a later
@@ -17,28 +18,28 @@
  *   {@link TaskEndsForGoodError} ends the row on this attempt instead of
  *   re-queueing it: `fail` with `noRetry`, or `cancel`.
  *
- * Both write-backs are **advisory** (FIX-951): they pass `ifAllowed` and the
+ * Both write-backs are **advisory**: they pass `ifAllowed` and the
  * worker's `claim`, so a result that arrives after the task was settled by
  * someone else — a coordinator cancelled it, the worker settled it through
  * its own task tools, a lease reclaim handed it to another worker — is
  * dropped instead of throwing. The throw is what used to escape the rescue
  * and abandon every sibling task on the board.
  *
- * The write's target comes from the ticket rather than being named separately
- * (FIX-981), so "which task do I settle" and "which task may I settle" are one
+ * The write's target comes from the ticket rather than being named separately,
+ * so "which task do I settle" and "which task may I settle" are one
  * fact and cannot disagree.
  *
  * **A write that committed and then failed to be announced is reported, not
- * swallowed** (FIX-963). Both backings announce a change as a tail call, after
+ * swallowed**. Both backings announce a change as a tail call, after
  * the durable write resolves, so an announcement that throws rejects a call
  * whose write already landed. Each write is therefore correlated
- * (`beginTaskWrite` / `didWriteLand`, FIX-989) and branches three ways: a write
+ * (`beginTaskWrite` / `didWriteLand`) and branches three ways: a write
  * that committed nothing keeps today's path exactly, while one that committed —
  * or that the board cannot tell about — is reported on a persisted entry and,
  * where the board cannot tell, released so the row is not left claimed. See
  * {@link ./recorder-failure} for what the entry means and why it is awaited.
  *
- * **The write is shared; the exits are not** (FIX-1472). That baseline, write,
+ * **The write is shared; the exits are not**. That baseline, write,
  * classify, release sequence lives once, in
  * {@link writeRethrowingIfNothingSaved}, and both recorders call it. Everything
  * that decides how a recorder *leaves* stays written out in that recorder's own
@@ -53,8 +54,8 @@
  * The split lets the worker run as a plain `.step(workerStep)` step in
  * the sequencer — no handler wrapper around the worker, no manual
  * try/catch. The framework's rescue mechanism owns failure flow
- * (BP-011 conformance: the worker block is composed, not invoked from
- * inside another block's `execute`).
+ * (the worker block is composed, not invoked from inside another
+ * block's `execute`).
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -75,7 +76,7 @@ import {
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import {
-  HandedOverRowError,
+  HandedOverTaskError,
   reportRecorderFailure,
   TaskBoardRecorderFailureError,
   TaskBoardReportFailureError,
@@ -84,8 +85,9 @@ import {
   type RecorderWriteVerdict,
 } from "./recorder-failure";
 
+// FIX-963; FIX-1005.
 /**
- * Stop renewing this worker's lease (FIX-1005).
+ * Stop renewing this worker's lease.
  *
  * Called from both recorders because they are the board's two exits — the
  * success tap and the `.rescue()` handler — and the driver must stop on every
@@ -112,7 +114,7 @@ import {
  * `recordSuccess` stops renewal only once its write has settled, and leaves the
  * driver running on that one throw.
  *
- * FIX-963 narrowed that exception rather than widening it. A `complete()` that
+ * That exception was narrowed rather than widened. A `complete()` that
  * threw *after* committing — or that may have — is no longer handed to the
  * rescue at all: the recorder settles or releases the row itself and returns.
  * No fenced write can follow that, so renewal stops there like any other exit,
@@ -178,8 +180,9 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+// FIX-963.
 /**
- * How a settlement site reports a recorder failure (FIX-963).
+ * How a settlement site reports a recorder failure.
  *
  * Both recorders are composed in two places — the inline drain, and the gate
  * around a task dispatched to a child run — and the difference between them is
@@ -216,13 +219,14 @@ function raisesHere(wiring: RecorderFailureWiring): boolean {
   return (wiring.onRecorderFailure ?? "raise") === "raise";
 }
 
+// FIX-989.
 /**
  * The recorders' shared write step: baseline, write, classify, release.
  *
  * Mints the write token from the task as it reads NOW, before the write — the
  * baseline it records is what makes `didWriteLand`'s answer mean anything, and a
  * token assembled after the fact would describe a world the write may not have
- * used (FIX-989). Then runs `attempt` with it.
+ * used. Then runs `attempt` with it.
  *
  * - The write did not throw: returns `undefined`.
  * - It threw and **committed nothing**: **rethrows the attempt's own error
@@ -327,7 +331,8 @@ async function releaseRow(
 export interface RecordSuccessOptions {
   name: string;
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
-  /** Recorder-failure reporting for this settlement site (FIX-963). */
+  // FIX-963.
+  /** Recorder-failure reporting for this settlement site. */
   recorderFailure?: RecorderFailureWiring;
 }
 
@@ -418,7 +423,8 @@ export interface RecordErrorOptions {
    * through `.forEach`, surfacing on the board's parent.
    */
   onError: "skip" | "fail";
-  /** Recorder-failure reporting for this settlement site (FIX-963). */
+  // FIX-963.
+  /** Recorder-failure reporting for this settlement site. */
   recorderFailure?: RecorderFailureWiring;
 }
 
@@ -466,8 +472,8 @@ export function createRecordError(options: RecordErrorOptions) {
       // A plan drain that failed past its hand-over: the row is another
       // session's, so there is nothing of this request's to record on it, and
       // `skip` swallowing it would leave the drain waiting on nothing. The
-      // plan fails instead (see `dispatch-row.ts`).
-      if (error instanceof HandedOverRowError) {
+      // plan fails instead (see `dispatch-task.ts`).
+      if (error instanceof HandedOverTaskError) {
         stopLeaseRenewal();
         throw error;
       }
@@ -558,9 +564,10 @@ export function createRecordError(options: RecordErrorOptions) {
   });
 }
 
+// FIX-2077; FIX-963.
 /**
  * Settle a dispatched task's claim from the claim gate's check at its
- * request's end (FIX-2077), with the recorders' write semantics (FIX-963):
+ * request's end, with the recorders' write semantics:
  * `settle` is the fenced write (a completion or a failure), run under a write
  * token so a write that threw can be classified.
  *

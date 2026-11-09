@@ -1,7 +1,8 @@
+// FIX-1794 P2; FIX-1816.
 /**
  * A durable ledger's ending recorder: what a task's ending is, how a write's
  * ending is read off the row ({@link endingOf}), and the one function a
- * declared recorder's answer goes through (FIX-1794 P2).
+ * declared recorder's answer goes through.
  *
  * A composing layer sometimes owes someone something because a task ended:
  * whoever filed it is to be told, a waiting caller is to be resumed. Recording
@@ -15,7 +16,7 @@
  * `internal.ts` (`applyTransition`, `applyAbandonmentSettlement`), on both
  * backings, and that is where the ending is detected, once, and every
  * recorder runs: orchestration's own resume recorder first (a waited-on row's
- * `Task.resumeOwed`, FIX-1816), then the ledger's declared one. So every
+ * `Task.resumeOwed`), then the ledger's declared one. So every
  * producer of an ending reaches it: a worker settling the task it holds (a
  * board's recorders, a task entry's gate), a board refusing a dispatch, the
  * claim path settling a row whose worker died too often, and a cancel.
@@ -45,9 +46,10 @@ export type TaskEnding =
   | { readonly kind: "retried"; readonly error: string }
   | { readonly kind: "cancelled"; readonly reason?: string };
 
+// FIX-1794 P2.
 /**
  * The ending a write records, read off the row before and after it, or
- * `undefined` when the write ends nothing (FIX-1794 P2). The one place an
+ * `undefined` when the write ends nothing. The one place an
  * ending is detected; `internal.ts` calls it for every write.
  *
  * - into `completed`, `errored` or `cancelled` from any other status: that

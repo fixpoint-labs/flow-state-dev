@@ -14,14 +14,14 @@
  */
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { SessionConnectionState } from "@flow-state-dev/client";
-import { toBoardTask, type LabAdapter, type WorkerRow } from "../src/adapter";
+import type { SessionConnectionStatus } from "@flow-state-dev/client";
+import { toBoardTask, type LabAdapter, type LabWorker } from "../src/adapter";
 import { TeammatePanel } from "../src/components/TeammatePanel";
 
 afterEach(cleanup);
 
 const MIN = 60_000;
-const worker = { id: "cos", name: "Chief of Staff", role: "Runs the team", own: false } as WorkerRow;
+const worker = { id: "lead", name: "Lead", role: "Runs the team", own: false } as LabWorker;
 
 /** A board row as `listTasks` answers it. */
 const listed = (id: string, status: string, times: { updatedAt: number; startedAt?: number; leaseUntil?: number }) => ({
@@ -36,19 +36,19 @@ const listed = (id: string, status: string, times: { updatedAt: number; startedA
   ...(times.leaseUntil === undefined ? {} : { leaseUntil: times.leaseUntil }),
 });
 
-function panel(rows: Record<string, any>[], connection: SessionConnectionState = "live", boardStale = false) {
+function panel(rows: Record<string, any>[], connection: SessionConnectionStatus = "live", boardStale = false) {
   const adapter = {
     watchTasks: (_session: string, emit: (tasks: unknown[]) => void, onStale?: (stale: boolean) => void) => {
       emit(rows.map((row) => toBoardTask(row)));
       if (boardStale) onStale?.(true);
       return () => {};
     },
-    watchConnection: (_session: string, emit: (state: SessionConnectionState) => void) => (emit(connection), () => {}),
+    watchConnection: (_session: string, emit: (state: SessionConnectionStatus) => void) => (emit(connection), () => {}),
   } as unknown as LabAdapter;
   render(
     <TeammatePanel adapter={adapter} worker={worker} sessionId="s1" openTask={undefined} nameOf={(id) => id} lookOf={() => ({}) as never} isCoding={() => false} onOpen={() => {}} />,
   );
-  return screen.getByRole("complementary", { name: "Chief of Staff's panel" });
+  return screen.getByRole("complementary", { name: "Lead's panel" });
 }
 
 describe("a teammate's task rows and their time", () => {
@@ -65,7 +65,7 @@ describe("a teammate's task rows and their time", () => {
       listed("a", "in_progress", { updatedAt: now - 10_000, startedAt: now - (4 * MIN + 12_000), leaseUntil: now + 100_000 }),
       listed("b", "in_progress", { updatedAt: now - 40 * MIN, startedAt: now - 45 * MIN, leaseUntil: now - 38 * MIN }),
     ]);
-    expect(within(shown).getByText(/^Tasks · 2 running$/)).toBeTruthy();
+    expect(within(shown).getByText(/^Tasks \(2\) · 2 running$/)).toBeTruthy();
     expect(within(shown).getByText(/^working · 4m 1[23]s$/)).toBeTruthy();
     const quiet = within(shown).getByText("quiet for 40m");
     expect(quiet.className).toContain("text-warning");
@@ -88,7 +88,7 @@ describe("a teammate's task rows and their time", () => {
   it("says how long ago an ended task ended, after its status", () => {
     const now = Date.now();
     const shown = panel([listed("c", "completed", { updatedAt: now - 12 * MIN })]);
-    expect(within(shown).getByText(/^Tasks · 1 done$/)).toBeTruthy();
+    expect(within(shown).getByText(/^Tasks \(1\) · 1 done$/)).toBeTruthy();
     fireEvent.click(within(shown).getByRole("button", { name: /Done \(1\)/ }));
     expect(within(shown).getByText("12m ago").closest("[data-status]")?.textContent).toBe("done · 12m ago");
   });

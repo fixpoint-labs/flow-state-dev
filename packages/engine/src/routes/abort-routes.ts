@@ -10,7 +10,8 @@ import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 type AbortRouteContext = {
   stores: StoreRegistry;
-  /** Caller's tenant (FIX-682), extracted as every other request route does. */
+  // FIX-682.
+  /** Caller's tenant, extracted as every other request route does. */
   tenantId?: string;
   /** The authenticated caller, when route-level authentication is active. */
   principal?: ResolvedPrincipal;
@@ -18,6 +19,7 @@ type AbortRouteContext = {
   parked?: SuspendedStopDeps;
 };
 
+// FIX-2377.
 /**
  * POST /api/flows/:flowKind/requests/:requestId/abort
  *
@@ -36,7 +38,7 @@ type AbortRouteContext = {
  * intent was recorded for the running process to pick up, 404 if the request
  * doesn't exist or is not the caller's, 409 if it's already terminal. An
  * `interrupted` request no gate holds is ended `aborted` and answers 204: a
- * dead turn nobody will continue is one the caller has stopped (FIX-2377).
+ * dead turn nobody will continue is one the caller has stopped.
  */
 export async function handleAbortRequest(
   _request: Request,

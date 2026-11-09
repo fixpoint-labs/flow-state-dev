@@ -1,5 +1,6 @@
+// FIX-378.
 /**
- * Skill type contracts for the Skills System (FIX-378).
+ * Skill type contracts for the Skills System.
  *
  * Skills are user-modifiable folders (SKILL.md + supporting files) stored as
  * resources, invoked by the agent via a `runSkill(name, input?)` tool. The
@@ -21,6 +22,7 @@ import type { GeneratorTool } from "../blocks/generator";
  */
 export type ToolCatalog = Record<string, GeneratorTool>;
 
+// FIX-918.
 /**
  * Activation mode for a skill, controlled by `context:` frontmatter.
  *
@@ -28,7 +30,7 @@ export type ToolCatalog = Record<string, GeneratorTool>;
  *   into the in-flight generator on the next tool-loop step via the existing
  *   `prepareStep` machinery.
  *
- * Both non-inline modes were removed in FIX-918: `fork` (an isolated subagent)
+ * Both non-inline modes were removed: `fork` (an isolated subagent)
  * and `pattern` (a session-global multi-agent dispatcher). The type is kept as
  * a one-value union so its readers keep compiling and a future mode has a seam.
  */
@@ -60,9 +62,10 @@ export interface SkillState {
   /** Optional spec `metadata`: a string → string map for client-defined properties. */
   metadata?: Record<string, string>;
 
+  // FIX-1451.
   /**
    * From `allowed-tools`. The tools the skill is written around. **It never
-   * widens access, and it decides nothing** (FIX-1451). It registers nothing:
+   * widens access, and it decides nothing**. It registers nothing:
    * `createSkillsLibrary` validates these names against the catalog and then
    * contributes the *whole* catalog, or, under `registerCatalogTools: false`,
    * contributes none of it. Either way this subset is not the unit. What the
@@ -84,8 +87,9 @@ export interface SkillState {
   /** Optional Claude `argument-hint`. Surfaced in tool description; not validated at runtime. */
   argumentHint?: string;
 
+  // FIX-421.
   /**
-   * Optional `keywords` array (FIX-421). Lowercase tokens that the up-front
+   * Optional `keywords` array. Lowercase tokens that the up-front
    * intent classifier's tier-2 keyword scan matches against the user message.
    * Skills without any keywords skip tier-2 and become eligible only via
    * tier-3 LLM classification.
@@ -145,7 +149,8 @@ export interface RunSkillInput {
 export interface RunSkillOutput {
   /** The skill name that was invoked. */
   skill: string;
-  /** Mode the skill ran in. Always `"inline"` after FIX-918. */
+  // FIX-918.
+  /** Mode the skill ran in. Always `"inline"`. */
   mode: SkillContextMode;
   /** Ack message; the agent should re-read context on the next step. */
   message?: string;

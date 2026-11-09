@@ -189,7 +189,7 @@ Open the page and start chatting. Behind the scenes you have streaming over SSE 
 You don't need a server or UI to try a flow. The CLI runs it directly and streams NDJSON to stdout:
 
 ```bash
-fsdev run hello-chat chat -i '{"message": "Hello!"}'
+pnpm fsdev run hello-chat chat -i '{"message": "Hello!"}'
 ```
 
 Or open the visual inspector with `fsdev dev` — see the [DevTool guide](/docs/devtool/setup).

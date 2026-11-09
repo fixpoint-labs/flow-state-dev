@@ -9,7 +9,8 @@ import type { ResourceRef } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
-import { createExecutionContext, createInMemoryStores, toBareStates } from "../src";
+import { createExecutionContext, toBareStates } from "../src";
+import { createInMemoryStores } from "../src/host";
 
 describe("FIX-591: resource state keyed by ref, not accessor name", () => {
   it("two accessors of the same DefinedResource see shared state", async () => {

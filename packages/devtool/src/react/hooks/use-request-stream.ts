@@ -74,9 +74,10 @@ export type UseRequestStreamOptions = {
   startingAfter?: number;
   lastEventId?: string;
   enabled?: boolean;
+  // FIX-811.
   /**
    * Bump to force a fresh reconnect for the SAME request id. A same-request
-   * continuation (FIX-811) re-enters under its original id, so the id alone
+   * continuation re-enters under its original id, so the id alone
    * doesn't change and the connect effect wouldn't otherwise re-run. After a
    * suspend the prior stream has already closed (the server treats `suspended`
    * as terminal and ends the wire); without this the resumed run never

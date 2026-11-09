@@ -25,7 +25,9 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useJumpToLatest, type JumpToLatest } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
 import { callRuns, shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
-import { JumpToLatestButton, LoadEarlierButton, SectionFailure } from "./ui";
+import { isTaskBrief } from "./TaskBrief";
+import { ConversationScrollButton } from "./flow-state/conversation";
+import { LoadEarlierButton, SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { knownWorkers, senderOf, useWorkerConversation } from "../lib/conversation";
 import { workerLabel } from "../lib/derive";
@@ -63,7 +65,7 @@ export function ConversationFrame({
         <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6" data-look="conversation-column">
           {children}
         </div>
-        {feed === undefined ? null : <JumpToLatestButton feed={feed} />}
+        {feed === undefined ? null : <ConversationScrollButton feed={feed} className="size-8 rounded-none" />}
       </div>
       {composer === undefined ? null : (
         <div className="px-8 pt-2.5 pb-[22px]">
@@ -286,7 +288,7 @@ export function Conversation({
                       data-request-id={item.requestId}
                       data-item-type={item.type}
                       data-role={role}
-                      {...(item.type === "message" && role === "user" ? feed.mine(item.id) : {})}
+                      {...(item.type === "message" && role === "user" && !isTaskBrief(item) ? feed.mine(item.id) : {})}
                     >
                       {item.type === "message" && role === "assistant" ? (
                         // v2's label over each of the worker's messages: its name and the time it was written (v2:135).

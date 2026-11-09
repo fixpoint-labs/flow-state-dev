@@ -1,5 +1,6 @@
+// FIX-1989 D2.
 /**
- * The two limits on worker messages (FIX-1989 D2) an app sets through
+ * The two limits on worker messages an app sets through
  * `hireWorkforce`'s `messages`: how many messages a chain may pass with no
  * user in between (`budget`), and how many one turn may send
  * (`perTurn`). A leaf module, so the session factory reads them without importing
@@ -25,12 +26,9 @@ const limits = new WeakMap<object, Required<MessageLimits>>();
 /**
  * Set the message limits for `installation`. `hireWorkforce`'s `messages` calls it.
  *
- * @throws When a limit isn't a whole number of at least one, or when the retired key is given.
+ * @throws When a limit isn't a whole number of at least one.
  */
 export function setMessageLimits(installation: object, given: MessageLimits): void {
-  if ("hopLimit" in given) { // retired-name-refusal: the renamed key is refused by name
-    throw new Error("hireWorkforce: messages.hopLimit was renamed messages.budget; set messages.budget instead."); // retired-name-refusal: the renamed key is refused by name
-  }
   for (const [key, value] of Object.entries(given)) {
     if (value !== undefined && (!Number.isInteger(value) || value < 1)) {
       throw new Error(`hireWorkforce: messages.${key} must be a whole number of at least 1; got ${String(value)}.`);

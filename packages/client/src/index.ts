@@ -8,17 +8,18 @@ export {
   type ActionNameOf,
   type Client,
   type CreateClientOptions,
-  type CreateCollectionItemOptions,
+  type CreateCollectionResourceOptions,
   type CreateSessionOptions,
   type FlowHandle,
   type GetSessionStateOptions,
   type InterruptedRequest,
   type ListChildSessionsOptions,
-  type ListCollectionItemsOptions,
+  type ListCollectionResourcesOptions,
   type ListSessionRequestsOptions,
   type ListSessionsOptions,
   type SessionListInclude,
   type RequestHandle,
+  type RequestResult,
   type RequestStreamOptions,
   type ResourceContentResponse,
   type ResourcesApi,
@@ -33,7 +34,8 @@ export {
   type TypedFlow,
   type UntypedFlow,
   type UpdateResourceContentOptions,
-  type UpdateSessionMetadataOptions
+  type UpdateSessionMetadataOptions,
+  type WaitOptions
 } from "./client";
 
 export type { SubscribeOptions, Subscription } from "./subscribe/push-hub";
@@ -43,7 +45,7 @@ export type { ChangeKind, PushCapability, TopicOptions, WireNotice, WireTopic } 
 
 export { sessionQueryFor } from "./session-client/session-query";
 export { interruptedBySession, type InterruptedBySessionOptions } from "./interrupted-by-session";
-export type { SessionConnectionState } from "./session-client/follow-session";
+export type { SessionConnectionStatus } from "./session-client/follow-session";
 export {
   sessionFeed,
   type SessionFeed,
@@ -102,30 +104,28 @@ export type {
   ClientFetch,
   CollectionSnapshotEntry,
   DebugClientView,
-  DebugCollectionItem,
-  DebugCollectionItemsResponse,
+  DebugCollectionResource,
+  DebugCollectionResourcesResponse,
   DebugResourceClientConfig,
   DebugResourceEntry,
   DebugResourcesResponse,
   DebugSuspensionsResponse,
-  ListDebugCollectionItemsOptions,
+  ListDebugCollectionResourcesOptions,
   ListDebugSuspensionsOptions,
   SuspensionRecord,
   SuspensionStatus,
   CollectionSnapshotPrefetchedItem,
   CollectionListPage,
-  CollectionItemState,
-  CollectionItemHandle,
+  CollectionResourceState,
+  CollectionResourceHandle,
   ResourceManifest,
   ResourceManifestEntry,
-  ExecuteActionRequestBody,
   ExecuteActionResponse,
   FlowCapabilities,
   FlowListEntry,
   ActionInputSchema,
   ActionFieldSchema,
   ActionFieldType,
-  QueryValue,
   RequestSSECallbacks,
   RequestStreamHandle,
   ResourceSnapshotEntry,
@@ -141,5 +141,3 @@ export type {
 } from "./types";
 
 export { ClientHttpError } from "./types";
-
-export const clientPackageMarker = "@flow-state-dev/client";

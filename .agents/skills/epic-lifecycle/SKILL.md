@@ -641,18 +641,13 @@ worked example) — read those; below is only the coordinator's *operating proce
 The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, worktree, no
 `AskUserQuestion`) writes:
 
-**Discover → cap → create/resume, in that order.** Reasoning and cost:
-[`orchestration.md`](../../../docs/contributing/orchestration.md) → "How many epics run at once".
+**Discover → create/resume, in that order.**
 - **1 — Discover only.** Have `scout` return the consistent Epic parent, original review
   PR and merge state, Linear lifecycle status, and child implementation PR outcomes.
   Mixed parents need a decision. A merged epic spec normally means an active epic, not
   a wrapped one. Resume active work; for terminal work, surface whether a new epic or
   explicit resumption is intended. Never reopen the merged original PR.
-- **2 — Cap (skip for a reuse).** At most two active epics, counted from nonterminal
-  Linear epic status and child implementation work, not open spec PR count. At the cap,
-  ask whether to hold this outcome or wrap another, with a recommendation and the cost
-  of delay. Held means nothing created; name held work at the next wrap.
-- **3 — Resume or create — never the wrong one.**
+- **2 — Resume or create — never the wrong one.**
   - **Resume:** recover the Epic issue, retained set, original review PR, and amendment
     handles. Create/re-parent nothing, except a missing closure issue (below). Dispatch
     `epic-agent` only for meaningful updates.
@@ -685,7 +680,7 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   project status is re-derived from Linear every dispatch.
 
   **A skipped refresh loses no correctness — but it is not free.** The dispatch still spends a
-  sub-agent and a worktree before it discovers the branch is busy, and with the cap at two epics
+  sub-agent and a worktree before it discovers the branch is busy, and with several epics
   on one project that collision is routine rather than rare. Two things keep it cheap, and both
   are yours, not the agent's: **carry `project_slug` and `project_pr` in the epic record** beside
   the epic handles, so a resume never re-discovers whether the project PR exists; and **don't

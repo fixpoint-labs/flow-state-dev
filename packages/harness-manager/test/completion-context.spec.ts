@@ -20,7 +20,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
+import { harnessRunHandleSchema } from "@flow-state-dev/core/harness";
 import type { CompletionRunContext, PromptRunContext } from "../src";
 
 const MANAGER = readFileSync(join(__dirname, "..", "src", "manager.ts"), "utf8");

@@ -1,11 +1,12 @@
+// FIX-427.
 /**
- * Convenience hook around `useResourceCollection.list()` (FIX-427).
+ * Convenience hook around `useResourceCollection.list()`.
  *
  * Manages the React state lifecycle for a paginated list view: loading,
  * error, accumulated pages via `loadMore`, and refetching on mutations.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CollectionItemHandle } from "@flow-state-dev/client";
+import type { CollectionResourceHandle } from "@flow-state-dev/client";
 import {
   useResourceCollection,
   type CollectionListOptions,
@@ -17,8 +18,9 @@ import { useReadFence } from "./useReadFence";
 /** One empty list for every render with nothing read, so derived memos hold steady. */
 const NO_ITEMS: never[] = [];
 
+// FIX-739.
 /**
- * Apply a `client.live` overlay (FIX-739) over a fetched/prefetched item list:
+ * Apply a `client.live` overlay over a fetched/prefetched item list:
  * override each item's `clientData` from its live entry, drop tombstoned
  * topics, and append live-created topics not in the fetched window (so a
  * mid-stream create surfaces without a refetch). Appended items land at the end
@@ -27,13 +29,13 @@ const NO_ITEMS: never[] = [];
  * re-render.
  */
 export function applyLiveOverlay<TClient = unknown>(
-  items: CollectionItemHandle<TClient>[],
+  items: CollectionResourceHandle<TClient>[],
   live: UseResourceCollectionResult<TClient>["live"],
   wrap: UseResourceCollectionResult<TClient>["wrap"]
-): CollectionItemHandle<TClient>[] {
+): CollectionResourceHandle<TClient>[] {
   if (live === undefined) return items;
   const seen = new Set<string>();
-  const out: CollectionItemHandle<TClient>[] = [];
+  const out: CollectionResourceHandle<TClient>[] = [];
   for (const item of items) {
     seen.add(item.topic);
     const overlay = live[item.topic];
@@ -52,15 +54,16 @@ export function applyLiveOverlay<TClient = unknown>(
   return out;
 }
 
+// FIX-741.
 /**
- * `TClient` (FIX-741) is the collection's projected per-item client-data type;
+ * `TClient` is the collection's projected per-item client-data type;
  * pass it via the hook generic, e.g.
  * `useResourceCollectionList<ClientDataOf<typeof memos>>(...)`. Defaults to
  * `unknown` so existing untyped call sites are unchanged.
  */
 export type UseResourceCollectionListResult<TClient = unknown> = {
   /** Items accumulated across `loadMore` calls. */
-  items: CollectionItemHandle<TClient>[];
+  items: CollectionResourceHandle<TClient>[];
   /** True when another page can be loaded via `loadMore` (an opaque cursor remains). */
   hasMore: boolean;
   isLoading: boolean;
@@ -85,7 +88,7 @@ export function useResourceCollectionList<TClient = unknown>(
 
   const [read, setRead] = useState<{
     identity: readonly unknown[];
-    items: CollectionItemHandle<TClient>[];
+    items: CollectionResourceHandle<TClient>[];
     // Opaque cursor for the NEXT page; `undefined` once the last page is reached.
     nextCursor: string | undefined;
     fetched: boolean;
@@ -96,7 +99,7 @@ export function useResourceCollectionList<TClient = unknown>(
   const [generation, setGeneration] = useState(0);
 
   const holdsCurrent = read !== null && fence.holds(read.identity);
-  const items: CollectionItemHandle<TClient>[] = holdsCurrent ? read.items : NO_ITEMS;
+  const items: CollectionResourceHandle<TClient>[] = holdsCurrent ? read.items : NO_ITEMS;
   const nextCursor = holdsCurrent ? read.nextCursor : undefined;
   const fetched = holdsCurrent ? read.fetched : false;
   const error = holdsCurrent ? read.error : undefined;

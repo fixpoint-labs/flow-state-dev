@@ -15,7 +15,7 @@
  * What the run recorded (its plan, files and pull requests) is the one read
  * that is not here: `readRecordedWork` from `@flow-state-dev/harness-manager/browser`.
  */
-import { compareItemOrder, sessionFeed, type SessionConnectionState } from "@flow-state-dev/client";
+import { ClientHttpError, compareItemOrder, sessionFeed, type RequestHandle, type SessionConnectionStatus } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { Client } from "@flow-state-dev/client";
@@ -134,7 +134,7 @@ export type SessionItemsFollower = {
   /** The first read failed. Said only until one succeeds: a lapse after that keeps what was read. */
   onFailure(failure: Failure): void;
   /** The feed's connection moved (`sessionFeed`'s `state`), for the page's connection bar. */
-  onState?(state: SessionConnectionState): void;
+  onState?(state: SessionConnectionStatus): void;
 };
 
 /**
@@ -150,7 +150,7 @@ export function followSessionItems(client: Pick<Client, "sessions">, sessionId: 
   const feed = sessionFeed(client, sessionId);
   let last: readonly OutputItem[] | undefined;
   let read = false;
-  let lastState: SessionConnectionState | undefined;
+  let lastState: SessionConnectionStatus | undefined;
   const stop = feed.subscribe(({ items, hasEarlier, state, error }) => {
     if (state !== lastState) {
       lastState = state;
@@ -227,11 +227,12 @@ export function mergeItems(held: readonly OutputItem[], incoming: readonly Outpu
   return [...byKey.values()].sort(compareItemOrder);
 }
 
+// BR-8; FIX-2009.
 /**
- * What the Session shows of a session's items (BR-8): the items stamped with
+ * What the Session shows of a session's items: the items stamped with
  * this task's id, through the attribution helper the substrate and the UI
  * share, and whether the session also holds another task's work. A request
- * in `sent` shows too: its door turn stores no task stamp (FIX-2009).
+ * in `sent` shows too: its door turn stores no task stamp.
  */
 export function taskItems(
   items: readonly OutputItem[],
@@ -254,7 +255,8 @@ const SETTLE_POLL_MS = 250;
 export type InterruptOutcome =
   /** The request record reads `aborted`, and says when, if it does. */
   | { kind: "aborted"; endedAtMs?: number }
-  /** The request had already finished, with this status, before the abort landed (BR-12). */
+  // BR-12.
+  /** The request had already finished, with this status, before the abort landed. */
   | { kind: "finished"; status: RequestStatus };
 
 /**
@@ -274,16 +276,22 @@ export async function interruptRun(
     // 409: the request was already terminal. Anything else is a refusal.
     if (describeFailure(error).httpStatus !== 409) fail(error);
   }
-  const until = Date.now() + (options.timeoutMs ?? SETTLE_TIMEOUT_MS);
-  for (;;) {
-    // The screen that asked has gone: stop reading on its behalf.
+  let settled: Awaited<ReturnType<RequestHandle["wait"]>>;
+  try {
+    settled = await actions.request(run.requestId).wait({
+      pollMs: options.pollMs ?? SETTLE_POLL_MS,
+      timeoutMs: options.timeoutMs ?? SETTLE_TIMEOUT_MS,
+      signal: options.signal,
+    });
+  } catch (error) {
+    // The screen that asked has gone: the wait stopped reading on its behalf.
     if (options.signal?.aborted === true) throw new RunReadError({ message: "The screen closed before the run's record settled." });
-    const { status, endedAtMs } = await readRunRecord(client, run);
-    if (status === "aborted") return endedAtMs === undefined ? { kind: "aborted" } : { kind: "aborted", endedAtMs };
-    if (status !== "in_progress") return { kind: "finished", status };
-    if (Date.now() > until) {
+    if (error instanceof ClientHttpError && error.status === 0) {
       throw new RunReadError({ message: "The abort was recorded, but the run has not stopped yet. It may still be running." });
     }
-    await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? SETTLE_POLL_MS));
+    return fail(error);
   }
+  const { status, completedAtMs } = settled;
+  if (status === "aborted") return completedAtMs === undefined ? { kind: "aborted" } : { kind: "aborted", endedAtMs: completedAtMs };
+  return { kind: "finished", status };
 }

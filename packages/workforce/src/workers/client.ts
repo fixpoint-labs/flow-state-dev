@@ -267,10 +267,11 @@ function rosterMayHaveChanged(notice: WireNotice | null): boolean {
   return path === undefined || ROSTER_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
+// FIX-2551.
 /**
  * Run `read` on request, one at a time: a request made while a read runs
  * queues exactly one more. A copy of react's internal `coalescedReads`,
- * until FIX-2551 lifts one into the client.
+ * until one moves into the client.
  */
 function coalesced(read: () => Promise<void>): { request: () => void; close: () => void } {
   let running = false;
@@ -371,7 +372,7 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
    * flow declares the entries with a browser read.
    */
   const namedLeadSession = async (rosterId: string, workstream: WorkstreamAddress): Promise<string | null> => {
-    const item = await resources.getCollectionItemState(
+    const item = await resources.getCollectionResourceState(
       rosterId,
       workstreamsAccessor(workstream.project.visibility),
       workstreamStorageKey(workstream, ownerSegment(userId))
@@ -380,10 +381,11 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
     return typeof sessionId === "string" ? sessionId : null;
   };
 
+  // FIX-1989.
   /**
    * Whether the criteria name a session the client opens itself: a worker's
    * own conversation, or a project coordinator's for one project. Those live
-   * at one derived address, the one a worker's message lands in (FIX-1989).
+   * at one derived address, the one a worker's message lands in.
    */
   const derivable = (criteria: WorkerSessionCriteria): boolean =>
     criteria.taskId === undefined && criteria.filingSessionId === undefined && criteria.workstreamId === undefined;
@@ -437,19 +439,13 @@ export function createWorkforceClient(fsd: WorkforceClientSource): WorkforceClie
   /** Run one action in `sessionId` on `flow` and return its output, or reject with the reason it failed. */
   const runIn = async (flow: string, sessionId: string, action: string, input: unknown): Promise<unknown> => {
     const started = await fsd.flow(flow).send(action, input, { sessionId });
-    const requestId = started.id;
-    const until = Date.now() + ACTION_TIMEOUT_MS;
-    let status: Awaited<ReturnType<typeof started.status>>["status"] = started.response.status;
-    while (status === "in_progress") {
-      if (Date.now() > until) throw new Error(`${action} did not finish in time.`);
-      await new Promise((resolve) => setTimeout(resolve, ACTION_POLL_MS));
-      status = (await started.status()).status;
-    }
-    const listed = await sessions.requests(sessionId, { status, includeResultOutput: true, limit: 100 });
-    const found = listed.find((request) => request.id === requestId);
-    if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}.`);
-    if (found === undefined) throw new Error(`${action} finished, but its answer could not be read.`);
-    return found.result?.output;
+    const settled = await started.result({ pollMs: ACTION_POLL_MS, timeoutMs: ACTION_TIMEOUT_MS }).catch((error: unknown) => {
+      if (error instanceof ClientHttpError && error.status === 0) throw new Error(`${action} did not finish in time.`);
+      throw error;
+    });
+    if (settled.status !== "completed") throw new Error(settled.error?.message ?? `${action} ended ${settled.status}.`);
+    if (settled.outputNotRecorded === true) throw new Error(`${action} finished, but its answer could not be read.`);
+    return settled.output;
   };
 
   const client: WorkforceClient = {

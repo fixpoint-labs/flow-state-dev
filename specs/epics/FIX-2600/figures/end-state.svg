@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="What's in the box. In the box: one glossary under docs/contributing, each entry a term, its meaning, the words it replaces, its exemptions and the decision behind it (FIX-2601); the three existing checks, the sweep, the Workforce guard and the side-chain check, read it (FIX-2601); every contributor tree is read, docs/contributing and .agents included (FIX-2354); the package names follow the resource convention (FIX-2479); the naming skills, CLAUDE.md and AGENTS.md point to it (FIX-2601). A fence: a word is coined or retired only in the glossary, in the PR that names it. Composed in: the published glossary page, written by release-docs from the changesets and checked against the glossary's term list. Replaced in one line: the rule lists in goal.md, rules.mjs, the guard's header and GLOSSARY_TERMS, and the side-chain check's list. Not built: words that collide but are not retired, a naming-style linter, store-adapter rows and UI list rows, collection storage keys."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .chip  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .one   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .none  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="612" height="320" rx="8"/>
+    <text class="t-tag c-code" x="32" y="38">IN THE BOX · ONE PLACE, AND THE CHECKS THAT READ IT</text>
+    <rect class="chip" x="32" y="52" width="580" height="44" rx="4"/>
+    <text class="t-b" x="44" y="71">One glossary, under docs/contributing/ · FIX-2601</text>
+    <text class="t-s" x="44" y="87">each entry: the term · what it means · the words it replaces · exemptions · the decision</text>
+    <rect class="chip" x="32" y="104" width="284" height="44" rx="4"/>
+    <text class="t-b" x="44" y="123">The three checks read it · FIX-2601</text>
+    <text class="t-s" x="44" y="139">the sweep, the guard, side chain · no fourth</text>
+    <rect class="chip" x="328" y="104" width="284" height="44" rx="4"/>
+    <text class="t-b" x="340" y="123">Every contributor tree read · FIX-2354</text>
+    <text class="t-s" x="340" y="139">docs/contributing/ and .agents/ too</text>
+    <rect class="chip" x="32" y="156" width="284" height="44" rx="4"/>
+    <text class="t-b" x="44" y="175">The names follow it · FIX-2479</text>
+    <text class="t-s" x="44" y="191">ResourceState · ResourceRef · Status</text>
+    <rect class="chip" x="328" y="156" width="284" height="44" rx="4"/>
+    <text class="t-b" x="340" y="175">Skills and orientation point to it</text>
+    <text class="t-s" x="340" y="191">issue-spec, review, CLAUDE.md, AGENTS.md</text>
+  </g>
+
+  <g id="the-fence">
+    <line class="fence" x1="16" y1="236" x2="628" y2="236"/>
+    <text class="t-tag c-gone" x="32" y="260">FENCE · D2 · ER-1 · ER-2</text>
+    <text class="t-b" x="32" y="282">A word is coined or retired only in the glossary,</text>
+    <text class="t-b" x="32" y="300">in the PR that names it. Nowhere else restates the rule.</text>
+    <text class="t-s" x="32" y="320">a check, a skill, a goal or a script reads the entry</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="644" y="16" width="280" height="140" rx="8"/>
+    <text class="t-tag c-acc" x="660" y="38">COMPOSED IN AT RELEASE</text>
+    <text class="t-b" x="660" y="66">The published glossary page</text>
+    <text class="t-s" x="660" y="84">written by /release-docs from the</text>
+    <text class="t-s" x="660" y="100">changesets, and checked against</text>
+    <text class="t-s" x="660" y="116">the glossary's list of terms</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="one" x="644" y="172" width="280" height="164" rx="8"/>
+    <text class="t-lbl" x="660" y="194">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="660" y="220">The rule lists in goal.md and</text>
+    <text class="t-b" x="660" y="236">rules.mjs</text>
+    <text class="t-b" x="660" y="262">The guard's header and</text>
+    <text class="t-b" x="660" y="278">GLOSSARY_TERMS</text>
+    <text class="t-b" x="660" y="304">The side-chain check's list</text>
+    <text class="t-s" x="660" y="322">each becomes a read of the glossary</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="none" x="16" y="352" width="908" height="102" rx="8"/>
+    <text class="t-tag c-gone" x="32" y="374">NOT BUILT</text>
+    <text class="t-b" x="32" y="402">Colliding words not retired</text>
+    <text class="t-s" x="32" y="418">kind, worker, stream, InboxItem</text>
+    <text class="t-b" x="262" y="402">A naming-style linter</text>
+    <text class="t-s" x="262" y="418">word order, prefixes</text>
+    <text class="t-b" x="492" y="402">Store-adapter and UI rows</text>
+    <text class="t-s" x="492" y="418">VersionedRow, ToolRow stay rows</text>
+    <text class="t-b" x="722" y="402">Collection storage keys</text>
+    <text class="t-s" x="722" y="418">stored data keeps its keys</text>
+  </g>
+</svg>

@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 354" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: nine rules, each with one owner. FIX-2448 owns the root-export rule, which FIX-2449 extends with collisions, and owns the two kinds of hidden surface. FIX-2454 owns the rename rule and the changeset rule. FIX-2453 owns where new checks live and the ban on tracker ids. Each child owns not adding a second way to do a job. The coordinator owns keeping consumed issues where they are. FIX-2564 owns asserting on installed tarballs, with a child changing only its own manifest rows, and the closure FIX-2562 uses it and five other rules.">
+     aria-label="Who owns what: nine rules, each with one owner. FIX-2448 owns the root-export rule, which FIX-2449 extends with collisions, and owns the two kinds of hidden surface. FIX-2454 owns the no-compat rule, D4, and the changeset rule. FIX-2453 owns where new checks live and the ban on tracker ids. Each child owns not adding a second way to do a job. The coordinator owns keeping consumed issues where they are. FIX-2564 owns asserting on installed tarballs, with a child changing only its own manifest rows, and the closure FIX-2562 uses it and five other rules.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
@@ -41,7 +41,7 @@
     <rect class="use" x="800" y="90" width="60" height="26" rx="3"/><text class="t-use" x="806" y="107">uses</text>
   </g>
   <g id="er3">
-    <text class="t-row" x="16" y="140">ER-3 every move follows the rename rule (D3)</text>
+    <text class="t-row" x="16" y="140">ER-3 every move follows the no-compat rule (D4)</text>
     <rect class="own" x="602" y="122" width="60" height="26" rx="3"/><text class="t-own" x="608" y="139">OWNS</text>
     <rect class="use" x="668" y="122" width="60" height="26" rx="3"/><text class="t-use" x="674" y="139">uses</text>
     <rect class="use" x="800" y="122" width="60" height="26" rx="3"/><text class="t-use" x="806" y="139">uses</text>
@@ -51,7 +51,6 @@
     <rect class="use" x="404" y="154" width="60" height="26" rx="3"/><text class="t-use" x="410" y="171">uses</text>
     <rect class="use" x="470" y="154" width="60" height="26" rx="3"/><text class="t-use" x="476" y="171">uses</text>
     <rect class="own" x="536" y="154" width="60" height="26" rx="3"/><text class="t-own" x="542" y="171">OWNS</text>
-    <rect class="use" x="602" y="154" width="60" height="26" rx="3"/><text class="t-use" x="608" y="171">uses</text>
   </g>
   <g id="er5">
     <text class="t-row" x="16" y="204">ER-5 nothing an adopter reads carries a tracker id</text>

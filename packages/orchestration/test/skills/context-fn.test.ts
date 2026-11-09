@@ -6,7 +6,7 @@
  * runSkill, and seeding never runs (chicken-and-egg).
  */
 import { describe, expect, it } from "vitest";
-import type { InitialSkill } from "@flow-state-dev/core";
+import type { InitialSkill } from "@flow-state-dev/core/types";
 import {
   buildActiveSkillsContext,
   buildSkillsCatalogContext,

@@ -1,6 +1,6 @@
 import { PlusIcon } from "lucide-react";
 import type { KeyboardEvent } from "react";
-import type { SessionRow } from "../adapter";
+import type { LabSession } from "../adapter";
 import { cn } from "../lib/utils";
 import { age, useNow } from "../lib/use-watch";
 import { MODES, type ModeId } from "../modes";
@@ -30,7 +30,7 @@ export function SessionsList({
   onToggle,
 }: {
   view: ModeId;
-  sessions: SessionRow[];
+  sessions: LabSession[];
   selectedId: string | undefined;
   onView: (view: ModeId) => void;
   onSelect: (id: string) => void;

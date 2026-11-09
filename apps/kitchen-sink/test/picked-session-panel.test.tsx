@@ -228,6 +228,17 @@ describe("a coordinator's panel", () => {
     expect(sendAction.mock.calls[0]).toEqual(["respond", { message: "a line" }]);
   });
 
+  // A coordinator draws its own lines, not the conversation the feed scrolls.
+  it("does not tell a feed anything: the coordinator's lines are not the conversation", async () => {
+    const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
+    const onSent = vi.fn();
+    render(<PickedSessionPanel session={session({ sendAction })} flow="coordinator" user="devuser" requestStatus={requestStatus} onBack={onBack} onSent={onSent} />);
+    await type("Post to this coordinator", "a line");
+    fireEvent.submit(screen.getByTestId("picked-composer"));
+    await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
+    expect(onSent).not.toHaveBeenCalled();
+  });
+
   it("will not send whitespace", async () => {
     const sendAction = vi.fn();
     panel("coordinator", session({ sendAction }));
@@ -398,6 +409,32 @@ describe("a worker's panel", () => {
     await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
     // No optimistic copy: nothing but the action and its input is sent.
     expect(sendAction.mock.calls[0]).toEqual([action, input]);
+  });
+
+  // The worker's action echoes the user's message into the conversation the
+  // page draws, so the page's feed is told the line is going out, before the
+  // send, and the line rises when it lands.
+  it("tells the conversation's feed the user sent, before the send goes out", async () => {
+    const order: string[] = [];
+    const sendAction = vi.fn(async () => {
+      order.push("sendAction");
+      return { status: "in_progress", request: { id: "req-1" } };
+    });
+    render(
+      <PickedSessionPanel
+        session={session({ sendAction })}
+        flow="agent"
+        user="devuser"
+        requestStatus={requestStatus}
+        onBack={onBack}
+        conversation={<div data-testid="stream-items" />}
+        onSent={() => order.push("sent")}
+      />,
+    );
+    await type("Message this worker", "where is my refund?");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(["sent", "sendAction"]);
   });
 
   // FIX-1611 BR-15.

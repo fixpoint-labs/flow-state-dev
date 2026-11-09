@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SequencerCheckpoint } from "@flow-state-dev/core/types";
-import type { CheckpointStore } from "../src";
+import type { CheckpointStore } from "../src/host";
 import { createInMemoryCheckpointStore } from "../src/stores/memory/checkpoint-store";
 import { createFilesystemCheckpointStore } from "../src/stores/filesystem/checkpoint-store";
 

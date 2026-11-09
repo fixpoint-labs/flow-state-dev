@@ -2,7 +2,7 @@
  * Internal streaming seam hooks for item/envelope interception.
  */
 import type { StreamEvent } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { StreamEnvelope } from "../types";
 
 export type InternalItemInterceptionStage = "item.added" | "item.done";

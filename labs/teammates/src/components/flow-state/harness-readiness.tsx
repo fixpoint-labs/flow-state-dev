@@ -14,7 +14,7 @@
 
 import { useState } from "react";
 
-/** One harness's readiness, as harness-manager's `HarnessReadinessRow` has it. */
+/** One harness's readiness, as harness-manager's `HarnessReadinessView` has it. */
 export type HarnessReadinessChipRow = {
   harness: string;
   label: string;

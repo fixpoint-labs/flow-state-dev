@@ -1,7 +1,8 @@
+// FIX-671.
 /**
  * `claudeCodeAgent` — handler block running the Claude Code Agent SDK in-process.
  *
- * This is the FIX-671 "Level 2 agent adapter": the SDK owns its own agentic
+ * This is a "Level 2 agent adapter": the SDK owns its own agentic
  * loop and built-in tools; FSD observes, translates, and persists. The block
  * resumes a prior SDK session (via the session provider + persisted
  * `sdkSessionId`), runs `query()` to completion, pipes each streamed message
@@ -20,25 +21,28 @@
  * settle. It is a session resource, not session state, so `detached: true`
  * still leaves a block a task board dispatches.
  */
+import { assertTestedSdkVersion, type InstalledSdkVersionReader } from "@flow-state-dev/core/internal";
 import { randomUUID } from "node:crypto";
+import { handler } from "@flow-state-dev/core";
 import {
   OBSERVED_PULL_REQUESTS,
   formatRunDuration,
-  handler,
   harnessRunInputSchema,
   harnessRunNamespace,
   observedPullRequestsCollection,
   recordPullRequests as startPullRequestRecorder,
   reportHarnessActivity,
-} from "@flow-state-dev/core";
-import { reportHarnessSpend, type BlockContext, type HarnessBilling } from "@flow-state-dev/core/types";
+  reportHarnessSpend,
+  type HarnessBilling,
+} from "@flow-state-dev/core/harness";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import type {
   HarnessActivityHook,
   HarnessCallbackContext,
   HarnessResolver,
   HarnessSessionHook,
   HarnessUsageHook,
-} from "@flow-state-dev/core/types";
+} from "@flow-state-dev/core/harness";
 import type { UsesSlot } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -53,40 +57,39 @@ import {
   translateSdkMessage,
 } from "./translate";
 import {
-  createWorkRecorder,
+  createClaudeCodeWorkRecorder,
   normalizeWorkingDirectory,
   type UpsertableCollection,
-  type WorkRecorder,
+  type ClaudeCodeWorkRecorder,
 } from "./work-recorder";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import {
-  OBSERVED_FILE_OPS,
-  OBSERVED_GAPS,
-  OBSERVED_PLAN,
-  OBSERVED_PLAN_LIST,
-  workRecorderResources,
+  CLAUDE_CODE_FILE_OPS,
+  CLAUDE_CODE_GAPS,
+  claudeCodeWorkRecorderResources,
 } from "./work-collections";
-import { defaultResolveClaudeAgent } from "./sdk-client";
+import { defaultResolveClaudeCodeAgent, readInstalledClaudeCodeSdkVersion, TESTED_CLAUDE_CODE_SDK } from "./sdk-client";
 import { CLAUDE_CODE_HARNESS, usageWindowOf } from "./usage";
 import { trackProcess } from "./process-exit";
 import { inProcessMcpServer, type ClaudeCodeMcpToolServer, type ClaudeCodeMcpTools } from "./mcp-tools";
 import {
-  createClaudeAgentSessionProvider,
-  type ClaudeAgentSession,
+  createClaudeCodeSessionProvider,
+  type ClaudeCodeSession,
 } from "./session";
 
-import { ClaudeAgentRunError, isUnknownConversationFailure } from "./errors";
-import type { ClaudeAgentSettingSource, ClaudeAgentSystemPrompt } from "./types";
+import { ClaudeCodeAgentRunError, ClaudeCodeAgentAbortedError, isUnknownConversationFailure } from "./errors";
+import type { ClaudeCodeSettingSource, ClaudeCodeSystemPrompt } from "./types";
 import {
-  CLAUDE_SDK_SOURCE,
+  CLAUDE_CODE_SOURCE,
   outcomeFromResultSubtype,
-  sdkAgentHandleSchema,
-  type ClaudeAgentQueryOptions,
-  type ResolveClaudeAgent,
-  type SdkAgentHandle,
-  type SdkCanUseTool,
-  type SdkResultSubtype,
-  type ToolApprovalDecision,
-  type ToolApprovalRequest,
+  claudeCodeAgentHandleSchema,
+  type ClaudeCodeQueryOptions,
+  type ResolveClaudeCodeAgent,
+  type ClaudeCodeAgentHandle,
+  type ClaudeCodeCanUseTool,
+  type ClaudeCodeResultSubtype,
+  type ClaudeCodeToolApprovalDecision,
+  type ClaudeCodeToolApprovalRequest,
 } from "./types";
 import type { BindingProvider } from "@flow-state-dev/core/types";
 
@@ -111,34 +114,17 @@ const SEARCH_TOOLS = ["Grep", "Glob"] as const;
 const STARTING_STATUS = "Starting Claude Code…";
 
 /** Session-state key holding the SDK session id to resume across requests. */
-export const SDK_SESSION_ID_KEY = "sdkSessionId" as const;
+export const CLAUDE_CODE_SESSION_ID_KEY = "sdkSessionId" as const;
 /** Session-state key under which run handles accumulate. */
-export const SDK_AGENT_RUNS_KEY = "sdkAgentRuns" as const;
+export const CLAUDE_CODE_AGENT_RUNS_KEY = "sdkAgentRuns" as const;
 
 /** Session-state schema the agent block declares, reads, and appends to. */
-export const claudeAgentSessionStateSchema = z.object({
-  [SDK_SESSION_ID_KEY]: z.string().nullable().default(null),
-  [SDK_AGENT_RUNS_KEY]: z.array(sdkAgentHandleSchema).default([]),
+export const claudeCodeSessionStateSchema = z.object({
+  [CLAUDE_CODE_SESSION_ID_KEY]: z.string().nullable().default(null),
+  [CLAUDE_CODE_AGENT_RUNS_KEY]: z.array(claudeCodeAgentHandleSchema).default([]),
 });
 
 /** Options for {@link claudeCodeAgent}. */
-/**
- * The block context as an option callback receives it.
- *
- * Loose in exactly three slots — session state (present or absent depending on
- * `detached`), and the targets and capability namespaces `uses` derives — and
- * checked in every other one. Pinning the three would mean a callback stops
- * type-checking because of an option set beside it, which is not a signal a
- * caller can act on. Everything else stays checked, so a scope-state field
- * nobody declared reads `unknown` rather than `any`.
- *
- * **This is core's {@link HarnessCallbackContext}, not a copy of it**, and the
- * identity is load-bearing rather than tidy: `resume`, `onSession` and `cwd`
- * are the harness contract's own feeds, and this block CALLS them with this
- * context. Two aliases that merely happened to agree would be one edit away
- * from a harness that cannot be handed the feeds a manager built.
- */
-type AgentCallbackContext = HarnessCallbackContext;
 
 /**
  * The Agent SDK's sandbox settings, as this package sees them.
@@ -147,15 +133,16 @@ type AgentCallbackContext = HarnessCallbackContext;
  * here, so its types are not imported. The settings are forwarded verbatim,
  * and the SDK validates them.
  */
-export type SandboxSettings = Record<string, unknown>;
+export type ClaudeCodeSandboxSettings = Record<string, unknown>;
 
 export interface ClaudeCodeAgentOptions {
   /** Host hook resolving the SDK `query`. Default: lazy SDK import. */
-  resolveClaudeAgent?: ResolveClaudeAgent;
+  resolveClaudeAgent?: ResolveClaudeCodeAgent;
   /** Session-continuity provider. Default: resume-by-id provider. */
-  sessionProvider?: BindingProvider<ClaudeAgentSession>;
+  sessionProvider?: BindingProvider<ClaudeCodeSession>;
   /** Derive the prompt from input/ctx. Default: `input.prompt`. */
-  prompt?: (input: { prompt: string }, ctx: AgentCallbackContext) => string;
+  prompt?: (input: { prompt: string }, ctx: HarnessCallbackContext) => string;
+  // BP-031.
   /**
    * Which model the run uses: a fixed id, or a resolver called once per
    * invocation, like `cwd` and `resume`, so one block can run a different
@@ -164,19 +151,19 @@ export interface ClaudeCodeAgentOptions {
    *
    * `null`, `""` and `undefined` from the resolver all mean "no model named":
    * the SDK runs Claude Code's own default. The resolver is handed the context
-   * alone, never the prompt, for the reason `cwd` is (BP-031).
+   * alone, never the prompt, for the reason `cwd` is.
    */
   model?: string | HarnessResolver<string | null | undefined>;
   /**
    * The system prompt the run starts from, forwarded to the SDK as given; the
-   * shapes are on {@link ClaudeAgentSystemPrompt}. Omitted, the run starts from
+   * shapes are on {@link ClaudeCodeSystemPrompt}. Omitted, the run starts from
    * Claude Code's own prompt, the one the `claude` CLI uses.
    *
    * No prompt makes the agent keep a to-do list. `recordWork`'s plan half fills
    * only when the agent chooses to use its to-do tools, which every run is
    * offered (see `allowedTools`).
    */
-  systemPrompt?: ClaudeAgentSystemPrompt;
+  systemPrompt?: ClaudeCodeSystemPrompt;
   /**
    * Tools the run may use without asking, forwarded to the SDK with Claude
    * Code's to-do tools (`TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`)
@@ -210,9 +197,9 @@ export interface ClaudeCodeAgentOptions {
    * still throws its signal's reason, but leaves no error item.
    */
   onToolApproval?: (
-    req: ToolApprovalRequest,
-    ctx: AgentCallbackContext,
-  ) => ToolApprovalDecision | Promise<ToolApprovalDecision>;
+    req: ClaudeCodeToolApprovalRequest,
+    ctx: HarnessCallbackContext,
+  ) => ClaudeCodeToolApprovalDecision | Promise<ClaudeCodeToolApprovalDecision>;
   /**
    * Run the agent as **dispatched background work** — the block a task board
    * worker's `dispatcher({ type: "task" })` targets, declared on the flow under
@@ -289,6 +276,7 @@ export interface ClaudeCodeAgentOptions {
    * `gh pr view` is not. `false` declares nothing and records nothing.
    */
   recordPullRequests?: boolean;
+  // BP-031.
   /**
    * Which filesystem settings this run loads — `"user"`, `"project"`,
    * `"local"`. Default: unset, which loads all three, exactly as today.
@@ -299,13 +287,13 @@ export interface ClaudeCodeAgentOptions {
    * `CLAUDE.md` and `.claude/settings.json` **out of its working directory**.
    * When that directory is one the server assembled from an application's own
    * resources, its contents are caller-controllable input, and a run reading
-   * configuration out of them means callers configure the agent (BP-031). Pass
+   * configuration out of them means callers configure the agent. Pass
    * `[]` to load none.
    *
    * Left unset by default deliberately: this option is the plumbing, not the
    * policy. Nothing changes for a caller who does not set it.
    */
-  settingSources?: ClaudeAgentSettingSource[];
+  settingSources?: ClaudeCodeSettingSource[];
   /**
    * Settings for this run, in Claude Code's `settings.json` shape, forwarded to
    * the SDK as given. Default: unset, which hands the SDK no settings of its own.
@@ -358,8 +346,8 @@ export interface ClaudeCodeAgentOptions {
    * no contextual typing and its parameter would be an implicit `any`.
    */
   sandbox?:
-    | SandboxSettings
-    | ((ctx: AgentCallbackContext) => SandboxSettings | Promise<SandboxSettings>);
+    | ClaudeCodeSandboxSettings
+    | ((ctx: HarnessCallbackContext) => ClaudeCodeSandboxSettings | Promise<ClaudeCodeSandboxSettings>);
   /**
    * Tools this process serves to the run, grouped by server name: a value, or
    * a resolver called once per run with the run's context only (like `cwd`).
@@ -385,7 +373,7 @@ export interface ClaudeCodeAgentOptions {
    */
   mcpTools?:
     | ClaudeCodeMcpTools
-    | ((ctx: AgentCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>);
+    | ((ctx: HarnessCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>);
   /**
    * Capabilities installed on the block this factory returns — the same `uses`
    * slot any other block takes, forwarded to `handler()`.
@@ -407,11 +395,12 @@ export interface ClaudeCodeAgentOptions {
    *
    * It does not swallow the error; the run still fails.
    */
-  onErrored?: (error: Error, ctx: AgentCallbackContext) => Promise<void> | void;
+  onErrored?: (error: Error, ctx: HarnessCallbackContext) => Promise<void> | void;
+  // BP-030; BP-031.
   /**
    * The directory this run works in. Default: unset, which is the directory the
    * server process itself is running in — byte for byte what every existing
-   * caller has today (BP-030).
+   * caller has today.
    *
    * **This is the canonical explanation; everywhere else links here.**
    *
@@ -529,8 +518,7 @@ export interface ClaudeCodeAgentOptions {
    * `ctx.session.identity.id` is deliberately bare, because two tenants can
    * hold one session id. Prefer a key the server assigned over one that
    * arrived with the request — both reach the server from the caller, so the
-   * encoding is what makes an untrusted one safe to build a path from
-   * (BP-031).
+   * encoding is what makes an untrusted one safe to build a path from.
    *
    * The resolver may be async, for a directory that has to be looked up or
    * provisioned first.
@@ -538,7 +526,7 @@ export interface ClaudeCodeAgentOptions {
    * **An option, never a field on the block's input** — a correctness
    * constraint rather than a style preference. The same block is exposed as a
    * model-facing tool through the agent capability, so a working directory
-   * reachable from the input is one the model can choose (BP-031). The block's
+   * reachable from the input is one the model can choose. The block's
    * input stays the prompt.
    *
    * It is a working directory, not a boundary: the run can still address paths
@@ -546,9 +534,10 @@ export interface ClaudeCodeAgentOptions {
    * a fence around where they may go.
    */
   cwd?: HarnessResolver<string>;
+  // BP-030; BP-031.
   /**
    * Which conversation this background run continues. Default: unset — a fresh
-   * session, byte for byte today's `detached: true` behaviour (BP-030).
+   * session, byte for byte today's `detached: true` behaviour.
    *
    * **Background path only** (`detached: true`), and set it in-session and this
    * factory throws. In-session the block's own conversation state already owns
@@ -574,7 +563,7 @@ export interface ClaudeCodeAgentOptions {
    * An option and never a field on the block's input, for the same reason
    * `cwd` is one: the input schema is model-facing through the agent
    * capability's tool preset, so a session id reachable from it is a session a
-   * model could choose to continue (BP-031).
+   * model could choose to continue.
    */
   resume?: HarnessResolver<string | null | undefined>;
   /**
@@ -615,9 +604,10 @@ export interface ClaudeCodeAgentOptions {
    * conversation, so it races nothing.
    */
   onUsage?: HarnessUsageHook;
+  // FIX-2290.
   /**
    * Called with each completed assistant message and each tool call the run
-   * starts (FIX-2290), so a host can say how the run is doing. Default: unset.
+   * starts, so a host can say how the run is doing. Default: unset.
    * Not awaited, and a throw is logged and swallowed.
    */
   onActivity?: HarnessActivityHook;
@@ -634,7 +624,7 @@ export interface ClaudeCodeAgentOptions {
  * `isError` is the result's `is_error` flag: a `"success"` carrying it is the
  * SDK's shape for a turn that ended on an API error, so it errored too.
  */
-function isErroredSubtype(subtype: SdkResultSubtype | null, isError: boolean): boolean {
+function isErroredSubtype(subtype: ClaudeCodeResultSubtype | null, isError: boolean): boolean {
   return subtype !== "success" || isError;
 }
 
@@ -665,7 +655,7 @@ export function forwardSignalToController(
 export const runNamespace: (ctx: BlockContext) => string = harnessRunNamespace;
 
 /**
- * Open a {@link WorkRecorder} against the three collections the block declared,
+ * Open a {@link ClaudeCodeWorkRecorder} against the three collections the block declared,
  * or return `null` with a status note when the two records are not on the
  * context.
  *
@@ -685,25 +675,25 @@ export const runNamespace: (ctx: BlockContext) => string = harnessRunNamespace;
  * SDK confirms (`bindConversation`), so a plan lasts as long as its
  * conversation, and the run's marker points there.
  */
-function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null {
+function openWorkRecorder(ctx: BlockContext, cwd?: string): ClaudeCodeWorkRecorder | null {
   const resources = (ctx as { resources?: Record<string, unknown> }).resources;
   const upsertable = (accessor: string): UpsertableCollection | undefined => {
     const ref = resources?.[accessor] as UpsertableCollection | undefined;
     return typeof ref?.upsert === "function" ? ref : undefined;
   };
-  const files = upsertable(OBSERVED_FILE_OPS);
+  const files = upsertable(CLAUDE_CODE_FILE_OPS);
   const plan = upsertable(OBSERVED_PLAN);
-  const gaps = upsertable(OBSERVED_GAPS);
+  const gaps = upsertable(CLAUDE_CODE_GAPS);
   const planList = upsertable(OBSERVED_PLAN_LIST);
   if (files === undefined || plan === undefined) {
     ctx.emit.status(
-      `Claude Code agent is not recording this run's work: the "${OBSERVED_FILE_OPS}" and ` +
+      `Claude Code agent is not recording this run's work: the "${CLAUDE_CODE_FILE_OPS}" and ` +
         `"${OBSERVED_PLAN}" collections are not registered on this flow.`,
       { transient: false },
     );
     return null;
   }
-  return createWorkRecorder({
+  return createClaudeCodeWorkRecorder({
     runId: runNamespace(ctx),
     requestId: ctx.request.identity.id,
     files,
@@ -720,12 +710,13 @@ function openWorkRecorder(ctx: BlockContext, cwd?: string): WorkRecorder | null 
   });
 }
 
+// FIX-1301.
 /**
- * Rejects the instant `signal` fires, with its abort reason — an
- * AbortError-shaped value `@flow-state-dev/core`'s `isAbortLike` recognizes —
- * so racing it (via `Promise.race`) against other work settles on THIS
+ * Rejects the instant `signal` fires, with a {@link ClaudeCodeAgentAbortedError}
+ * holding its reason — abort-like to `@flow-state-dev/core`'s `isAbortLike`
+ * whatever the reason — so racing it (via `Promise.race`) against other work settles on THIS
  * signal firing rather than on whatever that other work eventually does
- * (FIX-1301: a fired deadline bounds the harness step, not the commands the
+ * (a fired deadline bounds the harness step, not the commands the
  * vendor ran). Already-aborted fires synchronously.
  *
  * Always carries a permanent no-op `.catch`, and `stop()` removes the
@@ -742,7 +733,7 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
   let onAbort = () => {};
   const promise = new Promise<never>((_, reject) => {
     onAbort = () =>
-      reject(signal.reason ?? new DOMException("This operation was aborted.", "AbortError"));
+      reject(new ClaudeCodeAgentAbortedError(null, signal.reason));
     if (signal.aborted) {
       onAbort();
     } else {
@@ -753,13 +744,14 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
   return { promise, stop: () => signal.removeEventListener("abort", onAbort) };
 }
 
+// FIX-2312.
 /**
  * How long an aborted run waits for the agent's process to exit before the
  * block settles. The process keeps writing the session's transcript until it
  * exits, so a run stopped early and resumed straight away would otherwise be
  * told its conversation does not exist. Bounded so a process that never exits
  * cannot hold the block: past it, the block sends the process `SIGKILL` and
- * waits for it to exit (FIX-2312), so the block never returns while its
+ * waits for it to exit, so the block never returns while its
  * process still runs.
  *
  * Sized against the SDK's own shutdown: on abort it closes the process's input
@@ -799,19 +791,20 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
   }
 }
 
+// FIX-1301.
 /**
  * Create the in-process Agent SDK handler block.
  *
- * On success it appends an {@link SdkAgentHandle} to
+ * On success it appends an {@link ClaudeCodeAgentHandle} to
  * `ctx.session.state.sdkAgentRuns`, persists the new `sdkSessionId`, emits a
  * final status item, and returns the handle. An empty prompt throws before
  * `query` is called. A terminal SDK error subtype is an outcome (handle with
  * `status:"errored"` + an error item), not a throw; an SDK throw mid-stream is
- * wrapped in {@link ClaudeAgentRunError}, surfaced as an error item, and
+ * wrapped in {@link ClaudeCodeAgentRunError}, surfaced as an error item, and
  * rethrown.
  *
  * **A fired `ctx.signal` stops the race against the vendor stream right away**
- * (FIX-1301) — `query()`'s loop is raced against the signal rather than awaited
+ * — `query()`'s loop is raced against the signal rather than awaited
  * outright, so the block's deadline is not bounded by whenever the SDK's stream
  * happens to settle. The rejection itself can arrive up to
  * {@link abortExitGrace} later, plus the moment a kill takes: the already-wired
@@ -825,10 +818,30 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
  *
  * See {@link ClaudeCodeAgentOptions.detached} for the background-work mode.
  */
+/**
+ * The version gate's test seam, keyed by a symbol no public entry exports.
+ *
+ * It is deliberately not a field on {@link ClaudeCodeAgentOptions}. A host able
+ * to substitute its own version reader could answer with a tested version and
+ * run an untested wire, which would make the refusal a claim rather than a
+ * guarantee. The specs import this symbol from the module directly; a consumer
+ * of the package cannot name it, so the only reachable behaviour is the real
+ * gate. A host's own check passes a reader to `checkClaudeCodeReadiness`.
+ */
+export const INTERNAL_CLAUDE_CODE_SDK_VERSION_READER = Symbol("claude-code.internal.readInstalledSdkVersion");
+
+/** The shape the specs pass through the symbol above. */
+interface InternalTestSeams {
+  [INTERNAL_CLAUDE_CODE_SDK_VERSION_READER]?: InstalledSdkVersionReader;
+}
+
 export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
+  // Refused when the block is built: an SDK outside the tested range would
+  // run an untested wire and show it as malformed items.
+  assertTestedSdkVersion(TESTED_CLAUDE_CODE_SDK, (options as InternalTestSeams)[INTERNAL_CLAUDE_CODE_SDK_VERSION_READER] ?? readInstalledClaudeCodeSdkVersion);
   const {
-    resolveClaudeAgent = defaultResolveClaudeAgent,
-    sessionProvider = createClaudeAgentSessionProvider(),
+    resolveClaudeAgent = defaultResolveClaudeCodeAgent,
+    sessionProvider = createClaudeCodeSessionProvider(),
     prompt: pickPrompt,
     model,
     systemPrompt,
@@ -898,11 +911,11 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     // hand-rolled duplicate here would sit exactly in that blind spot and stay
     // silent if the contract's input ever grows.
     inputSchema: harnessRunInputSchema,
-    outputSchema: sdkAgentHandleSchema,
+    outputSchema: claudeCodeAgentHandleSchema,
     // Decided HERE rather than at run time, and that is forced: `defineFlow`
     // inspects this static definition (`assertDispatchEntrySupported`) and
     // rejects the dispatch before any `execute` callback receives a context.
-    ...(detached ? {} : { sessionStateSchema: claudeAgentSessionStateSchema }),
+    ...(detached ? {} : { sessionStateSchema: claudeCodeSessionStateSchema }),
     // Also static, and for a related reason: `defineFlow` collects declared
     // resources off block definitions at build time. A collection nobody
     // declared is not registered on the flow, so `findResourceConfig` misses and
@@ -910,7 +923,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     ...(recordWork || recordPullRequests
       ? {
           resources: {
-            ...(recordWork ? workRecorderResources : {}),
+            ...(recordWork ? claudeCodeWorkRecorderResources : {}),
             ...(recordPullRequests ? { [OBSERVED_PULL_REQUESTS]: observedPullRequestsCollection } : {}),
           },
         }
@@ -924,13 +937,13 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     // interest in it. Narrowing here keeps the option's cost at the option.
     execute: async (
       input,
-      ctx: AgentCallbackContext,
-    ): Promise<SdkAgentHandle> => {
+      ctx: HarnessCallbackContext,
+    ): Promise<ClaudeCodeAgentHandle> => {
       const promptText = (
         pickPrompt ? pickPrompt(input, ctx) : input.prompt
       )?.trim();
       if (!promptText) {
-        throw new ClaudeAgentRunError(
+        throw new ClaudeCodeAgentRunError(
           "claudeCodeAgent requires a non-empty prompt.",
         );
       }
@@ -948,10 +961,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // survive across requests for resume-by-id to work, so its lifecycle is
       // the host's (cache TTL/eviction or session end), not this block's. The
       // default provider's `release` is a no-op for exactly this reason.
-      let session: ClaudeAgentSession = { sdkSessionId: null };
+      let session: ClaudeCodeSession = { sdkSessionId: null };
       if (!detached) {
         const priorSessionId = (ctx.session.state as Record<string, unknown>)[
-          SDK_SESSION_ID_KEY
+          CLAUDE_CODE_SESSION_ID_KEY
         ];
         session = await sessionProvider.resolve(
           typeof priorSessionId === "string" ? priorSessionId : "",
@@ -1004,7 +1017,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
       const sandboxSettings =
         typeof sandbox === "function"
-          ? await (sandbox as (c: AgentCallbackContext) => unknown)(ctx)
+          ? await (sandbox as (c: HarnessCallbackContext) => unknown)(ctx)
           : sandbox;
 
       const resolved = await resolveClaudeAgent(ctx);
@@ -1022,7 +1035,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // for that wait, by the SDK's interrupt or the host's own stop, and a stop
       // that lands after it is the wait, not a failure: no error item for it.
       let heldACall = false;
-      const queryOptions: ClaudeAgentQueryOptions = {
+      const queryOptions: ClaudeCodeQueryOptions = {
         model: runModel,
         // The one place the default is decided, so every path that reaches the
         // SDK (in-session, detached, resumed, through a capability) gets it.
@@ -1074,7 +1087,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       const emitState = createEmitState();
       const recorder = recordWork ? openWorkRecorder(ctx, workingDirectory) : null;
 
-      let resultSubtype: SdkResultSubtype | null = null;
+      let resultSubtype: ClaudeCodeResultSubtype | null = null;
       // Tracked beside the subtype, not derived from it: `resultSubtype` is
       // `null` both when no terminal result arrived and when one arrived
       // carrying a subtype this package does not recognize. Only this flag
@@ -1099,8 +1112,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
        * record nothing for a run that continued perfectly.
        */
       let announcedSessionId: string | null = null;
-      let usage: SdkAgentHandle["usage"] = null;
-      let spentTokens: SdkAgentHandle["usage"] = null;
+      let usage: ClaudeCodeAgentHandle["usage"] = null;
+      let spentTokens: ClaudeCodeAgentHandle["usage"] = null;
       let costUsd: number | null = null;
       // The loop's currently-awaited item write, if any — tracked so the
       // abort branch can wait for OUR OWN write to settle (never the vendor
@@ -1131,8 +1144,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       const reportSpend = () => {
         if (runBilling === undefined) return;
         // Set inside the stream's callbacks, which narrowing can't see.
-        const whole = spentTokens as SdkAgentHandle["usage"];
-        let sum: SdkAgentHandle["usage"] = null;
+        const whole = spentTokens as ClaudeCodeAgentHandle["usage"];
+        let sum: ClaudeCodeAgentHandle["usage"] = null;
         for (const tokens of usageByMessage.values()) {
           sum = { inputTokens: (sum === null ? 0 : sum.inputTokens) + tokens.inputTokens, outputTokens: (sum === null ? 0 : sum.outputTokens) + tokens.outputTokens };
         }
@@ -1469,23 +1482,24 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // session id observed just before an abort (FIX-1301) resumable.
           if (!detached && newSessionId !== null) {
             await ctx.session.patchState(
-              SDK_SESSION_ID_KEY,
+              CLAUDE_CODE_SESSION_ID_KEY,
               () => newSessionId,
             );
           }
           if (abortedByOurSignal) {
-            // Surfaced as the signal's OWN reason, unwrapped — never
-            // `ClaudeAgentRunError` — so a caller that supplied e.g. a
-            // timeout signal gets its `TimeoutError` back rather than a
-            // generic run-failure wrapper. `err` itself may not be this
-            // reason (the loop could have already thrown something else in
-            // the same tick our signal fired), so read it from the signal
-            // directly.
+            // A stop, never `ClaudeCodeAgentRunError`: abort-like to core's
+            // reader whatever the signal's reason (a deadline's
+            // `TimeoutError`, a plain `Error` for a steer), with the reason on
+            // it for a caller that wants to know why, and the session to
+            // resume. `err` itself may not be this reason (the loop could have
+            // already thrown something else in the same tick our signal
+            // fired), so read it from the signal directly.
             const reason =
               ctx.signal.reason ?? new DOMException("This operation was aborted.", "AbortError");
+            const stopped = new ClaudeCodeAgentAbortedError(newSessionId, ctx.signal.reason);
             // A turn stopped for a held call has its "Waiting on approval"
             // status already; the stop is that wait, so it shows no error.
-            if (heldACall) throw reason;
+            if (heldACall) throw stopped;
             await emitTranslatedEvent(
               {
                 kind: "error",
@@ -1496,7 +1510,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
               emitState,
               name,
             );
-            throw reason;
+            throw stopped;
           }
           // The SDK's own exit errors carry the process's stderr only when the
           // SDK spawned it; this block does, so it carries the tail instead.
@@ -1506,7 +1520,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // Classified here, in core's vocabulary, so a host never reads the
           // vendor's message.
           const askedToResume = resumeSessionId || session.sdkSessionId || "";
-          const wrapped = new ClaudeAgentRunError(
+          const wrapped = new ClaudeCodeAgentRunError(
             `Claude Code agent run failed: ${(err as Error).message}` +
               (stderrTail === "" ? "" : `\n${stderrTail}`),
             { cause: (err as Error).message },
@@ -1530,8 +1544,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         finalMessage = emitState.finalMessage ?? finalMessage;
 
         const errored = isErroredSubtype(resultSubtype, resultIsError);
-        const handle: SdkAgentHandle = {
-          source: CLAUDE_SDK_SOURCE,
+        const handle: ClaudeCodeAgentHandle = {
+          source: CLAUDE_CODE_SOURCE,
           status: errored ? "errored" : "completed",
           sessionId: newSessionId,
           url: null,
@@ -1552,12 +1566,12 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         if (!detached) {
           if (newSessionId !== null) {
             await ctx.session.patchState(
-              SDK_SESSION_ID_KEY,
+              CLAUDE_CODE_SESSION_ID_KEY,
               () => newSessionId,
             );
           }
-          await ctx.session.patchState(SDK_AGENT_RUNS_KEY, (prev) => [
-            ...((prev as SdkAgentHandle[] | undefined) ?? []),
+          await ctx.session.patchState(CLAUDE_CODE_AGENT_RUNS_KEY, (prev) => [
+            ...((prev as ClaudeCodeAgentHandle[] | undefined) ?? []),
             handle,
           ]);
         }
@@ -1636,15 +1650,16 @@ async function accountInfoOf(running: unknown): Promise<AccountInfo | undefined>
 /** How long a run waits for its own query to name its account. */
 const ACCOUNT_TIMEOUT_MS = 5_000;
 
+// FIX-2145.
 /**
- * How a run is paid for, from its account (FIX-2145): `api-key` when it names
+ * How a run is paid for, from its account: `api-key` when it names
  * an API key source, `subscription` when it names a token source or a
  * signed-in plan, `null` when it names neither.
  */
 function billingFrom(info: AccountInfo): HarnessBilling | null {
   const named = (value: unknown) => typeof value === "string" && value !== "" && value !== "none";
   if (named(info.apiKeySource)) return "api-key";
-  // "Claude API" is the no-plan label, not a sign-in (as `probeClaudeAccount` reads it).
+  // "Claude API" is the no-plan label, not a sign-in (as `probeClaudeCodeAccount` reads it).
   if (named(info.tokenSource) || named(info.email) || (named(info.subscriptionType) && info.subscriptionType !== "Claude API")) {
     return "subscription";
   }
@@ -1662,8 +1677,8 @@ function emailFrom(info: AccountInfo | undefined): string | null | undefined {
 }
 
 async function resolveMcpTools(
-  resolve: (ctx: AgentCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>,
-  ctx: AgentCallbackContext,
+  resolve: (ctx: HarnessCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>,
+  ctx: HarnessCallbackContext,
 ): Promise<ClaudeCodeMcpTools> {
   const pending = Promise.resolve().then(() => resolve(ctx));
   const abortRace = rejectOnAbort(ctx.signal);
@@ -1703,7 +1718,7 @@ async function closeMcpTools(tools: ClaudeCodeMcpTools | undefined): Promise<voi
 function mcpQueryOptions(
   tools: ClaudeCodeMcpTools,
   hostSettings: Record<string, unknown> | undefined,
-): Pick<ClaudeAgentQueryOptions, "mcpServers" | "strictMcpConfig" | "settings"> {
+): Pick<ClaudeCodeQueryOptions, "mcpServers" | "strictMcpConfig" | "settings"> {
   return {
     mcpServers: Object.fromEntries(
       Object.entries(tools).map(([server, entry]) => [
@@ -1738,7 +1753,7 @@ function buildCanUseTool(
   onToolApproval: NonNullable<ClaudeCodeAgentOptions["onToolApproval"]>,
   ctx: BlockContext,
   onHeld: () => void,
-): SdkCanUseTool {
+): ClaudeCodeCanUseTool {
   let decisionSeq = 0;
   return async (toolName, toolInput, extra) => {
     const decision = await onToolApproval(

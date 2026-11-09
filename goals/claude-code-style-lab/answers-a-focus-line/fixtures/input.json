@@ -1,0 +1,5 @@
+{
+  "project": "Focus notes",
+  "focus": "We are going to focus on Claude Code Style UX improvements",
+  "ask": "Write me a short comparison of two ways to cache API responses in a Node service, an in-process LRU and Redis, and end with your pick."
+}

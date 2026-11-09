@@ -1,42 +1,43 @@
+// FIX-1816; `getTask` since FIX-2082; FIX-2081; FIX-2086; FIX-2133; FIX-2131; FIX-1875; FIX-2082; FIX-918.
 /**
  * `taskTools` capability — the model's surface onto a task board.
  *
- * The filer's four task tools (FIX-2081): `createTask` files a task,
+ * The filer's four task tools: `createTask` files a task,
  * `getTask` reads one whole, `listTasks` lists them without results, and
  * `updateTask` changes one, each field by its one rule (the field table,
  * `TASK_FIELD_RULES`): edits, a hold and a release before the task first
  * starts; a cancel and a message until it finishes; nothing after. A message
- * steers (FIX-2086): it is kept on the task, joins its brief, and reaches a
+ * steers: it is kept on the task, joins its brief, and reaches a
  * running request before its next model call, using no attempt. Every refusal
  * names the field, the state and the next move. A finished task's output never
  * changes: more work is a follow-up, and the task view reads the latest
  * completed follow-up as `current`. A question a task holds on is answered
- * with `updateTask({ id, answers, message })` (FIX-2133).
+ * with `updateTask({ id, answers, message })`.
  *
  * Nothing on this surface settles a task: a task ends when its worker returns
  * or throws, and the drain or the claim gate records that. The worker's own
  * tools act on the row the turn's claim holds, never on a task id from input:
  * `reportProgress` (`createReportProgress`) reports a note and a checkpoint of
  * its output while it runs, and `holdTaskForUser` (`createHoldTaskForUser`) asks the
- * user a question the task holds on (FIX-2131). `suspendForUser`
+ * user a question the task holds on. `suspendForUser`
  * (`createSuspendForUserTool`) stops a turn for the user's approval, review or,
  * on a turn with no task row, input.
  *
- * ## Dispatching (FIX-1875)
+ * ## Dispatching
  *
  * On a board that starts a ready row at once (`TaskToolsOptions.dispatches`,
  * a conversation's board), `createTask` starts a ready row at once: the board
  * hands it over as soon as it is filed. A held row is released with `updateTask({ id, status: "pending" })`, and a
- * wait is `getTask`'s (FIX-2082).
+ * wait is `getTask`'s.
  *
  * `createTask` starts a task as its start setting says: at once, after its
  * `deps`, or `held` until a release.
  *
- * Board resolution goes through the resolver the caller passes (FIX-918). With
+ * Board resolution goes through the resolver the caller passes. With
  * no board resolvable, every tool returns
  * `{ ok: false, error: "no_delegation_board" }` rather than throwing.
  *
- * ## Waiting on a task (FIX-1816; `getTask` since FIX-2082)
+ * ## Waiting on a task
  *
  * On a request whose host can hold a wait (`canHoldWait`), on a board that
  * resumes waits (`TaskToolsOptions.resumesWaits`), `getTask` takes two more
@@ -62,30 +63,28 @@ import {
   taskSpendView,
   taskSpendViewSchema,
   TaskCapExceededError,
-  TaskWriteRefusedError,
   TaskFilingRefusedError,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskEditField,
-  type TaskUpdateField,
   type TaskInit,
   type TaskSettingsPatch,
   type TaskStatus,
   type TaskWriteOutcome,
   type TaskWriteDeclineReason,
-  withoutNoticeMarkers,
-  cancelledDependents,
-  MAX_STEERS,
-  MAX_QUESTION_PROMPT,
-  isRowHold,
   openHolds,
-  steerPlacesTaken,
   taskHoldSchema,
   type QuestionAnswer,
   type QuestionInit,
-  type RowHold,
+  type OwnHold,
 } from "../tasks";
+import { TaskWriteRefusedError } from "../tasks/collection/refused-write";
+import type { TaskUpdateField } from "../tasks/collection/field-rules";
+import { withoutNoticeMarkers, cancelledDependents } from "../tasks/notice/task-notice";
+import { MAX_STEERS } from "../tasks/schema/steer";
+import { MAX_QUESTION_PROMPT } from "../tasks/schema/hold";
+import { externalHoldOf, isOwnHold, steerPlacesTaken } from "../tasks/collection/holds";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
 // the task-board's public API to advertise it.
@@ -114,12 +113,13 @@ function askOf(question: string | { kind: "question" | "confirm"; prompt: string
   return { kind: question.kind, prompt: question.prompt, ...(question.onNo !== undefined ? { onNo: question.onNo } : {}) };
 }
 
+// FIX-2133 D1; BP-031.
 /**
- * Whether the running request's caller reaches `row` (FIX-2133 D1): the
+ * Whether the running request's caller reaches `row`: the
  * user, tenant and org its filing ran under, compared as the engine compares
  * a request's (`principalOwnsRequest`): the same user, the same tenant (none
  * matching none), and the same org when the row recorded one. Read from the
- * request's verified identity, never input (BP-031). A row filed with no user
+ * request's verified identity, never input. A row filed with no user
  * recorded is decided by tenant and org alone.
  */
 function callerReaches(ctx: BlockContext, row: Task): boolean {
@@ -141,9 +141,10 @@ export type TaskCollectionResolver = (
 const noBoardError = { ok: false as const, error: "no_delegation_board" };
 const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_not_found", taskId: id });
 
+// BP-042.
 /**
  * The longest input or output `getTask` returns, each in characters of its
- * JSON. A tool's output is recorded on the turn (BP-042), so a value past this
+ * JSON. A tool's output is recorded on the turn, so a value past this
  * comes back as its JSON, cut, with `inputCut` or `outputCut` set.
  */
 export const READ_OUTPUT_LIMIT = 20_000;
@@ -192,9 +193,10 @@ function readable(value: unknown): { value: unknown; cut: boolean } {
   return { value: text.slice(0, READ_OUTPUT_LIMIT), cut: true };
 }
 
+// FIX-2077; FIX-2133.
 /**
- * What a running task waits on while no worker holds it (FIX-2077's
- * `keptOpenBy`), and what holds it for the user (FIX-2133): its open holds.
+ * What a running task waits on while no worker holds it (its
+ * `keptOpenBy`), and what holds it for the user: its open holds.
  */
 function waitingOf(t: Task) {
   const open = openHolds(t);
@@ -207,8 +209,9 @@ function waitingOf(t: Task) {
 /** A new row's id, in the board's own shape: twenty hex characters, unique across processes. */
 const mintTaskId = (): string => `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
 
+// FIX-2350.
 /**
- * The filing each board is running, so the next waits for it (FIX-2350). In
+ * The filing each board is running, so the next waits for it. In
  * process, and keyed by the request too: a step's sibling calls share one
  * request, while another request's board of the same name may be another
  * board altogether, and must not wait on this one.
@@ -231,13 +234,14 @@ async function oneFilingAtATime<T>(board: string, file: () => Promise<T>): Promi
   }
 }
 
+// FIX-2345.
 /**
  * One task as `getTask` reads it: every field it returns, with its input,
  * output and metadata each cut to {@link READ_OUTPUT_LIMIT} and flagged when
  * cut. `rows` is the board it is on, read for the latest completed follow-up
  * in its chain (`current`). A read built here is the same read the tool
  * returns, so a framework that hands a model a task's ending as a `getTask`
- * result (workforce's woken turn, FIX-2345) shows the shape the tool would.
+ * result (workforce's woken turn) shows the shape the tool would.
  */
 export function readTaskView(t: Task, rows: readonly Task[]) {
   const taskInput = t.input === undefined ? undefined : readable(t.input);
@@ -318,10 +322,11 @@ export interface AssigneeRoster {
   soleAssignee?(): string | undefined;
 }
 
+// FIX-1794 T1.
 /**
  * Where the task tools read their roster from: a fixed {@link AssigneeRoster},
  * or a function of the running context that returns one, read on every call
- * that checks an assignee (FIX-1794 T1).
+ * that checks an assignee.
  *
  * The function form is for a board whose team changes while it is in use: an
  * assignee added between two calls is accepted on the second, and one removed
@@ -348,6 +353,7 @@ const unknownAssigneeError = (assignee: string, roster: AssigneeRoster) => ({
     `assignee unset to run the task on the default worker.`,
 });
 
+// FIX-940; BP-030; FIX-923 / FIX-641.
 /**
  * The single gate deciding whether an assignee may be written to a task.
  * Returns an error result when the assignee is invalid, `undefined` when it is
@@ -356,14 +362,14 @@ const unknownAssigneeError = (assignee: string, roster: AssigneeRoster) => ({
  * Two shapes pass unchecked, both deliberate:
  *
  * - **No assignee.** An unassigned task is a valid plan — it runs on the board's
- *   default worker (its floor, FIX-940). Reaching the floor by *intent* stays
+ *   default worker (its floor). Reaching the floor by *intent* stays
  *   open; only reaching it by *accident* (a typo) is closed.
  * - **No roster.** A caller that passes none supplies none — there is nothing to validate against, so
- *   validation is inert and every assignee is accepted as before (BP-030:
- *   tolerate the old, roster-less shape).
+ *   validation is inert and every assignee is accepted as before (the old,
+ *   roster-less shape is tolerated).
  *
- * This is the one place the definition of "a valid assignee" lives. FIX-923 /
- * FIX-641 widen it here (to admit an explicit ad-hoc agent spec) rather than
+ * This is the one place the definition of "a valid assignee" lives. A later
+ * change widens it here (to admit an explicit ad-hoc agent spec) rather than
  * scattering the rule across the three tools that call it.
  */
 export function checkAssignee(
@@ -375,8 +381,9 @@ export function checkAssignee(
   return unknownAssigneeError(assignee, roster);
 }
 
+// FIX-2076.
 /**
- * A wrapping ref's own refusal (FIX-2076) as the soft error the tools answer:
+ * A wrapping ref's own refusal as the soft error the tools answer:
  * its code and its message, naming the task when the write named one.
  */
 const refusedError = (err: TaskWriteRefusedError) => ({
@@ -385,7 +392,8 @@ const refusedError = (err: TaskWriteRefusedError) => ({
   ...(err.taskId !== undefined ? { taskId: err.taskId } : {}),
 });
 
-/** Map a creation-cap breach (FIX-931) onto its distinct soft-error code. */
+// FIX-931.
+/** Map a creation-cap breach onto its distinct soft-error code. */
 const capError = (err: TaskCapExceededError) => ({
   ok: false as const,
   error:
@@ -398,9 +406,9 @@ const capError = (err: TaskCapExceededError) => ({
 // Refusals
 // ---------------------------------------------------------------------------
 
+// FIX-976, Decision 6.
 /**
- * The one renderer for "this task is finished, so your write was refused"
- * (FIX-976, Decision 6).
+ * The one renderer for "this task is finished, so your write was refused".
  *
  * Every tool that refuses a write to a finished task reports it, and they must
  * not drift into two ways of saying the same thing: one sentence shape, one `snake_case`
@@ -424,15 +432,15 @@ const terminalWriteToolError = (options: {
 
 /** The `clause` for a write that would have moved the task's status. */
 const STATUS_CLAUSE = "Its status will not change again.";
+// FIX-976, Decision 5; FIX-981.
 /**
- * Map a declined substrate write onto the recoverable result shape (FIX-976,
- * Decision 5). The reason travels inside the `error` string behind a
+ * Map a declined substrate write onto the recoverable result shape. The reason travels inside the `error` string behind a
  * `snake_case` prefix; the result schema is unchanged and gains no `code` field.
  *
  * `clause` names what the attempted write would not have changed, so the model
  * is told about the operation it actually called.
  *
- * **`not-my-task` gets its own branch, like `terminal` does** (FIX-981). The
+ * **`not-my-task` gets its own branch, like `terminal` does**. The
  * generic path below cannot express it: it receives only the *target* id, the
  * reason and the status, and the one fact that makes this refusal correctable
  * is the task the caller actually **holds**. A model told "the write was
@@ -506,13 +514,13 @@ const followUpAssigneeError = (followUpOf: string) => ({
     `with its worker, and another worker is another session. Leave assignee unset.`,
 });
 
+// FIX-1817 BR-20 to BR-25; FIX-2080.
 /**
- * Check a follow-up against the board it is filed on (FIX-1817 BR-20 to
- * BR-25): the named task is on this board (its partition, so another
+ * Check a follow-up against the board it is filed on: the named task is on this board (its partition, so another
  * conversation's or user's task is unknown here), and its root ran with a
  * worker, so there is a session to follow up in. A session still busy with
  * another task doesn't refuse it: the follow-up waits, and starts in that
- * session once the open task ends (FIX-2080, the board's one-open-task start
+ * session once the open task ends (the board's one-open-task start
  * test). Answers the root, the first task of the chain, and the worker that
  * root ran on.
  */
@@ -540,7 +548,7 @@ function resolveFollowUp(
         `no session to follow up in. File a new task instead. Nothing was filed.`,
     };
   }
-  // The follow-up's id is the root's, with the lowest number no row holds.
+  // The follow-up's id is the root's, with the lowest number no task holds.
   // Two follow-ups filed at once pick the same id, and the ledger's insert
   // takes one id once: the loser is refused, and files again.
   let number = 1;
@@ -586,10 +594,11 @@ function followUpTakenError(id: string) {
 
 /** Where a task turn's own tools (`holdTaskForUser`, `reportProgress`) read the row the turn holds. */
 export interface TaskTurnToolOptions {
+  // BP-031.
   /**
    * The ledger the running task turn's row is on, or `undefined` when this
    * flow can't reach it. Resolve from server-set state only (a task session's
-   * birth fields, say), never from input (BP-031).
+   * birth fields, say), never from input.
    */
   resolve: (ctx: BlockContext) => Promise<TaskCollectionRef | undefined>;
 }
@@ -598,7 +607,7 @@ export interface TaskTurnToolOptions {
 export type ReportProgressOptions = TaskTurnToolOptions;
 
 /** The row a task turn holds, with the ticket that proves it. */
-interface HeldRow {
+interface HeldTask {
   readonly claim: TaskClaimTicket;
   readonly ledger: TaskCollectionRef;
   readonly row: Task | undefined;
@@ -619,7 +628,7 @@ interface HeldRow {
 async function claimedRowOf(
   resolve: (ctx: BlockContext) => Promise<TaskCollectionRef | undefined>,
   ctx: BlockContext,
-): Promise<HeldRow | undefined> {
+): Promise<HeldTask | undefined> {
   if (!isTaskTurn(ctx)) return undefined;
   const ledger = await resolve(ctx);
   if (ledger === undefined) return undefined;
@@ -643,8 +652,9 @@ async function claimedRowOf(
 /** The longest status note `reportProgress` takes, in characters: one line for a task view. */
 export const STATUS_NOTE_LIMIT = 280;
 
+// FIX-2081 D3.
 /**
- * The worker's one task tool (FIX-2081 D3): `reportProgress({ statusNote?,
+ * The worker's one task tool: `reportProgress({ statusNote?,
  * output? })`, for a task turn, and the rule for when a turn is offered it.
  *
  * - **Which row.** The one the turn holds ({@link claimedRowOf}), never an id
@@ -745,8 +755,9 @@ export function createReportProgress(options: ReportProgressOptions) {
  */
 const QUESTION_LIMIT = MAX_QUESTION_PROMPT;
 
+// FIX-2131, on FIX-2133's hold.
 /**
- * The worker's question (FIX-2131, on FIX-2133's hold): `holdTaskForUser({ question })`,
+ * The worker's question (on a task's hold): `holdTaskForUser({ question })`,
  * for a task turn, and the rule for when a turn is offered it.
  *
  * - **Which row.** The one the turn holds ({@link claimedRowOf}), never a task
@@ -829,8 +840,9 @@ export function createHoldTaskForUser(options: TaskTurnToolOptions) {
 /** What a model's `suspendForUser` asks for: an approval, a review or, on a turn with no task row, input. */
 const WAIT_KINDS = ["approval", "review", "input"] as const;
 
+// FIX-2131, on FIX-2129's.
 /**
- * The model's stop for the user (FIX-2131, on FIX-2129's `ctx.suspendForUser`):
+ * The model's stop for the user (on `ctx.suspendForUser`):
  * `suspendForUser({ kind, prompt })`, an approval, a review or an input, and the
  * rule for when a turn is offered it.
  *
@@ -939,15 +951,17 @@ interface BuildTaskToolsOptions {
    * action's block rather than left for the flow to declare.
    */
   readonly uses?: readonly DefinedCapability[];
+  // BR-25.
   /**
    * Present no worker claim, whatever async scope the tool runs in. Only
-   * {@link taskToolActions} sets it: an action is a caller's move (BR-25), and
+   * {@link taskToolActions} sets it: an action is a caller's move, and
    * a worker that dispatches one in-process must not lend it the worker's
    * ticket through the claim seam.
    */
   readonly claimless?: boolean;
+  // FIX-2082.
   /**
-   * Offer the wait: `getTask`'s `wait`, with `deadline` (FIX-2082). Only the
+   * Offer the wait: `getTask`'s `wait`, with `deadline`. Only the
    * capability's per-turn tool list sets it, on a host that can hold a wait
    * ({@link canHoldWait}).
    */
@@ -972,7 +986,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    */
   const named = (base: string): string =>
     nameSuffix === undefined ? base : `${base}_${nameSuffix}`;
-  /** How a cancel through this block was made: a model's tool, or a public action (server-set, BP-031). */
+  // BP-031.
+  /** How a cancel through this block was made: a model's tool, or a public action (server-set). */
   const via = claimless ? ("action" as const) : ("tool" as const);
 
   // How to wait on a colleague's result (FIX-2082), said once, on createTask: a model told to
@@ -1070,21 +1085,23 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     // Every field `updateTask` edits is one a filing sets, plus the filing-only keys above.
   } satisfies Record<TaskUpdateField, z.ZodTypeAny> & Record<string, z.ZodTypeAny>;
   type NewTaskInput = z.infer<z.ZodObject<typeof createTaskFields>>;
+  // FIX-2082; FIX-1875 BR-21.
   /**
    * The fields that would make a filing wait, refused by name: `createTask`
-   * only files, and the wait is `getTask`'s (FIX-2082; FIX-1875 BR-21). Read
+   * only files, and the wait is `getTask`'s. Read
    * from the call's input before anything else: the schema doesn't name them,
    * so a plain parse would drop them and file a task the caller thinks it
    * waits on.
    */
-  const WAIT_FIELDS = ["wait", "deadline", "waitForResponse", "timeoutMs"] as const; // retired-name-refusal: waitForResponse
+  const WAIT_FIELDS = ["wait", "deadline", "timeoutMs"] as const;
   type FollowUp = { root: string; assignee: string | undefined; id: string };
 
+  // FIX-1875 BR-15.
   /**
    * A decision read from the roster, which can change between a call and its
    * replay: recorded with the call when `memoize`, so the replay of a call
    * that already filed or readied its row decides as the first call did, and
-   * reaches its own write instead of a refusal (FIX-1875 BR-15). `null`
+   * reaches its own write instead of a refusal. `null`
    * stands for "nothing to refuse" in the record, which holds JSON only.
    */
   /**
@@ -1142,9 +1159,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       : decide();
   }
 
+  // FIX-1875 BR-14.
   /**
-   * A new task's checks, in their order, run by `createTask` (FIX-1875
-   * BR-14): the follow-up (in this board's partition only), then the assignee against the
+   * A new task's checks, in their order, run by `createTask`: the follow-up (in this board's partition only), then the assignee against the
    * roster. The creation cap comes last, at the write ({@link fileNewTask}).
    * Every refusal comes before anything is filed.
    *
@@ -1235,9 +1252,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     };
   }
 
+  // FIX-931.
   /**
    * Run a new task's write, turning the refusals the write itself can make
-   * into the soft errors `createTask` answers: a creation cap (FIX-931),
+   * into the soft errors `createTask` answers: a creation cap,
    * and a follow-up's id taken by one filed at the same moment. Every other
    * throw propagates.
    */
@@ -1314,10 +1332,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     },
   });
 
+  // BR-15.
   /**
    * File a new row ready, once per call: its id is recorded with the call, so
-   * a replay after a crash finds its own row instead of filing a second
-   * (BR-15). Where the turn carries no tool call or no `runOnce`, it is the
+   * a replay after a crash finds its own row instead of filing a second.
+   * Where the turn carries no tool call or no `runOnce`, it is the
    * unguarded path: a plain `createTask`, with no replay protection.
    */
   async function fileReady(ctx: BlockContext, collection: TaskCollectionRef, init: TaskInit) {
@@ -1374,7 +1393,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   const fieldNames = (fields: readonly TaskEditField[]): string =>
     fields.map((field) => (field === "held" ? "a hold or a release" : field)).join(", ");
 
-  /** The refusal for a message on a finished task: the rule, then the move (FIX-2086). */
+  // FIX-2086.
+  /** The refusal for a message on a finished task: the rule, then the move. */
   const FINISHED_TAKES_NO_MESSAGE = "a finished task takes no message; file a follow-up";
 
   /**
@@ -1462,15 +1482,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }
       const fields = UPDATE_FIELDS.filter((field) => input[field] !== undefined);
       const message = input.message;
-      // `question` was the answer's field before FIX-2183: refused by name, so a call
-      // that still sends it is never kept as a plain message.
-      if ((input as Record<string, unknown>).question !== undefined) {
-        return {
-          ok: false as const,
-          taskId: input.id,
-          error: "answers_not_question: name the question you answer with answers, not question. Nothing was written.", // retired-name-refusal: question
-        };
-      }
       // An answer (FIX-2133) is its own write, decided apart from every edit.
       const answers = input.answers;
       const done = (input as { done?: unknown }).done;
@@ -1517,7 +1528,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         try {
           // A model's own cancel in its own turn: the call's result tells its filer, so it owes no notice (FIX-2078 D2).
           // A task waiting on a user is cancelled under its stop's fence, and its run resumes `cancelled` (FIX-2129).
-          const outcome: TaskWriteOutcome | undefined = await cancelAndResume(ctx as never, collection, input.id, undefined, {
+          const outcome: TaskWriteOutcome | undefined = await cancelAndResume(ctx, collection, input.id, undefined, {
             via,
             ...(via === "tool" ? { viaTool: true } : {}),
           });
@@ -1562,8 +1573,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // or release, decided by the write, aside) and the steer limit.
       if (message !== undefined) {
         if (isTerminalStatus(current.status)) return lockedError(current, ["message"]);
-        // Each open question keeps its answer's place under the cap (FIX-2133).
-        if (steerPlacesTaken(current) >= MAX_STEERS) return steerLimitError(input.id);
+        // Each open question keeps its answer's place under the cap (FIX-2133), and a message to
+        // a running task's open external wait answers it in that place (FIX-2578), as the write decides.
+        const answersWait = current.status === "in_progress" && externalHoldOf(current) !== undefined;
+        if (!answersWait && steerPlacesTaken(current) >= MAX_STEERS) return steerLimitError(input.id);
         if (collection.steer === undefined) {
           return {
             ok: false as const,
@@ -1624,14 +1637,15 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     },
   });
 
+  // FIX-2133 D1; BP-031.
   /**
-   * Answer one of a task's open questions or confirms (FIX-2133 D1): the
+   * Answer one of a task's open questions or confirms: the
    * user's words, kept as a steer carrying the question's id, which join the
    * brief; the last answer lets the work go on, in the same write.
    *
    * Before it reads a status or a question it checks the caller reaches the
    * row: the user, tenant and org the filing ran under, compared as the
-   * engine compares a request's (BP-031). A row it doesn't reach is answered as
+   * engine compares a request's. A row it doesn't reach is answered as
    * not found, with nothing written. Through the public action (a screen) it
    * answers any open question or confirm, as the user; through the filer's own
    * tool, only a question the task's worker asked it midway, on a task not
@@ -1656,8 +1670,14 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     const row = collection.get(input.id);
     if (row === undefined || !callerReaches(ctx, row)) return taskNotFoundError(input.id);
     const hold = row.holds?.find((h) => h.id === input.answers);
-    if (hold === undefined || !isRowHold(hold)) {
+    if (hold === undefined || !isOwnHold(hold)) {
       return refuse(`no_such_question: task "${input.id}" holds no question "${input.answers}". Read its open questions with getTask.`);
+    }
+    if (hold.ask.kind === "external") {
+      return refuse(
+        `wait_is_not_a_question: "${input.answers}" is the task waiting on something outside the board, not a question. ` +
+          "Send what you know as a message instead.",
+      );
     }
     if (!claimless && (hold.midway !== true || row.target !== undefined || row.targetSessionId !== undefined)) {
       return refuse(
@@ -1709,7 +1729,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * with the No and its note as the reason. Retried after it landed, the same
    * No is a success; a task that finished another way is refused as finished.
    */
-  async function cancelOnNo(ctx: BlockContext, collection: TaskCollectionRef, row: Task, hold: RowHold, note: string | undefined) {
+  async function cancelOnNo(ctx: BlockContext, collection: TaskCollectionRef, row: Task, hold: OwnHold, note: string | undefined) {
     const reason = `No to "${hold.ask.prompt}"${note !== undefined && note.trim().length > 0 ? `: ${note}` : ""}`;
     if (isTerminalStatus(row.status)) {
       return row.status === "cancelled" && row.error === reason ? { ok: true as const } : lockedError(row, ["message"]);
@@ -1717,7 +1737,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     let outcome: TaskWriteOutcome | undefined;
     try {
       // Fenced on the confirm still open, in the cancel's own write: a No after a yes, or racing one, can't cancel.
-      outcome = await cancelAndResume(ctx as never, collection, row.id, reason, { via, whileHoldOpen: hold.id });
+      outcome = await cancelAndResume(ctx, collection, row.id, reason, { via, whileHoldOpen: hold.id });
     } catch (err) {
       if (err instanceof TaskWriteRefusedError) return refusedError(err);
       throw err;
@@ -1731,7 +1751,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     return { ok: true as const };
   }
 
-  /** The refusal past the most messages a task takes (FIX-2086 D1): names the limit and the move. */
+  // FIX-2086 D1.
+  /** The refusal past the most messages a task takes: names the limit and the move. */
   function steerLimitError(id: string) {
     return {
       ok: false as const,
@@ -1742,9 +1763,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     };
   }
 
+  // FIX-2077; FIX-2133.
   /**
-   * What a running task waits on while no worker holds it (FIX-2077's
-   * `keptOpenBy`), and what holds it for a person (FIX-2133): its open holds,
+   * What a running task waits on while no worker holds it (its
+   * `keptOpenBy`), and what holds it for a person: its open holds,
    * a question or a confirm on the row, or a task run's stop, each with what
    * it asks and when it falls due. One shape for every stop.
    */
@@ -1758,7 +1780,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     name: named("listTasks"),
     description:
       "List tasks on your delegation board, optionally filtered by status, assignee, or the task " +
-      "whose request filed them (filedByTask). Rows carry each task's status note, never its output: " +
+      "whose request filed them (filedByTask). Each listed task carries its status note, never its output: " +
       "read one task's output with getTask. Don't list to wait for a task you filed to end: end " +
       "your turn, and its ending wakes you.",
     inputSchema: z.object({
@@ -1787,8 +1809,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             // The run working the task, or the one that last worked it: a
             // reader opens it from here (FIX-1668). Absent until a run starts.
             run: taskSchema.shape.run,
+            // FIX-2288.
             /**
-             * What the task's runs spent (FIX-2288): the harness and model
+             * What the task's runs spent: the harness and model
              * running it and its tokens, `null` when it never ran in a request
              * of its own. On the board's action only: a model's tool reads none.
              */
@@ -1798,6 +1821,16 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
              * row from another source too keeps the newer copy. Board action only.
              */
             updatedAt: z.number().optional(),
+            /**
+             * When the task was filed, when its run first started, and when it
+             * ended (epoch ms), as the row records them, so a reader can show
+             * how long a task has run and order tasks by when they ended. On
+             * the board's action only, like `spend`; the last two are absent
+             * until they happen.
+             */
+            createdAt: z.number().optional(),
+            startedAt: z.number().optional(),
+            completedAt: z.number().optional(),
             /** A request is waiting on this task's ending (`getTask` with `wait`). */
             waitedOn: z.literal(true).optional(),
             /**
@@ -1808,7 +1841,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
              */
             leaseUntil: z.number().optional(),
             ...waitingShape,
-            /** The latest completed follow-up in its chain, by id; read its output with getTask (FIX-2086). */
+            // FIX-2086.
+            /** The latest completed follow-up in its chain, by id; read its output with getTask. */
             current: z.object({ id: z.string() }).optional(),
           }),
         ),
@@ -1839,7 +1873,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
           // A client's read, never a model's (FIX-2288): the action carries it, the tool doesn't.
-          ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt } : {}),
+          ...(claimless ? { spend: taskSpendView(t), updatedAt: t.updatedAt, createdAt: t.createdAt } : {}),
+          ...(claimless && t.startedAt !== undefined ? { startedAt: t.startedAt } : {}),
+          ...(claimless && t.completedAt !== undefined ? { completedAt: t.completedAt } : {}),
           ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
           ...(claimless && t.leaseUntil != null ? { leaseUntil: t.leaseUntil } : {}),
           ...waitingOf(t),
@@ -1906,7 +1942,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           metadataCut: z.literal(true).optional(),
           attempts: z.number(),
           maxAttempts: z.number().optional(),
-          /** Its filing settings, when it was filed with any (FIX-2080, FIX-2083). */
+          // FIX-2080, FIX-2083.
+          /** Its filing settings, when it was filed with any. */
           session: z.enum(["new", "ongoing"]).optional(),
           resultTo: z.enum(["filer", "conversation"]).optional(),
           target: z.string().optional(),
@@ -1927,22 +1964,25 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           filedByTask: z.string().optional(),
           run: taskSchema.shape.run,
           completedAt: z.number().optional(),
+          // FIX-2086 D3.
           /**
-           * The latest follow-up in its chain that completed (FIX-2086 D3), with its
+           * The latest follow-up in its chain that completed, with its
            * output cut as `output` is; absent when none did.
            */
           current: z
             .object({ id: z.string(), output: z.unknown().optional(), outputCut: z.literal(true).optional() })
             .optional(),
-          /** The messages sent into it (FIX-2086 D1), oldest first; absent when none were. */
+          // FIX-2086 D1.
+          /** The messages sent into it, oldest first; absent when none were. */
           steers: z
             .array(
               z.object({
                 message: z.string(),
-                from: z.enum(["filer", "user", "board"]),
+                from: z.enum(["filer", "user", "board", "service"]),
                 by: z.string().optional(),
                 at: z.number(),
-                /** The question it answers, by its hold's id (FIX-2133); absent on a steer that answers none. */
+                // FIX-2133.
+                /** The question it answers, by its hold's id; absent on a steer that answers none. */
                 answers: z.string().optional(),
                 /** True once the task's current attempt read it. */
                 taken: z.boolean(),
@@ -1950,13 +1990,15 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             )
             .optional(),
         }),
+        // FIX-2138.
         /**
          * When this answer is how you hear the task failed or was cancelled: the
-         * tasks you filed that depended on it, which that ending cancelled (FIX-2138).
+         * tasks you filed that depended on it, which that ending cancelled.
          */
         cancelled: z.array(z.string()).optional(),
       }),
-      /** A wait whose task's ending arrives as a notice, which the conversation hears on its own (FIX-2123). */
+      // FIX-2123.
+      /** A wait whose task's ending arrives as a notice, which the conversation hears on its own. */
       z.object({ ok: z.literal(true), taskId: z.string(), arrivesAsNotice: z.literal(true), message: z.string() }),
       z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
     ]),
@@ -1987,7 +2029,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       await collection.refresh?.(input.id);
       let t: Task | undefined = collection.get(input.id);
       if (t === undefined) return taskNotFoundError(input.id);
-      /** Whether this answer delivers the task's ending to its filer (FIX-2138). */
+      // FIX-2138.
+      /** Whether this answer delivers the task's ending to its filer. */
       let delivered = false;
       if (input.wait === true) {
         const call = toolCallOf(ctx);
@@ -2047,8 +2090,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   // The filer's four; an action gets a retry beside them.
   if (!claimless) return [createTask, getTask, listTasks, updateTask];
 
+  // FIX-2383.
   /**
-   * Retry a failed or cancelled task (FIX-2383): the same task back to
+   * Retry a failed or cancelled task: the same task back to
    * waiting, with its id, history and spend, and one more attempt counted in
    * the board's retry ledger. A person's or an app's move, so only an action
    * offers it: a model files a follow-up instead.
@@ -2089,7 +2133,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   return [createTask, getTask, listTasks, updateTask, retryTask];
 }
 
-/** A refused retry (FIX-2383): the rule, the task's state, and the next move. */
+// FIX-2383.
+/** A refused retry: the rule, the task's state, and the next move. */
 function retryDeclinedError(task: Task, reason: TaskWriteDeclineReason, lookup: (id: string) => Task | undefined) {
   const refuse = (code: string, rule: string) => ({ ok: false as const, taskId: task.id, error: `${code}: ${rule} Nothing was written.` });
   switch (reason) {
@@ -2112,12 +2157,13 @@ function retryDeclinedError(task: Task, reason: TaskWriteDeclineReason, lookup: 
   }
 }
 
+// FIX-2078 D2.
 /**
  * Build the `taskTools` handler tools directly (for pushing into a
  * generator's `tools:` array rather than composing the capability via `uses:`).
  *
  * These are a model's tools: only a generator's turn should call them. A
- * cancel through them counts as the model's own (FIX-2078 D2), so it owes the
+ * cancel through them counts as the model's own, so it owes the
  * filing session no notice. An app's or a person's move goes through
  * {@link taskToolActions}, whose cancel does owe one.
  *
@@ -2184,15 +2230,17 @@ export function createTaskToolsCapability(
  * deliberate, so a turn's tools are picked, never rebuilt.
  */
 export interface TaskToolsOptions {
+  // FIX-2082.
   /**
    * The board has a waker: the filing session's pass (its `onTaskSettled`
    * request, sent when a waited-on task ends) resumes a request parked on a
-   * wait. Only then may `getTask` offer `wait` (FIX-2082). Default `false`: a
+   * wait. Only then may `getTask` offer `wait`. Default `false`: a
    * board that nothing wakes would leave every wait to its deadline.
    */
   readonly resumesWaits?: boolean;
+  // FIX-1875.
   /**
-   * The board starts a ready row at once (FIX-1875): its ref's writes wake
+   * The board starts a ready row at once: its ref's writes wake
    * whatever runs it, so a `createTask` starts the work now, and files each
    * row once per call. Default `false`: a board a drain runs decides for
    * itself when each row runs.
@@ -2233,7 +2281,7 @@ export function taskToolsForTurn(
   };
   // The plain list now, so a board that can't build its tools fails at wiring.
   listFor(false);
-  return (ctx) => listFor(waits && canHoldWait(ctx as Pick<BlockContext, "requestHost">));
+  return (ctx) => listFor(waits && canHoldWait(ctx));
 }
 
 
@@ -2364,8 +2412,9 @@ export function taskToolActions(
   );
 }
 
+// FIX-2286.
 /**
- * A durable ledger's task list as a flow `reads` map (FIX-2286):
+ * A durable ledger's task list as a flow `reads` map:
  * `listTasks_<suffix>`, answering exactly what the `listTasks_<suffix>` action
  * answers for the same board, from the same list code, and storing nothing.
  * Spread it into `defineFlow`'s `reads` so an app can watch a session's board

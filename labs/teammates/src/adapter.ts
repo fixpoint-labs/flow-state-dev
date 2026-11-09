@@ -9,10 +9,12 @@
  * | `watchWorkers`      | the workforce client's `watchRoster()`: every hire, edit and fire, anywhere   |
  * | `openConversation`  | `ensureWorkerSession({ worker })`: the worker's default conversation         |
  * | `send`              | the worker's door, `respond`, streamed, so its answer shows as it is written  |
+ * | `interrupt`         | the request's `abort`, for each answering turn the conversation showed running |
  * | `watchConversation` | the session's items, from its snapshot and then its stream (`sessionFeed`), |
  * |                     | each run of tool calls named by the UI registry's `tool-naming` and        |
- * |                     | `tool-grouping`, and its requests (is it answering) on each request notice, |
- * |                     | via `client.subscribe`                                                     |
+ * |                     | `tool-grouping`, and its requests (is it answering, which turns you stopped) |
+ * |                     | on each request notice, via `client.subscribe`; the feed's unfinished runs |
+ * |                     | for the background work still running                                      |
  * | `watchConnection`   | the same feed's connection state: `live`, `lapsed` once a retry has failed…  |
  * | `answerApproval`    | the request's `answer`: approve or reject a `user_approval` stop             |
  * | `retry`             | the request's `retry()` on the conversation's flow: a failed turn again      |
@@ -27,9 +29,9 @@
  * |                     | and the board's `listTasks` read (`taskActionName`), on each notice of the     |
  * |                     | conversation's board                                                          |
  * |                     | and each linked run's session, where the run writes its row (its holds)      |
- * |                     | and `taskRowView` with the Inbox's holds (`inboxItems`), for what it waits on |
+ * |                     | and `taskView` with the Inbox's holds (`inboxItems`), for what it waits on |
  * |                     | you for, and what its runs spent (the harness and model they reported)       |
- * | `answerTask`        | the Inbox client's `answerOne`, on the task's open question or review         |
+ * | `answerOpenHold`        | the Inbox client's `answerOne`, on the task's open question or review         |
  * | `taskActions`       | the Inbox client's `board(at)` on the conversation that filed the task, its   |
  * |                     | `"tasks"` board: cancel, steer, release, retry, and `refile` for a re-run      |
  * | `watchReview`       | the run's review stop, read by harness-manager's browser `reviewDetail`        |
@@ -57,13 +59,13 @@ import {
   readEveryCollectionPage,
   topic,
   type Client,
-  type SessionConnectionState,
+  type SessionConnectionStatus,
   type SessionRequestSummary,
   type WireNotice,
   type WireTopic,
 } from "@flow-state-dev/client";
 import { isSuspensionWait, type OutputItem } from "@flow-state-dev/core/items";
-import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/types";
+import { OBSERVED_PLAN, OBSERVED_PLAN_LIST } from "@flow-state-dev/core/harness";
 import { readBasePath, readBearerToken, readUserId, withBearerToken } from "@flow-state-dev/devtool/react";
 import {
   answerTextOf,
@@ -72,7 +74,7 @@ import {
   RECEIVED_MESSAGE_COMPONENT,
   SEND_MESSAGE_TOOL,
   WORKER_MESSAGES_RESOURCE,
-  workerMessageRowSchema,
+  workerMessageResourceStateSchema,
   type RosterEntry,
   type WorkforceClient,
 } from "@flow-state-dev/workforce/browser";
@@ -81,15 +83,15 @@ import {
   createInboxClient,
   inboxItems,
   taskActionName,
-  taskRowView,
+  taskView,
   type InboxAnswer,
   type InboxHold,
-  type InboxRow,
+  type InboxTaskInput,
   type RefileOverrides,
-  type RefileRow,
-  type TaskRowView,
+  type RefiledTask,
+  type TaskView,
 } from "@flow-state-dev/orchestration/inbox";
-import { readRecordedWork, reviewDetail, type RecordedRun, type RecordedWork, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitInput, type RecordedRun, type RecordedWork, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
@@ -101,7 +103,7 @@ import {
   toolStepState,
   withToolState,
   type ToolCallStatus,
-  type ToolStepState,
+  type ToolStepStatus,
 } from "./components/flow-state/tool-grouping";
 import { durationText } from "./components/flow-state/spend";
 import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/flow-state/working-status";
@@ -114,7 +116,7 @@ import type { HarnessReadinessChipRow } from "./components/flow-state/harness-re
 export type Unsubscribe = () => void;
 
 /** One worker on the roster. */
-export interface WorkerRow {
+export interface LabWorker {
   /** The worker's address on the roster, e.g. `teammates.chief-of-staff`. */
   id: string;
   /** The name the user reads. */
@@ -137,7 +139,7 @@ export interface WorkerRow {
 export interface NewTeammate {
   /** Its name, which is its id on the roster: one word, lowercase. */
   name: string;
-  /** One line on what it does: Chief of Staff reads it to know who to ask. */
+  /** One line on what it does: Lead reads it to know who to ask. */
   role: string;
   instructions: string;
 }
@@ -176,14 +178,20 @@ export interface BoardTask {
   harness?: string;
   /** The model its run reported, when it reported one; never guessed. */
   model?: string;
-  /** What its runs spent, as orchestration's task-row view folds it (`taskRowView`); absent before any ran. */
+  /** What its runs spent, as orchestration's task view folds it (`taskView`); absent before any ran. */
   spend?: TaskSpendView;
   /** What it waits on you for, while something does: its oldest open hold. */
   waiting?: TaskWaiting;
   /** For an accepted coding task, where its work went: the pull request opened, or the merge into your checkout. */
   landed?: LandedWork;
-  /** The row as orchestration's `taskRowView` reads it, once per read: its state and times, for its time signal and the panel's counts. */
-  view?: TaskRowView;
+  /**
+   * For a coding task whose work is a pull request, the ones it waits on to
+   * merge or close (harness-manager's `awaitPullRequests`), by number: its run
+   * is done and its work is not, so it stays open. Absent while it waits on none.
+   */
+  pullRequests?: { number: number | null }[];
+  /** The row as orchestration's `taskView` reads it, once per read: its state and times, for its time signal and the panel's counts. */
+  view?: TaskView;
   /**
    * What the view doesn't carry, for the time signal: when this attempt's run started (its run link's
    * `startedAt`), and the row's lease deadline, which a live run keeps renewing. Each absent until the row has it.
@@ -259,7 +267,7 @@ export interface SessionStep {
   /** For `tool`, the step is a shell command, shown as code. */
   code?: boolean;
   /** For `tool`, how it stands: running, waiting, done, or failed (thrown, or a result that says so). */
-  state?: ToolStepState;
+  state?: ToolStepStatus;
   /** For `tool`, the request (turn) that made the call: a task's session holds every attempt's. */
   requestId?: string;
   /** For `said`, while it is still being written. */
@@ -288,7 +296,9 @@ export type ConversationEntry =
   /** The worker waits for your yes (`suspendForUser` with an approval); `resolution` once answered. */
   | { kind: "approval"; id: string; requestId: string; suspensionId: string; text: string; resolution?: string }
   /** A run of tool calls one turn made in a row, drawn inline as one line ({@link StepRun}) that opens to each. */
-  | ({ kind: "steps"; id: string; steps: SessionStep[] } & StepRun);
+  | ({ kind: "steps"; id: string; steps: SessionStep[] } & StepRun)
+  /** A turn you stopped: its request ended `aborted`. It follows that turn's last entry. */
+  | { kind: "stopped"; id: string; requestId: string };
 
 /**
  * A run of tool steps as one line: what it did ("Read 2 files and searched
@@ -298,7 +308,7 @@ export type ConversationEntry =
  */
 export interface StepRun {
   label: string;
-  state: ToolStepState;
+  state: ToolStepStatus;
   open: boolean;
 }
 
@@ -365,6 +375,13 @@ export interface ConversationView {
   entries: ConversationEntry[];
   /** The worker is answering in this conversation now. */
   running: boolean;
+  /** From an `interrupt` until every turn it aborted has ended. */
+  stopping: boolean;
+  /**
+   * The conversation's background work still running: its unfinished runs as the session stream
+   * names them, whichever turn started them. `null` until the stream has named them: unknown is not zero.
+   */
+  backgroundRunning: number | null;
   /** Present while the conversation holds turns older than its first entry: adds the page before them. */
   loadEarlier?: () => Promise<void>;
   /** When the conversation's first loaded item was written, in ms. A message sent before it is outside the window. */
@@ -372,7 +389,7 @@ export interface ConversationView {
 }
 
 /** One row of the message log: one message from one worker to another. */
-export interface TalkRow {
+export interface LabTalk {
   id: string;
   from: string;
   to: string;
@@ -408,7 +425,7 @@ export interface WindowMark {
 }
 
 /** One coding harness's readiness, as harness-manager's readiness action answers it. */
-export type HarnessRow = HarnessReadinessChipRow;
+export type LabHarness = HarnessReadinessChipRow;
 
 /** What the lab works on and with, from its `lab-context` flow: the context strip and the first run read it. */
 export interface LabContext {
@@ -430,29 +447,34 @@ export interface LabAdapter {
    * any tab or any worker's turn, changes them. `onError` hears a failed read;
    * the next read that lands reports the rows.
    */
-  watchWorkers(onChange: (workers: WorkerRow[]) => void, onError?: (error: unknown) => void): Unsubscribe;
-  listWorkers(): Promise<WorkerRow[]>;
+  watchWorkers(onChange: (workers: LabWorker[]) => void, onError?: (error: unknown) => void): Unsubscribe;
+  listWorkers(): Promise<LabWorker[]>;
   /** What the lab works on and with, read once for the context strip. */
   readContext(): Promise<LabContext>;
   /** Which coding harnesses can run on this machine; `refresh` checks them again (Re-check). */
-  readHarnesses(refresh?: boolean): Promise<HarnessRow[]>;
+  readHarnesses(refresh?: boolean): Promise<LabHarness[]>;
   /** The worker's one conversation; the same id every time. */
   openConversation(worker: string): Promise<string>;
   send(sessionId: string, text: string): Promise<void>;
+  /**
+   * Stop the worker: abort each answering turn the conversation shows running now. A line sent
+   * after it starts its own turn, which this never reaches. Rejects with why the server refused one.
+   */
+  interrupt(sessionId: string): Promise<void>;
   watchConversation(sessionId: string, onChange: (view: ConversationView) => void): Unsubscribe;
   /** Whether the conversation's feed still hears the server, in the session feed's words. */
-  watchConnection(sessionId: string, onChange: (state: SessionConnectionState) => void): Unsubscribe;
+  watchConnection(sessionId: string, onChange: (state: SessionConnectionStatus) => void): Unsubscribe;
   /** Say yes or no to what an approval entry asks; the worker's turn carries on. */
   answerApproval(sessionId: string, approval: { requestId: string; suspensionId: string }, approve: boolean): Promise<void>;
   /** Run a failed turn of the conversation again, as a new request the engine links to `requestId`. */
   retry(sessionId: string, requestId: string): Promise<void>;
   /** Every message to or from `worker`, oldest first. */
-  watchTalk(worker: string, onChange: (rows: TalkRow[]) => void): Unsubscribe;
+  watchTalk(worker: string, onChange: (rows: LabTalk[]) => void): Unsubscribe;
   watchActivity(worker: string, onChange: (activity: Activity) => void): Unsubscribe;
   /** `undefined` while the whole conversation is inside the window. */
   watchWindow(sessionId: string, onChange: (mark: WindowMark | undefined) => void): Unsubscribe;
   /** Hire a teammate onto the user's roster, on the built-in agent flow. */
-  hire(teammate: NewTeammate): Promise<WorkerRow>;
+  hire(teammate: NewTeammate): Promise<LabWorker>;
   /** Replace one of the user's own teammates' instructions, from its next turn on. */
   editInstructions(worker: string, instructions: string): Promise<void>;
   /** Fire one of the user's own teammates: it leaves the roster, and its conversation stays readable. */
@@ -464,12 +486,17 @@ export interface LabAdapter {
   watchTasks(sessionId: string, onChange: (tasks: BoardTask[]) => void, onStale?: (stale: boolean) => void): Unsubscribe;
   /** A task's run, by the session its row names, read only: the worker that runs it takes no messages. */
   watchRun(runSessionId: string, onChange: (steps: SessionStep[]) => void): Unsubscribe;
+  /**
+   * The pull requests a run session's record holds (`observed-pull-requests`), with their links:
+   * what a task waiting on one links to. Empty when the session keeps none or it can't be read.
+   */
+  readPullRequests(runSessionId: string): Promise<{ number: number; url: string; title: string | null }[]>;
   /** The run's latest review, read from its stop; `undefined` until it stops for one. */
   watchReview(runSessionId: string, onChange: (review: ReviewDetail | undefined) => void): Unsubscribe;
   /** What a run recorded (its files, plan and pull requests), by the run's session and request: harness-manager's reader. */
   recordedWork(run: RecordedRun): Promise<RecordedWork>;
   /** Answer what a task waits on you for; the run goes on, or the task completes on an accept. */
-  answerTask(sessionId: string, taskId: string, answer: TaskAnswer): Promise<void>;
+  answerOpenHold(sessionId: string, taskId: string, answer: TaskAnswer): Promise<void>;
   /** The board's actions on the tasks conversation `sessionId` filed, sent to that conversation's board. */
   taskActions(sessionId: string): TaskActions;
   /**
@@ -821,8 +848,8 @@ export function toBoardTask(
     row.status === "completed" ? "done" : row.status === "errored" ? "failed" : row.status === "cancelled" ? "cancelled" : "running";
   // A teammate's answer is the output as is; a coding run's is its output's `answer`. Blank is none.
   const answer = answerTextOf(row.output);
-  // One read of the row as orchestration's task-row view: its folded spend, and its oldest open hold.
-  const view = typeof row.id === "string" && typeof row.status === "string" ? taskRowView({ ...row, board: row.board ?? "" } as InboxRow, holds) : null;
+  // One read of the row as orchestration's task view: its folded spend, and its oldest open hold.
+  const view = typeof row.id === "string" && typeof row.status === "string" ? taskView({ ...row, board: row.board ?? "" } as InboxTaskInput, holds) : null;
   const spend = view?.spend ?? null;
   return {
     id: row.id,
@@ -846,7 +873,14 @@ export function toBoardTask(
     ...(view === null ? {} : { view }),
     ...runOf(row),
     ...landedOf(row.output?.landed),
+    ...pullRequestsOf(row),
   };
+}
+
+/** A row's open pull-request wait, as harness-manager's browser reader reads it: the pull requests by number, or nothing. */
+function pullRequestsOf(row: Record<string, any>): Pick<BoardTask, "pullRequests"> {
+  const wait = pullRequestWait(row as PullRequestWaitInput);
+  return wait === null ? {} : { pullRequests: wait.pullRequests.map(({ number }) => ({ number })) };
 }
 
 /** Where an accepted run's work went, from harness-manager's output, or nothing when it names none readable. */
@@ -871,14 +905,15 @@ function runOf(row: Record<string, any>): Pick<BoardTask, "run"> {
   return Object.keys(run).length === 0 ? {} : { run };
 }
 
-/** When a row's run started: the row's own start, else its run's (rows before either carry neither, BP-030). */
+/** When this attempt's run started: its run link's start, else the task's own (rows before either carry neither, BP-030). */
 function startedAtOf(row: Record<string, any>): { startedAt?: number } {
-  const at = typeof row.startedAt === "number" ? row.startedAt : row.run?.startedAt;
+  // This attempt's start: a retry keeps the task's own `startedAt` (its first start), so the run's comes first.
+  const at = typeof row.run?.startedAt === "number" ? row.run.startedAt : row.startedAt;
   return typeof at === "number" ? { startedAt: at } : {};
 }
 
 /** The fields a re-file copies from a task, as the board's `refile` takes them. */
-function refileRowOf(task: BoardTask): RefileRow {
+function refileRowOf(task: BoardTask): RefiledTask {
   return { goal: task.goal, title: task.title, context: task.context ?? null, assignee: task.to, labels: task.labels ?? null, priority: task.priority ?? null };
 }
 
@@ -893,8 +928,8 @@ export function rerunOverrides(task: BoardTask, worker: string): RefileOverrides
   return { assignee: worker, context: task.context === undefined || task.context === "" ? line : `${task.context}\n\n${line}` };
 }
 
-/** What a row waits on you for, as `taskRowView` reads it: its oldest open hold, or nothing. */
-function waitingOf(view: TaskRowView | null): { waiting?: TaskWaiting } {
+/** What a row waits on you for, as `taskView` reads it: its oldest open hold, or nothing. */
+function waitingOf(view: TaskView | null): { waiting?: TaskWaiting } {
   const hold = view?.hold ?? null;
   if (hold === null) return {};
   const kind = hold.ask.kind === "question" || hold.ask.kind === "review" ? hold.ask.kind : "other";
@@ -908,9 +943,9 @@ function waitingOf(view: TaskRowView | null): { waiting?: TaskWaiting } {
  *
  * @param flowOf The flow that owns a session: the conversation's, or a run's.
  */
-export function holdsOfRows(sessionId: string, rows: readonly Record<string, any>[], flowOf: (sessionId: string) => string | undefined): Map<string, InboxHold[]> {
-  const inboxRows: InboxRow[] = rows.map((row) => ({
-    ...(row as InboxRow),
+export function holdsOfTasks(sessionId: string, rows: readonly Record<string, any>[], flowOf: (sessionId: string) => string | undefined): Map<string, InboxHold[]> {
+  const inboxRows: InboxTaskInput[] = rows.map((row) => ({
+    ...(row as InboxTaskInput),
     board: sessionId,
     holder: { sessionId, action: UPDATE_TASK },
   }));
@@ -956,6 +991,7 @@ export function toEntries(
   workers: ReadonlySet<string>,
   ended: readonly string[] = [],
   retryableTurns: ReadonlySet<string> = new Set(),
+  stopped: readonly string[] = [],
 ): ConversationEntry[] {
   const rows = boardRows(items);
   const entries: ConversationEntry[] = [];
@@ -1031,14 +1067,24 @@ export function toEntries(
       entries.push({ kind: "received", id: item.id, messageId: id, from, text, ...(inReplyTo === undefined ? {} : { inReplyTo }), ...(noAnswer === true ? { noAnswer: true } : {}) });
     }
   };
+  /** How many entries there were once each stopped turn's last item was read: its line goes there. */
+  const endOf = new Map<string, number>();
   for (const item of items) {
     const drawn = entries.length;
+    const lastBefore = entries[drawn - 1];
     drawEntry(item);
     if (entries.length !== drawn) newestTurn = item.requestId;
+    const grew = entries.length > drawn || entries[entries.length - 1] !== lastBefore;
+    if (grew && stopped.includes(item.requestId)) endOf.set(item.requestId, entries.length);
   }
-  return entries.map((entry) =>
+  const marked = entries.map((entry) =>
     entry.kind === "failed" && entry.requestId === newestTurn && retryableTurns.has(entry.requestId) ? { ...entry, retryable: true } : entry,
   );
+  // From the end, so each place is still where it was counted.
+  for (const [requestId, at] of [...endOf].sort((a, b) => b[1] - a[1])) {
+    marked.splice(at, 0, { kind: "stopped", id: `stopped:${requestId}`, requestId });
+  }
+  return marked;
 }
 
 /**
@@ -1056,6 +1102,21 @@ export function answeringOf(items: readonly Item[], inProgress: readonly string[
   const newest = items[items.length - 1]?.requestId;
   const live = (requestId: string) => inProgress.includes(requestId) || (requestId === newest && !ended.includes(requestId));
   return inProgress.length > 0 || items.some((i) => i.status === "in_progress" && live(i.requestId));
+}
+
+/**
+ * The turns a Stop pressed now stops, by request id: the answering requests the list names as in
+ * progress, and a turn whose answer or tool call is still being written before the list says so
+ * (the list trails the items). Only those two item types: the board's own passes write rows, never
+ * an answer, and a Stop must never reach them. As in `answeringOf`, a still-written item counts only
+ * for the newest request: a crashed or aborted turn leaves its half-written item so for good.
+ */
+function answeringTurnsOf(items: readonly Item[], inProgress: readonly string[], ended: readonly string[] = []): string[] {
+  const newest = items[items.length - 1]?.requestId;
+  const writing = items
+    .filter((i) => (i.type === "message" || i.type === "tool_output") && i.status === "in_progress" && i.requestId === newest && !ended.includes(i.requestId))
+    .map((i) => i.requestId as string);
+  return [...new Set([...inProgress, ...writing])];
 }
 
 /** Who a `sendMessage` output went to, when it sent one: a refused send sent nothing. */
@@ -1128,7 +1189,7 @@ export function runSteps(items: readonly Item[]): SessionStep[] {
 /** The session a message was delivered to, from the message log; undefined while the log doesn't hold it. */
 export function destinationOf(rows: readonly unknown[], messageId: string): string | undefined {
   for (const row of rows) {
-    const parsed = workerMessageRowSchema.safeParse(row);
+    const parsed = workerMessageResourceStateSchema.safeParse(row);
     if (parsed.success && parsed.data.id === messageId) return parsed.data.toSession;
   }
   return undefined;
@@ -1145,7 +1206,7 @@ export function exchangeOf(items: readonly Item[], messageId: string): SessionSt
 }
 
 /** A roster entry as the screen lists it. */
-function toWorkerRow(w: RosterEntry): WorkerRow {
+function toWorkerRow(w: RosterEntry): LabWorker {
   return {
     id: w.id,
     name: w.name ?? w.id.slice(w.id.lastIndexOf(".") + 1),
@@ -1178,9 +1239,20 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const inbox = createInboxClient(client);
   /** The flow each run session belongs to, where a run's stop is answered. Kept, since a session's flow never changes. */
   const runFlows = new Map<string, string>();
-  /** Each conversation's tasks' open holds, from its last read: what `answerTask` answers. */
+  /** Each conversation's tasks' open holds, from its last read: what `answerOpenHold` answers. */
   const openHolds = new Map<string, Map<string, InboxHold[]>>();
   const feeds = sessionFeeds(client);
+  /** Each conversation's answering turns its open view last read as running: what Stop stops. */
+  const runningNow = new Map<string, string[]>();
+  /** Each conversation's turns this page sent, by request id, in order: a Stop leaves the ones sent after its press. */
+  const sent = new Map<string, string[]>();
+  /**
+   * Each conversation's stop under way: the turns an `interrupt` aborted, until the view's request
+   * read shows every one ended. `wake` tells the conversation's open views to draw again.
+   */
+  const stops = new Map<string, { ids: Set<string> }>();
+  const stopWatchers = new Map<string, Set<() => void>>();
+  const wake = (sessionId: string) => stopWatchers.get(sessionId)?.forEach((tell) => tell());
   /** Each worker's conversation, and the flow it runs on, once opened. */
   const conversations = new Map<string, { sessionId: string; flow: string }>();
   /** Told each time a conversation opens, so a worker's activity is watched from then. */
@@ -1225,10 +1297,9 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
   const runLab = async (flow: string, action: string, input: unknown): Promise<any> => {
     const sessionId = await labSession(flow);
     const sent = await client.flow(flow).send(action, input, { sessionId });
-    const { status } = await sent.wait();
-    const found = (await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === sent.id);
-    if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}`);
-    return found?.result?.output;
+    const { status, error, output } = await sent.result();
+    if (status !== "completed") throw new Error(error?.message ?? `${action} ended ${status}`);
+    return output;
   };
 
   return {
@@ -1246,7 +1317,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       return (await runLab("lab-context", "read", {})) as LabContext;
     },
     async readHarnesses(refresh = false) {
-      return ((await runLab("harness-readiness", "read", { refresh })) as { harnesses: HarnessRow[] }).harnesses;
+      return ((await runLab("harness-readiness", "read", { refresh })) as { harnesses: LabHarness[] }).harnesses;
     },
     async listWorkers() {
       const roster = await workforce.roster();
@@ -1260,10 +1331,54 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     async send(sessionId, text) {
       const flow = flowOfSession.get(sessionId);
       if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
+      // The id is the page's own, so a Stop pressed before this send can tell this turn came after it.
+      const requestId = `req_${crypto.randomUUID()}`;
+      sent.set(sessionId, [...(sent.get(sessionId) ?? []), requestId]);
       // Streamed, so the answer shows as it is written (the session stream sends it once finished).
-      const response = await client.flow(flow).send("respond", { message: text }, { sessionId, stream: true });
+      const response = await client.flow(flow).send("respond", { message: text }, { sessionId, requestId, stream: true });
       if (!response.ok) throw new Error(`teammates: the send was refused (${response.status})`);
       if (response.headers.get("content-type")?.includes("text/event-stream")) feeds(sessionId).followResponse(response);
+    },
+    async interrupt(sessionId) {
+      const flow = flowOfSession.get(sessionId);
+      if (flow === undefined) throw new Error(`teammates: ${sessionId} is not an open conversation`);
+      // The turns running at the press: what the view showed, plus what the server reads now, since the
+      // view's read can lag a line sent just before the press. A line sent after it is its own turn.
+      const shown = runningNow.get(sessionId) ?? [];
+      const sentBefore = new Set(sent.get(sessionId) ?? []);
+      const read = (await client.sessions.requests(sessionId, { status: "in_progress", limit: 20 })).filter((r) => !QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
+      // The read answers after the press: a turn this page sent meanwhile is not one Stop stops.
+      const sentAfter = new Set((sent.get(sessionId) ?? []).filter((id) => !sentBefore.has(id)));
+      const ids = [...new Set([...shown, ...read])].filter((id) => !sentAfter.has(id));
+      const stop = { ids: new Set(ids) };
+      stops.set(sessionId, stop);
+      wake(sessionId);
+      const done = () => {
+        if (stops.get(sessionId) === stop) stops.delete(sessionId);
+        wake(sessionId);
+      };
+      try {
+        for (const id of ids) {
+          await client
+            .flow(flow)
+            .request(id)
+            .abort()
+            .catch(async (error: unknown) => {
+              // A 409 is a turn that ended meanwhile, or one an answer resumed first, which runs on:
+              // the record decides. Still running, the server refused the stop.
+              if ((error as { status?: number }).status !== 409) throw error;
+              const now = (await client.sessions.requests(sessionId, { limit: 20 })).find((r) => r.id === id);
+              if (now?.status === "in_progress") throw new Error("The turn went on before the stop reached it. Press Stop again.");
+              // Ended already, so the stop waits on it no longer (an old turn may be past the requests read).
+              stop.ids.delete(id);
+              if (stop.ids.size === 0) done();
+            });
+        }
+      } catch (error) {
+        done();
+        throw error;
+      }
+      if (ids.length === 0) done();
     },
     async answerApproval(sessionId, approval, approve) {
       const flow = flowOfSession.get(sessionId);
@@ -1283,6 +1398,11 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       let inProgress: string[] = [];
       let ended: string[] = [];
       let retryable = new Set<string>();
+      /** The answering turns that ended `aborted`: each gets a stopped line. */
+      let stopped: string[] = [];
+      /** The board's own passes (`dispatch`), which are never stopped. */
+      let quiet: string[] = [];
+      let backgroundRunning: number | null = null;
       let shown: ConversationView | undefined;
       // Unchanged entries keep their objects, so a streamed chunk redraws only the growing one.
       const reuse = stableList<ConversationEntry>((next) => {
@@ -1291,18 +1411,39 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const feed = feeds(sessionId);
       const loadEarlier = () => feed.loadEarlier();
       const emit = () => {
+        // What the view shows answering, never the board's own passes: what a Stop pressed now stops.
+        runningNow.set(sessionId, answeringTurnsOf(items, inProgress, ended).filter((id) => !quiet.includes(id)));
         const running = answeringOf(items, inProgress, ended);
+        const stop = stops.get(sessionId);
+        // A stop ends once the requests show every turn it aborted ended.
+        if (stop !== undefined && [...stop.ids].every((id) => ended.includes(id))) stops.delete(sessionId);
+        const stopping = stops.has(sessionId);
         const earlier = feed.hasEarlier();
         const since: number | undefined = items[0]?.ts;
-        if (shown?.entries === entries && shown.running === running && (shown.loadEarlier !== undefined) === earlier && shown.since === since) return;
-        shown = { entries, running, ...(earlier ? { loadEarlier } : {}), ...(since === undefined ? {} : { since }) };
+        if (
+          shown?.entries === entries &&
+          shown.running === running &&
+          shown.stopping === stopping &&
+          shown.backgroundRunning === backgroundRunning &&
+          (shown.loadEarlier !== undefined) === earlier &&
+          shown.since === since
+        )
+          return;
+        shown = { entries, running, stopping, backgroundRunning, ...(earlier ? { loadEarlier } : {}), ...(since === undefined ? {} : { since }) };
         onChange(shown);
       };
       const stopFeed = watchFeed(sessionId, (next) => next, (next) => {
         items = next;
-        reuse(toEntries(items, workerIds, ended, retryable));
+        reuse(toEntries(items, workerIds, ended, retryable, stopped));
         emit();
       });
+      // A runs-only change moves the count alone: the entries stay as they are.
+      const stopRuns = feed.watchRuns((count) => {
+        backgroundRunning = count;
+        emit();
+      });
+      const watchers = stopWatchers.get(sessionId) ?? new Set<() => void>();
+      stopWatchers.set(sessionId, watchers.add(emit));
       const stopPoll = onNotice(
         client,
         [topic.session(sessionId)],
@@ -1311,16 +1452,22 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         (requests) => {
           const answering = requests.filter((r) => !QUIET_ACTIONS.has(r.actionName));
           inProgress = answering.filter((r) => r.status === "in_progress").map((r) => r.id);
+          quiet = requests.filter((r) => QUIET_ACTIONS.has(r.actionName)).map((r) => r.id);
           ended = requests.filter((r) => r.status !== "in_progress").map((r) => r.id);
+          // Kept for the view's life: a stopped line stays once its turn leaves the 20-request read.
+          stopped = [...new Set([...stopped, ...answering.filter((r) => r.status === "aborted").map((r) => r.id)])];
           // The turns the engine would retry: a record with no source predates it, and came in over http.
           retryable = new Set(requests.filter((r) => RETRYABLE_SOURCES.has(r.source ?? "http")).map((r) => r.id));
           // A turn that ended with a call still marked running reads that call failed.
-          reuse(toEntries(items, workerIds, ended, retryable));
+          reuse(toEntries(items, workerIds, ended, retryable, stopped));
           emit();
         },
       );
       return () => {
+        watchers.delete(emit);
+        if (watchers.size === 0) runningNow.delete(sessionId);
         stopFeed();
+        stopRuns();
         stopPoll();
       };
     },
@@ -1330,7 +1477,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
           const { sessionId } = await anyConversation();
           const rows = await readEveryCollectionPage(client.resources, sessionId, WORKER_MESSAGES_RESOURCE);
           return rows
-            .map((row) => workerMessageRowSchema.safeParse(row.clientData))
+            .map((row) => workerMessageResourceStateSchema.safeParse(row.clientData))
             .flatMap((parsed) => (parsed.success ? [parsed.data] : []))
             .filter((m) => m.from === worker || m.to === worker)
             .sort((a, b) => a.at - b.at)
@@ -1488,7 +1635,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         if (stopped) return;
         const current = merged();
         const flowOf = (id: string) => (id === sessionId ? flowOfSession.get(sessionId) : runFlows.get(id));
-        const holds = holdsOfRows(sessionId, current, flowOf);
+        const holds = holdsOfTasks(sessionId, current, flowOf);
         openHolds.set(sessionId, holds);
         show(current.map((row) => toBoardTask(row, (worker) => harnesses.get(worker), holds.get(row.id) ?? [])));
         learnFlows(current);
@@ -1546,6 +1693,15 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
     watchRun(runSessionId, onChange) {
       return watchFeed(runSessionId, runSteps, stableList(onChange));
     },
+    async readPullRequests(runSessionId) {
+      try {
+        const rows = await readSessionPullRequests(client, runSessionId);
+        return rows.map(({ number, url, title }) => ({ number, url, title }));
+      } catch (error) {
+        console.warn(`teammates: the pull requests of run session ${runSessionId} couldn't be read`, error);
+        return [];
+      }
+    },
     watchReview(runSessionId, onChange) {
       let last: string | undefined;
       return watchFeed(runSessionId, reviewOf, (review) => {
@@ -1578,11 +1734,10 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       const withBrief = async (task: BoardTask): Promise<BoardTask> => {
         const flow = client.flow(await flowOf());
         const { id: requestId } = await flow.send(GET_TASK, { id: task.id }, { sessionId });
-        const { status } = await flow.request(requestId).wait();
-        const found = (await client.sessions.requests(sessionId, { includeResultOutput: true, limit: 20 })).find((r) => r.id === requestId);
-        const output = found?.result?.output as { ok?: boolean; error?: string; task?: Record<string, any> } | undefined;
+        const { status, error, output: answered } = await flow.request(requestId).result();
+        const output = answered as { ok?: boolean; error?: string; task?: Record<string, any> } | undefined;
         if (status !== "completed" || output?.ok === false || output?.task === undefined) {
-          throw new Error(output?.error ?? found?.result?.error?.message ?? "The task couldn't be read, so it wasn't filed again.");
+          throw new Error(output?.error ?? error?.message ?? "The task couldn't be read, so it wasn't filed again.");
         }
         const held = output.task;
         const { context: _context, labels: _labels, priority: _priority, ...rest } = task;
@@ -1604,7 +1759,7 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         },
       };
     },
-    async answerTask(sessionId, taskId, answer) {
+    async answerOpenHold(sessionId, taskId, answer) {
       const kind = "text" in answer ? "question" : "review";
       const hold = openHolds.get(sessionId)?.get(taskId)?.find((h) => h.ask.kind === kind);
       if (hold === undefined) throw new Error(`This task isn't waiting on your ${kind === "question" ? "answer" : "review"} any more.`);

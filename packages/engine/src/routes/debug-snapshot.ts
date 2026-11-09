@@ -90,6 +90,7 @@ export interface DebugResourceEntry {
   itemCountTruncated?: boolean;
   storagePrefix?: string;
   clientConfig: DebugResourceClientConfig;
+  // BP-030.
   /**
    * Whether the store will accept a write to this resource's state or content.
    * **Omitted when nothing makes it unwritable**, which is the common case.
@@ -101,7 +102,7 @@ export interface DebugResourceEntry {
    *
    * Absent means writable — the framework's default. Never coerce it to
    * `false` on the way out: a reader that mistakes an absent setting for a
-   * closed door reports a resource anybody can edit as read-only (BP-030).
+   * closed door reports a resource anybody can edit as read-only.
    *
    * **`false` is narrower than "immutable".** It refuses state and content
    * writes *through this definition*. A collection still permits `create`,
@@ -194,14 +195,14 @@ function describeClientConfig(
   };
 }
 
+// BR-12, BR-14.
 /**
  * The two permission settings, reporting what is *true* of the resource.
  *
  * The field answers "can this be written", not "did an author type a key".
  * For every config that HAS a `writable` field the two coincide, so the key is
  * present only when it was declared and an absent key still means writable —
- * the framework's default, and the rule a reader must not get backwards
- * (BR-12, BR-14).
+ * the framework's default, and the rule a reader must not get backwards.
  *
  * **A projected collection is the case where they come apart.** Its config has
  * no `writable` field at all — `ProjectedResourceCollectionConfig` calls
@@ -233,7 +234,8 @@ interface ResourceGroup {
   config: ResourceConfig | ResourceCollectionConfig;
   aliases: string[];
   scope: ResolvedResourceScope;
-  /** Canonical persisted storage key for this group (FIX-591). */
+  // FIX-591.
+  /** Canonical persisted storage key for this group. */
   storageKey: string;
 }
 
@@ -349,7 +351,8 @@ export async function buildDebugResourceTree(opts: {
   sessionId: string;
   ctx: ResourcePersistenceContext;
   countLimit: number;
-  /** Tenant id for namespacing the session lookup (FIX-682). */
+  // FIX-682.
+  /** Tenant id for namespacing the session lookup. */
   tenantId?: string;
   /** Session the route guard checked (`RouteAuthResult.session`). */
   checkedSession?: SessionRecord | null;
@@ -474,9 +477,9 @@ export async function buildDebugResourceTree(opts: {
 }
 
 /**
- * One item in a collection's paginated debug listing.
+ * One resource in a collection's paginated debug listing.
  */
-export interface DebugCollectionItem {
+export interface DebugCollectionResource {
   topic: string;
   storageKey: string;
   state: JsonObject | null;
@@ -487,14 +490,15 @@ export interface DebugCollectionItem {
   contentVisibleToClient: boolean;
 }
 
-export interface DebugCollectionItemsResponse {
-  items: DebugCollectionItem[];
+/** One page of a collection's debug listing: its resources (under `items`, the wire field) and the next cursor. */
+export interface DebugCollectionResourcesResponse {
+  items: DebugCollectionResource[];
   nextCursor: string | null;
 }
 
-/** Outcome of `buildDebugCollectionItems` — distinguishes 404 vs 400. */
+/** Outcome of `buildDebugCollectionResources` — distinguishes 404 vs 400. */
 export type BuildItemsResult =
-  | { ok: true; data: DebugCollectionItemsResponse }
+  | { ok: true; data: DebugCollectionResourcesResponse }
   | {
       ok: false;
       kind: "session_not_found" | "resource_not_found" | "not_collection" | "bad_request";
@@ -509,14 +513,15 @@ const DEFAULT_PAGE_LIMIT = 50;
  * case-sensitive substring match on the bare topic. Pagination uses an opaque
  * base64 cursor encoding the last-yielded storage key in sorted order.
  */
-export async function buildDebugCollectionItems(opts: {
+export async function buildDebugCollectionResources(opts: {
   sessionId: string;
   ref: string;
   limit: number | null;
   cursor: string | null;
   topicFilter: string | null;
   ctx: ResourcePersistenceContext;
-  /** Tenant id for namespacing the session lookup (FIX-682). */
+  // FIX-682.
+  /** Tenant id for namespacing the session lookup. */
   tenantId?: string;
   /** Session the route guard checked (`RouteAuthResult.session`). */
   checkedSession?: SessionRecord | null;
@@ -574,7 +579,7 @@ export async function buildDebugCollectionItems(opts: {
   const startIdx =
     after === null ? 0 : findCursorIndex(allKeys, after);
   const filter = opts.topicFilter ?? "";
-  const items: DebugCollectionItem[] = [];
+  const items: DebugCollectionResource[] = [];
   let scanned = startIdx;
   for (; scanned < allKeys.length && items.length < limit; scanned++) {
     const storageKey = allKeys[scanned]!;
@@ -667,7 +672,8 @@ export async function lookupDebugContent(opts: {
   ref: string;
   topic: string | null;
   ctx: ResourcePersistenceContext;
-  /** Tenant id for namespacing the session lookup (FIX-682). */
+  // FIX-682.
+  /** Tenant id for namespacing the session lookup. */
   tenantId?: string;
   /** Session the route guard checked (`RouteAuthResult.session`). */
   checkedSession?: SessionRecord | null;

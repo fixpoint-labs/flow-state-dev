@@ -1,5 +1,6 @@
+// FIX-658; FIX-963.
 /**
- * Per-task item attribution (FIX-658) — the single shared algorithm consumed
+ * Per-task item attribution — the single shared algorithm consumed
  * by both the substrate (`task.items()` via `@flow-state-dev/orchestration`) and the
  * UI (`<TaskPlan />` / `<RequestGroupRenderer>` via `@flow-state-dev/ui`), so
  * the two always return the same answer.
@@ -25,7 +26,7 @@
  * emissions, not the worker's, even though they are emitted inside a worker
  * scope and so carry a `taskId`. Three types qualify:
  * `task-change` and `task-board-meta` (status grouping / mounting
- * `<TaskPlan />`), and `task-board-recorder-failure` (FIX-963 — the board
+ * `<TaskPlan />`), and `task-board-recorder-failure` (the board
  * failed to announce a result it had already saved).
  *
  * The test for membership is *whose* event it is, not what it looks like. A

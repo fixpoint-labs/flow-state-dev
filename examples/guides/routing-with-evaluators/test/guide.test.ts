@@ -10,8 +10,15 @@ import { describe, expect, it } from "vitest";
 import { classifyTicket } from "../src/classify";
 
 const exampleDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// The guide page lives in the repository, not in a copy of this example. In
+// the repository (told by its root package name, since a copy inside any pnpm
+// monorepo has a pnpm-workspace.yaml above it too) a missing page fails
+// loudly; copied out, there is no page and nothing to compare.
+const rootManifest = path.resolve(exampleDir, "../../../package.json");
+const inRepo =
+  existsSync(rootManifest) && JSON.parse(readFileSync(rootManifest, "utf8")).name === "flow-state-dev";
 const guidePath = path.resolve(exampleDir, "../../../apps/docs/guides/routing-with-evaluators.md");
-const guide = readFileSync(guidePath, "utf8");
+const guide = inRepo ? readFileSync(guidePath, "utf8") : "";
 
 type Fence = { lang: string; title?: string; body: string[] };
 
@@ -37,7 +44,7 @@ function firstMissing(excerpt: string[], file: string[]): number {
   return -1;
 }
 
-describe("the Routing with evaluators guide", () => {
+describe.runIf(inRepo)("the Routing with evaluators guide", () => {
   const all = fences(guide);
   const source = all.filter((f) => f.lang !== "bash" && f.lang !== "text");
 

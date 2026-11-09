@@ -95,7 +95,11 @@ export interface CrossFlowSchemaConflictDetails {
   field: string;
   flowA: string;
   flowB: string;
-  reason: CompatibilityReason;
+  /**
+   * `incompatible-default`: the two flows' scope state schemas default one
+   * field to different values (the strict state check, not `compareZodSchemas`).
+   */
+  reason: CompatibilityReason | "incompatible-default";
   detail: string;
   /**
    * True when the conflicting field is a resource COLLECTION. Changes only the
@@ -128,7 +132,7 @@ export class CrossFlowSchemaConflictError extends Error {
   readonly field: string;
   readonly flowA: string;
   readonly flowB: string;
-  readonly reason: CompatibilityReason;
+  readonly reason: CompatibilityReason | "incompatible-default";
   readonly detail: string;
 
   constructor(details: CrossFlowSchemaConflictDetails) {

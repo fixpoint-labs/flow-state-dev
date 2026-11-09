@@ -1,3 +1,4 @@
+// FIX-1254; FIX-1158.
 /**
  * Null-prototype records for maps keyed by resource accessors and storage keys.
  *
@@ -7,8 +8,8 @@
  * through the inherited setter and creates no own entry, and reading
  * `toString` / `constructor` / … returns the inherited function, so `key in map`
  * and `map[key] ?? fallback` answer for a key nobody stored. Nothing that reads
- * these maps needs `Object.prototype`, so they carry none (FIX-1254; the same
- * call FIX-1158 made for the storage-key and handle maps).
+ * these maps needs `Object.prototype`, so they carry none (the same
+ * call the storage-key and handle maps make).
  */
 
 /** An empty record with no prototype, safe for any string key. */

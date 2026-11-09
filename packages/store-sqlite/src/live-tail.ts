@@ -23,7 +23,7 @@
  * plain `Error` rather than the server's `StoreSubscriptionError` value.
  */
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
-import type { SubscribeToEventsOptions } from "@flow-state-dev/engine";
+import type { SubscribeToEventsOptions } from "@flow-state-dev/engine/host";
 
 /** Default subscription poll interval (ms). */
 export const DEFAULT_POLL_INTERVAL_MS = 100;
@@ -50,12 +50,13 @@ type ReadEventsFn = (
   fromSequence?: number
 ) => Promise<RequestStreamEvent[]>;
 
+// FIX-811.
 /**
  * Whether an event ends a subscriber's stream. Local mirror of the server's
  * `endsRequestStream` (store-sqlite may only type-import from server). When
  * `followThroughSuspend` is set, `request.suspended` is a checkpoint rather
  * than a terminal so a same-request continuation streams through to its real
- * terminal (FIX-811).
+ * terminal.
  */
 function endsRequestStream(
   event: RequestStreamEvent,
@@ -103,7 +104,8 @@ type Subscriber = {
   capacity: number;
   /** Set when a terminal (real or synthesized) event has been queued. */
   terminated: boolean;
-  /** Follow through `request.suspended` (continuation in flight) — FIX-811. */
+  // FIX-811.
+  /** Follow through `request.suspended` (continuation in flight) */
   followThroughSuspend: boolean;
   /** Set when delivery failed (overflow or read error); the generator throws it. */
   error: Error | undefined;

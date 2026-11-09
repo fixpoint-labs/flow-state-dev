@@ -1,3 +1,4 @@
+// FIX-591.
 /**
  * Re-export shim: accessor → storage-key resolution lives in core
  * (`@flow-state-dev/core/types` → `storage-identity.ts`), so `defineFlow`'s
@@ -7,6 +8,6 @@
  * Preserved at this path so `createExecutionContext` and `routes/route-utils`
  * keep importing it without a cycle through `resources/internal.ts`.
  *
- * FIX-591: resource state is keyed by ref identity, not accessor name.
+ * Resource state is keyed by ref identity, not accessor name.
  */
 export { resourceStorageKeys } from "@flow-state-dev/core/types";

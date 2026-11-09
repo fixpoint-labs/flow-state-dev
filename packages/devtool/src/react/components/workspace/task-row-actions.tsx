@@ -1,5 +1,6 @@
+// FIX-1629.
 /**
- * The Actions strip of an open Tasks-tab row (FIX-1629).
+ * The Actions strip of an open Tasks-tab row.
  *
  * The DevTool changes a task only through the flow's own actions. This strip
  * lists the ones that act on one task (see `lib/task-actions`), opens the
@@ -26,7 +27,7 @@ import {
   outcomeOf,
   taskIdField,
   type RequestOutcomeSource,
-  type RowActionOutcome,
+  type TaskActionOutcome,
 } from "../../lib/task-actions";
 
 /**
@@ -111,7 +112,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
     );
   };
 
-  const outcomeOfSubmission = ({ sent }: Submission): RowActionOutcome =>
+  const outcomeOfSubmission = ({ sent }: Submission): TaskActionOutcome =>
     sent === "sending"
       ? { state: "pending" }
       : "error" in sent
@@ -168,7 +169,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
   );
 }
 
-function Outcome({ outcome }: { outcome: RowActionOutcome }) {
+function Outcome({ outcome }: { outcome: TaskActionOutcome }) {
   switch (outcome.state) {
     case "pending":
       return (

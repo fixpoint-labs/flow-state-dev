@@ -26,8 +26,10 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { defineFlow, handler, harnessRunInputSchema, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, HarnessBlock } from "@flow-state-dev/core/types";
+import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { harnessRunInputSchema } from "@flow-state-dev/core/harness";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { defineSessionBoard, filingConversationBoard, workerConfigSchema, workerTaskEntry } from "@flow-state-dev/workforce";

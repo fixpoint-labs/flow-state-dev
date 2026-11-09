@@ -35,11 +35,11 @@ import {
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
-  MIN_LEASE_DURATION_MS,
   type ClaimOrder,
   type TaskWorker,
   type TaskWorkerInput
 } from "../../src/tasks";
+import { MIN_LEASE_DURATION_MS } from "../../src/tasks/collection/internal";
 import { createTaskToolsCapability, taskSettledEntry } from "../../src";
 
 /**
@@ -100,8 +100,8 @@ vi.mock("../../src/tasks/collection/resource-backed", async (importOriginal) => 
   };
 });
 
-vi.mock("@flow-state-dev/core", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@flow-state-dev/core")>();
+vi.mock("@flow-state-dev/core/internal", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@flow-state-dev/core/internal")>();
   return {
     ...original,
     parkOnWait: (ctx: Parameters<typeof original.parkOnWait>[0], input: Parameters<typeof original.parkOnWait>[1]) =>
@@ -279,7 +279,7 @@ function planFlow(filer?: GeneratorModel): FlowInstance {
   } as never)({ id: "plan-hand-over-fails" });
 }
 
-type Row = { id: string; status: string; wait?: { requestId?: string; lapsed?: true; drain?: true } };
+type StoredTask = { id: string; status: string; wait?: { requestId?: string; lapsed?: true; drain?: true } };
 
 describe("a plan drain that fails after handing a row over", () => {
   let state: ReturnType<typeof createFlowState> | undefined;
@@ -356,7 +356,7 @@ describe("a plan drain that fails after handing a row over", () => {
       }
       return check();
     };
-    const rowsNow = async () => (await act("rows")).output as Row[];
+    const rowsNow = async () => (await act("rows")).output as StoredTask[];
     return { act, recordOf, until, rowsNow };
   }
 

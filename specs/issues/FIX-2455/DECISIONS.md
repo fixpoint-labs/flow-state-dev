@@ -60,7 +60,7 @@ It comes down to a suspension: rejecting makes every approval step a catch block
 |---|---|
 | **Instead of** | A `useActionResult` hook, and the issue's `useFlowRead` |
 | **Because** | `useAction` is the hook that sends one action, and its `execute` can only hand back the acceptance, so a React app builds a second client to read the answer; the provider's client is not public. Flow reads already have their React path: `client/react.md` runs `fsd.flow(…).read(…)` through `useSubscription`, FIX-2428's hook. A `useFlowRead` beside it would be the second hook watching one scope that FIX-2367's *not done if* bans |
-| **Locks in** | One option name on `useAction`, public; with it `execute` resolves to `result()`'s shape and `loading` spans the run; without it, today's behaviour. An unmount stops the wait through `signal`. `useReadFence` leaves the root for `react/internal` ([ER-3 / Q1's answer](../../epics/FIX-2447/DECISIONS.md#q1)), a plain published subpath (epic D2, settled) |
+| **Locks in** | One option name on `useAction`, public; with it `execute` resolves to `result()`'s shape and `loading` spans the run; without it, today's behaviour. An unmount stops the wait through `signal`. `useReadFence` leaves the root for `react/internal`, with no alias ([ER-3; Q1 answered break](../../epics/FIX-2447/DECISIONS.md#q1)), a plain published subpath (epic D2, settled) |
 
 ![D3: how a React screen reads an output. Chosen: an option on useAction. Instead of: a new hook. It comes down to FIX-2367's rule: no two hooks watching one scope, which a flow-read hook beside useSubscription breaks. Price: execute resolves to two shapes, by an option. Sending one action is a tie. Locks in one option name. Flips if React screens want the output held as state across renders](figures/d3-use-action.svg)
 
@@ -113,6 +113,9 @@ Not run on this spec alone: in spec-set member mode `epic-agent` runs `analysis`
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). `useReadFence` leaves react's root with no alias; nothing here waits on
+  Q1 any more. Direction unchanged.
 - **Draft** — framed as the epic's *One path* output row; the owner's answer (read by id)
   turned into a flag on the status route, `result()` on `wait()`, and an option on `useAction`;
   built on FIX-1661's stored result and FIX-2162's request handle; a census of the copies.

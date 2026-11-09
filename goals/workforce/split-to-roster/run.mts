@@ -15,7 +15,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { createFlowState, createModelResolver } from "@flow-state-dev/engine";
+import { createFlowState } from "@flow-state-dev/engine";
+import { createModelResolver } from "@flow-state-dev/core";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
@@ -24,7 +25,6 @@ import {
   defineSessionBoard,
   hireWorkforce,
   messageReceivedEntry,
-  MESSAGE_RECEIVED_ENTRY,
   workerConfigSchema,
   workerMessagesResources,
   workerTaskEntry
@@ -233,7 +233,7 @@ function startHost(db: string) {
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources },
     actions: { respond: { inputSchema: doorInput, block: takerTurn, userMessage: (input: { message: string }) => input.message } },
-    internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "taker", turn: takerMessageTurn }) } },
+    internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "taker", turn: takerMessageTurn }) } },
     task: { actions: { work: workerTaskEntry({ name: "split-to-roster-taker-task", turn: takerTurn }) } }
   } as never);
 

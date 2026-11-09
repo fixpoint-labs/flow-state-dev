@@ -1,5 +1,6 @@
+// FIX-2080.
 /**
- * What a filing may say, decided once for both backings (FIX-2080): the
+ * What a filing may say, decided once for both backings: the
  * filing settings a board honours, and the dependencies it takes.
  *
  * The convergence point for both rules (tenet 5). Every add path, on both
@@ -15,7 +16,8 @@ import { askProblem } from "./holds";
 
 /** Why a filing (or an edit of one) was refused. The code leads the error's message. */
 export type TaskFilingRule =
-  /** The questions a task is filed on can't be kept: none, empty, too long, or too many (FIX-2133). */
+  // FIX-2133.
+  /** The questions a task is filed on can't be kept: none, empty, too long, or too many. */
   | "questions_not_kept"
   /** A dependency names no task on this board (another board's id, or a typo). */
   | "dependency_not_on_board"
@@ -39,11 +41,13 @@ export type TaskFilingRule =
   | "duplicate_task_id"
   /** A follow-up names a task that never ran with a worker: there is no session to follow up in. */
   | "follow_up_of_unrun"
-  /** The task filing it was cancelled: work it files now would outlive it (FIX-2129). */
+  // FIX-2129.
+  /** The task filing it was cancelled: work it files now would outlive it. */
   | "parent_cancelled";
 
+// FIX-2080.
 /**
- * A filing, or an edit of one, refused at the board (FIX-2080). Nothing was
+ * A filing, or an edit of one, refused at the board. Nothing was
  * written. Thrown, not declined: a filing that can never run as asked is a
  * caller's mistake to correct, and the task tools turn it into a recoverable
  * `{ ok: false, error }` naming the rule.
@@ -80,8 +84,9 @@ export interface TaskFilingCallerContext {
   readonly fromTaskSession: boolean;
 }
 
+// FIX-2080.
 /**
- * Refuse a setting the filing's caller may not ask for (FIX-2080): a task's
+ * Refuse a setting the filing's caller may not ask for: a task's
  * session files pieces of its task, heard by that task, so it asks neither
  * for the delegate's ongoing session nor for a result sent to the
  * conversation. Only a conversation chooses those.
@@ -188,8 +193,9 @@ function reaches(from: readonly string[], target: string, depsOf: DepsOf): boole
   return false;
 }
 
+// FIX-2080.
 /**
- * Refuse a follow-up whose root task never ran with a worker (FIX-2080). A
+ * Refuse a follow-up whose root task never ran with a worker. A
  * follow-up runs in the session its root ran in, with that worker; a root
  * that is held, or still waiting to start, has no session yet, and a
  * follow-up that took it would run first, in the root's place.
@@ -215,9 +221,10 @@ export function assertFollowUpHasRun(
   });
 }
 
+// FIX-2111; FIX-2122.
 /**
- * A follow-up as it is written: in the session its root task ran in
- * (FIX-2111), with its result going where the root's went (FIX-2122). A
+ * A follow-up as it is written: in the session its root task ran in,
+ * with its result going where the root's went. A
  * follow-up takes no placement or result setting of its own
  * (`follow_up_takes_no_session`, `follow_up_takes_no_target`,
  * `follow_up_takes_no_result_to`), so the root's `session`, `target`,
@@ -324,8 +331,9 @@ export function assertDepsFileable(
   }
 }
 
+// FIX-2129.
 /**
- * Refuse a filing made by a task that is already cancelled (FIX-2129): the
+ * Refuse a filing made by a task that is already cancelled: the
  * filed-work cascade cancels only what the task filed up to its cancel, so a
  * row filed after it would run on with nothing to end it. Read against the
  * committed parent row, inside the write where the backing has one. A parent

@@ -17,7 +17,7 @@ vi.mock("../src/inbox/holds", async (importOriginal) => {
 });
 
 const { inboxItems } = await import("../src/inbox");
-const { reconcileInbox, rowTruthOf, taskItemId } = await import("../src/inbox/check");
+const { reconcileInbox, taskTruthOf, taskItemId } = await import("../src/inbox/check");
 
 describe("control broken-list-helper", () => {
   it("a list helper that lists a cancelled row's kept stop turns the check red", () => {
@@ -39,7 +39,7 @@ describe("control broken-list-helper", () => {
     };
     const items = inboxItems({ rows: [cancelled], suspensions: [], flowOf: () => "asker" });
     expect(items.map((i) => i.id)).toEqual([taskItemId("b.tasks", "t1")]);
-    const result = reconcileInbox(items, { rows: rowTruthOf([cancelled]), suspensions: [] });
+    const result = reconcileInbox(items, { rows: taskTruthOf([cancelled]), suspensions: [] });
     expect(result.green).toBe(false);
     expect(result.orphan).toEqual([taskItemId("b.tasks", "t1")]);
   });

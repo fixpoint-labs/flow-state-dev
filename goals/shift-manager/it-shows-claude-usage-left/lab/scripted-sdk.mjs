@@ -9,7 +9,7 @@
  * logged (`RUN <tag> <ms>`) so the check can see it started.
  *
  * A query with no prompt is the account probe. With `probe.mode` `real`, it
- * goes to the real SDK, so legs read the real `probeClaudeAccount` on an
+ * goes to the real SDK, so legs read the real `probeClaudeCodeAccount` on an
  * empty home and on an API key; with `scripted`, it answers the setup's
  * account, standing in for a sign-in no check machine has.
  */

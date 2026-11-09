@@ -1,6 +1,7 @@
+// FIX-2133 D2, the epic FIX-2058's ER-8; FIX-2129; FIX-2578; FIX-2479 D1 (BP-030).
 /**
- * What holds a task on its row (FIX-2133 D2, the epic FIX-2058's ER-8): one
- * list of holds, `Task.holds`, whatever the row's status.
+ * What holds a task: one list of holds, `Task.holds`, whatever the task's
+ * status.
  *
  * Two sources, discriminated on `source.kind`:
  *
@@ -8,12 +9,23 @@
  *   The claim gate's stop arm opens it in the write that drops the lease, and
  *   the write that admits the run's resume closes it. After a cancel it stays,
  *   with its address, until the `cancelled` resume it owes (`resumeOwed`) is
- *   paid. Answered through the engine's answer route (FIX-2129).
- * - **`"row"`**: a question or a `confirm`, with nothing parked. It is open
+ *   paid. Answered through the engine's answer route.
+ * - **`"task"`**: the task's own hold, a question or a `confirm`, with
+ *   nothing parked. It is open
  *   while no steer carries its id (`TaskSteer.answers`), so "answered" is never
  *   stored twice. Released by its first releaser: in this epic only an answer,
  *   a steer from the user carrying its id, or the board's "no answer came"
- *   steer at a deadline a host set.
+ *   steer at a deadline a host set. Or an **`external`** wait:
+ *   `actor: "system"`, the running turn waiting on something outside the
+ *   board, one `{ by: "event" }` releaser per thing it waits on. It is
+ *   released the same way, by any steer that answers it (a person's line, a
+ *   delivered message), and never by the Inbox, which lists only `"user"`
+ *   holds.
+ *
+ * A task's own hold an earlier version stored says `"row"`. It reads as `"task"`
+ * at the parse and at the collection's row read (`./retired-shapes`), both
+ * through {@link withCurrentHoldMarker}, and is never written.
+ * Permanent: stored holds don't expire.
  *
  * Server-written only, through the collection's one hold write
  * (`../collection/holds`); no caller patch reaches it. `actor` and
@@ -22,20 +34,25 @@
  */
 import { z } from "zod";
 
-/** The most characters of a hold's prompt a row keeps: a list of tasks stays small (BP-042). */
+// BP-042.
+/** The most characters of a hold's prompt a task keeps: a list of tasks stays small. */
 export const MAX_QUESTION_PROMPT = 1_000;
 
-/** Who a hold waits on: the Inbox lists `"user"` holds. */
+/** Who a hold waits on: the Inbox lists `"user"` holds; an `external` wait is the `"system"`'s. */
 const holdActorSchema = z.enum(["user", "system"]);
 
-/** What releases a row hold. `answer` is the only one in this epic; `event` is stored so one later needs no migration. */
+/**
+ * What releases a task's own hold: an `answer` (a question or a confirm), or an
+ * `event` naming one thing an `external` wait waits on, by its `key`. Either
+ * way the hold closes when a steer carries its id.
+ */
 const releaserSchema = z.union([
   z.object({ by: z.literal("answer") }),
   z.object({ by: z.literal("event"), event: z.string(), key: z.string() }),
 ]);
 
 const holdBase = {
-  /** Unique on its row. A suspension hold's is its suspension's id; a row hold's is minted when it opens. */
+  /** Unique on its task. A suspension hold's is its suspension's id; an own hold's is minted when it opens. */
   id: z.string(),
   actor: holdActorSchema,
   /** When it opened, epoch ms. */
@@ -44,7 +61,7 @@ const holdBase = {
   due: z.number().optional(),
 };
 
-/** A task run's parked stop for a person, mirrored on its row. */
+/** A task run's parked stop for a person, mirrored on its task. */
 export const suspensionHoldSchema = z.object({
   ...holdBase,
   /**
@@ -60,12 +77,32 @@ export const suspensionHoldSchema = z.object({
   }),
 });
 
-/** A question or a confirm kept on the row itself. */
-export const rowHoldSchema = z.object({
+// FIX-2479 D1.
+/** The marker earlier versions stored on a task's own hold. Read, never written. */
+const RETIRED_OWN_HOLD_MARKER = "row";
+
+// BP-030.
+/**
+ * A stored hold with its marker read forward: a task's own hold stored as
+ * `"row"` reads as `"task"`. Any other value is returned as the same object.
+ * The one place the retired marker is read; the parse and the row read both
+ * call it.
+ */
+export function withCurrentHoldMarker<T>(hold: T): T {
+  if (hold === null || typeof hold !== "object") return hold;
+  const source = (hold as { source?: unknown }).source;
+  if (source === null || typeof source !== "object" || (source as { kind?: unknown }).kind !== RETIRED_OWN_HOLD_MARKER) return hold;
+  return { ...hold, source: { ...source, kind: "task" } };
+}
+
+/** A question, a confirm or an external wait: the task's own hold, with no run parked behind it. */
+export const ownHoldSchema = z.object({
   ...holdBase,
-  source: z.object({ kind: z.literal("row"), closedBy: z.array(releaserSchema) }),
+  source: z.object({ kind: z.literal("task"), closedBy: z.array(releaserSchema) }),
   ask: z.object({
-    kind: z.enum(["question", "confirm"]),
+    // FIX-2578.
+    /** `question` and `confirm` wait on a person; `external` (`actor: "system"`) on something outside the board. */
+    kind: z.enum(["question", "confirm", "external"]),
     prompt: z.string(),
     title: z.string().optional(),
     /**
@@ -80,21 +117,37 @@ export const rowHoldSchema = z.object({
   /**
    * Asked midway, by the turn holding the task's claim, rather than at
    * filing. Only a midway question may be answered by the filer's own tool
-   * (ER-4); every other row hold is the user's.
+   * (ER-4); every other own hold is the user's.
    */
   midway: z.literal(true).optional(),
 });
 
-/** One hold on a task row. */
-export const taskHoldSchema = z.union([suspensionHoldSchema, rowHoldSchema]);
+/** One hold on a task. A stored `"row"` marker reads as `"task"` ({@link withCurrentHoldMarker}). */
+export const taskHoldSchema = z.preprocess(withCurrentHoldMarker, z.union([suspensionHoldSchema, ownHoldSchema]));
 
 export type SuspensionHold = z.infer<typeof suspensionHoldSchema>;
-export type RowHold = z.infer<typeof rowHoldSchema>;
+export type OwnHold = z.infer<typeof ownHoldSchema>;
 export type TaskHold = z.infer<typeof taskHoldSchema>;
-export type HoldCloser = z.infer<typeof releaserSchema>;
 
 /** What a confirm's No does: cancel the task (the default), or let the work go on. */
 export type ConfirmOnNo = "cancel" | "continue";
+
+/** One thing an external wait waits on: what kind of event (`"pull-request"`), and which one (`key`). */
+export interface ExternalWaitEvent {
+  readonly event: string;
+  readonly key: string;
+}
+
+// FIX-2578.
+/**
+ * What the turn holding a task's claim waits on outside the board:
+ * a line a screen can show (`prompt`), and the events that end the wait.
+ */
+export interface ExternalWait {
+  readonly prompt: string;
+  readonly title?: string;
+  readonly events: readonly ExternalWaitEvent[];
+}
 
 /** What a filer or a worker asks: a question's words, or a `confirm` with what its No does. */
 export type QuestionInit = { readonly kind: "question" | "confirm"; readonly prompt: string; readonly title?: string; readonly onNo?: ConfirmOnNo };

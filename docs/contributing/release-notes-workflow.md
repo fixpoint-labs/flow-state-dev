@@ -73,21 +73,19 @@ This matches the [Vercel AI SDK contributing guide](https://github.com/vercel/ai
 
 ## Multi-package PRs
 
-Each fragment can list multiple packages with their own bumps:
+A PR that touches three published packages writes three fragments, one each:
 
 ```md
 ---
-"@flow-state-dev/core": minor
-"@flow-state-dev/engine": patch
-"@flow-state-dev/react": patch
+"@flow-state-dev/engine": minor
 ---
 
-One sentence describing the change for users (FIX-123).
+`createFlowState` no longer accepts `dispatcher`; pass the same FlowRunner as `runner` (FIX-123).
 ```
 
-Use one fragment per logical change, not one fragment per package. `pnpm version-packages` aggregates fragments per package — if two PRs each ship a fragment touching `core`, that's two entries under the next `@flow-state-dev/core` release heading and a single `core` version bump (taking the max of the bumps).
+Write one fragment per published package the PR touches, each with one line for that package's reader, naming each moved or retired name's new home. A reader of `@flow-state-dev/engine`'s changelog should not have to read core's entry to learn what changed for them, so a change that spans packages is told once in each, in that package's terms. `pnpm version-packages` aggregates fragments per package — if two PRs each ship a fragment touching `core`, that's two entries under the next `@flow-state-dev/core` release heading and a single `core` version bump (taking the max of the bumps).
 
-If a single PR ships two unrelated changes touching overlapping packages, write two fragments. They'll group naturally at release time.
+A fragment names its package's change only: core's features go in core's fragment, not in the fragment of a package that merely uses them.
 
 ### Workspace cascade
 

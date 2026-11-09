@@ -1,7 +1,8 @@
+// FIX-478; FIX-217.
 /**
  * Rendering seam for `fsdev chat`. `ChatRenderer` is what the loop drives with
  * engine stream events and turn lifecycle; `createPlainTextRenderer` is the v1
- * implementation over a writable stream. A future Ink renderer (FIX-217) is a
+ * implementation over a writable stream. A future Ink renderer is a
  * second implementation of this interface, not a rewrite.
  *
  * Plain-text behavior (§4.7): assistant message text is shown — streamed from
@@ -9,7 +10,7 @@
  * `item.done` when it doesn't (e.g. a non-streaming provider). Tool calls,
  * errors, and *persistent* status items print one dim one-liner each.
  *
- * Status items are split by `item.transient` (FIX-478's single-slot in-flight
+ * Status items are split by `item.transient` (the single-slot in-flight
  * indicator vs. a durable confirmation — see `createEmitStatus` in the engine):
  * a **transient** status (the default for `ctx.emit.status`, and for every
  * block's declarative `activeStatusMessage`) is an ephemeral "what's running
@@ -22,7 +23,7 @@
  * an aborted turn prints `(interrupted)`.
  */
 import type { Content, OutputItem } from "@flow-state-dev/core/items";
-import type { RequestStreamEventWithId } from "@flow-state-dev/engine";
+import type { RequestStreamEventWithId } from "@flow-state-dev/engine/host";
 import type { FlowActionTarget } from "./targets";
 
 export interface ChatRenderer {

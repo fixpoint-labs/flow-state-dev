@@ -1,3 +1,4 @@
+// FIX-1336.
 /**
  * Walking a block graph — every block reachable from a set of roots.
  *
@@ -7,12 +8,13 @@
  * function-valued `tools` slot returned, and `defineFlow` imports `generator`,
  * so neither can host it. Written once rather than per caller because a check that traverses
  * one level shallower than the walk it mirrors is invisible: it type-checks, it
- * runs, and it silently passes the case it was written to catch (FIX-1336).
+ * runs, and it silently passes the case it was written to catch.
  */
 import type { BlockDefinition } from "../types/block";
 
+// FIX-1074; FIX-1578.
 /**
- * A generator's **statically declared** tools, or nothing (FIX-1074).
+ * A generator's **statically declared** tools, or nothing.
  *
  * `tools` is a `ToolsSlot` — an array, or a function resolved per call with the
  * input and context in hand. Only the array is knowable at definition time, and
@@ -22,27 +24,26 @@ import type { BlockDefinition } from "../types/block";
  *
  * Read off `staticTools`, never `config.tools`: `generator()` rewrites
  * `config.tools` into one resolver whenever a `uses` capability contributes
- * tools, so the authored array is only reliably there (FIX-1578).
+ * tools, so the authored array is only reliably there.
  */
 function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
   return block.staticTools ?? [];
 }
 
+// FIX-925; FIX-1074; FIX-1578.
 /**
  * Every block reachable from the roots, through composition AND through a
  * generator's static `tools` array.
  *
  * **The tool edge is here because a board can be handed to a model as a tool**
- * (`tools: [board.drain]`, the shape FIX-925 shipped). Without it a board
+ * (`tools: [board.drain]`). Without it a board
  * reached only that way was invisible to the walk: its dispatchers went
  * unresolved, so the first time the model called the tool the board failed on
- * a configuration the author had every reason to think was supported
- * (FIX-1074).
+ * a configuration the author had every reason to think was supported.
  *
  * Resource collection takes the same walk: composition bubbles a child's
  * declarations into its parent, but a tool does not, so a block reached only
- * as a generator's tool would otherwise never register what it declares
- * (FIX-1578).
+ * as a generator's tool would otherwise never register what it declares.
  *
  * A block is visited once: blocks are shared freely (one handler across several
  * actions) and a router route may point back up the tree, so revisits and cycles

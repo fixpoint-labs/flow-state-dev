@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { FlowApiRouter } from "@flow-state-dev/engine";
+import type { FlowApiRouter } from "@flow-state-dev/engine/host";
 import { createLambdaHandler } from "../src/aws-lambda";
 
 // `streamHandle` reads the `awslambda` global at construction time; the Lambda

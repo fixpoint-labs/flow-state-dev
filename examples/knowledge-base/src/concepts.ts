@@ -5,10 +5,10 @@
 // maps to one instance keyed by its bundle-relative concept ID. The state
 // schema mirrors OKF frontmatter (SPEC §4.1): the one required `type`, the
 // recommended fields as nullable, and `extra` carrying preserved unknown keys
-// as a strict-compatible key/value list (not `z.record`, per BP-016 / BP-023).
+// as a strict-compatible key/value list (not `z.record`: OpenAI strict mode refuses an open record).
 // The collection declares an `edges` slot so OKF's untyped markdown links map
 // onto typed graph edges, and opts into `llmReadable`/`llmWritable` so the core
-// glob/grep/search tools (FIX-813 PR 1) and content tools see the concepts.
+// glob/grep/search tools and content tools see the concepts.
 // ---------------------------------------------------------------------------
 
 import { z } from "zod";

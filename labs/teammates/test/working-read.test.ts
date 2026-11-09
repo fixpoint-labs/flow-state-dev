@@ -73,7 +73,7 @@ function clientWith(items: unknown[], plan?: { title: string; status: string }[]
                 { kind: "collection", pattern: "observed-plan-list/**", ref: "markers", client: { state: { read: true } } },
               ],
       }),
-      listCollectionItems: async (_session: string, ref: string, options: { topicPrefix: string }) => {
+      listCollectionResources: async (_session: string, ref: string, options: { topicPrefix: string }) => {
         listed.push(`${ref}:${options.topicPrefix}`);
         if (ref !== "plan") return { items: [], nextCursor: null };
         return { items: (plan ?? []).map((row, i) => ({ topic: `${options.topicPrefix}inv/${i}`, clientData: row })), nextCursor: null };

@@ -1,12 +1,12 @@
 /**
- * Pure data-extraction helpers for the `<TaskPlan />` component (FIX-445).
+ * Pure data-extraction helpers for the `<TaskPlan />` component.
  *
  * The substrate emits two component item types per task collection:
  *
- *   - `task-change` (FIX-444 / FIX-446): per-task lifecycle events keyed by
+ *   - `task-change`: per-task lifecycle events keyed by
  *     `${collectionId}/${taskId}`. `data` carries
  *     `{ collectionId, taskId, kind, task, prevStatus? }`.
- *   - `task-board-meta` (FIX-446): board-level aggregate state keyed by
+ *   - `task-board-meta`: board-level aggregate state keyed by
  *     `${collectionId}`. `data` carries `{ collectionId, status, counts? }`
  *     where `status` is open-ended (substrate emits `"active" | "completed"`;
  *     pattern wrappers extend with strings like `"planning"`, `"replanning"`,
@@ -137,7 +137,7 @@ export type TaskPlanState = {
 // ---------------------------------------------------------------------------
 
 /**
- * The status `held` replaced (FIX-2080): a trace recorded before then carries
+ * The status `held` replaced: a trace recorded before then carries
  * `blocked` on `task-change.task.status` and a `counts.blocked` key on
  * `task-board-meta`. Item logs are immutable and no resource-level migration
  * can reach them, so they are read here as `held`, at the fold every consumer
@@ -255,8 +255,8 @@ export function scopeItemsToLatestCollectionRequest(
  * handed to a delegate's session, has no `<TaskPlan />` here, so its items
  * stay in the chat thread.
  *
- * Delegates to the shared `@flow-state-dev/core/items` attribution algorithm
- * (FIX-658), which keys off the emit-time `taskId` stamped on each item, so
+ * Delegates to the shared `@flow-state-dev/core/items` attribution algorithm,
+ * which keys off the emit-time `taskId` stamped on each item, so
  * this set agrees with the substrate's `task.items()` by construction.
  * `task-change` and `task-board-meta` items are excluded — they drive status
  * grouping / mount `<TaskPlan />`, they don't belong to a task.
@@ -295,8 +295,8 @@ export function collectTaskOwnedItemIds(
  * Returns, per task id, the items emitted under that task in `collectionId`,
  * driving each task's expansion in `<TaskPlan />`.
  *
- * Delegates to the shared `@flow-state-dev/core/items` attribution algorithm
- * (FIX-658): attribution is by the emit-time `taskId` stamped on each item,
+ * Delegates to the shared `@flow-state-dev/core/items` attribution algorithm:
+ * attribution is by the emit-time `taskId` stamped on each item,
  * so each item lands in exactly one task's bucket — even when sibling workers
  * run concurrently or one worker runs several tasks in sequence. Items the
  * substrate emitted about itself — `task-change`, `task-board-meta` and

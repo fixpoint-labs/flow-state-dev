@@ -1,6 +1,7 @@
+// FIX-1551.
 /**
  * Who a terminal run is — the one identity step `fsdev run` and `fsdev chat`
- * share (FIX-1551).
+ * share.
  *
  * The CLI does not answer this itself. It asks the app the question an HTTP
  * action request asks, through the engine's in-process entry point, so the
@@ -8,22 +9,23 @@
  * the ask; `--user` alone keeps the app's organization and replaces its user.
  * A refusal stops the command before anything is written.
  */
-import { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
+import { DEFAULT_LOCAL_USER_ID } from "@flow-state-dev/core/types";
 import {
   isOrgAttributed,
   pinRejectsCaller,
   UnattributedOrgError,
   type InProcessPrincipal,
   type InProcessPrincipalQuestion,
-  type SessionRecord,
-} from "@flow-state-dev/engine";
+  type SessionRecord
+} from "@flow-state-dev/engine/host";
 import { CliError } from "./resolve-block";
 import { EXIT_CONFIG_ERROR, EXIT_INVALID_ARGS } from "./exit-codes";
 
+// FIX-2063 D1.
 /**
  * The user a terminal names when `--user` is not given: the DevTool's own
- * local user, so a stop a run makes is listed where `fsdev dev` answers it
- * (FIX-2063 D1).
+ * local user, so a stop a run makes is listed where `fsdev dev` answers it.
  */
 const DEFAULT_CLI_USER = DEFAULT_LOCAL_USER_ID;
 
@@ -172,14 +174,15 @@ export function describePrincipal(principal: CliPrincipal, flags: PrincipalFlags
   return `[fsdev] running as ${principal.userId}${userFrom} in organization ${principal.orgId} (${orgFrom})`;
 }
 
+// BR-11; BP-030.
 /**
  * Refuse a session another organization or another user owns, given the record
- * the caller already read — so it runs before any seed or run writes (BR-11).
+ * the caller already read — so it runs before any seed or run writes.
  * Returns the refusal message, or `undefined` when the session is absent or
  * this identity's.
  *
  * A session stored before organizations were required gets the engine's own
- * refusal, which points at the offline migration (BP-030): comparing it with
+ * refusal, which points at the offline migration: comparing it with
  * this run's organization would report a mismatch when nobody ever recorded one.
  */
 export function checkSessionOwner(

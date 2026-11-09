@@ -5,7 +5,7 @@
  * skills tier-1 slash match resolves against — so an unclaimed `/name` that
  * falls through to the flow is still recognized there.
  */
-import { SLASH_COMMAND_PATTERN } from "@flow-state-dev/core";
+import { SLASH_COMMAND_PATTERN } from "@flow-state-dev/core/internal";
 
 /** The classification of a single typed line. */
 export type ParsedInput =

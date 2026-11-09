@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// OKF interchange adapter barrel (FIX-813).
+// OKF interchange adapter barrel.
 //
 // The producer/consumer boundary at the FSD edge: parse + import an external
 // OKF bundle into a concept collection, and export a collection back to a

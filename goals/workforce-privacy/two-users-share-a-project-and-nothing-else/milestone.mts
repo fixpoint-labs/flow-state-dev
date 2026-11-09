@@ -73,7 +73,7 @@ export async function rowsOf(who: Connected, sessionId: string, pattern: string)
   const rows: Array<{ topic: string; data: unknown }> = [];
   let cursor: string | undefined;
   for (let page = 0; page < 50; page += 1) {
-    const listed = await who.resources.listCollectionItems(sessionId, ref, cursor === undefined ? {} : { cursor });
+    const listed = await who.resources.listCollectionResources(sessionId, ref, cursor === undefined ? {} : { cursor });
     rows.push(...listed.items.map((i: { topic: string; clientData?: unknown }) => ({ topic: i.topic, data: i.clientData })));
     if (listed.nextCursor === undefined || listed.nextCursor === cursor) break;
     cursor = listed.nextCursor;
@@ -242,11 +242,11 @@ export async function milestone(o: MilestoneOptions): Promise<MilestoneFacts> {
     const bobRows = await rowsOf(bob, bobRosterSession, WORKERS);
     if (bobRows.rows.some((x) => lastSegment(x.topic) === name)) r.fail("m3", `${readsHers}: the worker collection through his own session holds \`${aliceTopic}\``);
     else r.saw("m3", `the worker collection through Bob's session holds ${bobRows.rows.length} rows, none hers`);
-    const byKey = await refusal(() => bob.resources.getCollectionItemState(bobRosterSession, bobRows.ref, aliceTopic));
+    const byKey = await refusal(() => bob.resources.getCollectionResourceState(bobRosterSession, bobRows.ref, aliceTopic));
     // The item route answers a topic the caller's scope doesn't hold with a null body.
     if (byKey.status === undefined && byKey.value != null) r.fail("m3", `${readsHers}: \`${aliceTopic}\` read back by key through his own session: ${JSON.stringify(byKey.value).slice(0, 200)}`);
     else r.saw("m3", `Bob reading \`${aliceTopic}\` by key: ${byKey.status === undefined ? "not found" : `refused, ${byKey.status}`}`);
-    const throughHers = await refusal(() => bob.resources.listCollectionItems(aliceRosterSession!, aliceRows.ref));
+    const throughHers = await refusal(() => bob.resources.listCollectionResources(aliceRosterSession!, aliceRows.ref));
     if (throughHers.status === undefined) r.fail("m3", `${readsHers}: listed through Alice's own session \`${aliceRosterSession}\``);
     else r.saw("m3", `Bob listing through Alice's session: refused, ${throughHers.status}`);
     // Bob makes his own, the same way, and asks it for Alice's word.

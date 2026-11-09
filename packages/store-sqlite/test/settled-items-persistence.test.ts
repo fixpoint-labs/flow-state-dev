@@ -13,15 +13,16 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
-import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
-import { createResponseEmitter, runAction } from "@flow-state-dev/engine";
-import type { RequestRecord } from "@flow-state-dev/engine";
+import type { RuntimeItem } from "@flow-state-dev/core/internal";
+import { createResponseEmitter } from "@flow-state-dev/engine/host";
+import { runAction } from "@flow-state-dev/engine";
+import type { RequestRecord } from "@flow-state-dev/engine/host";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createSQLiteStores } from "../src/index";
+import { createSQLiteStores } from "../src/host";
 
 describe("a settled request's items on SQLite", () => {
   let dir: string | undefined;

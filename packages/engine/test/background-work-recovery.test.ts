@@ -37,14 +37,15 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
+import { continueRequest, createFlowRegistry, runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { handleContinueRequest } from "../src/routes/recovery-routes";
 import type { InboundTransportHost } from "../src/transports/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { buildItemLookup, resolveBlockValue } from "@flow-state-dev/core/items";
-import { parseBlockInstanceId } from "@flow-state-dev/core/items/internal";
+import { parseBlockInstanceId } from "@flow-state-dev/core/internal";
 
 function createDurableStores() {
   const stores = createInMemoryStores();

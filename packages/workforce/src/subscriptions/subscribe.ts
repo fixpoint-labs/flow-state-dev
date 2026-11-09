@@ -1,5 +1,6 @@
+// FIX-2534, epic ER-5.
 /**
- * Subscribing and ending a subscription (FIX-2534, epic ER-5): the one
+ * Subscribing and ending a subscription: the one
  * `subscribe` and the one `unsubscribe` everything that writes a subscription
  * goes through. The two tools call them; so does a task's ending, and a
  * thread's closing.
@@ -29,8 +30,9 @@ import {
   subscriptionResources,
   subscriptionsOf,
   type IndexEntry,
-  type SubscriptionRow
+  type SubscriptionResourceState
 } from "./rows";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /**
  * A provider a session can subscribe on: its key, who may read a thread, and
@@ -92,9 +94,9 @@ const tenantOf = (ctx: BlockContext): string | undefined => {
 };
 
 /** Whether `row` was made by the running session: its id, in its tenant. */
-const madeHere = (ctx: BlockContext, row: SubscriptionRow): boolean => row.sessionId === ctx.session.identity.id && row.tenantId === tenantOf(ctx);
+const madeHere = (ctx: BlockContext, row: SubscriptionResourceState): boolean => row.sessionId === ctx.session.identity.id && row.tenantId === tenantOf(ctx);
 
-const indexEntryOf = (row: SubscriptionRow): IndexEntry => ({
+const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   provider: row.provider,
   thread: row.thread,
   ...(row.kinds === undefined ? {} : { kinds: row.kinds }),
@@ -131,13 +133,13 @@ export async function subscribe(ctx: BlockContext, providers: readonly Subscript
     return { refused: "no_identity: a subscription needs a session that names its user and organization." };
   }
   // The flow a delivery lands on: the session's own record, as the engine reads it for this user.
-  const view = await ctx.requestHost?.sessions?.read(identity.id);
+  const view = await requestHostOf(ctx)?.sessions?.read(identity.id);
   const flowKind = view === undefined ? undefined : (view.flowId ?? view.flowKind);
   const tenantId = tenantOf(ctx);
   const id = await subscriptionIdOf(identity.id, provider.provider, thread, tenantId);
   const self = await provider.self?.(ctx);
   const taskId = state[TASK_ID_STATE_KEY];
-  const row: SubscriptionRow = {
+  const row: SubscriptionResourceState = {
     id,
     provider: provider.provider,
     thread,
@@ -225,7 +227,7 @@ export function subscriptionTools(options: { readonly providers: readonly Subscr
     inputSchema: subscribeInputSchema,
     outputSchema: subscribeOutputSchema,
     resources: subscriptionResources,
-    execute: async (input, ctx) => subscribe(ctx as never, options.providers, input)
+    execute: async (input, ctx) => subscribe(ctx, options.providers, input)
   });
   const unsubscribeTool = handler({
     name: SUBSCRIPTION_TOOLS.unsubscribe,
@@ -233,8 +235,7 @@ export function subscriptionTools(options: { readonly providers: readonly Subscr
     inputSchema: z.object({ id: z.string().min(1) }).strict(),
     outputSchema: unsubscribeOutputSchema,
     resources: subscriptionResources,
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (input, ctx) => {
       const row = (await subscriptionsOf(ctx).getOptional(input.id))?.state;
       if (row === undefined || !madeHere(ctx, row)) {
         return { refused: `not_yours: this conversation has no subscription "${input.id}".` };

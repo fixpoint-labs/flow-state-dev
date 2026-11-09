@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { HarnessRow, LabAdapter, ProjectRow, SessionRow, TaskRow } from "./adapter";
+import type { LabHarness, LabAdapter, LabProject, LabSession, LabTask } from "./adapter";
 import { PaneHeader } from "./components/PaneHeader";
 import { PaneResizer } from "./components/PaneResizer";
 import { PanelToggle } from "./components/PanelToggle";
 import { ProjectPicker } from "./components/ProjectPicker";
-import { SheetArea, SheetProvider } from "./components/Sheet";
+import { SessionOverlayArea, SessionOverlayProvider } from "./components/flow-state/session-overlay";
 import { KeysSheet } from "./components/KeysSheet";
 import { SessionsList } from "./components/SessionsList";
 import { Switcher } from "./components/Switcher";
@@ -24,7 +24,7 @@ import { modeById, modeOfWorker, PANE_TITLE, type ModeId } from "./modes";
  * The screen: the view's sessions on the left, the open session's main thread
  * in the center, and its mode's right pane: background tasks in session mode,
  * the threads board in threads mode. A pane opens a task's work in a sheet
- * over the main thread (`SheetArea`). The widths of the sessions list and the right pane are yours to drag,
+ * over the main thread (`SessionOverlayArea`). The widths of the sessions list and the right pane are yours to drag,
  * and stay across reloads (`usePaneWidth`, `useSidebarWidth`). The app opens in the Sessions view on
  * *New session*, which asks for a project before the composer opens, unless
  * the page's address names what was open (`lib/address`): a reload, a link and
@@ -50,7 +50,7 @@ const KEYS = [
 ] as const;
 
 export function App({ adapter }: { adapter: LabAdapter }) {
-  const listed = useWatch((emit: (rows: SessionRow[]) => void) => adapter.watchSessions(emit), [adapter]);
+  const listed = useWatch((emit: (rows: LabSession[]) => void) => adapter.watchSessions(emit), [adapter]);
   const sessions = listed ?? [];
   // What the page's address named when it loaded, or on Back, until the sessions are read.
   const [start] = useState(readAddress);
@@ -75,8 +75,9 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     how.current = write;
     setOpenTask((open) => ({ ...open, [sessionId]: taskId }));
   };
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [projects, setProjects] = useState<LabProject[]>([]);
   const [paneWidth, setPaneWidth] = usePaneWidth();
+  const paneRef = useRef<HTMLDivElement>(null);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   const panels = usePanels();
   // A collapse slides for a moment; a drag of the edge never does, or the edge would trail the pointer.
@@ -90,7 +91,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   };
   useEffect(() => () => clearTimeout(slide.current), []);
   // Which coding harnesses can run here: read once for the picker, again on its Re-check.
-  const [harnesses, setHarnesses] = useState<HarnessRow[]>();
+  const [harnesses, setHarnesses] = useState<LabHarness[]>();
   useEffect(() => {
     let live = true;
     void adapter.listProjects().then((rows) => live && setProjects(rows));
@@ -108,7 +109,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   // Open what the address names, once the sessions are read. A session that is gone leaves the default.
   const rows = useRef(listed);
   rows.current = listed;
-  const open = useCallback((address: Address, listing: SessionRow[]) => {
+  const open = useCallback((address: Address, listing: LabSession[]) => {
     pending.current = null;
     const row = listing.find((s) => s.id === address.session);
     const mode = row ? modeOfWorker(row.worker)?.id : undefined;
@@ -169,7 +170,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   };
 
   // ProjectPicker holds its buttons while this runs and shows a refusal.
-  const openNew = (mode: ModeId, project: ProjectRow) =>
+  const openNew = (mode: ModeId, project: LabProject) =>
     adapter.openSession(mode, project.id).then((row) => pick(mode, row.id));
   const inView = sessions.filter((s) => modeOfWorker(s.worker)?.id === view);
 
@@ -180,10 +181,10 @@ export function App({ adapter }: { adapter: LabAdapter }) {
   // carries the session it was read for, so a switch never hands one session the last one's rows.
   // `stale` while the last read failed: the rows are the last ones read, and a task's quiet can't be told from them.
   const read = useWatch(
-    (emit: (read: { sessionId: string; rows: TaskRow[]; stale: boolean }) => void) => {
+    (emit: (read: { sessionId: string; rows: LabTask[]; stale: boolean }) => void) => {
       if (selected === undefined) return () => undefined;
-      let last: { sessionId: string; rows: TaskRow[]; stale: boolean } | undefined;
-      const send = (next: { rows?: TaskRow[]; stale?: boolean }) => {
+      let last: { sessionId: string; rows: LabTask[]; stale: boolean } | undefined;
+      const send = (next: { rows?: LabTask[]; stale?: boolean }) => {
         if (next.rows === undefined && last === undefined) return;
         last = { sessionId: selected.id, rows: next.rows ?? last!.rows, stale: next.stale ?? last?.stale ?? false };
         emit(last);
@@ -209,7 +210,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
     pane: () => (selected && pane ? slideThen(panels.togglePane)() : undefined),
   });
   return (
-    <SheetProvider>
+    <SessionOverlayProvider>
       <div
         className={cn("grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden", sliding && "transition-[grid-template-columns] duration-[180ms] ease-out motion-reduce:transition-none")}
         style={{
@@ -230,7 +231,7 @@ export function App({ adapter }: { adapter: LabAdapter }) {
           />
           {panels.navCollapsed ? null : <PaneResizer side="right" width={sidebarWidth} onResize={setSidebarWidth} />}
         </div>
-        <SheetArea>
+        <SessionOverlayArea>
           {selected ? (
             <Thread
               key={selected.id}
@@ -239,6 +240,12 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               project={projects.find((p) => p.id === selected.projectId)}
               tasks={taskRows}
               onOpenThread={(taskId) => openTaskOf(selected.id, taskId)}
+              // The right pane lists the session's background work: View moves you there.
+              onViewTasks={() => {
+                // A collapsed pane opens first, so View lands on the list.
+                if (paneCollapsed) slideThen(panels.togglePane)();
+                paneRef.current?.focus();
+              }}
             />
           ) : (
             <ProjectPicker
@@ -254,8 +261,8 @@ export function App({ adapter }: { adapter: LabAdapter }) {
               }}
             />
           )}
-        </SheetArea>
-        <div className="relative min-h-0 min-w-0">
+        </SessionOverlayArea>
+        <div ref={paneRef} tabIndex={-1} className="relative min-h-0 min-w-0 outline-none">
           {paneCollapsed ? null : <PaneResizer width={paneWidth} onResize={setPaneWidth} />}
           {pane === undefined ? null : paneCollapsed ? (
             // Collapsed: a strip with the toggle and the pane's name. The pane itself stays mounted below, hidden, so a task open in a sheet stays open.
@@ -313,6 +320,6 @@ export function App({ adapter }: { adapter: LabAdapter }) {
         }}
       />
       <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} keys={KEYS} />
-    </SheetProvider>
+    </SessionOverlayProvider>
   );
 }

@@ -1,3 +1,4 @@
+// FIX-827.
 /**
  * Shared planning-entry factories for the plan→seed idiom.
  *
@@ -10,7 +11,7 @@
  * - `inputDefault`: parallelTasks always maps `input: t.goal`.
  *
  * Planner `title`/`context` map to the first-class `TaskInit.title` /
- * `TaskInit.context` fields (FIX-827). `input` is reserved for the generic
+ * `TaskInit.context` fields. `input` is reserved for the generic
  * typed worker payload — planner `context` is no longer folded into it.
  *
  * `createSeedTasksFromPlan` is also consumed standalone by parallelTasks
@@ -23,11 +24,11 @@ import {
   getOrCreateTaskCollection,
   type TaskInit,
   type TaskCapOptions,
-} from "@flow-state-dev/orchestration";
+} from "@flow-state-dev/orchestration/tasks";
 import {
-  TASK_BOARD_META_COMPONENT_TYPE,
   type TaskContextSupply,
 } from "@flow-state-dev/orchestration/task-board";
+import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/internal";
 
 export interface PlanningEntryStateShape {
   goal?: string;
@@ -35,22 +36,24 @@ export interface PlanningEntryStateShape {
   iteration?: number;
 }
 
+// FIX-827; FIX-910; BP-034.
 /**
- * How each task's `context` is populated when the planner didn't supply one
- * (FIX-827). `"goal"` (default) copies the (synthesized) goal into every
+ * How each task's `context` is populated when the planner didn't supply one.
+ * `"goal"` (default) copies the (synthesized) goal into every
  * gap-task; `false` leaves context empty; a `BlockDefinition` runs a custom
  * per-task enricher over `{ goal, tasks }`.
  *
  * The canonical definition now lives in
  * `@flow-state-dev/orchestration/task-board` (it moved with the lifted
- * `createApplyReplan`, FIX-910); re-exported here so callers importing it from
- * `planning-entry` keep working (BP-034).
+ * `createApplyReplan`); re-exported here so callers importing it from
+ * `planning-entry` keep working.
  */
 export type { TaskContextSupply };
 
+// FIX-827.
 /**
  * Whether to synthesize a self-contained goal from conversation before
- * planning (FIX-827). `false` (default) uses the input goal verbatim.
+ * planning. `false` (default) uses the input goal verbatim.
  * `true` runs a built-in history-aware synthesizer. A `BlockDefinition`
  * supplies a custom synthesizer; it must honor the `{ ...input, goal }`
  * return contract and handle its own failures.
@@ -60,8 +63,9 @@ export type GoalSynthesisConfig = boolean | BlockDefinition<any, any>;
 export interface SeedTasksFromPlanOptions<TState = unknown> {
   name: string;
   collectionId: string;
+  // FIX-931.
   /**
-   * The owning board's resolved creation caps — pass `board.caps` (FIX-931).
+   * The owning board's resolved creation caps — pass `board.caps`.
    *
    * This block resolves the board's ledger into its OWN `TaskCollectionRef`
    * rather than going through the board's factory, and the caps are closed over
@@ -176,8 +180,9 @@ export interface PlanningEntryOptions<
   activeStatusMessage?: string;
   /** Auto-id prefix forwarded to `createSeedTasksFromPlan`. Default `"task"`; P&E passes `"step"`. */
   idPrefix?: string;
+  // FIX-827.
   /**
-   * Per-task context supply (FIX-827). Default `"goal"` — copy the
+   * Per-task context supply. Default `"goal"` — copy the
    * (synthesized) goal into every task the planner left without context.
    *
    * Note: goal synthesis is composed at the pattern *pipeline* level (see
@@ -185,7 +190,8 @@ export interface PlanningEntryOptions<
    * isolated from the outer state the replanner/synthesizer read.
    */
   taskContext?: TaskContextSupply;
-  /** The owning board's resolved creation caps — pass `board.caps` (FIX-931). */
+  // FIX-931.
+  /** The owning board's resolved creation caps — pass `board.caps`. */
   caps?: TaskCapOptions;
 }
 
@@ -231,10 +237,11 @@ function connectCustomContextEnricher(block: BlockDefinition<any, any>) {
   }));
 }
 
+// BP-011; FIX-827.
 /**
  * Build the default goal synthesizer — a self-contained sub-sequencer that
  * rewrites a possibly context-dependent goal into a self-contained one
- * before planning (FIX-827).
+ * before planning.
  *
  * Composed at the *pattern pipeline* top (before `stampOuterGoal`), not
  * inside `createPlanningEntry`. The spec (D5) placed it inside the entry on
@@ -252,7 +259,7 @@ function connectCustomContextEnricher(block: BlockDefinition<any, any>) {
  * to catch a planner failure) and returns the original goal stashed in the
  * sub-sequencer's state. The model call stays inside a real `generator()`
  * (history-aware, schema-validated) rather than being reimplemented in a
- * handler, which keeps it BP-011-clean.
+ * handler, so no handler calls a block.
  *
  * Output is `{ goal }` — equal to `{ ...input, goal }` for the `{ goal }`
  * pattern inputs in use today.
@@ -299,9 +306,10 @@ function createDefaultGoalSynthesizer<TInput extends { goal: string }>(
     .rescue([{ block: fallback }]);
 }
 
+// FIX-827.
 /**
  * Resolve the optional goal-synthesis step for a plan-shaped pattern
- * pipeline (FIX-827). Returns `undefined` when synthesis is disabled (the
+ * pipeline. Returns `undefined` when synthesis is disabled (the
  * default), the built-in synthesizer for `true`, or the caller's custom
  * `BlockDefinition`. The returned block is meant to be composed as the
  * first `.step()` of the pattern pipeline, before the outer goal is stamped.

@@ -281,10 +281,11 @@ function compileGrep(pattern: string): { matcher: RegExp; dialect: GrepDialect }
   }
 }
 
+// BP-033.
 /**
  * Read kept files: the rows of `files.collection` under `<projectId>/`, and
  * nothing else. The collection is asked for that prefix alone, filtered where
- * the rows are read (BP-033), and each key is checked again on the way out.
+ * the rows are read, and each key is checked again on the way out.
  */
 export async function readKeptFiles(projectId: string, files: RunFiles, request: SourceReadRequest): Promise<SourceReadResult> {
   const at: SourceReadAt = { kind: "files" };

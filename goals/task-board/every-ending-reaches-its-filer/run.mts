@@ -41,7 +41,8 @@ import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
-import { dispatchThroughSeam, type BlockContext } from "@flow-state-dev/core/types";
+import { type BlockContext } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
@@ -49,13 +50,13 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
-  NOTICE_DUE_MS,
   resolveResourceCollection,
   type Task,
   type TaskInit,
   type TaskWorker,
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import {
   createWorkerInstallation,
   defineSessionBoard,

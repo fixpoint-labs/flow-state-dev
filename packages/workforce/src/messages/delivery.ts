@@ -1,8 +1,9 @@
+// FIX-2240; FIX-2078; FIX-2123.
 /**
- * A worker message lands once (FIX-2240): the debt a send owes, the take on
+ * A worker message lands once: the debt a send owes, the take on
  * the message's row, and the step of the sending session's board pass that
- * sends an owed message again. The shape of a task's ending (FIX-2078) and
- * the take of its notice (FIX-2123), on a message.
+ * sends an owed message again. The shape of a task's ending and
+ * the take of its notice, on a message.
  *
  * - **The send** owes its session's pass a wake (`DISPATCH_ENTRY`, due in
  *   `NOTICE_DUE_MS`), puts the id on the session's owed list beside the
@@ -29,14 +30,16 @@
  *   told by the tool's answer instead.
  */
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import { getBaseCapability, type CapabilityRef } from "@flow-state-dev/core";
-import { dispatchThroughSeam, type BlockContext, type DispatchOutcome, type DispatchRefusal, type ResourceRef } from "@flow-state-dev/core/types";
-import { decideTake, hasEnded, nextResendAt, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
+import { type CapabilityRef } from "@flow-state-dev/core";
+import { getBaseCapability } from "@flow-state-dev/core/capability";
+import { type BlockContext, type DispatchOutcome, type DispatchRefusal, type ResourceRef } from "@flow-state-dev/core/types";
+import { requestHostOf, dispatchThroughSeam } from "@flow-state-dev/core/internal";
+import { decideTake, hasEnded, nextResendAt, NOTICE_DUE_MS } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { DISPATCH_ENTRY } from "../conversation-board/board-entries";
 import type { WorkerInstallation } from "../workers/installation";
 import { MESSAGE_RECEIVED_ENTRY, SEND_MESSAGE_TOOL, SENDS_MESSAGES_MARK, WORKER_MESSAGES_OWED_STATE, WORKER_REPLIES_OWED_STATE } from "./keys";
-import { messageLogOf, type WorkerMessageRow } from "./message-log";
+import { messageLogOf, type WorkerMessageResourceState } from "./message-log";
 
 /** The host's debt age when it keeps no wakes to say one: a day. */
 const DEFAULT_DEBT_AGE_MS = 24 * 60 * 60 * 1000;
@@ -49,7 +52,8 @@ type OwedEntry = z.infer<typeof owedEntrySchema>;
 /** One reply the session owes: the message id, and the request that landed it. */
 export type OwedReply = OwedEntry;
 
-/** The session state the owed lists are kept in: messages sent and not landed, and reply-requested messages landed and not answered (FIX-2310). Server-owned. */
+// FIX-2310.
+/** The session state the owed lists are kept in: messages sent and not landed, and reply-requested messages landed and not answered. Server-owned. */
 export const messageDeliveryStateShape = {
   [WORKER_MESSAGES_OWED_STATE]: z.array(owedEntrySchema).default([]),
   [WORKER_REPLIES_OWED_STATE]: z.array(owedEntrySchema).default([])
@@ -73,7 +77,8 @@ function owedOf(state: unknown): OwedEntry[] {
   return readOwed(state, WORKER_MESSAGES_OWED_STATE);
 }
 
-/** The reply-requested messages a session landed and hasn't answered (FIX-2310). */
+// FIX-2310.
+/** The reply-requested messages a session landed and hasn't answered. */
 export function owedRepliesOf(state: unknown): OwedReply[] {
   return readOwed(state, WORKER_REPLIES_OWED_STATE);
 }
@@ -114,10 +119,11 @@ function offersSendMessage(flow: unknown): boolean {
   return false;
 }
 
+// FIX-2271.
 /**
  * Why `name`'s flow can't keep the messages its model sends, or `undefined`
  * when it can: it offers `sendMessage` and carries no pass, so a message
- * whose own dispatch fails is never sent again (FIX-2271). A flow that sends
+ * whose own dispatch fails is never sent again. A flow that sends
  * from server code without the tool (a coder's midway question) needs none.
  * The hire's check, beside `messageReceivedProblem`.
  *
@@ -140,7 +146,7 @@ export function sendWithoutPassProblem(name: string, flow: unknown): string | un
  */
 export async function oweMessage(ctx: BlockContext, id: string): Promise<void> {
   try {
-    await ctx.requestHost?.wakes?.owe({ entry: DISPATCH_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
+    await requestHostOf(ctx)?.wakes?.owe({ entry: DISPATCH_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
   } catch {
     // The owed list still holds it; the next pass pays it.
   }
@@ -171,14 +177,15 @@ export function isFinalRefusal(refused: DispatchRefusal): boolean {
   return refused !== "dispatch-rejected" && refused !== "no-dispatch-operation" && refused !== "flow-not-found";
 }
 
+// FIX-2318.
 /**
  * Dispatch `row` to its recipient's `onMessageReceived`, at the address the row keeps whole.
  *
  * @param waits The sender parks on the request this starts (the first
- *   dispatch of a message whose sender waits for the reply, FIX-2318), so the
+ *   dispatch of a message whose sender waits for the reply), so the
  *   engine counts it in the chain of waits.
  */
-export function dispatchMessage(ctx: BlockContext, row: WorkerMessageRow, from: string, waits = false): Promise<DispatchOutcome> {
+export function dispatchMessage(ctx: BlockContext, row: WorkerMessageResourceState, from: string, waits = false): Promise<DispatchOutcome> {
   return dispatchThroughSeam(ctx, {
     type: "internal",
     action: MESSAGE_RECEIVED_ENTRY,
@@ -200,14 +207,14 @@ export function dispatchMessage(ctx: BlockContext, row: WorkerMessageRow, from: 
  * @returns Whether it was written.
  */
 export async function endMessage(
-  ref: ResourceRef<WorkerMessageRow>,
+  ref: ResourceRef<WorkerMessageResourceState>,
   status: "refused" | "undeliverable",
   reason: string,
   options: { told?: boolean; force?: boolean } = {}
 ): Promise<boolean> {
   const ended = await withOutcome(
-    (mutator: (row: WorkerMessageRow) => WorkerMessageRow) => ref.updateState(mutator),
-    (row: WorkerMessageRow) => {
+    (mutator: (row: WorkerMessageResourceState) => WorkerMessageResourceState) => ref.updateState(mutator),
+    (row: WorkerMessageResourceState) => {
       if (row.status !== "unconfirmed" || (row.takenBy !== undefined && options.force !== true)) return { state: row, result: false };
       return { state: { ...row, status, reason, ...(options.told === true ? { toldAt: Date.now() } : {}) }, result: true };
     }
@@ -216,12 +223,12 @@ export async function endMessage(
 }
 
 /** D1's line: what the sending session's next turn reads of a message that couldn't land. */
-function undeliveredLine(row: Pick<WorkerMessageRow, "id" | "to" | "reason">): string {
+function undeliveredLine(row: Pick<WorkerMessageResourceState, "id" | "to" | "reason">): string {
   return `Your message ${row.id} to ${row.to} wasn't delivered: ${row.reason ?? "no reason was given"}.`;
 }
 
 /** Leave D1's line in the running session (the sender's), then record it on the row. */
-async function tellSender(ctx: BlockContext, ref: ResourceRef<WorkerMessageRow>): Promise<void> {
+async function tellSender(ctx: BlockContext, ref: ResourceRef<WorkerMessageResourceState>): Promise<void> {
   const emit = storedEmitters(ctx);
   await emit.message(undeliveredLine(ref.state), { itemVisibility: { client: true, history: true } });
   await emit.stored();
@@ -243,13 +250,14 @@ export function storedEmitters(ctx: BlockContext) {
   return { message: message.bind(ctx), component: component.bind(ctx), stored: flush.bind(ctx) };
 }
 
+// FIX-2123.
 /**
  * Take message `id` for the running request, in the recipient's session
- * (FIX-2123's take, on a message): one guarded write of `takenBy` while the
+ * (the take, on a message): one guarded write of `takenBy` while the
  * row is `unconfirmed`, for the session the row is addressed to. A taker that
  * hasn't ended keeps it; one that ended without delivering is taken over.
  */
-export async function takeMessage(ctx: BlockContext, id: string): Promise<WorkerMessageRow | undefined> {
+export async function takeMessage(ctx: BlockContext, id: string): Promise<WorkerMessageResourceState | undefined> {
   const ref = await messageLogOf(ctx).getOptional(id);
   const row = ref?.state;
   if (ref === undefined || row === undefined || row.toSession !== ctx.session.identity.id || row.status !== "unconfirmed") return undefined;
@@ -258,8 +266,8 @@ export async function takeMessage(ctx: BlockContext, id: string): Promise<Worker
   const own = ctx.request.identity.id;
   const seen = row.takenBy;
   const taken = await withOutcome(
-    (mutator: (current: WorkerMessageRow) => WorkerMessageRow) => ref.updateState(mutator),
-    (current: WorkerMessageRow) => {
+    (mutator: (current: WorkerMessageResourceState) => WorkerMessageResourceState) => ref.updateState(mutator),
+    (current: WorkerMessageResourceState) => {
       if (current.status !== "unconfirmed" || current.takenBy !== seen) return { state: current, result: undefined };
       return { state: { ...current, takenBy: own }, result: { ...current, takenBy: own } };
     }
@@ -276,8 +284,8 @@ export async function markDelivered(ctx: BlockContext, id: string): Promise<bool
   if (ref === undefined) return false;
   const own = ctx.request.identity.id;
   const marked = await withOutcome(
-    (mutator: (current: WorkerMessageRow) => WorkerMessageRow) => ref.updateState(mutator),
-    (current: WorkerMessageRow) => {
+    (mutator: (current: WorkerMessageResourceState) => WorkerMessageResourceState) => ref.updateState(mutator),
+    (current: WorkerMessageResourceState) => {
       if (current.status !== "unconfirmed" || current.takenBy !== own) return { state: current, result: false };
       return { state: { ...current, status: "delivered" as const, deliveredAs: own, deliveredAt: Date.now() }, result: true };
     }
@@ -290,7 +298,7 @@ export async function markDelivered(ctx: BlockContext, id: string): Promise<bool
  * recipient now, or `undefined` when it can. The send's own check, without
  * the budget, which the row paid once.
  */
-export type RecheckRecipient = (ctx: BlockContext, row: WorkerMessageRow) => Promise<string | undefined>;
+export type RecheckRecipient = (ctx: BlockContext, row: WorkerMessageResourceState) => Promise<string | undefined>;
 
 /**
  * The pass's message step: pay what the running session owes for the
@@ -313,14 +321,14 @@ export async function payMessageDebts(ctx: BlockContext, recheck: RecheckRecipie
   const owed = owedOf(ctx.session.state);
   if (owed.length === 0) return undefined;
   const log = messageLogOf(ctx);
-  const maxAge = ctx.requestHost?.wakes?.maxDebtAgeMs ?? DEFAULT_DEBT_AGE_MS;
+  const maxAge = requestHostOf(ctx)?.wakes?.maxDebtAgeMs ?? DEFAULT_DEBT_AGE_MS;
   const drop: string[] = [];
   let next: number | undefined;
   const later = (at: number) => {
     next = next === undefined ? at : Math.min(next, at);
   };
   // End the row, tell the sender, drop the id: false when another writer ended it first.
-  const close = async (ref: ResourceRef<WorkerMessageRow>, id: string, status: "refused" | "undeliverable", reason: string, force = false) => {
+  const close = async (ref: ResourceRef<WorkerMessageResourceState>, id: string, status: "refused" | "undeliverable", reason: string, force = false) => {
     if (!(await endMessage(ref, status, reason, force ? { force: true } : undefined))) return false;
     await tellSender(ctx, ref);
     drop.push(id);

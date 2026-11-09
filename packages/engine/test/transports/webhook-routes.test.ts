@@ -20,15 +20,16 @@ import {
 } from "@flow-state-dev/core";
 import {
   createFlowRegistry,
-  createInboundTransportHost,
-  createInMemoryStores,
   defaultBodyUserIdPrincipalResolver,
-  stripeWebhookVerifier,
-  createInMemoryLeaseBackend,
-  type FlowRunner
+  stripeWebhookVerifier
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
+import { createInboundTransportHost, type FlowRunner } from "../../src/host";
+import { createInMemoryLeaseBackend } from "../../src/internal";
 import { createConcurrencyArbiter } from "../../src/transports/concurrency/arbiter";
-import type { DispatchHandle } from "../../src/transports/types";
+import type { InboundDispatchHandle } from "../../src/transports/types";
 import type { InboundRequestEnvelope, InboundTransportHost } from "../../src/transports/types";
 import type { WebhookProviderDefinition } from "../../src/transports/webhook/createWebhookTransportAdapter";
 import { handleWebhook } from "../../src/transports/webhook/routes";
@@ -403,7 +404,7 @@ describe("handleWebhook with a real host (signed, end-to-end)", () => {
 
     // Capture the dispatch handle so we can await the (async) action to completion.
     const realDispatch = host.dispatch.bind(host);
-    let handle: DispatchHandle | undefined;
+    let handle: InboundDispatchHandle | undefined;
     host.dispatch = (envelope) => {
       const dispatched = realDispatch(envelope);
       handle = dispatched;

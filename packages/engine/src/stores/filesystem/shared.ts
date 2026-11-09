@@ -293,8 +293,9 @@ export type CreateFilesystemRecordStoreOptions<
    * `updatedAt` descending.
    */
   sort?: (left: TRecord, right: TRecord, options?: TListOptions) => number;
+  // FIX-1010.
   /**
-   * Whether these list options ask for an **unordered** result (FIX-1010),
+   * Whether these list options ask for an **unordered** result,
    * in which case `sort` is skipped entirely. Defaults to always ordering.
    */
   unordered?: (options?: TListOptions) => boolean;

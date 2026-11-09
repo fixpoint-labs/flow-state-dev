@@ -19,7 +19,7 @@
 import { realpathSync } from "node:fs";
 import { join, sep } from "node:path";
 import { defineFlow } from "@flow-state-dev/core";
-import { getAssetPath } from "@flow-state-dev/devtool";
+import { getDevToolAssetPath } from "@flow-state-dev/devtool";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 
@@ -43,14 +43,14 @@ const fail = (step, detail) => {
 
 let assetDir;
 try {
-  assetDir = getAssetPath();
+  assetDir = getDevToolAssetPath();
 } catch (error) {
-  fail("getAssetPath", String(error?.message ?? error));
+  fail("getDevToolAssetPath", String(error?.message ?? error));
 }
 const installed = realpathSync(join(process.cwd(), "node_modules", "@flow-state-dev", "devtool"));
 const resolved = realpathSync(assetDir);
 if (!resolved.startsWith(installed + sep))
-  fail("getAssetPath", `${resolved} is not inside the installed package at ${installed}`);
+  fail("getDevToolAssetPath", `${resolved} is not inside the installed package at ${installed}`);
 
 const flow = defineFlow({ kind: "packed-install-devtool", actions: {} })();
 

@@ -1,5 +1,6 @@
+// FIX-2290.
 /**
- * A running task's progress note, from its harness run's activity (FIX-2290).
+ * A running task's progress note, from its harness run's activity.
  *
  * The harness hands each assistant message and tool call to the manager's
  * `onActivity` feed. {@link progressNoteOf} turns one into the one-line note a
@@ -7,8 +8,8 @@
  * task row: the first at once, then at most one per {@link PROGRESS_NOTE_MS},
  * always the latest, so a long run writes the row a bounded number of times.
  */
-import type { HarnessActivity } from "@flow-state-dev/core/types";
-import { STATUS_NOTE_LIMIT } from "@flow-state-dev/orchestration";
+import type { HarnessActivity } from "@flow-state-dev/core/harness";
+import { STATUS_NOTE_LIMIT } from "@flow-state-dev/orchestration/internal";
 
 /** The least time between two progress-note writes of one step, in ms. */
 export const PROGRESS_NOTE_MS = 30_000;

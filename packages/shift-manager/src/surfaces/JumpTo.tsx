@@ -1,7 +1,8 @@
+// BR-10.
 /**
  * Jump to (⌘K; Shift+⌘K opens it in message mode): find any screen the sidebar
  * reaches, a project, a workstream, a worker, a task or a declared document,
- * from the one snapshot, and go there (BR-10). A query matches a result's
+ * from the one snapshot, and go there. A query matches a result's
  * shown name, its hint, or its id. A worker opens Roster on its team with its
  * row in view and focus. A document opens read-only. A Lab that serves no
  * document to the browser gets a line saying so, and a failed read of them, or
@@ -21,7 +22,7 @@ import type { Client } from "@flow-state-dev/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { allRows, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { allTasks, shiftCoordinatorOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { handToShiftCoordinator } from "../lib/outbox";
 import { projectReaderOf, readProject, type WorkstreamEntry } from "../lib/projects";
 import { navigate, type Route } from "../lib/routes";
@@ -156,7 +157,7 @@ export function JumpTo({
         to: { level: "roster", team: w.team },
         focus: `[data-testid="roster-worker"][data-worker-id="${w.id.replace(/"/g, '\\"')}"]`,
       })),
-      ...allRows(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, keywords: [r.id], to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
+      ...allTasks(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, keywords: [r.id], to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
       ...(snapshot.resources.ok ? snapshot.resources.value : []).map((d): Entry => ({ group: "Resources", label: d.ref, hint: "read-only", keywords: [d.sessionId], to: { level: "resource", sessionId: d.sessionId, ref: d.ref } })),
     ];
   }, [snapshot, workstreams]);

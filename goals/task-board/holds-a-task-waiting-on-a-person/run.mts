@@ -43,14 +43,15 @@ import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, handler, sequencer, SuspensionTimeoutError } from "@flow-state-dev/core";
-import { dispatchThroughSeam, isUserSuspension, markDispatcher, type BlockContext } from "@flow-state-dev/core/types";
+import { isUserSuspension, markDispatcher, type BlockContext } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import { createFlowState } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { TASK_ID_STATE_KEY } from "../../../packages/workforce/src/workers/keys.ts";
 import { messageLogOf } from "../../../packages/workforce/src/messages/message-log.ts";
-import type { WorkerMessageRow } from "../../../packages/workforce/src/messages/log-row.ts";
+import type { WorkerMessageResourceState } from "../../../packages/workforce/src/messages/log-row.ts";
 import { MESSAGE_RECEIVED_ENTRY } from "../../../packages/workforce/src/messages/keys.ts";
 import {
   createWorkerInstallation,
@@ -534,9 +535,9 @@ async function untilWaiting(run: Run, id: string, leg: string): Promise<boolean>
   return false;
 }
 /** A message's row in the user's message log, as the server stored it. */
-async function messageRowOf(run: Run, id: string): Promise<WorkerMessageRow | undefined> {
+async function messageRowOf(run: Run, id: string): Promise<WorkerMessageResourceState | undefined> {
   const stored = await run.h.runtime.stores.resourceState.getByPrefix("user", `${USER}:~org:${ORG}`, `workforce/messages/${id}`);
-  return Object.values(stored).map((value) => value.state as WorkerMessageRow).find((row) => row.id === id);
+  return Object.values(stored).map((value) => value.state as WorkerMessageResourceState).find((row) => row.id === id);
 }
 /** The item a task's stop is listed as, and whether it has left the list. */
 async function itemGone(run: Run, id: string): Promise<boolean> {

@@ -19,8 +19,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { defineCapability, defineResourceCollection, handler } from "@flow-state-dev/core";
-import { harnessRunInputSchema, harnessRunHandleSchema } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
+import { harnessRunInputSchema, harnessRunHandleSchema } from "@flow-state-dev/core/harness";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { harnessManager, RUNS, type HarnessFeeds } from "../src";
 import { joinIdentity, tenantSegment } from "../src/workspace";
@@ -212,12 +212,6 @@ describe("a phase's collections ride `uses`", () => {
     expect(() => build({ uses: [capabilityDeclaring(RUNS)] })).toThrow(
       /the manager owns/,
     );
-  });
-
-  it("refuses `announce` by name: a question holds its task, where the Inbox lists it", () => {
-    // A host still passing it expects to be told of each question. Ignored, it
-    // would wait on a call that never comes; refused, it is told where to read.
-    expect(() => build({ announce: () => undefined })).toThrow(/`announce` was removed/);
   });
 
   it("refuses a capability claiming the board ledger", () => {

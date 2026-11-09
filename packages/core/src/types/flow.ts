@@ -103,9 +103,10 @@ export type ToolLifecycleEvent = {
   input: unknown;
   output?: unknown;
   error?: Error;
+  // FIX-610.
   /**
    * True when the tool's result was served from the per-tool memoization
-   * cache (FIX-610) rather than executed against the upstream. Observers
+   * cache rather than executed against the upstream. Observers
    * fire on the cache-hit path with the same `onToolStarted` /
    * `onToolCompleted` ordering as a normal call so consumers can attribute
    * downstream side-effects either way. `onToolErrored` never fires on
@@ -166,6 +167,7 @@ export interface ActionMcpConfig {
    * charset `[A-Za-z0-9_.-]{1,128}`.
    */
   name?: string;
+  // BP-031.
   /**
    * How the MCP adapter derives the dispatch `sessionId` for this action.
    * MCP is sessionless — by default every `tools/call` mints a fresh
@@ -183,7 +185,7 @@ export interface ActionMcpConfig {
    *
    * Security: `fromInput` reads model-supplied input as a *flow* session key
    * (not the protocol `Mcp-Session-Id`, and never an auth/routing decision —
-   * the principal still comes from `resolvePrincipal`, BP-031). Because the id
+   * the principal still comes from `resolvePrincipal`). Because the id
    * is a bare, caller-controlled session key, `{ fromInput }` is safe only
    * under a single server-trusted principal until caller-supplied keys are
    * namespaced by principal: in a multi-user flow a caller could name another
@@ -298,8 +300,9 @@ export type ActionConfig<
   mcp?: ActionMcpConfig;
 };
 
+// FIX-2286.
 /**
- * A read (FIX-2286): a block an app runs on a session to watch a view the flow
+ * A read: a block an app runs on a session to watch a view the flow
  * computes, such as a conversation's task list. It is answered in the HTTP
  * response and stored nowhere: no request record, no items, no concurrency
  * slot. Its context refuses every write (resource, content and session state,
@@ -355,10 +358,11 @@ export type RetentionPolicy = {
   maxAge?: number | string;
 };
 
+// FIX-435.
 /**
  * Per-scope configs (`session`, `user`, `org`) carry only state and
  * client-data hooks. Resources live in the flow-level `resources` field
- * (FIX-435) — the resource's intrinsic `scope` decides where it persists.
+ * — the resource's intrinsic `scope` decides where it persists.
  */
 export type SessionConfig = {
   metadata?: ZodTypeAny;
@@ -424,6 +428,7 @@ export type RequestConfig = {
   onErrored?: BlockDefinition<any, any>;
   onFinished?: BlockDefinition<any, any>;
   onStepErrored?: BlockDefinition<any, any>;
+  // FIX-1131.
   /**
    * Heartbeat interval in milliseconds for the active request registry.
    * Default: 10000 (10 seconds). Set to 0 to disable.
@@ -431,8 +436,7 @@ export type RequestConfig = {
    * The same tick carries cross-process abort delivery and keeps a running
    * request's registry entry warm, so `0` disables both: a cancellation
    * recorded elsewhere is never delivered, and a run outliving the stale
-   * threshold can be marked `interrupted` while it is still running
-   * (FIX-1131).
+   * threshold can be marked `interrupted` while it is still running.
    */
   heartbeatIntervalMs?: number;
   /**
@@ -444,8 +448,9 @@ export type RequestConfig = {
    * Default: 15000 (15 seconds). Set to 0 to disable.
    */
   sseHeartbeatMs?: number;
+  // FIX-401.
   /**
-   * When true, durable sequencer checkpoints (FIX-401) are deleted on
+   * When true, durable sequencer checkpoints are deleted on
    * terminal completion (success / error / abort). When false (default),
    * checkpoints are retained — useful for post-mortem inspection, audit,
    * or letting a projected process decide retention.
@@ -548,9 +553,10 @@ export type FlowDefinition<
    * as an instance option.
    */
   cardinality?: FlowCardinality;
+  // FIX-1331.
   /**
    * What a copy of this flow may be created WITH — the shape of the bag
-   * `flow({ config })` carries, parsed and frozen at that call (FIX-1331).
+   * `flow({ config })` carries, parsed and frozen at that call.
    *
    * Must be a plain `z.object({ ... })`: the framework closes it before
    * parsing, so a key nobody declared is an error rather than a silently
@@ -627,13 +633,13 @@ export type FlowDefinition<
   request?: TRequest;
   user?: TUser;
   org?: TOrg;
+  // FIX-435.
   /**
    * Flow-level resource declarations. Single flat map, accessor key →
    * resource definition. Resources are routed to the right storage layer
    * via their intrinsic `scope` (set on `defineResource`); cross-flow
    * sharing is controlled by `flowIsolation` on the resource. Replaces
-   * the legacy `session.resources` / `user.resources` / `org.resources`
-   * (FIX-435).
+   * the legacy `session.resources` / `user.resources` / `org.resources`.
    */
   resources?: TResources;
   tools?: ToolsConfig;
@@ -676,6 +682,7 @@ export type FlowDefinition<
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
 
+  // FIX-1323; FIX-735; FIX-435.
   /**
    * Isolation for the user scope. Two roles:
    *   - keys the scope's `state` record (`ctx.user.state`) — the user's cell
@@ -684,13 +691,13 @@ export type FlowDefinition<
    *   - the default `flowIsolation` for user-scoped resources that don't
    *     declare their own.
    *
-   * The namespace is the registered **instance**, not the kind (FIX-1323):
+   * The namespace is the registered **instance**, not the kind:
    * a singleton's id is its kind, so its cell is unchanged, but two copies of
    * a `collection` definition isolate from each other as well as from other
    * flows. Renaming an instance therefore moves where its isolated data lives.
    *
-   * Resources key per resource (FIX-735): a resource's own `flowIsolation`
-   * always wins over this default, in both directions (FIX-435).
+   * Resources key per resource: a resource's own `flowIsolation`
+   * always wins over this default, in both directions.
    * Default: false (resources are shared across flows under the same userId).
    */
   isolateUserState?: boolean;
@@ -729,9 +736,10 @@ export type FlowInstanceOptions<
 > = {
   id?: string;
   kind?: string;
+  // FIX-1331.
   /**
    * The settings this copy is created with, parsed against the definition's
-   * `configSchema` and frozen (FIX-1331). Omitting it is not a way around the
+   * `configSchema` and frozen. Omitting it is not a way around the
    * schema: the schema parses `{}`, so its defaults apply and a required
    * field refuses.
    */
@@ -780,9 +788,10 @@ export type FlowInstance<
   /** Normalized from the definition; see {@link FlowCardinality}. */
   cardinality: FlowCardinality;
   requireUser: boolean;
+  // FIX-1331.
   /**
    * This copy's create-time settings, parsed against the definition's
-   * `configSchema` and frozen (FIX-1331). Never absent — a flow that declares
+   * `configSchema` and frozen. Never absent — a flow that declares
    * no schema carries a frozen empty object, so a block always reads a value.
    *
    * Blocks read it as `ctx.flow.config`. Normalized, never persisted, never
@@ -817,14 +826,28 @@ export type FlowInstance<
   costEstimator?: CostEstimator;
   isolateUserState: boolean;
   isolateOrgState: boolean;
+  // FIX-688.
   /**
    * Accessor keys declared in the flow's OWN `resources` map passed to
-   * `defineFlow` (FIX-688), captured before block-tree/capability resources
+   * `defineFlow`, captured before block-tree/capability resources
    * bubble up and merge into `resources`. The block-dispatch prefetch hook uses
    * this to distinguish flow-level declarations (no per-block load trigger)
    * from block-level ones.
    */
   flowLevelResourceKeys: ReadonlySet<string>;
+  /**
+   * Internal, read by the engine: the schema each scope's reads fill missing
+   * defaults from. The flow's own `stateSchema` merged, at `defineFlow`, with
+   * every scope-state schema its reachable blocks and their capabilities
+   * declare; a scope nothing declares is absent. Writes still validate against
+   * the flow's own `stateSchema`. Absent on an instance not built by
+   * `defineFlow`, whose reads fall back to its own `stateSchema`.
+   */
+  scopeStateSchemas?: {
+    readonly session?: ZodTypeAny;
+    readonly user?: ZodTypeAny;
+    readonly org?: ZodTypeAny;
+  };
   /**
    * Owner pin for an owner-pinned instance. Absent on shared flows. See {@link InstanceOwnerPin}.
    */
@@ -881,8 +904,11 @@ export type FlowType<
   schedules?: SchedulesConfig;
   isolateUserState: boolean;
   isolateOrgState: boolean;
-  /** Mirror of `FlowInstance.flowLevelResourceKeys` (FIX-688). */
+  // FIX-688.
+  /** Mirror of `FlowInstance.flowLevelResourceKeys`. */
   flowLevelResourceKeys: ReadonlySet<string>;
+  /** Mirror of `FlowInstance.scopeStateSchemas`. */
+  scopeStateSchemas?: FlowInstance["scopeStateSchemas"];
 
   (
     options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TResources, TConfigSchema>

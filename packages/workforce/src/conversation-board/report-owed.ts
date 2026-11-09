@@ -1,24 +1,26 @@
+// FIX-2078; FIX-1983; FIX-2083; BP-030.
 /**
- * A task that failed for good is reported to the Error Reporter's intake
- * (FIX-1983), riding its ending's delivery (FIX-2078, epic decision (f)): the
+ * A task that failed for good is reported to the Error Reporter's intake,
+ * riding its ending's delivery (epic decision (f)): the
  * filer's `onTaskSettled` sends it before it acknowledges the notice, so a
  * failed send leaves the notice owed and the report goes again with it. The
  * intake takes it as the task occurrence it already dedupes.
  *
  * A notice nobody can take (its conversation is gone) sends the report where
- * that refusal is handled. A routed task's report goes the same way (FIX-2083).
+ * that refusal is handled. A routed task's report goes the same way.
  *
- * **Upgrade (BP-030).** A row stored before FIX-2078 may carry a report-owed
+ * **Upgrade.** A row stored by an older version may carry a report-owed
  * marker (`reportOwed:<attempt>`) whose notice is already acknowledged. The
  * filer's pass sends each such marker once as the task occurrence, and drops
  * it once the intake took it ({@link sendLegacyReports}). Nothing writes one now.
  */
-import { dispatchThroughSeam } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam } from "@flow-state-dev/core/internal";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task, TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY, INTAKE_SESSION_ID } from "../error-reporter/keys";
 
-/** The marker an owed report was kept under before FIX-2078, in the row's metadata. */
+// FIX-2078.
+/** The marker an owed report was kept under by an older version, in the row's metadata. */
 const REPORT_OWED_PREFIX = "reportOwed:";
 
 /** The metadata key a stored owed report for `attempt` is kept under. The intake clears it once it holds the report. */
@@ -31,7 +33,8 @@ interface ReportMarker {
   readonly error: string;
 }
 
-/** The reports a row stored before FIX-2078 still owes, by marker key. */
+// FIX-2078.
+/** The reports a row stored by an older version still owes, by marker key. */
 export function owedReports(row: Task): Array<{ key: string; marker: ReportMarker }> {
   return Object.entries(row.metadata ?? {})
     .filter(([key, value]) => key.startsWith(REPORT_OWED_PREFIX) && value !== null && typeof value === "object")
@@ -93,8 +96,9 @@ export async function sendTaskReport(
   }
 }
 
+// FIX-2078.
 /**
- * Send each report a row stored before FIX-2078 still owes, once, and drop its
+ * Send each report a row stored by an older version still owes, once, and drop its
  * marker once the intake took it (or no reporter ever will). Any other outcome
  * leaves the marker for the next pass.
  *

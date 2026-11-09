@@ -9,8 +9,8 @@
  */
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LabAdapter, TaskRow, TaskWork } from "../src/adapter";
-import { SheetArea, SheetProvider } from "../src/components/Sheet";
+import type { LabAdapter, LabTask, TaskWork } from "../src/adapter";
+import { SessionOverlayArea, SessionOverlayProvider } from "../src/components/flow-state/session-overlay";
 import { TasksPane } from "../src/components/TasksPane";
 import { ThreadView } from "../src/components/ThreadView";
 import { toolRun } from "../src/lib/tool-steps";
@@ -22,7 +22,7 @@ afterEach(() => {
 
 const STARTED = Date.UTC(2026, 10, 4, 9, 0, 0);
 
-const RUNNING: TaskRow = { id: "t-1", title: "Fix session log ordering", goal: "Fix it", status: "in_progress", harness: "claude-code", startedAt: STARTED };
+const RUNNING: LabTask = { id: "t-1", title: "Fix session log ordering", goal: "Fix it", status: "in_progress", harness: "claude-code", startedAt: STARTED };
 
 /** The run's entries so far: it has done things, and nothing new has arrived since. */
 const DONE_SO_FAR: TaskWork["entries"] = [
@@ -30,7 +30,7 @@ const DONE_SO_FAR: TaskWork["entries"] = [
   { kind: "tool", id: "t1", ...toolRun([{ id: "c1", name: "Bash", args: { command: "ls" }, status: "done" }]) },
 ];
 
-function open(task: TaskRow) {
+function open(task: LabTask) {
   let show: (work: TaskWork) => void = () => {};
   const adapter = {
     watchTaskWork: (_: string, __: string, onChange: (work: TaskWork) => void) => {
@@ -41,12 +41,12 @@ function open(task: TaskRow) {
     taskActions: () => ({}),
   } as unknown as LabAdapter;
   // The view is a sheet, which draws into the area a provider hosts.
-  const shown = (current: TaskRow) => (
-    <SheetProvider>
-      <SheetArea>
+  const shown = (current: LabTask) => (
+    <SessionOverlayProvider>
+      <SessionOverlayArea>
         <ThreadView adapter={adapter} sessionId="s-1" task={current} pinned={false} onClose={() => {}} />
-      </SheetArea>
-    </SheetProvider>
+      </SessionOverlayArea>
+    </SessionOverlayProvider>
   );
   const view = render(shown(task));
   const pane = screen.getByRole("dialog", { name: `Task: ${task.title}` });
@@ -54,7 +54,7 @@ function open(task: TaskRow) {
     pane,
     line: () => within(pane).queryByTestId("streaming-indicator"),
     setWork: (working: TaskWork["working"]) => act(() => show({ entries: DONE_SO_FAR, ...(working === undefined ? {} : { working }) })),
-    setTask: (next: Partial<TaskRow>) => view.rerender(shown({ ...task, ...next })),
+    setTask: (next: Partial<LabTask>) => view.rerender(shown({ ...task, ...next })),
   };
 }
 
@@ -91,13 +91,13 @@ describe("a running task's view ends in a live working line", () => {
   });
 
   it("is not shown while the task waits on you", () => {
-    const view = open({ ...RUNNING, status: "held", waitingOn: { kind: "question", prompt: "Which region?" } });
+    const view = open({ ...RUNNING, status: "held", openHold: { kind: "question", prompt: "Which region?" } });
     expect(view.line()).toBeNull();
   });
 });
 
 /** Session mode's opened background task: the same line, in the sheet the tasks pane opens. */
-function openInPane(task: TaskRow) {
+function openInPane(task: LabTask) {
   let showWork: (work: TaskWork) => void = () => {};
   const adapter = {
     watchTaskWork: (_: string, __: string, onChange: (work: TaskWork) => void) => {
@@ -108,20 +108,20 @@ function openInPane(task: TaskRow) {
     taskActions: () => ({}),
   } as unknown as LabAdapter;
   // The app reads the rows and hands them to the pane (FIX-2399 E1): a row change is a new `tasks` prop.
-  const pane = (rows: TaskRow[]) => (
-    <SheetProvider>
-      <SheetArea>
+  const pane = (rows: LabTask[]) => (
+    <SessionOverlayProvider>
+      <SessionOverlayArea>
         <TasksPane adapter={adapter} sessionId="s-1" tasks={rows} openId={task.id} onOpen={() => {}} onMissing={() => {}} />
-      </SheetArea>
-    </SheetProvider>
+      </SessionOverlayArea>
+    </SessionOverlayProvider>
   );
   const { rerender } = render(pane([task]));
-  const showTasks = (rows: TaskRow[]) => rerender(pane(rows));
+  const showTasks = (rows: LabTask[]) => rerender(pane(rows));
   const sheet = () => screen.getByRole("dialog", { name: `Work: ${task.title}` });
   return {
     line: () => within(sheet()).queryByTestId("streaming-indicator"),
     setWork: (working: TaskWork["working"]) => act(() => showWork({ entries: DONE_SO_FAR, ...(working === undefined ? {} : { working }) })),
-    setTask: (next: Partial<TaskRow>) => act(() => showTasks([{ ...task, ...next }])),
+    setTask: (next: Partial<LabTask>) => act(() => showTasks([{ ...task, ...next }])),
   };
 }
 
@@ -137,7 +137,7 @@ describe("session mode's opened task ends in the same live working line", () => 
   it("is gone once the task ends, and while it waits on you", () => {
     const view = openInPane(RUNNING);
     expect(view.line()).not.toBeNull();
-    view.setTask({ waitingOn: { kind: "question", prompt: "Which region?" } });
+    view.setTask({ openHold: { kind: "question", prompt: "Which region?" } });
     expect(view.line()).toBeNull();
     view.setTask({ status: "completed" });
     expect(view.line()).toBeNull();

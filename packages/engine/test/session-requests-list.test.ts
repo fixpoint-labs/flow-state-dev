@@ -11,7 +11,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { handleListSessionRequests } from "../src/routes/session-routes";
-import { createInMemoryStores } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import type { ParsedFlowRoute } from "../src/routes/parseFlowRoute";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";

@@ -33,12 +33,14 @@ import { createClient, topic, type WireNotice } from "@flow-state-dev/client";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createInMemoryStores,
-  type ChangeBus,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
+import { type ChangeBus } from "@flow-state-dev/engine/host";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
-import { createPostgresStores, type QueryExecutor } from "@flow-state-dev/store-postgres";
+import { createPostgresStores, type QueryExecutor } from "@flow-state-dev/store-postgres/host";
 import { crossingBus } from "../../lib/crossing-bus.mts";
 import {
   REPO_ROOT,

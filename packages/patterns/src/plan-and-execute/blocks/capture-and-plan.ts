@@ -6,7 +6,7 @@
  * and the P&E schemas.
  */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import type { TaskCapOptions } from "@flow-state-dev/orchestration";
+import type { TaskCapOptions } from "@flow-state-dev/orchestration/tasks";
 import {
   createPlanningEntry,
   type TaskContextSupply,
@@ -26,9 +26,11 @@ export interface CaptureAndPlanOptions {
    * `1` (no retries) preserves pre-migration behavior.
    */
   maxAttemptsPerTask: number;
-  /** Per-task context supply (FIX-827). Default `"goal"`. */
+  // FIX-827.
+  /** Per-task context supply. Default `"goal"`. */
   taskContext?: TaskContextSupply;
-  /** The board's resolved creation caps — pass `board.caps` (FIX-931). */
+  // FIX-931.
+  /** The board's resolved creation caps — pass `board.caps`. */
   caps?: TaskCapOptions;
 }
 

@@ -24,10 +24,12 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowRegistry,
-  createInMemoryStores,
-  createInboundTransportHost,
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
+import { createInboundTransportHost } from "../../src/host";
 import { readLiveness } from "../../src/context/liveness-read";
 import { detectInterruptedRequests } from "../../src/execution/request-recovery";
 import { runAction } from "../../src/execution/runAction";

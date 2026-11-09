@@ -1,5 +1,6 @@
+// FIX-1983.
 /**
- * Redaction for everything an error report is built from (FIX-1983).
+ * Redaction for everything an error report is built from.
  *
  * The dossier, the draft and every argument the reporter's run hands the
  * tracker pass through {@link redact}. It takes out the values a Lab names as

@@ -11,6 +11,7 @@
 import type { ResumeAction, WireTopic } from "@flow-state-dev/contracts";
 import type { ActionConfig, FlowActionInput, RequestStatusSnapshot } from "@flow-state-dev/core/types";
 import { clientError, createTransport, requireValue, seg, topicPath, type Transport } from "./internal/http";
+import { pause } from "./internal/pause";
 import {
   openRequestStream,
   openSessionStream,
@@ -21,16 +22,16 @@ import { createPushHub, type SubscribeOptions, type Subscription } from "./subsc
 import type {
   ChildSessionSummary,
   ClientFetch,
-  CollectionItemState,
+  CollectionResourceState,
   CollectionListPage,
-  DebugCollectionItemsResponse,
+  DebugCollectionResourcesResponse,
   DebugResourcesResponse,
   DebugSuspensionsResponse,
   ExecuteActionRequestBody,
   ExecuteActionResponse,
   FlowCapabilities,
   FlowListEntry,
-  ListDebugCollectionItemsOptions,
+  ListDebugCollectionResourcesOptions,
   ListDebugSuspensionsOptions,
   QueryValue,
   RequestSSECallbacks,
@@ -159,26 +160,26 @@ export type UpdateSessionMetadataOptions = {
   metadata?: Record<string, unknown>;
 };
 
-/** A resource's or collection item's rendered content. */
+/** A resource's rendered content, alone or in a collection. */
 export type ResourceContentResponse = {
   ref: string;
   topic?: string;
   content: string;
 };
 
-/** A new collection item. */
-export type CreateCollectionItemOptions = {
+/** A new resource in a collection. */
+export type CreateCollectionResourceOptions = {
   topic: string;
   content?: string;
 };
 
-/** New content for a resource or collection item. */
+/** New content for a resource, alone or in a collection. */
 export type UpdateResourceContentOptions = {
   content: string;
 };
 
-/** Paging for one collection's items. */
-export type ListCollectionItemsOptions = {
+/** Paging for one collection's resources. */
+export type ListCollectionResourcesOptions = {
   limit?: number;
   cursor?: string;
   topicPrefix?: string;
@@ -204,7 +205,11 @@ export type SendOptions = {
   metadata?: Record<string, unknown>;
 };
 
-/** The answer that resolves a pending suspension. */
+/**
+ * The answer that resolves a pending suspension. Who resolved it is the
+ * signed-in caller (the request's owner when the app does not authenticate),
+ * set by the server.
+ */
 export type ResumeSuspensionBody = {
   /** Id of the pending suspension to resolve. */
   suspensionId: string;
@@ -217,11 +222,6 @@ export type ResumeSuspensionBody = {
   action: ResumeAction;
   /** Resume payload validated against the suspension's `resumeSchema`. */
   data?: unknown;
-  /**
-   * @deprecated Ignored: the server records the signed-in caller (the
-   * request's owner when the app does not authenticate) as who resolved it.
-   */
-  resumedBy?: string;
 };
 
 /**
@@ -276,6 +276,38 @@ export type ActionInputOf<TFlow extends TypedFlow, TAction extends string> = TFl
     ? FlowActionInput<TFlow["actions"][TAction]>
     : never;
 
+/** How {@link RequestHandle.wait} and {@link RequestHandle.result} wait. */
+export type WaitOptions = {
+  /** How often the status is read, in ms. Default 250. */
+  pollMs?: number;
+  /** Reject with a `ClientHttpError` of status 0 past this many ms. Default: never. */
+  timeoutMs?: number;
+  /** Stop waiting when this aborts. Stops the wait only, never the run. */
+  signal?: AbortSignal;
+};
+
+/**
+ * A settled request, as {@link RequestHandle.result} reads it: its status,
+ * plus what the record stored for it.
+ *
+ * | `status` | also |
+ * |---|---|
+ * | `completed` / `incomplete` | `output`, absent when the action returned nothing |
+ * | `failed` | `error`, plus `output` when the action answered before a completion hook failed the request |
+ * | any of those, output not storable as JSON | `outputNotRecorded: true` in place of `output` |
+ * | `suspended` / `aborted` / `interrupted` | nothing |
+ */
+export type RequestResult = {
+  /** How the request settled. */
+  status: RequestStatusSnapshot["status"];
+  /** The action's return value, as stored (JSON). */
+  output?: unknown;
+  /** The action returned a value that could not be stored as JSON; distinct from returning nothing. */
+  outputNotRecorded?: true;
+  /** Why the request failed. */
+  error?: { code: string; message: string };
+};
+
 /**
  * One request, found by a send, by id, or in the interrupted list. Its
  * lifecycle lives on it, with the flow and session its routes need.
@@ -293,9 +325,21 @@ export interface RequestHandle {
    * continued or resumed is waited for rather than read back as it was. A run
    * that stops for a person settles at `suspended`. Reads every `pollMs`
    * (default 250); past `timeoutMs` (default: never) it rejects with a
-   * `ClientHttpError` of status 0.
+   * `ClientHttpError` of status 0. When `signal` aborts it rejects with the
+   * signal's reason; the run carries on.
    */
-  wait(options?: { pollMs?: number; timeoutMs?: number }): Promise<RequestStatusSnapshot>;
+  wait(options?: WaitOptions): Promise<RequestStatusSnapshot>;
+  /**
+   * What the request answered: `wait()`'s polls of this request by its id,
+   * each asking for its stored result, and the read that finds it settled is
+   * the one returned. Resolves for every way a request settles
+   * and says which, so branch on `status`: `output` is the action's return
+   * value on `completed` or `incomplete`, `error` says why on `failed`, and a
+   * run that stops for a person resolves `suspended` with neither. Rejects
+   * only as `wait()` does: past `timeoutMs`, on a transport error, or when
+   * `signal` aborts, which never stops the run.
+   */
+  result(options?: WaitOptions): Promise<RequestResult>;
   /** Ask the server to stop it. A finished request answers 409. */
   abort(): Promise<void>;
   /**
@@ -326,9 +370,12 @@ export interface RequestHandle {
    * handle. Rejects with a `ClientHttpError`: 404 for a stop that is not the
    * caller's or not a user's, 409 for one already resolved (an answer, a
    * cancel, a deadline or a stop got there first), 410 past its deadline,
-   * 400 for an answer that fails the stop's schema.
+   * 400 for an answer that fails the stop's schema. With `{ stream: true }`
+   * it resolves to the route's SSE `Response` instead, so the continuation
+   * streams from the POST itself, as `resume` and `continue` do.
    */
   answer(body: AnswerSuspensionBody): Promise<RequestHandle>;
+  answer(body: AnswerSuspensionBody, options: StreamOption): Promise<Response>;
   /** Follow the request's events. */
   stream(options: RequestStreamOptions): RequestStreamHandle;
 }
@@ -409,32 +456,32 @@ export interface SessionsApi {
   debug: {
     listResources(sessionId: string): Promise<DebugResourcesResponse>;
     listSuspensions(sessionId: string, options?: ListDebugSuspensionsOptions): Promise<DebugSuspensionsResponse>;
-    listCollectionItems(
+    listCollectionResources(
       sessionId: string,
       ref: string,
-      options?: ListDebugCollectionItemsOptions
-    ): Promise<DebugCollectionItemsResponse>;
+      options?: ListDebugCollectionResourcesOptions
+    ): Promise<DebugCollectionResourcesResponse>;
     fetchResourceContent(sessionId: string, ref: string): Promise<string>;
-    fetchCollectionItemContent(sessionId: string, ref: string, topic: string): Promise<string>;
+    fetchCollectionResourceContent(sessionId: string, ref: string, topic: string): Promise<string>;
   };
 }
 
 /** A session's resources. */
 export interface ResourcesApi {
   getResourceContent(sessionId: string, ref: string): Promise<ResourceContentResponse>;
-  getCollectionItemContent(sessionId: string, ref: string, topic: string): Promise<ResourceContentResponse>;
-  createCollectionItem(sessionId: string, ref: string, options: CreateCollectionItemOptions): Promise<{ topic: string }>;
+  getCollectionResourceContent(sessionId: string, ref: string, topic: string): Promise<ResourceContentResponse>;
+  createCollectionResource(sessionId: string, ref: string, options: CreateCollectionResourceOptions): Promise<{ topic: string }>;
   updateResourceContent(
     sessionId: string,
     ref: string,
     topic: string,
     options: UpdateResourceContentOptions
   ): Promise<void>;
-  deleteCollectionItem(sessionId: string, ref: string, topic: string): Promise<void>;
+  deleteCollectionResource(sessionId: string, ref: string, topic: string): Promise<void>;
   /** One page of a collection; pass `nextCursor` back as `cursor` for the next. */
-  listCollectionItems(sessionId: string, ref: string, options?: ListCollectionItemsOptions): Promise<CollectionListPage>;
+  listCollectionResources(sessionId: string, ref: string, options?: ListCollectionResourcesOptions): Promise<CollectionListPage>;
   /** One item's state, or `null` when the topic is absent. */
-  getCollectionItemState(sessionId: string, ref: string, topic: string): Promise<CollectionItemState | null>;
+  getCollectionResourceState(sessionId: string, ref: string, topic: string): Promise<CollectionResourceState | null>;
   /** The public resources a session's flow declares. Deterministic per flow kind. */
   getResourceManifest(sessionId: string): Promise<ResourceManifest>;
 }
@@ -570,15 +617,15 @@ export function createClient(options: CreateClientOptions): Client {
           userId: listOptions?.userId,
           limit: listOptions?.limit
         }),
-      listCollectionItems: (sessionId, ref, listOptions) =>
-        t.json<DebugCollectionItemsResponse>(
+      listCollectionResources: (sessionId, ref, listOptions) =>
+        t.json<DebugCollectionResourcesResponse>(
           `/api/flows/sessions/${sid(sessionId)}/debug/resources/${seg(requireValue(ref, "ref"))}/items`,
           undefined,
           { limit: listOptions?.limit, cursor: listOptions?.cursor ?? undefined, topic: listOptions?.topic }
         ),
       fetchResourceContent: async (sessionId, ref) =>
         (await t.raw(`/api/flows/sessions/${sid(sessionId)}/debug/resources/${seg(requireValue(ref, "ref"))}/content`)).text(),
-      fetchCollectionItemContent: async (sessionId, ref, topic) =>
+      fetchCollectionResourceContent: async (sessionId, ref, topic) =>
         (
           await t.raw(
             `/api/flows/sessions/${sid(sessionId)}/debug/resources/${seg(requireValue(ref, "ref"))}/${topicPath(topic)}/content`
@@ -592,9 +639,9 @@ export function createClient(options: CreateClientOptions): Client {
 
   const resources: ResourcesApi = {
     getResourceContent: (sessionId, ref) => t.json(`${resourcePath(sessionId, ref)}/content`),
-    getCollectionItemContent: (sessionId, ref, topic) =>
+    getCollectionResourceContent: (sessionId, ref, topic) =>
       t.json(`${resourcePath(sessionId, ref)}/${topicPath(topic)}/content`),
-    createCollectionItem: (sessionId, ref, item) =>
+    createCollectionResource: (sessionId, ref, item) =>
       t.json(resourcePath(sessionId, ref), { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(item) }),
     updateResourceContent: async (sessionId, ref, topic, update) => {
       await t.raw(`${resourcePath(sessionId, ref)}/${topicPath(topic)}/content`, {
@@ -603,16 +650,16 @@ export function createClient(options: CreateClientOptions): Client {
         body: JSON.stringify(update)
       });
     },
-    deleteCollectionItem: async (sessionId, ref, topic) => {
+    deleteCollectionResource: async (sessionId, ref, topic) => {
       await t.raw(`${resourcePath(sessionId, ref)}/${topicPath(topic)}`, { method: "DELETE" });
     },
-    listCollectionItems: (sessionId, ref, listOptions = {}) =>
+    listCollectionResources: (sessionId, ref, listOptions = {}) =>
       t.json(resourcePath(sessionId, ref), undefined, {
         limit: listOptions.limit,
         cursor: listOptions.cursor,
         topicPrefix: listOptions.topicPrefix
       }),
-    getCollectionItemState: (sessionId, ref, topic) => t.json(`${resourcePath(sessionId, ref)}/${topicPath(topic)}`),
+    getCollectionResourceState: (sessionId, ref, topic) => t.json(`${resourcePath(sessionId, ref)}/${topicPath(topic)}`),
     getResourceManifest: (sessionId) => t.json(`/api/flows/sessions/${sid(sessionId)}/manifest`)
   };
 
@@ -752,7 +799,37 @@ function requestHandle(
   let session: Promise<string | null> | undefined =
     knownSession === undefined ? undefined : Promise.resolve(knownSession);
 
-  const status = (): Promise<RequestStatusSnapshot> => t.json<RequestStatusSnapshot>(`${base}/status`);
+  /** One status read; `withResult` asks for the stored result too (`include_result_output`). */
+  const status = (signal?: AbortSignal, withResult = false): Promise<RequestStatusSnapshot> =>
+    t.json<RequestStatusSnapshot>(
+      `${base}/status`,
+      signal === undefined ? undefined : { signal },
+      withResult ? { include_result_output: "true" } : undefined
+    );
+
+  /**
+   * The one wait: polls the status until the request has settled, and returns
+   * the read that settled it. With `withResult` every read carries the stored
+   * result, so `result()` hands back that same read, with no second read a
+   * resumed run could slip in front of. A running request has no stored
+   * result, so those polls stay small.
+   */
+  const settle = async (waitOptions: WaitOptions | undefined, withResult: boolean): Promise<RequestStatusSnapshot> => {
+    const pollMs = waitOptions?.pollMs ?? 250;
+    const signal = waitOptions?.signal;
+    const until = waitOptions?.timeoutMs === undefined ? Infinity : Date.now() + waitOptions.timeoutMs;
+    for (;;) {
+      signal?.throwIfAborted();
+      const snapshot = await status(signal, withResult);
+      // A continued or resumed run is registered before its route answers, and
+      // keeps the status it was carried on from until it gets its turn: while
+      // the server holds a live run (`lastHeartbeatAt`), it isn't settled.
+      if (snapshot.status !== "in_progress" && snapshot.lastHeartbeatAt === undefined) return snapshot;
+      if (Date.now() >= until) clientError(`Request "${id}" did not finish in ${waitOptions?.timeoutMs} ms`);
+      await pause(pollMs, signal);
+    }
+  };
+  const wait = (waitOptions?: WaitOptions): Promise<RequestStatusSnapshot> => settle(waitOptions, false);
 
   const sessionPath = async (verb: "continue" | "retry"): Promise<string> => {
     session ??= status().then(
@@ -796,22 +873,32 @@ function requestHandle(
       : requestHandle(t, flow, resumed.requestId, session === undefined ? undefined : await session);
   }
 
+  async function answer(body: AnswerSuspensionBody, answerOptions?: StreamOption): Promise<RequestHandle | Response> {
+    requireValue(body.suspensionId, "suspensionId");
+    if (!RESUME_ACTIONS.includes(body.action)) {
+      clientError(`answer requires action one of ${RESUME_ACTIONS.join(", ")}`);
+    }
+    const init: RequestInit = {
+      method: "POST",
+      body: JSON.stringify({ suspensionId: body.suspensionId, action: body.action, ...(body.data !== undefined ? { data: body.data } : {}) })
+    };
+    if (answerOptions?.stream === true) {
+      return t.raw(`${base}/answer`, { ...init, headers: { ...JSON_HEADERS, ...SSE_HEADERS } });
+    }
+    await t.json<{ requestId: string }>(`${base}/answer`, { ...init, headers: JSON_HEADERS });
+    return handle;
+  }
+
   const handle: RequestHandle = {
     id,
     flow,
-    status,
-    wait: async (waitOptions) => {
-      const pollMs = waitOptions?.pollMs ?? 250;
-      const until = waitOptions?.timeoutMs === undefined ? Infinity : Date.now() + waitOptions.timeoutMs;
-      for (;;) {
-        const snapshot = await status();
-        // A continued or resumed run is registered before its route answers, and
-        // keeps the status it was carried on from until it gets its turn: while
-        // the server holds a live run (`lastHeartbeatAt`), it isn't settled.
-        if (snapshot.status !== "in_progress" && snapshot.lastHeartbeatAt === undefined) return snapshot;
-        if (Date.now() >= until) clientError(`Request "${id}" did not finish in ${waitOptions?.timeoutMs} ms`);
-        await new Promise((resolve) => setTimeout(resolve, pollMs));
-      }
+    status: () => status(),
+    wait,
+    result: async (waitOptions) => {
+      // Read by id, with the stored result: the session's length changes nothing.
+      const read = await settle(waitOptions, true);
+      const { hasOutput: _hasOutput, ...stored } = read.result ?? {};
+      return { status: read.status, ...stored };
     },
     abort: async () => {
       await t.raw(`${base}/abort`, { method: "POST" });
@@ -828,18 +915,7 @@ function requestHandle(
       return requestHandle(t, retried.request.flowId ?? flow, retried.request.id, retried.session?.id ?? null);
     },
     resume: resume as RequestHandle["resume"],
-    answer: async (body) => {
-      requireValue(body.suspensionId, "suspensionId");
-      if (!RESUME_ACTIONS.includes(body.action)) {
-        clientError(`answer requires action one of ${RESUME_ACTIONS.join(", ")}`);
-      }
-      await t.json<{ requestId: string }>(`${base}/answer`, {
-        method: "POST",
-        headers: JSON_HEADERS,
-        body: JSON.stringify({ suspensionId: body.suspensionId, action: body.action, ...(body.data !== undefined ? { data: body.data } : {}) })
-      });
-      return handle;
-    },
+    answer: answer as RequestHandle["answer"],
     stream: ({ includeTrace, startingAfter, lastEventId, dedupWindowSize, ...callbacks }) =>
       openRequestStream(
         {

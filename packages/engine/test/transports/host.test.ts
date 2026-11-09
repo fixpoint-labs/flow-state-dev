@@ -10,14 +10,18 @@ import { z } from "zod";
 import {
   createCheckpointDurabilityProvider,
   createFlowRegistry,
-  createInMemoryStores,
   createFlowApiRouter,
-  createInboundTransportHost,
-  createResponseEmitter,
   defaultBodyUserIdPrincipalResolver,
-  OrgRequiredError,
   PrincipalResolutionError
 } from "../../src";
+import {
+  createInMemoryStores
+} from "../../src/host";
+import {
+  createInboundTransportHost,
+  createResponseEmitter,
+  OrgRequiredError
+} from "../../src/host";
 import type { FlowRunner } from "../../src/transports/runner";
 import { createFlowRouteHandlers } from "../../src/routes/http-handlers";
 import type { ResumeContext } from "@flow-state-dev/core/types";

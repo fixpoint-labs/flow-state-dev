@@ -13,7 +13,7 @@
  * Run: pnpm tsx goals/cli-principal/runs-in-the-apps-organization/run.mts
  */
 import { join } from "node:path";
-import { createFilesystemStores } from "@flow-state-dev/engine";
+import { createFilesystemStores } from "@flow-state-dev/engine/host";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { KITCHEN_SINK, goalTmpDir, loadFixture, readCapture, runFsdev, runGoal } from "../../lib/index.mts";
 

@@ -1,3 +1,4 @@
+// BP-011 / BP-012.
 /**
  * `synthesize` — final step in the supervisor pipeline.
  *
@@ -5,13 +6,13 @@
  *   .step(buildResults)          — `{ goal, results: <completed outputs> }`
  *   .step(synthesizer)           — produces the supervisor's final output
  *
- * BP-011 / BP-012 clean: synthesizer is composed as `.step(...)`,
+ * Composed, not called: synthesizer is composed as `.step(...)`,
  * `boardMetaSynthesizing` is `.tap()`-shaped (no return).
  */
 import { sequencer, handler } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { supervisorStateSchema } from "../schemas";
 
 export interface CreateSynthesizeOptions {

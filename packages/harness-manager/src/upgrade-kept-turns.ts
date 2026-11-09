@@ -1,8 +1,8 @@
+// FIX-2086, BP-030.
 /**
- * The upgrade's one-off step for a person's lines the coding door kept
- * (FIX-2086, BP-030).
+ * The upgrade's one-off step for a person's lines the coding door kept.
  *
- * Before FIX-2086 a person's line into a coding run was kept in the
+ * Before lines became steers, a person's line into a coding run was kept in the
  * `turns/**` collection for the attempt that would act on it. Lines now reach
  * a run as steers on its task (`Task.steers`), so nothing writes `turns/**`
  * and nothing reads it but this step. Run once at host start (or as a
@@ -20,7 +20,8 @@
  * topic leads with (`runBoardSegment`).
  */
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { isTerminalStatus, steerWrite, type Task } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, type Task } from "@flow-state-dev/orchestration/tasks";
+import { steerWrite } from "@flow-state-dev/orchestration/internal";
 import { z } from "zod";
 import { runBoardSegment } from "./workspace";
 

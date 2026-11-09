@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * `projectMcpTools()`: the MCP servers a coding run on a project gets, as
  * tools relayed through FSD's own connection.
@@ -11,7 +12,7 @@
  * Per run, the resolver finds the run's project and owner with the same
  * reader `projectWorkspace()` uses (`run-project.ts`), so the servers and the
  * checkout always come from one read of stored, server-written data, never a
- * task's payload or a prompt (BP-031). It then connects to each named server
+ * task's payload or a prompt. It then connects to each named server
  * with the owner's key through one `createMcpManager` (FSD's only MCP client),
  * and answers each connected server as its tools: a name, a description, the
  * input JSON Schema and a `call` that goes through that connection. The shape
@@ -31,8 +32,8 @@
  * applies to the second.
  */
 
-import type { LooseBlockContext } from "@flow-state-dev/core";
-import type { HarnessCallbackContext } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { HarnessCallbackContext } from "@flow-state-dev/core/harness";
 import {
   createMcpManager,
   redactSecrets,
@@ -126,7 +127,7 @@ const ENV_NAME = /^[A-Z_][A-Z0-9_]*$/;
 export function projectMcpTools(servers: ProjectMcpServers, options: ProjectMcpToolsOptions = {}): ProjectMcpToolsResolver {
   checkProjectMcpServers(servers, "projectMcpTools");
   const resolve = async (ctx: HarnessCallbackContext): Promise<Record<string, RelayedMcpServer>> => {
-    const plan = await planProjectMcp(servers, options, ctx as unknown as LooseBlockContext, missingKeys);
+    const plan = await planProjectMcp(servers, options, ctx, missingKeys);
     if (plan === undefined) return {};
     const say = (message: string) => ctx.emit.status(message, { transient: false });
     for (const { name, why } of plan.skipped) {
@@ -160,7 +161,7 @@ export function projectMcpTools(servers: ProjectMcpServers, options: ProjectMcpT
   };
   return Object.assign(resolve, {
     named: async (ctx: HarnessCallbackContext) => {
-      const found = await runProjectOf(ctx as unknown as LooseBlockContext);
+      const found = await runProjectOf(ctx);
       return found.kind === "refused" ? [] : [...(found.project.mcpServers ?? [])];
     }
   });
@@ -185,9 +186,10 @@ export interface ProjectMcpPlan {
   readonly skipped: ReadonlyArray<{ readonly name: string; readonly why: "not-offered" | "no-key" }>;
 }
 
+// BP-031.
 /**
  * Plan the connections for one run or conversation: find its project and
- * owner with `runProjectOf` (stored, server-written data only, BP-031), then
+ * owner with `runProjectOf` (stored, server-written data only), then
  * pair each server the project names with the owner's key (or the
  * operator's `seedEnv`).
  *
@@ -200,7 +202,7 @@ export interface ProjectMcpPlan {
 export async function planProjectMcp(
   servers: ProjectMcpServers,
   options: Pick<ProjectMcpToolsOptions, "operator" | "env">,
-  ctx: LooseBlockContext,
+  ctx: BlockContext,
   missing: MissingCollection
 ): Promise<ProjectMcpPlan | undefined> {
   const found = await runProjectOf(ctx);

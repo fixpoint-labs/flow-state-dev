@@ -20,15 +20,16 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handler } from "@flow-state-dev/core";
-import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
+import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/harness";
+import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import {
   harnessSessionFlow,
   resolveHarnessSessionStart,
   type HarnessSessionFeeds,
   type HarnessSessionWorkspace,
 } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost, type WorktreeRow } from "@flow-state-dev/workspace";
+import { localWorkspaceHost, type WorktreeResourceState } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import { REPO_ROOT, intentFreeEnv, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 
@@ -188,14 +189,14 @@ async function settled(requestId: string): Promise<string | undefined> {
 }
 
 /** The worktree row a session points at (`state.workspace.worktree`), read as a page reads it. */
-async function rowOf(sessionId: string): Promise<WorktreeRow | undefined> {
+async function rowOf(sessionId: string): Promise<WorktreeResourceState | undefined> {
   const key = (((await stores.session.get(sessionId))?.state ?? {}) as { workspace?: { worktree: string | null } | null }).workspace?.worktree;
   if (key == null) return undefined;
   const res = await router.GET(
     new Request(`http://goal/api/flows/sessions/${sessionId}/resources/worktrees?userId=${USER}`),
     { params: { path: ["sessions", sessionId, "resources", "worktrees"] } },
   );
-  const body = (await res.json()) as { items?: Array<{ clientData?: WorktreeRow }> };
+  const body = (await res.json()) as { items?: Array<{ clientData?: WorktreeResourceState }> };
   return (body.items ?? []).map((item) => item.clientData).find((row) => row?.key === key);
 }
 

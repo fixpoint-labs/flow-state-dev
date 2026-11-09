@@ -1,5 +1,6 @@
+// FIX-2534, epic FIX-2471 ER-6.
 /**
- * The normalized subscription event (FIX-2534, epic FIX-2471 ER-6): the one
+ * The normalized subscription event: the one
  * shape an outside event takes before a service flow routes it to the
  * sessions that subscribed to one of its threads.
  *

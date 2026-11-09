@@ -1,3 +1,4 @@
+// BP-012.
 /**
  * Board-level meta emission.
  *
@@ -24,7 +25,7 @@
  *
  * Both emitting blocks are state-mutation-only sentinels — they
  * produce no novel output, just side-effect a component item via
- * `ctx.emit.component`. Wired with `.tap()` per BP-012.
+ * `ctx.emit.component`. Wired with `.tap()`.
  *
  * ## Why dispatch needs a reason of its own
  *
@@ -66,8 +67,9 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
-import { isDispatched, waitsOnUser, type RunsElsewhere } from "../shared";
-import { hasOpenHold, leaseLapsed } from "../../tasks";
+import { isDispatched, waitsOnHold, type RunsElsewhere } from "../shared";
+import { leaseLapsed } from "../../tasks";
+import { holdActorOf } from "../../tasks/collection/holds";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -79,12 +81,13 @@ export interface BoardMetaOptions {
 }
 
 export interface BoardMetaCompletedOptions extends BoardMetaOptions {
+  // FIX-982; FIX-2076.
   /**
-   * Rows whose work is routed to a child session (FIX-982) — the same predicate
+   * Rows whose work is routed to a child session — the same predicate
    * the board hands its exit question, and for the same reason it has to be the
    * same one. See {@link isDispatched}.
    *
-   * Absent for a plan board (FIX-2076), which is what keeps the reason this
+   * Absent for a plan board, which is what keeps the reason this
    * block reports bit-for-bit what it was for those boards.
    */
   runsElsewhere?: RunsElsewhere;
@@ -114,9 +117,10 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
   });
 }
 
+// FIX-1234.
 /**
  * Is any remaining row going nowhere — stuck on dependencies that no running
- * work will satisfy (FIX-1234)?
+ * work will satisfy?
  *
  * A dispatched row is moving elsewhere right now; a `pending` row waiting on a
  * task that will never complete is moving nowhere at all, and that is the fact
@@ -153,10 +157,11 @@ function hasRowGoingNowhere(
     if (
       task.status === "completed" ||
       // A row that asked midway dropped its lease, so the lease test below
-      // would call it abandoned; the answer owes it a turn, so it is not.
+      // would call it abandoned; the answer owes it a turn, so it is not. So
+      // does a row waiting on an event outside the board (FIX-2578).
       // Only the running one: a `pending` row filed on questions still needs
       // its deps once answered, so it enters through the expansion below.
-      waitsOnUser(task) ||
+      waitsOnHold(task) ||
       (task.status === "in_progress" && !leaseLapsed(task, now))
     ) {
       willResolve.add(task.id);
@@ -187,6 +192,7 @@ function hasRowGoingNowhere(
   return remaining.some((task) => !willResolve.has(task.id));
 }
 
+// FIX-948; FIX-1074; FIX-2214; FIX-2578.
 /**
  * Emit `{ status: "completed", terminationReason, counts }` after the forEach
  * drains. The counts snapshot the final lifecycle distribution so a renderer can
@@ -198,14 +204,17 @@ function hasRowGoingNowhere(
  * - `"blocked-by-failures"` — something is stuck for a reason no review will
  *   clear.
  * - `"retry-budget-exhausted"` — the collection's cumulative retry budget
- *   refused a retry (FIX-948). Read from a persisted denial marker, never
+ *   refused a retry. Read from a persisted denial marker, never
  *   inferred from `counts.retries === maxTotalRetries`, which does not
  *   establish that a refusal happened.
- * - `"dispatched"` — every remaining row is running in a child session (FIX-1074).
+ * - `"dispatched"` — every remaining row is running in a child session.
  *   A success, not a stall; `counts.in_progress` is how many.
  * - `"waiting-on-a-user"` — the board stopped because the work it has left
  *   waits on a user: a question, a confirm, or a run's stop for a review or
- *   approval (FIX-2214). The same words `goalSeekLoop` ends a pass with.
+ *   approval. The same words `goalSeekLoop` ends a pass with.
+ * - `"waiting-on-an-event"` — the work it has left waits on something outside
+ *   the board, and none of it on a user: an external wait, such as a
+ *   coding task waiting for its pull request to merge.
  *
  * **The ladder's order is the contract.** First match wins:
  *
@@ -217,11 +226,12 @@ function hasRowGoingNowhere(
  *    a row stuck by its own *status*; this catches one stuck by its
  *    *dependencies*, or abandoned by a worker that died. See
  *    {@link hasRowGoingNowhere}.
- * 5. any remaining row has an open hold, so waits on a user →
+ * 5. any remaining row has an open hold whose actor is a user →
  *    `waiting-on-a-user`. Rung 3 left only `pending` and `in_progress`
  *    rows, and rung 4 already vouches for the others.
- * 6. every remaining row is dispatched → `dispatched`.
- * 7. otherwise → `blocked-by-failures`.
+ * 6. any remaining row has an open external wait → `waiting-on-an-event`.
+ * 7. every remaining row is dispatched → `dispatched`.
+ * 8. otherwise → `blocked-by-failures`.
  *
  * Note: in `onIdle: "wait"` mode an early-firing `shouldExit` while tasks are
  * still `in_progress` / `pending` reports `"blocked-by-failures"` even though
@@ -251,7 +261,8 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         held: collection.count({ status: "held" }),
         in_progress: collection.count({ status: "in_progress" }),
         pending: collection.count({ status: "pending" }),
-        /** Failure retries this board authorized (FIX-948). */
+        // FIX-948.
+        /** Failure retries this board authorized. */
         retries: sumGrantedRetries(all),
       };
       // Read off the COLLECTION, not this board's config: a board handed a
@@ -282,7 +293,8 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         | "blocked-by-failures"
         | "retry-budget-exhausted"
         | "dispatched"
-        | "waiting-on-a-user" = anyRetryDeniedByBudget(all)
+        | "waiting-on-a-user"
+        | "waiting-on-an-event" = anyRetryDeniedByBudget(all)
         ? "retry-budget-exhausted"
         : remaining.length === 0
           ? "all-completed"
@@ -290,9 +302,11 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
             ? "blocked-by-failures"
             : hasRowGoingNowhere(all, remaining, now)
               ? "blocked-by-failures"
-              : remaining.some(hasOpenHold)
+              : remaining.some((task) => holdActorOf(task) === "user")
                 ? "waiting-on-a-user"
-                : allRemainingDispatched
+                : remaining.some((task) => holdActorOf(task) === "system")
+                  ? "waiting-on-an-event"
+                  : allRemainingDispatched
                   ? "dispatched"
                   : "blocked-by-failures";
       ctx.emit.component(

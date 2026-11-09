@@ -30,7 +30,8 @@ import {
 import type { FlowInstance } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createExecutionContext, createInMemoryStores } from "../src";
+import { createExecutionContext } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { sessionKeyScopeId, sessionStorageScope } from "../src/resources/lineage-scope";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 

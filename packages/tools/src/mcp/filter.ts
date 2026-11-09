@@ -31,10 +31,9 @@ export const mcpRequestStateSchema = z
  * MCPToolMeta always pass through.
  */
 export const defaultMcpFilterTools: FilterTools = (ctx, tools) => {
-  // CapabilityPresetCtx does not type `request`; cast is safe because the
-  // runtime always shapes it as { state: requestState } when request scope is
-  // threaded into preset callbacks.
-  const mcp = (ctx.request?.state as any)?.mcp ?? {};
+  // The capability declares this request state (`mcpRequestStateSchema`).
+  const state = ctx.request.state as z.infer<typeof mcpRequestStateSchema>;
+  const mcp = state.mcp ?? {};
   const disabledTools: string[] = mcp.disabledTools ?? [];
   const disabledServers: string[] = mcp.disabledServers ?? [];
 

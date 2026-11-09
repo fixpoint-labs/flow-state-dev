@@ -13,7 +13,7 @@
  * these items, filter by `data.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
-import { publishBoardChange } from "@flow-state-dev/core/types";
+import { requestHostOf, publishBoardChange } from "@flow-state-dev/core/internal";
 import type { ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
@@ -40,9 +40,10 @@ interface CommonOptions {
   collectionId: string;
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
+  // FIX-918.
   /**
    * Visibility stamped on the `task-change` component items emitted on every
-   * lifecycle transition (FIX-918). Omit for the default (client + history).
+   * lifecycle transition. Omit for the default (client + history).
    * A board that runs *inside* a tool-wrapped drain passes
    * `{ client: true, history: false }` so its O(tasks × transitions) change
    * stream still drives the live `<Plan />` UI but never re-enters the calling
@@ -93,9 +94,9 @@ export interface ResourceBackingSpec extends CommonOptions {
   backing: "resource";
   /** The parameterized resource collection ref. Pattern: `someTopic/{id}`. */
   collection: ResourceCollectionRef<JsonObject>;
+  // FIX-982, narrowed by FIX-1780.
   /**
-   * Refuse `setAssignee` on an `in_progress` task in this collection (FIX-982,
-   * narrowed by FIX-1780). Set by a task board with dispatcher assignees, whose
+   * Refuse `setAssignee` on an `in_progress` task in this collection. Set by a task board with dispatcher assignees, whose
    * child's routing key is derived from the assignee. Only this backing carries it — a dispatched board is refused at
    * construction on any other.
    */
@@ -129,8 +130,7 @@ export type GetOrCreateTaskCollectionOptions =
  * ```
  *
  * Throws, before touching any storage, when `backing` is not `"state"` or
- * `"resource"` — including the removed `"sequencer"` and `"request"` spellings
- * an untyped caller may still send — or when `state` is present but empty.
+ * `"resource"`, or when `state` is present but empty.
  *
  * Async: the resource backing hydrates a sync read-mirror at construction
  * (see `createResourceBackedTaskCollection`). The state backing builds
@@ -291,7 +291,7 @@ function checkedPartition(options: ResourceBackingSpec): string | undefined {
   const where = `[tasks] getOrCreateTaskCollection("${options.collectionId}")`;
   if (partitioned && options.partition === undefined) {
     throw new Error(
-      `${where}: this ledger keeps its rows per partition (partitionBy), so it is resolved ` +
+      `${where}: this ledger keeps its tasks per partition (partitionBy), so it is resolved ` +
         `with a partition, never read whole.`
     );
   }
@@ -310,24 +310,12 @@ function checkedPartition(options: ResourceBackingSpec): string | undefined {
 /**
  * Reject a backing this factory does not build, before any storage or context
  * handle is read. Typed callers cannot get here; an untyped caller (plain JS,
- * a cast, a config loaded at runtime) still sending a removed spelling gets the
- * replacement named rather than a failure one step later.
+ * a cast, a config loaded at runtime) sending another spelling gets the valid
+ * backings named rather than a failure one step later.
  */
 function assertKnownBacking(options: GetOrCreateTaskCollectionOptions): void {
   const raw = options as { backing?: unknown; collectionId?: unknown; state?: unknown };
   const where = `[tasks] getOrCreateTaskCollection("${String(raw.collectionId)}")`;
-  if (raw.backing === "sequencer") {
-    throw new Error(
-      `${where}: backing "sequencer" was removed. Write backing: "state" and pass ` +
-        "the ref as `state` (was `sequencer`). Valid backings: \"state\", \"resource\"."
-    );
-  }
-  if (raw.backing === "request") {
-    throw new Error(
-      `${where}: backing "request" was removed. Write backing: "state" with no ` +
-        "`state` field to keep tasks on the request. Valid backings: \"state\", \"resource\"."
-    );
-  }
   if (raw.backing !== "state" && raw.backing !== "resource") {
     throw new Error(
       `${where}: unknown backing ${JSON.stringify(raw.backing)}. ` +
@@ -344,16 +332,17 @@ function assertKnownBacking(options: GetOrCreateTaskCollectionOptions): void {
   }
 }
 
+// FIX-1005; BP-030.
 /**
  * Read the execution coordinate a claim on this board should record
- * (FIX-1005) — `{ sessionId, requestId, tenantId? }`.
+ * — `{ sessionId, requestId, tenantId? }`.
  *
  * Sourced from `ctx.request` / `ctx.session`, which are plain public
  * `BlockContext` members carrying a `ScopeIdentity`. Nothing here reaches the
  * store registry or a request-host seam.
  *
  * Returns `undefined` when either handle is missing — a mock context in a unit
- * test. Absent is a supported state that means "no coordinate" (BP-030), so a
+ * test. Absent is a supported state that means "no coordinate", so a
  * partial identity is never synthesized from one half.
  */
 function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
@@ -368,8 +357,9 @@ function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
   };
 }
 
+// FIX-2133.
 /**
- * What every row this ref files is stamped with beside its filer (FIX-2133):
+ * What every row this ref files is stamped with beside its filer:
  * the tenant and org of the request filing it, from its verified identity
  * (D1, the caller check on answering a question), and how long a question
  * waits unanswered when the host sets a deadline for a person's stop
@@ -379,7 +369,7 @@ function filingStampOf(ctx: BlockContext): FilingStamp {
   const identity = ctx.request?.identity ?? ctx.session?.identity;
   const tenantId = identity?.tenantId;
   const orgId = identity?.orgId;
-  const holdDueMs = ctx.requestHost?.userDeadlineMs;
+  const holdDueMs = requestHostOf(ctx)?.userDeadlineMs;
   return {
     ...(tenantId !== undefined || orgId !== undefined
       ? { filedUnder: { ...(tenantId !== undefined ? { tenantId } : {}), ...(orgId !== undefined ? { orgId } : {}) } }

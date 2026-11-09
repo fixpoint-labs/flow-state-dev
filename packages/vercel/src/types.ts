@@ -5,16 +5,10 @@
  * router type that the adapter wraps.
  */
 
-/**
- * The router shape returned by `createFlowApiRouter` from `@flow-state-dev/engine`.
- * Each method handles a Next.js catch-all route segment.
- */
-export type FlowApiRouter = {
-  GET: (req: Request, ctx: { params: { path?: string[] } }) => Promise<Response>;
-  POST: (req: Request, ctx: { params: { path?: string[] } }) => Promise<Response>;
-  PATCH: (req: Request, ctx: { params: { path?: string[] } }) => Promise<Response>;
-  DELETE: (req: Request, ctx: { params: { path?: string[] } }) => Promise<Response>;
-};
+import type { FlowApiRouter } from "@flow-state-dev/engine/host";
+
+/** The router `createFlowApiRouter` returns: engine's own type, re-exported. */
+export type { FlowApiRouter };
 
 /**
  * Accepted input for `createVercelHandler`. Either a pre-built router or a

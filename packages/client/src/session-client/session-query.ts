@@ -1,5 +1,6 @@
+// FIX-1477 D1, S1.
 /**
- * The one place the cardinality branch is written (FIX-1477 D1, S1).
+ * The one place the cardinality branch is written.
  *
  * Every surface that lists a flow's sessions has to answer the same question —
  * is this address an instance, or a kind? — and until this helper existed the
@@ -16,6 +17,7 @@
 import type { FlowListEntry } from "../types";
 import type { ListSessionsOptions } from "../client";
 
+// BR-12.
 /**
  * The listing filter for one flow address.
  *
@@ -23,7 +25,7 @@ import type { ListSessionsOptions } from "../client";
  * the definition's kind, not the address, so a kind filter would sweep in every
  * sibling copy's sessions. A singleton lists by kind — its id *is* its kind,
  * and the kind filter additionally finds sessions saved before owners were
- * recorded, which the exact-owner filter never matches (BR-12).
+ * recorded, which the exact-owner filter never matches.
  *
  * Exactly one of the two keys is returned, never both. The server intersects
  * them, so a helper that sent a `flowKind` alongside a `flowId` would silently

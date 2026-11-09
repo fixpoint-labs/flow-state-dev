@@ -23,7 +23,6 @@
 import { defineFlow, generator, handler, sequencer, type BlockDefinition } from "@flow-state-dev/core";
 import {
   AGENT_FLOW,
-  WORKER_TASK_ENTRY,
   workerConfigOf,
   workerConfigSchema,
   workerTaskEntry,
@@ -104,7 +103,7 @@ export function landingControl(catalog: Record<string, BlockDefinition<any, any>
     task: {
       actions: {
         // The published entry's gate, so the task is read and claimed as the real flow's is.
-        [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "agent-quiet-task", block: quiet }),
+        work: workerTaskEntry({ name: "agent-quiet-task", block: quiet }),
       },
     },
   } as never);

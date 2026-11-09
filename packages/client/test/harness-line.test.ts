@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { harnessLines, sendHarnessLine, type HarnessLineSender } from "../src/harness-line";
+import { describe, expect, it, vi } from "vitest";
+import { createClient, type ClientFetch } from "../src";
+import { harnessLines, sendHarnessLine, steerRunningTurn, type HarnessLineSender } from "../src/harness-line";
 
 /** A sender that records what it was asked to do, answering `steer` with `answer`. */
 function senderOf(answer: { taken: boolean; live: boolean }) {
@@ -73,5 +74,37 @@ describe("harnessLines", () => {
     release();
     await Promise.all([a, b]);
     expect(calls).toEqual(["A", "B"]);
+  });
+});
+
+describe("steerRunningTurn", () => {
+  it("reads the steer's answer by its request id, however many requests the session holds", async () => {
+    // The session list's first page holds only newer requests; a read that
+    // searched it would miss the steer and say it was not taken.
+    const urls: string[] = [];
+    const fetcher = vi.fn<ClientFetch>(async (input, init) => {
+      const url = String(input);
+      urls.push(`${init?.method ?? "GET"} ${url}`);
+      const body = url.includes("/actions/steer")
+        ? { status: "in_progress", request: { id: "req_steer", flowKind: "harness", actionName: "steer", status: "in_progress" } }
+        : url.includes("/requests/req_steer/status")
+          ? {
+              id: "req_steer",
+              status: "completed",
+              startedAtMs: 1,
+              ageMs: 1,
+              ...(url.includes("include_result_output=true")
+                ? { result: { output: { taken: true, live: true }, hasOutput: true } }
+                : {}),
+            }
+          : { requests: Array.from({ length: 20 }, (_, i) => ({ id: `req_newer_${i}`, status: "completed" })) };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const client = createClient({ userId: "u1", baseUrl: "", fetcher });
+
+    const answer = await steerRunningTurn(client, { flowKind: "harness", sessionId: "sess_1", prompt: "hi", pollMs: 1 });
+
+    expect(answer).toEqual({ taken: true, live: true });
+    expect(urls.some((url) => /\/sessions\/[^/]+\/requests(\?|$)/.test(url))).toBe(false);
   });
 });

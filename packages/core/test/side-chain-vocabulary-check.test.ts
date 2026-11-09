@@ -216,7 +216,7 @@ describe("the denylist is closed, so ordinary use of the word stays legal", () =
   it("allows an ordinary domain model to use these as FIELD names", () => {
     expect(scan(`interface Job { work: string; }`, "apps/kitchen-sink/x.ts")).toEqual([]);
     expect(scan(`const dashboard = { backgroundTasks: 3 };`, "apps/kitchen-sink/x.ts")).toEqual([]);
-    expect(scan(`type Row = { workResults: number };`, "apps/kitchen-sink/x.ts")).toEqual([]);
+    expect(scan(`type Entry = { workResults: number };`, "apps/kitchen-sink/x.ts")).toEqual([]);
   });
 
   it("refuses the DSL verb when it is CALLED", () => {
@@ -248,6 +248,36 @@ describe("the denylist is closed, so ordinary use of the word stays legal", () =
    */
   it("allows reading a FIELD named `work` off an object", () => {
     expect(scan(`const label = job.work; const n = row.work + 1;`)).toEqual([]);
+  });
+
+  // The assertion rule reads the STATEMENT the literal sits in. `"work"` is
+  // also a worker flow's task entry name, and a check of it inside a long
+  // callback must not be read as an assertion about `.phase` just because the
+  // callback mentions `.phase` statements away.
+  it("allows the worker entry name `\"work\"` in a statement that names no tier field", () => {
+    const text = `
+      run(async () => {
+        const kept = item.phase;
+        if (!sameSet(entriesOf(worker), ["work"])) note("wanted only work");
+      });`;
+    expect(encodings(text)).not.toContain("E2");
+  });
+
+  it("still refuses a tier assertion inside a callback", () => {
+    const text = `
+      it("stamps the tier", () => {
+        const item = read();
+        expect(item.phase).toBe("work");
+      });`;
+    expect(encodings(text)).toContain("E2");
+  });
+
+  it("still refuses a tier assertion that is returned", () => {
+    expect(encodings(`function check(item) { return expect(item.scope).toBe("work"); }`)).toContain("E2");
+  });
+
+  it("still refuses a tier assertion held in a const", () => {
+    expect(encodings(`const r = expect(error.scope).toBe("work");`)).toContain("E2");
   });
 
   it("allows a `\"work\"` union with no named declaration holding it", () => {

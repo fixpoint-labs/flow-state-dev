@@ -1,4 +1,4 @@
-import type { HarnessRow, LabContext } from "../adapter";
+import type { LabHarness, LabContext } from "../adapter";
 import { HarnessReadiness } from "./flow-state/harness-readiness";
 import { harnessName } from "../lib/harness";
 
@@ -15,7 +15,7 @@ export function ContextStrip({
   onRecheck,
 }: {
   context: LabContext | undefined;
-  harnesses: HarnessRow[] | undefined;
+  harnesses: LabHarness[] | undefined;
   onRecheck: () => Promise<unknown>;
 }) {
   const chip = "rounded-full border border-border px-2 py-0.5 font-mono text-[11px] text-muted-foreground";

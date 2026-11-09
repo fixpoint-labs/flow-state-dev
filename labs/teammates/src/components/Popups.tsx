@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { commandsRun, runSummaryLine, type BoardTask, type LabAdapter, type SessionStep, type TalkRow, type WorkerRow, type WorkingNow } from "../adapter";
+import { commandsRun, runSummaryLine, type BoardTask, type LabAdapter, type LabTalk, type LabWorker, type SessionStep, type WorkingNow } from "../adapter";
 import type { RecordedWork } from "@flow-state-dev/harness-manager/browser";
 import { harnessName } from "../lib/harness";
 import { cn } from "../lib/utils";
@@ -13,7 +13,8 @@ import { Spend } from "./flow-state/spend";
 import { StreamingIndicator } from "./flow-state/streaming-indicator";
 import { TaskActions, type TaskRerunOption } from "./flow-state/task-actions";
 import { workingStatus } from "./flow-state/working-status";
-import { SessionPopup, Steps } from "./SessionPopup";
+import { SessionOverlay } from "./flow-state/session-overlay";
+import { Steps } from "./Steps";
 
 /** What a popup shows: a task one conversation filed, or one message a worker sent. */
 export type Popup =
@@ -26,6 +27,12 @@ const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1
 /** A task's line, the same in the thread and on the popup: a coding task, or what was asked of whom. */
 export function taskLine(task: { title: string; to: string }, coding: boolean, nameOf: (id: string) => string): string {
   return coding ? `Coding task: ${task.title}` : `Asked ${nameOf(task.to)} to ${lowerFirst(task.title)}`;
+}
+
+/** A failed or cancelled task's reason, its first line only; the popup has the whole. */
+export function reasonLine(task: Pick<BoardTask, "error">): string | undefined {
+  const line = task.error?.split("\n").find((l) => l.trim() !== "")?.trim();
+  return line === "" ? undefined : line;
 }
 
 /** What a coding task runs on, as its line names it: the harness, and the model when its run reported one. */
@@ -45,21 +52,66 @@ export const taskLabel = (line: string, task: { harness?: string; model?: string
  * `harness:` differs from the harness of the worker the task was filed for.
  * A task that isn't a coding task, or whose worker's harness isn't known, has none.
  */
-function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly WorkerRow[]): WorkerRow[] {
+function rerunTargets(task: Pick<BoardTask, "to">, coders: readonly LabWorker[]): LabWorker[] {
   const own = coders.find((w) => w.id === task.to)?.harness;
   if (own === undefined) return [];
   return coders.filter((w) => w.takesTasks && w.harness !== undefined && w.harness !== own);
 }
 
+/** The line a task waiting on its pull request offers, while nothing tells it of a merge. */
+export const PULL_REQUEST_HINT = "Merged? Say so here and I'll check.";
+
+/**
+ * *PR open · #7*, each number a link to its pull request once its run
+ * session's record is read, and the line that says how to wake the task.
+ */
+export function PullRequestOpen({ adapter, task }: { adapter: LabAdapter; task: BoardTask }) {
+  const [links, setLinks] = useState<ReadonlyMap<number, string>>(new Map());
+  const numbers = (task.pullRequests ?? []).flatMap((pr) => (pr.number === null ? [] : [pr.number]));
+  const key = numbers.join(",");
+  useEffect(() => {
+    if (task.runSessionId === undefined) return;
+    let current = true;
+    void adapter.readPullRequests(task.runSessionId).then((rows) => {
+      if (current) setLinks(new Map(rows.map((row) => [row.number, row.url])));
+    });
+    return () => {
+      current = false;
+    };
+  }, [adapter, task.runSessionId, key]);
+  return (
+    <section aria-label="Pull request" data-step="pull-request" className="flex flex-col gap-0.5 text-sm">
+      <span data-testid="pull-request-wait">
+        PR open
+        {numbers.map((n, i) => (
+          <span key={n}>
+            {i === 0 ? " · " : ", "}
+            {links.has(n) ? (
+              <a href={links.get(n)} target="_blank" rel="noreferrer" className="underline">
+                #{n}
+              </a>
+            ) : (
+              `#${n}`
+            )}
+          </span>
+        ))}
+      </span>
+      <span data-testid="pull-request-hint" className="text-xs text-muted-foreground">
+        {PULL_REQUEST_HINT}
+      </span>
+    </section>
+  );
+}
+
 /** How a sent message stands. */
-export type AnswerState = "working" | "replied" | "no answer";
+export type AnswerStatus = "working" | "replied" | "no answer";
 
 /**
  * How a message stands, from the message log: `replied` by a reply message
  * (one a waited send took as its result is in the log too); `no answer` when
  * the reply is the framework's "no answer"; `working` until then.
  */
-export const answerIn = (talk: readonly TalkRow[], messageId: string): AnswerState => {
+export const answerIn = (talk: readonly LabTalk[], messageId: string): AnswerStatus => {
   const reply = talk.find((row) => row.inReplyTo === messageId);
   if (reply !== undefined) return reply.noAnswer === true ? "no answer" : "replied";
   return "working";
@@ -87,7 +139,7 @@ export function PopupView({ adapter, popup, nameOf, lookOf, isCoding, coders, fo
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
   /** The roster's coding workers: a failed or cancelled coding task can be re-run on another's harness. */
-  coders: readonly WorkerRow[];
+  coders: readonly LabWorker[];
   /** For a task popup, who filed it, to ask for a follow-up once it ended; absent when its conversation isn't on the roster. */
   followUp?: FollowUp;
   onClose: () => void;
@@ -115,7 +167,7 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
   nameOf: (id: string) => string;
   lookOf: (id: string) => Look;
   isCoding: (id: string) => boolean;
-  coders: readonly WorkerRow[];
+  coders: readonly LabWorker[];
   followUp?: FollowUp;
   onClose: () => void;
   onMissing?: () => void;
@@ -159,11 +211,14 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
     task && waiting === "review" ? (
       <TaskReview adapter={adapter} sessionId={popup.sessionId} task={task} onAnswered={decided} />
     ) : task && waiting === "question" ? (
-      <TaskQuestion adapter={adapter} sessionId={popup.sessionId} task={task} />
+      <QuestionPopup adapter={adapter} sessionId={popup.sessionId} task={task} />
     ) : null;
-  const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : task?.status;
+  const waitsOnPullRequest = task?.boardStatus === "in_progress" && task.pullRequests !== undefined;
+  const status = waiting === "review" ? "Needs review" : waiting === "question" ? "Waiting on you" : waitsOnPullRequest ? "PR open" : task?.status;
   return (
-    <SessionPopup label={line} title={title} status={status} onClose={onClose} pinned={pinned}>
+    <SessionOverlay variant="modal" label={line} title={title} status={status} onClose={onClose} footer={pinned}>
+      {/* Its run is done and its work is a pull request: open until it merges or closes. The Steer box wakes it to check. */}
+      {task !== undefined && waitsOnPullRequest ? <PullRequestOpen adapter={adapter} task={task} /> : null}
       {task === undefined ? null : <TaskActions key={task.id} id={task.id} status={task.boardStatus} actions={actions} steer rerun={rerun} />}
       {/* What a coding task's run changed, what it ran and how long it took, without opening a step. */}
       {task && isCoding(task.to) ? <TaskSummary adapter={adapter} task={task} steps={steps} /> : null}
@@ -207,10 +262,10 @@ function TaskPopup({ adapter, popup, nameOf, lookOf, isCoding, coders, followUp,
         </section>
       ) : null}
       {/* The live line ends the feed while it runs: until its first step, the line above says it is starting; a task waiting on you isn't working. */}
-      {task?.status === "running" && task.waiting === undefined && task.runSessionId !== undefined && steps.length > 0 ? (
+      {task?.status === "running" && task.waiting === undefined && !waitsOnPullRequest && task.runSessionId !== undefined && steps.length > 0 ? (
         <WorkingLine adapter={adapter} task={task} runSessionId={task.runSessionId} />
       ) : null}
-    </SessionPopup>
+    </SessionOverlay>
   );
 }
 
@@ -362,7 +417,7 @@ function TaskReview({ adapter, sessionId, task, onAnswered }: {
       review={review}
       prompt={review === undefined ? task.waiting?.prompt : undefined}
       answer={async (answer) => {
-        await adapter.answerTask(sessionId, task.id, answer);
+        await adapter.answerOpenHold(sessionId, task.id, answer);
         onAnswered(answer);
       }}
       unanswerable={task.waiting?.unanswerable ?? null}
@@ -372,7 +427,7 @@ function TaskReview({ adapter, sessionId, task, onAnswered }: {
 }
 
 /** A question the task's run asked you, with a box for your answer; the run goes on with it. */
-function TaskQuestion({ adapter, sessionId, task }: { adapter: LabAdapter; sessionId: string; task: BoardTask }) {
+function QuestionPopup({ adapter, sessionId, task }: { adapter: LabAdapter; sessionId: string; task: BoardTask }) {
   const [words, setWords] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -383,7 +438,7 @@ function TaskQuestion({ adapter, sessionId, task }: { adapter: LabAdapter; sessi
     setPending(true);
     setError(null);
     try {
-      await adapter.answerTask(sessionId, task.id, { text });
+      await adapter.answerOpenHold(sessionId, task.id, { text });
       setWords("");
     } catch (failed) {
       setError(failed instanceof Error ? failed.message : String(failed));
@@ -448,12 +503,12 @@ function MessagePopup({ adapter, popup, nameOf, lookOf, onClose }: {
   const to = nameOf(popup.to);
   const line = `Messaged ${to}`;
   return (
-    <SessionPopup label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} onClose={onClose}>
+    <SessionOverlay variant="modal" label={line} title={<Titled look={lookOf(popup.to)} line={line} />} status={answerIn(talk, popup.messageId)} onClose={onClose}>
       <p className="font-mono text-xs text-muted-foreground">
         {nameOf(popup.from)} → {to}
       </p>
       <Steps steps={steps} nameOf={nameOf} empty={`${popup.text}\n\n${to} hasn't read it yet.`} />
-    </SessionPopup>
+    </SessionOverlay>
   );
 }
 

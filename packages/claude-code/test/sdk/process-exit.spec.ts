@@ -3,7 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import { createTestContext } from "@flow-state-dev/testing";
 import { abortExitGrace, claudeCodeAgent } from "../../src/sdk/agent";
 import { trackProcess } from "../../src/sdk/process-exit";
-import type { ResolveClaudeAgent, SdkMessageLike } from "../../src/sdk/types";
+import type { ResolveClaudeCodeAgent, ClaudeCodeSdkMessage } from "../../src/sdk/types";
 
 const node = (script: string, signal = new AbortController().signal) => ({
   command: process.execPath,
@@ -92,13 +92,13 @@ describe("an aborted claudeCodeAgent run (FIX-2312)", () => {
     const started = new Promise<void>((resolve) => (running = resolve));
     // Like the SDK on abort: it signals the process it spawned through the
     // block's hook, and ends its stream whether or not the process has gone.
-    const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+    const resolveClaudeAgent: ResolveClaudeCodeAgent = () => ({
       query: async function* (args) {
         const opts = args.options!;
         const signal = opts.abortController!.signal;
         child = opts.spawnClaudeCodeProcess!({ ...node(IGNORES_SIGTERM), signal }) as ChildProcess;
         child.on("error", () => {});
-        yield { type: "system", subtype: "init", session_id: "sess_kill" } as SdkMessageLike;
+        yield { type: "system", subtype: "init", session_id: "sess_kill" } as ClaudeCodeSdkMessage;
         await ready(child);
         running();
         await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));

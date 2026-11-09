@@ -13,7 +13,8 @@ import type { MessageItem, OutputItem, ToolOutputItem } from "@flow-state-dev/co
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createCheckpointDurabilityProvider, createExecutionContext, createInMemoryStores } from "../src";
+import { createCheckpointDurabilityProvider, createExecutionContext } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { RuntimeConfig } from "../src/runtime-config";
 import type { RequestRecord } from "../src/stores/types";
 

@@ -1,5 +1,6 @@
+// FIX-2428.
 /**
- * Push delivery on a router (FIX-2428): a host that serves the socket turns
+ * Push delivery on a router: a host that serves the socket turns
  * it on, and from then the router reports `push` in `GET /capabilities` and
  * answers the mint, `POST /users/:userId/stream`.
  *
@@ -11,7 +12,8 @@
  * the check.
  */
 import { randomBytes } from "node:crypto";
-import { DEFAULT_ORG_ID, PUSH_MINT_MAX_TOPICS, type PushCapability, type PushMintAnswer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { PUSH_MINT_MAX_TOPICS, type PushCapability, type PushMintAnswer } from "@flow-state-dev/core/internal";
 import type { ResolvedPrincipal } from "../transports/types";
 import type { ChangeBus } from "../bus/types";
 import type { FlowApiRouter } from "../routes/createFlowApiRouter";

@@ -1,5 +1,6 @@
+// FIX-751 PR2.
 /**
- * Per-scope reactive-block dispatch (FIX-751 PR2).
+ * Per-scope reactive-block dispatch.
  *
  * A resource/collection mutation fires `onResourceChanged` (see
  * `resource-registry.ts`); for resources that declare `reactTo`, this module
@@ -24,12 +25,10 @@ import type {
 import type { RuntimeLogger } from "../execution/logging";
 import { matchesPattern, getPatternPrefix } from "@flow-state-dev/core/types";
 import {
-  normalizeReactiveBinding,
-  buildBlockInstanceId,
   type ResourceChange,
   type ResourceContentChange,
-  type ReactiveBindingKind,
 } from "@flow-state-dev/core";
+import { normalizeReactiveBinding, buildBlockInstanceId, type ReactiveBindingKind } from "@flow-state-dev/core/internal";
 import type { ErrorItem } from "@flow-state-dev/core/items";
 import {
   type ResourceChangeDelta,

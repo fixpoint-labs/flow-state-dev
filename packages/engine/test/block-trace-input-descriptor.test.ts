@@ -8,11 +8,9 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import {
-  createInMemoryStores,
-  createResponseEmitter,
-  runAction
-} from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
+import { createResponseEmitter } from "../src/host";
 
 function getTraces(items: ReadonlyArray<{ type: string }>): BlockTraceItem[] {
   return items.filter((i) => i.type === "block_trace") as BlockTraceItem[];

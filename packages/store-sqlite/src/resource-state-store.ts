@@ -39,16 +39,16 @@ import {
 import { matchesPattern, type JsonObject } from "@flow-state-dev/core/types";
 import type {
   ResourceIndexBuildEntry,
-  ResourceIndexBuildState,
+  ResourceIndexBuildStatus,
   ResourceIndexEntry,
   ResourceStateSetOptions,
   ResourceStateStore,
   StorageScopeType,
-  ExpectedVersion,
   ResourceStateRow,
   SetResult,
   VersionedResourceState
-} from "@flow-state-dev/engine";
+} from "@flow-state-dev/engine/host";
+import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
 
 /** A row as SQLite hands it back: state is TEXT, lifecycle is unnarrowed. */
 type RawRow = { state: string; version: number; lifecycle: string };
@@ -518,7 +518,7 @@ export function createSQLiteResourceStateStore(
     },
 
     indexes: {
-      async state(scopeType, scopeId, collection, index): Promise<ResourceIndexBuildState> {
+      async state(scopeType, scopeId, collection, index): Promise<ResourceIndexBuildStatus> {
         const row = selectMarkerStmt.get(scopeType, scopeId, collection, index) as
           | { status: string }
           | undefined;

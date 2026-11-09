@@ -2,7 +2,8 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { createInMemoryStores, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
 import { createInMemoryActiveRequestRegistry } from "../src/stores";
 
 describe("retention policy integration", () => {

@@ -13,8 +13,8 @@
  * § "Multi-PR issues" and `orchestration.md` § "Worktree branching".
  *
  * NOTE — deliberate twin of framework code. `classify`/`readySet` below re-derive what
- * `packages/orchestration` already does for tasks (`topologicalDispatcher`,
- * `depsSatisfied` in `src/tasks/`), because a workflow script cannot import. The semantics
+ * `packages/orchestration` already does for tasks (`depsSatisfied`
+ * in `src/tasks/collection/`), because a workflow script cannot import. The semantics
  * intentionally differ: this one picks a git *base* per node (merged dep → origin/main,
  * single open dep → stack on its branch), which task dispatch has no concept of. Keep them
  * separate, but check both when the DAG rules change.

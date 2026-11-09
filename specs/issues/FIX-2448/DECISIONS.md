@@ -3,8 +3,8 @@
 [Spec](SPEC.md) · **Decisions**
 
 What was considered, what was chosen, and what each choice locks in. Two decisions are the
-sign-off. The epic's D2 (two kinds of hidden surface) and its Q1 (how adopters meet a moved name)
-sit above both and are not reopened here.
+sign-off. The epic's D2 (two kinds of hidden surface) and its Q1 (how adopters meet a moved name,
+[answered break](../../epics/FIX-2447/DECISIONS.md#q1) on Nov 6) sit above both and are not reopened here.
 
 ## The tree
 
@@ -42,7 +42,7 @@ named public subpath, which the epic already gives engine (`engine/host`), not a
 |---|---|
 | **Instead of** | Moving names off the root only, which is the issue's literal scope |
 | **Because** | The seams the issue names, `REQUEST_END_SEAM`, `REQUEST_SPEND_SEAM` and `REQUEST_RESUME_SEAM`, are on `core/types`, not the root, and so are 30 harness types. Of the moving files' names on `core/types`, 57 are not on the root at all. Leaving a second public copy is a second home per name, which BP-034 would then re-export forever |
-| **Locks in** | An adopter who imports a harness type from `core/types` changes that import too, through ER-3 / Q1's answer, the same as a root import. `core/types` stays the general type barrel and stops carrying harness and runtime vocabulary. `core/harness` is the one home for the harness contract, the plan record and the pull-request record, and it is isomorphic, since browser code reads the plan keys from it as it does from `core/types` today |
+| **Locks in** | An adopter who imports a harness type from `core/types` changes that import too, the same as a root import: the old path goes with no alias (ER-3; Q1 answered break). `core/types` stays the general type barrel and stops carrying harness and runtime vocabulary. `core/harness` is the one home for the harness contract, the plan record and the pull-request record, and it is isomorphic, since browser code reads the plan keys from it as it does from `core/types` today |
 
 ![D2: where a moved name may still resolve. Every public core entry gives it up, chosen, beside the root only. Decides it: the seams the issue names, which are on core/types and would not move. Price: a second import path breaks for adopters, through Q1. Ties: names that are on the root only move either way](figures/d2-one-home.svg)
 
@@ -84,7 +84,7 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
   rules name by name; `census.mjs core --files` is the list.
 - **Unexported, not moved:** `planConversationPrefix` and `findOpenedPullRequests`. Core's own
   plan and pull-request code calls them and nothing outside core imports them; their docs lines
-  go. Their removal follows ER-3 / Q1's answer, since 0.4.0 carries them.
+  go. They go with no alias (ER-3; Q1 answered break), though 0.4.0 carries them.
   `dispatchWaitResultSchema` and `DispatchWaitResult` **stay**: they are the documented output of
   `dispatcher({ wait: true })`, which the census's source reach missed.
   `utility.historySummary` **stays**: the Teammates lab and the generator-context page use it.
@@ -102,7 +102,7 @@ that adopters are told to use. It isn't: 163 of its 442 names are not on the roo
   import `/internal`.
 - **The benchmark types stay on the root** until FIX-2460 moves them to `testing/benchmark`; they
   are the only failing core names this issue leaves.
-- **The check's one exemption is a Q1 alias**, if [Q1](../../epics/FIX-2447/DECISIONS.md#q1) lands on aliases.
+- **The check has no exemption.** [Q1](../../epics/FIX-2447/DECISIONS.md#q1) was answered break, so there is no `@deprecated` alias to exempt.
 - **The ratchet refuses a name newly failing, for any cause**: new on the root, or its last
   adopter import or README line removed. A PR that removes an app's last use of a name rules on
   that name in the same PR, as Fallow's check makes a PR answer for the export it orphaned.
@@ -155,6 +155,9 @@ Spec-set review round 1 (Nov 5), recorded, not folded.
 
 ## How it got here
 
+- **Owner amendment (Nov 6)** — [epic Q1 answered, break](../../epics/FIX-2447/DECISIONS.md#q1), and [epic D4, no
+  backward-compat code](../../epics/FIX-2447/DECISIONS.md#d4) ([owner's comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). The check's Q1-alias exemption is dropped, and a moved name's old path
+  goes with no alias, from the root and from `core/types` alike. Direction otherwise unchanged.
 - **Draft** — framed as the root every adopter imports plus a ratchet that keeps every root from
   regrowing; the review's moves kept, three corrected by the census (`historySummary` stays,
   two of its "deletes" are called inside core and two are a documented output, the named seams sit on `core/types`); built on `packageExports`,

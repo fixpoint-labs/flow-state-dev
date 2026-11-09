@@ -4,7 +4,7 @@
  * coding flow, and a store. `fsdev.config.mts` calls
  * {@link openTeammates} and default-exports the `FlowState` it returns.
  *
- * - **Chief of Staff, researcher and writer** run on the built-in `agent` flow, so each
+ * - **Lead, researcher and writer** run on the built-in `agent` flow, so each
  *   has `sendMessage` and one conversation where messages land. Memory is
  *   composed in through `uses` (read) and `afterAnswer` (record each turn).
  *   A history summary keeps what was said before the history window: its
@@ -21,7 +21,7 @@
  *   with a sentence that names it and says what to run.
  * - **Readiness** (harness-manager's `harnessReadiness`, one check per
  *   harness from its integration): read once at start and logged as a table,
- *   put in the workers' context so Chief of Staff files coding work only on a
+ *   put in the workers' context so Lead files coding work only on a
  *   ready harness, and served as the `harness-readiness` flow's `read` action,
  *   which `{ refresh: true }` reads again.
  * - **The working folder** is one git checkout the operator names. It is the
@@ -46,9 +46,11 @@ import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkCodexReadiness, CODEX_PASS, codexAgent } from "@flow-state-dev/codex";
-import { defineFlow, handler, harnessEnv } from "@flow-state-dev/core";
-import type { HarnessBlock } from "@flow-state-dev/core/types";
-import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
+import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import type { ModelResolver } from "@flow-state-dev/core/types";
+import { checkClaudeCodeReadiness, CLAUDE_CODE_PASS, claudeCodeAgent } from "@flow-state-dev/claude-code";
 import { checkCursorReadiness, CURSOR_PASS, cursorAgent } from "@flow-state-dev/cursor";
 import {
   ASK_MARKER_IGNORED,
@@ -89,7 +91,7 @@ const UTILITY_MODEL = "openai/gpt-6-luna";
 export interface TeammatesOptions {
   /** The SQLite file the lab keeps everything in. */
   store: string;
-  /** The model Chief of Staff, researcher and writer answer on, and memory records with. */
+  /** The model Lead, researcher and writer answer on, and memory records with. */
   model: string;
   /** The user the page acts as. */
   userId: string;
@@ -128,6 +130,8 @@ export interface TeammatesOptions {
    * engine's default, one minute.
    */
   staleThresholdMs?: number;
+  /** Resolves every model the host calls, in place of the gateway: the contract tests pass a scripted one. Absent: the gateway. */
+  modelResolver?: ModelResolver;
 }
 
 /** How long a coding run's checks may take together. */
@@ -354,7 +358,7 @@ export async function openTeammates(options: TeammatesOptions) {
         uses: [
           mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true }),
           earlier.capability,
-          // Offered to a worker whose file picks `consultSessions: [consult]` (Chief of Staff).
+          // Offered to a worker whose file picks `consultSessions: [consult]` (Lead).
           consultSessionsCapability(installation),
           // Which harnesses can run here, so a coding task is filed only on a ready one.
           harnessReadinessCapability(readiness),
@@ -411,6 +415,7 @@ export async function openTeammates(options: TeammatesOptions) {
     devtool: { userId: options.userId },
     // A consult reads on `intent/utility`: a smaller model than the workers answer on.
     models: { default: options.model, intents: { utility: [UTILITY_MODEL] } },
+    ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
   } as never);
 
   return state;

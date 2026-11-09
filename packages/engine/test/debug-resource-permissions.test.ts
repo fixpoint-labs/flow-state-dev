@@ -24,7 +24,8 @@ import {
   defineResourceCollection,
   handler
 } from "@flow-state-dev/core";
-import { createInMemoryStores, createFlowRegistry } from "../src";
+import { createFlowRegistry } from "../src";
+import { createInMemoryStores } from "../src/host";
 import type { SessionRecord } from "../src/stores/types";
 import {
   handleDebugListResources,

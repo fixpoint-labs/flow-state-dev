@@ -1,5 +1,6 @@
+// FIX-2161; BP-031.
 /**
- * The work-project action (FIX-2161): how a user sets the project one of
+ * The work-project action: how a user sets the project one of
  * their own conversations with a worker works in, a new session of the worker
  * or the worker's one default conversation, from the screen.
  *
@@ -15,7 +16,7 @@
  *   a delegate's or a workstream lead's session, which take their project
  *   from where they were created, filed or opened.
  *
- * The input names the project and nothing else (BP-031). A refusal fails the
+ * The input names the project and nothing else. A refusal fails the
  * request with its reason and stores nothing. Setting another project later
  * replaces it; the tasks already filed keep the one stamped on their rows.
  */
@@ -31,9 +32,9 @@ import {
   WORKER_ID_STATE_KEY,
   WORKSTREAM_STATE_KEY
 } from "../workers/keys";
-import { projectAddressSchema, projectRowSchema } from "./collections";
+import { projectAddressSchema, projectResourceStateSchema } from "./collections";
 import { isMember } from "./membership-gate";
-import { PROJECT_ROW_RESOURCES, projectRowsAt } from "./project-address";
+import { PROJECT_ROW_RESOURCES, projectResourcesAt } from "./project-address";
 import { projectRef } from "./workstream-ref";
 
 /**
@@ -100,13 +101,13 @@ export function defineSetWorkProjectBlock(otherSession: (sessionId: string) => s
       const owner = ctx.session.identity.userId;
       if (user === undefined || user !== owner) refuse("only the session's own user sets the project it works in.");
       const { visibility, id } = input.project;
-      const stored = await projectRowsAt(ctx, visibility).getOptional(id);
+      const stored = await projectResourcesAt(ctx, visibility).getOptional(id);
       if (stored === undefined) {
         refuse(
           visibility === "private" ? `you have no private project "${id}".` : `this organization has no project "${id}" you can read.`
         );
       }
-      const row = projectRowSchema.parse(stored.state);
+      const row = projectResourceStateSchema.parse(stored.state);
       const allowed = visibility === "private" ? row.ownerUserId === user : isMember(row, user);
       if (!allowed) refuse(`not-a-member: "${user}" is not a member of project "${id}", so this conversation can't work in it.`);
       await ctx.session.patchState({ [WORK_PROJECT_STATE_KEY]: projectRef(input.project) });

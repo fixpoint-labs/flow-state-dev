@@ -7,7 +7,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
 import { buildTaskToolsList, READ_OUTPUT_LIMIT, taskToolActions } from "../../src/skills/task-tools-capability";
-import { MAX_STEERS, ticketForClaim, type Task, type TaskCollectionRef } from "../../src/tasks";
+import { ticketForClaim, type Task, type TaskCollectionRef } from "../../src/tasks";
+import { MAX_STEERS } from "../../src/tasks/schema/steer";
 import { buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 
 function toolNamed(tools: readonly unknown[], name: string): GeneratorTool {
@@ -128,6 +129,41 @@ describe("updateTask's message (FIX-2086)", () => {
 
     expect(out).toEqual({ ok: true });
     expect(b.get("t")!.steers).toEqual([expect.objectContaining({ message: "Use March", from: "user", by: "u_alice" })]);
+  });
+
+  // The Inbox's steer and every app's Steer box send through this action. A task waiting on
+  // something outside the board (FIX-2578) sleeps until its wait is answered, so a steer that
+  // left the wait open would sit untaken, and the person's words would never run.
+  it("from a screen, a steer to a task waiting on its pull request answers the wait and owes the task its turn", async () => {
+    const b = await board();
+    await b.ref.createTask({ id: "t", goal: "fix the bug" });
+    const claimed = (await b.ref.claim("w"))!;
+    const wait = { prompt: "Waiting on pull request #7 to merge or close.", events: [{ event: "pull-request", key: "github.com/acme/app/7" }] };
+    const opened = await b.ref.awaitExternal!("t", wait, { claim: ticketForClaim(b.ref.collectionId, claimed, b.ref.partition) });
+    const actions = taskToolActions("desk", ownStateResolver);
+    const asAlice = { ...(b.ctx as object), user: { identity: { userId: "u_alice" } } };
+
+    const out = await runForTest(actions["updateTask_desk"]!.block as never, { id: "t", message: "fix the lint" } as never, asAlice as never);
+
+    expect(out).toEqual({ ok: true });
+    const row = b.get("t")!;
+    expect(row.steers).toEqual([expect.objectContaining({ message: "fix the lint", from: "user", by: "u_alice", answers: opened.questions![0] })]);
+    expect(row.turnOwed).toBe(true);
+    expect(await b.ref.claim("w")).toMatchObject({ id: "t", attempts: 1, turn: 2 });
+  });
+
+  it(`answers a waiting task's wait at ${MAX_STEERS} places: the wait kept that place for its answer`, async () => {
+    const b = await board();
+    await b.ref.createTask({ id: "t", goal: "fix the bug" });
+    const claimed = (await b.ref.claim("w"))!;
+    for (let i = 0; i < MAX_STEERS - 1; i += 1) await b.ref.steer!("t", { message: `note ${i}`, from: "filer" });
+    const wait = { prompt: "Waiting on pull request #7 to merge or close.", events: [{ event: "pull-request", key: "github.com/acme/app/7" }] };
+    // Opened over untaken lines it would be answered at once, so they are taken first, as the turn did.
+    await b.ref.takeSteers!("t", { claim: ticketForClaim(b.ref.collectionId, claimed, b.ref.partition), takenIn: "turn-1" });
+    const opened = await b.ref.awaitExternal!("t", wait, { claim: ticketForClaim(b.ref.collectionId, claimed, b.ref.partition) });
+
+    expect(await b.call("updateTask", { id: "t", message: "fix the lint" })).toEqual({ ok: true });
+    expect(b.get("t")!.steers!.at(-1)).toMatchObject({ message: "fix the lint", answers: opened.questions![0] });
   });
 });
 

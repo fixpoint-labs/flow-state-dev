@@ -1,5 +1,5 @@
 /**
- * `listClaudeModels`: which models Claude Code offers, asked with no model
+ * `listClaudeCodeModels`: which models Claude Code offers, asked with no model
  * turn, each under the concrete id it resolves to.
  *
  * Scripted: the SDK's rows are fixed here, so what is pinned is the mapping
@@ -7,7 +7,7 @@
  * list never sends a message.
  */
 import { describe, expect, it } from "vitest";
-import { listClaudeModels } from "../../src/sdk/model-list";
+import { listClaudeCodeModels } from "../../src/sdk/model-list";
 
 /** A scripted SDK whose `query` answers `supportedModels` with `rows`, recording what it was handed. */
 function scriptedSdk(rows: () => Promise<unknown[]>) {
@@ -31,7 +31,7 @@ function scriptedSdk(rows: () => Promise<unknown[]>) {
   };
 }
 
-describe("listClaudeModels, scripted", () => {
+describe("listClaudeCodeModels, scripted", () => {
   it("names each model by its resolved id, the default first under its own name, and sends no message", async () => {
     const sdk = scriptedSdk(async () => [
       { value: "default", resolvedModel: "claude-big-2", displayName: "Default (recommended)", description: "Big 2" },
@@ -40,7 +40,7 @@ describe("listClaudeModels, scripted", () => {
       { value: "haiku", displayName: "Small" },
     ]);
     const env = { PATH: "/bin" };
-    const list = await listClaudeModels({ env, importSdk: sdk.importSdk });
+    const list = await listClaudeCodeModels({ env, importSdk: sdk.importSdk });
 
     expect(list).toEqual({
       status: "models",
@@ -58,13 +58,13 @@ describe("listClaudeModels, scripted", () => {
   });
 
   it("keeps the default when no other row names it, and drops a default row that resolves to nothing", async () => {
-    const named = await listClaudeModels({
+    const named = await listClaudeCodeModels({
       env: {},
       importSdk: scriptedSdk(async () => [{ value: "default", resolvedModel: "claude-x", displayName: "Default" }]).importSdk,
     });
     expect(named).toEqual({ status: "models", models: [{ id: "claude-x", label: "claude-x", isDefault: true }] });
 
-    const unresolved = await listClaudeModels({
+    const unresolved = await listClaudeCodeModels({
       env: {},
       importSdk: scriptedSdk(async () => [{ value: "default", displayName: "Default" }, { value: "claude-y", displayName: "Y" }]).importSdk,
     });
@@ -72,7 +72,7 @@ describe("listClaudeModels, scripted", () => {
   });
 
   it("offers no alias it can't resolve, so a stored id never moves when the alias does", async () => {
-    const list = await listClaudeModels({
+    const list = await listClaudeCodeModels({
       env: {},
       importSdk: scriptedSdk(async () => [
         { value: "sonnet[1m]", displayName: "Mid, long context" },
@@ -85,7 +85,7 @@ describe("listClaudeModels, scripted", () => {
       models: [{ id: "us.anthropic.claude-mid-5", label: "Mid on Bedrock", isDefault: false }],
     });
 
-    const onlyAliases = await listClaudeModels({
+    const onlyAliases = await listClaudeCodeModels({
       env: {},
       importSdk: scriptedSdk(async () => [{ value: "haiku", displayName: "Small" }]).importSdk,
     });
@@ -93,16 +93,16 @@ describe("listClaudeModels, scripted", () => {
   });
 
   it("fails with a reason, never a throw: an error, an empty list, no answer in time, no SDK", async () => {
-    const thrown = await listClaudeModels({ env: {}, importSdk: scriptedSdk(async () => Promise.reject(new Error("boom"))).importSdk });
+    const thrown = await listClaudeCodeModels({ env: {}, importSdk: scriptedSdk(async () => Promise.reject(new Error("boom"))).importSdk });
     expect(thrown).toEqual({ status: "failed", reason: "Claude Code could not be asked for its models: boom" });
 
-    const empty = await listClaudeModels({ env: {}, importSdk: scriptedSdk(async () => []).importSdk });
+    const empty = await listClaudeCodeModels({ env: {}, importSdk: scriptedSdk(async () => []).importSdk });
     expect(empty).toEqual({ status: "failed", reason: "Claude Code listed no models" });
 
-    const slow = await listClaudeModels({ env: {}, timeoutMs: 10, importSdk: scriptedSdk(() => new Promise(() => {})).importSdk });
+    const slow = await listClaudeCodeModels({ env: {}, timeoutMs: 10, importSdk: scriptedSdk(() => new Promise(() => {})).importSdk });
     expect(slow).toEqual({ status: "failed", reason: "Claude Code did not list its models within 10 ms" });
 
-    const missing = await listClaudeModels({ env: {}, importSdk: async () => Promise.reject(new Error("not found")) });
+    const missing = await listClaudeCodeModels({ env: {}, importSdk: async () => Promise.reject(new Error("not found")) });
     expect(missing.status).toBe("failed");
   });
 });

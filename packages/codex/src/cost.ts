@@ -19,7 +19,7 @@
  * precision the harness never gave.
  */
 import { findModelEntry, modelPricingEstimator } from "@flow-state-dev/core";
-import type { HarnessRunCost } from "@flow-state-dev/core/types";
+import type { HarnessRunCost } from "@flow-state-dev/core/harness";
 import type { CodexRunUsage } from "./types";
 
 /**

@@ -1,24 +1,25 @@
+// BP-013; BP-011; FIX-940.
 /**
  * Build the per-iteration worker step for the Task Board pipeline.
  *
  * The worker step takes a `Task` (piped from `claimTask` via the
  * pipeline's `.stepIf` connector) and produces whatever the worker
  * returns. The worker block runs as a first-class step in the
- * sequencer — it is NOT invoked from inside another block's `execute`
- * (BP-011). The pipeline composes it directly via `.step(workerStep)`.
+ * sequencer — it is NOT invoked from inside another block's `execute`.
+ * The pipeline composes it directly via `.step(workerStep)`.
  *
  * Two shapes:
  *
  * - **Uniform worker.** The user supplies a single block. We pre-
  *   connect it with a connector that adapts `Task → TaskWorkerInput`,
  *   yielding a block whose input is a `Task`. Pre-connecting is
- *   appropriate per BP-013 because this adaptation is purpose-built
+ *   appropriate because this adaptation is purpose-built
  *   for the pattern (the input contract belongs to the pattern, not
  *   to a runtime route choice).
  *
  * - **Worker registry.** The user supplies `Record<assignee, block>`.
  *   We pre-connect each worker with the `Task → TaskWorkerInput`
- *   adaptation (BP-013: pre-connecting at definition time is fine for
+ *   adaptation (pre-connecting at definition time is fine for
  *   purpose-built pattern adapters) and feed the registry to
  *   `utility.keyedRouter`, which dispatches by `task.assignee`. The
  *   workers themselves keep their generic `TaskWorkerInput` schema
@@ -32,7 +33,7 @@
  * `collection.fail` against the worker's per-state `currentClaim` —
  * exactly the offending task, never a sibling's concurrently-claimed
  * work. With a `defaultWorker`, a miss instead routes to that worker
- * via the `keyedRouter` `fallback` slot (FIX-940): an unknown assignee
+ * via the `keyedRouter` `fallback` slot: an unknown assignee
  * falls through natively (no entry under that key), and an *absent*
  * assignee is steered to the fallback through a reserved sentinel route
  * (the one case `keyedRouter` can't infer, since `select` must return a
@@ -42,41 +43,42 @@ import { utility } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
-  shownSteer,
   taskSchema,
   type Task,
   type TaskCollectionRef,
   type TaskWorker,
   type TaskWorkerInput,
-  type TaskWorkerRegistry,
 } from "../../tasks";
+import { shownSteer } from "../../tasks/steers";
+import type { TaskWorkerRegistry } from "../../tasks/workers/types";
 
+// FIX-503.
 /**
  * True when `workers` is a single block (carries the substrate `run`
  * dispatch entry) rather than a record of blocks. Discriminates on
  * `run` not on key presence so a registry that happens to have a key
- * called `"run"` doesn't misroute. Updated for FIX-503 — the public
+ * called `"run"` doesn't misroute. The public
  * `BlockDefinition.run` was removed in favour of `BlockRuntime.run`.
  */
-export function isUniformWorker(
+function isUniformWorker(
   workers: TaskWorker | TaskWorkerRegistry
 ): workers is TaskWorker {
   return typeof (workers as { run?: unknown }).run === "function";
 }
 
+// FIX-610; FIX-610 Layer A.
 /**
  * Pack a `Task` into the substrate's `TaskWorkerInput` shape. When the
  * task declares `deps`, this resolves each dep's `output` from the
  * collection and exposes them under `deps: Record<depId, output>` so
  * the worker can read upstream context via `input.deps`.
  *
- * When a `flowPolicy` + active ledger view are supplied (FIX-610
- * Layer A), the policy is consulted to select a `priorWork` slice and
+ * When a `flowPolicy` + active ledger view are supplied, the policy is consulted to select a `priorWork` slice and
  * stamped on the worker input. The optional `ctx` is forwarded to the
  * policy's `select` so policies that need request/session state can
  * read it. Back-compat: omitting the new parameters yields a
  * `TaskWorkerInput` with no `priorWork` field — wire-identical to
- * pre-FIX-610 boards.
+ * older boards.
  */
 export async function packWorkerInput(
   task: Task,
@@ -173,8 +175,9 @@ export interface BuildWorkerStepOptions {
   /** Block-name prefix for the synthesised router (registry path only). */
   name: string;
   workers: TaskWorker | TaskWorkerRegistry;
+  // FIX-940.
   /**
-   * Optional default worker (the delegation floor, FIX-940). Registry
+   * Optional default worker (the delegation floor). Registry
    * path only: wired as the `keyedRouter` `fallback`, it runs any task
    * whose `assignee` is unknown or absent. Omit it and a registry miss
    * throws exactly as before (I2). Declared workers are never routed
@@ -188,8 +191,9 @@ export interface BuildWorkerStepOptions {
    * state.
    */
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
+  // FIX-610.
   /**
-   * Optional flow-policy resolver (FIX-610). When the resolver returns
+   * Optional flow-policy resolver. When the resolver returns
    * a `{ flowPolicy, ledger }` pair, `packWorkerInput` stamps the
    * worker input's `priorWork` slot with the policy's selection.
    * Returning `undefined` skips the field entirely (back-compat).

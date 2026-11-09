@@ -14,6 +14,7 @@
  * Framework-facing, like the dispatch seam: a symbol key, not a public
  * `ctx.publish`, so app code can't invent a topic.
  */
+import type { InternalBlockContext } from "./block";
 
 /** What the engine's seam publishes: a board change, on a session's topic. */
 export interface BoardChange {
@@ -38,8 +39,8 @@ export const BOARD_NOTICE_SEAM: unique symbol = Symbol.for("@flow-state-dev/boar
  * @returns `false` when the context carries no seam (a hand-built test
  *   context): nothing is published.
  */
-export function publishBoardChange(ctx: { readonly [BOARD_NOTICE_SEAM]?: BoardNoticeSeam }, change: BoardChange): boolean {
-  const seam = ctx[BOARD_NOTICE_SEAM];
+export function publishBoardChange(ctx: object, change: BoardChange): boolean {
+  const seam = (ctx as Pick<InternalBlockContext, typeof BOARD_NOTICE_SEAM>)[BOARD_NOTICE_SEAM];
   if (seam == null) return false;
   seam.publish(change);
   return true;

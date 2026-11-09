@@ -3,7 +3,8 @@
  * so it runs on the framework default (unauthenticated) resolver. `fsdev serve`'s
  * bind guard should refuse a non-loopback host for this config.
  */
-import { createFlowState, createInMemoryStores, type StoreAdapter, type StoreRegistry } from "@flow-state-dev/engine";
+import { createFlowState, type StoreAdapter, type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores } from "@flow-state-dev/engine/host";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";

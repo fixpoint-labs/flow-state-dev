@@ -1,6 +1,6 @@
+// FIX-1440.
 /**
- * Arranging a flow's sessions so a dispatch run reads under what started it
- * (FIX-1440).
+ * Arranging a flow's sessions so a dispatch run reads under what started it.
  *
  * A dispatch run is an ordinary session of the flow that a dispatcher started
  * rather than a person. It carries `parentSessionId`, and that is the whole of
@@ -40,6 +40,7 @@ export type SessionRow = {
 /** How deep a dispatch run is drawn. One level, by rule — see the file header. */
 const RUN_DEPTH = 1;
 
+// BP-030.
 /**
  * Order a leaf's sessions for display, placing each dispatch run under the
  * session that started it.
@@ -51,7 +52,7 @@ const RUN_DEPTH = 1;
  *
  * `== null` throughout, not a truthiness check: a store that nulls absent keys
  * hands back `null` where an older record reads `undefined`, and both mean
- * "nobody dispatched this" (BP-030).
+ * "nobody dispatched this".
  */
 export function arrangeSessionRows(
   sessions: readonly SessionSummary[]

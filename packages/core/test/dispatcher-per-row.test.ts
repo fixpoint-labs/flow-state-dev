@@ -76,8 +76,8 @@ describe("a task dispatcher that chooses its entry per row", () => {
       dispatcher({ name: "bad", type: "task", action: action as never, session: "per-task" });
     expect(build({ among: [], by: kindOf })).toThrow(/at least one entry/);
     expect(build({ among: ["work", "work"], by: kindOf })).toThrow(/each named once/);
-    expect(build({ among: ["work", ""], by: kindOf })).toThrow(/chooses its entry per row/);
-    expect(build({ among: ["work"] })).toThrow(/chooses its entry per row/);
+    expect(build({ among: ["work", ""], by: kindOf })).toThrow(/chooses its entry per task/);
+    expect(build({ among: ["work"] })).toThrow(/chooses its entry per task/);
   });
 
   it("refuses a choice on an internal dispatcher — only a task row is chosen for", () => {
@@ -88,7 +88,7 @@ describe("a task dispatcher that chooses its entry per row", () => {
         action: { among: ["a"], by: () => "a" } as never,
         session: { key: () => "k" }
       })
-    ).toThrow(/Only a task dispatcher chooses its entry per row/);
+    ).toThrow(/Only a task dispatcher chooses its entry per task/);
   });
 
   it("is a task dispatcher from the choice alone when type is omitted", () => {

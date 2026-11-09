@@ -12,9 +12,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { createRequestWaits } from "../../../engine/src/durability/wait-chain";
 import type { JsonObject } from "@flow-state-dev/core";
-import { REQUEST_END_SEAM, type BlockContext, type ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { type BlockContext, type ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { requestHostOf, REQUEST_END_SEAM } from "@flow-state-dev/core/internal";
 import { defineTaskCollection, getOrCreateTaskCollection, type TaskCollectionRef } from "../../src/tasks";
-import { payBoardDebts } from "../../src";
+import { payBoardDebts } from "../../src/tasks/notice/pass";
 import { deliverHeldEnding, lapsedSlotsHeldInProcess, releaseEndedWaits, waitOnTask } from "../../src/tasks/helpers/wait-on-task";
 import { LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_CHECK_MS } from "../../src/tasks/notice/task-notice";
 import { createFakeResourceCollection } from "../helpers";
@@ -116,7 +117,7 @@ describe("a lapsed wait slot, released by the filer's pass", () => {
     const id = (await board.createTask({ goal: "slow work", assignee: "researcher" })).id;
     expect(await releaseEndedWaits(ctx, board, Date.now())).toBeUndefined();
     await waitOnTask(ctx, board, id, wait);
-    const blind = { ...ctx, requestHost: { ...ctx.requestHost, waits: { deadlines: DEADLINES, depth: async () => 1 } } } as unknown as BlockContext;
+    const blind = { ...ctx, requestHost: { ...requestHostOf(ctx), waits: { deadlines: DEADLINES, depth: async () => 1 } } } as unknown as BlockContext;
     expect(await releaseEndedWaits(blind, board, Date.now())).toBeUndefined();
     expect(board.get(id)!.wait).toMatchObject({ lapsed: true });
   });
@@ -176,7 +177,7 @@ describe("a lapsed wait slot the pass can't read the request of", () => {
       sessionId: SESSION,
       readRequest: async (id) => records[id] as never
     });
-    const pass = { ...boardCtx, requestHost: { ...boardCtx.requestHost, waits } } as unknown as BlockContext;
+    const pass = { ...boardCtx, requestHost: { ...requestHostOf(boardCtx), waits } } as unknown as BlockContext;
 
     const now = Date.now();
     const { nextDue } = await payBoardDebts(pass, board, { now });

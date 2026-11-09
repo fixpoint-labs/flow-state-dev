@@ -63,7 +63,8 @@ vi.mock("../src/conversation-board/ledger", async (original) => {
 
 import { handler, sequencer, defineFlow } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
-import { isTerminalStatus, readCommittedTask } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus } from "@flow-state-dev/orchestration/tasks";
+import { readCommittedTask } from "@flow-state-dev/orchestration/internal";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineSessionBoard, finishedTasksAnswerAgain, MAX_ANSWERS_AGAIN, workerConfigSchema, type WorkerManifest } from "../src";

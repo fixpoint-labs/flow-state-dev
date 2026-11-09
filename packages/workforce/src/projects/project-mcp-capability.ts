@@ -1,3 +1,4 @@
+// BP-031.
 /**
  * `projectMcpCapability()`: an agent or coordinator worker gets the MCP
  * servers its conversation's project names, as tools on its model, keyed with
@@ -6,10 +7,10 @@
  * The coding run's relay (`projectMcpTools`) and this capability share one
  * resolution (`planProjectMcp` and `connectProjectMcp`): the project and its
  * owner come from `runProjectOf`, so from the session's server-written fields
- * and stored rows only, never from a tool argument or a prompt (BP-031); the
+ * and stored rows only, never from a tool argument or a prompt; the
  * key is the owner's own (`mcp-credentials/*`), or the operator's `seedEnv`;
  * and the connection is FSD's one MCP client. A lead such as a project's
- * coordinator can then read the issue a user names ("implement FIX-2165")
+ * coordinator can then read the issue a user names ("implement ENG-142")
  * from the tracker rather than guess at it.
  *
  * One preset, `tools`, off until a worker's own file picks it
@@ -40,7 +41,7 @@
  * `llmReadable`, so no resource tool lists or reads it.
  */
 
-import { defineCapability, handler, type GeneratorTool, type LooseBlockContext } from "@flow-state-dev/core";
+import { defineCapability, handler, type GeneratorTool } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { MCP_TOOL_META, type MCPClient, type MCPServerConfig, type MCPToolMeta } from "@flow-state-dev/tools/mcp";
 import { z } from "zod";
@@ -189,9 +190,8 @@ export function projectMcpCapability(servers: ProjectMcpServers, options: Projec
     return entry;
   };
 
-  const tools = async (given: unknown): Promise<GeneratorTool[]> => {
-    const ctx = given as BlockContext;
-    const plan = await planProjectMcp(servers, options, ctx as unknown as LooseBlockContext, missingKeys);
+  const tools = async (ctx: BlockContext): Promise<GeneratorTool[]> => {
+    const plan = await planProjectMcp(servers, options, ctx, missingKeys);
     if (plan === undefined) return [];
     for (const { name, why } of plan.skipped) {
       say(
@@ -222,7 +222,7 @@ export function projectMcpCapability(servers: ProjectMcpServers, options: Projec
     name: PROJECT_MCP_CAPABILITY,
     uses: [projectWorkspaceCapability, mcpCredentialsCapability],
     presets: {
-      tools: { tools: tools as never },
+      tools: { tools },
       default: []
     }
   });

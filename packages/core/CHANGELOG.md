@@ -1,5 +1,55 @@
 # @flow-state-dev/core
 
+## 0.5.0
+
+### Minor Changes
+
+- f1e6315: Resource collections can declare field indexes and look rows up by them with `findBy` (FIX-2532).
+
+  - **core:** `defineResourceCollection` takes `indexes: { name: (key, state) => value }`, or `{ version, value }` to version an index. `ResourceCollectionRef` gains `findBy(index, value)`, which returns the matching instances in key order. New types `ResourceIndexDeclaration`, `ResourceIndexFunction`, `ResourceIndexValue`. `findBy` is a required member of `ResourceCollectionRef`, so a hand-written object typed as one (a test double, a partition view) needs it too.
+  - **engine:** the stores `createFlowState` resolves, and those a router built with `createFlowApiRouter` resolves, write every resource row with the entries of every registered index whose scope and pattern match it. On SQLite and Postgres `findBy` reads the index, building it from the collection's rows on the first lookup in each scope; on the memory and filesystem stores it scans. Registration refuses one index name at two versions on collections in one scope whose patterns can match the same keys. `FlowRegistry` gains `indexedCollections()`. `createFindByConformanceTests` in `@flow-state-dev/engine/testing` runs the shared `findBy` cases against a store registry.
+
+- da4a4bb: A worker's conversation can follow a thread on an outside service, and hears each event on it once, as a message from `service:<provider>` (FIX-2534).
+
+  - **workforce:** `subscriptionTools({ providers })` gives the `subscribe` and `unsubscribe` tools; `defineSubscriptionServiceFlow({ kind, provider, installation, trustedBots?, capPerHour? })` builds a provider's service flow, which routes each event through five code screens (`sender`, `own`, `labels`, `words`, `allow`) and delivers once per conversation, under the subscribing session's tenant. A subscription ends on `unsubscribe`, when the thread it follows closes (a PR's closing leaves a subscription to its repository running), or when the task whose session made it fails or is cancelled. See the README's Subscriptions section.
+  - **engine:** `fireOwnerRunThrough(host, run)` starts an internal entry as the user whose stored row it names, only when the row is there, names the same org and tenant, and isn't `enabled: false`; `routeServiceEvent(host, …, { concurrency? })` runs a service flow's entry, reads the owner runs it names, and fires them a few at once, recording each one's failure. `resolveSharedUserCellKey(userId, orgId, flowKind)` is the storage key both read a user's shared rows at.
+  - **core:** `subscriptionEventSchema` / `SubscriptionEvent`, the normalized event a webhook or a poll maps into.
+
+- 5f569fd: A task's session tells what a person said from what the task was handed (FIX-2574, FIX-2575).
+
+  - **core / engine:** an action's `userMessage` can return `{ text, metadata }`. The echo is still the request's `user` line, and it carries `metadata` for a client to read. A plain string works as before.
+  - **orchestration:** a steer from a person (sent from a screen, or a coding review's request for changes) now shows in the task's session as a `user` line with their words alone, not as an assistant line reading "Message from the user: …". A filer's or the board's steer reads as before. **Breaking:** `showTakenSteers` is now async; await it.
+  - **workforce:** a task request's opening `user` line (the task as filed, or re-queued with its steers) is marked as the task's brief. Read it with `taskBriefOf(item)` from `@flow-state-dev/workforce/browser` to draw it as a brief, not as the person's line.
+
+- 844a4f9: Screens can read again when something they show changes, without polling on the Node host (FIX-2428).
+
+  - **client:** `fsd.subscribe(topics, { onChange, pollIntervalMs? })` calls `onChange` with the notice that woke it (`{ topic, kind, origin? }`), or `null` for a connect, a reconnect or a timer tick. Build topics with `topic.session(id)`, `topic.user()` and `topic.org()`, now exported from the client too. On a host with push, one WebSocket per client carries the notices, signed in through the client's fetcher; elsewhere `onChange(null)` runs every `pollIntervalMs`. `FlowCapabilities` gains `push`. **Breaking:** `fsd.stream()` is removed. It never worked (the server answered 501); use `fsd.subscribe()`. `UserStreamOptions`, `UserSSECallbacks` and `UserStreamHandle` are removed with it. Migration: replace `fsd.stream({ onResourceChanged, onScopeStateChanged, ... })` with `fsd.subscribe([topic.user(), topic.org()], { onChange: () => reread() })`, and read what you show in `onChange`. A notice carries no rows, so the read is what tells you what changed.
+  - **react:** `useSubscription(topics, read, { pollIntervalMs?, enabled? })` runs a screen's read again on a change, one read in flight and one waiting.
+  - **node:** `serve()` serves the change-notice WebSocket at `<basePath>/users/:userId/stream`. New options: `push` (default `true`) and `pushSecret` (default `FSD_PUSH_SECRET`, then a random key), which every process behind one address must share.
+  - **engine:** `GET /capabilities` answers `{ userStream: false, push }`. `POST /users/:userId/stream` checks each topic with its scope's read check and answers a short ticket for the granted ones; a refused topic is left out, as a missing session is. `GET /users/:userId/stream` answers 426 instead of 501. `enablePushDelivery(router, { secret? })` turns push on for a host that serves the socket.
+  - **contracts / core:** the push wire types (`PushCapability`, `PushMintAnswer`, `PushServerFrame`, `PushClientFrame`, `WireNotice`). **Breaking:** the user-stream event types `UserStreamEvent`, `UserEventBase`, `UserResourceChangedEvent`, `ResourceContentUpdatedEvent`, `ResourceContentCreatedEvent`, `ResourceContentDeletedEvent`, `ScopeStateChangedEvent`, `UserDebugEvent` and `UserPingEvent` are removed; `StreamEvent` is `RequestStreamEvent`.
+
+### Patch Changes
+
+- 531bf32: A task board's change reaches every open view of the board, from whichever session or process settles the task (FIX-2429).
+
+  - **orchestration:** every change to a board built by `getOrCreateTaskCollection` also publishes a `board` change notice on the topic of the session that filed the row (`Task.filer`, else the ledger's legacy filer, else the running session), narrowed to the board's `collectionId`. A screen subscribes `topic.session(conversationId, { resource: "tasks" })` and reads again. Nothing to wire: the `task-change` item is unchanged. The board's `listTasks` action (a client's read, not the model's tool) also answers each row's `updatedAt`, so a client holding a row from two sources keeps the newer.
+  - **engine:** the block context carries the seam that publishes a board notice on the running request's bus, under its tenant, with the request as `origin`.
+  - **react:** **Breaking for a hand-built client slice:** a live `BoardList`'s `client` takes `subscribe` in place of `sessions.stream`. A client from `createClient` works as before. The list now hears a task that settles in another session or process, never wakes on a reply streaming in the session, and reads every 3 s where push can miss a change. `useSubscription` takes `client`, for an app that builds its own client, and hands `read` an `AbortSignal` that aborts when the subscription ends.
+  - **core / contracts:** `ChangeKind` gains `"board"`; `publishBoardChange` and `BOARD_NOTICE_SEAM` (framework-facing) in `@flow-state-dev/core/types`.
+  - **shift-manager:** the conversation's task panel and task cards read on board notices; they keep their 3 s timer only while a task is open, and only where push can miss a change.
+
+- 05a7022: An action's optional `taskOf(input)` names the task a request is for, and the request's user message and items carry it as `taskId`; Workforce's built-in doors take an optional `taskId` through `doorTask`, and the inventory row says so as `doorTakesTask` (FIX-2422).
+- c67aa49: `fsdev run` says why an `intent/*` model has nothing to resolve to when no `fsdev.config.*` is found (FIX-2451). After the run's error, stderr names the directory searched, says that the file which calls `createFlowState` is not read, and points at default-exporting `createFlowState(...)` from `fsdev.config.ts` or passing `--config <path>`. `--quiet` suppresses it. Runs that load a config, and failures of any other kind, are unchanged.
+
+  `@flow-state-dev/core` now throws that resolver failure as `UnresolvedIntentError`, a `FlowError` with `code: UNRESOLVED_INTENT_CODE` (`"unresolved_intent"`) and `details.intent`, so callers can recognise it without matching the message. Both are exported from the `@flow-state-dev/core/errors/unresolved-intent-error` subpath, not the package root. The message is unchanged.
+
+- Updated dependencies [531bf32]
+- Updated dependencies [bc65135]
+- Updated dependencies [5f569fd]
+- Updated dependencies [844a4f9]
+  - @flow-state-dev/contracts@0.4.0
+
 ## 0.4.0
 
 ### Minor Changes

@@ -25,8 +25,8 @@
  * changes what a run is: not its model, not its service tier, not its MCP
  * servers, the way Claude Code mode loads no settings files. A model set there
  * may be one the signed-in account can't use, a tier like Fast (`priority`)
- * spends more of the account's usage, and a server signed in for your own use
- * fails to start inside the sandbox. Codex reads the file either way; the run
+ * spends more of the account's usage, and a server set up for your own use
+ * would start in every run. Codex reads the file either way; the run
  * overrides each of those (the session's model, or Codex's own default for a
  * session stored before models could be picked, and `codexClientOptions`).
  * Sign-in, history and every other setting still come from Codex's home.
@@ -43,9 +43,8 @@
 import { execFile } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { delimiter } from "node:path";
-import { harnessEnv } from "@flow-state-dev/core";
+import { harnessEnv } from "@flow-state-dev/core/harness";
 import {
-  assertTestedSdkVersion,
   CODEX_PASS,
   CodexAgentAbortedError,
   checkCodexReadiness,
@@ -53,13 +52,9 @@ import {
   createDefaultResolveCodexClient,
   findCodexProgram,
   listCodexModels,
-  readInstalledCodexSdkVersion,
-  TESTED_SDK_VERSION,
   type CodexAgentOptions,
   type CodexClientOptions,
-  type CodexModelList,
   type CodexThreadOptions,
-  type InstalledSdkVersionReader,
   type ResolveCodexClient,
 } from "@flow-state-dev/codex";
 
@@ -67,7 +62,7 @@ import { goalControl } from "./goal-control";
 import { harnessTrust, type RepoLine } from "./harness-trust";
 import type { HarnessTrust } from "./harness-workspace";
 import type { HarnessSessionFeeds } from "@flow-state-dev/harness-manager";
-import type { HarnessBlock, HarnessReadiness } from "@flow-state-dev/core/types";
+import type { HarnessBlock, HarnessModelList, HarnessReadiness } from "@flow-state-dev/core/harness";
 import { kitchenSinkHarnessFlow } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
@@ -90,10 +85,10 @@ const SCRIPTED_CODEX_MODEL = "scripted-codex";
  * own. The next load asks again. `list` is a seam for tests.
  */
 export async function codexModelChoices(
-  list: (env: Record<string, string>) => Promise<CodexModelList> = (env) => listCodexModels({ env }),
+  list: (env: Record<string, string>) => Promise<HarnessModelList> = (env) => listCodexModels({ env }),
 ): Promise<ModelChoices> {
   if (codexIsScripted()) {
-    return { models: [{ id: SCRIPTED_CODEX_MODEL, label: "Scripted Codex" }], defaultId: SCRIPTED_CODEX_MODEL, reason: null, fallbackId: null };
+    return { models: [{ id: SCRIPTED_CODEX_MODEL, label: "Scripted Codex", isDefault: true }], defaultId: SCRIPTED_CODEX_MODEL, reason: null, fallbackId: null };
   }
   const found = await list(codexEnv());
   if (found.status === "failed") {
@@ -105,13 +100,13 @@ export async function codexModelChoices(
     };
   }
   const preselected = found.models.find((model) => model.isDefault) ?? found.models[0]!;
-  return { models: found.models.map(({ id, label }) => ({ id, label })), defaultId: preselected.id, reason: null, fallbackId: null };
+  return { models: found.models, defaultId: preselected.id, reason: null, fallbackId: null };
 }
 
 /**
- * The environment Codex's process gets, and the one its sign-in and sandbox are
- * checked over: the Codex package's own pass-list, and the keys a trusting
- * operator named.
+ * The environment Codex's process gets, and the one its sign-in is checked
+ * over: the Codex package's own pass-list, and the keys a trusting operator
+ * named.
  */
 export function codexEnv(
   env: Record<string, string | undefined> = process.env,
@@ -129,12 +124,12 @@ export function codexRepoLine(trust: HarnessTrust = harnessTrust()): RepoLine {
 }
 
 /** Whether this server runs the scripted Codex instead of the SDK. */
-export function codexIsScripted(env: Record<string, string | undefined> = process.env): boolean {
+function codexIsScripted(env: Record<string, string | undefined> = process.env): boolean {
   return env.KITCHEN_SINK_TEST_MODE === "1" && env.KITCHEN_SINK_REAL_HARNESS !== "1";
 }
 
 /** The SDK's thread options Codex mode runs with. The model is the session's, through the block's `model`. */
-export function codexThreadOptions(): CodexThreadOptions {
+function codexThreadOptions(): CodexThreadOptions {
   return {
     // No approval prompts: nobody is there to answer one, and nothing fences
     // the run either — Kitchen Sink confines no run (see the header).
@@ -151,14 +146,13 @@ export interface CodexMcpServer {
 
 /**
  * The SDK's client options Codex mode runs with: the allowlisted environment,
- * the standard service tier, every MCP server in `mcpServers` turned off, and
- * the sandbox's writable list narrowed to the run's own directory.
+ * the standard service tier, and every MCP server in `mcpServers` turned off.
+ * The sandbox is off (see the header), so nothing here narrows where a run
+ * writes.
  *
  * Codex's overrides add to its settings rather than replace them (an empty
  * `mcp_servers` leaves every configured server on), so each server is turned
- * off by name, and the tier is set to `default`, which sends none. Codex's
- * `workspace-write` also lets a run write in `/tmp` and `$TMPDIR` by default,
- * where a repository or another session's files may sit.
+ * off by name, and the tier is set to `default`, which sends none.
  *
  * Trusted, no server is turned off: `mcpServers` is not read.
  *
@@ -215,7 +209,7 @@ export function codexClient(
     if (stopped === undefined) return (await resolver)(ctx);
     let onAbort: (() => void) | undefined;
     const aborted = new Promise<never>((_, reject) => {
-      onAbort = () => reject(new CodexAgentAbortedError(null));
+      onAbort = () => reject(new CodexAgentAbortedError(null, stopped.reason));
       if (stopped.aborted) onAbort();
       else stopped.addEventListener("abort", onAbort, { once: true });
     });
@@ -232,7 +226,7 @@ export interface CodexSeams {
   /** Replaces the SDK (and the scripted one test mode picks). */
   readonly resolveCodexClient?: ResolveCodexClient;
   /** Replaces Codex's model list, read for a session that names no model. */
-  readonly listCodexModels?: (env: Record<string, string>) => Promise<CodexModelList>;
+  readonly listCodexModels?: (env: Record<string, string>) => Promise<HarnessModelList>;
 }
 
 /** The Codex block's options, built from the session flow's feeds. */
@@ -260,7 +254,7 @@ export function codexBlockOptions(feeds: HarnessSessionFeeds, seams: CodexSeams 
  * neutral `HarnessBlock` (core's own note on that type). The other modes cast
  * the same way.
  */
-export function codexBlock(feeds: HarnessSessionFeeds, seams: CodexSeams = {}): HarnessBlock {
+function codexBlock(feeds: HarnessSessionFeeds, seams: CodexSeams = {}): HarnessBlock {
   return codexAgent(codexBlockOptions(feeds, seams)) as unknown as HarnessBlock;
 }
 
@@ -288,11 +282,9 @@ export function codexSessionFlow(seams: CodexSeams = {}) {
 
 /** What the mode's check asks of the host. Each a seam for tests. */
 export interface CodexHostChecks {
-  /** Which `@openai/codex-sdk` is installed beside the Codex package. */
-  readonly sdk: InstalledSdkVersionReader;
   /** Make the worktree root and return it, or throw why it can't be made. */
   readonly makeRoot: (repository: string) => string;
-  /** Whether Codex can run over the run's own environment (its SDK and sign-in), from the Codex package. No run. */
+  /** Whether Codex can run over the run's own environment (its SDK, in the range the package tested, and a sign-in), from the Codex package. No run. */
   readonly readiness: (env: Record<string, string>) => Promise<HarnessReadiness>;
 }
 
@@ -328,8 +320,7 @@ export async function userMcpServers(env: Record<string, string>): Promise<reado
 }
 
 /** The host's own answers. */
-export const HOST_CHECKS: CodexHostChecks = {
-  sdk: readInstalledCodexSdkVersion,
+export const CODEX_HOST_CHECKS: CodexHostChecks = {
   makeRoot: (repository) => {
     const root = worktreeRoot(repository);
     mkdirSync(root, { recursive: true });
@@ -341,28 +332,18 @@ export const HOST_CHECKS: CodexHostChecks = {
 };
 
 /**
- * Codex mode's own check, for the gate's mode-check slot: the pinned Codex SDK
- * is installed (the Codex package's own version refusal is the reason
- * otherwise), the worktree root can be made, and Codex is signed in over the
- * run's environment. The first that fails is the reason. Nothing is asked
- * about a sandbox: Kitchen Sink runs Codex with its sandbox off (see the
- * header).
+ * Codex mode's own check, for the gate's mode-check slot: the worktree root
+ * can be made, and the Codex package's readiness check passes over the run's
+ * environment (an SDK in the range the package tested, and a sign-in). The
+ * first that fails is the reason. Nothing is asked about a sandbox: Kitchen
+ * Sink runs Codex with its sandbox off (see the header).
  *
  * The block itself is built only once the mode is available, so another SDK
  * version is a reason here and never a crash at server start.
  */
-export function codexModeCheck(checks: CodexHostChecks = HOST_CHECKS): ModeCheck {
+export function codexModeCheck(checks: CodexHostChecks = CODEX_HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
     if (codexIsScripted()) return { available: true };
-    if (checks.sdk().kind === "absent") {
-      return { available: false, reason: `The Codex SDK is not installed. Install @openai/codex-sdk ${TESTED_SDK_VERSION}, then restart.` };
-    }
-    try {
-      // The gate `codexAgent` runs when it is built: it names both versions.
-      assertTestedSdkVersion(checks.sdk);
-    } catch (error) {
-      return { available: false, reason: error instanceof Error ? error.message : String(error) };
-    }
     let root: string;
     try {
       root = checks.makeRoot(repository);

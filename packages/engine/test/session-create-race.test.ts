@@ -16,9 +16,11 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   createFlowApiRouter,
-  createFlowRegistry,
-  createInMemoryStores
+  createFlowRegistry
 } from "../src";
+import {
+  createInMemoryStores
+} from "../src/host";
 
 function makeFlow(kind: string): FlowInstance {
   return defineFlow({

@@ -19,7 +19,7 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import { mintWorkers } from "../src/hire";
 import { openInventory } from "../src/inventory/open-inventory";
-import { workerInventoryRowSchema } from "../src/inventory/collections";
+import { workerInventoryResourceStateSchema } from "../src/inventory/collections";
 import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { defineCoordinatorFlow } from "../src/coordinator/coordinator-flow";
 import { createErrorReporter, defineErrorReporterFlow } from "../src/error-reporter";
@@ -175,7 +175,7 @@ describe("the inventory row says whether a worker's door takes a task", () => {
   });
 
   it("reads false on a row written before the field (BP-030)", () => {
-    const old = workerInventoryRowSchema.parse({ id: "eng.lead", kind: "agent", door: "respond" });
+    const old = workerInventoryResourceStateSchema.parse({ id: "eng.lead", kind: "agent", door: "respond" });
     expect(old.doorTakesTask).toBe(false);
   });
 });

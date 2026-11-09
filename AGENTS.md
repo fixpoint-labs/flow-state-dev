@@ -11,6 +11,7 @@ At the start of a new conversation in this repo, read:
 - `docs/contributing/best-practices.md` — implementation standards (the active BPs at the top of that file)
 - `docs/contributing/architecture-reference.md` — quick reference for locked contracts
 - Relevant docs in `docs/architecture/` for the task at hand
+- `docs/contributing/glossary.mjs` before naming a public thing: one word per concept, and the words it retires. A change that coins or retires a public term edits its entry in the same PR; the vocabulary checks read nothing else
 
 **Authority order**: `docs/philosophy.md` > `docs/architecture/*` > `docs/contributing/best-practices.md` > this file. When two in-repo docs disagree, the more specific one wins; when code and grounding disagree with no doc to settle it, that is a philosophy gap to surface, not to route around.
 
@@ -139,7 +140,7 @@ Three tiers, picked by what kind of regression you want to catch:
 
 | Layer | Where | Use when |
 |---|---|---|
-| Block / router / sequencer unit | `packages/<pkg>/test/*.test.ts` via `testBlock`, `testRouter`, `testSequencer` | A single block's logic — state changes, output shape, error paths. Default tier for new code. |
+| Block / router / sequencer unit | `packages/<pkg>/test/*.test.ts` via `testBlock` (a sequencer's result carries its `steps`, a router's its `selectedRoute`) | A single block's logic — state changes, output shape, error paths. Default tier for new code. |
 | Flow integration | `packages/integration-tests/src/scenarios/*.test.ts` via `testFlow` | A regression that only emerges from full `runAction` composition: pattern factory wiring, claim systems, dispatcher loops, multi-pattern interactions, session resume across runs. |
 | UI e2e (Playwright) | `apps/kitchen-sink/e2e/*.spec.ts` — CI, LLMs mocked | Browser-only regressions the lower tiers can't catch (see `apps/docs/docs/testing/end-to-end-tests.md`). Out of scope for most changes. |
 

@@ -1,6 +1,7 @@
+// FIX-2378.
 /**
  * The marker a delegate's answer carries when it lands in a conversation as
- * written (FIX-2378): a task filed with `resultTo: "conversation"`, routed or
+ * written: a task filed with `resultTo: "conversation"`, routed or
  * not, whose completion is the delegate's reply itself rather than a notice's
  * line. Its message item names the worker that answered and the task it
  * answered, in `metadata`, so a client tells a delegate's answer from the

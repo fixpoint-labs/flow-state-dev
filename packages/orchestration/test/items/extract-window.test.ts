@@ -13,8 +13,8 @@ import { describe, expect, it } from "vitest";
 import type { ComponentItem, MessageItem, OutputItem, SourceItem } from "@flow-state-dev/core/items";
 import {
   extractTaskItems,
-  extractTaskItemWindows,
 } from "../../src/tasks";
+import { extractTaskItemWindows } from "../../src/tasks/items/extract-window";
 
 let counter = 0;
 function nextId(prefix: string): string {

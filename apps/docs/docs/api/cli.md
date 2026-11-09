@@ -15,7 +15,7 @@ sidebar_label: CLI
 Execute a flow action with streaming NDJSON output.
 
 ```bash
-fsdev run my-agent chat -i '{"message": "Hello!"}'
+pnpm fsdev run my-agent chat -i '{"message": "Hello!"}'
 ```
 
 The first argument is the flow **instance** id — see [Flows](/docs/fundamentals/flows#how-an-instance-is-addressed) for how that id is formed. An id nothing is registered under fails, and the error lists the ids that are. Running a session through a copy that doesn't own it exits non-zero and leaves the session untouched.
@@ -92,10 +92,10 @@ Without a config, `fsdev run` writes to `.fsdev/data/fsdev.db` in the working di
 
 ```bash
 # State persists between invocations with the same --session
-fsdev run stateful increment -i '{"increment": 1}' --session my-session
+pnpm fsdev run stateful increment -i '{"increment": 1}' --session my-session
 # → {"count": 1}
 
-fsdev run stateful increment -i '{"increment": 1}' --session my-session
+pnpm fsdev run stateful increment -i '{"increment": 1}' --session my-session
 # → {"count": 2}
 ```
 
@@ -104,7 +104,7 @@ fsdev run stateful increment -i '{"increment": 1}' --session my-session
 Start an HTTP dev server that serves the flow API and DevTool UI together.
 
 ```bash
-fsdev dev
+pnpm fsdev dev
 ```
 
 **Options:**
@@ -135,7 +135,7 @@ A non-loopback `--host` needs a config, so its flows' authentication can be chec
 Add `--watch` and leave `fsdev dev` running while you work on your flows:
 
 ```bash
-fsdev dev --config ./fsdev.config.mts --watch
+pnpm fsdev dev --config ./fsdev.config.mts --watch
 ```
 
 When you save a file your config loaded, such as a flow module, any file in the config's folder, such as a `WORKER.md` read from disk, or a `.env.local` file `fsdev` loaded, the server restarts on the same port and any page open on it reloads by itself. Adding a new file to the config's folder, such as a new worker's `WORKER.md`, restarts it too. Saving a data file, something under `node_modules`, or a file in a folder whose name starts with a dot does nothing. With `--port 0`, the free port is picked once and kept across restarts.
@@ -149,7 +149,7 @@ A restart is a new process. A config with in-memory stores starts empty each tim
 `fsdev dev` normally puts the DevTool at the root of its port. With `--app`, your own app's pages go there instead and the DevTool moves to a port of its own:
 
 ```bash
-fsdev dev --config ./fsdev.config.mts --app @acme/ops-console
+pnpm fsdev dev --config ./fsdev.config.mts --app @acme/ops-console
 ```
 
 `--app` takes a directory with an `index.html`, or a package that exports `getAssetPath()`, a function returning that directory. A relative path or a package name resolves from the directory you run the command in. The path of a package's module file names that package too, which lets a command that wraps `fsdev dev` pass itself from wherever it is run. The API stays at `/api/flows` on the same origin, so your pages call it with relative URLs and need no proxy.
@@ -165,7 +165,7 @@ This is for development. To host an app's pages in production, pass its director
 Start a production HTTP server for the flow API and MCP endpoints, with no DevTool UI. This is the production counterpart to `fsdev dev`.
 
 ```bash
-fsdev serve
+pnpm fsdev serve
 ```
 
 **Options:**
@@ -188,13 +188,13 @@ Exit code `3` covers an invalid port, a missing committed config, a guard refusa
 
 ```bash
 # Bind $HOST (then 0.0.0.0) on $PORT (then 3000)
-fsdev serve
+pnpm fsdev serve
 
 # Override the port from the environment
-PORT=8080 fsdev serve
+PORT=8080 pnpm fsdev serve
 
 # Point at an explicit config file
-fsdev serve --config ./fsdev.config.ts
+pnpm fsdev serve --config ./fsdev.config.ts
 ```
 
 See [App Configuration](/docs/cli/configuration) for the config contract, [Host adapters](/docs/server/host-adapters) for the `serve()` wrapper this command uses, [MCP Server](/docs/server/mcp) for the MCP endpoints it stands up, and the [Deployment overview](/guides/deployment) for platform guidance.
@@ -204,7 +204,7 @@ See [App Configuration](/docs/cli/configuration) for the config contract, [Host 
 Start an interactive session (a REPL) over a flow. Type messages that route to a default target and stream replies back; use slash commands to switch the target and inspect the session.
 
 ```bash
-fsdev chat hello-chat chat
+pnpm fsdev chat hello-chat chat
 ```
 
 **Options:**
@@ -242,7 +242,7 @@ Startup binds a default target from the positional arguments, a config `chat.def
 Execute a single block in isolation using the testing harness.
 
 ```bash
-fsdev block ./src/flows/my-app/blocks/counter.ts -i '{"increment": 1}'
+pnpm fsdev block ./src/flows/my-app/blocks/counter.ts -i '{"increment": 1}'
 ```
 
 **Options:**
@@ -274,7 +274,7 @@ fsdev block ./src/flows/my-app/blocks/counter.ts -i '{"increment": 1}'
 Load a `defineBenchmark` file and print the scorecard.
 
 ```bash
-fsdev benchmark ./benchmark.ts
+pnpm fsdev benchmark ./benchmark.ts
 ```
 
 Narrative and flags: [Benchmarks](/docs/testing/benchmarks) and [Choosing a pattern with benchmarks](/guides/choosing-patterns-with-benchmarks).
@@ -284,8 +284,8 @@ Narrative and flags: [Benchmarks](/docs/testing/benchmarks) and [Choosing a patt
 Install or list components from the Flow State UI registry. `add` shells out to the shadcn CLI.
 
 ```bash
-fsdev ui add model-badge
-fsdev ui list
+pnpm fsdev ui add model-badge
+pnpm fsdev ui list
 ```
 
 Narrative: [UI](/docs/ui/overview).
@@ -295,8 +295,8 @@ Narrative: [UI](/docs/ui/overview).
 List the git worktrees a workspace host made under `<root>` (the `root` you passed to `localWorkspaceHost`), or remove one.
 
 ```bash
-fsdev worktrees /var/fsd/runs
-fsdev worktrees /var/fsd/runs --remove /var/fsd/runs/acme/u1/run-7/checkout --delete-branch
+pnpm fsdev worktrees /var/fsd/runs
+pnpm fsdev worktrees /var/fsd/runs --remove /var/fsd/runs/acme/u1/run-7/checkout --delete-branch
 ```
 
 The listing prints one line per worktree: `clean`, `dirty` or `gone` (its directory is missing), then the branch (`(detached)` for a detached HEAD), then the directory. It covers every clone under the root and every repository on this machine that a host on the root listed, found from the pin files in `<root>/.fetch-pins/`. Add others with `--repo`.
@@ -342,7 +342,7 @@ This means flows defined anywhere in your monorepo are automatically discoverabl
 Use `--flow-dir` to override default discovery with explicit paths. This is repeatable:
 
 ```bash
-fsdev run my-flow action -i '{}' \
+pnpm fsdev run my-flow action -i '{}' \
   --flow-dir ./packages/api/src/flows \
   --flow-dir ./shared/flows
 ```

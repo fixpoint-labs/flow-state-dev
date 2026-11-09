@@ -1,5 +1,6 @@
+// FIX-2428.
 /**
- * `client.subscribe` (FIX-2428): hear that something under a topic changed,
+ * `client.subscribe`: hear that something under a topic changed,
  * and read again.
  *
  * One hub per client holds one socket (epic D4), shared by every

@@ -268,7 +268,8 @@ it is the second kind: restore the state it changes, or add the file to
 failures.
 
 The testing package (`@flow-state-dev/testing`) provides framework-specific harnesses:
-- `testBlock`, `testSequencer`, `testRouter`, `testFlow` — block/flow test helpers
+- `testBlock`, `testFlow` — block/flow test helpers (a sequencer's `testBlock` result carries its steps, a router's its chosen route)
+- `@flow-state-dev/testing/benchmark` — the cross-pattern benchmark harness
 - `mockGenerator`, `createMockModelResolver` — generator mocking
 - `testItems`, `snapshotTrace` — assertion utilities
 

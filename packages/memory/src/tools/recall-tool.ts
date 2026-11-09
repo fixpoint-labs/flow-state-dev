@@ -1,3 +1,4 @@
+// BP-011.
 /**
  * `createRecallTool` — agent-invocable recall tool, expressed as a sequencer
  * composing strategy-supplied blocks. The agent installs it on a generator
@@ -20,7 +21,7 @@
  *   resolves `selectedIds` against the candidate map, drops hallucinations.
  *
  * No handler in this pipeline reaches into `asRuntime` to invoke another
- * block (BP-011): the framework's executor walks each step at the substrate
+ * block: the framework's executor walks each step at the substrate
  * boundary, the same way it does for any other sequencer.
  */
 

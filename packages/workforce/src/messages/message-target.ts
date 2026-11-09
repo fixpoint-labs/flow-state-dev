@@ -1,5 +1,6 @@
+// FIX-2160.
 /**
- * Where a message addressed to a task or a session lands (FIX-2160), checked
+ * Where a message addressed to a task or a session lands, checked
  * before anything is written.
  *
  * `{ task: id }` lands in the session that works the task: the conversation
@@ -16,17 +17,18 @@
  * {@link checkTargetSession} is the check on its own, for a send that already
  * knows the session: a resend reruns it on the session its row names.
  */
-import type { BlockContext, SessionView } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { PeerSessionView } from "@flow-state-dev/core/internal";
 import {
-  findTaskPartitions,
   isTerminalStatus,
-  rowsInSession,
   type TaskCollectionRef
 } from "@flow-state-dev/orchestration/tasks";
+import { findTaskPartitions, tasksInSession } from "@flow-state-dev/orchestration/internal";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt } from "../conversation-board/ledger";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import { messageHearingOf } from "./received-mark";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 /** A message's target: a worker by its id, a task by its id, or one of the user's conversations by its session id. */
 export type MessageTarget = string | { readonly task: string } | { readonly session: string };
@@ -59,9 +61,9 @@ export async function checkTargetSession(
   const notFound = viaTask
     ? `no_task_session: no task "${of.task}" of yours has a session to message. A task that hasn't started has none.`
     : `no_session: no conversation "${sessionId}" of yours.`;
-  const sessions = ctx.requestHost?.sessions;
+  const sessions = requestHostOf(ctx)?.sessions;
   if (sessions === undefined) return refuse(`${notFound} (This host can't check a session, so only a worker's name reaches one.)`);
-  const view: SessionView | undefined = await sessions.read(sessionId);
+  const view: PeerSessionView | undefined = await sessions.read(sessionId);
   if (view === undefined) return refuse(notFound);
 
   const state = view.state;
@@ -71,7 +73,7 @@ export async function checkTargetSession(
     );
   }
   const workerId = state[WORKER_ID_STATE_KEY];
-  const worker = typeof workerId === "string" ? await installation.rosterWorker(ctx as never, workerId) : undefined;
+  const worker = typeof workerId === "string" ? await installation.rosterWorker(ctx, workerId) : undefined;
   if (worker === undefined) return refuse(`no_worker: the worker in "${sessionId}" isn't on your roster now.`);
   if (worker.problem !== undefined) return refuse(`worker_unavailable: worker "${worker.id}" can't be messaged: ${worker.problem}.`);
   if ((view.flowId ?? view.flowKind) !== worker.flow) {
@@ -85,7 +87,7 @@ export async function checkTargetSession(
       );
     }
     // The task and its follow-ups, which run in that session one at a time.
-    if (rowsInSession(of.ledger, sessionId).some((row) => !isTerminalStatus(row.status))) {
+    if (tasksInSession(of.ledger, sessionId).some((row) => !isTerminalStatus(row.status))) {
       return refuse(
         `task_running: task "${of.task}" is still running, and a message would reach the work itself. ` +
           `Read it with getTask, or message it once it has ended.`

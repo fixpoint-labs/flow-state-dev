@@ -19,7 +19,9 @@ import type { EvaluationModel, GeneratorModel, ModelResolver } from "@flow-state
 import { createMockModelResolver, mockEvaluationModel } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
-import { createInMemoryStores, createResponseEmitter, runAction } from "../src";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
+import { createResponseEmitter } from "../src/host";
 
 const questions = {
   team: choice("Which team should handle this?", {

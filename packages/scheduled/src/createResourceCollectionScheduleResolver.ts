@@ -52,9 +52,10 @@ export interface CreateResourceCollectionScheduleResolverOptions {
    * before `*`) to build the storage key.
    */
   collection: { pattern: string };
+  // FIX-838.
   /**
-   * Handler registry keyed by the persisted row's `kind` discriminator
-   * (FIX-838). A schedule binding carries its handler block inline, but a
+   * Handler registry keyed by the persisted row's `kind` discriminator.
+   * A schedule binding carries its handler block inline, but a
    * block cannot be serialized into resource state — so the row stores a
    * `kind` string and the resolver maps it to a real block here. A row whose
    * `kind` is absent from this map resolves to `null` (404), exactly like an

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll } from "vitest";
 import { createSessionStreamConformanceTests } from "@flow-state-dev/engine/testing";
-import { createSQLiteStores, type SQLiteStoreRegistry } from "../src";
+import { createSQLiteStores, type SQLiteStoreRegistry } from "../src/host";
 
 const open: SQLiteStoreRegistry[] = [];
 const dirs: string[] = [];

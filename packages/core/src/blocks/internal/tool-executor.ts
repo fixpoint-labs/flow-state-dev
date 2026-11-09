@@ -50,14 +50,16 @@ export interface ToolExecutorConfig {
   itemVisibility: ItemVisibility | undefined;
   agentName: string | undefined;
   statusGuard: { active: number; saved: string };
+  // FIX-814.
   /**
-   * The model-facing disambiguated alias this tool was compiled under
-   * (FIX-814). Recorded on the emitted `tool_output.toolCall.alias`. Absent on
+   * The model-facing disambiguated alias this tool was compiled under.
+   * Recorded on the emitted `tool_output.toolCall.alias`. Absent on
    * legacy call sites, where alias falls back to the sanitized block name.
    */
   alias?: string;
+  // FIX-814.
   /**
-   * The tool's `mapModelOutput` mapper, when declared (FIX-814). Applied once
+   * The tool's `mapModelOutput` mapper, when declared. Applied once
    * at settle time to compute the persisted `tool_output.modelOutput`.
    */
   mapModelOutput?: (output: unknown, ctx: BlockContext) => unknown | Promise<unknown>;
@@ -73,12 +75,12 @@ export function buildToolExecutor(
   tool: GeneratorTool,
   config: ToolExecutorConfig,
   ctx: BlockContext,
-): (args: unknown, options?: { toolCallId?: string; stepNumber?: number; pathName?: string }) => Promise<unknown> {
+): (args: unknown, options?: { toolCallId?: string; stepNumber?: number }) => Promise<unknown> {
   const { flowTools, generatorBlockName, itemVisibility, agentName, statusGuard } = config;
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
 
-  return async (args: unknown, options?: { toolCallId?: string; stepNumber?: number; pathName?: string }) => {
+  return async (args: unknown, options?: { toolCallId?: string; stepNumber?: number }) => {
     const cacheable = tool.config.cacheable;
     let cacheMiss: { key: string; cfg: BlockCacheableConfig; store: ToolCacheStore } | undefined;
     if (cacheable !== undefined) {
@@ -170,8 +172,7 @@ export function buildToolExecutor(
         options?.stepNumber !== undefined
           ? `${options.stepNumber}:${options?.toolCallId ?? "0"}`
           : (options?.toolCallId ?? "0");
-      // `pathName`: a resumed call recorded under the tool's former name keeps that name's path.
-      const toolPath = extendBlockPath(parentPath, blockPathTool(options?.pathName ?? tool.name, disambiguator));
+      const toolPath = extendBlockPath(parentPath, blockPathTool(tool.name, disambiguator));
       const instanceId = buildBlockInstanceId(ctx.request.identity.id, toolPath, 0);
       return ctx._withExecutionScope(
         // FIX-914: a tool that declares its own `stateSchema` gets a

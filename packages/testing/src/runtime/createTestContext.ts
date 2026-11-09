@@ -6,11 +6,12 @@ import { cloneValue, deepEqual } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 import {
   createExecutionContext,
-  createInMemoryStores,
-  createResponseEmitter,
-  type ExecutionContext,
   type StoreRegistry
 } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores
+} from "@flow-state-dev/engine/host";
+import { createResponseEmitter, type ExecutionContext } from "@flow-state-dev/engine/host";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   StateChange,
@@ -529,7 +530,8 @@ export async function createTestContext<TInput = unknown>(
     orgId,
     response,
     stores,
-    modelResolver
+    modelResolver,
+    ...(options.signal === undefined ? {} : { signal: options.signal })
   });
 
   wrapScopeStateOps("request", ctx.request as unknown as Record<string, unknown>, stateChanges);

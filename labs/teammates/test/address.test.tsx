@@ -52,20 +52,20 @@ describe("the page's address", () => {
   it("reopens the teammate that was open, not the first, after a reload", async () => {
     const adapter = fast();
     render(<App adapter={adapter} />);
-    await waitFor(() => expect(workerRow("Chief of Staff").getAttribute("aria-current")).toBe("true"));
+    await waitFor(() => expect(workerRow("Lead").getAttribute("aria-current")).toBe("true"));
     fireEvent.click(workerRow("writer"));
     await screen.findByLabelText("Message writer");
 
     reload(adapter);
     expect(await screen.findByLabelText("Message writer")).toBeTruthy();
     expect(workerRow("writer").getAttribute("aria-current")).toBe("true");
-    expect(workerRow("Chief of Staff").getAttribute("aria-current")).not.toBe("true");
+    expect(workerRow("Lead").getAttribute("aria-current")).not.toBe("true");
   });
 
   it("reopens the task popup that was open, after a reload", async () => {
     const adapter = fast();
     render(<App adapter={adapter} />);
-    await tell("Chief of Staff", "Fix the typo in the README's first line.");
+    await tell("Lead", "Fix the typo in the README's first line.");
     fireEvent.click(await within(conversation()).findByRole("button", { name: `${TASK}, on Cursor` }));
     await screen.findByRole("dialog", { name: TASK });
 
@@ -76,7 +76,7 @@ describe("the page's address", () => {
 
   it("goes Back to the teammate that was open before", async () => {
     render(<App adapter={fast()} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
     fireEvent.click(workerRow("writer"));
     await screen.findByLabelText("Message writer");
     fireEvent.click(workerRow("researcher"));
@@ -90,7 +90,7 @@ describe("the page's address", () => {
   it("opens the first teammate on a link whose teammate and task are gone, and drops them from the address", async () => {
     window.history.replaceState(null, "", "/?worker=teammates.gone&session=session-gone&task=task-gone");
     render(<App adapter={fast()} />);
-    expect(await screen.findByLabelText("Message Chief of Staff")).toBeTruthy();
+    expect(await screen.findByLabelText("Message Lead")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(params().get("worker")).toBe("teammates.chief-of-staff"));
     expect(params().has("session")).toBe(false);
@@ -100,7 +100,7 @@ describe("the page's address", () => {
   it("closes a task popup whose task is gone, and keeps the teammate", async () => {
     const adapter = fast();
     render(<App adapter={adapter} />);
-    await screen.findByLabelText("Message Chief of Staff");
+    await screen.findByLabelText("Message Lead");
     fireEvent.click(workerRow("writer"));
     await screen.findByLabelText("Message writer");
     // Opened once, so the conversation's session is in the address to name.

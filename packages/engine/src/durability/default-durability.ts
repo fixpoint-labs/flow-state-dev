@@ -1,5 +1,6 @@
+// FIX-2063 D2.
 /**
- * Whether a host gets durable execution (FIX-2063 D2).
+ * Whether a host gets durable execution.
  *
  * On by default wherever the checkpoint and suspension stores persist.
  * `durable: false` turns it off; `durable: true` turns it on even over

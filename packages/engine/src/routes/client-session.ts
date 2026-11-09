@@ -1,8 +1,9 @@
+// BP-015; BP-031.
 /**
  * A session record as the session routes send it to a client.
  *
  * Scope state is private by default: a client sees a state field only when
- * the owning flow names it in `session.client.expose` (BP-015), or declares
+ * the owning flow names it in `session.client.expose`, or declares
  * it readonly. A readonly field is the session's identity, set at create and
  * already published as a listing filter (`?state.<field>=`), so a client that
  * finds a session by it can also read it back.
@@ -12,14 +13,14 @@
  * than spreading the stored record onto the wire.
  *
  * Server-side code that needs the whole record reads the session store; there
- * is no request flag that widens this view (BP-031).
+ * is no request flag that widens this view.
  */
 import type { JsonObject } from "@flow-state-dev/core/types";
 import { getReadonlyStateKeys } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { SessionRecord } from "../stores/types";
 import { resolveRecordOwner } from "../context/record-owner";
-import { applyScopeStateDefaults } from "../context/scope-state-defaults";
+import { applyScopeStateDefaults, scopeStateSchema } from "../context/scope-state-defaults";
 
 /**
  * The session record minus what never leaves the server: its `journal` and its
@@ -49,15 +50,16 @@ export function toClientSession(
   const visible = owner.ok
     ? [
         ...(owner.flow.session?.client?.expose ?? []),
-        ...getReadonlyStateKeys(owner.flow.session?.stateSchema)
+        ...getReadonlyStateKeys(scopeStateSchema(owner.flow, "session"))
       ]
     : [];
   // The fields read as a run reads them: with the schema's defaults.
-  const read = owner.ok ? applyScopeStateDefaults(owner.flow.session?.stateSchema, state) : state;
+  const read = owner.ok ? applyScopeStateDefaults(scopeStateSchema(owner.flow, "session"), state) : state;
   return { ...envelope, id: bareId, state: visibleState(read, visible) };
 }
 
-/** The visible fields of `state` that it holds. Absent or legacy state is empty (BP-030). */
+// BP-030.
+/** The visible fields of `state` that it holds. Absent or legacy state is empty. */
 function visibleState(state: JsonObject | undefined, visible: ReadonlyArray<string>): JsonObject {
   const out: JsonObject = {};
   if (state == null) return out;

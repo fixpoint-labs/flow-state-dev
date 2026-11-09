@@ -22,14 +22,12 @@ import {
 } from "@flow-state-dev/core";
 import { z } from "zod";
 import type { JsonObject, ResourceConfig, ResourceCollectionRef } from "@flow-state-dev/core/types";
-import {
-  FlowError,
-  NetworkError,
-  createInMemoryStores,
-  isRetryableError,
-  retryWithPolicy,
-  runAction
-} from "../src";
+import { FlowError } from "@flow-state-dev/core";
+import { NetworkError } from "../src/errors/flow-error";
+import { runAction } from "../src";
+import { createInMemoryStores } from "../src/host";
+import { retryWithPolicy } from "../src/execution/retry";
+import { isRetryableError } from "../src/execution/retry";
 import { createScopeResourceRegistry } from "../src/context/resource-registry";
 
 const RETRY_POLICY = {

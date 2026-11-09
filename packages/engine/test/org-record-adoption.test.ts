@@ -17,7 +17,8 @@ import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createExecutionContext } from "../src/context/createExecutionContext";
-import { createInMemoryStores, createResponseEmitter } from "../src";
+import { createInMemoryStores } from "../src/host";
+import { createResponseEmitter } from "../src/host";
 import type { StoreRegistry } from "../src";
 
 const ORG_ID = "org-race";

@@ -8,12 +8,13 @@ import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createFlowState, inMemoryStores, runAction } from "../src";
+import { requestHostOf } from "@flow-state-dev/core/internal";
 
 const read = handler({
   name: "read-runs-here",
   inputSchema: z.object({}),
   outputSchema: z.any(),
-  execute: (_input, ctx) => ({ runsHere: ctx.requestHost?.dispatchRunsHere === true })
+  execute: (_input, ctx) => ({ runsHere: requestHostOf(ctx)?.dispatchRunsHere === true })
 });
 const flow = defineFlow({ kind: "runs-here", actions: { read: { block: read } } })({ id: "runs-here" });
 

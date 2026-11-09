@@ -21,7 +21,6 @@ import { createWorkforceClient } from "../src/browser";
 import {
   defineProjectBlocks,
   defineWorkstreamBlocks,
-  WORKSTREAM_OPENED_ENTRY,
   WORKSTREAM_RESOURCES,
   WORKSTREAMS_RESOURCE,
   workstreamEntryKey,
@@ -118,8 +117,8 @@ async function boot(): Promise<ProjectsHost & { lab: (user: string) => Promise<s
   const projects = defineProjectBlocks();
   const h = await bootProjectsHost({
     lab: (installation) => {
-      const leadFlow = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
-      const lead2Flow = { kind: "lead2", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+      const leadFlow = { kind: "lead", internal: { actions: { onWorkstreamOpened: {} } } };
+      const lead2Flow = { kind: "lead2", internal: { actions: { onWorkstreamOpened: {} } } };
       const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [leadFlow, lead2Flow] });
       return {
         ...projects.actions,
@@ -129,12 +128,12 @@ async function boot(): Promise<ProjectsHost & { lab: (user: string) => Promise<s
         plantStalledOpen: { block: plantStalledOpen }
       };
     },
-    leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
-    lead2Internal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
+    leadInternal: () => ({ onWorkstreamOpened: workstreamOpenedEntry() }),
+    lead2Internal: () => ({ onWorkstreamOpened: workstreamOpenedEntry() }),
     lead: (installation) => {
       const { updateWorkstreamTool } = defineWorkstreamBlocks({
         installation,
-        leadFlows: [{ kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }]
+        leadFlows: [{ kind: "lead", internal: { actions: { onWorkstreamOpened: {} } } }]
       });
       // The lead's turn: load its worker, as a worker flow's turn does, then run the tool.
       const loadWorker = handler({
@@ -400,7 +399,7 @@ describe("who writes an entry", () => {
     // Flow code writing the collection, registered and run as bob.
     const forced = await h.ok("bob", "lab", await h.lab("bob"), "forceWrite", { owner: "alice", id: "checkout" });
     for (const outcome of Object.values(forced)) {
-      expect(outcome).toContain("refused: A row of an owner-writes collection is written only by the user it belongs to.");
+      expect(outcome).toContain("refused: A resource in an owner-writes collection is written only by the user it belongs to.");
     }
     // The app's action, naming her entry: the store refuses it by the same rule.
     const action = await h.act("bob", "lab", await h.lab("bob"), "updateWorkstream", {
@@ -411,7 +410,7 @@ describe("who writes an entry", () => {
       report: "BOB-REPORT"
     });
     expect(action.settled).not.toBe("completed");
-    expect(refusal(action)).toContain("A row of an owner-writes collection is written only by the user it belongs to.");
+    expect(refusal(action)).toContain("A resource in an owner-writes collection is written only by the user it belongs to.");
     // Left to the caller, the action addresses bob's own entry, which he doesn't have.
     const his = await h.act("bob", "lab", await h.lab("bob"), "updateWorkstream", { project: apollo, id: "checkout", status: "blocked" });
     expect(refusal(his)).toContain("no-such-workstream");
