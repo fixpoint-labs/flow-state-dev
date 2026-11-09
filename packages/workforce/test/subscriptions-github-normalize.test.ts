@@ -177,6 +177,7 @@ describe("addressed: the event asks the app's agent", () => {
     expect(comment("``code`` then @acme-agent please").addressed).toBe(true);
     // A code span never crosses a blank line: a stray backtick doesn't swallow the next paragraph's mention.
     expect(comment("Don`t merge yet.\n\n@acme-agent please fix the test, see `foo`").addressed).toBe(true);
+    expect(comment("Don`t merge yet.\n\n@acme-agent please fix the test\n\nsee `foo`").addressed).toBe(true);
     expect(comment("mail me at bob@acme-agent.dev").addressed).toBeUndefined();
     expect(comment("@carol can you look?").addressed).toBeUndefined();
   });
