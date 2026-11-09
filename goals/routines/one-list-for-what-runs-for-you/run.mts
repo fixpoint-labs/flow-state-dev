@@ -20,12 +20,12 @@ const PATCHES: Record<string, ModulePatch[]> = {
   "schedules-only": [{ module: ROUTINES, from: String.raw`\.filter\(\(row\) => row\.enabled \|\| isPaused\(row\)\)\.map\(listedEvent\)`, to: ".filter(() => false).map(listedEvent)" }],
   // A pause turns the row off and leaves it in the thread index.
   "pause-keeps-index": [
-    { module: "packages/workforce/src/subscriptions/subscribe.ts", from: String.raw`await dropFromIndex\(ctx, row\.thread, id\);`, to: 'if (reason !== "paused") await dropFromIndex(ctx, row.thread, id);' }
+    { module: "packages/workforce/src/subscriptions/subscribe.ts", from: String.raw`await dropFromIndex\(ctx, outcome\?\.thread \?\? ref\.state\.thread, id\);`, to: 'if (reason !== "paused") await dropFromIndex(ctx, outcome?.thread ?? ref.state.thread, id);' }
   ],
   // A seed writes every declared routine on, whatever the person paused.
   "seed-unpauses": [
     { module: ROUTINES, from: String.raw`enabled: existing\?\.enabled \?\? true`, to: "enabled: true" },
-    { module: ROUTINES, from: String.raw`isPaused\(existing\) \? \{ paused: true`, to: "false ? { paused: true" }
+    { module: ROUTINES, from: String.raw`await seedSubscription\(ctx, `, to: "await subscribe(ctx, " }
   ],
   // A resume subscribes again without the row's task.
   "resume-drops-task": [{ module: ROUTINES, from: String.raw`\.\.\.\(row\.taskId === undefined \? \{\} : \{ taskId: row\.taskId \}\)`, to: "...{}" }]
@@ -234,10 +234,11 @@ await runGoal(async (failures, tell) => {
     await fire(h, A, F.clock.name, F.clock.cron);
     if (tasksRun(h) !== before) failures.push(`b:clock-files-nothing — a paused clock routine ran ${tasksRun(h) - before} tasks`);
     const hearer = await conversation(A);
-    await h.route(on(F.personThread, "while paused"));
-    if ((await h.heard(hearer)).some((m) => m.includes("while paused"))) failures.push("b:event-delivers-nothing — a paused event routine delivered");
+    // Before any event: delivery heals a stale entry, and the claim is that the pause took it out.
     const personSub = personEvent.id.slice("event:".length);
     if ((await indexed(h, F.personThread)).includes(personSub)) failures.push("b:out-of-the-index — the paused routine is still in the thread index");
+    await h.route(on(F.personThread, "while paused"));
+    if ((await h.heard(hearer)).some((m) => m.includes("while paused"))) failures.push("b:event-delivers-nothing — a paused event routine delivered");
 
     // ---- (c) resumed fires again; a resume re-checks read access ----
     saved(await roster(h, A, "pauseRoutine", { id: clockId, paused: false }), "resuming the clock");

@@ -46,6 +46,7 @@ import { subscriptionResources, subscriptionsOf, type SubscriptionResourceState 
 import {
   isPaused,
   resumeSubscription,
+  seedSubscription,
   subscribe,
   subscribeInputSchema,
   unsubscribe,
@@ -502,16 +503,14 @@ export async function seedDeclaredRoutines(
         worker: target.worker,
         sessionId: target.sessionId
       });
-      // An unchanged entry writes nothing, even over a row its thread ended.
-      if (existing !== undefined && deepEqual(withoutUndefined({ ...subscribeInputOf(existing), worker: existing.worker, sessionId: existing.sessionId }), wanted)) {
+      // An unchanged entry writes nothing, even over a row its thread ended; one that left config
+      // and is back turns on again.
+      if (existing !== undefined && existing.endedReason !== "config_removed" && deepEqual(withoutUndefined({ ...subscribeInputOf(existing), worker: existing.worker, sessionId: existing.sessionId }), wanted)) {
         outcome.unchanged.push(entry.id);
         continue;
       }
-      const written = await subscribe(ctx, options.providers ?? [], event, target, {
-        id: key,
-        madeBy,
-        ...(existing !== undefined && isPaused(existing) ? { paused: true as const } : {})
-      });
+      // The config's fields over the row's committed state: a pause, or an end, stays.
+      const written = await seedSubscription(ctx, options.providers ?? [], event, target, { id: key, madeBy });
       (("refused" in written ? outcome.refused : outcome.written) as string[]).push(entry.id);
     } catch {
       outcome.refused.push(entry.id);

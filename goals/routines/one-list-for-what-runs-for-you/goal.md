@@ -26,8 +26,8 @@
 **Controls:** each patches the code under test as it loads (`goals/lib/module-patch.mts`); nothing is written to the checkout.
 
 - `GOAL_CONTROL=schedules-only`: the list reads the schedule collection only. Must FAIL `a:every-writer` (and `a:the-seed`, `a:equals-the-store`, `g:lists`, `f:once`).
-- `GOAL_CONTROL=pause-keeps-index`: a pause turns the row off and leaves its index entry. Must FAIL `b:out-of-the-index` (and `c:read-rechecked`, `f:keeps-the-pause`, by the same cause).
-- `GOAL_CONTROL=seed-unpauses`: a seed writes declared routines on. Must FAIL `f:keeps-the-pause`.
+- `GOAL_CONTROL=pause-keeps-index`: a pause turns the row off and leaves its index entry (graded before any event, since delivery heals a stale entry). Must FAIL `b:out-of-the-index` (and `c:read-rechecked`, `f:keeps-the-pause`, by the same cause).
+- `GOAL_CONTROL=seed-unpauses`: a seed writes declared routines on (the clock row `enabled: true`, the event row as a fresh subscribe). Must FAIL `f:keeps-the-pause`.
 - `GOAL_CONTROL=resume-drops-task`: a resume subscribes without the row's task. Must FAIL `h:keeps-its-task`.
 - Today's `main` has no `listRoutines` or `saveRoutine`: setup's first save throws, so it fails before leg a.
 
@@ -42,3 +42,5 @@
 | 2026-11-09 | `21d31bc2c` | n/a | FAIL (expected) | `GOAL_CONTROL=resume-drops-task`: `h:keeps-its-task` (the resumed row names no task) |
 | 2026-11-09 | `08e7e49f2` + controls repointed | n/a | PASS | After the review fixes (resume only over a paused row, tenant kept, reseed leaves the old index, shared clock rows): every leg as before |
 | 2026-11-09 | `08e7e49f2` + controls repointed | n/a | FAIL (expected) | All four controls fail as listed. `pause-keeps-index` now patches `unsubscribe`'s `dropFromIndex` call, and `resume-drops-task` spreads `{}` for the task, since the code they patched moved |
+| 2026-11-09 | committed-transition change + controls repointed | n/a | PASS | Every subscription transition decided on the committed row; delivery heals stale index entries. All legs as before; leg b grades the index before routing |
+| 2026-11-09 | committed-transition change + controls repointed | n/a | FAIL (expected) | `schedules-only`: `a:every-writer` …; `pause-keeps-index`: `b:out-of-the-index`, `c:read-rechecked`; `seed-unpauses`: `f:keeps-the-pause`; `resume-drops-task`: `h:keeps-its-task` |

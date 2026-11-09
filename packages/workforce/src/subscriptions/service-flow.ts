@@ -58,8 +58,9 @@ import {
   type SubscriptionCursor,
   type SubscriptionResourceState
 } from "./rows";
-import { configScreenChain, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
-import { unsubscribe, type SubscriptionProvider } from "./subscribe";
+import { configScreenChain, screenRefusal, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
+import { SCREEN_KINDS } from "./rows";
+import { dropFromIndex, unsubscribe, type SubscriptionProvider } from "./subscribe";
 
 /** The default cap: the most messages one subscription sends in an hour. */
 export const DEFAULT_SUBSCRIPTION_CAP_PER_HOUR = 30;
@@ -371,10 +372,33 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       const identity = ctx.session.identity as { userId?: string; orgId?: string };
       // The row decides: this user's, this org's, on, and on this event's thread.
       const row: SubscriptionResourceState | undefined = (await subscriptionsOf(ctx).getOptional(subscription))?.state;
-      if (row === undefined || !row.enabled) return { act: "ended" };
+      // The index only nominates, and an entry can outlive what its row now says (an end, a move
+      // to another thread, screens a racing write replaced). The row decides; an entry it doesn't
+      // back is taken out here, so the index heals on the next event that finds it.
+      const heal = async () => {
+        for (const thread of event.threads) if (thread !== row?.thread || row?.enabled !== true) await dropFromIndex(ctx, thread, subscription);
+      };
+      if (row === undefined || !row.enabled) {
+        await heal();
+        return { act: "ended" };
+      }
       if (row.userId !== identity.userId || row.orgId !== identity.orgId) return { act: "refused", reason: "another user's subscription" };
       if (row.provider !== event.provider || row.provider !== provider.provider || !event.threads.includes(row.thread)) {
+        await heal();
         return { act: "refused", reason: "not this subscription's thread" };
+      }
+      // The screens again, on the row's own settings: the index entry routing nominated by can be stale.
+      if (endOnly !== true) {
+        for (const kind of SCREEN_KINDS) {
+          const refused = screenRefusal(kind, event, row, { trustedBots: options.trustedBots ?? [] });
+          if (refused === undefined) continue;
+          // A closing event still ends it, as routing's end-only run would have.
+          if (closedThreadOf(event) === row.thread) {
+            await unsubscribe(ctx, subscription, "thread_closed");
+            return { act: "ended" };
+          }
+          return { act: "refused", reason: `${kind}: ${refused}` };
+        }
       }
       const closes = closedThreadOf(event) === row.thread;
       if (endOnly === true && !closes) return { act: "refused", reason: "the event doesn't close this subscription's thread" };
