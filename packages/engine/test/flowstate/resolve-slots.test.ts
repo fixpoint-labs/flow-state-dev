@@ -3,6 +3,7 @@ import { createInMemoryBus, type ChangeBus } from "../../src/host";
 import { inMemoryStores, type StoreAdapter } from "../../src";
 import { FlowStateConfigError } from "../../src/errors/flow-error";
 import { resolveProfileStores, PRIMARY_REGISTRY_SLOTS } from "../../src/flowstate/resolve-slots";
+import { createMemoryBlobStore } from "../../src/blobs/memory-blob-store";
 
 /** A bare adapter that lies about its capabilities for the mismatch test. */
 function fakeAdapter(capabilities: StoreAdapter["capabilities"]): StoreAdapter {
@@ -25,19 +26,20 @@ describe("resolveProfileStores", () => {
     }
   });
 
-  it("treats blobs as forward-compatible — no error, no projected sub-store", async () => {
+  it("projects the blobs slot onto the registry's blob store (FIX-824)", async () => {
+    const blobs = createMemoryBlobStore();
     const { stores, adapters } = await resolveProfileStores({
       profileName: "default",
       profile: {
         primary: inMemoryStores(),
-        blobs: fakeAdapter(["blobs"])
+        blobs: { capabilities: ["blobs"], resolve: async () => ({ blobs }) }
       }
     });
-    // Still a complete registry (primary backs everything).
+    // Still a complete registry (primary backs everything else).
     for (const slot of PRIMARY_REGISTRY_SLOTS) {
       expect(stores[slot]).toBeDefined();
     }
-    // The blobs adapter is recorded for disposal but resolves no sub-store.
+    expect(stores.blobs).toBe(blobs);
     expect(adapters.length).toBe(2);
   });
 

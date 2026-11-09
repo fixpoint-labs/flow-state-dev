@@ -7,6 +7,7 @@
  * SSE heartbeats are emitted by `@flow-state-dev/engine` for every live and
  * GET-attach stream — this adapter no longer injects them itself.
  */
+import { declareEphemeralDisk } from "@flow-state-dev/engine/host";
 import type {
   FlowApiRouter,
   VercelHandlerInput,
@@ -29,9 +30,20 @@ function isSSEResponse(response: Response): boolean {
   return ct.includes("text/event-stream");
 }
 
+/**
+ * This host's runtime: a function's disk does not last between requests, so
+ * the router is told before it serves one. It then refuses attachment uploads
+ * to a blob store that keeps bytes on this host, by name, rather than storing
+ * files the next request can't read; a hosted blob store is unaffected.
+ */
+function onThisHost(router: FlowApiRouter): FlowApiRouter {
+  declareEphemeralDisk(router);
+  return router;
+}
+
 function resolveRouter(input: VercelHandlerInput): FlowApiRouter | Promise<FlowApiRouter> {
-  if (typeof input === "function") return input();
-  return input;
+  const router = typeof input === "function" ? input() : input;
+  return router instanceof Promise ? router.then(onThisHost) : onThisHost(router);
 }
 
 type CatchAllHandler = (

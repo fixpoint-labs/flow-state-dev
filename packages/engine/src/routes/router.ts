@@ -46,6 +46,10 @@ const ROUTES_BY_KIND: { [K in CoveredKind]: RouteEntry<K>[] } = {
   list_sessions: [entry("GET", "/sessions", () => ({ kind: "list_sessions" }))],
   active_requests: [entry("GET", "/active-requests", () => ({ kind: "active_requests" }))],
   transcribe: [entry("POST", "/transcribe", () => ({ kind: "transcribe" }))],
+  // Attachments (FIX-824): beside the session routes, addressed by the blob
+  // id alone, so a reference is enough to draw a file.
+  upload_blob: [entry("POST", "/blobs", () => ({ kind: "upload_blob" }))],
+  get_blob: [entry("GET", "/blobs/:blobId", (p) => ({ kind: "get_blob", blobId: p.blobId }))],
   get_session: [
     entry("GET", "/sessions/:sessionId", (p) => ({
       kind: "get_session",

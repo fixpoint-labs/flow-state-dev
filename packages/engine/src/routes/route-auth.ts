@@ -28,10 +28,13 @@ import {
   UnattributedOrgError,
   type OrgAttributedRecord
 } from "../context/org-attribution";
+import { sessionKeyOfBlobOwner } from "../blobs/attachments";
+import { resolveSessionStorageKey, toBareSessionId } from "../stores/scope-keys";
 import {
   jsonResponse,
   loadTenantSession,
   refuseUnattributedRecord,
+  unknownBlobResponse,
   unknownRequestResponse,
   unknownRequestStreamResponse,
   unknownSessionResponse
@@ -113,6 +116,8 @@ const ALLOWED: RouteAuthResult = {};
  * `unknownSessionResponse`.
  */
 function hiddenSessionResponse(route: ParsedFlowRoute, sessionId: string): Response {
+  // A file's 404 names nothing: not the session that owns it, nor its owner.
+  if (route.kind === "get_blob") return unknownBlobResponse();
   return route.kind.startsWith("debug_")
     ? jsonResponse(404, { error: "session_not_found" })
     : unknownSessionResponse(sessionId);
@@ -142,6 +147,9 @@ function hiddenRequestResponse(
  * - `exempt` — no owner to check: public flow metadata, or `execute_action`
  *   and `run_read`, which resolve their own principal in their handlers.
  * - `session` / `request` — owner is the stored record's `userId`.
+ * - `blob` — a stored file, checked as the session that owns it is: whoever
+ *   can read that session can read the file. A file no session
+ *   owns, or one in another tenant, is answered as an unknown file.
  * - `flow` — creating a session under a flow. No record exists yet, so the
  *   caller becomes the owner rather than being checked against one.
  * - `user` — addressed by `userId` in the path; that id is the owner.
@@ -151,6 +159,7 @@ function hiddenRequestResponse(
 export type RouteSubject =
   | { kind: "exempt" }
   | { kind: "session"; sessionId: string }
+  | { kind: "blob"; blobId: string }
   | { kind: "request"; requestId: string }
   | { kind: "flow"; flowKind: string }
   | { kind: "user"; userId: string }
@@ -245,7 +254,13 @@ export function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "list_sessions":
     case "active_requests":
     case "transcribe":
+    // An upload has no owner yet: it is held for the caller who sent it, so
+    // "host" means authentication only, as for `transcribe`.
+    case "upload_blob":
       return { kind: "host" };
+
+    case "get_blob":
+      return { kind: "blob", blobId: route.blobId };
 
     default: {
       const exhaustive: never = route;
@@ -387,25 +402,37 @@ export async function authorizeManagementRoute(
    */
   let pendingDenial: Response | undefined;
 
-  switch (subject.kind) {
+  // A file is read under the check of the session that owns it. A file no
+  // session owns (held for its uploader, or another tenant's) has no session
+  // to check against and is answered as no file at all.
+  let effective: RouteSubject = subject;
+  if (subject.kind === "blob") {
+    const owning = await blobSessionId(ctx.stores, subject.blobId, ctx.tenantId);
+    if (owning === undefined) return { denied: unknownBlobResponse() };
+    effective = { kind: "session", sessionId: owning };
+  }
+
+  switch (effective.kind) {
     case "session": {
       const session = await loadTenantSession(
         ctx.stores.session,
-        subject.sessionId,
+        effective.sessionId,
         ctx.tenantId
       );
-      if (session === undefined) return { session: null };
+      if (session === undefined) {
+        return subject.kind === "blob" ? { denied: unknownBlobResponse() } : { session: null };
+      }
       const resolved = ownerFlowOf(ctx, session);
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
       owner = session.userId;
       ownerOrgId = session.orgId;
-      sessionId = subject.sessionId;
+      sessionId = effective.sessionId;
       checked = { session };
       break;
     }
     case "request": {
-      const record = await ctx.stores.request.get(subject.requestId);
+      const record = await ctx.stores.request.get(effective.requestId);
       if (record !== undefined) {
         checked = { request: record };
         const resolved = ownerFlowOf(ctx, record);
@@ -422,7 +449,7 @@ export async function authorizeManagementRoute(
       // in-flight registry — which `runAction` writes earlier, and which
       // carries the same `userId` — keeps that window authorized instead of
       // letting it through unchecked.
-      const active = await ctx.stores.activeRequests.get(subject.requestId);
+      const active = await ctx.stores.activeRequests.get(effective.requestId);
       if (active === undefined) {
         // No record and no in-flight entry: nothing names an owner. The stream
         // would still replay an event log that outlived its record (evicted
@@ -447,10 +474,10 @@ export async function authorizeManagementRoute(
     case "flow":
       // No record yet — the authenticated caller becomes the owner. The
       // address is an exact instance id.
-      governing = ctx.registry.get(subject.flowKind);
+      governing = ctx.registry.get(effective.flowKind);
       break;
     case "user":
-      owner = subject.userId;
+      owner = effective.userId;
       break;
     case "host":
       break;
@@ -539,9 +566,9 @@ export async function authorizeManagementRoute(
   // of the held refusal below: a legacy session's `migration-required` names
   // something about the record, and is its owner's to hear, not another
   // user's.
-  if (subject.kind === "session" && owner !== undefined && principal.userId !== owner) {
+  if (effective.kind === "session" && owner !== undefined && principal.userId !== owner) {
     return {
-      denied: hiddenSessionResponse(route, subject.sessionId),
+      denied: hiddenSessionResponse(route, effective.sessionId),
       sessionHidden: true
     };
   }
@@ -588,6 +615,8 @@ export async function authorizeManagementRoute(
     if (subject.kind === "request") {
       return { denied: hiddenRequestResponse(request, route, ctx.registry, subject.requestId) };
     }
+    // A file id travels inside every message that names it, the same way.
+    if (subject.kind === "blob") return { denied: unknownBlobResponse() };
     return {
       denied: jsonResponse(403, {
         error: "Caller's organization does not own the requested resource"
@@ -596,4 +625,23 @@ export async function authorizeManagementRoute(
   }
 
   return { principal, ...checked };
+}
+
+/**
+ * The bare id of the session that owns a stored file, when that session is in
+ * `tenantId`'s namespace; `undefined` for a file held for its uploader, gone,
+ * or another tenant's. Shared with the read route, which runs it again on an
+ * app where nothing authenticates and this guard checked nothing.
+ */
+export async function blobSessionId(
+  stores: Pick<StoreRegistry, "blobs">,
+  blobId: string,
+  tenantId: string | undefined
+): Promise<string | undefined> {
+  const record = await stores.blobs?.head(blobId);
+  const key = record?.owner === undefined ? undefined : sessionKeyOfBlobOwner(record.owner);
+  if (key === undefined) return undefined;
+  const bare = toBareSessionId(key, tenantId);
+  // A key that doesn't round-trip is in another tenant's namespace.
+  return resolveSessionStorageKey(bare, tenantId) === key ? bare : undefined;
 }

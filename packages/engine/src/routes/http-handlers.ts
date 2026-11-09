@@ -14,6 +14,9 @@ import type { RuntimeConfig } from "../runtime-config";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
 import { withChangeBus } from "../bus/publish-writes";
+import { createMemoryBlobStore } from "../blobs/memory-blob-store";
+import { createHostDiskState, type HostDiskState } from "../blobs/host-disk";
+import { handleGetBlob, handleUploadBlob } from "./blob-routes";
 import type { ChangeBus } from "../bus/types";
 import { detectInterruptedRequests, internalEntriesFrom } from "../execution/request-recovery";
 import {
@@ -230,7 +233,10 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
     // an in-memory stand-in beside a durable store would claim debts survive
     // a crash when they don't. Only a host given no stores at all keeps them
     // in memory, with everything else.
-    ...(partial === undefined ? { wakes: fallback.wakes } : partial.wakes !== undefined ? { wakes: partial.wakes } : {})
+    ...(partial === undefined ? { wakes: fallback.wakes } : partial.wakes !== undefined ? { wakes: partial.wakes } : {}),
+    // Attachment bytes (FIX-824), on the same rule: kept when given, in memory
+    // only for a host given no stores at all.
+    ...(partial === undefined ? { blobs: createMemoryBlobStore() } : partial.blobs !== undefined ? { blobs: partial.blobs } : {})
   });
 }
 
@@ -247,6 +253,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // FIX-2428.
   /** Push delivery's state: empty until a host turns push on. */
   push: PushState;
+  // FIX-824.
+  /** Whether the host keeps its disk: lasts until a host adapter declares it doesn't. */
+  hostDisk: HostDiskState;
 } {
   refuseRetiredDispatcherOption(options, "createFlowRouteHandlers");
   // A router built straight over its stores keeps declared indexes in step
@@ -276,6 +285,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
   const hostResolver = options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver;
   const push = createPushState(stores.bus);
+  const hostDisk = createHostDiskState();
 
   const host: InboundTransportHost = createInboundTransportHost({
     registry: options.registry,
@@ -642,6 +652,14 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         });
       }
 
+      if (route.kind === "upload_blob") {
+        return await handleUploadBlob(request, { stores, principal, hostDisk });
+      }
+
+      if (route.kind === "get_blob") {
+        return await handleGetBlob(request, route, { stores, tenantId, checkedSession: auth.session });
+      }
+
       if (route.kind === "transcribe") {
         return await handleTranscribe(request, route, {
           registry: options.registry,
@@ -888,7 +906,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   return {
     handle,
     host,
-    push
+    push,
+    hostDisk
   };
 }
 

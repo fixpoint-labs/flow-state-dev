@@ -30,10 +30,11 @@ describe("store adapters", () => {
     expect(first.session).toBe(second.session);
   });
 
-  it("filesystemStores declares primary and resolves a full registry", async () => {
+  it("filesystemStores declares primary and blobs, and resolves a full registry", async () => {
     const rootDir = mkdtempSync(join(tmpdir(), "fsd-store-adapter-"));
     const adapter: StoreAdapter = filesystemStores({ rootDir });
-    expect(adapter.capabilities).toEqual(["primary"]);
+    // `blobs` too (FIX-824): attachments sit under the same root as the rest.
+    expect(adapter.capabilities).toEqual(["primary", "blobs"]);
     const partial = await adapter.resolve(["primary"]);
     for (const slot of PRIMARY_REGISTRY_SLOTS) {
       expect(partial[slot]).toBeDefined();

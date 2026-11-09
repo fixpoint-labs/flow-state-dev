@@ -54,3 +54,4 @@ export { type ErrorCaptureEvent } from "./errors/error-capture";
 export { voiceContext } from "./voice";
 export { createCheckpointDurabilityProvider } from "./durability/checkpoint-durability-provider";
 export { resolveDurabilityProvider } from "./durability/default-durability";
+export { localBlobStores, type LocalBlobStoreOptions } from "./blobs/local-blob-store";

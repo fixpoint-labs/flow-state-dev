@@ -401,3 +401,20 @@ describe("requests.interrupted", () => {
     await expect(lost!.continue()).rejects.toMatchObject({ status: 0 });
   });
 });
+
+describe("upload", () => {
+  it("sends one file's bytes raw, once, and resolves to its reference", async () => {
+    const attachment = { type: "file", mediaType: "image/png", filename: "a b.png", data: "fsd-blob:b_0123456789abcdef" };
+    const fetcher = routed({ "POST /api/flows/blobs": () => json({ attachment }, 201) });
+    const client = createClient({ userId: "u1", fetcher });
+
+    const uploaded = await client.upload({ data: new Uint8Array([1, 2, 3]), mediaType: "image/png", filename: "a b.png" });
+
+    expect(uploaded).toEqual(attachment);
+    const [input, init] = fetcher.mock.calls[0]!;
+    const url = new URL(String(input), "http://x");
+    expect(url.searchParams.get("filename")).toBe("a b.png");
+    expect(new Headers(init?.headers).get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await (init?.body as Blob).arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+  });
+});

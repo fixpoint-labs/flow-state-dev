@@ -9,6 +9,7 @@
  * and stream goes through the one transport built here.
  */
 import type { ResumeAction, WireTopic } from "@flow-state-dev/contracts";
+import type { FileContent } from "@flow-state-dev/contracts/items";
 import type { ActionConfig, FlowActionInput, RequestStatusSnapshot } from "@flow-state-dev/core/types";
 import { clientError, createTransport, requireValue, seg, topicPath, type Transport } from "./internal/http";
 import { pause } from "./internal/pause";
@@ -196,6 +197,13 @@ export type TranscribeRequest = {
 export type TranscribeResponse = {
   text: string;
   language?: string;
+};
+
+/** One file to attach: its bytes, its type (a `Blob`'s own type when omitted), and the name a person sees. */
+export type UploadRequest = {
+  data: Uint8Array | Blob;
+  mediaType?: string;
+  filename?: string;
 };
 
 /** How a send is addressed and labelled. */
@@ -524,6 +532,12 @@ export interface Client {
   subscribe(topics: readonly WireTopic[], options: SubscribeOptions): Subscription;
   /** Transcribe audio on the server. */
   transcribe(request: TranscribeRequest): Promise<TranscribeResponse>;
+  /**
+   * Upload one file to attach, once. Resolves to the file in reference form
+   * (`data` is `fsd-blob:<id>`), held for this user until a message that
+   * names it is sent. Send that, never the bytes.
+   */
+  upload(request: UploadRequest): Promise<FileContent>;
 }
 
 // ---------------------------------------------------------------------------
@@ -716,6 +730,17 @@ export function createClient(options: CreateClientOptions): Client {
         { method: "POST", headers: { "content-type": mediaType }, body },
         { userId, language: request.language }
       );
+    },
+    upload: async (request) => {
+      const mediaType = request.mediaType ?? (request.data instanceof Blob ? request.data.type : "");
+      const body =
+        request.data instanceof Blob ? request.data : new Blob([request.data as Uint8Array<ArrayBuffer>], { type: mediaType });
+      const answer = await t.json<{ attachment: FileContent }>(
+        "/api/flows/blobs",
+        { method: "POST", headers: { "content-type": mediaType }, body },
+        { userId, filename: request.filename }
+      );
+      return answer.attachment;
     }
   };
   return client;
