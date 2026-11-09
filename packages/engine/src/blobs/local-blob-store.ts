@@ -20,7 +20,7 @@ import type { BlobRecord, BlobStore } from "./types";
 
 /** Options for {@link localBlobStores} and {@link createLocalBlobStore}. */
 export type LocalBlobStoreOptions = {
-  /** The folder the files go in. Made on first use. */
+  /** The folder the files go in. Made on the first upload. */
   rootDir: string;
   /** The clock, for tests that move it. */
   now?: () => number;
@@ -59,9 +59,24 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
     await rm(binPath(id), { force: true });
   };
 
+  /**
+   * The folder's entries; none while no upload has made it. Only `put` makes
+   * the folder: the default store sits on every server with persistent
+   * sessions, and a session create or delete reaches it, so a read-only working
+   * folder must fail an upload and nothing else.
+   */
+  const entries = async (): Promise<string[]> => {
+    try {
+      return await readdir(rootDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+  };
+
   const sweep = async (): Promise<void> => {
     const at = now();
-    const names = await readdir(rootDir);
+    const names = await entries();
     const recorded = new Set<string>();
     for (const name of names) {
       if (!name.endsWith(".json")) continue;
@@ -88,12 +103,12 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
     }
   };
 
-  /** Make the folder and sweep once, when the store is first used. */
+  /** Sweep once, when the store is first used. A failed sweep is tried again on the next use. */
   const open = (): Promise<void> => {
-    opened ??= (async () => {
-      await mkdir(rootDir, { recursive: true });
-      await sweep();
-    })();
+    opened ??= sweep().catch((error: unknown) => {
+      opened = undefined;
+      throw error;
+    });
     return opened;
   };
 
@@ -102,6 +117,7 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
     persists: true,
     async put(input) {
       if (!isBlobId(input.id)) throw new TypeError(`"${input.id}" is not a blob id`);
+      await mkdir(rootDir, { recursive: true });
       await open();
       await sweep();
       const record: BlobRecord = {
@@ -151,7 +167,7 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): BlobStore 
     async deleteOwner(owner, options) {
       await open();
       let deleted = 0;
-      for (const name of await readdir(rootDir)) {
+      for (const name of await entries()) {
         if (!name.endsWith(".json")) continue;
         const id = name.slice(0, -".json".length);
         const gone = await locked(id, async () => {

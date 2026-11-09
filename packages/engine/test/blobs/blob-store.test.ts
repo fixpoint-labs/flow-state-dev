@@ -4,7 +4,7 @@
  * anyone else reads as no file; an owner's files go with it; and uploads no
  * message claimed are swept after a day, not before.
  */
-import { mkdtempSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -143,5 +143,32 @@ describe("local disk blob store", () => {
     const reopened = createLocalBlobStore({ rootDir: dir, now: () => clock.now });
     expect(await reopened.head(id)).toBeUndefined();
     expect(readdirSync(dir)).toEqual([]);
+  });
+
+  // A server with persistent sessions and no blobs slot gets this store by
+  // default, and every session create and delete asks it to delete an owner's
+  // files. On a host whose working folder is read-only, a store that made its
+  // folder to answer would fail every session, attachments used or not.
+  it("answers reads and deletes without making its folder", async () => {
+    const dir = path.join(mkdtempSync(path.join(tmpdir(), "fsd-blob-absent-")), "blobs");
+    const store = createLocalBlobStore({ rootDir: dir });
+    expect(await store.deleteOwner("session:s1")).toBe(0);
+    expect(await store.head(newBlobId())).toBeUndefined();
+    expect(await store.read(newBlobId())).toBeUndefined();
+    expect(await store.claim(newBlobId(), { uploader: ALICE, owner: "session:s1" })).toBe("not-found");
+    await store.release(newBlobId(), "session:s1");
+    expect(await store.delete(newBlobId())).toBe(false);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it("tries to make its folder again after a failed upload", async () => {
+    const parent = mkdtempSync(path.join(tmpdir(), "fsd-blob-retry-"));
+    const blocker = path.join(parent, "blocked");
+    writeFileSync(blocker, "a file where the folder's parent should be");
+    const store = createLocalBlobStore({ rootDir: path.join(blocker, "blobs") });
+    await expect(upload(store)).rejects.toThrow();
+    rmSync(blocker);
+    const id = await upload(store);
+    expect((await store.read(id))?.bytes).toEqual(new Uint8Array([7, 8, 9]));
   });
 });
