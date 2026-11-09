@@ -61,7 +61,7 @@ export function TaskDoneRow({ task, selected, onOpen, now }: { task: LabTask; se
       <span className="min-w-24 flex-1 truncate" data-task-title>
         {task.title}
       </span>
-      {task.assignee ? <span className="max-w-24 shrink-0 truncate text-muted-foreground">{task.assignee}</span> : null}
+      {task.assignee ? <span className="max-w-24 min-w-0 truncate text-muted-foreground">{task.assignee}</span> : null}
       <Spend spend={task.spend} className="min-w-0" />
       {task.view === undefined ? null : (
         <span className="shrink-0 font-mono text-[10px]">

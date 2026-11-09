@@ -43,16 +43,16 @@ describe("a finished task's row in the tasks pane", () => {
       const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
       try {
         await page.goto(`${origin}/index.html?width=${width}`);
-        await page.getByText(/Done · 2/).click();
+        await page.getByText(/Done · 3/).click();
         const rows = page.locator('[data-task-status="completed"]');
-        await expect.poll(() => rows.count()).toBe(2);
+        await expect.poll(() => rows.count()).toBe(3);
 
         const list = page.locator('aside[aria-label="Background tasks"] .overflow-y-auto');
         const { scrollWidth, clientWidth } = await list.evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
         expect(scrollWidth, "the list scrolls sideways").toBeLessThanOrEqual(clientWidth);
 
         const box = (await list.boundingBox())!;
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < 3; i++) {
           const row = (await rows.nth(i).boundingBox())!;
           expect(row.x + row.width, `row ${i + 1} runs past the pane`).toBeLessThanOrEqual(box.x + box.width + 0.5);
           // Room for a few words of the title, not a sliver of ellipsis.
