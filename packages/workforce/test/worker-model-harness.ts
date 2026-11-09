@@ -91,7 +91,7 @@ export type TurnAnswer = {
   skills: string[];
   handbook: boolean;
   ledger: boolean;
-  /** Only when the message is `roster`: the turn's roster, by id, name and kind. */
+  /** Only when the message is `roster`: the turn's roster, by id, name and whether it is standard. */
   roster?: { id: string; name: string | null; standard: boolean }[];
 };
 
