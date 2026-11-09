@@ -28,9 +28,14 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Refusing a PDF by name on those two (this spec's first draft); or writing the PDF into the turn's folder (FIX-2519 D1) for the agent to open |
 | **Because** | Neither SDK takes documents. A refusal never answers the question. A file on disk is read only where the host happens to have a PDF tool. Text extracted once on our side reads the same on every host |
-| **Locks in** | One PDF text library, this issue's only new dependency (FIX-824's kill line still forbids one there). The engine extracts at upload and stores the text in the blob store beside the PDF, same owner, deleted with it (ER-2). Codex, Cursor, and a generator whose provider can't read PDFs get that text headed by the filename, page by page; a page with no text layer says so in the text. The same pass counts the pages, so the 100-page cap holds server-side before any model call (ER-4). The closure's leg b passes there on the code word |
+| **Locks in** | One PDF text library, this issue's only new dependency (FIX-824's kill line still forbids one there). The engine extracts at upload and stores the text in the blob store beside the PDF, same owner, deleted with it (ER-2). Codex, Cursor, and a generator whose provider can't read PDFs get that text headed by the filename, page by page; a page with no text layer says so in the text. The same pass counts the pages, so the 100-page cap holds server-side before any model call (ER-4). The extracted text is held to D2's 200 KB cap: the server checks the stored text's size before it calls a target that gets text, and refuses over it with `pdf_text_too_large`, naming the size. The closure's leg b passes there on the code word |
 
-**The owner's call, 2026-11-08**, reversing the spec set's refusal.
+**The owner's call, 2026-11-08**, reversing the spec set's refusal. **Confirmed by the owner, 2026-11-09:**
+
+- **The extracted text is the PDF's content** for a target that can't read PDFs, not a fallback.
+  ER-5's "never a text-only fallback" stays in force for images.
+- **Every target that can't read PDFs gets the text**: Codex, Cursor and any generator whose
+  provider can't. A PDF question is answered in every chat.
 
 ![D1: its text, extracted on our side, chosen, beside refused by name. Decides it: what page 3 says is answered on every host. Price: one PDF text library in FIX-2520; a scanned page has no text to hand over](figures/d1-pdf-to-codex-cursor.svg)
 
@@ -62,8 +67,13 @@ It comes down to where the answer is: cut, a log's failure at the end is never s
   shared with FIX-2519, which each target fills. Generators read it from the model's provider
   (Anthropic, OpenAI, Google take PDFs in v1); any other gets the PDF's text.
 - **PDFs over 100 pages** are refused at upload by the extractor's count, read from the page
-  tree, compressed objects included. The 100-page cap bounds a PDF's text; the 200 KB cap is for
-  text-like files.
+  tree, compressed objects included. The page cap doesn't bound the text: one dense page can
+  hold megabytes.
+- **A PDF's extracted text** is held to the same 200 KB cap as a text-like file, so a target that
+  gets text never gets more than D2 allows. It's checked at the send, not the upload: a PDF too
+  dense for Codex still goes whole to Claude Code or a PDF-reading provider. Over it, the turn is
+  refused with `pdf_text_too_large` before the target is called (ER-4). One cap, not a second
+  number: the budget is the target's prompt, and it is the same prompt (Codex, #4941).
 - **History** counts a document against FIX-2517 D1's "5 documents".
 
 ## Considered and dropped
@@ -97,5 +107,7 @@ It comes down to where the answer is: cut, a log's failure at the end is never s
 - **Fold (Nov 8).** The owner reversed D1: extract the text on our side, so leg b passes on the
   code word everywhere. PDF moved into FIX-824's v1 list for the kill line (gitar); the page
   count reads the page tree (Codex). Cut: the chip's page count, the 90-page goal input.
+- **Fold (Nov 9).** The owner confirmed D1's reading of ER-5 and its reach to every target that
+  can't read PDFs. A PDF's extracted text took D2's 200 KB cap, checked before the send (Codex).
 
 **Open: none.**

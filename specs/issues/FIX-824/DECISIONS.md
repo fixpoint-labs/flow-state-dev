@@ -61,7 +61,8 @@ It comes down to a restart of an in-memory app: always-on-disk leaves files no s
 - **The limits set** (`@flow-state-dev/contracts/attachments`): 10 images and 5 documents a
   message; 20 MB a file; PNG, JPEG, WebP, GIF and PDF in v1, so the kill line's PDF uploads;
   PDFs to 100 pages, counted server-side before any model call by FIX-2520's extractor (ER-4);
-  text-like files to 200 KB of text (FIX-2520 D2); HEIC refused. FIX-2520 adds the text-like
+  text-like files, and a PDF's extracted text sent to a target that can't read PDFs, to 200 KB of
+  text (FIX-2520 D2, D1); HEIC refused. FIX-2520 adds the text-like
   types in this one file. It also holds the accepts-list type each target fills (FIX-2519,
   FIX-2520).
 - **A host whose disk doesn't last** says so in its runtime config (`@flow-state-dev/vercel`'s
