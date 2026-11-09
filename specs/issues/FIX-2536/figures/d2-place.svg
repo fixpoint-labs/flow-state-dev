@@ -1,0 +1,44 @@
+<svg viewBox="0 0 940 488" role="img" aria-label="D2: A polled event was lost in delivery, or a screen judged it. What does the next poll do? Chosen: Hold the mark; record what was screened. Instead of: Move the mark; keep a resend list. It comes down to a delivery the host lost: Fetched again and sent once, on the one delivery path, accepted-but-not-taken included; against A second path into delivery, unscreened, capped at 20, oldest dropped. A judged version: Never judged again, recorded in screened on the cursor; against Never judged again, the mark moved past it. A screen outage: Judged on the next poll, an unjudged event writes nothing so the mark holds; against Passed over for good, the mark moved past it. Cost: Re-fetches a few objects while the mark waits on a loss; against Fetches each object once, plus a 20-event list on the cursor. Locks in: A judged version is never judged again, and the mark waits on what is not yet taken. Flips if delivery resends what it gave back on its own: then the mark could move every poll."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+      .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="488"/>
+  <g id="the-call"><rect class="ask" x="16" y="14" width="908" height="48" rx="6"/><text class="t-lbl" x="32" y="32">D2 · THE CALL</text><text class="t-q" x="32" y="52">A polled event was lost in delivery, or a screen judged it. What does the next poll do?</text></g>
+  <g id="options"><rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/><text class="t-tag c-code" x="228" y="93">CHOSEN</text><text class="t-h c-code" x="228" y="112">Hold the mark; record what was screened</text><rect class="lost" x="576" y="76" width="348" height="46" rx="5"/><text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text><text class="t-h c-lost" x="592" y="112">Move the mark; keep a resend list</text></g>
+  <g id="row-decides"><rect class="decide" x="16" y="134" width="908" height="62" rx="4"/><rect class="bar" x="16" y="134" width="4" height="62"/><text class="t-lbl" x="32" y="156">A DELIVERY</text><text class="t-lbl" x="32" y="169">THE HOST LOST</text><text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text><text class="mark plus" x="228" y="162">+</text><text class="t-b" x="248" y="161">Fetched again, sent once</text><text class="t-s" x="248" y="179">one delivery path · accepted, not taken, too</text><text class="mark minus" x="592" y="162">−</text><text class="t-b" x="612" y="161">A second path into delivery</text><text class="t-s" x="612" y="179">unscreened, capped at 20, oldest dropped</text></g>
+  <g id="row-1"><text class="t-lbl" x="32" y="222">A JUDGED VERSION</text><text class="mark tie" x="228" y="224">=</text><text class="t-b" x="248" y="223">Never judged again</text><text class="t-s" x="248" y="241">recorded in screened, on the cursor</text><text class="mark tie" x="592" y="224">=</text><text class="t-b" x="612" y="223">Never judged again</text><text class="t-s" x="612" y="241">the mark moved past it</text><line class="row" x1="16" y1="256" x2="924" y2="256"/></g>
+  <g id="row-2"><text class="t-lbl" x="32" y="280">A SCREEN OUTAGE</text><text class="mark plus" x="228" y="282">+</text><text class="t-b" x="248" y="281">Judged on the next poll</text><text class="t-s" x="248" y="299">unjudged writes nothing; the mark holds</text><text class="mark minus" x="592" y="282">−</text><text class="t-b" x="612" y="281">Passed over for good</text><text class="t-s" x="612" y="299">the mark moved past it</text><line class="row" x1="16" y1="314" x2="924" y2="314"/></g>
+  <g id="row-3"><text class="t-lbl" x="32" y="338">COST</text><text class="mark minus" x="228" y="340">−</text><text class="t-b" x="248" y="339">Re-fetches a few objects</text><text class="t-s" x="248" y="357">while the mark waits on a loss</text><text class="mark plus" x="592" y="340">+</text><text class="t-b" x="612" y="339">Fetches each object once</text><text class="t-s" x="612" y="357">plus a 20-event list on the cursor</text></g>
+  <g id="locks-in"><rect class="foot" x="16" y="398" width="446" height="74" rx="5"/><text class="t-lbl" x="32" y="419">LOCKS IN</text><text class="t-b" x="32" y="439">A judged version is never judged again</text><text class="t-s" x="32" y="457">and the mark waits on what isn&#x27;t taken</text></g>
+  <g id="flips-if"><rect class="foot" x="478" y="398" width="446" height="74" rx="5"/><text class="t-lbl" x="494" y="419">FLIPS IF</text><text class="t-b" x="494" y="439">Delivery resends what it gave back</text><text class="t-s" x="494" y="457">on its own: then the mark could move every poll</text></g>
+</svg>
