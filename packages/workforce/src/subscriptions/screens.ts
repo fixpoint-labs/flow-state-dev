@@ -169,7 +169,7 @@ export function screenStep(kind: ScreenKind, options: ScreenOptions) {
 const listsCustom = (entry: IndexEntry, name: string) => entry.screens.some((listed) => listed.screen === "custom" && listed.name === name);
 
 /** One custom screen's answer for one subscription: `undefined` to pass, or why it refused. A throw, or an answer that isn't a string, is `failed`. */
-export function customRefusal(screen: CustomScreen["screen"], event: SubscriptionEvent, entry: IndexEntry): string | undefined {
+function customRefusal(screen: CustomScreen["screen"], event: SubscriptionEvent, entry: IndexEntry): string | undefined {
   let answer: unknown;
   try {
     answer = screen(event, entry);
