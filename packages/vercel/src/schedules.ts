@@ -18,7 +18,6 @@
 
 import { timingSafeEqual } from "node:crypto";
 import type { ScheduleIndex, ScheduleIndexEntry } from "@flow-state-dev/scheduled";
-import { runScheduleTick, scheduleDispatchRequest } from "@flow-state-dev/scheduled/collection";
 
 /** Options for `createGetToPostCronShim`. */
 export interface CreateGetToPostCronShimOptions {
@@ -112,7 +111,9 @@ export function createScheduleTickHandler(
     const base = resolveBaseUrl(opts.baseUrl);
     if (base === null) return new Response("Server misconfigured: missing baseUrl", { status: 500 });
 
-    // The body is `@flow-state-dev/scheduled`'s tick (FIX-2536), one beat per cron call.
+    // The body is `@flow-state-dev/scheduled`'s tick (FIX-2536), one beat per cron call. Loaded here, not
+    // at the top: the package is an optional peer, and an app using only the shim doesn't install it.
+    const { runScheduleTick, scheduleDispatchRequest } = await import("@flow-state-dev/scheduled/collection");
     let due: readonly ScheduleIndexEntry[];
     try {
       due = await runScheduleTick({

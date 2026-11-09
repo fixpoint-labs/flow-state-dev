@@ -49,6 +49,12 @@ const ms = (value: unknown): number | undefined => (typeof value === "string" ? 
 /** The timeline events a poll rebuilds, by GitHub's own names. */
 const TIMELINE_ACTIONS = new Set(["assigned", "review_requested", "closed", "reopened"]);
 
+/**
+ * A sender the poll couldn't read: GitHub's own placeholder login, with no
+ * association, so it screens as `unknown` (the sender screen fails closed).
+ */
+const UNKNOWN_SENDER = { login: "ghost", type: "User" };
+
 /** The resolution of GitHub's timestamps, in ms: whole seconds. */
 const GITHUB_TIME_RESOLUTION_MS = 1_000;
 
@@ -246,12 +252,20 @@ export async function pollGitHubThread(
     const comments = await pages(`${repo}/issues/comments?per_page=100${sinceParam}`, (c) => ms(c.updated_at));
     if (moved && repository === undefined) repository = obj((await get(repo, true))?.body);
     const repoPayload: Json = repository ?? { full_name: `${owner}/${name}` };
+    /** One issue read in full (the list carries no `closed_by`), once per issue and poll; `undefined` when it can't be read. */
+    const fullIssues = new Map<number, Promise<Json | undefined>>();
+    const readIssue = (number: number) => {
+      if (!fullIssues.has(number)) fullIssues.set(number, get(`${repo}/issues/${number}`, true).then((read) => obj(read?.body), () => undefined));
+      return fullIssues.get(number)!;
+    };
     for (const issue of issues) {
       const eventType = issue.pull_request === undefined ? "issues" : "pull_request";
       const key = eventType === "issues" ? "issue" : "pull_request";
       if (after(ms(issue.created_at))) push(eventType, { action: "opened", [key]: issue, repository: repoPayload, sender: issue.user });
       if (issue.state === "closed" && after(ms(issue.closed_at))) {
-        push(eventType, { action: "closed", [key]: issue, repository: repoPayload, sender: issue.closed_by ?? issue.user });
+        // Whoever closed it, as the webhook names them; never its author. Unread, the sender is unknown.
+        const closer = obj(issue.closed_by) ?? obj((typeof issue.number === "number" ? await readIssue(issue.number) : undefined)?.closed_by);
+        push(eventType, { action: "closed", [key]: issue, repository: repoPayload, sender: closer ?? UNKNOWN_SENDER });
       }
     }
     // Each comment is rebuilt with its issue, as the webhook carries it, so its labels and title reach the screens:
@@ -260,10 +274,7 @@ export async function pollGitHubThread(
     for (const comment of comments) {
       const number = Number(String(comment.issue_url ?? "").split("/").pop());
       if (!Number.isInteger(number)) continue;
-      if (!issuesByNumber.has(number)) {
-        const read = obj((await get(`${repo}/issues/${number}`, true))?.body);
-        issuesByNumber.set(number, read ?? { number });
-      }
+      if (!issuesByNumber.has(number)) issuesByNumber.set(number, (await readIssue(number)) ?? { number });
       push("issue_comment", { action: "created", comment, issue: issuesByNumber.get(number)!, repository: repoPayload, sender: comment.user });
     }
     return result(events);

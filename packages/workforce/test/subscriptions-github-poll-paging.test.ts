@@ -85,6 +85,32 @@ describe("a repository's poll and its webhook agree", () => {
     expect(screenRefusal("labels", fromPoll, entry, { trustedBots: [] })).toBeUndefined();
   });
 
+  it("names whoever closed an issue as its close's sender, as the webhook does, not the issue's author", async () => {
+    const repository = { full_name: "acme/api", private: false };
+    // The list GitHub returns carries no `closed_by`; the issue itself does.
+    const listed = { number: 9, title: "Deploy is blocked", labels: [], user: user("alice"), author_association: "MEMBER", created_at: at(-600), updated_at: at(3), closed_at: at(3), state: "closed" };
+    const full = { ...listed, closed_by: user("bob") };
+    const { provider } = fakeGitHub({ "/repos/acme/api": repository, "/repos/acme/api/issues": [listed], "/repos/acme/api/issues/9": full, "/repos/acme/api/issues/comments": [] });
+    const polled = await provider.poll!("github:acme/api", { since: SINCE }, ctx);
+    if ("unchanged" in polled) throw new Error("expected the close");
+    const fromPoll = polled.events.find((e) => e.closes === true)!;
+    const [fromPush] = normalizeGitHubEvent({ eventType: "issues", payload: { action: "closed", issue: full, repository, sender: user("bob") }, received: 0 });
+    expect(fromPoll.sender).toEqual(fromPush!.sender);
+    // Alice's own screen lets Bob's close through on both paths.
+    const alices = { provider: "github", thread: "github:acme/api", screens: [], self: "alice", userId: "alice", orgId: "acme" };
+    expect(screenRefusal("own", fromPoll, alices, { trustedBots: [] })).toBe(screenRefusal("own", fromPush!, alices, { trustedBots: [] }));
+  });
+
+  it("marks a close's sender unknown when the closer can't be read, never the author", async () => {
+    const listed = { number: 9, title: "Deploy is blocked", labels: [], user: user("alice"), author_association: "MEMBER", created_at: at(-600), updated_at: at(3), closed_at: at(3), state: "closed" };
+    const { provider } = fakeGitHub({ "/repos/acme/api": { full_name: "acme/api" }, "/repos/acme/api/issues": [listed], "/repos/acme/api/issues/comments": [] });
+    const polled = await provider.poll!("github:acme/api", { since: SINCE }, ctx);
+    if ("unchanged" in polled) throw new Error("expected the close");
+    const close = polled.events.find((e) => e.closes === true)!;
+    expect(close.sender.id).not.toBe("alice");
+    expect(close.sender.role).toBe("unknown");
+  });
+
   it("reads an issue the poll's issue list didn't carry once for all its comments, not once per comment", async () => {
     const issue = { number: 9, title: "Deploy is blocked", labels: [{ name: "ops" }], user: user("alice"), created_at: at(-600), updated_at: at(-300), state: "open" };
     const comments = [1, 2, 3].map((id) => ({ id, body: "more", user: user("bob"), author_association: "MEMBER", created_at: at(2), updated_at: at(2), issue_url: "https://api.github.com/repos/acme/api/issues/9" }));
