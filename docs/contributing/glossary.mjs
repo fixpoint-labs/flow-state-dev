@@ -888,6 +888,11 @@ const EXEMPTIONS = [
     why: "FIX-2354: the Teammates lab's Lead keeps its stored worker id `teammates.chief-of-staff` (its folder and roster key): stored worker id — renaming strands persisted conversations (BP-030). The name a person reads is Lead",
   },
   {
+    path: /^\.changeset\/fix-2614-routines\.md$/,
+    rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "LIST_SCHEDULES_ACTION", "listedScheduleSchema"],
+    why: "FIX-2614: the release note that tells consumers what each retired schedule and subscription name became",
+  },
+  {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
     rules: ["human-reasons"],
     why: "FIX-2151: the release note that tells consumers which old reasons to replace",
@@ -1287,14 +1292,16 @@ const EXEMPTIONS = [
   {
     id: "subscription-modules",
     terms: ["thread", "member", "kind"],
-    where: (path) => /^packages\/workforce\/(?:src\/subscriptions\/|test\/subscriptions-)/.test(path),
+    // FIX-2614: an event routine is a subscription, so the routine modules, tests and screen name its thread too.
+    where: (path) =>
+      /^packages\/workforce\/(?:src\/subscriptions\/|src\/routines\/|test\/subscriptions-|test\/routines\.test\.ts$)|^packages\/shift-manager\/(?:src\/lib\/routines\.ts|src\/surfaces\/Routines\.tsx|test\/routines-view\.test\.tsx)$/.test(path),
     strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
     why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there, and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
   },
   {
     id: "subscription-docs",
     terms: ["thread", "member", "kind"],
-    where: (path) => path === "packages/workforce/README.md" || path === "apps/docs/docs/workforce/messaging-workers.md",
+    where: (path) => path === "packages/workforce/README.md" || path === "apps/docs/docs/workforce/messaging-workers.md" || path === ".changeset/fix-2614-routines.md",
     // Only on a line that names the outside service, so a mailbox's thread elsewhere on the page still counts.
     strip: /\bSCREEN_KINDS\b|(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)(?=[^\n]*(?:subscri|provider|\bPR\b|pull request|repositor|outside|`thread`|canRead|github))|(?<=(?:subscri|provider|\bPR\b|pull request|repositor|outside|canRead|github)[^\n]*)(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)/g,
     why: "the subscription pages' outside thread, a sender's member role and an event's kind (FIX-2471), on lines that name the outside service",
