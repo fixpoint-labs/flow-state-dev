@@ -305,10 +305,10 @@ const targetOf = (row: SubscriptionResourceState): SubscribeTarget => ({
 
 /**
  * The running user's conversation with `worker`: the address their own
- * message reaches, derived on the server (BP-031), never from the input.
+ * message reaches, derived on the server, never from the input.
  */
 async function conversationWith(ctx: BlockContext, installation: WorkerInstallation, worker: string): Promise<SubscribeTarget | { refused: string }> {
-  const found = await installation.rosterWorker(ctx as never, worker);
+  const found = await installation.rosterWorker(ctx, worker);
   if (found === undefined) return { refused: `no_worker: no worker "${worker}" on your roster.` };
   if (found.problem !== undefined) return { refused: `no_worker: worker "${worker}" can't run: ${found.problem}.` };
   const identity = ctx.session.identity as { userId?: string; orgId?: string };

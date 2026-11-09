@@ -78,7 +78,7 @@ export type SubscriptionEnd = "unsubscribed" | "thread_closed" | "task_errored" 
 
 /**
  * The session a subscription is written for when it isn't the running one:
- * derived on the server by the caller (BP-031), never from a tool's input.
+ * derived on the server by the caller, never from a tool's input.
  */
 export interface SubscribeTarget {
   /** The session that hears. */

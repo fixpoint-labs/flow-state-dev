@@ -91,12 +91,12 @@ export const subscriptionResourceStateSchema = screenSettingsSchema.extend({
   enabled: z.boolean(),
   /**
    * Why it ended: `unsubscribed`, `thread_closed`, `task_errored`,
-   * `task_cancelled`, or `paused`, the one end a resume undoes (FIX-2614).
+   * `task_cancelled`, or `paused`, the one end a resume undoes.
    */
   endedReason: z.string().optional(),
   endedAt: z.number().optional(),
   at: z.number(),
-  /** Who made it, as the routine list names them. Optional: a row from before it names none (BP-030). */
+  /** Who made it, as the routine list names them. Optional: a row from before it names none. */
   madeBy: routineMakerSchema.optional()
 });
 

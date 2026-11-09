@@ -9,7 +9,7 @@ import { z } from "zod";
 /**
  * Who made a routine: the user, a worker in one of their conversations, or
  * the app's config (`routines.declared`, by entry id). Stored with the row, and
- * optional there: a row from before it names no maker (BP-030).
+ * optional there: a row from before it names no maker.
  */
 export const routineMakerSchema = z.discriminatedUnion("by", [
   z.object({ by: z.literal("user") }).strict(),

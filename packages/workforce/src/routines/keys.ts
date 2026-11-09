@@ -23,13 +23,12 @@ export const EVENT_ROUTINE_PREFIX = "event:";
 
 /**
  * The key a declared routine is stored under, in either collection:
- * `cfg_<hash of the roster flow kind and the entry id>` (FIX-2536 D3).
+ * `cfg_<hash of the roster flow kind and the entry id>`, the key the polled
+ * seed uses too.
  * **Pinned**: persisted. A user's save refuses a key with this prefix.
  */
 export const DECLARED_ROUTINE_KEY_PREFIX = "cfg_";
 
-/**
- * The cadences an event routine may poll at, in minutes (FIX-2536 D3). Checked
- * here; the poll that honours them is FIX-2536's.
- */
+// FIX-2536 D3 owns the poll that honours them.
+/** The cadences an event routine may poll at, in minutes. Checked here; a pushed provider ignores them. */
 export const ROUTINE_CADENCES = [5, 10, 15, 20, 30, 60] as const;
