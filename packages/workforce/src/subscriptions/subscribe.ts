@@ -105,12 +105,14 @@ export interface SubscribeWrite {
   readonly madeBy?: RoutineMaker;
   /** Write it paused: off, with reason `paused`, and no index entry (a seed that keeps a pause). */
   readonly paused?: true;
-  /**
-   * Write only over a paused row, compared against the row as it is at the write (a resume). A row
-   * that ended meanwhile (deleted, its task failed) stays ended, and nothing is indexed.
-   */
-  readonly onlyIfPaused?: true;
 }
+
+/**
+ * A resume's write: only over a paused row, compared against the row as it is at the write. A
+ * row that ended meanwhile (deleted, its task failed) stays ended, and nothing is indexed. The
+ * routine verbs' alone, so it isn't on the exported `SubscribeWrite`.
+ */
+type ResumeWrite = SubscribeWrite & { readonly onlyIfPaused?: true };
 
 /**
  * A stable id for one session's subscription to one thread: subscribing again
@@ -166,6 +168,31 @@ export async function subscribe(
   input: SubscribeInput,
   target?: SubscribeTarget,
   write: SubscribeWrite = {}
+): Promise<SubscribeOutcome> {
+  return writeSubscription(ctx, providers, input, target, write);
+}
+
+/**
+ * Resume a paused subscription from its stored row: `subscribe`'s write, taken only while the row
+ * is still paused. Not on the package's surface: the routine verbs call it.
+ */
+export async function resumeSubscription(
+  ctx: BlockContext,
+  providers: readonly SubscriptionProvider[],
+  input: SubscribeInput,
+  target: SubscribeTarget,
+  write: SubscribeWrite
+): Promise<SubscribeOutcome> {
+  return writeSubscription(ctx, providers, input, target, { ...write, onlyIfPaused: true });
+}
+
+/** The one write behind `subscribe` and `resumeSubscription`. */
+async function writeSubscription(
+  ctx: BlockContext,
+  providers: readonly SubscriptionProvider[],
+  input: SubscribeInput,
+  target: SubscribeTarget | undefined,
+  write: ResumeWrite
 ): Promise<SubscribeOutcome> {
   const hears = hearer(ctx, target);
   if ("refused" in hears) return hears;

@@ -45,6 +45,7 @@ import {
 import { subscriptionResources, subscriptionsOf, type SubscriptionResourceState } from "../subscriptions/rows";
 import {
   isPaused,
+  resumeSubscription,
   subscribe,
   subscribeInputSchema,
   unsubscribe,
@@ -402,9 +403,8 @@ async function pauseRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, i
   } else if (!row.enabled) {
     // The resume is a subscribe from the stored row: read access checked again,
     // the same session and task, the same id and maker.
-    const outcome = await subscribe(ctx, deps.providers, subscribeInputOf(row), targetOf(row), {
+    const outcome = await resumeSubscription(ctx, deps.providers, subscribeInputOf(row), targetOf(row), {
       id: row.id,
-      onlyIfPaused: true,
       ...(row.madeBy === undefined ? {} : { madeBy: row.madeBy })
     });
     if ("refused" in outcome) return refused(`${outcome.refused} It stays paused.`);
