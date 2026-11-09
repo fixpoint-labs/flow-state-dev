@@ -24,7 +24,7 @@ The rows are the workers your files declare, the standard workers every user has
 | Question | Ask |
 |----------|-----|
 | What is declared? | Your files: each `WORKER.md`, read at every start. A user's own worker has no file. |
-| Was it registered in this organization? | The inventory. A declared worker's row is never deleted, and a user's own worker has no row. |
+| Was it registered in this organization? | The inventory. A declared worker's entry is never deleted, and a user's own worker has no entry. |
 | Whose worker is it? | That user's roster. Its row is deleted when the worker is fired. |
 
 The inventory and your files join on the worker's `id`.
