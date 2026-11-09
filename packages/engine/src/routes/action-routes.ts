@@ -288,9 +288,11 @@ export async function handleExecuteAction(
     // Bookkeeping after the request already runs: a failure here must not answer
     // 500, or a client's retry starts a second run. An unconfirmed send stays
     // pending, which keeps its files in the session all the same.
-    await claimed.confirm().catch((error: unknown) => {
+    try {
+      await claimed.confirm();
+    } catch (error) {
       console.warn("[flow-state] confirming a send's attachments failed:", error);
-    });
+    }
 
     // Inline streaming: when the client sends Accept: text/event-stream, return
     // the SSE stream directly from the POST response. This keeps the action
