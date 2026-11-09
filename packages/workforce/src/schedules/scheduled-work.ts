@@ -1,12 +1,13 @@
-// FIX-2085; BP-031.
+// FIX-2085; BP-031; FIX-2614.
 /**
- * Recurring work: a schedule that files an ordinary task.
+ * A clock routine: a schedule that files an ordinary task.
  *
  * - **The row.** One per schedule in the user's schedule collection
  *   ({@link SCHEDULES_PATTERN}, at user scope in their organization):
  *   `{ cron, timezone, kind: "task", input: { filer, goal, assignee, ... } }`.
  *   `input.filer` names the worker whose board the task lands on; the rest of
- *   `input` is the task, as the board's filing takes it.
+ *   `input` is the task, as the board's filing takes it. `metadata.madeBy`
+ *   names who made it, when the row says.
  * - **The fire.** The roster flow resolves a dispatch id to its row
  *   (`createResourceCollectionScheduleResolver`), and the endpoint fires each
  *   scheduled time at most once. The `task` handler runs as the
@@ -15,9 +16,10 @@
  *   conversation with the filer, the address their own message reaches
  *   (derived on the server), opening it when absent. That entry files
  *   through the board's own filing. No model turn decides what lands (D1).
- * - **The list.** `listSchedules` reads the collection and works each
- *   schedule's next run out from its cron and time zone at read (D3), so it
- *   needs no schedule index. `saveSchedule` and `deleteSchedule` write it.
+ * - **The verbs.** The routine verbs (`../routines`) list, save, pause and
+ *   delete these rows; a paused one is `enabled: false`. A row's next run is
+ *   worked out from its cron and time zone at read (D3), so the list needs no
+ *   schedule index.
  * - **The index.** Optional. Given one, the collection mirrors every write
  *   into it, for a polling tick or BullMQ to find due rows; without one, the
  *   host's own cron POSTs per schedule.
@@ -28,7 +30,8 @@
  * a row is written.
  */
 import { defineResourceCollection, handler } from "@flow-state-dev/core";
-import { isKnownTimeZone, type ActionConfig, type SchedulesConfig } from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import { isKnownTimeZone, type SchedulesConfig } from "@flow-state-dev/core/types";
 import { dispatchThroughSeam, isFiveFieldCron } from "@flow-state-dev/core/internal";
 import {
   FIRED_RECORDS_PATTERN,
@@ -43,21 +46,10 @@ import { z } from "zod";
 import { deriveWorkerSessionId, criteriaState } from "../workers/derive-session-id";
 import type { WorkerInstallation } from "../workers/installation";
 import { ROSTER_FLOW } from "../workers/keys";
-import { listedScheduleSchema, type ListedSchedule } from "./listed-schedule";
-import { FILE_SCHEDULED_TASK_ENTRY, LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN, SCHEDULES_RESOURCE, TASK_SCHEDULE_HANDLER } from "./keys";
+import { FILE_SCHEDULED_TASK_ENTRY, SCHEDULES_PATTERN, SCHEDULES_RESOURCE, TASK_SCHEDULE_HANDLER } from "./keys";
 
-/** The accessor the roster flow declares the dispatch endpoint's fired records under. */
-const FIRED_RECORDS_RESOURCE = "workforceScheduledFires";
-
-/** What `hireWorkforce` takes for recurring work. */
-export interface ScheduledWorkOptions {
-  /**
-   * A schedule index (a polling or BullMQ one) to mirror every saved schedule
-   * into, for a tick to find due rows. Omitted, the host's own cron POSTs to
-   * each schedule's dispatch endpoint.
-   */
-  index?: ScheduleIndex;
-}
+/** The accessor a flow declares the dispatch endpoint's fired records under. */
+export const FIRED_RECORDS_RESOURCE = "workforceScheduledFires";
 
 /**
  * The task a fire files: the worker whose board it lands on, and the task as
@@ -81,50 +73,84 @@ export const scheduledTaskInputSchema = z
 
 export type ScheduledTaskInput = z.infer<typeof scheduledTaskInputSchema>;
 
-const saveScheduleInputSchema = z
-  .object({
-    /** The schedule's key in the collection: saving an existing key replaces it. */
-    key: z.string().min(1),
-    cron: z.string().min(1),
-    /** An IANA time zone. Omitted, UTC. */
-    timezone: z.string().min(1).optional(),
-    kind: z.literal(TASK_SCHEDULE_HANDLER).optional(),
-    input: scheduledTaskInputSchema,
-    description: z.string().optional(),
-    enabled: z.boolean().optional()
-  })
-  .strict();
-
-const saveScheduleOutputSchema = z.union([
-  z.object({ ok: z.literal(true), schedule: listedScheduleSchema }),
-  z.object({ ok: z.literal(false), error: z.string() })
-]);
-
-type StoredSchedule = {
+/** A schedule row as the collection stores it. */
+export type StoredSchedule = {
   cron: string;
   kind: string;
   timezone?: string;
   input?: unknown;
   description?: string;
   enabled?: boolean;
+  orgId?: string;
+  metadata?: Record<string, unknown>;
 };
 
-/** A schedule row as the list shows it, its next run worked out from `now`. */
-function listed(key: string, row: StoredSchedule): ListedSchedule {
-  const timezone = row.timezone ?? "UTC";
-  const enabled = row.enabled !== false;
-  const next = enabled ? parseNextFireAt(row.cron, timezone) : null;
-  return {
-    key,
-    cron: row.cron,
-    timezone,
-    kind: row.kind,
-    enabled,
-    ...(row.description === undefined ? {} : { description: row.description }),
-    input: row.input,
-    nextRunAt: next === null ? null : new Date(next).toISOString()
-  };
+/** When `row` is next due, worked out from its cron and zone now; `null` while it is off or its cron doesn't parse. */
+export function nextRunOf(row: StoredSchedule): string | null {
+  if (row.enabled === false) return null;
+  const next = parseNextFireAt(row.cron, row.timezone ?? "UTC");
+  return next === null ? null : new Date(next).toISOString();
 }
+
+/**
+ * Why a clock trigger would fail every fire, or `undefined` when it won't: the
+ * zone check dispatch runs (`validateScheduleConfig`), and a cron of exactly
+ * five fields that parses.
+ */
+export function clockProblem(cron: string, timezone: string | undefined): string | undefined {
+  if (timezone !== undefined && !isKnownTimeZone(timezone)) {
+    return (
+      `invalid_schedule: ${JSON.stringify(timezone)} is not a known time zone. ` +
+      'Use an IANA time zone such as "Europe/London", or omit it for UTC. Nothing was saved.'
+    );
+  }
+  if (!isFiveFieldCron(cron) || parseNextFireAt(cron, timezone ?? "UTC") === null) {
+    return (
+      `invalid_schedule: cron ${JSON.stringify(cron)} in ${timezone ?? "UTC"} doesn't parse as five fields. ` +
+      "Use exactly five fields (minute hour day-of-month month day-of-week) and an IANA time zone. Nothing was saved."
+    );
+  }
+  return undefined;
+}
+
+/**
+ * Delete one of the running user's schedules, with the dispatch endpoint's
+ * fired record, so the key saved again is a new schedule. The record's
+ * dispatch id is the one the endpoint keyed it by: the org and user this run
+ * is admitted as, never an input.
+ */
+export async function removeSchedule(ctx: BlockContext, key: string): Promise<void> {
+  const resources = ctx.resources as Record<string, { delete(key: string): Promise<unknown> }>;
+  await resources[SCHEDULES_RESOURCE]!.delete(key);
+  const identity = ctx.session.identity as { userId?: string; orgId?: string };
+  if (identity.userId !== undefined && identity.orgId !== undefined) {
+    await resources[FIRED_RECORDS_RESOURCE]!.delete(firedRecordCollectionKey(ROSTER_FLOW, formatScheduleId(identity.orgId, identity.userId, key)));
+  }
+}
+
+/**
+ * The schedule collection and the fired records, for a flow's `resources`: the
+ * roster flow's, and a worker flow's routine tools.
+ *
+ * @param index A schedule index to mirror every write into.
+ */
+export function scheduleResources(index?: ScheduleIndex) {
+  const collection = defineScheduleCollection({ pattern: SCHEDULES_PATTERN, ...(index === undefined ? {} : { index }) });
+  // The dispatch endpoint's record of each schedule's last fired time, in the
+  // same cell: read by no one here, deleted with its schedule.
+  const firedRecords = defineResourceCollection({
+    pattern: FIRED_RECORDS_PATTERN,
+    scope: "user",
+    stateSchema: z.object({ lastFiredAt: z.number() }).passthrough()
+  });
+  return { [SCHEDULES_RESOURCE]: collection, [FIRED_RECORDS_RESOURCE]: firedRecords };
+}
+
+/** A schedule's key relative to the collection's pattern. */
+export const scheduleKeyOf = (path: string): string => {
+  const prefix = SCHEDULES_PATTERN.slice(0, SCHEDULES_PATTERN.indexOf("*"));
+  return path.startsWith(prefix) ? path.slice(prefix.length) : path;
+};
 
 /**
  * The `task` schedule handler: file the row's task on its filer's
@@ -174,131 +200,24 @@ function scheduledTaskBlock(installation: WorkerInstallation) {
 }
 
 /**
- * Recurring work for one installation: the schedule collection, the resolver
- * the roster flow fires schedules through, and the three schedule actions.
+ * Clock routines for one installation: the schedule collection and the
+ * resolver the roster flow fires schedules through.
  */
-export function defineScheduledWork(installation: WorkerInstallation, options: ScheduledWorkOptions = {}) {
-  const collection = defineScheduleCollection({
-    pattern: SCHEDULES_PATTERN,
-    ...(options.index === undefined ? {} : { index: options.index })
-  });
-  // The dispatch endpoint's record of each schedule's last fired time, in the
-  // same cell: read by no one here, deleted with its schedule.
-  const firedRecords = defineResourceCollection({
-    pattern: FIRED_RECORDS_PATTERN,
-    scope: "user",
-    stateSchema: z.object({ lastFiredAt: z.number() }).passthrough()
-  });
-  const resources = { ...installation.resources, [SCHEDULES_RESOURCE]: collection, [FIRED_RECORDS_RESOURCE]: firedRecords };
-  const prefix = SCHEDULES_PATTERN.slice(0, SCHEDULES_PATTERN.indexOf("*"));
-  const keyOf = (path: string) => (path.startsWith(prefix) ? path.slice(prefix.length) : path);
-
+export function defineScheduledWork(installation: WorkerInstallation, index?: ScheduleIndex) {
+  const resources = scheduleResources(index);
   const schedules: SchedulesConfig = {
     resolve: createResourceCollectionScheduleResolver({
-      collection,
+      collection: resources[SCHEDULES_RESOURCE],
       blocks: { [TASK_SCHEDULE_HANDLER]: scheduledTaskBlock(installation) }
     })
   };
-
-  const listSchedules = handler({
-    name: "workforce-list-schedules",
-    inputSchema: z.object({}).strict(),
-    outputSchema: z.object({ schedules: z.array(listedScheduleSchema) }),
-    resources,
-    execute: async (_input, ctx) => {
-      const rows = await ctx.resources[SCHEDULES_RESOURCE].list();
-      // Soonest next run first, a schedule with none last, then by key.
-      const due = (s: ListedSchedule) => (s.nextRunAt === null ? Number.POSITIVE_INFINITY : Date.parse(s.nextRunAt));
-      return {
-        schedules: rows
-          .map((ref) => listed(keyOf(ref.path), ref.state as StoredSchedule))
-          .sort((a, b) => due(a) - due(b) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
-      };
-    }
-  });
-
-  const saveSchedule = handler({
-    name: "workforce-save-schedule",
-    inputSchema: saveScheduleInputSchema,
-    outputSchema: saveScheduleOutputSchema,
-    resources,
-    execute: async (input, ctx) => {
-      // The zone check dispatch runs (`validateScheduleConfig`), so a row this
-      // saves never fails every fire as `invalid_schedule`.
-      if (input.timezone !== undefined && !isKnownTimeZone(input.timezone)) {
-        return {
-          ok: false as const,
-          error:
-            `invalid_schedule: ${JSON.stringify(input.timezone)} is not a known time zone. ` +
-            'Use an IANA time zone such as "Europe/London", or omit it for UTC. Nothing was saved.'
-        };
-      }
-      if (!isFiveFieldCron(input.cron) || parseNextFireAt(input.cron, input.timezone ?? "UTC") === null) {
-        return {
-          ok: false as const,
-          error:
-            `invalid_schedule: cron ${JSON.stringify(input.cron)} in ${input.timezone ?? "UTC"} doesn't parse as five fields. ` +
-            "Use exactly five fields (minute hour day-of-month month day-of-week) and an IANA time zone. Nothing was saved."
-        };
-      }
-      const row: StoredSchedule = {
-        cron: input.cron,
-        kind: TASK_SCHEDULE_HANDLER,
-        input: input.input,
-        enabled: input.enabled ?? true,
-        ...(input.timezone === undefined ? {} : { timezone: input.timezone }),
-        ...(input.description === undefined ? {} : { description: input.description })
-      };
-      await ctx.resources[SCHEDULES_RESOURCE].create(input.key, row, { replace: true });
-      return { ok: true as const, schedule: listed(input.key, row) };
-    }
-  });
-
-  const deleteSchedule = handler({
-    name: "workforce-delete-schedule",
-    inputSchema: z.object({ key: z.string().min(1) }).strict(),
-    outputSchema: z.object({ ok: z.literal(true) }),
-    resources,
-    execute: async (input, ctx) => {
-      await ctx.resources[SCHEDULES_RESOURCE].delete(input.key);
-      // The fired record goes with the schedule, so the key saved again is a
-      // new schedule. Its dispatch id is the one the endpoint keyed it by: the
-      // org and user this run is admitted as, never the input.
-      const identity = ctx.session.identity as { userId?: string; orgId?: string };
-      if (identity.userId !== undefined && identity.orgId !== undefined) {
-        await ctx.resources[FIRED_RECORDS_RESOURCE].delete(firedRecordCollectionKey(ROSTER_FLOW, formatScheduleId(identity.orgId, identity.userId, input.key)));
-      }
-      return { ok: true as const };
-    }
-  });
-
-  const actions: Record<string, ActionConfig> = {
-    [LIST_SCHEDULES_ACTION]: {
-      inputSchema: listSchedules.inputSchema,
-      block: listSchedules,
-      description: "The user's schedules, each with when it is next due, worked out from its cron and time zone."
-    },
-    saveSchedule: {
-      inputSchema: saveScheduleInputSchema,
-      block: saveSchedule,
-      description: "Save a schedule that files a task on a worker's board each time it is due. Saving an existing key replaces it."
-    },
-    deleteSchedule: {
-      inputSchema: deleteSchedule.inputSchema,
-      block: deleteSchedule,
-      description: "Remove a schedule. A fire already dispatched still files."
-    }
-  };
-
   return {
     /** The schedule collection and the fired records, for the roster flow's `resources`. */
-    resources: { [SCHEDULES_RESOURCE]: collection, [FIRED_RECORDS_RESOURCE]: firedRecords },
+    resources,
     /** The roster flow's `schedules`: a dispatch id resolves to its row. */
-    schedules,
-    /** `listSchedules`, `saveSchedule` and `deleteSchedule`, for the roster flow's `actions`. */
-    actions
+    schedules
   };
 }
 
-/** Recurring work for one installation, as {@link defineScheduledWork} builds it. */
+/** Clock routines for one installation, as {@link defineScheduledWork} builds it. */
 export type ScheduledWork = ReturnType<typeof defineScheduledWork>;

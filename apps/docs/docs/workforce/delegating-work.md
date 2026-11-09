@@ -253,11 +253,11 @@ const flows = hireWorkforce(installation, { taskChainLimit: 250 });
 
 `taskChainLimit` must be a whole number of at least 1, or `hireWorkforce` throws. The depth of five doesn't change.
 
-## Recurring work
+## Tasks on a clock
 
-Work that comes round on a schedule, like refreshing the adoption numbers every Monday, is a schedule in the user's schedule collection. Each time it is due, it files an ordinary task on the board of the worker it names, in the user's own conversation with that worker, as the user. The task runs, retries, reports and cancels like any task filed there, and the worker hears it end. No model turn decides what to file: the schedule says what lands.
+Work that comes round on a schedule, like refreshing the adoption numbers every Monday, is a clock routine: a routine whose trigger is a cron and a time zone. Each time it is due, it files an ordinary task on the board of the worker it names, in the user's own conversation with that worker, as the user. The task runs, retries, reports and cancels like any task filed there, and the worker hears it end. No model turn decides what to file: the routine says what lands.
 
-Save one through the roster flow's `saveSchedule` action, on the user's roster session (`workforce-roster`), through the client's handle on that flow:
+Save one through the roster flow's `saveRoutine` action, on the user's roster session (`workforce-roster`), through the client's handle on that flow:
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
@@ -266,12 +266,11 @@ const fsd = createClient({ userId, baseUrl });
 // rosterSessionId: a session of workforce-roster that the user owns, the one
 // your app already reads their roster through.
 await fsd.flow("workforce-roster").send(
-  "saveSchedule",
+  "saveRoutine",
   {
-    key: "adoption-numbers",
-    cron: "0 9 * * 1",
-    timezone: "Europe/London",
-    input: {
+    name: "adoption-numbers",
+    trigger: { clock: { cron: "0 9 * * 1", timezone: "Europe/London" } },
+    task: {
       filer: "launch", // whose board the task lands on
       goal: "Refresh the adoption numbers",
       assignee: "researcher", // one of launch's delegates
@@ -281,45 +280,45 @@ await fsd.flow("workforce-roster").send(
 );
 ```
 
-`input` takes the task's `goal`, and optionally `assignee`, `title`, `priority`, `input` and `metadata`. With no `assignee`, the task goes to the filer's delegate when it has exactly one. Saving an existing `key` replaces it, and `enabled: false` keeps the schedule without firing it. The cron must be exactly five fields (minute hour day-of-month month day-of-week), and the time zone a known IANA zone. Anything else is refused, and nothing is saved:
+`task` takes the `filer` and the task's `goal`, and optionally `assignee`, `title`, `priority`, `input` and `metadata`. With no `assignee`, the task goes to the filer's delegate when it has exactly one. Saving an existing `name` replaces it, and `pauseRoutine({ id, paused: true })` keeps it without firing it. The cron must be exactly five fields (minute hour day-of-month month day-of-week), and the time zone a known IANA zone. Anything else is refused, and nothing is saved:
 
 ```json
 { "ok": false, "error": "invalid_schedule: cron \"every monday\" in UTC doesn't parse. …" }
 ```
 
-`deleteSchedule({ key })` removes one, with the record of the times it fired, so a schedule saved again under the same key starts fresh. `listSchedules({})` returns the user's schedules, each with `nextRunAt`, when it is next due, worked out from its cron and time zone as the list is read:
+`deleteRoutine({ id: "clock:adoption-numbers" })` removes one, with the record of the times it fired, so a routine saved again under the same name starts fresh. `listRoutines({})` returns the user's routines, clock and event, each clock routine with `nextRunAt`, when it is next due, worked out from its cron and time zone as the list is read:
 
 ```json
 {
-  "schedules": [
+  "routines": [
     {
-      "key": "adoption-numbers",
-      "cron": "0 9 * * 1",
-      "timezone": "Europe/London",
-      "kind": "task",
-      "enabled": true,
-      "input": { "filer": "launch", "goal": "Refresh the adoption numbers", "assignee": "researcher" },
-      "nextRunAt": "2026-10-26T09:00:00.000Z"
+      "id": "clock:adoption-numbers",
+      "name": "adoption-numbers",
+      "worker": "launch",
+      "paused": false,
+      "madeBy": { "by": "user" },
+      "trigger": { "clock": { "cron": "0 9 * * 1", "timezone": "Europe/London", "nextRunAt": "2026-10-26T09:00:00.000Z" } },
+      "task": { "filer": "launch", "goal": "Refresh the adoption numbers", "assignee": "researcher" }
     }
   ]
 }
 ```
 
-`nextRunAt` says when the schedule is due, not that your host will fire it: on a host whose cron isn't running it still shows a time. It is `null` for a schedule that is off, and for a row whose cron doesn't parse.
+`nextRunAt` says when the routine is due, not that your host will fire it: on a host whose cron isn't running it still shows a time. It is `null` for a paused routine, and for a row whose cron doesn't parse. A worker can save one too, through its `routineTools`, filing on its own board.
 
 ### Firing them
 
-Add `createScheduledTransportAdapter()` from `@flow-state-dev/scheduled` to the host's `adapters`. A schedule fires when your scheduler POSTs its dispatch endpoint on the roster flow, `/api/flows/workforce-roster/schedules/<id>/dispatch`, where `<id>` is `encodeURIComponent(formatScheduleId(orgId, userId, key))`. The endpoint fires each scheduled time at most once across retries, restarts and hosts that share a SQLite or Postgres store. See [At most once per scheduled time](../server/scheduled.md#at-most-once-per-scheduled-time).
+Add `createScheduledTransportAdapter()` from `@flow-state-dev/scheduled` to the host's `adapters`. A clock routine fires when your scheduler POSTs its dispatch endpoint on the roster flow, `/api/flows/workforce-roster/schedules/<id>/dispatch`, where `<id>` is `encodeURIComponent(formatScheduleId(orgId, userId, key))`. The endpoint fires each scheduled time at most once across retries, restarts and hosts that share a SQLite or Postgres store. See [At most once per scheduled time](../server/scheduled.md#at-most-once-per-scheduled-time).
 
-To fire every user's schedules from one polling tick, give `hireWorkforce` a [schedule index](../server/schedule-index.md). Every saved schedule is mirrored into it:
+To fire every user's clock routines from one polling tick, give `hireWorkforce` a [schedule index](../server/schedule-index.md). Every saved clock routine is mirrored into it:
 
 ```ts
-const flows = hireWorkforce(installation, { schedules: { index: scheduleIndex } });
+const flows = hireWorkforce(installation, { routines: { index: scheduleIndex } });
 ```
 
-Without one, your scheduler POSTs each schedule's endpoint itself.
+Without one, your scheduler POSTs each routine's endpoint itself.
 
-A fire files each time, even while last week's task is still open. A fire whose filing is refused files nothing, and isn't retried: a `filer` that isn't on the user's roster, an `assignee` that is the filer itself or isn't among its delegates, no `assignee` when the filer has more than one delegate, or a filer whose flow keeps no board. The fire's request on the roster flow fails, naming why. A schedule can't skip or reshape a week's work; to change it, save the schedule again.
+A fire files each time, even while last week's task is still open. A fire whose filing is refused files nothing, and isn't retried: a `filer` that isn't on the user's roster, an `assignee` that is the filer itself or isn't among its delegates, no `assignee` when the filer has more than one delegate, or a filer whose flow keeps no board. The fire's request on the roster flow fails, naming why. A routine can't skip or reshape a week's work; to change it, save it again.
 
 ## After upgrading
 

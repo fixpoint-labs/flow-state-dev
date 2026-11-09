@@ -10,9 +10,9 @@
  * `GOAL_WORK_MS` and reports. No model.
  *
  * Operations (JSON array in `GOAL_OPS`):
- *   { op: "save", schedule }       Alice saves a schedule (roster `saveSchedule`)
- *   { op: "delete", key }          Alice removes one (`deleteSchedule`)
- *   { op: "list" }                 Alice's schedules (`listSchedules`)
+ *   { op: "save", schedule }       Alice saves a clock routine (roster `saveRoutine`)
+ *   { op: "delete", key }          Alice removes one (`deleteRoutine`)
+ *   { op: "list" }                 Alice's clock routines (`listRoutines`), as the old list's rows
  *   { op: "fire", key, at? }       the scheduler POSTs the schedule's dispatch, with `at` as its time or none
  *   { op: "settle" }               wait until no request is running
  *   { op: "tasks" }                Alice's tasks with launch (`listTasks_tasks`)
@@ -138,15 +138,22 @@ try {
 
   for (const op of OPS) {
     switch (op.op) {
-      case "save":
-        results.push({ op: "save", out: await roster("saveSchedule", op.schedule) });
+      case "save": {
+        const { key, cron, timezone, input } = op.schedule as { key: string; cron: string; timezone?: string; input: unknown };
+        const trigger = { clock: { cron, ...(timezone === undefined ? {} : { timezone }) } };
+        results.push({ op: "save", out: await roster("saveRoutine", { name: key, trigger, task: input }) });
         break;
+      }
       case "delete":
-        results.push({ op: "delete", out: await roster("deleteSchedule", { key: op.key }) });
+        results.push({ op: "delete", out: await roster("deleteRoutine", { id: `clock:${op.key}` }) });
         break;
-      case "list":
-        results.push({ op: "list", now: new Date().toISOString(), out: await roster("listSchedules", {}) });
+      case "list": {
+        // The run grades the rows the list used to answer: key, cron, zone, next run.
+        const listed = (await roster("listRoutines", {})) as { routines?: Array<{ name: string; trigger: { clock?: { cron: string; timezone: string; nextRunAt: string | null } } }> };
+        const schedules = (listed.routines ?? []).filter((r) => r.trigger.clock !== undefined).map((r) => ({ key: r.name, ...r.trigger.clock! }));
+        results.push({ op: "list", now: new Date().toISOString(), out: { schedules } });
         break;
+      }
       case "fire": {
         // As a host's cron does: the shared secret, the schedule's dispatch id, and its time.
         const id = formatScheduleId(ORG, USER, op.key);

@@ -1,5 +1,5 @@
 /**
- * Goal check — Alice's recurring work arrives as an ordinary task on the board
+ * Goal check — Alice's clock routine arrives as an ordinary task on the board
  * she named, once per scheduled time across restarts and hosts, and she can see
  * every schedule's next run (FIX-2085). See goal.md.
  *

@@ -60,7 +60,14 @@ const SCHEDULE_RESOURCE_SCHEMA = z.object({
   timezone: z.string().optional(),
   onOverlap: z.enum(["skip", "allow"]).optional(),
   description: z.string().optional(),
-  enabled: z.boolean().default(true)
+  enabled: z.boolean().default(true),
+  // FIX-2614; BP-030.
+  /**
+   * The writer's own fields, kept with the row and never read here: the
+   * resolver, the index and dispatch ignore them. Optional, so a row from
+   * before it reads as it always did.
+   */
+  metadata: z.record(z.string(), z.unknown()).optional()
 });
 
 /** Inferred state shape for a schedule resource instance. */

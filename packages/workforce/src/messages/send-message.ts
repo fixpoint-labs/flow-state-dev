@@ -347,7 +347,7 @@ interface ServiceMessage {
   /** Where the sending worker would stand: `service:<provider>`. */
   readonly sender: string;
   /** A live subscription's session, the worker it runs, and its flow: the subscription row is the recipient check. */
-  readonly to: { readonly sessionId: string; readonly flow: string; readonly worker: string };
+  readonly to: { readonly sessionId: string; readonly flow: string; readonly worker: string; readonly state?: Record<string, string> };
   readonly text: string;
   /** The server-chosen id, so a repeat lands once. */
   readonly id: string;
@@ -379,7 +379,7 @@ export async function sendServiceMessage(
     {
       sender: message.sender,
       recipientId: message.to.worker,
-      destination: { sessionId: message.to.sessionId, flow: message.to.flow },
+      destination: { sessionId: message.to.sessionId, flow: message.to.flow, ...(message.to.state === undefined ? {} : { state: message.to.state }) },
       addressed: { addressedBy: "session" as const }
     }
   );

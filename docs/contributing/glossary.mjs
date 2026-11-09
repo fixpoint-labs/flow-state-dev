@@ -805,11 +805,30 @@ export const ENTRIES = [
   {
     term: "Routine",
     means: "A standing instruction that fires on its own as its owner, with exactly one trigger: a clock (recurring work) or an event (a subscription, pushed or polled).",
-    decision: "Owner, 2026-11-08; FIX-2471 D12",
-    // "Recurring work" and "schedule" as user-facing names retire when FIX-2614 renames the shipped
-    // surface: the code and published pages still say them until then, so retiring them here would fail
-    // every check on main. FIX-2614's implementation PR adds those retirements.
-    retires: [],
+    decision: "Owner, 2026-11-08; FIX-2471 D12; FIX-2614",
+    // FIX-2614 renamed the shipped surface: the four routine verbs and `routineTools` replace the schedule
+    // actions and the subscription tools, with no aliases. "Schedule" and "subscription" stay, as the words
+    // for a clock trigger's row and an event trigger's.
+    retires: [
+      { name: "subscriptionTools" },
+      { name: "SUBSCRIPTION_TOOLS" },
+      { name: "saveSchedule" },
+      { name: "listSchedules" },
+      { name: "deleteSchedule" },
+      { name: "LIST_SCHEDULES_ACTION" },
+      { name: "listedScheduleSchema" },
+      { name: "ListedSchedule" },
+      { name: "ScheduledWorkOptions" },
+      {
+        id: "recurring-work-prose",
+        check: "sweep",
+        reach: "meaning",
+        files: CODE_OR_PUBLISHED,
+        // The user-facing names a routine replaces: "recurring work" for a clock routine, and the
+        // "Scheduled work" screen that listed only those.
+        pattern: /\brecurring work\b|\bscheduled work\b/i,
+      },
+    ],
   },
 ];
 

@@ -929,7 +929,7 @@ describe("Jump to from the keyboard", () => {
   it("reaches every screen the sidebar does, by the name it shows there", async () => {
     await openApp("/inbox");
     await screen.findByTestId("jump-tip");
-    const screens: Array<[string, string]> = [["Usage", "/usage"], ["Scheduled work", "/schedules"], ["Messages", "/messages"], ["Settings", "/settings"]];
+    const screens: Array<[string, string]> = [["Usage", "/usage"], ["Routines", "/routines"], ["Messages", "/messages"], ["Settings", "/settings"]];
     for (const [name, path] of screens) {
       act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
       act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: name } }));

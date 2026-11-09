@@ -48,7 +48,7 @@ const VIEWS: Entry[] = [
   { group: "Views", label: "Tasks", hint: "every board's tasks", keywords: [], to: { level: "tasks", by: "state" } },
   { group: "Views", label: "Roster", hint: "every worker", keywords: [], to: { level: "roster", team: null } },
   { group: "Views", label: "Messages", hint: "between your workers", keywords: [], to: { level: "messages" } },
-  { group: "Views", label: "Scheduled work", hint: "and its next runs", keywords: ["schedules"], to: { level: "schedules" } },
+  { group: "Views", label: "Routines", hint: "what runs for you", keywords: ["routines", "schedules", "subscriptions"], to: { level: "routines" } },
   { group: "Views", label: "Usage", hint: "what each harness has left", keywords: [], to: { level: "usage" } },
   { group: "Views", label: "Settings", hint: "your keys", keywords: [], to: { level: "settings" } },
 ];

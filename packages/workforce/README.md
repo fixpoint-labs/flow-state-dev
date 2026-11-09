@@ -391,11 +391,11 @@ that declares none takes no tasks and files none. Every hire path (`hireWorkforc
 user's runtime hire) checks the roles before any worker runs: see
 [What a hireable worker flow must admit](#what-a-hireable-worker-flow-must-admit).
 
-The roster flow also keeps the user's schedules: `saveSchedule`, `deleteSchedule` and
-`listSchedules` (each with its next run), and a fire through the
+The roster flow also keeps the user's [routines](#routines): `listRoutines`, `saveRoutine`,
+`pauseRoutine` and `deleteRoutine`. A clock routine's fire through the
 [scheduled-dispatch endpoint](../scheduled/README.md) files an ordinary task on the named worker's
-board, as the user. `hireWorkforce(installation, { schedules: { index } })` mirrors them into a
-schedule index; see [Recurring work](https://flow-state.dev/docs/workforce/delegating-work#recurring-work).
+board, as the user. `hireWorkforce(installation, { routines: { index } })` mirrors clock routines
+into a schedule index.
 
 The installation reads three keys of its own: **`flow`**, which names the flow the worker runs on,
 **`description`**, the roster label, and **[`resources`](#the-documents-a-worker-may-touch)**, the
@@ -2657,6 +2657,40 @@ session reads as one that doesn't exist. To have a worker act, decide, or use wh
 a message; a consult only finds what was already said. See [Consulting a conversation instead of
 messaging it](https://flow-state.dev/docs/workforce/messaging-workers#consulting-a-conversation-instead-of-messaging-it).
 
+## Routines
+
+A routine is a standing instruction that fires on its own as the user, with one trigger: a
+**clock** (a cron and a time zone; each time it is due it files an ordinary task on a worker's
+board) or an **event** (a [subscription](#subscriptions) to one thread; each event reaches a
+worker's conversation as a message). A clock routine's row is a schedule in the user's schedule
+collection; an event routine's is a subscription. Nothing else stores them.
+
+Four verbs reach both, with the same names as roster actions and as a worker's tools:
+
+| Verb | Input | Answer |
+| --- | --- | --- |
+| `listRoutines` | `{}` | `{ routines }`: clock routines soonest next run first, then event routines. Each has its `id` (`clock:<key>` or `event:<subscription id>`), `name`, the `worker` it acts through, `paused`, `madeBy` (`{ by: "user" }`, `{ by: "worker", worker }` or `{ by: "app", entry }`, when the row says), its `trigger`, and a clock routine's `task` and next run. Paused routines list; ended ones don't. |
+| `saveRoutine` | `{ name?, trigger: { clock: { cron, timezone? } } \| { event: { provider, thread, kinds?, screens?, outsiders?, interest, everyMinutes? } }, task?, worker?, description? }` | `{ ok: true, routine }` or `{ ok: false, error }`. A clock routine takes a `name` (its key: saving it again replaces it) and the `task` it files; an event routine takes `subscribe`'s input whole. Saving turns it on. |
+| `pauseRoutine` | `{ id, paused }` | The routine. A paused clock routine is `enabled: false`; a paused event routine is ended with reason `paused` and leaves the thread index. A resume of an event routine subscribes again from its row: read access is checked again, and a task's routine still ends when its task fails. |
+| `deleteRoutine` | `{ id }` | `{ ok: true }` or `{ ok: false, error }`. |
+
+**Who reaches what.** On the roster flow the user reaches every routine of theirs; an event
+routine they save names the `worker` whose conversation hears it, and is heard at that
+conversation's own address. A worker's tools (`routineTools({ providers, index? })`, for its
+flow's actions or a model's tools) reach only the routines that act through that worker, else
+`not_yours`: a clock routine it saves files on its own board, an event routine it saves is heard
+in the conversation that saved it. Give `routineTools` the same `index` as `hireWorkforce`, so a
+clock routine a worker saves is mirrored too.
+
+**The app's own.** `hireWorkforce(installation, { routines: { index?, providers?, declared? } })`.
+Each `declared` entry, `{ id, owner?, trigger, task?, worker?, description? }`, is seeded into
+each user's collections when their roster flow runs a request (or only into its `owner`'s), under
+`cfg_<hash>` of the entry's id, written only when missing or changed. The user may pause one; save
+and delete refuse with `declared`. A config change keeps the pause. A clock entry removed from
+config is deleted on the next seed. `hireWorkforce` throws, before anything registers, on an entry
+that would never fire. `everyMinutes` (5, 10, 15, 20, 30 or 60) is checked; a pushed provider
+ignores it.
+
 ## Subscriptions
 
 A worker's conversation can follow a thread on an outside service, such as a pull request, an
@@ -2666,8 +2700,9 @@ decide who hears it.
 
 To wire up subscriptions, an app provides:
 
-- **The tools.** `subscriptionTools({ providers })` returns two handler blocks, `subscribe` and
-  `unsubscribe`, for a worker's model (or an action) in the conversation that should hear.
+- **The tools.** `routineTools({ providers })` returns the four [routine](#routines) tools; an
+  event routine is a subscription, saved by a worker's model (or an action) in the conversation
+  that should hear.
 - **The service flow.** `defineSubscriptionServiceFlow({ kind, provider, installation,
   trustedBots?, capPerHour? })` builds one flow per provider. Register it beside your worker flows.
 - **The ingestion.** For each event, map it into the normalized event (`subscriptionEventSchema`
@@ -2679,7 +2714,7 @@ running request's user can read a thread on the provider, on that user's credent
 id on the provider, so their own actions are dropped.
 
 ```ts
-import { defineSubscriptionServiceFlow, subscriptionResources, subscriptionTools } from "@flow-state-dev/workforce";
+import { defineSubscriptionServiceFlow, routineTools } from "@flow-state-dev/workforce";
 
 const github = {
   provider: "github",
@@ -2687,9 +2722,8 @@ const github = {
   self: (ctx) => githubLoginOf(ctx.session.identity.userId)
 };
 
-// In a worker flow: the tools, and the rows they write.
-const { subscribe, unsubscribe } = subscriptionTools({ providers: [github] });
-// resources: { ...subscriptionResources }
+// In a worker flow: the routine tools (each declares the rows it writes).
+const { listRoutines, saveRoutine, pauseRoutine, deleteRoutine } = routineTools({ providers: [github] });
 
 // Beside the worker flows:
 const githubService = defineSubscriptionServiceFlow({ kind: "github-service", provider: github, installation, trustedBots: ["codex"] });
@@ -2724,13 +2758,14 @@ The `subscribe` input is `{ provider, thread, kinds?, screens?, outsiders?, inte
   to hear. It is kept with the subscription as a record of why it was made. No screen reads it, so
   it doesn't change what is delivered; use `kinds` and `screens` for that.
 
-It answers `{ id }`. A second `subscribe` from the same conversation for the same `thread` updates that
-subscription. A refusal answers `{ refused }`, starting with a code: `not_a_worker`, `no_thread`
-(`thread` is empty: the `interest` sentence doesn't pick a thread), `no_provider`, `wrong_provider` (the key isn't that
-provider's), `not_readable` (the user can't read the thread) or `no_session`.
+`saveRoutine({ trigger: { event: … } })` passes this to `subscribe`, which answers `{ id }`. A
+second save from the same conversation for the same `thread` updates that subscription. A refusal
+starts with a code: `not_a_worker`, `no_thread` (the subscription names no `thread`; the
+`interest` sentence picks none), `no_provider`, `wrong_provider` (the key isn't that provider's),
+`not_readable` (the user can't read it on the provider) or `no_session`.
 
-`unsubscribe` takes `{ id }` and answers `{ ended: id }`, or `{ refused: "not_yours: …" }` for an id
-this conversation didn't subscribe.
+`deleteRoutine({ id: "event:<id>" })` ends it, and `pauseRoutine` pauses or resumes it; a worker may
+change only the ones it hears (`not_yours`).
 
 ### What a conversation hears
 
@@ -2751,14 +2786,14 @@ not as instructions, followed by the event's title, text and link.
 
 ### When a subscription ends
 
-- When its conversation calls `unsubscribe`.
+- When its routine is deleted (`deleteRoutine`). A paused one is off, and comes back on a resume.
 - When an event closes the thread it follows, as a merged or closed PR does. A closing event
   (`closes: true`) closes the last and narrowest of its `threads`, so it ends the subscriptions to
   that PR and leaves the ones to the whole repository. It ends them whether or not the closing
   event reached them (another event kind, a screen, the user's own merge, the cap), after
   delivering it to the ones it did reach.
-- When the task whose session subscribed fails or is cancelled. A task that completes keeps its
-  subscriptions, so a coding task still hears the reviews on the PR it opened.
+- When the task whose session subscribed fails or is cancelled, paused or not. A task that
+  completes keeps its subscriptions, so a coding task still hears the reviews on the PR it opened.
 
 ### The routing's answer
 
@@ -2865,10 +2900,11 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
 | `discoverWorkforceCode(root)` | Walk `flows/workers/` and `blocks/` one level deep, every `resources/` folder the convention reads, every `blocks/` folder inside the team tree, and every package's `blocks/` folder, returning what they hold on `files`, `resourceModules`, `workerBlocks` and `packageBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules, workerBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `workerBlocks` and `packageBlocks` as a module of static imports exporting `workerFlows`, `blocks`, `resourceModules`, `workerBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
-| `hireWorkforce(installation, { taskChainLimit?, messages? })` | The flows to register for an installation: one copy of each worker flow, under its name, and the roster flow (`workforce-roster`) with `hire`, `fork`, `edit` and `fire`. Throws, naming every problem, when a worker flow misses the contract or doesn't declare the installation's session, or when a standard worker would be refused on its first turn; nothing is registered. `taskChainLimit` is the most tasks one top task may have under it, at any depth (100 when omitted); a value that isn't a whole number of at least 1 throws. `messages: { budget?, perTurn? }` limits [worker messages](#worker-messages) (6 and 3 when omitted), under the same rule. |
+| `hireWorkforce(installation, { taskChainLimit?, messages?, routines? })` | The flows to register for an installation: one copy of each worker flow, under its name, and the roster flow (`workforce-roster`) with `hire`, `fork`, `edit` and `fire`. Throws, naming every problem, when a worker flow misses the contract or doesn't declare the installation's session, or when a standard worker would be refused on its first turn; nothing is registered. `taskChainLimit` is the most tasks one top task may have under it, at any depth (100 when omitted); a value that isn't a whole number of at least 1 throws. `messages: { budget?, perTurn? }` limits [worker messages](#worker-messages) (6 and 3 when omitted), under the same rule. `routines: { index?, providers?, declared? }` sets up [routines](#routines) and adds their four verbs to the roster flow. |
 | `SEND_MESSAGE_TOOL` / `MESSAGE_RECEIVED_ENTRY` / `RECEIVED_MESSAGE_COMPONENT` / `WORKER_MESSAGES_RESOURCE` / `WORKER_MESSAGES_PATTERN` / `workerMessageRowSchema` / `WorkerMessageRow` / `MAX_MESSAGE_CHARS` / `DEFAULT_MESSAGE_BUDGET` / `DEFAULT_MESSAGES_PER_TURN` / `sendMessageInputSchema` | [Worker messages](#worker-messages): the tool's name (`"sendMessage"`), the entry a message arrives on (`"onMessageReceived"`), the component item type a received message is drawn by (`"workforce:received"`), the log's accessor and pattern and its row schema, the 8,000-character cap, the default limits (6 and 3), and the tool's input schema. Also exported: `MESSAGE_STATUSES`, `MessageAddress`, `workerMessagesCollection` and `workerMessagesResources` (the log as a flow resource), and `sendMessage(ctx, installation, flowKind, { to, text, inReplyTo? }, from, { id?, replyRequested?, exempt?, noAnswer? })`, the send the tool runs, answering a `SendOutcome` (`{ ok: true, id, requestId? }` or `{ ok: false, error }`); its input type is `SendMessageInput`, where `to` is a worker's id, `{ task }` or `{ session }`. `replyRequested: {}` asks for a reply and `{ deadlineAt }` adds the deadline a waiting sender stops at (the tool's `wait` parks on it; the bare helper doesn't wait). `exempt: true` spends no budget, for the server's own messages, and `noAnswer: true` marks the framework's "no answer"; neither is for a model's input. Pass a server-chosen `id` to make a repeated send one message: when its row already exists, the repeat writes nothing, spends no budget and answers `{ ok: true, id }`. The tool never passes one. `checkTaskTarget` / `checkTargetSession` / `MessageTarget` / `TargetCheck` / `CheckedTarget`: see [Addressing a task or a conversation](#addressing-a-task-or-a-conversation). |
 | `messageReceivedEntry({ installation, flowKind, turn?, hears? })` / `MessageHearing` | The `onMessageReceived` internal entry every worker flow carries (see [Worker messages](#worker-messages)). `turn` runs with a `MessageReceived` after the message lands; left out, nothing runs, the request outputs `{ turnless: true }`, and a send with `wait: true` or `replyRequested` to the flow's workers is refused up front with `no_reply`. Where the sender can't tell (an entry built by an older copy of this package), the message is sent and its answer is the framework's "no answer". `hears: "task-sessions"` (`MessageHearing`) makes the flow's workers hear only in their tasks' sessions, refusing a message by name with `task_sessions_only`. The session factory's `entries(turn)` includes one. |
-| `subscriptionTools({ providers })` / `subscribe(ctx, providers, input)` / `unsubscribe(ctx, id, reason)` / `endTaskSubscriptions(ctx, taskId, ending)` / `subscribeInputSchema` / `SubscriptionProvider` | [Subscriptions](#subscriptions): the two tools as handler blocks, and the functions they and a task's ending call. `SubscriptionProvider` is `{ provider, canRead(thread, ctx), self?(ctx) }`. |
+| `subscribe(ctx, providers, input, target?, write?)` / `unsubscribe(ctx, id, reason)` / `endTaskSubscriptions(ctx, taskId, ending)` / `subscribeInputSchema` / `SubscriptionProvider` / `SubscribeTarget` / `SubscribeWrite` | [Subscriptions](#subscriptions): the two writers every event routine goes through, and a task's ending. `target` (`{ sessionId, flow, worker, taskId? }`) is the session that hears when it isn't the running one, derived by server code; `write` (`{ id?, madeBy?, paused? }`) is server code's too. `SubscriptionProvider` is `{ provider, canRead(thread, ctx), self?(ctx) }`. |
+| `routineTools({ providers, index? })` / `LIST_ROUTINES_ACTION` / `ROUTINE_VERBS` / `listedRoutineSchema` / `ListedRoutine` / `routineMakerSchema` / `RoutineMaker` / `DeclaredRoutine` / `RoutinesOptions` / `declaredRoutineKey` / `ROUTINE_CADENCES` | [Routines](#routines): the four tools for a worker's turn, the verbs' names, the list's row (`listedRoutineSchema`, also from `/browser`) and who made one, and the app's declared routines with the key each is stored under (`cfg_…`). |
 | `defineSubscriptionServiceFlow({ kind, provider, installation, trustedBots?, capPerHour? })` / `SUBSCRIPTION_ROUTE_ENTRY` / `SUBSCRIPTION_DELIVER_ENTRY` / `DEFAULT_SUBSCRIPTION_CAP_PER_HOUR` | A provider's service flow: the routing entry an ingestion calls through the engine's `routeServiceEvent`, as the service, and the delivery entry the host runs as each subscriber. The cap is 30 an hour by default. |
 | `subscriptionResources` / `SUBSCRIPTIONS_PATTERN` / `SUBSCRIPTION_CURSORS_PATTERN` / `SUBSCRIPTION_INDEX_PATTERN` / `subscriptionRowSchema` / `subscriptionCursorSchema` / `listedScreenSchema` / `SCREEN_KINDS` / `screenVerdictSchema` / `screenRefusal` / `serviceSender` / `deliveryMessageId` / `deliveryText` | The rows: a user's subscriptions and their cursors, and the org's thread index (server-only). The five screen kinds (`sender`, `own`, `labels`, `words`, `allow`), the verdict shape `{ subscription, pass, reason }`, one screen's answer for one subscription, the sender a delivery names (`service:<provider>`), a delivery's message id (`sub_<object>@<version>:<session>`, or `sub_<object>@<version>@<tenant>:<session>` under a tenant) and its text. |
 | `messageReceivedSchema` / `MessageReceived` / `messageReceivedInputSchema` | What a turn hears, `{ id, from, text, inReplyTo?, budget, replyRequested? }` (`replyRequested` is `true` when the sender asked for a reply, which is the turn's final text unless the turn answers with `sendMessage`; `budget` is how many more messages the exchange can send), and what the entry takes, `{ messageId }`. |

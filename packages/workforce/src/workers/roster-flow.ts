@@ -10,8 +10,10 @@
  * same session reads who the organization's workers are without a coordinator
  * session to read it through. It declares the user's worker message log
  * (`workforce/messages/*`), so an app shows who messaged whom. And it keeps the
- * user's schedules (`workforce/schedules/*`): its `schedules` fires
- * each one, and its schedule actions list and write them.
+ * user's routines: their schedules (`workforce/schedules/*`), which its
+ * `schedules` fires, and their subscriptions (`workforce/subscriptions/*`);
+ * its routine actions list and write both, and each request first seeds the
+ * app's declared routines (`seed`, when the app declares any).
  *
  * Its own kind (`workforce-roster`), so a listing of a worker flow's sessions
  * never shows a roster session. It takes no create check: a roster session
@@ -19,11 +21,10 @@
  * an app that lists every flow's sessions filters this flow kind out.
  */
 import { defineFlow } from "@flow-state-dev/core";
-import type { ActionConfig, SchedulesConfig } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockDefinition, SchedulesConfig } from "@flow-state-dev/core/types";
 import { defineWorkerInventoryCollection } from "../inventory/collections";
 import { workerMessagesResources } from "../messages/message-log";
 import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
-import type { ScheduledWork } from "../schedules/scheduled-work";
 import type { WorkerInstallation } from "./installation";
 import { ROSTER_FLOW } from "./keys";
 
@@ -33,14 +34,14 @@ import { ROSTER_FLOW } from "./keys";
  * @param installation The installation whose worker collections it declares.
  * @param actions Actions to mount on it, such as the hire, fork, edit and fire
  *   blocks (`createWorkerHireBlocks`). Omitted, it reads and writes nothing.
- * @param scheduled Recurring work (`defineScheduledWork`): the schedule
- *   collection and the resolver its fires go through. Omitted, it keeps no
- *   schedules.
+ * @param routines The routine collections, the resolver clock fires go
+ *   through (`defineScheduledWork`), and the declared routines' seed, run as
+ *   each request starts. Omitted, it keeps no routines.
  */
 export function defineWorkerRosterFlow(
   installation: WorkerInstallation,
   actions: Record<string, ActionConfig> = {},
-  scheduled?: Pick<ScheduledWork, "resources" | "schedules">
+  routines?: { resources: Record<string, unknown>; schedules: SchedulesConfig; seed?: BlockDefinition<any, any> }
 ) {
   return defineFlow({
     kind: ROSTER_FLOW,
@@ -49,9 +50,10 @@ export function defineWorkerRosterFlow(
       ...PROJECT_ROW_RESOURCES,
       ...workerMessagesResources,
       inventoryWorkers: defineWorkerInventoryCollection(),
-      ...(scheduled?.resources ?? {})
+      ...((routines?.resources ?? {}) as Record<string, never>)
     },
-    ...(scheduled === undefined ? {} : { schedules: scheduled.schedules as SchedulesConfig }),
+    ...(routines === undefined ? {} : { schedules: routines.schedules }),
+    ...(routines?.seed === undefined ? {} : { request: { onStarted: routines.seed } }),
     actions
   });
 }

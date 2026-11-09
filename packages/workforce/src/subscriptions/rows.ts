@@ -29,6 +29,7 @@ import {
   SUBSCRIPTIONS_PATTERN,
   SUBSCRIPTIONS_RESOURCE
 } from "./keys";
+import { routineMakerSchema } from "../routines/listed-routine";
 
 /** The most terms a listed screen carries. */
 export const MAX_SCREEN_TERMS = 20;
@@ -88,10 +89,15 @@ export const subscriptionResourceStateSchema = screenSettingsSchema.extend({
   tenantId: z.string().min(1).optional(),
   /** `false` once it ended. The host's owner-run check reads it as off. */
   enabled: z.boolean(),
-  /** Why it ended: `unsubscribed`, `thread_closed`, `task_errored`, `task_cancelled`. */
+  /**
+   * Why it ended: `unsubscribed`, `thread_closed`, `task_errored`,
+   * `task_cancelled`, or `paused`, the one end a resume undoes (FIX-2614).
+   */
   endedReason: z.string().optional(),
   endedAt: z.number().optional(),
-  at: z.number()
+  at: z.number(),
+  /** Who made it, as the routine list names them. Optional: a row from before it names none (BP-030). */
+  madeBy: routineMakerSchema.optional()
 });
 
 export type SubscriptionResourceState = z.infer<typeof subscriptionResourceStateSchema>;

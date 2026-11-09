@@ -710,15 +710,25 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: subscriptions
-    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it, with no model; a provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. The two tools are the only writers of a subscription; a PR's closing and a task's failure or cancel end one.
+    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it, with no model; a provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. `subscribe` and `unsubscribe` are the only writers of a subscription (an event routine's trigger); a PR's closing and a task's failure or cancel end one.
     package: "@flow-state-dev/workforce"
-    anchor: subscriptionTools
+    anchor: subscribe
     file: packages/workforce/src/subscriptions/subscribe.ts
     builtOn: [collection, worker-messages, durability, flow, sequencer-dsl]
     overlaps:
       - { id: webhook, relation: distinct-jobs, note: "A webhook binding dispatches one action on a flow for a verified request; subscriptions route an already normalized event to the conversations that follow where it happened. FIX-2535 wires a GitHub webhook into routeServiceEvent." }
       - { id: worker-messages, relation: distinct-jobs, note: "A delivery lands as a worker message (sendServiceMessage shares sendMessage's budget-free tail), but from a service, addressed by the subscription row, never by the roster." }
       - { id: schedule, relation: distinct-jobs, note: "A dynamic schedule and an owner run both start a run as the user whose row the host found (one cell rule, resolveSharedUserCellKey); a schedule fires on a clock, a delivery on an event." }
+    status: canonical
+    doc: packages/workforce/README.md
+
+  - id: routines
+    job: See and stop everything that fires on its own as a user, in one list. A routine has one trigger, a clock (a schedule row that files a task) or an event (a subscription row); four verbs, listRoutines, saveRoutine, pauseRoutine and deleteRoutine, reach both, as roster actions for the user and as routineTools for a worker. The app's declared routines are seeded per user under cfg_ keys and can only be paused.
+    package: "@flow-state-dev/workforce"
+    anchor: routineTools
+    file: packages/workforce/src/routines/routines.ts
+    builtOn: [schedule, subscriptions, flow]
+    overlaps: []
     status: canonical
     doc: packages/workforce/README.md
 

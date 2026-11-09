@@ -44,6 +44,7 @@ import type { WorkerMessageResourceState } from "../messages/log-row";
 import { messageLogOf, workerMessagesResources } from "../messages/message-log";
 import { sendServiceMessage } from "../messages/send-message";
 import { retryOnConflict } from "../projects/cas-retry";
+import { criteriaState, deriveWorkerSessionId } from "../workers/derive-session-id";
 import type { WorkerInstallation } from "../workers/installation";
 import { SUBSCRIPTION_DELIVER_ENTRY, SUBSCRIPTION_ROUTE_ENTRY, serviceSender } from "./keys";
 import {
@@ -307,6 +308,11 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         }))
       );
 
+    // A routine the user saved is heard in their conversation with the worker,
+    // which may not be open yet: its derived address opens with the worker named.
+    const criteria = { worker: row.worker };
+    const conversation = await deriveWorkerSessionId({ userId: row.userId, orgId: row.orgId, flow: row.flow, criteria });
+    const opens = conversation === row.sessionId ? { state: criteriaState(criteria) } : {};
     let sent: Awaited<ReturnType<typeof sendServiceMessage>>;
     try {
       sent = await sendServiceMessage(
@@ -315,7 +321,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         options.kind,
         {
           sender: serviceSender(row.provider),
-          to: { sessionId: row.sessionId, flow: row.flow, worker: row.worker },
+          to: { sessionId: row.sessionId, flow: row.flow, worker: row.worker, ...opens },
           text: deliveryText(event, row.thread, slot.held),
           id
         },
