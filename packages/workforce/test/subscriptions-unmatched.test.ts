@@ -53,13 +53,14 @@ function scriptedJudgment(calls: string[]) {
         when: (input: unknown) => {
           const text = textOf(input);
           calls.push(text);
-          const last = [...text.matchAll(/\[evt-(\w+?)(-send|-own|-refile)?\]/g)].at(-1);
+          const last = [...text.matchAll(/\[evt-(\w+?)(-send|-own|-refile|-hold)?\]/g)].at(-1);
           if (last === undefined) return false;
           // A `-refile` mark files once more on the turn its task's cancel wakes.
           const key = last[2] === "-refile" && text.includes(`"status":"cancelled"`) ? `${last[0]}:again` : last[0];
           if (handled.has(key)) return false;
           handled.add(key);
-          const goal = `Triage ${last[0]}`;
+          // `-hold`: the task's run waits on the test's gate, so it can be cancelled mid-run.
+          const goal = `Triage ${last[0]}${last[2] === "-hold" ? " [hold:gate]" : ""}`;
           const url = [...text.matchAll(/https:\/\/github\.com\/acme\/api\/issues\/\d+/g)].at(-1)?.[0] ?? "";
           const questions =
             last[2] === "-own" ? [{ kind: "confirm", prompt: `Nobody asked for this: it was inferred from ${url}. Run it? ${goal}`, onNo: "continue" }] : [];
@@ -91,7 +92,11 @@ function issue(fields: Partial<SubscriptionEvent> = {}): SubscriptionEvent {
   });
 }
 
-function boot(calls: string[] = [], forwards: readonly string[] | null = ["issue", "comment"], extra: { userDeadlineMs?: number } = {}) {
+function boot(
+  calls: string[] = [],
+  forwards: readonly string[] | null = ["issue", "comment"],
+  extra: { userDeadlineMs?: number; holds?: ReadonlyMap<string, Promise<void>> } = {}
+) {
   return bootSubscriptionsHost({
     ...extra,
     standard: WATCHERS,
@@ -304,6 +309,29 @@ describe("observe's confirm closes only on the user's yes", () => {
     const [row] = await filedBy(h, "alice");
     await answer(h, sessionId, row!, true);
     expect(h.runs.some((run) => run.taskId === row!.id)).toBe(true);
+  });
+
+  it("a task the user said yes to, then cancelled mid-run, can be retried: the yes stands", async () => {
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const h = boot([], ["issue", "comment"], { holds: new Map([["gate", gate]]) });
+    const sessionId = await watching(h, "alice", "watch.observe");
+    await h.route(issue({ title: "Inferred [evt-54-hold]" }));
+    const [row] = await filedBy(h, "alice");
+    // The yes starts it; its run waits on the gate.
+    const [hold] = confirmsOf(row!);
+    await h.act("alice", sessionId, "updateTask_tasks", { id: row!.id, answers: hold!.id, done: true });
+    for (let i = 0; i < 100 && !h.runs.some((run) => run.taskId === row!.id); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(h.runs.filter((run) => run.taskId === row!.id)).toHaveLength(1);
+    // The user cancels it mid-run; the run then ends.
+    await h.act("alice", sessionId, "updateTask_tasks", { id: row!.id, status: "cancelled" });
+    open();
+    await h.settled();
+    expect((await filedBy(h, "alice")).find((r) => r.id === row!.id)?.status).toBe("cancelled");
+    const retried = await h.act("alice", sessionId, "retryTask_tasks", { id: row!.id });
+    await h.settled();
+    expect(JSON.stringify(retried.output ?? retried.error)).not.toContain("inferred_needs_a_yes");
+    expect(h.runs.filter((run) => run.taskId === row!.id)).toHaveLength(2);
   });
 });
 

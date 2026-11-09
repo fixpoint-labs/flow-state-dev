@@ -192,9 +192,10 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     // On an inferred turn in `observe`, every filing waits on the user's yes.
     holdsFiling: (ctx, init) => {
       const forward = turnForwardOf(ctx);
-      return forward !== undefined && inferredOn(ctx) === "observe"
-        ? { prompt: inferredConfirmPrompt(init.goal, forward.url), metadata: { [INFERRED_FORWARD_METADATA]: forward } }
-        : undefined;
+      if (forward === undefined || inferredOn(ctx) !== "observe") return undefined;
+      const prompt = inferredConfirmPrompt(init.goal, forward.url);
+      // The marker names the confirm by its prompt, so a retry can tell whether the user said yes.
+      return { prompt, metadata: { [INFERRED_FORWARD_METADATA]: { ...forward, confirm: prompt } } };
     }
   });
 

@@ -275,6 +275,19 @@ function heldAs<T extends TaskInit>(holdsFiling: ConversationBoardOptions["holds
   };
 }
 
+/**
+ * Whether the user answered the board's confirm on an inferred row: the hold
+ * its marker names by prompt, answered by the user's own steer. The confirm
+ * cancels on a No before any answer is kept, so an answer kept is the yes. A
+ * marker that names no prompt reads as no yes.
+ */
+function saidYes(row: Task): boolean {
+  const prompt = (row.metadata?.[INFERRED_FORWARD_METADATA] as { confirm?: unknown } | undefined)?.confirm;
+  if (typeof prompt !== "string") return false;
+  const confirm = (row.holds ?? []).find((hold) => hold.source.kind === "task" && hold.ask.kind === "confirm" && hold.ask.prompt === prompt);
+  return confirm !== undefined && (row.steers ?? []).some((steer) => steer.answers === confirm.id && steer.from === "user");
+}
+
 /** A new task's id, minted before its add so its place in the chain is reserved first. */
 function newTaskId(): string {
   return `task_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
@@ -1388,10 +1401,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ? {}
         : {
             async retry(id: string) {
-              // A cancel clears a row's holds, so a retry would start inferred work its confirm
-              // never released (a No cancels it). Filed again, it waits on the user's yes.
+              // A retry of a cancelled inferred row the user never said yes to would start work its
+              // confirm never released (a No cancels before any answer is kept). Filed again, it waits on their yes.
               const row = ref.get(id);
-              if (row?.status === "cancelled" && row.metadata?.[INFERRED_FORWARD_METADATA] !== undefined) {
+              if (row?.status === "cancelled" && row.metadata?.[INFERRED_FORWARD_METADATA] !== undefined && !saidYes(row)) {
                 throw new TaskWriteRefusedError(
                   "inferred_needs_a_yes",
                   `task "${id}" was inferred from an event nobody asked about, and was cancelled before the user said yes, so it can't be retried. File it again; it waits on their yes. Nothing was changed.`
