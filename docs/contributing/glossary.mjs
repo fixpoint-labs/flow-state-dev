@@ -806,7 +806,7 @@ export const ENTRIES = [
     term: "Routine",
     means: "A standing instruction that fires on its own as its owner, with exactly one trigger: a clock (recurring work) or an event (a subscription, pushed or polled).",
     decision: "Owner, 2026-11-08; FIX-2471 D12; FIX-2614",
-    // FIX-2614 renamed the shipped surface: the four routine verbs and `routineTools` replace the schedule
+    // FIX-2614 renamed the shipped surface: the four routine verbs and the routines capability replace the schedule
     // actions and the subscription tools, with no aliases. "Schedule" and "subscription" stay, as the words
     // for a clock trigger's stored resource and an event trigger's.
     retires: [

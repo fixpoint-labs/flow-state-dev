@@ -15,7 +15,7 @@
  * Four verbs over both: `listRoutines`, `saveRoutine`, `pauseRoutine` (one
  * `paused` flag) and `deleteRoutine`. The user reaches them on the roster
  * flow, and reaches every routine of theirs; a worker reaches them as tools
- * (`routineTools`), and reaches only the routines that act through it (a clock
+ * (`createRoutinesCapability`), and reaches only the routines that act through it (a clock
  * routine it files, an event routine it hears), else `not_yours`.
  *
  * A routine the app declares (`routines.declared`) is seeded into each user's
@@ -24,7 +24,7 @@
  * or changed. The config owns its settings: the user may pause it, and save and
  * delete refuse naming why. A seed keeps a pause.
  */
-import { handler } from "@flow-state-dev/core";
+import { defineCapability, handler } from "@flow-state-dev/core";
 import { deepEqual, updateStateWith, type UpdateStateRunner } from "@flow-state-dev/core/helpers";
 import { retryOnConflict } from "../projects/cas-retry";
 import type { ActionConfig, BlockContext } from "@flow-state-dev/core/types";
@@ -63,6 +63,7 @@ import {
   ROUTINE_VERBS
 } from "./keys";
 import { listedRoutineSchema, routineMakerSchema, type ListedRoutine, type RoutineMaker } from "./listed-routine";
+import { routineIndexOf, routineProvidersOf } from "./routines-options";
 
 // ---- inputs ------------------------------------------------------------------
 
@@ -143,7 +144,7 @@ export interface RoutinesOptions {
   /**
    * A schedule index (a polling or BullMQ one) to mirror every clock routine
    * into, for a tick to find due schedules. Omitted, the host's own cron POSTs to
-   * each schedule's dispatch endpoint. Give `routineTools` the same one.
+   * each schedule's dispatch endpoint. The routines capability a worker flow uses mirrors into it too.
    */
   readonly index?: ScheduleIndex;
   /** The providers an event routine may follow a thread on. Omitted, none. */
@@ -551,14 +552,10 @@ function withoutUndefined<T extends Record<string, unknown>>(value: T): Partial<
 
 // ---- the two surfaces ------------------------------------------------------------
 
-/** The resources the verbs reach: both collections, and the subscription cursors and index. */
-function verbResources(index: ScheduleIndex | undefined) {
-  return { ...scheduleResources(index), ...subscriptionResources };
-}
 
 /** The four verbs as handlers, run by `callerOf`. */
-function verbBlocks(
-  resources: Record<string, unknown>,
+function verbBlocks<TResources extends Record<string, unknown>>(
+  resources: TResources,
   deps: VerbDeps,
   callerOf: (ctx: BlockContext) => Caller | { refused: string },
   describe: { list: string; save: string; pause: string; delete: string }
@@ -607,11 +604,12 @@ function verbBlocks(
       return "refused" in caller ? refused(caller.refused) : deleteRoutine(ctx, caller, input);
     }
   });
-  return { [ROUTINE_VERBS.list]: list, [ROUTINE_VERBS.save]: save, [ROUTINE_VERBS.pause]: pause, [ROUTINE_VERBS.delete]: remove } as {
+  return { [ROUTINE_VERBS.list]: list, [ROUTINE_VERBS.save]: save, [ROUTINE_VERBS.pause]: pause, [ROUTINE_VERBS.delete]: remove, resources } as {
     listRoutines: typeof list;
     saveRoutine: typeof save;
     pauseRoutine: typeof pause;
     deleteRoutine: typeof remove;
+    resources: typeof resources;
   };
 }
 
@@ -622,16 +620,31 @@ function workerCaller(ctx: BlockContext): Caller | { refused: string } {
 }
 
 /**
- * The four routine tools, for a worker's turn: list, save, pause and delete
- * the routines that act through this worker. A clock routine it saves files on
- * its own board; an event routine it saves is heard in this conversation, and
- * by this task when it is a task's. Each lists the worker as its maker.
- *
- * @param options.providers The providers an event routine may follow a thread on.
- * @param options.index The schedule index `hireWorkforce`'s `routines` was given, so a clock routine saved here is mirrored into it too.
+ * The four routine verbs as a worker's tools: list, save, pause and delete the
+ * routines that act through this worker. The providers and the schedule index
+ * are the ones `hireWorkforce`'s `routines` was given for `installation`, read
+ * when a verb runs.
  */
-export function routineTools(options: { readonly providers: readonly SubscriptionProvider[]; readonly index?: ScheduleIndex }) {
-  return verbBlocks(verbResources(options.index), { providers: options.providers }, workerCaller, {
+export function workerRoutineVerbs(installation: WorkerInstallation) {
+  // One set per installation: a flow that declares the verbs and the capability declares one collection.
+  const known = workerVerbsByInstallation.get(installation);
+  if (known !== undefined) return known as ReturnType<typeof buildWorkerRoutineVerbs>;
+  const built = buildWorkerRoutineVerbs(installation);
+  workerVerbsByInstallation.set(installation, built);
+  return built;
+}
+
+const workerVerbsByInstallation = new WeakMap<object, unknown>();
+const capabilityByInstallation = new WeakMap<object, unknown>();
+
+function buildWorkerRoutineVerbs(installation: WorkerInstallation) {
+  const resources = { ...scheduleResources(routineIndexOf(installation)), ...subscriptionResources };
+  const deps: VerbDeps = {
+    get providers() {
+      return routineProvidersOf(installation);
+    }
+  };
+  return verbBlocks(resources, deps, workerCaller, {
     list: "List the routines that act through you, for this user: each with its id, its trigger (a clock or an event), and whether it is paused.",
     save:
       "Save a routine that runs as this user on its own. A clock routine ({ clock: { cron, timezone } }, a name, and a task) files the task on your board each time it is due. " +
@@ -639,6 +652,41 @@ export function routineTools(options: { readonly providers: readonly Subscriptio
       "Refused for a thread the user can't read.",
     pause: "Pause a routine (paused: true) so it fires nothing, or resume it (paused: false). A resume checks the user can still read its thread.",
     delete: "Delete a routine, by the id listRoutines gives. An app's own routine can only be paused."
+  });
+}
+
+/**
+ * Routines on a worker's turn, for a worker flow that names it in `uses`:
+ * the four routine tools, which list, save, pause and delete the routines that
+ * act through this worker. A clock routine it saves files on its own board; an
+ * event routine it saves is heard in this conversation, and by this task when
+ * it is a task's. Each lists the worker as its maker. `hireWorkforce` adds it
+ * to no worker on its own.
+ *
+ * Configured once: the providers an event routine follows a thread on and the
+ * schedule index a clock routine is mirrored into are the ones
+ * `hireWorkforce(installation, { routines })` was given.
+ *
+ * @param installation The installation whose `hireWorkforce` sets the routines.
+ */
+export function createRoutinesCapability(installation: WorkerInstallation) {
+  const known = capabilityByInstallation.get(installation);
+  if (known !== undefined) return known as ReturnType<typeof buildRoutinesCapability>;
+  const built = buildRoutinesCapability(installation);
+  capabilityByInstallation.set(installation, built);
+  return built;
+}
+
+function buildRoutinesCapability(installation: WorkerInstallation) {
+  const verbs = workerRoutineVerbs(installation);
+  const tools = [verbs.listRoutines, verbs.saveRoutine, verbs.pauseRoutine, verbs.deleteRoutine];
+  return defineCapability({
+    name: "routines",
+    resources: verbs.resources,
+    presets: {
+      tools: { tools },
+      default: ["tools"]
+    }
   });
 }
 
@@ -655,7 +703,7 @@ export function defineRoutineActions(installation: WorkerInstallation, options: 
     delete: "Delete one of the user's routines. An app's own routine can only be paused."
   });
   const actions: Record<string, ActionConfig> = Object.fromEntries(
-    Object.entries(blocks).map(([verb, block]) => [verb, { inputSchema: block.inputSchema, block, description: block.description }])
+    [blocks.listRoutines, blocks.saveRoutine, blocks.pauseRoutine, blocks.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block, description: block.description }])
   );
   // Installed with no entries too: a clock routine seeded by an entry since removed is cleaned up.
   const seed = handler({

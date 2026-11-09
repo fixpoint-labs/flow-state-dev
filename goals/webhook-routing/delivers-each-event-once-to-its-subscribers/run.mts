@@ -17,7 +17,6 @@ import {
   defineSubscriptionServiceFlow,
   hireWorkforce,
   messageReceivedEntry,
-  routineTools,
   subscriptionResources,
   workerConfigSchema,
   workerMessagesResources,
@@ -25,6 +24,7 @@ import {
   type SubscriptionProvider,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
 import { REPO_ROOT, goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
@@ -125,7 +125,8 @@ const installation = createWorkerInstallation({
   standardWorkers: [{ id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] } as WorkerManifest],
   workerFlows: () => installationFlows as never
 });
-const tools = routineTools({ providers: [github] });
+// The worker verbs as actions, called as a model would; their providers come from hireWorkforce's routines.
+const tools = workerRoutineVerbs(installation);
 const doorInput = z.object({ message: z.string() });
 const door = handler({ name: "follower-run", inputSchema: doorInput, execute: async () => "ok" });
 installationFlows.follower = {
@@ -137,7 +138,7 @@ installationFlows.follower = {
     resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
     actions: {
       respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
-      ...Object.fromEntries(Object.entries(tools).map(([verb, block]) => [verb, { inputSchema: block.inputSchema, block }]))
+      ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
     },
     // No turn: a message lands as its items and nothing runs.
     internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
@@ -145,7 +146,7 @@ installationFlows.follower = {
   })
 };
 const instances: Record<string, FlowInstance> = Object.fromEntries(
-  hireWorkforce(installation).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
+  hireWorkforce(installation, { routines: { providers: [github] } }).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
 );
 instances["github-service"] = defineSubscriptionServiceFlow({
   kind: "github-service",

@@ -3,7 +3,7 @@
  * Subscriptions: a session follows a thread, and
  * each event on it reaches that session once, from the service, after code
  * screens, as a message. A subscription is an event routine's trigger: the
- * routine verbs (`routineTools`, the roster flow) write it through `subscribe`
+ * routine verbs (the routines capability, the roster flow) write it through `subscribe`
  * and `unsubscribe`. A provider's `defineSubscriptionServiceFlow` routes and
  * delivers; an ingestion calls the engine's `routeServiceEvent` with the entry
  * `routeSubscriptionEvent`. GitHub is the first provider: `githubServiceFlow`,

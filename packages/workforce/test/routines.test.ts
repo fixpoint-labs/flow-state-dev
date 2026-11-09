@@ -10,6 +10,7 @@
  * undoes a pause, makes the app's own routines unstoppable.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { mockGenerator } from "@flow-state-dev/testing";
 import { CronExpressionParser } from "cron-parser";
 import { createScheduledTransportAdapter, formatScheduleId } from "@flow-state-dev/scheduled";
 import { inMemoryStores } from "@flow-state-dev/engine";
@@ -117,6 +118,66 @@ async function indexed(h: SubscriptionsHost, thread: string) {
 
 /** Alice's conversation with the follower worker, as a user's event routine derives it. */
 const followerConversation = () => deriveWorkerSessionId({ userId: "alice", orgId: ORG, flow: "follower", criteria: { worker: "eng.follower" } });
+
+describe("the routines capability on a worker's turn", () => {
+  const VERBS = ["listRoutines", "saveRoutine", "pauseRoutine", "deleteRoutine"];
+  const call = (id: string, toolName: string, args: unknown) => ({ toolCalls: [{ toolCallId: id, toolName, args }] });
+
+  it("lets a worker's model list, save, pause and delete its routines when its generator uses the capability", async () => {
+    const offered: Record<string, string[]> = {};
+    const model = mockGenerator({
+      name: "follower-chat",
+      script: [
+        call("1", "saveRoutine", { name: "standup", trigger: { clock: { cron: "0 9 * * 1" } }, task: { goal: "Post the standup" } }),
+        call("2", "pauseRoutine", { id: "clock:standup", paused: true }),
+        call("3", "listRoutines", {}),
+        { text: "Saved and paused." },
+        call("4", "deleteRoutine", { id: "clock:standup" }),
+        { text: "Deleted." }
+      ] as never
+    });
+    // What each tool answered, as the model reads it back on its next step.
+    const answered: Array<{ toolName: string; result: unknown }> = [];
+    const next = model.next.bind(model);
+    model.next = (input, context) => {
+      for (const result of context?.toolResults ?? []) if (!answered.some((a) => a === result)) answered.push(result);
+      return next(input, context);
+    };
+    host = bootSubscriptionsHost({
+      generators: { "follower-chat": model },
+      observeTools: (block, names) => {
+        if (block !== undefined) offered[block] = names;
+      }
+    });
+    const chat = await host.follower("alice");
+    const first = await host.act("alice", chat, "chat", { message: "every Monday at 9, post the standup; pause it for now" }, "follower");
+    expect(first.error, messageOf(first.error)).toBeUndefined();
+    expect(offered["follower-chat"]).toEqual(expect.arrayContaining(VERBS));
+    // Saved by the worker on its own board, then paused: what the user's list shows.
+    expect(await list(host)).toEqual([expect.objectContaining({ id: "clock:standup", worker: "eng.follower", paused: true, madeBy: { by: "worker", worker: "eng.follower" } })]);
+    // The model read its list back through listRoutines.
+    expect(answered.find((a) => a.toolName === "listRoutines")?.result).toMatchObject({ routines: [{ id: "clock:standup", paused: true }] });
+    const second = await host.act("alice", chat, "chat", { message: "drop the standup routine" }, "follower");
+    expect(second.error, messageOf(second.error)).toBeUndefined();
+    expect(await list(host)).toEqual([]);
+  });
+
+  it("offers no routine tools to a worker's generator that doesn't use it: hireWorkforce adds it to no one", async () => {
+    const offered: Record<string, string[]> = {};
+    host = bootSubscriptionsHost({
+      generators: { "follower-chat-plain": mockGenerator({ name: "follower-chat-plain", script: [{ text: "Nothing to do." }] as never }) },
+      observeTools: (block, names) => {
+        if (block !== undefined) offered[block] = names;
+      }
+    });
+    const chat = await host.follower("alice");
+    const ran = await host.act("alice", chat, "chatPlain", { message: "every Monday at 9, post the standup" }, "follower");
+    expect(ran.error, messageOf(ran.error)).toBeUndefined();
+    expect(offered["follower-chat-plain"]).toBeDefined();
+    expect(offered["follower-chat-plain"]!.filter((name) => VERBS.includes(name))).toEqual([]);
+    expect(await list(host)).toEqual([]);
+  });
+});
 
 describe("one list over every writer", () => {
   it("lists what the roster, a worker's tools and a task's subscribe made, each with its maker, and nothing of another user's", async () => {

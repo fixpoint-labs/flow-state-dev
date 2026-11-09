@@ -1,16 +1,18 @@
 /**
  * A host for subscriptions on the real engine (FIX-2534): the board host's
  * worker flows, a `follower` worker flow whose sessions subscribe (its
- * actions are the four routine tools, so a test calls them as a model would,
- * with no model), and a GitHub service flow that routes events. Two workers
- * run on it: `eng.follower`, and `eng.watcher`, another worker of the same
- * user.
+ * actions are the four routine verbs a worker's tools run, so a test calls them
+ * as a model would, with no model), and a GitHub service flow that routes
+ * events. Two workers run on it: `eng.follower`, and `eng.watcher`, another
+ * worker of the same user. Two scripted generators sit on it too: `chat` uses
+ * the routines capability, `chat-plain` doesn't. The routines' providers are
+ * the GitHub one, given to `hireWorkforce` as an app gives them.
  *
  * `route(event)` is what an ingestion does: it runs the service flow's routing
  * entry as the service, then each owner run it names, through the host
  * (`routeServiceEvent`), and waits for them and the messages they send.
  */
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, generator, handler } from "@flow-state-dev/core";
 import type { BlockContext, FlowInstance, SubscriptionEvent } from "@flow-state-dev/core/types";
 import { routeServiceEvent } from "@flow-state-dev/engine/internal";
 import { runAction } from "@flow-state-dev/engine";
@@ -30,7 +32,8 @@ import {
   type SubscriptionProvider,
   type SubscriptionServiceOptions
 } from "../src/subscriptions";
-import { routineTools } from "../src/routines";
+import { createRoutinesCapability } from "../src/routines";
+import { workerRoutineVerbs } from "../src/routines/routines";
 import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
@@ -54,7 +57,10 @@ export const github: SubscriptionProvider = {
 const doorInput = z.object({ message: z.string() });
 
 function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, isolated: boolean) {
-  const tools = routineTools({ providers: [github] });
+  const tools = workerRoutineVerbs(installation);
+  // A worker's turn on a model: one with the routines capability, one without.
+  const chat = generator({ name: "follower-chat", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, uses: [createRoutinesCapability(installation)], user: (input) => input.message, itemVisibility: { client: true, history: true } });
+  const chatPlain = generator({ name: "follower-chat-plain", model: "scripted/follower", prompt: "You keep routines for this user.", inputSchema: doorInput, user: (input) => input.message, itemVisibility: { client: true, history: true } });
   // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[hold]` waits on the
   // host's hold, then `[fail]` fails the task.
   const door = handler({
@@ -80,7 +86,10 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
     resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
     actions: {
       respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
-      ...Object.fromEntries(Object.entries(tools).map(([verb, block]) => [verb, { inputSchema: block.inputSchema, block }]))
+      // Not doors: `respond` is the flow's one door; these are a test's way onto a model turn.
+      chat: { inputSchema: doorInput, block: chat },
+      chatPlain: { inputSchema: doorInput, block: chatPlain },
+      ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
     },
     // No turn: a message lands as its items and nothing runs, so no model is asked.
     internal: { actions: { [MESSAGE_RECEIVED_ENTRY]: messageReceivedEntry({ installation, flowKind: "follower" }) } },
@@ -107,6 +116,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   ];
   const board = bootBoardHost({
     ...options,
+    hire: { ...options.hire, routines: { providers: [github], ...options.hire?.routines } },
     standard,
     flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold, options.isolatedFollower === true), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({

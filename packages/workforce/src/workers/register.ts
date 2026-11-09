@@ -20,6 +20,7 @@ import { setMessageLimits, type MessageLimits } from "../messages/message-limits
 import { messageReceivedProblem } from "../messages/message-received-entry";
 import { sendWithoutPassProblem } from "../messages/delivery";
 import { checkDeclaredRoutines, defineRoutineActions, type RoutinesOptions } from "../routines/routines";
+import { setRoutinesReach } from "../routines/routines-options";
 import { defineScheduledWork } from "../schedules/scheduled-work";
 import type { WorkerInstallation } from "./installation";
 import { defineWorkerRosterFlow } from "./roster-flow";
@@ -79,6 +80,8 @@ export interface HireWorkforceOptions {
 export function hireWorkforce(installation: WorkerInstallation, options: HireWorkforceOptions = {}): FlowInstance[] {
   if (options.taskChainLimit !== undefined) setTaskChainLimit(installation, options.taskChainLimit);
   if (options.messages !== undefined) setMessageLimits(installation, options.messages);
+  // The routines capability a worker flow uses reads the providers and the index from here.
+  setRoutinesReach(installation, { ...(options.routines?.index === undefined ? {} : { index: options.routines.index }), ...(options.routines?.providers === undefined ? {} : { providers: options.routines.providers }) });
   checkWorkerFlows(installation.workerFlows());
   checkDeclaredRoutines(options.routines?.declared ?? []);
   const copies: FlowInstance[] = [];
