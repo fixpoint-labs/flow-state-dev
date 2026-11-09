@@ -195,7 +195,7 @@ cadence from the allowed list, 5 minutes the floor, checked at
 subscribe (owner, 2026-11-08). Config-declared subscriptions seed through `subscribe`, idempotently
 (owner, 2026-11-08); child 6 generalises that config over both triggers. Implementer notes: the
 poll walks the resolver's due index;
-conditional requests, per-repo batching; check runs on terminal state, comment edits once per object.
+conditional requests; per-repo batching deferred until a user meets GitHub's secondary limit (FIX-2536); check runs on terminal state, comment edits once per object.
 
 <a name="d11"></a>
 **D11 · Explicit vs inferred work** (owner, Nov 2). `off`, `observe`, `auto`: one key beside
