@@ -390,10 +390,13 @@ describe("refusedOnContent", () => {
   it("reads the screens' could-not-decide reasons, never a content refusal", () => {
     // Could not decide: never on content, so an outage forwards nothing.
     expect(refusedOnContent({ subscription: "s", pass: false, reason: "interest: unjudged" })).toBe(false);
-    expect(refusedOnContent({ subscription: "s", pass: false, reason: "custom:triage: failed" })).toBe(false);
+    expect(refusedOnContent({ subscription: "s", pass: false, reason: "custom:triage: failed", failed: true })).toBe(false);
     expect(refusedOnContent({ subscription: "s", pass: false, reason: "no verdict" })).toBe(false);
     // A refusal on what the event says, and a pass, which isn't a refusal at all.
     expect(refusedOnContent({ subscription: "s", pass: false, reason: "words: none of the words export" })).toBe(true);
+    // The mark decides, not the words: an app's own reason or a listed word ending in ": failed" is on content.
+    expect(refusedOnContent({ subscription: "s", pass: false, reason: "custom:triage: check: failed" })).toBe(true);
+    expect(refusedOnContent({ subscription: "s", pass: false, reason: "words: none of the words build: failed" })).toBe(true);
     expect(refusedOnContent({ subscription: "s", pass: true, reason: "passed the config screens" })).toBe(false);
   });
 });
