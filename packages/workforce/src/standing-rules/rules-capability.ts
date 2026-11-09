@@ -40,17 +40,26 @@ const listOutput = (list: StandingRules) => ({ rules: numberedRules(list).map(({
 
 const ruleSchema = z.object({ number: z.number(), text: z.string() });
 const listOutputSchema = z.object({ rules: z.array(ruleSchema), max: z.number() });
+// `saved` is the one field a reply may rest "saved" on: a refusal still
+// carries the list, which a model can otherwise read as the write landing.
 const toolOutputSchema = z.union([
-  listOutputSchema.extend({ line: z.string() }),
-  listOutputSchema.extend({ refused: z.string() })
+  listOutputSchema.extend({ saved: z.literal(true), line: z.string() }),
+  listOutputSchema.extend({ saved: z.literal(false), refused: z.string() })
 ]);
+
+/** What a write tool's description says about acknowledging it. */
+const ACKNOWLEDGE =
+  " Tell the user it's done only when the result has `saved: true`. On `saved: false` nothing changed: " +
+  "say so, with the `refused` reason, and never say it was saved.";
 
 async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
   // Withheld on an unmarked turn, and a caller that names the tool still can't write.
   if (!isUserTurn(ctx)) {
     const refused = "Standing rules change only on a turn a user started; this one can't edit them.";
     const current = await readStandingRules(ctx).catch(() => undefined);
-    return current === undefined ? { rules: [], max: MAX_RULES, refused } : { ...listOutput(current), refused };
+    return current === undefined
+      ? { rules: [], max: MAX_RULES, saved: false as const, refused }
+      : { ...listOutput(current), saved: false as const, refused };
   }
   let outcome;
   try {
@@ -61,8 +70,8 @@ async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
     const current = await readStandingRules(ctx).catch(() => undefined);
     // An unreadable record is said as such, never shown as an empty list.
     return current === undefined
-      ? { rules: [], max: MAX_RULES, refused: `${reason} The current rules couldn't be read either; this list is not them.` }
-      : { ...listOutput(current), refused: reason };
+      ? { rules: [], max: MAX_RULES, saved: false as const, refused: `${reason} The current rules couldn't be read either; this list is not them.` }
+      : { ...listOutput(current), saved: false as const, refused: reason };
   }
   if (!outcome.ok) {
     if (outcome.full === true) {
@@ -72,10 +81,10 @@ async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
         itemVisibility: { client: true, history: false }
       });
     }
-    return { ...listOutput(outcome.list), refused: `Refused: ${outcome.reason}.` };
+    return { ...listOutput(outcome.list), saved: false as const, refused: `Not saved: ${outcome.reason}.` };
   }
   ctx.emit.message(outcome.line, { agentName: STANDING_RULES_LINE, itemVisibility: { client: true, history: false } });
-  return { ...listOutput(outcome.list), line: outcome.line };
+  return { ...listOutput(outcome.list), saved: true as const, line: outcome.line };
 }
 
 const readTool = handler({
@@ -96,7 +105,8 @@ const addTool = handler({
   description:
     "Save a note this user gave you as a standing rule you follow in every later conversation with them. " +
     `Use it when they tell you how to work from now on. One line, at most 300 characters, in your words; at most ${MAX_RULES} rules. ` +
-    "If the list is full, ask them which rule to merge or drop.",
+    "If the list is full, ask them which rule to merge or drop." +
+    ACKNOWLEDGE,
   inputSchema: z.object({ text: z.string() }).strict(),
   outputSchema: toolOutputSchema,
   resources,
@@ -106,7 +116,8 @@ const addTool = handler({
 const changeTool = handler({
   name: RULE_TOOLS.change,
   description:
-    "Rewrite one of your standing rules when this user asks you to change it. Name it by number and quote its current text exactly.",
+    "Rewrite one of your standing rules when this user asks you to change it. Name it by number and quote its current text exactly." +
+    ACKNOWLEDGE,
   inputSchema: z.object({ number: z.number().int(), current: z.string(), text: z.string() }).strict(),
   outputSchema: toolOutputSchema,
   resources,
@@ -116,7 +127,8 @@ const changeTool = handler({
 const removeTool = handler({
   name: RULE_TOOLS.remove,
   description:
-    "Drop one of your standing rules when this user asks you to. Name it by number and quote its current text exactly.",
+    "Drop one of your standing rules when this user asks you to. Name it by number and quote its current text exactly." +
+    ACKNOWLEDGE,
   inputSchema: z.object({ number: z.number().int(), current: z.string() }).strict(),
   outputSchema: toolOutputSchema,
   resources,
