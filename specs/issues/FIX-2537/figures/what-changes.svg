@@ -1,0 +1,84 @@
+<svg viewBox="0 0 940 380" role="img" aria-label="What changes. Today: the nominated subscriptions pass through the five config screens, sender, own, labels, words and allow, and every one still undecided passes; the interest sentence is a note no screen reads. After: the same config screens, then each custom screen the app declared, a sync function run once over only the subscriptions that list it, then one evaluator call for the whole event, asking a yes or no per distinct surviving sentence. Those that pass get an owner run that delivers. If the call fails, the subscriptions it asked about are refused as unjudged, nothing is asked again and no generator runs, and the event is not counted unheard, so it is never forwarded as unmatched. A subscription that listed neither passes after the custom screens with no model."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .band  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .model { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .arrow { stroke:var(--ink-2); stroke-width:1.3; fill:none; }
+    .warn  { stroke:var(--gone); stroke-width:1.3; fill:none; stroke-dasharray:4 3; }
+    .head  { fill:var(--ink-2); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; font-weight:600; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="380"/>
+
+  <!-- today -->
+  <rect class="band" x="16" y="14" width="908" height="96" rx="6"/>
+  <text class="t-lbl" x="32" y="34">TODAY</text>
+  <rect class="box" x="32" y="46" width="130" height="48" rx="5"/>
+  <text class="t-b" x="44" y="66">nominated</text>
+  <text class="t-s" x="44" y="82">by the thread index</text>
+  <rect class="box" x="196" y="46" width="200" height="48" rx="5"/>
+  <text class="t-b" x="208" y="66">config screens</text>
+  <text class="t-s" x="208" y="82">sender · own · labels · words · allow</text>
+  <rect class="old" x="430" y="46" width="230" height="48" rx="5"/>
+  <text class="t-gone" x="442" y="66">every survivor passes</text>
+  <text class="t-s" x="442" y="82">the sentence is a note; nothing reads it</text>
+  <rect class="box" x="694" y="46" width="214" height="48" rx="5"/>
+  <text class="t-b" x="706" y="66">owner run · deliver</text>
+  <text class="t-s" x="706" y="82">as the subscriber (FIX-2534)</text>
+  <path class="arrow" d="M162 70 H190"/><path class="head" d="M196 70 l-7 -4 v8 z"/>
+  <path class="arrow" d="M396 70 H424"/><path class="head" d="M430 70 l-7 -4 v8 z"/>
+  <path class="arrow" d="M660 70 H688"/><path class="head" d="M694 70 l-7 -4 v8 z"/>
+
+  <!-- after -->
+  <text class="t-lbl" x="32" y="140">AFTER · EACH STAGE SEES ONLY WHO IS STILL UNDECIDED</text>
+  <rect class="box" x="32" y="156" width="130" height="58" rx="5"/>
+  <text class="t-b" x="44" y="178">nominated</text>
+  <text class="t-s" x="44" y="194">by the thread index</text>
+  <rect class="box" x="196" y="156" width="150" height="58" rx="5"/>
+  <text class="t-b" x="208" y="178">config screens</text>
+  <text class="t-s" x="208" y="194">the same five</text>
+  <rect class="new" x="380" y="156" width="170" height="58" rx="5"/>
+  <text class="t-b" x="392" y="178">custom screens · D2</text>
+  <text class="t-s" x="392" y="194">app functions, sync, in order</text>
+  <text class="t-s" x="392" y="207">each over who lists it</text>
+  <rect class="model" x="584" y="156" width="174" height="58" rx="5"/>
+  <text class="t-acc" x="596" y="174">ONE MODEL CALL · D1</text>
+  <text class="t-b" x="596" y="192">one evaluator call</text>
+  <text class="t-s" x="596" y="207">a yes or no per sentence</text>
+  <rect class="box" x="792" y="156" width="132" height="58" rx="5"/>
+  <text class="t-b" x="804" y="178">owner run</text>
+  <text class="t-s" x="804" y="194">deliver, as before</text>
+  <path class="arrow" d="M162 185 H190"/><path class="head" d="M196 185 l-7 -4 v8 z"/>
+  <path class="arrow" d="M346 185 H374"/><path class="head" d="M380 185 l-7 -4 v8 z"/>
+  <path class="arrow" d="M550 185 H578"/><path class="head" d="M584 185 l-7 -4 v8 z"/>
+  <path class="arrow" d="M758 185 H786"/><path class="head" d="M792 185 l-7 -4 v8 z"/>
+
+  <!-- no interest listed: skips the model -->
+  <path class="arrow" d="M465 214 V250 H858 V220"/><path class="head" d="M858 214 l-4 7 h8 z"/>
+  <text class="t-s" x="476" y="244">listed no interest: passes with no model, zero tokens</text>
+
+  <!-- failure -->
+  <path class="warn" d="M744 214 V290"/><path class="head" d="M744 296 l-4 -7 h8 z"/>
+  <rect class="old" x="500" y="296" width="424" height="62" rx="5"/>
+  <text class="t-gone" x="512" y="318">the call failed: refused, unjudged</text>
+  <text class="t-s" x="512" y="335">no second call, no split, no generator</text>
+  <text class="t-s" x="512" y="350">not unheard: never forwarded as unmatched</text>
+
+  <text class="t-lbl" x="32" y="318">REFUSED AT ANY STAGE</text>
+  <text class="t-s" x="32" y="335">is never asked about at a later one</text>
+</svg>
