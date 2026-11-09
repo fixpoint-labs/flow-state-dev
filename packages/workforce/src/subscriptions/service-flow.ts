@@ -55,7 +55,7 @@
  * The runs a closing names to end subscriptions are not capped.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import { updateStateWith } from "@flow-state-dev/core/helpers";
+import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
 import {
   subscriptionEventSchema,
   type BlockContext,
@@ -68,6 +68,7 @@ import type { WorkerMessageResourceState } from "../messages/log-row";
 import { messageLogOf, workerMessagesResources } from "../messages/message-log";
 import { sendServiceMessage } from "../messages/send-message";
 import { retryOnConflict } from "../projects/cas-retry";
+import { criteriaState, deriveWorkerSessionId } from "../workers/derive-session-id";
 import type { WorkerInstallation } from "../workers/installation";
 import { SUBSCRIPTION_DELIVER_ENTRY, SUBSCRIPTION_ROUTE_ENTRY, serviceSender } from "./keys";
 import {
@@ -75,14 +76,16 @@ import {
   indexKeyOf,
   subscriptionCursorsOf,
   subscriptionIndexOf,
+  subscriptionIdOfSlot,
   subscriptionResources,
   subscriptionResourceKey,
   subscriptionsOf,
   type SubscriptionCursor,
   type SubscriptionResourceState
 } from "./rows";
-import { configScreenChain, refusedOnContent, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
-import { unsubscribe, type SubscriptionProvider } from "./subscribe";
+import { configScreenChain, refusedOnContent, screenRefusal, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
+import { SCREEN_KINDS } from "./rows";
+import { dropFromIndex, syncIndex, unsubscribe, type SubscriptionProvider } from "./subscribe";
 
 /** The default cap: the most messages one subscription sends in an hour. */
 export const DEFAULT_SUBSCRIPTION_CAP_PER_HOUR = 30;
@@ -269,6 +272,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       const named = new Set<string>();
       for (const thread of event.threads) {
         const row = await index.getOptional(indexKeyOf(thread));
+        // A candidate is its slot (owner and id) while it is screened: two users' copies of one
+        // declared routine share an id. Its owner run names the id alone.
         for (const [subscription, entry] of Object.entries(row?.state.subscriptions ?? {})) {
           if (named.has(subscription) || entry.provider !== event.provider || entry.thread !== thread) continue;
           named.add(subscription);
@@ -295,7 +300,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         flowKind: options.kind,
         entry: SUBSCRIPTION_DELIVER_ENTRY,
         input: {
-          subscription: candidate.subscription,
+          subscription: subscriptionIdOfSlot(candidate.subscription, candidate.entry),
           event,
           ...(endOnly ? { endOnly: true as const } : {}),
           ...(forward === undefined ? {} : { forward })
@@ -305,7 +310,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           orgId: candidate.entry.orgId,
           ...(candidate.entry.tenantId === undefined ? {} : { tenantId: candidate.entry.tenantId })
         },
-        rowKey: subscriptionResourceKey(candidate.subscription)
+        rowKey: subscriptionResourceKey(subscriptionIdOfSlot(candidate.subscription, candidate.entry))
       });
       type Candidate = Screening["pending"][number];
       // A subscription with no verdict is refused.
@@ -321,7 +326,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         // Past the cap, a passing subscription is refused: the event reaches no more sessions.
         const capped = verdict.pass && delivered.size >= maxOwnerRuns;
         const kept = capped ? { ...verdict, pass: false, reason: `cap: this event already reaches ${maxOwnerRuns} subscriptions` } : verdict;
-        if (recorded.length < MAX_ROUTED_VERDICTS) recorded.push(kept);
+        // Recorded by subscription id, as before slots: the slot is the index's own.
+        if (recorded.length < MAX_ROUTED_VERDICTS) recorded.push({ ...kept, subscription: subscriptionIdOfSlot(kept.subscription, candidate.entry) });
         if (!kept.pass) return false;
         delivered.add(candidate.subscription);
         ownerRuns.push(runFor(candidate, false, forward));
@@ -415,6 +421,11 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         }))
       );
 
+    // A routine the user saved is heard in their conversation with the worker,
+    // which may not be open yet: its derived address opens with the worker named.
+    const criteria = { worker: row.worker };
+    const conversation = await deriveWorkerSessionId({ userId: row.userId, orgId: row.orgId, flow: row.flow, criteria });
+    const opens = conversation === row.sessionId ? { state: criteriaState(criteria) } : {};
     let sent: Awaited<ReturnType<typeof sendServiceMessage>>;
     try {
       sent = await sendServiceMessage(
@@ -423,7 +434,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         options.kind,
         {
           sender: serviceSender(row.provider),
-          to: { sessionId: row.sessionId, flow: row.flow, worker: row.worker },
+          to: { sessionId: row.sessionId, flow: row.flow, worker: row.worker, ...opens },
           text: deliveryText(event, row.thread, slot.held, forward),
           id,
           ...(forward === undefined ? {} : { forward: { as: forward, url: event.url } })
@@ -474,14 +485,42 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       const identity = ctx.session.identity as { userId?: string; orgId?: string };
       // The row decides: this user's, this org's, on, and on this event's thread.
       const row: SubscriptionResourceState | undefined = (await subscriptionsOf(ctx).getOptional(subscription))?.state;
-      if (row === undefined || !row.enabled) return { act: "ended" };
+      // The index only nominates, and an entry can outlive what the saved subscription now says (an
+      // end, a move to another thread, screens a racing write replaced). The subscription decides; an entry it doesn't
+      // back is taken out here, so the index heals on the next event that finds it.
+      const heal = async () => {
+        for (const thread of event.threads) if (thread !== row?.thread || row?.enabled !== true) await dropFromIndex(ctx, thread, subscription);
+        // Then the index as the saved subscription has it, not as this delivery read it: a resume or a
+        // reseed that landed meanwhile gets its entry back.
+        const ref = await subscriptionsOf(ctx).getOptional(subscription);
+        const now = ref === undefined ? undefined : await readCommitted(ref, (committed) => committed);
+        if (now?.enabled === true) await syncIndex(ctx, now);
+      };
+      if (row === undefined || !row.enabled) {
+        await heal();
+        return { act: "ended" };
+      }
       if (row.userId !== identity.userId || row.orgId !== identity.orgId) return { act: "refused", reason: "another user's subscription" };
       if (row.provider !== event.provider || row.provider !== provider.provider || !event.threads.includes(row.thread)) {
+        await heal();
         return { act: "refused", reason: "not this subscription's thread" };
       }
       // A forward reaches only an unmatched subscription, and an unmatched one hears only forwards.
       if (endOnly !== true && (forward !== undefined) !== (row.unmatched === true)) {
         return { act: "refused", reason: row.unmatched === true ? "an unmatched subscription hears only what nobody else heard" : "not an unmatched subscription" };
+      }
+      // The screens again, on the subscription's own settings: the index entry routing nominated by can be stale.
+      if (endOnly !== true) {
+        for (const kind of SCREEN_KINDS) {
+          const refused = screenRefusal(kind, event, row, { trustedBots: options.trustedBots ?? [] });
+          if (refused === undefined) continue;
+          // A closing event still ends it, as routing's end-only run would have.
+          if (closedThreadOf(event) === row.thread) {
+            await unsubscribe(ctx, subscription, "thread_closed");
+            return { act: "ended" };
+          }
+          return { act: "refused", reason: `${kind}: ${refused}` };
+        }
       }
       const closes = closedThreadOf(event) === row.thread;
       if (endOnly === true && !closes) return { act: "refused", reason: "the event doesn't close this subscription's thread" };

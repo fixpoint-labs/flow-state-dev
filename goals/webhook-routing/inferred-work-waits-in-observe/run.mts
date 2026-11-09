@@ -18,13 +18,13 @@ import {
   hireWorkforce,
   messageReceivedEntry,
   subscriptionResources,
-  subscriptionTools,
   workerConfigSchema,
   workerMessagesResources,
   workerTaskEntry,
   type SubscriptionProvider,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
@@ -158,7 +158,7 @@ const doerFlow = defineFlow({
   internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "doer", hears: "task-sessions" }) } },
   task: { actions: { work: workerTaskEntry({ name: "doer-task", turn: doer }) } }
 });
-const tools = subscriptionTools({ providers: [github] });
+const tools = workerRoutineVerbs(installation);
 const followerFlow = defineFlow({
   kind: "follower",
   configSchema: workerConfigSchema(),
@@ -166,12 +166,12 @@ const followerFlow = defineFlow({
   resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
   actions: {
     respond: { inputSchema: doorInput, block: doer, userMessage: (i: { message: string }) => i.message },
-    subscribe: { inputSchema: tools.subscribe.inputSchema, block: tools.subscribe }
+    saveRoutine: { inputSchema: tools.saveRoutine.inputSchema, block: tools.saveRoutine }
   },
   internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
   task: { actions: { work: workerTaskEntry({ name: "follower-task", turn: doer }) } }
 });
-const coordinator = defineCoordinatorFlow({ installation, routeModel: "scripted/fit", subscriptions: { providers: [github] } });
+const coordinator = defineCoordinatorFlow({ installation, routeModel: "scripted/fit", routines: true });
 flows = { doer: { flow: doerFlow, roles: ["contributor"] }, follower: { flow: followerFlow, roles: ["contributor"] }, coordinator };
 
 /**
@@ -219,7 +219,7 @@ const models = createMockModelResolver({
 });
 
 const service = defineSubscriptionServiceFlow({ kind: "github-service", provider: github, installation, forwards: { kinds: ["issue", "comment"] } });
-const instances = Object.fromEntries(hireWorkforce(installation).map((copy) => [copy.id, copy]));
+const instances = Object.fromEntries(hireWorkforce(installation, { routines: { providers: [github] } }).map((copy) => [copy.id, copy]));
 const stores = inMemoryStores();
 const state = createFlowState({
   flows: { ...instances, "github-service": service },
@@ -272,12 +272,12 @@ for (const user of USERS) {
   for (const mode of user === "alice" ? MODES : (["observe"] as const)) {
     const id = await create(user, "coordinator", `desk.${mode}`);
     sessions[`${user}:${mode}`] = id;
-    const out = (await act(user, id, "coordinator", "subscribe", { provider: "github", thread: REPO, unmatched: true, interest: "new issues nobody picked up" })).output;
-    if (out?.id === undefined) throw new Error(`desk.${mode} couldn't subscribe: ${JSON.stringify(out)}`);
+    const out = (await act(user, id, "coordinator", "saveRoutine", { trigger: { event: { provider: "github", thread: REPO, unmatched: true, interest: "new issues nobody picked up" } } })).output;
+    if (out?.ok !== true) throw new Error(`desk.${mode} couldn't subscribe: ${JSON.stringify(out)}`);
   }
 }
 const follower = await create("alice", "follower", "eng.follower");
-await act("alice", follower, "follower", "subscribe", { provider: "github", thread: PR, kinds: ["comment"], interest: "comments on my PR" });
+await act("alice", follower, "follower", "saveRoutine", { trigger: { event: { provider: "github", thread: PR, kinds: ["comment"], interest: "comments on my PR" } } });
 
 const routed: any[] = [];
 for (const { event } of FIXTURE) {

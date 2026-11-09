@@ -38,7 +38,7 @@ import { TaskFrame } from "./surfaces/TaskFrame";
 import { TaskInspector } from "./surfaces/TaskInspector";
 import { Tasks } from "./surfaces/Tasks";
 import { Messages } from "./surfaces/Messages";
-import { Schedules } from "./surfaces/Schedules";
+import { Routines } from "./surfaces/Routines";
 import { Usage } from "./surfaces/Usage";
 import { SessionView } from "./surfaces/SessionView";
 import { isTypingTarget } from "@flow-state-dev/react";
@@ -155,8 +155,8 @@ function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedS
       return <TaskFrame tab={route.tab} gaps={gaps} />;
     case "messages":
       return <Messages snapshot={snapshot} />;
-    case "schedules":
-      return <Schedules snapshot={snapshot} />;
+    case "routines":
+      return <Routines snapshot={snapshot} />;
     case "usage":
       return <Usage snapshot={snapshot} />;
     case "session":

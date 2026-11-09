@@ -176,8 +176,8 @@ export type BoardHostOptions = {
   agentAnswer?: MockGeneratorInstance;
   /** The options the judgment turn is built with: the agent worker flow's catalog and capabilities. */
   agent?: CoordinatorFlowOptions["agent"];
-  /** The providers a coordinator's conversation subscribes on (its `subscribe` action). */
-  coordinatorSubscriptions?: CoordinatorFlowOptions["subscriptions"];
+  /** The coordinator flow takes the routine verbs as actions (`routines: true`). */
+  coordinatorRoutines?: boolean;
   /** The `agent` flow's `answerAgain` (FIX-2159), which the coordinator flow doesn't take. */
   answerAgain?: AgentWorkerFlowOptions["answerAgain"];
   /** Capabilities the `agent` flow installs that need the installation (FIX-2173's consult). */
@@ -300,7 +300,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     installation,
     routeModel: "typesafe-ai/jev",
     ...(options.agent === undefined ? {} : { agent: options.agent }),
-    ...(options.coordinatorSubscriptions === undefined ? {} : { subscriptions: options.coordinatorSubscriptions })
+    ...(options.coordinatorRoutines === true ? { routines: true } : {})
   });
   flows = {
     tasker: { flow: tasker, roles: ["contributor"] },
@@ -315,8 +315,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
   );
   Object.assign(instances, options.plainFlows ?? {}, options.plainFlowsOf?.(installation) ?? {});
-  const judgment = options.judgment ?? mockGenerator({ script: [{ when: () => true, then: { text: QUIET_TURN } }] });
-  const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });
+  const judgment = options.judgment ?? mockGenerator({ name: "coordinator-judgment", script: [{ when: () => true, then: { text: QUIET_TURN } }] });
+  const agentAnswer = options.agentAnswer ?? mockGenerator({ name: "agent-answer", script: [] });
   const models = createMockModelResolver({
     evaluators: {
       [COORDINATOR_ROUTE]: mockEvaluationModel({ answers: { worker: { type: "choice", choice: "eng.tasker" } } })

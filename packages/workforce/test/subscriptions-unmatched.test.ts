@@ -303,8 +303,7 @@ describe("observe's confirm closes only on the user's yes", () => {
     const sessionId = await watching(h, "alice", "watch.observe");
     await h.route(issue({ title: "Inferred [evt-52-refile]" }));
     const [first] = await filedBy(h, "alice");
-    const before = calls.length;
-    const answered = await answer(h, sessionId, first!, false);
+    await answer(h, sessionId, first!, false);
     const tasks = await filedBy(h, "alice");
     const again = tasks.filter((r) => r.id !== first!.id);
     expect(again, "the woken turn filed it again").toHaveLength(1);
