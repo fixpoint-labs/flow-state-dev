@@ -120,7 +120,8 @@ export function subscriptionPolling(options: SubscriptionPollingOptions | Subscr
     }
     return known;
   }
-  const collection = defineScheduleCollection({ pattern: SUBSCRIPTION_POLLS_PATTERN, index: options.index });
+  // Never isolated: the fire resolves a poll from the user's shared cell, whatever the subscribing flow isolates.
+  const collection = defineScheduleCollection({ pattern: SUBSCRIPTION_POLLS_PATTERN, index: options.index, flowIsolation: false });
   const polling: SubscriptionPolling = { index: options.index, everyMinutes, resources: { [SUBSCRIPTION_POLLS_RESOURCE]: collection } };
   pollings.set(options.index, polling);
   return polling;

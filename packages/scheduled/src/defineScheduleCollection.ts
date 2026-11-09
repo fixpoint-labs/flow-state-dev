@@ -80,6 +80,15 @@ export interface DefineScheduleCollectionOptions {
    * schema.
    */
   index?: ScheduleIndex;
+  // FIX-2536.
+  /**
+   * `false` keeps the schedules in the user's shared cell whatever the
+   * declaring flow isolates, which is the cell the resolver reads them from
+   * (`ScheduleResolutionContext.userStorageKey`). Set it when flows that
+   * isolate their user state write this collection. Omitted, the collection
+   * follows its flow, as before.
+   */
+  flowIsolation?: false;
 }
 
 /**
@@ -93,6 +102,7 @@ export function defineScheduleCollection(
   const base = {
     pattern: opts.pattern,
     scope: "user" as const,
+    ...(opts.flowIsolation === false ? { flowIsolation: false } : {}),
     stateSchema: SCHEDULE_RESOURCE_SCHEMA,
     // A row created without an organization records the one its run was
     // admitted under, and a reschedule that omits it keeps it, so the resolver

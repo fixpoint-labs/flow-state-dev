@@ -549,12 +549,21 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
   const settledSchema = z.object({ delivered: z.number(), screened: z.number(), owed: z.number(), gaveUp: z.number() });
 
   /**
-   * One fire's settling: each passed candidate goes through `deliverToRow`,
-   * each refusal into that subscription's `screened`, a closing ends the
-   * thread's subscriptions, and the mark holds at the oldest version a
-   * subscription still owes (D2). An unjudged screen writes nothing, so the
-   * next poll judges it; one still owed after {@link POLL_GIVE_UP_AFTER} polls
-   * is given up, with a line in its session.
+   * One fire's settling, in the order the events happened: each passed
+   * candidate goes through `deliverToRow`, each refusal into that
+   * subscription's `screened`, and the mark holds at the time of the oldest
+   * event a subscription still owes (D2). An unjudged screen writes nothing,
+   * so the next poll judges it; one still owed after {@link POLL_GIVE_UP_AFTER}
+   * polls is given up, with a line in its session.
+   *
+   * **The close invariant.** A close ends a subscription only once nothing up
+   * to and including it is still owed to that subscription, whether or not the
+   * subscription hears closes. Until then it stays on, nothing after the close
+   * reaches it, and the held mark has the next poll fetch the owed events and
+   * the close again. Each owed event lands, or is given up after three polls;
+   * the close then ends the subscription, in the same fire that settled the
+   * last of them. A close always ends its subscriptions in the end, delivered
+   * or not, as on push.
    */
   const pollSettle = handler({
     name: "subscription-poll-settle",
@@ -618,7 +627,8 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         }
         // The thread closed: its subscriptions end, except one that still owes the close, which a later poll settles first.
         for (const candidate of screening.closing) {
-          if (stillOwed.has(candidate.subscription)) closePending.add(candidate.subscription);
+          // Owed the close itself, or anything before it in this fetch: the close waits (the close invariant).
+          if (stillOwed.has(candidate.subscription) || (unsettled.get(candidate.subscription)?.length ?? 0) > 0) closePending.add(candidate.subscription);
           if (!subs.has(candidate.subscription) || closePending.has(candidate.subscription)) continue;
           await unsubscribe(ctx, candidate.subscription, "thread_closed");
           subs.delete(candidate.subscription);
@@ -652,14 +662,15 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
             },
             "subscription-poll-settle"
           ).catch(() => undefined);
-          // A close ends its subscriptions whether or not it was delivered, as on push: nothing after it is owed.
-          if (closedThreadOf(event) === sub.thread) {
-            await unsubscribe(ctx, subscription, "thread_closed");
-            subs.delete(subscription);
-            for (let i = owed.length - 1; i >= 0; i -= 1) if (owed[i]![0] === subscription) owed.splice(i, 1);
-            break;
-          }
+          // A close given up still ends its subscription (below), once nothing earlier is owed.
+          if (closedThreadOf(event) === sub.thread) closePending.add(subscription);
         }
+      }
+      // The close invariant: a subscription whose thread closed ends here once nothing up to the close is owed to it.
+      for (const subscription of closePending) {
+        if (!subs.has(subscription) || owed.some(([s]) => s === subscription)) continue;
+        await unsubscribe(ctx, subscription, "thread_closed");
+        subs.delete(subscription);
       }
       counts.owed = owed.length;
 

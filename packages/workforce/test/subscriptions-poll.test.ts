@@ -203,6 +203,22 @@ describe("a thread's closing", () => {
     }));
 });
 
+describe("a worker flow that isolates its user state", () => {
+  // The fire's resolver reads the shared cell: the poll must be written there whatever the subscribing flow isolates.
+  it("still fires the poll a subscribe in that flow made", () =>
+    withPolling(
+      async (host) => {
+        const one = await host.follower("alice");
+        await host.subscribe("alice", one, { thread: PR });
+        pollTimeline.events.push(reviewAt(T0 + 30_000));
+        await run(host, 5);
+        expect(host.fires.map((f) => f.status)).toEqual([202]);
+        expect(await host.heard(one)).toHaveLength(1);
+      },
+      { isolateFollower: true }
+    ));
+});
+
 describe("a poll that reads back past its mark", () => {
   // A provider with whole-second times re-reads the mark's second: each event in it still lands once.
   it("delivers an event the overlap fetches twice only once", () =>
@@ -236,6 +252,58 @@ describe("the order a fetch is settled in", () => {
       const heard = await host.heard(one);
       expect(heard).toHaveLength(2);
       expect(heard[0]).toContain("before the merge");
+      expect((await host.subscriptionRows("alice")).find((r) => r.id === id)).toMatchObject({ enabled: false, endedReason: "thread_closed" });
+    }));
+});
+
+describe("a close while an earlier event is still owed", () => {
+  // The invariant: a close ends a subscription only once nothing earlier is still owed to it.
+  const comment = () => reviewAt(T0 + 20_000, { kind: "comment", text: "before the merge", object: { id: "comment-7", version: 1 } });
+  const close = () => reviewAt(T0 + 40_000, { kind: "pull_request", title: "Pull request #412 merged", closes: true, object: { id: "pr-412-closed", version: 1 } });
+
+  /** Lose only the first message's dispatch (the comment's), as one poll runs. */
+  async function loseTheFirst(host: SubscriptionsHost) {
+    const held = await host.holdFirstDispatch("onMessageReceived");
+    const ticking = run(host, 5);
+    await held.reached;
+    held.release({ lose: true });
+    await ticking;
+  }
+
+  it("for a subscription that doesn't hear closes: lands the lost comment first, then the close ends it", () =>
+    withPolling(async (host) => {
+      const one = await host.follower("alice");
+      const id = ((await host.subscribe("alice", one, { thread: PR, kinds: ["comment"] })) as { id: string }).id;
+      pollTimeline.events.push(comment(), close());
+      await loseTheFirst(host);
+      expect((await host.subscriptionRows("alice")).find((r) => r.id === id)).toMatchObject({ enabled: true });
+      await run(host, 10);
+      const heard = await host.heard(one);
+      expect(heard).toHaveLength(1);
+      expect(heard[0]).toContain("before the merge");
+      expect((await host.subscriptionRows("alice")).find((r) => r.id === id)).toMatchObject({ enabled: false, endedReason: "thread_closed" });
+    }));
+
+  it("for a subscription that hears closes: lands the lost comment and the close, then ends it", () =>
+    withPolling(async (host) => {
+      const one = await host.follower("alice");
+      const id = ((await host.subscribe("alice", one, { thread: PR })) as { id: string }).id;
+      pollTimeline.events.push(comment(), close());
+      await loseTheFirst(host);
+      expect((await host.subscriptionRows("alice")).find((r) => r.id === id)).toMatchObject({ enabled: true });
+      await run(host, 10);
+      expect(await host.heard(one)).toHaveLength(2);
+      expect((await host.subscriptionRows("alice")).find((r) => r.id === id)).toMatchObject({ enabled: false, endedReason: "thread_closed" });
+    }));
+
+  it("still ends the subscription when the earlier comment is given up instead", () =>
+    withPolling(async (host) => {
+      const one = await host.follower("alice");
+      const id = ((await host.subscribe("alice", one, { thread: PR, kinds: ["comment"] })) as { id: string }).id;
+      pollTimeline.events.push(comment(), close());
+      const lost = await host.loseDispatches("onMessageReceived");
+      await run(host, 20);
+      lost.restore();
       expect((await host.subscriptionRows("alice")).find((r) => r.id === id)).toMatchObject({ enabled: false, endedReason: "thread_closed" });
     }));
 });

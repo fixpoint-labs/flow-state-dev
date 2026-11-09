@@ -100,7 +100,7 @@ function memoryScheduleIndex(): ScheduleIndex & { entries: Map<string, ScheduleI
 
 const doorInput = z.object({ message: z.string() });
 
-function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, polling: SubscriptionPolling | undefined) {
+function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, polling: SubscriptionPolling | undefined, isolateUserState = false) {
   const tools = subscriptionTools({ providers: [github], ...(polling === undefined ? {} : { poll: polling }) });
   // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[hold]` waits on the
   // host's hold, then `[fail]` fails the task.
@@ -121,6 +121,7 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
   });
   return defineFlow({
     kind: "follower",
+    ...(isolateUserState ? { isolateUserState: true } : {}),
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources, ...(polling?.resources ?? {}) },
@@ -141,7 +142,7 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   /** What a `[hold]` task turn waits on. */
   hold?: Promise<void>;
   /** Poll (FIX-2536): an in-memory schedule index, the scheduled dispatch endpoint, and `tick`. */
-  poll?: { everyMinutes?: number; declared?: () => readonly { readonly id: string }[] };
+  poll?: { everyMinutes?: number; declared?: () => readonly { readonly id: string }[]; isolateFollower?: boolean };
 };
 
 /** A board host with followers and a GitHub service flow. */
@@ -158,7 +159,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     ...options,
     standard,
     flows: (installation) => ({
-      follower: { flow: followerFlow(installation, options.hold, polling), roles: ["contributor"] },
+      follower: { flow: followerFlow(installation, options.hold, polling, options.poll?.isolateFollower === true), roles: ["contributor"] },
       ...(options.flows?.(installation) ?? {})
     }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({
