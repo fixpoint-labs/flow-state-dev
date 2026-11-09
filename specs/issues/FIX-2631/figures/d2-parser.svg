@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D2, how the guard finds the names a file declares. Chosen: TypeScript's parser. Instead of: more patterns. It comes down to the first row: syntax nobody listed is read as the compiler reads it, where each gap in a pattern cost FIX-2479 a review round. The price is the second row: the guard needs installed dependencies, so its CI steps move and a full run takes about five seconds more. The third row: the parser tells a use from a declaration, which a pattern guesses. Locks in: the guard runs after pnpm install. Flips if: a parse costs more than lint; measured 3,939 files in 4.5 seconds."
+<svg viewBox="0 0 940 418" role="img" aria-label="D2, how the guard finds the names a file declares. Chosen: TypeScript's parser. Instead of: more patterns. It comes down to the first row: syntax nobody listed is read as the compiler reads it, where each gap in a pattern cost FIX-2479 a review round. The price is the second row: the guard needs installed dependencies, so its CI steps move and a full run takes about five seconds more. The third row: the parser tells a use from a declaration, which a pattern guesses. Locks in: the guard runs after pnpm install. Flips if: a parse costs more than lint; measured 3,939 files in 4.5 to 6.2 seconds."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -97,6 +97,6 @@
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
     <text class="t-b" x="494" y="369">A parse costs more than lint</text>
-    <text class="t-s" x="494" y="387">measured: 3,939 files in 4.5 s</text>
+    <text class="t-s" x="494" y="387">measured: 3,939 files in 4.5 to 6.2 s</text>
   </g>
 </svg>

@@ -27,7 +27,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Every row-named declaration on a line the diff marks as added |
-| **Because** | A diff marks an edited line as added. With 2,169 existing declarations in 539 files, line-based would make every touch of old code a forced rename, which is FIX-2632 pulled forward one edit at a time. Counting per file is the ratchet the export check already runs |
+| **Because** | A diff marks an edited line as added. With 2,170 existing declarations in 539 files, line-based would make every touch of old code a forced rename, which is FIX-2632 pulled forward one edit at a time. Counting per file is the ratchet the export check already runs |
 | **Locks in** | Per file, the number of row names can only fall. A change that deletes one `row` and declares another in the same file passes. A file moved with git's rename detection keeps its names; a copy of one does not |
 
 ![When does a row name count as new? Counted per file, chosen, beside every declaration on a changed line. Decides it: editing old code, which line-based turns into a forced rename. Price: a swap inside one file slips through](figures/d1-new-name.svg)
@@ -43,15 +43,15 @@ package reads every line anyway, and the slack in this rule stops mattering.
 | | |
 |---|---|
 | **Instead of** | More regular expressions beside the four Row matchers |
-| **Because** | The regex Row matcher took four review rounds on FIX-2479, one per syntax gap: export lists, plurals, an unbounded lookbehind, destructuring, leading comments. Local names add more: parameters, class fields, `for…of`, and a call's type argument that looks like a type parameter. The parser reads them as the compiler does, and tells a declaration from a use. Measured: 3,939 in-scope files in 4.5 s, about 1 ms a file ([census](poc/census/census.mjs)) |
-| **Locks in** | The guard needs installed dependencies, so its CI steps move to a job that installs, and a fresh clone runs `pnpm install` before the guard (the hook's `pnpm lint` already needs it). A full run takes a few seconds more |
+| **Because** | The regex Row matcher took four review rounds on FIX-2479, one per syntax gap. Local names add more: parameters, class fields, `for…of`, a type argument that looks like a type parameter. The parser reads them as the compiler does, and tells a declaration from a use ([census](poc/census/census.mjs)) |
+| **Locks in** | The guard needs installed dependencies: its CI steps move to a job that installs, and a fresh clone installs first, as the hook's `pnpm lint` already needs. A full run takes a few seconds more |
 
 ![How does the guard find the names a file declares? TypeScript's parser, chosen, beside more patterns. Decides it: syntax the patterns did not foresee, a review round each on FIX-2479. Price: the guard needs installed dependencies](figures/d2-parser.svg)
 
 It comes down to syntax nobody listed: each gap in a pattern cost FIX-2479 a review round.
 
 **What would change my mind:** a parse that costs more than the lint step it runs beside. It
-measured 4.5 s for the whole tree, and the added-names reach parses only changed files.
+measured 4.5 to 6.2 s for the whole tree, and the added-names reach parses only changed files.
 
 <a name="d3"></a>
 ## D3 · The 37 published lines are reworded in a `docs-fix` PR that lands before the guard
@@ -73,13 +73,15 @@ It comes down to the exemption: waiting for release needs one, and the done-when
   the goal check. No second script reads these words.
 - **CI's base is `HEAD^1`**, in the export-check job (depth 2, installs), on PRs and on pushes to
   `main`. A base passed with `--added-since` that does not resolve exits 1: CI never skips.
-- **The hook's base is the merge base with `origin/main`** (FIX-2571's fix), and the head is
-  `HEAD`, not the working tree: the hook checks what is pushed. With no `origin/main` the hook
-  says the new-names check was skipped and still runs the whole-tree rules. FIX-2571 is absorbed.
-- **A row name** has `row` or `rows` as a word part: `row`, `rows`, `taskRow`, `rowId`, `ROW_ID`;
-  not `arrow`, `narrow`, `throw`. **Declarations only**: variables, parameters, destructured
-  bindings, function and class names, property signatures and class fields, type parameters.
-  A read (`entry.row`) and an object key (`{ row }`) are uses of a name declared elsewhere.
+- **The hook checks what is pushed, not `HEAD`.** It reads each pushed ref from stdin, skips a
+  deletion (an all-zero sha), and checks each sha against `merge-base origin/main <sha>`
+  (FIX-2571's fix, absorbed). With no base it says the check was skipped; CI still runs it.
+- **A row name** has `row` or `rows` as a word part: `row`, `taskRow`, `rowId`, `ROW_ID`; not
+  `arrow` or `narrow`. **Declarations only**, and at least every kind the regex matchers read:
+  type aliases, interfaces, enums, classes and class expressions, functions, variables,
+  destructured bindings, parameters, properties, type parameters, export-list names and
+  aliased, default or namespace imports. A read (`entry.row`), an object key, a plain import
+  and a plain re-export are uses. `--control` plants one name per kind.
 - **Type parameters read the whole tree.** None outside the kept paths on main
   (`8188d793f`), and none added by the five FIX-2471 branches. The issue's "about 4" are not on
   main.
@@ -105,29 +107,30 @@ It comes down to the exemption: waiting for release needs one, and the done-when
 
 | Alternative | Why not |
 |---|---|
-| An ESLint rule (`id-denylist`, or one beside `no-tracker-ids`) | Lints whole files. New-code-only needs a baseline of 2,169 entries, a second list beside the glossary, which FIX-2601 made the one source |
+| An ESLint rule (`id-denylist`, or one beside `no-tracker-ids`) | Lints whole files. New-code-only needs a baseline of 2,170 entries, a second list beside the glossary, which FIX-2601 made the one source |
 | A committed baseline file, ratchet style | A generated file every PR touches and conflicts on. The per-file base comparison is the same ratchet with no file |
-| Whole-tree local names now | 2,169 declarations in 539 files. The owner staged it as FIX-2632 |
+| Whole-tree local names now | 2,170 declarations in 539 files. The owner staged it as FIX-2632 |
 | Bring back the base-branch fetch step s6 removed | `HEAD^1` at depth 2 already carries the base, as three jobs use it |
 | Patterns for type parameters | Can't tell `<TRow>` declared from `foo<TaskRow>()` passed or `<TaskRow />` rendered |
 
 ## Settled
 
-- **The parser reads every shape the regex matcher needed rounds for, and no use** —
-  **CONFIRMED** by [`poc/census`](poc/census/census.mjs) `--control`: destructuring with rename
-  and rest, array patterns, a leading comment, class fields and a private name, a property
-  signature, a type parameter, `for…of`, and `throwRow` are read; `arrow`, `narrow`, a property
-  read, an object key and a string are not. The premise held; nothing changed.
-- **The counts this spec rests on** — re-derived by `poc/census` over every tracked file
-  through the guard's own areas (8,655 tracked, 0 unscoped, 3,939 in-scope code files, each
-  parsed): 0 Row type parameters, 2,169 row declarations outside the kept paths, 222 phrase
-  lines outside them, 47 inside. Whole-tree parse 4.5 s.
+- **The parser reads every name the regex matchers read, and the shapes they needed rounds
+  for, and no use** — **CONFIRMED** by [`poc/census`](poc/census/census.mjs) `--control`, one
+  plant per kind (type alias, interface, enum, class expression, export-list alias, aliased and
+  namespace imports, destructuring, fields, type parameter, `for…of`); a plain import, a plain
+  re-export, a read, an object key and a string are not read. Dropping the type-alias read
+  turns it red.
+- **The counts this spec rests on** — re-derived by `poc/census` through the guard's own areas
+  (0 unscoped, 3,939 in-scope code files, each parsed): 0 Row type parameters, 0 Row types or
+  export-list names outside the kept paths (the guard's parity), 2,170 row declarations outside
+  them (1,208 locals, 898 parameters, 63 properties, 1 aliased import), 222 phrase lines outside,
+  47 inside. Whole-tree parse 4.5 to 6.2 s.
 
 ## Analysis
 
 2026-11-09 · watermark 2026-11-09 (the owner's staging) · **Right approach.** Run by the
-author: this dispatch had no sub-agent tool, so no fresh analyst read the draft. Say so if
-that weighs on approval.
+author; no fresh analyst read the draft.
 
 1. **Reuse** — both Adds rows compose existing pieces. See [Builds on / Adds](SPEC.md#whats-already-here-and-the-debt).
 2. **Prior art** — per-file ratchets (betterer, the repo's export check) and diff-filtered

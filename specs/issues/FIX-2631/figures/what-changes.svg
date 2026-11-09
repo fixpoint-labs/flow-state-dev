@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 372" role="img" aria-label="The guard reads the resource entry in two reaches. Every line of the tree: exported Row names as today, plus Row type parameters and six phrases such as task row and subscription row. Only the names a change adds to a file: row as a local, parameter or property, with 2,169 existing declarations left for FIX-2632. Store adapters, the engine's stores and UI list modules keep their rows in both reaches. The pre-push hook passes the merge base with origin/main as the base; CI passes the merge commit's first parent."
+<svg viewBox="0 0 940 372" role="img" aria-label="The guard reads the resource entry in two reaches. Every line of the tree: exported Row names as today, plus Row type parameters and six phrases such as task row and subscription row. Only the names a change adds to a file: row as a local, parameter or property, with 2,170 existing declarations left for FIX-2632. Store adapters, the engine's stores and UI list modules keep their rows in both reaches. The pre-push hook checks each pushed commit against its merge base with origin/main; CI passes the merge commit's first parent."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -50,7 +50,7 @@
     <rect class="new" x="32" y="216" width="300" height="40" rx="4"/>
     <text class="t-c" x="44" y="240">const row · (rows) · rowId: string</text>
     <rect class="chip" x="344" y="216" width="298" height="40" rx="4"/>
-    <text class="t-s" x="356" y="234">2,169 existing declarations stay</text>
+    <text class="t-s" x="356" y="234">2,170 existing declarations stay</text>
     <text class="t-s" x="356" y="249">FIX-2632 renames them, package by package</text>
   </g>
 
@@ -70,7 +70,7 @@
   <g id="bases">
     <rect class="base" x="16" y="284" width="446" height="72" rx="5"/>
     <text class="t-lbl" x="32" y="305">PRE-PUSH HOOK · BASE</text>
-    <text class="t-c" x="32" y="325">merge-base origin/main HEAD</text>
+    <text class="t-c" x="32" y="325">merge-base origin/main &lt;each pushed sha&gt;</text>
     <text class="t-s" x="32" y="343">none found: says so, skips the added reach</text>
     <rect class="base" x="478" y="284" width="446" height="72" rx="5"/>
     <text class="t-lbl" x="494" y="305">CI · EXPORT-CHECK JOB · BASE</text>

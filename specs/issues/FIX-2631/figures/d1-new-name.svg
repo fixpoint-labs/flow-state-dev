@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D1, when a row name counts as new. Chosen: counted per file, so a name is new when the changed file declares it more often than its base version. Instead of: every declaration on a line the diff marks as added. It comes down to the first row: editing old code keeps its name under the chosen rule, while line-based turns 2,169 old declarations into forced renames. The price is the second row: a swap inside one file slips through. A new local or a new file is refused either way. Locks in: per file, row names can only fall. Flips if: FIX-2632 renames faster than code is edited."
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, when a row name counts as new. Chosen: counted per file, so a name is new when the changed file declares it more often than its base version. Instead of: every declaration on a line the diff marks as added. It comes down to the first row: editing old code keeps its name under the chosen rule, while line-based turns 2,170 old declarations into forced renames. The price is the second row: a swap inside one file slips through. A new local or a new file is refused either way. Locks in: per file, row names can only fall. Flips if: FIX-2632 renames faster than code is edited."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -59,7 +59,7 @@
     <text class="t-s" x="248" y="179">the file declares no more row names</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Forced rename</text>
-    <text class="t-s" x="612" y="179">2,169 old declarations become traps</text>
+    <text class="t-s" x="612" y="179">2,170 old declarations become traps</text>
   </g>
 
   <g id="row-1">
