@@ -400,7 +400,8 @@ async function subscribeAll(app: App) {
 async function runTimeline(app: App, made: Awaited<ReturnType<typeof subscribeAll>>, push: boolean) {
   const unsubscribedAt = new Map<string, number>();
   let next = 0;
-  for (let t = T0; t <= END + TAIL; t += MINUTE) {
+  // Every minute from the subscriptions on, as a host's tick runs: a first beat late would fire a row late, and its next fire would come early.
+  for (let t = T0 - MINUTE; t <= END + TAIL; t += MINUTE) {
     for (; next < EVENTS.length && EVENTS[next]!.at <= t; next += 1) {
       moveTo(EVENTS[next]!.at);
       for (const sub of SUBSCRIPTIONS) {
@@ -566,7 +567,7 @@ await runGoal(async (failures, tell) => {
     const declaredKey = `cfg_${[...digest.slice(0, 12)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
     await cold.storeAs("alice", web, declaredKey);
     const three = await cold.act("alice", repoSession, "subscribe", { provider: "github", thread: "github:acme/web", interest: "too often", everyMinutes: 3 });
-    for (let t = T0; t <= T0 + 30 * MINUTE; t += MINUTE) {
+    for (let t = T0 - MINUTE; t <= T0 + 30 * MINUTE; t += MINUTE) {
       moveTo(t);
       beat = t;
       await cold.tick();
