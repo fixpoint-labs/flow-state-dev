@@ -1,0 +1,168 @@
+<svg viewBox="0 0 940 412" role="img" aria-label="Who owns what: ten rules across the children of FIX-2618. ER-1, One hook computes a screen&#x27;s answer: the view: owned by 2623, used by 2551, 2627, 2628. ER-2, A view never writes; a notice carries ids, not rows: owned by 2623, used by 2624, 2625. ER-3, No-session identity comes from the verified principal: owned by 2624, used by 2623. ER-4, Every client write goes through a flow, its runBy, default or its own: owned by 2624, used by 2626, 2628. ER-5, A kit holds existing pieces, reaches others by slots: owned by 2626, used by 2627, 2628. ER-6, Server-computed data is typed by its view&#x27;s output: owned by 2623, used by 2627, 2628. ER-7, One live read in the client; every watch sits on it: owned by 2551, used by 2623, 2627. ER-8, No lab adapter grows once the sibling specs are amended, advisory until then: owned by coord, used by 2628. ER-9, A public name enters the glossary in the PR that coins it: owned by 2619, used by 2623, 2626. ER-10, Ids are hints; a full read covers every gap: owned by 2625, used by 2623. The closure, FIX-2629, checks every rule; coord is the coordinator."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .box    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .chip   { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .one    { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; }
+    .none   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence  { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .o      { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .u      { fill:var(--accent-soft); }
+    .c      { fill:var(--surface); stroke:var(--accent); stroke-width:1; stroke-dasharray:3 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-col  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; font-weight:600; }
+    .t-id   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-o    { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-u    { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="412"/>
+  <g id="columns">
+    <text class="t-col" x="448" y="34" text-anchor="middle">2619</text>
+    <text class="t-lbl" x="448" y="50" text-anchor="middle">doc</text>
+    <text class="t-col" x="498" y="34" text-anchor="middle">2551</text>
+    <text class="t-lbl" x="498" y="50" text-anchor="middle">live</text>
+    <text class="t-col" x="548" y="34" text-anchor="middle">2623</text>
+    <text class="t-lbl" x="548" y="50" text-anchor="middle">views</text>
+    <text class="t-col" x="598" y="34" text-anchor="middle">2624</text>
+    <text class="t-lbl" x="598" y="50" text-anchor="middle">rsrc</text>
+    <text class="t-col" x="648" y="34" text-anchor="middle">2625</text>
+    <text class="t-lbl" x="648" y="50" text-anchor="middle">ids</text>
+    <text class="t-col" x="698" y="34" text-anchor="middle">2626</text>
+    <text class="t-lbl" x="698" y="50" text-anchor="middle">kit</text>
+    <text class="t-col" x="748" y="34" text-anchor="middle">2627</text>
+    <text class="t-lbl" x="748" y="50" text-anchor="middle">wf+hn</text>
+    <text class="t-col" x="798" y="34" text-anchor="middle">2628</text>
+    <text class="t-lbl" x="798" y="50" text-anchor="middle">ccs</text>
+    <text class="t-col" x="848" y="34" text-anchor="middle">coord</text>
+    <text class="t-col" x="898" y="34" text-anchor="middle">2629</text>
+    <text class="t-lbl" x="898" y="50" text-anchor="middle">closure</text>
+    <line class="row" x1="16" y1="60" x2="924" y2="60"/>
+  </g>
+  <g id="er-1">
+    <text class="t-id" x="16" y="80">ER-1</text>
+    <text class="t-b" x="64" y="80">One hook computes a screen&#x27;s answer: the view</text>
+    <rect class="u" x="476" y="64" width="44" height="22" rx="3"/><text class="t-u" x="498" y="79" text-anchor="middle">uses</text>
+    <rect class="o" x="526" y="64" width="44" height="22" rx="3"/><text class="t-o" x="548" y="79" text-anchor="middle">owns</text>
+    <rect class="u" x="726" y="64" width="44" height="22" rx="3"/><text class="t-u" x="748" y="79" text-anchor="middle">uses</text>
+    <rect class="u" x="776" y="64" width="44" height="22" rx="3"/><text class="t-u" x="798" y="79" text-anchor="middle">uses</text>
+    <rect class="c" x="876" y="64" width="44" height="22" rx="3"/><text class="t-u" x="898" y="79" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="90" x2="924" y2="90"/>
+  </g>
+  <g id="er-2">
+    <text class="t-id" x="16" y="110">ER-2</text>
+    <text class="t-b" x="64" y="110">A view never writes; a notice carries ids, not rows</text>
+    <rect class="o" x="526" y="94" width="44" height="22" rx="3"/><text class="t-o" x="548" y="109" text-anchor="middle">owns</text>
+    <rect class="u" x="576" y="94" width="44" height="22" rx="3"/><text class="t-u" x="598" y="109" text-anchor="middle">uses</text>
+    <rect class="u" x="626" y="94" width="44" height="22" rx="3"/><text class="t-u" x="648" y="109" text-anchor="middle">uses</text>
+    <rect class="c" x="876" y="94" width="44" height="22" rx="3"/><text class="t-u" x="898" y="109" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="120" x2="924" y2="120"/>
+  </g>
+  <g id="er-3">
+    <text class="t-id" x="16" y="140">ER-3</text>
+    <text class="t-b" x="64" y="140">No-session identity comes from the verified principal</text>
+    <rect class="u" x="526" y="124" width="44" height="22" rx="3"/><text class="t-u" x="548" y="139" text-anchor="middle">uses</text>
+    <rect class="o" x="576" y="124" width="44" height="22" rx="3"/><text class="t-o" x="598" y="139" text-anchor="middle">owns</text>
+    <rect class="c" x="876" y="124" width="44" height="22" rx="3"/><text class="t-u" x="898" y="139" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="150" x2="924" y2="150"/>
+  </g>
+  <g id="er-4">
+    <text class="t-id" x="16" y="170">ER-4</text>
+    <text class="t-b" x="64" y="170">Every client write goes through its runBy flow</text>
+    <rect class="o" x="576" y="154" width="44" height="22" rx="3"/><text class="t-o" x="598" y="169" text-anchor="middle">owns</text>
+    <rect class="u" x="676" y="154" width="44" height="22" rx="3"/><text class="t-u" x="698" y="169" text-anchor="middle">uses</text>
+    <rect class="u" x="776" y="154" width="44" height="22" rx="3"/><text class="t-u" x="798" y="169" text-anchor="middle">uses</text>
+    <rect class="c" x="876" y="154" width="44" height="22" rx="3"/><text class="t-u" x="898" y="169" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="180" x2="924" y2="180"/>
+  </g>
+  <g id="er-5">
+    <text class="t-id" x="16" y="200">ER-5</text>
+    <text class="t-b" x="64" y="200">A kit holds existing pieces, reaches others by slots</text>
+    <rect class="o" x="676" y="184" width="44" height="22" rx="3"/><text class="t-o" x="698" y="199" text-anchor="middle">owns</text>
+    <rect class="u" x="726" y="184" width="44" height="22" rx="3"/><text class="t-u" x="748" y="199" text-anchor="middle">uses</text>
+    <rect class="u" x="776" y="184" width="44" height="22" rx="3"/><text class="t-u" x="798" y="199" text-anchor="middle">uses</text>
+    <rect class="c" x="876" y="184" width="44" height="22" rx="3"/><text class="t-u" x="898" y="199" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="210" x2="924" y2="210"/>
+  </g>
+  <g id="er-6">
+    <text class="t-id" x="16" y="230">ER-6</text>
+    <text class="t-b" x="64" y="230">Server-computed data is typed by its view&#x27;s output</text>
+    <rect class="o" x="526" y="214" width="44" height="22" rx="3"/><text class="t-o" x="548" y="229" text-anchor="middle">owns</text>
+    <rect class="u" x="726" y="214" width="44" height="22" rx="3"/><text class="t-u" x="748" y="229" text-anchor="middle">uses</text>
+    <rect class="u" x="776" y="214" width="44" height="22" rx="3"/><text class="t-u" x="798" y="229" text-anchor="middle">uses</text>
+    <rect class="c" x="876" y="214" width="44" height="22" rx="3"/><text class="t-u" x="898" y="229" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="240" x2="924" y2="240"/>
+  </g>
+  <g id="er-7">
+    <text class="t-id" x="16" y="260">ER-7</text>
+    <text class="t-b" x="64" y="260">One live read in the client; every watch sits on it</text>
+    <rect class="o" x="476" y="244" width="44" height="22" rx="3"/><text class="t-o" x="498" y="259" text-anchor="middle">owns</text>
+    <rect class="u" x="526" y="244" width="44" height="22" rx="3"/><text class="t-u" x="548" y="259" text-anchor="middle">uses</text>
+    <rect class="u" x="726" y="244" width="44" height="22" rx="3"/><text class="t-u" x="748" y="259" text-anchor="middle">uses</text>
+    <rect class="c" x="876" y="244" width="44" height="22" rx="3"/><text class="t-u" x="898" y="259" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="270" x2="924" y2="270"/>
+  </g>
+  <g id="er-8">
+    <text class="t-id" x="16" y="290">ER-8</text>
+    <text class="t-b" x="64" y="290">No adapter grows once sibling specs amend</text>
+    <rect class="u" x="776" y="274" width="44" height="22" rx="3"/><text class="t-u" x="798" y="289" text-anchor="middle">uses</text>
+    <rect class="o" x="826" y="274" width="44" height="22" rx="3"/><text class="t-o" x="848" y="289" text-anchor="middle">owns</text>
+    <rect class="c" x="876" y="274" width="44" height="22" rx="3"/><text class="t-u" x="898" y="289" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="300" x2="924" y2="300"/>
+  </g>
+  <g id="er-9">
+    <text class="t-id" x="16" y="320">ER-9</text>
+    <text class="t-b" x="64" y="320">A public name enters the glossary in the PR that coins it</text>
+    <rect class="o" x="426" y="304" width="44" height="22" rx="3"/><text class="t-o" x="448" y="319" text-anchor="middle">owns</text>
+    <rect class="u" x="526" y="304" width="44" height="22" rx="3"/><text class="t-u" x="548" y="319" text-anchor="middle">uses</text>
+    <rect class="u" x="676" y="304" width="44" height="22" rx="3"/><text class="t-u" x="698" y="319" text-anchor="middle">uses</text>
+    <rect class="c" x="876" y="304" width="44" height="22" rx="3"/><text class="t-u" x="898" y="319" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="330" x2="924" y2="330"/>
+  </g>
+  <g id="er-10">
+    <text class="t-id" x="16" y="350">ER-10</text>
+    <text class="t-b" x="64" y="350">Ids are hints; a full read covers every gap</text>
+    <rect class="u" x="526" y="334" width="44" height="22" rx="3"/><text class="t-u" x="548" y="349" text-anchor="middle">uses</text>
+    <rect class="o" x="626" y="334" width="44" height="22" rx="3"/><text class="t-o" x="648" y="349" text-anchor="middle">owns</text>
+    <rect class="c" x="876" y="334" width="44" height="22" rx="3"/><text class="t-u" x="898" y="349" text-anchor="middle">checks</text>
+    <line class="row" x1="16" y1="360" x2="924" y2="360"/>
+  </g>
+  <g id="legend">
+    <rect class="o" x="16" y="378" width="40" height="18" rx="3"/>
+    <text class="t-b" x="64" y="391">decides or builds it · exactly one per rule</text>
+    <rect class="u" x="360" y="378" width="40" height="18" rx="3"/>
+    <text class="t-b" x="408" y="391">uses it · must not decide again</text>
+    <rect class="c" x="640" y="378" width="40" height="18" rx="3"/>
+    <text class="t-b" x="688" y="391">the closure checks it</text>
+  </g>
+</svg>
