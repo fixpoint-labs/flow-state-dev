@@ -58,7 +58,6 @@
   | `client`                           | `SessionConnectionState`                                 | `SessionConnectionStatus`                                                                  |
   | `react`                            | `useResourceCollectionItem`                              | `useCollectionResource` (its result's `item` field is unchanged)                           |
   | `react`                            | `UseResourceCollectionItemResult`                        | `UseCollectionResourceResult`                                                              |
-  | `react`                            | `AudioPlayerState`, `AudioRecorderState`                 | `AudioPlayerStatus`, `AudioRecorderStatus`                                                 |
   | `react` (`/workforce`)             | `PanelRowSource`, `PanelItemSource`                      | unchanged names; they now pick `listCollectionResources` and `getCollectionResourceState`  |
   | `orchestration` (`/tasks`)         | `rowHoldSchema`                                          | `ownHoldSchema` (a task's own hold: a question, a confirm or an external wait)             |
   | `orchestration` (`/tasks`)         | `RowHold`                                                | `OwnHold`                                                                                  |
