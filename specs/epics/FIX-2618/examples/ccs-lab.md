@@ -35,7 +35,7 @@ export function useThread(sessionId: string, threads: boolean) {
 
 export const usePins = () => useResource(claudeCodeStyle.resources.pins);   // { value, update }
 // A pin, in a component, is one line through the default write flow (O3):
-//   pins.update({ pinned: [...pins.value.pinned, taskId] })
+//   pins.update((s) => ({ pinned: toggle(s.pinned, taskId) }))   // pin or unpin, at the version read
 
 // ~250 lines in all, ~135 of them the renderer that was already the app's. Today: 1,498.
 ```

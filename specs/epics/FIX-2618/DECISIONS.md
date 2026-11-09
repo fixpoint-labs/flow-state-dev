@@ -186,20 +186,23 @@ Round 1's two-path fork and its declared write rule are gone.
 |---|---|
 | **Instead of** | A declared write rule that writes the resource directly, beside `runBy` · or a hand-written flow per writable resource, as the labs' pins flow is today |
 | **Because** | A second write path is a second place to keep the validators, and a write that skips them is the defect FIX-1945 D1 exists to prevent. The default write flow makes the plain case one line, so a second path buys nothing |
-| **Locks in** | `runBy` is the only way a client writes a user or org resource; with none, it can't. Schema, owner fence and optional `canWrite` run inside the flow, never as a route of their own. A request per write. FIX-296's session-addressed `client.content.*` routes stay |
+| **Locks in** | `runBy` is the only way a client writes a user or org resource; with none, it can't. Schema, owner fence and optional `canWrite` run inside the flow, never as a route of their own. A request per write. `client.content.*` stays for session-scope collections; its user and org writes (the skills drawer) are a leftover, [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) |
 
 **One mechanism, two kinds of flow** ([example](examples/resource-runBy.md)):
 
 - **`runBy: "default"`** names the framework's default write flow: actions that set, patch and
-  delete fields under the resource's schema, owner fence (owner from the verified principal,
-  [ER-3](#who-owns-what)) and optional `canWrite`. It replaces the labs' pins flow and `listPins`.
+  delete fields at the version the client read, under the resource's schema, owner fence (owner
+  from the verified principal, [ER-3](#who-owns-what)) and optional `canWrite`. A stale version
+  is refused with the current state and version (`resource-cas`), so no write is lost. It replaces the labs' pins flow and `listPins`.
   A field rather than a `client: { write: true }` flag: one field says who writes, and a flag
   would read as the direct write this removes.
 - **`runBy: { flow }`** names the app's own flow where it does real work: the dashboard takes
   data in and builds the resource. Same route, same send.
-- **Client helpers** reach either: `fsd.resource(ref).update(patch)`, `.set`, `.delete`,
+- **Client helpers** reach either: `fsd.resource(ref).update(updater)`, `.set`, `.delete`,
   `useResource(ref)` with the same setters, and `.send("refresh", input)` for a flow's own
-  actions. A pin: `await fsd.resource(pins).update({ pinned: [...pinned, id] })`.
+  actions. `update` runs the updater on the state it read and sends the result with that
+  version; on a refusal it re-runs the updater on the returned state. A pin toggles in one line:
+  `pins.update((s) => ({ pinned: toggle(s.pinned, id) }))`.
 
 **Its session:** one per resource per owner (a user resource's per-user session, an org
 resource's per-org one), found or made by the server, shared by a collection's entries. It is the
@@ -299,7 +302,7 @@ the stage-2 specs.
 | ER-1 | One hook computes an answer for a screen: the view. `reads` and scope `derived` go with no alias; nothing that does the same job is added beside views | FIX-2623 builds · FIX-2551, FIX-2627, FIX-2628 use | The stage-2 cross-spec review; the closure |
 | ER-2 | A view never writes (its context refuses writes and dispatch, as a read's does today). Every byte a client sees comes through a checked read or view; a notice carries ids, never rows | FIX-2623 builds · FIX-2624, FIX-2625 use | Each child's spec review; the closure |
 | ER-3 | A session-free read or view takes user and org from the verified principal, never from the body, query or headers (BP-031) | FIX-2624 builds · FIX-2623 uses | FIX-2623's and FIX-2624's spec review |
-| ER-4 | No direct client-write path is added. A client writes a user or org resource by scope only through a flow: an action on its `runBy` session, the default write flow or the app's own; with no `runBy`, it can't. Schema, owner fence and `canWrite` run inside the flow ([O3](#o3)). FIX-296's session-addressed `client.content.*` routes stay as they are | FIX-2624 builds · FIX-2626, FIX-2628 use | The stage-2 cross-spec review |
+| ER-4 | No direct client-write path is added. A client writes a user or org resource by scope only through a flow: an action on its `runBy` session, the default write flow or the app's own; with no `runBy`, it can't. Schema, owner fence and `canWrite` run inside the flow ([O3](#o3)). `client.content.*` stays for session-scope collections. The skills drawer's user and org content writes are the one leftover, exempt by name until [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) moves them | FIX-2624 builds · FIX-2626, FIX-2628 use | The stage-2 cross-spec review |
 | ER-5 | A kit holds only existing pieces (flows, views, resources, capabilities, blocks, workers, a client half, config, slots). It reaches another kit only through slots that kit publishes, never patches one, and a host can turn off what it contributes. Slots are few, typed, and published only by the kit that owns the concept. A flow a user installs and configures is copied, never also exported ([O1](#o1)) | FIX-2626 builds · FIX-2627, FIX-2628 use | FIX-2627's spec review; closure leg b |
 | ER-6 | Data the server computes is typed by its view's output schema (`ViewOutput`). An app hand-writes only what its screen computes | FIX-2623 builds · FIX-2627, FIX-2628 use | FIX-2628's spec review; closure leg a |
 | ER-7 | One live read in the client: the coalescer and the path rule live in one place, and `useView` and every package watch sit on it | FIX-2551 builds · FIX-2623, FIX-2627 use | The stage-2 reuse review |
@@ -327,9 +330,9 @@ Engineering calls, carried from the design review where they were decided withou
 
 - **No separate view definer beside reads.** A view is the rename of a read, never a second hook.
 - **Notice ids are hints.** A full read is always the fallback.
-- **No generic client writes.** Every client write goes through a flow ([O3](#o3)); FIX-296's existing
-  session-addressed `client.content.*` routes (with grants) stay, and FIX-1945's rules
-  record keeps client writes off.
+- **No generic client writes.** Every client write goes through a flow ([O3](#o3)); FIX-296's
+  `client.content.*` routes stay for session-scope collections (the skills drawer's user and org
+  writes move in [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633)), and FIX-1945's rules record keeps client writes off.
 - **The concept doc comes first,** and names wait for the glossary.
 - **FIX-2551 is a child, not absorbed.** It already says what it delivers; FIX-2623's `useView`
   builds on it.

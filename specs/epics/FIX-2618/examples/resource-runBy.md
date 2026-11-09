@@ -18,8 +18,12 @@ export const pins = defineResource({
 });
 
 // Client: an action on the default flow's session. The schema, the owner fence and canWrite run there,
-// and the write records a request like any action.
-await fsd.resource(pins).update({ pinned: [...pinned, threadId] });
+// and the write records a request like any action. The updater runs on the state the helper read and
+// the write carries that version; if another write landed first, the flow refuses it with the current
+// state (resource-cas) and the helper re-runs the updater on that, so concurrent pins are never lost.
+await fsd.resource(pins).update((s) => ({ pinned: toggle(s.pinned, threadId) }));
+
+// toggle(list, id): drop id if present, append it if not. A plain helper, not framework API.
 
 // React: the value and the same setters.
 const { value, update } = useResource(pins);

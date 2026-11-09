@@ -22,6 +22,6 @@ A write is one line too, and still goes through a flow: the resource's `runBy`, 
 function PinButton({ taskId }: { taskId: string }) {
   const pins = useResource(app.resources.pins);                                     // direct read, no session
   return <Pin on={pins.value?.pinned.includes(taskId)}
-              onClick={() => pins.update({ pinned: [...(pins.value?.pinned ?? []), taskId] })} />;  // an action on its runBy flow
+              onClick={() => pins.update((s) => ({ pinned: toggle(s.pinned, taskId) }))} />;  // pin or unpin; re-run on a version conflict
 }
 ```

@@ -30,7 +30,7 @@ reads, with no hand-written read model and no session made only to read.**
 | **The real need** | The kill line: the block kinds compose into real apps only through per-app glue. The need is to stop writing the glue, not to write it faster |
 | **Smaller, and rejected** | "Views and direct reads ship." The adapter shrinks, but every host still assembles workforce by hand, and the next feature is wired the same way. Or "kits ship with workforce as the only one": slots designed for one consumer freeze the wrong contract |
 | **Bigger, and not this epic's** | A third-party ecosystem (publishing, discovery, versioning, a registry). Moving Teammates' and Shift Manager's remaining adapters onto kit clients. Serving each answer on one route only. Each its own epic |
-| **Not done if** | claude-code-style keeps a file that assembles server data by hand · any of the four own-session helpers survives · a host keeps `workerFlows: () =>` or `as never` · a client can write a user or org resource other than through a flow · `reads` or scope `derived` is still exported · a view reads something it did not declare and no test fails · ids reach a client before the owner amends FIX-2367 D2 and FIX-2428 D2 · a bug the closure run found is open |
+| **Not done if** | claude-code-style keeps a file that assembles server data by hand · any of the four own-session helpers survives · a host keeps `workerFlows: () =>` or `as never` · a client can write a user or org resource by scope other than through a flow (exempt until [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633), the skills drawer's user and org `client.content.*` writes, as below) · `reads` or scope `derived` is still exported · a view reads something it did not declare and no test fails · ids reach a client before the owner amends FIX-2367 D2 and FIX-2428 D2 · a bug the closure run found is open |
 
 ```mermaid
 flowchart LR
@@ -51,8 +51,8 @@ must fail the run, which is what makes the PASS mean something.
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's goal check (FIX-2629), real model, in a browser, on one `main` commit after every other child merges. Its clean run is the epic's wrap condition |
-| **Signal** | Leg a: a thread, a delegated coding task, its board row changing, and a pin written in one line through the default write flow, all seen on screen, with FIX-2152 ER-1's inventory passing and no file that assembles server data. Leg b: the teammates host installs workforce and the harness kit, its own routing flow is gone, and, under [O1](DECISIONS.md#o1)'s split, no flow is both copied and importable. **Both legs:** every client write to a user or org resource the run makes is an action whose request is recorded in a flow's session; a write with no request fails the leg |
-| **Must fail: a direct write path** | The closure lists the engine's client routes that change a user or org resource and fails if any is not the action route, and it writes a resource with no `runBy` from the client and fails unless that is refused ([ER-4](DECISIONS.md#who-owns-what)). The one exemption, by name: FIX-296's session-addressed `client.content.*` routes as they stand (they also reach user and org collections such as the skills drawer, under the resource's own grants) |
+| **Signal** | Leg a: a thread, a delegated coding task, its board row changing, and a pin written in one line through the default write flow, all seen on screen, with FIX-2152 ER-1's inventory passing and no file that assembles server data. Leg b: the teammates host installs workforce and the harness kit, its own routing flow is gone, and, under [O1](DECISIONS.md#o1)'s split, no flow is both copied and importable. **Both legs:** every client write to a user or org resource by scope that the run makes is an action whose request is recorded in a flow's session (exempt until [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633), the skills drawer's user and org `client.content.*` writes, as in the row below); such a write with no request fails the leg |
+| **Must fail: a direct write path** | The closure lists the engine's client routes that change a user or org resource and fails if any is not the action route, and it writes a resource with no `runBy` from the client and fails unless that is refused ([ER-4](DECISIONS.md#who-owns-what)). One temporary exemption, by name: the skills drawer's `client.content.*` create, update and delete on its user or org collection (`skills/collection.ts`), the only such writer today. It is deleted when [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) moves it onto the default write flow. FIX-296's routes on session-scope collections are not resource-by-scope writes and stay |
 | **Input** | A held-out coding prompt in a scratch repository, chosen at run time |
 | **Anti-game** | Don't assert on a view's own output or a kit's unit tests: they pass while a screen still reads through a hand-rolled session. Assert on the screen and on the inventory |
 | **Control that must fail** | Today's `main`: the inventory refuses `adapter.ts` and the own-session helpers. A view with one dependency left out: the development-time check fails |
@@ -121,9 +121,10 @@ once the proofs land; kits come last because they package everything before them
 
 ## What stays as it is
 
-- **Session-addressed content writes.** FIX-296's `client.content.*` routes, addressed through a
-  session and gated by the resource's own grants, stay as they are, whatever the collection's
-  scope. The epic adds no direct client write; every new one goes through a flow ([ER-4](DECISIONS.md#who-owns-what)).
+- **Session-scope content writes.** FIX-296's `client.content.*` routes stay for session-scope
+  collections. Their user and org writes (the skills drawer) are a listed leftover, not a fence
+  exemption: [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633) moves them onto the default write flow. The epic adds no direct client write;
+  every new one goes through a flow ([ER-4](DECISIONS.md#who-owns-what)).
 - **Session items, streams and the transcript.** A transcript belongs to one session; those
   routes keep their session address.
 - **Capabilities.** Still the unit a block uses. A kit carries them; it doesn't replace them.
@@ -162,7 +163,7 @@ once the proofs land; kits come last because they package everything before them
 |---|---|
 | **Removes** | About 1,250 lines of claude-code-style's adapter (estimate); three of its flows; four own-session helpers; two read-only flows in each lab host; scope `derived`; three coalescer copies; one duplicated coding flow |
 | **Adds** | Kits and slots: a new concept and a public contract, permanent by design. `runBy` session lifecycle (creation races, deletes, a flow that's gone) |
-| **Leaves** | Teammates' and Shift Manager's remaining adapters, and the same data served on two routes. Both named as follow-up epics, filed at wrap |
+| **Leaves** | Teammates' and Shift Manager's remaining adapters, and the same data served on two routes. Both named as follow-up epics, filed at wrap. The skills drawer's user and org `client.content.*` writes, the last direct client writes to a resource by scope: filed as [FIX-2633](https://linear.app/fixpoint-labs/issue/FIX-2633), related, not a child |
 
 **Net: down.** Each app sheds its read model; the framework gains one concept and one contract.
 

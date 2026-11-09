@@ -110,7 +110,7 @@
     <text class="t-b" x="32" y="434">A third-party ecosystem</text>
     <text class="t-s" x="32" y="450">publish, discover, version, registry</text>
     <text class="t-b" x="262" y="434">A direct client-write path</text>
-    <text class="t-s" x="262" y="450">session-addressed content stays as is</text>
+    <text class="t-s" x="262" y="450">skills drawer moves in FIX-2633</text>
     <text class="t-b" x="492" y="434">The other two adapters</text>
     <text class="t-s" x="492" y="450">Teammates, Shift Manager: next epic</text>
     <text class="t-b" x="722" y="434">One route per answer</text>
