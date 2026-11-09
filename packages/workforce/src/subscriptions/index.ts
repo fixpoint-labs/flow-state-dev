@@ -42,30 +42,15 @@ export {
   type SubscriptionEnd,
   type SubscriptionProvider
 } from "./subscribe";
+export { normalizeGitHubEvent, type GitHubEventInput, type GitHubNormalizeOptions } from "./github/normalize";
 export {
-  GITHUB_PROVIDER,
-  githubLoginId,
-  githubMentions,
-  githubThreadKey,
-  normalizeGitHubEvent,
-  type GitHubEventInput,
-  type GitHubNormalizeOptions
-} from "./github/normalize";
-export {
-  githubRepositoryOf,
   githubSubscriptionProvider,
   type GitHubSubscriptionProvider,
   type GitHubSubscriptionProviderOptions
 } from "./github/provider";
-export { GITHUB_SERVICE_FLOW, githubServiceFlow, type GitHubServiceFlowOptions } from "./github/service-flow";
+export { githubServiceFlow, type GitHubServiceFlowOptions } from "./github/service-flow";
+export { followPullRequest, type FollowPullRequestOptions } from "./github/follow-pull-request";
 export {
-  FOLLOWED_PULL_REQUEST_KINDS,
-  followPullRequest,
-  pullRequestThread,
-  type FollowPullRequestOptions
-} from "./github/follow-pull-request";
-export {
-  DEFAULT_MAX_OWNER_RUNS,
   DEFAULT_SUBSCRIPTION_CAP_PER_HOUR,
   defineSubscriptionServiceFlow,
   deliveryMessageId,
