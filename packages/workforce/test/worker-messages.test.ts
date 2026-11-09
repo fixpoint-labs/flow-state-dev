@@ -3,7 +3,7 @@
  * (FIX-1989): `sendMessage` lands a line in the recipient's own
  * conversation, opening it at the worker's derived address when needed, and
  * wakes its turn; an answer names the message it answers and goes back to the
- * session that asked. No task row, no delegate, no task-chain count.
+ * session that asked. No task, no delegate, no task-chain count.
  *
  * Everything is read from what reached each session and the store, never
  * from the tool's return value alone.

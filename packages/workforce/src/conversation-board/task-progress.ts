@@ -7,7 +7,7 @@
  * (`createReportProgress`): a task turn holding a running row. This module
  * answers the one thing orchestration can't: where the held row lives. An
  * inline plan step's row is on the session's plan ledger, at the partition its
- * drain claimed it on; a dispatched task's row is on the conversation ledger
+ * drain claimed it on; a dispatched task is on the conversation ledger
  * at the partition the task session was born for, its readonly
  * `filingSessionId`. Both are read from server-set state, never from input.
  */

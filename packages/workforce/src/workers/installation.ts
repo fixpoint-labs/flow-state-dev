@@ -13,7 +13,7 @@
  *
  * Callers reach one narrow interface. The create check, `resolveWorker` for a
  * turn, and the session declaration a worker flow spreads in. None of them
- * touches the worker row, the name resolution or the refusal rules, which
+ * touches the worker entry, the name resolution or the refusal rules, which
  * live here.
  *
  * Every refusal names why and changes nothing: a refused create writes no

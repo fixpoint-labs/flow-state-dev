@@ -87,7 +87,7 @@ async function open(page: Page, name: string): Promise<void> {
 /** The flow every specialist runs on, registered as one copy at its kind. */
 const WORKER_FLOW = "agent";
 
-/** A worker's row on the roster panel, with its "Talk". */
+/** A worker's line on the roster panel, with its "Talk". */
 const rosterWorker = (page: Page, worker: string): Locator =>
   page.locator(`[data-testid="roster"]:visible [data-worker-id="${worker}"]`);
 

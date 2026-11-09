@@ -455,7 +455,7 @@ export function toWorker(row: unknown): Worker | undefined {
 
 // BP-030.
 /**
- * A project row. A row missing its id, title or owner is not a project anyone
+ * A project entry. A row missing its id, title or owner is not a project anyone
  * can address or own, and is left out; every other field reads as empty when
  * absent, so a row an earlier version wrote still reads.
  */

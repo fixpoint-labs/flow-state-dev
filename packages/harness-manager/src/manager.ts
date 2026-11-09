@@ -1,5 +1,5 @@
 /**
- * The manager — a task row becomes a watched, settled coding run.
+ * The manager — a task becomes a watched, settled coding run.
  *
  * One dispatched worker on a conductor board:
  *
@@ -1083,7 +1083,7 @@ const managerStateSchema = z.object({
   /**
    * This try's tool approvals (`approveTools`): the call the run
    * is stopped on, waiting for a person (`null` while none is), the grants
-   * the answers left (per try, never on the task row), and how many steps
+   * the answers left (per try, never on the task), and how many steps
    * an answer resumed. `null` until the first call is held.
    */
   approvals: z
@@ -2714,7 +2714,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // would be told *"your last attempt stopped because: take the second
       // option."*
       //
-      // Read from the task's row, where each answer is kept beside its
+      // Read from the task, where each answer is kept beside its
       // question (FIX-2133), and read here rather than inside the builder so
       // the ORDER is the manager's: a fold whose order depends on where a phase
       // happens to sort is a prompt that changes between replays.
@@ -3309,7 +3309,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           { outcome: "failed", reason },
         );
       }
-      // A refusal's task row is ended by the recorder, not retried (see
+      // A refusal's task is ended by the recorder, not retried (see
       // `HarnessRunRefused`); this handler updates only the run record above.
       throw error;
     },

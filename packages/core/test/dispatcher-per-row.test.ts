@@ -80,7 +80,7 @@ describe("a task dispatcher that chooses its entry per row", () => {
     expect(build({ among: ["work"] })).toThrow(/chooses its entry per task/);
   });
 
-  it("refuses a choice on an internal dispatcher — only a task row is chosen for", () => {
+  it("refuses a choice on an internal dispatcher — only a task is chosen for", () => {
     expect(() =>
       dispatcher({
         name: "internal-choice",

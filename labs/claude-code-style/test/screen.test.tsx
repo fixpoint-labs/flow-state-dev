@@ -337,7 +337,7 @@ describe("the session-mode screen", () => {
     await pick();
     await ask("Compare Acme and Globex for us.");
 
-    // Steps 2 and 3: the main session writes, then two task rows appear.
+    // Steps 2 and 3: the main session writes, then two tasks appear.
     await waitFor(() => expect(within(pane()).getByText(/^Background tasks · 2 running$/)).toBeTruthy());
     expect(within(thread()).getByText(/write the outline myself/)).toBeTruthy();
 
@@ -491,7 +491,7 @@ describe("the session-mode screen", () => {
     expect(row("Research Globex").getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("reads a session's task rows once, for the main thread and the pane together, in either mode", async () => {
+  it("reads a session's tasks once, for the main thread and the pane together, in either mode", async () => {
     const lab = fast();
     const reads: string[] = [];
     const counted = { ...lab, watchTasks: (sessionId: string, onChange: (rows: never[]) => void) => (reads.push(sessionId), lab.watchTasks(sessionId, onChange)) };

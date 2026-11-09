@@ -250,7 +250,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   /** The service's messages that landed in `sessionId`, as the model reads them. */
   const heard = async (sessionId: string) => (await board.messages(sessionId)).filter((m) => m.text.startsWith("From service:")).map((m) => m.text);
 
-  /** `userId`'s subscription rows, from the store. */
+  /** `userId`'s subscription entries, from the store. */
   const subscriptionRows = async (userId: string) => {
     const runtime = await board.state.getRuntime();
     const prefix = SUBSCRIPTIONS_PATTERN.replace("*", "");

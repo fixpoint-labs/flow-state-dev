@@ -384,7 +384,7 @@
       "name": "spend",
       "title": "Spend",
       "type": "registry:component",
-      "description": "One line for what a run spent: model, tokens, the vendor's charge when it reported one, and optionally attempts and duration. Reads a task row's or a harness turn's folded spend; a count nobody reported reads as such, never as 0, and a subscription run shows no dollar figure.",
+      "description": "One line for what a run spent: model, tokens, the vendor's charge when it reported one, and optionally attempts and duration. Reads a task's or a harness turn's folded spend; a count nobody reported reads as such, never as 0, and a subscription run shows no dollar figure.",
       "dependencies": [],
       "registryDependencies": [],
       "files": [{
@@ -398,7 +398,7 @@
       "name": "task-signals",
       "title": "Task signals",
       "type": "registry:component",
-      "description": "A task row's time and stall signal: a running row's clock from this attempt's run start, quiet when its lease has lapsed (the board's own rule, never while the feed is stale), how long ago an ended row ended; and a list's per-state counts. Reads a listTasks row's taskRowView, run start and lease deadline; the app passes the time and its tone.",
+      "description": "A task's time and stall signal: a running row's clock from this attempt's run start, quiet when its lease has lapsed (the board's own rule, never while the feed is stale), how long ago an ended row ended; and a list's per-state counts. Reads a listTasks row's taskRowView, run start and lease deadline; the app passes the time and its tone.",
       "dependencies": ["@flow-state-dev/orchestration"],
       "registryDependencies": ["spend"],
       "files": [{

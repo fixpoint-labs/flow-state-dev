@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * A task row's time and stall signal, and a pane's per-state counts, as every
+ * A task's time and stall signal, and a pane's per-state counts, as every
  * app draws them from one registry item.
  *
  * Why it matters: a person tells a task that is working from one whose run

@@ -346,7 +346,7 @@ export async function sendMessage(
 interface ServiceMessage {
   /** Where the sending worker would stand: `service:<provider>`. */
   readonly sender: string;
-  /** A live subscription's session, the worker it runs, and its flow: the subscription row is the recipient check. */
+  /** A live subscription's session, the worker it runs, and its flow: the subscription entry is the recipient check. */
   readonly to: { readonly sessionId: string; readonly flow: string; readonly worker: string };
   readonly text: string;
   /** The server-chosen id, so a repeat lands once. */
@@ -356,8 +356,8 @@ interface ServiceMessage {
 /**
  * Send a service's delivery to a subscription's session: the server's own
  * message (no budget), from `service:<provider>`, to the session the
- * subscription row names. That row is its recipient check, not the roster's
- * or `checkTargetSession`'s. Set by server code from a subscription row,
+ * subscription entry names. That row is its recipient check, not the roster's
+ * or `checkTargetSession`'s. Set by server code from a subscription entry,
  * never by a model.
  */
 export async function sendServiceMessage(

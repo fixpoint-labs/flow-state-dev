@@ -14,7 +14,7 @@
  * untouched.
  *
  * **What crosses is behaviour, not handles.** No type in this file names a store,
- * a flow instance, a session record, or a task row. A value read from another
+ * a flow instance, a session record, or a task. A value read from another
  * session crosses as `unknown` and the consumer parses it with its own schema —
  * `core` cannot name `orchestration`'s types either. The one read of another
  * session's record, `sessions.read`, answers only what that session's flow
@@ -102,7 +102,7 @@ export type ResumeWaitInput =
     }
   | {
       /**
-       * A suspension that waits for a user, as a task row's record of its
+       * A suspension that waits for a user, as a task's record of its
        * stop names it (server-written, never input). It must be this
        * principal's: the same user, tenant and organization as the running
        * request. Any other answers `gate-not-found`.

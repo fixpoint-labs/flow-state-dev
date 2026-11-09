@@ -1,7 +1,7 @@
 import type { LabTask } from "../adapter";
 
 /**
- * The threads board's columns, read from the task row alone (spec, "The
+ * The threads board's columns, read from the task alone (spec, "The
  * board's columns"). The lab keeps no status of its own: a column is the
  * task's status and what it waits on, plus your pins.
  */
@@ -24,7 +24,7 @@ export function waitingOnYou(tasks: readonly LabTask[]): number {
   }).length;
 }
 
-/** The column a task row lands in. A pinned task shows only under *Pinned*. */
+/** The column a task lands in. A pinned task shows only under *Pinned*. */
 export function columnOf(task: LabTask, pinned: boolean): Column {
   if (pinned) return "pinned";
   if (task.status === "completed" || task.status === "cancelled") return "resolved";

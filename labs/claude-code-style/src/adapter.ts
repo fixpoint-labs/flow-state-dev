@@ -143,7 +143,7 @@ export type ThreadEntry = (
    * offered on it: it is the thread's newest turn, and one the engine will run again for you.
    */
   | { kind: "failed"; id: string; reason: string; code?: string; details?: Record<string, unknown>; retryable: boolean }
-  /** Threads mode: a thread the lead filed, where its `createTask` call is. The card reads the task row. */
+  /** Threads mode: a thread the lead filed, where its `createTask` call is. The card reads the task. */
   | { kind: "thread"; id: string; taskId: string }
 ) & { requestId?: string };
 
@@ -268,7 +268,7 @@ export interface LabAdapter {
   retry(sessionId: string, requestId: string): Promise<void>;
   watchThread(sessionId: string, onChange: (view: ThreadView) => void): Unsubscribe;
   /**
-   * The session's task rows, on each change; `onStale` hears `true` when a read fails (the
+   * The session's tasks, on each change; `onStale` hears `true` when a read fails (the
    * rows handed last are kept, so they may be old) and `false` when one succeeds again.
    */
   watchTasks(sessionId: string, onChange: (rows: LabTask[]) => void, onStale?: (stale: boolean) => void): Unsubscribe;
@@ -872,7 +872,7 @@ export function createWiredLab(fsd: Client): LabAdapter {
     }
   };
 
-  /** A listed task row, as much as the screen reads. */
+  /** A listed task, as much as the screen reads. */
   type Listed = Omit<LabTask, "run"> & {
     runSessionId?: string;
     run?: { sessionId: string; requestId: string; startedAt?: number };

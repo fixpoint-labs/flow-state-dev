@@ -2,7 +2,7 @@
  * A feature run on a project is done only when the project's checks pass.
  *
  * The Lab's coder runs in a checkout of the project's repository, and the
- * project row names the commands (`checks`). The repository carries a check
+ * project entry names the commands (`checks`). The repository carries a check
  * that is red until `state.txt` says "ok". The coder is a stub that commits
  * `state.txt`: "broken" on its first attempt, "ok" on its second. So the
  * first attempt is not done, and its brief is how the second attempt learns

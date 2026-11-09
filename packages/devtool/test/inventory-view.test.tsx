@@ -208,7 +208,7 @@ describe("V3 · the Inventory tab on a session that declares the inventory", () 
     });
     renderWorkspace();
     const panel = await openPanel();
-    expect(rowById("workers", "eng.planner"), "the worker row rendered").toBeDefined();
+    expect(rowById("workers", "eng.planner"), "the worker entry rendered").toBeDefined();
     expect(panel.textContent).not.toContain("org_secret_acme");
     expect(panel.textContent).not.toMatch(/organization id/i);
     expect(within(panel).queryAllByRole("combobox")).toEqual([]);

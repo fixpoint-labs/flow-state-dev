@@ -25,7 +25,7 @@ const mirror = (requestId: string, suspensionId: string, kind: "approval" | "inp
   ask: { kind, prompt },
 });
 
-/** A running task row whose run stopped for the user, its stop mirrored on its row. */
+/** A running task whose run stopped for the user, its stop mirrored on its row. */
 const stopped = (id: string, suspensionId: string, over: Partial<InboxTaskInput> = {}): InboxTaskInput => ({
   board: BOARD,
   id,

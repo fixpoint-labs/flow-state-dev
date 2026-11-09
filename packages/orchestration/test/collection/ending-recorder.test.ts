@@ -132,7 +132,7 @@ describe("an ending written with its recorder's metadata, in one write", () => {
     expect(r.seen.map((s) => s.ending)).toEqual([{ kind: "cancelled", reason: "not needed" }]);
   });
 
-  it("errored by the claim path, when a dead worker's row has no abandonments left", async () => {
+  it("errored by the claim path, when a dead worker's entry has no abandonments left", async () => {
     let clock = 1_000;
     const r = recorder();
     const { ref } = await ledgerWith(r.recordEnding, () => clock);

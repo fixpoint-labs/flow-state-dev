@@ -21,7 +21,7 @@ export type SuspensionHoldSource = {
 };
 
 /**
- * A hold kept on the task row itself (a question or a confirm): answered
+ * A hold kept on the task itself (a question or a confirm): answered
  * through the board's `updateTask` action, as the user, on the session that
  * holds the board.
  */
@@ -69,7 +69,7 @@ export type InboxTask = {
 export type InboxItem<TDetail = unknown> = {
   /** Its address in the Inbox: a task's item by its board and task, else a lone suspension's id. */
   readonly id: string;
-  /** The task it holds; `null` for a suspension in a request with no task row. */
+  /** The task it holds; `null` for a suspension in a request with no task. */
   readonly task: InboxTask | null;
   /** Its open holds, oldest first. Never empty. Each says where its own answer goes. */
   readonly holds: readonly InboxHold<TDetail>[];
@@ -81,7 +81,7 @@ export type InboxItem<TDetail = unknown> = {
   readonly unanswerable: string | null;
 };
 
-/** A task row, as much of it as the Inbox reads. A browser's board row and a server's `Task` both fit. */
+/** A task, as much of it as the Inbox reads. A browser's board row and a server's `Task` both fit. */
 export type InboxTaskInput = {
   /** The board's ref the row is on. */
   readonly board: string;

@@ -524,7 +524,7 @@ describe("a steer reaches a coding run", () => {
   it("stops polling the row when the step ends while a poll is still reading it", async () => {
     const h = host({ script: ["finish-past-a-poll"], stopsOnAbort: true });
     try {
-      // Reads of the task's row, slowed while the step runs so the first poll
+      // Reads of the task, slowed while the step runs so the first poll
       // is mid-read when the step ends.
       const resourceState = (await h.runtime()).stores.resourceState;
       const get = resourceState.get.bind(resourceState);

@@ -109,7 +109,7 @@ type StoredSchedule = {
   enabled?: boolean;
 };
 
-/** A schedule row as the list shows it, its next run worked out from `now`. */
+/** A schedule entry as the list shows it, its next run worked out from `now`. */
 function listed(key: string, row: StoredSchedule): ListedSchedule {
   const timezone = row.timezone ?? "UTC";
   const enabled = row.enabled !== false;

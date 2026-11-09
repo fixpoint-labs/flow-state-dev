@@ -5,7 +5,7 @@
  * acts on one task, so an app's own `answer` qualifies beside the framework's
  * task tools. `id` counts only for a board's generated `getTask` and
  * `updateTask` (`updateTask({ id })`), so an app's unrelated `{ id }` action
- * stays off task rows. A board's task tools carry the board in their name,
+ * stays off tasks. A board's task tools carry the board in their name,
  * and are offered only on that board's rows.
  */
 import { describe, expect, it } from "vitest";
@@ -44,7 +44,7 @@ describe("taskActionsFor", () => {
     expect(taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"])).toEqual(["answer"]);
   });
 
-  it("keeps an app's unrelated { id } action off task rows, and offers a board's generated getTask and updateTask", () => {
+  it("keeps an app's unrelated { id } action off tasks, and offers a board's generated getTask and updateTask", () => {
     // `deleteProject({ id })` names a project, not a task: offered on a row,
     // it would be sent the task's id.
     const schemas = { ...familySchemas("issues"), deleteProject: takesId, getTask_other: takesId };

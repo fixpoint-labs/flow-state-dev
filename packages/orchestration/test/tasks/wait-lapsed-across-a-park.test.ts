@@ -27,7 +27,7 @@ import {
   fileCall,
   finalAnswer,
   finishTask,
-  rows,
+  storedTasks,
   runtimeFor,
   stepModel,
   toolResults,
@@ -81,11 +81,11 @@ async function eventually(check: () => boolean, withinMs: number, what: string):
 async function untilDelivered(state: ReturnType<typeof runtimeFor>, flow: Parameters<typeof rows>[1], taskId: string): Promise<void> {
   const owed = (row: { metadata?: Record<string, unknown> } | undefined) =>
     Object.entries(row?.metadata ?? {}).some(([key, value]) => key.startsWith("noticeOwed:") && value !== null);
-  for (const deadline = Date.now() + 5_000; owed((await rows(state, flow)).find((row) => row.id === taskId)); ) {
+  for (const deadline = Date.now() + 5_000; owed((await storedTasks(state, flow)).find((row) => row.id === taskId)); ) {
     if (Date.now() > deadline) throw new Error(`${taskId}'s notice was never acknowledged`);
     await new Promise((r) => setTimeout(r, 10));
   }
-  await untilTakersEnded(state, (await rows(state, flow)).find((row) => row.id === taskId)!);
+  await untilTakersEnded(state, (await storedTasks(state, flow)).find((row) => row.id === taskId)!);
 }
 
 /** Wait until the model has been called `n` times: the turn is past the steps before them. */
@@ -127,7 +127,7 @@ describe.each(STORES)("a park ends what a lapsed wait slot holds (%s)", { timeou
       await eventually(() => heardFor(notices, first).length > 0, HEARD_AFTER_PARK_MS, "T1's ending heard at the park");
       expect(heardFor(notices, first)).toEqual([expect.objectContaining({ ending: "completed", output: "T1 done" })]);
       expect(heardAt[0]! - parkedAt).toBeLessThan(HEARD_AFTER_PARK_MS);
-      expect((await rows(state, flow)).find((row) => row.id === first)?.wait).toBeUndefined();
+      expect((await storedTasks(state, flow)).find((row) => row.id === first)?.wait).toBeUndefined();
 
       // The notice was heard, so none is coming: the resumed wait answers with the task (FIX-2181).
       await untilDelivered(state, flow, first);
@@ -225,7 +225,7 @@ describe.each(STORES)("a park ends what a lapsed wait slot holds (%s)", { timeou
       await approve(state, run.requestId!);
       await stepped(seen, 6);
       await until(state, run.requestId!, "suspended", 10_000);
-      expect((await rows(state, flow)).find((row) => row.id === first)?.wait).toMatchObject({ lapsed: true });
+      expect((await storedTasks(state, flow)).find((row) => row.id === first)?.wait).toMatchObject({ lapsed: true });
       expect(heardFor(notices, first)).toEqual([]);
 
       await eventually(() => heardFor(notices, first).length > 0, HEARD_AFTER_PARK_MS, "T1's ending heard at the second park");
@@ -284,7 +284,7 @@ describe.each(STORES)("a park ends what a lapsed wait slot holds (%s)", { timeou
       // One delivery: the notice.
       await pastNoticeDue();
       expect(heardFor(notices, first)).toHaveLength(1);
-      expect((await rows(state, flow)).find((row) => row.id === first)?.wait).toBeUndefined();
+      expect((await storedTasks(state, flow)).find((row) => row.id === first)?.wait).toBeUndefined();
       expect(lapsedSlotsHeldInProcess().has(run.requestId!)).toBe(false);
     } finally {
       await state.dispose();

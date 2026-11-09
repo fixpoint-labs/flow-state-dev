@@ -10,7 +10,7 @@
  * its in-flight runs listed.
  *
  * It stays per instance: a credential one worker's resolver accepts must not
- * list a different worker's rows, even when both resolve the same principal.
+ * list a different worker's entries, even when both resolve the same principal.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -175,7 +175,7 @@ async function seedTwoWorkers(h: Harness) {
   await h.running("r-billing", { flowId: "acme.billing", flowKind: "worker", userId: OPERATOR, orgId: "acme" });
 }
 
-describe("in a mixed app, the listings show a worker's rows to the caller its own resolver accepts", () => {
+describe("in a mixed app, the listings show a worker's entries to the caller its own resolver accepts", () => {
   async function bootMixed() {
     const h = await boot();
     await seedTwoWorkers(h);
@@ -198,14 +198,14 @@ describe("in a mixed app, the listings show a worker's rows to the caller its ow
     expect(await h.active("tok-billing")).toEqual({ status: 200, ids: ["r-app", "r-billing"] });
   });
 
-  it("withholds the worker's rows from another organization's credential its resolver accepts", async () => {
+  it("withholds the worker's entries from another organization's credential its resolver accepts", async () => {
     const h = await bootMixed();
 
     expect(await h.sessions("tok-bravo")).toEqual({ status: 200, ids: ["s-app"] });
     expect(await h.active("tok-bravo")).toEqual({ status: 200, ids: ["r-app"] });
   });
 
-  it("withholds every worker's rows from a caller with no credential, who still sees the open flow's", async () => {
+  it("withholds every worker's entries from a caller with no credential, who still sees the open flow's", async () => {
     const h = await bootMixed();
 
     expect(await h.sessions()).toEqual({ status: 200, ids: ["s-app"] });
@@ -245,7 +245,7 @@ describe("in a mixed app, the listings show a worker's rows to the caller its ow
   });
 });
 
-describe("with a host resolver, the listings show a worker's rows to the caller its own resolver accepts", () => {
+describe("with a host resolver, the listings show a worker's entries to the caller its own resolver accepts", () => {
   /** A host that names every caller the same visitor, as the kitchen-sink app does. */
   const visitorHost: ResolvePrincipalFn = () => ({ userId: VISITOR, orgId: "acme" });
 
@@ -257,7 +257,7 @@ describe("with a host resolver, the listings show a worker's rows to the caller 
     return h;
   }
 
-  it("lists the worker's rows alongside the host principal's for the worker's credential", async () => {
+  it("lists the worker's entries alongside the host principal's for the worker's credential", async () => {
     const h = await bootHosted();
 
     expect(await h.sessions("tok-acme")).toEqual({ status: 200, ids: ["s-app", "s-support"] });

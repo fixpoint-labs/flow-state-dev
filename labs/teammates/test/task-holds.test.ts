@@ -12,7 +12,7 @@ import { holdsOfTasks, reviewOf, toBoardTask } from "../src/adapter";
 const CONVERSATION = "sess-lead";
 const RUN = "sess-run";
 
-/** A coding task's row as the board's stream carries it, holding `holds`. */
+/** A coding task as the board's stream carries it, holding `holds`. */
 const row = (holds: unknown[], status = "in_progress") => ({
   id: "task_1",
   title: "Fix the README typo",

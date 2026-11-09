@@ -406,7 +406,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     const deadline = Date.now() + timeoutMs;
     // Still running: in progress, or ended but not finalized. A record reads
     // `completed` before `onFinished` and the request-end check (FIX-2077)
-    // have run, and a task's row is settled by that check.
+    // have run, and a task is settled by that check.
     const running = (r: { status: string; finalizedAtMs?: number | null }) =>
       r.status === "in_progress" || (r.status !== "suspended" && r.status !== "pending" && r.finalizedAtMs == null);
     for (;;) {

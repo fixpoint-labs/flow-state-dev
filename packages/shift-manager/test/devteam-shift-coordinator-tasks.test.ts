@@ -355,7 +355,7 @@ async function heldOnQuestion(lab: Lab, id: string): Promise<{ taskId: string; q
   return { taskId, question: openOwnHolds(held as never)[0]! as unknown as Record<string, any> };
 }
 
-/** The task's row as stored on the conversation's board, in the user's scope. */
+/** The task as stored on the conversation's board, in the user's scope. */
 async function storedTask(lab: Lab, taskId: string): Promise<Record<string, any> | undefined> {
   const rows = await lab.stored("user", "tasks/");
   return Object.entries(rows).find(([key]) => key.endsWith(`/${taskId}`))?.[1] as Record<string, any> | undefined;

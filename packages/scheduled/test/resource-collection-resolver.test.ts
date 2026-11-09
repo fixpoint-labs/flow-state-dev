@@ -9,7 +9,7 @@ import type { ScheduleResolutionContext } from "@flow-state-dev/core/types";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
 
 // Handler blocks keyed by the persisted `kind` discriminator. A serialized
-// schedule row can't carry a block, so it stores `kind` and the resolver maps
+// schedule entry can't carry a block, so it stores `kind` and the resolver maps
 // it back to a real block via this `blocks` map (FIX-838).
 const sendDigest = handler({
   name: "send-digest",
