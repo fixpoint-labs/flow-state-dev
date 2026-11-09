@@ -48,7 +48,7 @@ const SF = "packages/workforce/src/subscriptions/service-flow.ts";
 
 /** The controls: each degrades one behaviour in the code under test, as it loads. */
 const PATCHES: Record<string, ModulePatch[]> = {
-  // A poll row per subscription: one user's two sessions on a PR are two rows, two fetches a cadence.
+  // A poll per subscription: one user's two sessions on a PR are two polls, two fetches a cadence.
   "poll-per-subscription": [
     {
       module: "packages/workforce/src/subscriptions/poll.ts",
@@ -64,11 +64,11 @@ const PATCHES: Record<string, ModulePatch[]> = {
       to: "const polledThrough = "
     }
   ],
-  // The tick fires every row, due or not.
+  // The tick fires every poll, due or not.
   "walk-all": [{ module: "packages/scheduled/src/tick.ts", from: String.raw`options\.index\.claimDue\(options\.now \?\? Date\.now\(\)`, to: "options.index.claimDue(8.64e15" }],
-  // A row fires every minute: under the floor.
+  // A poll fires every minute: under the floor.
   "under-floor": [{ module: "packages/workforce/src/subscriptions/poll.ts", from: String.raw`return minutes === 60 \?`, to: 'return minutes !== 60 ? "* * * * *" : minutes === 60 ?' }],
-  // A delivery never taken is owed forever: the row refetches it every poll.
+  // A delivery never taken is owed forever: the poll refetches it every time.
   "hold-forever": [{ module: SF, from: String.raw`if \(polls < POLL_GIVE_UP_AFTER\) \{`, to: "if (true) {" }],
   // Validators sent while a delivery is owed: an unchanged answer hides the retry.
   "etag-while-held": [
@@ -77,7 +77,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   ],
   // A fire ignores the app's declared list: a declared routine that left config keeps polling.
   "keep-removed": [{ module: SF, from: String.raw`      if \(declared !== undefined\) \{`, to: "      if (false) {" }],
-  // A subscription's own cadence is ignored: every row polls at the default.
+  // A subscription's own cadence is ignored: every poll runs at the default.
   "ignore-cadence": [
     { module: "packages/workforce/src/subscriptions/subscribe.ts", from: String.raw`row\.everyMinutes \?\? polling\.everyMinutes`, to: "polling.everyMinutes" },
     { module: SF, from: String.raw`s\.everyMinutes \?\? polling!\.everyMinutes`, to: "polling!.everyMinutes" }
@@ -200,8 +200,8 @@ async function boot(options: BootOptions) {
   let opened: ReturnType<typeof createSQLiteScheduleIndex> | undefined;
   const real = () => (opened ??= createSQLiteScheduleIndex(indexDb));
   const index: ReturnType<typeof createSQLiteScheduleIndex> = {
-    upsert: (row) => real().upsert(row),
-    remove: (row) => real().remove(row),
+    upsert: (entry) => real().upsert(entry),
+    remove: (entry) => real().remove(entry),
     claimDue: (now, limit) => real().claimDue(now, limit)
   };
   const pollingOf = () => (polling ??= subscriptionPolling({ index }));
@@ -273,16 +273,16 @@ async function boot(options: BootOptions) {
       }
       return set(id, record, ...rest);
     };
-    const rows = runtime.stores.resourceState as any;
-    const setRow = rows.set.bind(rows);
+    const resources = runtime.stores.resourceState as any;
+    const setResource = resources.set.bind(resources);
     const failedTake = new Set<string>();
-    rows.set = async (scopeType: string, scopeId: string, key: string, value: any, expected: unknown) => {
+    resources.set = async (scopeType: string, scopeId: string, key: string, value: any, expected: unknown) => {
       if (key.startsWith(WORKER_MESSAGES_PATTERN.replace("*", "")) && value?.takenBy !== undefined && untaken.has(value.id) && !failedTake.has(value.id)) {
         failedTake.add(value.id);
         injected.untaken += 1;
         throw new Error("the store is down: the take was not written");
       }
-      return setRow(scopeType, scopeId, key, value, expected);
+      return setResource(scopeType, scopeId, key, value, expected);
     };
   }
 
@@ -302,16 +302,16 @@ async function boot(options: BootOptions) {
   };
 
   const fires: Array<{ user: string; key: string; at: number; status: number }> = [];
-  // The tick claims from the same index the rows mirror into.
+  // The tick claims from the same index the polls mirror into.
   const tick = async () => {
     await runScheduleTick({
       index,
-      dispatch: async (row, scheduleId) => {
-        const { url, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", flowKind: "github-service", row, scheduleId });
+      dispatch: async (entry, scheduleId) => {
+        const { url, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", flowKind: "github-service", entry, scheduleId });
         const res = await router.POST(new Request(url, { ...init, headers: { ...init.headers, "x-user": "scheduler" } }), {
           params: { path: ["github-service", "schedules", scheduleId, "dispatch"] }
         });
-        fires.push({ user: row.userId, key: row.key, at: row.nextFireAt, status: res.status });
+        fires.push({ user: entry.userId, key: entry.key, at: entry.nextFireAt, status: res.status });
         return res.status;
       }
     });
@@ -347,8 +347,8 @@ async function boot(options: BootOptions) {
   /** Store a copy of `user`'s subscription `from` under `key`, as the declared routines' seed writes one. */
   const storeAs = async (user: string, from: string, key: string) => {
     const cell = `${user}:~org:${ORG}`;
-    const row = await runtime.stores.resourceState.get("user", cell, `workforce/subscriptions/${from}`);
-    await runtime.stores.resourceState.set("user", cell, `workforce/subscriptions/${key}`, { ...(row!.state as object), id: key } as never, "any" as never);
+    const stored = await runtime.stores.resourceState.get("user", cell, `workforce/subscriptions/${from}`);
+    await runtime.stores.resourceState.set("user", cell, `workforce/subscriptions/${key}`, { ...(stored!.state as object), id: key } as never, "any" as never);
   };
   const route = async (event: SubscriptionEvent) => {
     const routed = await routeServiceEvent(captured!, { flowKind: "github-service", entry: "routeSubscriptionEvent", input: event, principal: { userId: "service:github", orgId: ORG } });
@@ -357,25 +357,25 @@ async function boot(options: BootOptions) {
     await settled();
   };
 
-  /** Each user's message log rows from the service, by session and object version. */
+  /** Each user's message log from the service, by session and object version. */
   const landed = async () => {
     const out: Array<{ user: string; session: string; key: string; id: string; status: string }> = [];
     for (const user of ["alice", "bob"]) {
-      const rows = await runtime.stores.resourceState.getByPrefix("user", `${user}:~org:${ORG}`, WORKER_MESSAGES_PATTERN.replace("*", ""));
-      for (const value of Object.values(rows)) {
-        const row = value.state as { id: string; from: string; toSession: string; status: string };
-        if (!row.from.startsWith("service:") || row.id.endsWith(":gave-up")) continue;
-        const base = row.id.slice(0, -(row.toSession.length + 1));
+      const log = await runtime.stores.resourceState.getByPrefix("user", `${user}:~org:${ORG}`, WORKER_MESSAGES_PATTERN.replace("*", ""));
+      for (const value of Object.values(log)) {
+        const message = value.state as { id: string; from: string; toSession: string; status: string };
+        if (!message.from.startsWith("service:") || message.id.endsWith(":gave-up")) continue;
+        const base = message.id.slice(0, -(message.toSession.length + 1));
         const [object, version] = base.slice("sub_".length).split("@");
-        out.push({ user, session: row.toSession, key: `${decodeURIComponent(object!)}@${version}`, id: row.id, status: row.status });
+        out.push({ user, session: message.toSession, key: `${decodeURIComponent(object!)}@${version}`, id: message.id, status: message.status });
       }
     }
     return out;
   };
-  const rowsAt = async (user: string, pattern: string) =>
+  const storedAt = async (user: string, pattern: string) =>
     Object.values(await runtime.stores.resourceState.getByPrefix("user", `${user}:~org:${ORG}`, pattern.replace("*", ""))).map((v) => v.state as Record<string, any>);
 
-  return { calls, fires, tick, createFollower, act, storeAs, route, landed, rowsAt, injected, dispose: async () => (await state.dispose(), indexDb.close()) };
+  return { calls, fires, tick, createFollower, act, storeAs, route, landed, storedAt, injected, dispose: async () => (await state.dispose(), indexDb.close()) };
 }
 
 // ---- the legs ----------------------------------------------------------------
@@ -400,7 +400,7 @@ async function subscribeAll(app: App) {
 async function runTimeline(app: App, made: Awaited<ReturnType<typeof subscribeAll>>, push: boolean) {
   const unsubscribedAt = new Map<string, number>();
   let next = 0;
-  // Every minute from the subscriptions on, as a host's tick runs: a first beat late would fire a row late, and its next fire would come early.
+  // Every minute from the subscriptions on, as a host's tick runs: a first beat late would fire a poll late, and its next fire would come early.
   for (let t = T0 - MINUTE; t <= END + TAIL; t += MINUTE) {
     for (; next < EVENTS.length && EVENTS[next]!.at <= t; next += 1) {
       moveTo(EVENTS[next]!.at);
@@ -419,7 +419,7 @@ async function runTimeline(app: App, made: Awaited<ReturnType<typeof subscribeAl
   return unsubscribedAt;
 }
 
-/** What a polled subscription hears: push's set, less what its row hadn't fetched when it unsubscribed. */
+/** What a polled subscription hears: push's set, less what its poll hadn't fetched when it unsubscribed. */
 function pollOracle(sub: FixtureSubscription, calls: Call[], unsubscribedAt: Map<string, number>): string[] {
   const want = pushOracle(sub);
   const ended = unsubscribedAt.get(sub.label);
@@ -432,9 +432,9 @@ const sorted = (xs: string[]) => [...xs].sort();
 
 await runGoal(async (failures, tell) => {
   const evidence: string[] = [];
-  /** (a): each session's delivered rows equal its oracle exactly, once each. */
-  const gradeRows = (leg: string, landed: Awaited<ReturnType<App["landed"]>>, sessions: Map<string, string>, oracle: (sub: FixtureSubscription) => string[]) => {
-    tell.over(`${leg} · a · rows landed`, landed);
+  /** (a): each session's delivered messages equal its oracle exactly, once each. */
+  const gradeMessages = (leg: string, landed: Awaited<ReturnType<App["landed"]>>, sessions: Map<string, string>, oracle: (sub: FixtureSubscription) => string[]) => {
+    tell.over(`${leg} · a · messages landed`, landed);
     tell.over(`${leg} · a · expected deliveries`, SUBSCRIPTIONS.flatMap((s) => oracle(s)));
     for (const sub of SUBSCRIPTIONS) {
       const got = landed.filter((l) => l.session === sessions.get(sub.label) && l.status === "delivered").map((l) => l.key);
@@ -446,24 +446,24 @@ await runGoal(async (failures, tell) => {
       }
     }
   };
-  /** (b), (c): every row's fires are exactly its cadence apart, so none under the floor and none when not due. */
+  /** (b), (c): every poll's fires are exactly its cadence apart, so none under the floor and none when not due. */
   const gradeFires = (leg: string, fires: App["fires"], cadence: (key: string) => number) => {
-    const byRow = new Map<string, number[]>();
-    for (const f of fires) byRow.set(`${f.user} ${f.key}`, [...(byRow.get(`${f.user} ${f.key}`) ?? []), f.at]);
+    const byPoll = new Map<string, number[]>();
+    for (const f of fires) byPoll.set(`${f.user} ${f.key}`, [...(byPoll.get(`${f.user} ${f.key}`) ?? []), f.at]);
     tell.over(`${leg} · b · fires`, fires);
-    for (const [row, times] of byRow) {
-      const minutes = cadence(row.split(" ")[1]!);
+    for (const [poll, times] of byPoll) {
+      const minutes = cadence(poll.split(" ")[1]!);
       for (let i = 1; i < times.length; i += 1) {
         const gap = (times[i]! - times[i - 1]!) / MINUTE;
-        if (gap < 5) failures.push(`${leg} · b: ${row} fired ${gap} minute(s) after its last fire`);
-        else if (gap !== minutes) failures.push(`${leg} · c: ${row} fired ${gap} minutes after its last, not at its ${minutes}-minute cadence`);
+        if (gap < 5) failures.push(`${leg} · b: ${poll} fired ${gap} minute(s) after its last fire`);
+        else if (gap !== minutes) failures.push(`${leg} · c: ${poll} fired ${gap} minutes after its last, not at its ${minutes}-minute cadence`);
         if (gap < 5 || gap !== minutes) break;
       }
     }
     const refused = fires.filter((f) => f.status !== 202);
     if (refused.length > 0) failures.push(`${leg} · c: ${refused.length} fire(s) not accepted (first ${refused[0]!.status})`);
   };
-  /** (f), (l): each fetch ran as the row's own user, and a user fetched a thread at most once a cadence. */
+  /** (f), (l): each fetch ran as the poll's own user, and a user fetched a thread at most once a cadence. */
   const gradeFetches = (leg: string, calls: Call[]) => {
     tell.over(`${leg} · l · fetches`, calls);
     const byPair = new Map<string, number[]>();
@@ -488,11 +488,11 @@ await runGoal(async (failures, tell) => {
     const made = await subscribeAll(app);
     const ended = await runTimeline(app, made, false);
     const landed = await app.landed();
-    gradeRows("leg 1", landed, made.sessions, (sub) => pollOracle(sub, app.calls, ended));
+    gradeMessages("leg 1", landed, made.sessions, (sub) => pollOracle(sub, app.calls, ended));
     gradeFires("leg 1", app.fires, defaultCadence);
     gradeFetches("leg 1", app.calls);
     const unchanged = tell.over("leg 1 · d · unchanged polls", app.calls.filter((c) => c.unchanged));
-    evidence.push(`leg 1: ${landed.length} rows over ${made.ids.size} subscriptions, ${app.fires.length} fires, ${app.calls.length} fetches (${unchanged.length} unchanged)`);
+    evidence.push(`leg 1: ${landed.length} messages over ${made.ids.size} subscriptions, ${app.fires.length} fires, ${app.calls.length} fetches (${unchanged.length} unchanged)`);
     await app.dispose();
   }
 
@@ -516,25 +516,25 @@ await runGoal(async (failures, tell) => {
     const ended = await runTimeline(lossy, made, false);
     const landed = await lossy.landed();
     const neverKey = never.map((p) => `${p.sub.label} ${p.key}`);
-    gradeRows("leg 2", landed, made.sessions, (sub) => pollOracle(sub, lossy.calls, ended).filter((key) => !neverKey.includes(`${sub.label} ${key}`)));
+    gradeMessages("leg 2", landed, made.sessions, (sub) => pollOracle(sub, lossy.calls, ended).filter((key) => !neverKey.includes(`${sub.label} ${key}`)));
     // (e): each lost or untaken delivery landed exactly once, after its loss.
     tell.over("leg 2 · e · injected losses", Array.from({ length: lossy.injected.lost + lossy.injected.untaken }));
     if (lossy.injected.lost < lost.length) failures.push(`leg 2 · e: only ${lossy.injected.lost} of ${lost.length} planned losses happened`);
     for (const p of [...lost, ...untaken]) {
-      const rows = landed.filter((l) => l.id === idOf(p) && l.status === "delivered");
-      if (rows.length !== 1) failures.push(`leg 2 · e: ${p.sub.label}'s lost ${p.key} landed ${rows.length} time(s)`);
+      const delivered = landed.filter((l) => l.id === idOf(p) && l.status === "delivered");
+      if (delivered.length !== 1) failures.push(`leg 2 · e: ${p.sub.label}'s lost ${p.key} landed ${delivered.length} time(s)`);
     }
     // (i): the never-taken one was given up after three polls: nothing owed at the end, and the mark moved past it.
     tell.over("leg 2 · i · never-taken deliveries", never);
     for (const p of never) {
       const neverAt = EVENTS.find((e) => `${e.object.id}@${e.object.version}` === p.key)!.at;
-      const row = (await lossy.rowsAt(p.sub.user, SUBSCRIPTION_POLLS_PATTERN)).find((r) => r.input.thread === p.sub.input.thread);
-      if (row === undefined || (row.input.owed ?? []).length > 0 || !(row.input.polledThrough > neverAt)) {
-        failures.push(`leg 2 · i: ${p.sub.label}'s never-taken ${p.key} is still owed (mark ${row?.input.polledThrough}, its time ${neverAt})`);
+      const poll = (await lossy.storedAt(p.sub.user, SUBSCRIPTION_POLLS_PATTERN)).find((r) => r.input.thread === p.sub.input.thread);
+      if (poll === undefined || (poll.input.owed ?? []).length > 0 || !(poll.input.polledThrough > neverAt)) {
+        failures.push(`leg 2 · i: ${p.sub.label}'s never-taken ${p.key} is still owed (mark ${poll?.input.polledThrough}, its time ${neverAt})`);
       }
     }
     gradeFires("leg 2", lossy.fires, defaultCadence);
-    evidence.push(`leg 2: ${lossy.injected.lost} lost, ${lossy.injected.untaken} untaken, ${lossy.injected.never} never-taken dispatches; ${landed.length} rows`);
+    evidence.push(`leg 2: ${lossy.injected.lost} lost, ${lossy.injected.untaken} untaken, ${lossy.injected.never} never-taken dispatches; ${landed.length} messages`);
     await lossy.dispose();
   }
 
@@ -544,15 +544,15 @@ await runGoal(async (failures, tell) => {
     const made = await subscribeAll(app);
     await runTimeline(app, made, true);
     const landed = await app.landed();
-    gradeRows("leg 3", landed, made.sessions, pushOracle);
+    gradeMessages("leg 3", landed, made.sessions, pushOracle);
     const twice = landed.filter((l, i) => landed.findIndex((m) => m.id === l.id) !== i);
     if (twice.length > 0) failures.push(`leg 3 · a: ${twice.length} delivery(ies) landed twice`);
-    evidence.push(`leg 3: ${landed.length} rows, pushed and polled`);
+    evidence.push(`leg 3: ${landed.length} messages, pushed and polled`);
     await app.dispose();
   }
 
   // ---- leg 4: cadence, a restart, and a declared routine leaving config ---------
-  // The declared routines' seed is FIX-2614's; this leg stands in for its row (a cfg_ copy) and grades what polling owns.
+  // The declared routines' seed is FIX-2614's; this leg stands in for its subscription (a cfg_ copy) and grades what polling owns.
   {
     let declared: Array<{ id: string }> = [{ id: "web-pr" }];
     const db = join(SCRATCH, "leg4.sqlite");
@@ -572,36 +572,36 @@ await runGoal(async (failures, tell) => {
       beat = t;
       await cold.tick();
     }
-    const coldRows = (await cold.landed()).length;
+    const coldMessages = (await cold.landed()).length;
     const coldFires = [...cold.fires];
-    const pollsBefore = (await cold.rowsAt("alice", SUBSCRIPTION_POLLS_PATTERN)).length;
+    const pollsBefore = (await cold.storedAt("alice", SUBSCRIPTION_POLLS_PATTERN)).length;
     await cold.dispose();
-    // A restart: a new process over the same file adds no poll row, and the rows keep firing.
+    // A restart: a new process over the same file adds no poll, and the polls keep firing.
     const warm = await boot({ db, declared: () => declared });
-    const pollsAfter = (await warm.rowsAt("alice", SUBSCRIPTION_POLLS_PATTERN)).length;
-    tell.over("leg 4 · j · poll rows before the restart", Array.from({ length: pollsBefore }));
-    if (pollsAfter !== pollsBefore || pollsBefore !== 2) failures.push(`leg 4 · j: ${pollsBefore} poll row(s) before the restart, ${pollsAfter} after, for two threads`);
-    if (coldRows === 0) failures.push("leg 4 · j: the polled subscriptions heard nothing");
-    // The declared entry leaves config: its row ends at its next fire; the session's own subscription stays.
+    const pollsAfter = (await warm.storedAt("alice", SUBSCRIPTION_POLLS_PATTERN)).length;
+    tell.over("leg 4 · j · polls before the restart", Array.from({ length: pollsBefore }));
+    if (pollsAfter !== pollsBefore || pollsBefore !== 2) failures.push(`leg 4 · j: ${pollsBefore} poll(s) before the restart, ${pollsAfter} after, for two threads`);
+    if (coldMessages === 0) failures.push("leg 4 · j: the polled subscriptions heard nothing");
+    // The declared entry leaves config: its subscription ends at its next fire; the session's own subscription stays.
     declared = [];
     for (let t = T0 + 31 * MINUTE; t <= T0 + 50 * MINUTE; t += MINUTE) {
       moveTo(t);
       beat = t;
       await warm.tick();
     }
-    const after = await warm.rowsAt("alice", "workforce/subscriptions/*");
+    const after = await warm.storedAt("alice", "workforce/subscriptions/*");
     const removed = after.find((r) => r.id === declaredKey);
-    if (removed?.enabled !== false || removed.endedReason !== "config_removed") failures.push(`leg 4 · j: the removed entry's row is ${JSON.stringify({ enabled: removed?.enabled, endedReason: removed?.endedReason })}`);
+    if (removed?.enabled !== false || removed.endedReason !== "config_removed") failures.push(`leg 4 · j: the removed entry's subscription is ${JSON.stringify({ enabled: removed?.enabled, endedReason: removed?.endedReason })}`);
     if (after.find((r) => r.id === web)?.enabled !== true) failures.push("leg 4 · j: the session's own subscription ended with the declared one");
     if (warm.fires.length === 0) failures.push("leg 4 · j: nothing fired after the restart");
-    // (k): the 15-minute row fires 15 minutes apart; a cadence of 3 is refused.
+    // (k): the 15-minute poll fires 15 minutes apart; a cadence of 3 is refused.
     const all = [...coldFires, ...warm.fires];
     const repoKey = encodeURIComponent("github:acme/api");
-    const repoFires = tell.over("leg 4 · k · the 15-minute row's fires", all.filter((f) => f.key === repoKey));
+    const repoFires = tell.over("leg 4 · k · the 15-minute poll's fires", all.filter((f) => f.key === repoKey));
     gradeFires("leg 4", all, (key) => (key === repoKey ? 15 : 5));
-    if (repoFires.length < 3) failures.push(`leg 4 · k: the 15-minute row fired ${repoFires.length} time(s) in 50 minutes`);
+    if (repoFires.length < 3) failures.push(`leg 4 · k: the 15-minute poll fired ${repoFires.length} time(s) in 50 minutes`);
     if (three.output?.id !== undefined) failures.push("leg 4 · k: a cadence of 3 was accepted");
-    evidence.push(`leg 4: ${pollsBefore} poll rows before a restart and ${pollsAfter} after; the repo row fired ${repoFires.length} times; the removed declared row ${removed?.endedReason}`);
+    evidence.push(`leg 4: ${pollsBefore} polls before a restart and ${pollsAfter} after; the repo poll fired ${repoFires.length} times; the removed declared subscription ${removed?.endedReason}`);
     await warm.dispose();
   }
 

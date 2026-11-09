@@ -11,8 +11,8 @@
  * read, or a poll screens differently from push.
  */
 import { describe, expect, it } from "vitest";
-import type { BlockContext } from "@flow-state-dev/core/types";
-import { githubSubscriptionProvider } from "../src/subscriptions";
+import type { BlockContext, SubscriptionEvent } from "@flow-state-dev/core/types";
+import { githubSubscriptionProvider, normalizeGitHubEvent, screenRefusal } from "../src/subscriptions";
 
 const PR = "github:acme/api#412";
 const SINCE = Date.parse("2026-11-09T10:00:00Z");
@@ -58,6 +58,45 @@ function prApi(): Record<string, unknown> {
     "/repos/acme/api/commits/abc/check-runs": { check_runs: [] }
   };
 }
+
+describe("a repository's poll and its webhook agree", () => {
+  // The same comment, pushed and polled, must reach the same screens with the same labels, title and privacy.
+  it("rebuilds a repo-wide comment with its issue's labels and title, so it screens as the webhook's does", async () => {
+    const repository = { full_name: "acme/api", private: true };
+    const issue = { number: 9, title: "Deploy is blocked", labels: [{ name: "ops" }], user: user("alice"), created_at: at(-600), updated_at: at(2), state: "open", html_url: "https://github.com/acme/api/issues/9" };
+    const comment = { id: 70, body: "Looking now", user: user("bob"), author_association: "MEMBER", created_at: at(2), updated_at: at(2), issue_url: "https://api.github.com/repos/acme/api/issues/9", html_url: "https://github.com/acme/api/issues/9#c70" };
+    const { provider } = fakeGitHub({
+      "/repos/acme/api": repository,
+      "/repos/acme/api/issues": [issue],
+      "/repos/acme/api/issues/comments": [comment]
+    });
+    const polled = await provider.poll!("github:acme/api", { since: SINCE }, ctx);
+    if ("unchanged" in polled) throw new Error("expected the comment");
+    const fromPoll = polled.events.find((e) => e.kind === "comment")!;
+    const [fromPush] = normalizeGitHubEvent({ eventType: "issue_comment", payload: { action: "created", comment, issue, repository, sender: comment.user }, received: 0 });
+    const shape = (e: SubscriptionEvent) => ({ object: e.object, threads: e.threads, title: e.title, labels: e.labels, audience: e.audience, sender: e.sender, text: e.text });
+    expect(shape(fromPoll)).toEqual(shape(fromPush!));
+    // A subscription listing the issue's label and a word of its title passes both, or neither.
+    const entry = { provider: "github", thread: "github:acme/api", screens: [{ screen: "labels" as const, any: ["ops"] }, { screen: "words" as const, any: ["deploy"] }], userId: "alice", orgId: "acme" };
+    for (const kind of ["labels", "words"] as const) expect(screenRefusal(kind, fromPoll, entry, { trustedBots: [] })).toBe(screenRefusal(kind, fromPush!, entry, { trustedBots: [] }));
+    expect(screenRefusal("labels", fromPoll, entry, { trustedBots: [] })).toBeUndefined();
+  });
+
+  it("reads an issue the poll's issue list didn't carry once for all its comments, not once per comment", async () => {
+    const issue = { number: 9, title: "Deploy is blocked", labels: [{ name: "ops" }], user: user("alice"), created_at: at(-600), updated_at: at(-300), state: "open" };
+    const comments = [1, 2, 3].map((id) => ({ id, body: "more", user: user("bob"), author_association: "MEMBER", created_at: at(2), updated_at: at(2), issue_url: "https://api.github.com/repos/acme/api/issues/9" }));
+    const { provider, asked } = fakeGitHub({
+      "/repos/acme/api": { full_name: "acme/api", private: false },
+      "/repos/acme/api/issues": [],
+      "/repos/acme/api/issues/9": issue,
+      "/repos/acme/api/issues/comments": comments
+    });
+    const polled = await provider.poll!("github:acme/api", { since: SINCE }, ctx);
+    if ("unchanged" in polled) throw new Error("expected the comments");
+    expect(polled.events.filter((e) => e.kind === "comment").every((e) => e.labels.includes("ops"))).toBe(true);
+    expect(asked.filter((a) => a === "/repos/acme/api/issues/9")).toHaveLength(1);
+  });
+});
 
 describe("GitHub's poll, quiet and busy", () => {
   it("hears a check that finished on a quiet PR, whose pull request came back 304", async () => {
@@ -150,6 +189,29 @@ describe("GitHub's poll, quiet and busy", () => {
     const result = await provider.poll!(PR, { since: SINCE }, ctx);
     if ("unchanged" in result) throw new Error("expected events");
     expect(result.events.filter((e) => e.kind === "check")).toHaveLength(101);
+  });
+
+  // Check runs change in place (a run on any page completes), unlike the append-only lists.
+  it("hears a check run that completed on a middle page while the first page came back 304", async () => {
+    const api = prApi();
+    const runs: Array<Record<string, unknown>> = Array.from({ length: 250 }, (_, i) => ({ id: i + 1, name: `job-${i}`, status: "in_progress", app: { slug: "github-actions" } }));
+    api["/repos/acme/api/commits/abc/check-runs"] = runs;
+    const { provider } = fakeGitHub(api, { wrap: { "/repos/acme/api/commits/abc/check-runs": "check_runs" } });
+    const first = await provider.poll!(PR, { since: SINCE }, ctx);
+    if ("unchanged" in first) throw new Error("expected a first read");
+    runs[150] = { ...runs[150], status: "completed", conclusion: "success", completed_at: at(4) };
+    const second = await provider.poll!(PR, { since: SINCE, etags: first.etags! }, ctx);
+    if ("unchanged" in second) throw new Error("the run on page 2 was hidden by page 1's 304");
+    expect(second.events.map((e) => e.object.id)).toEqual(["check_run:151"]);
+  });
+
+  it("says so when a list that changes in place has more pages than one poll reads", async () => {
+    const api = prApi();
+    api["/repos/acme/api/commits/abc/check-runs"] = Array.from({ length: 650 }, (_, i) => ({ id: i + 1, name: `job-${i}`, status: "in_progress", app: { slug: "github-actions" } }));
+    const { provider } = fakeGitHub(api, { wrap: { "/repos/acme/api/commits/abc/check-runs": "check_runs" } });
+    const result = await provider.poll!(PR, { since: SINCE }, ctx);
+    if ("unchanged" in result) throw new Error("expected a read");
+    expect(result.incomplete).toBe(true);
   });
 
   it("says so when a list is busier than the walk reads, instead of dropping what it didn't reach", async () => {

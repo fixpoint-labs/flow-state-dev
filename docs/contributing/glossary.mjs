@@ -860,7 +860,7 @@ const EXEMPTIONS = [
     path: /^packages\/workforce\/src\/subscriptions\/github\/poll\.ts$/,
     line: /^const TIMELINE_ACTIONS = new Set\(\[/,
     rules: ["reopened-shape"],
-    why: "FIX-2536: GitHub's own `reopened` timeline event, which the poll rebuilds by name; not the task row's reopened shape",
+    why: "FIX-2536: GitHub's own `reopened` timeline event, which the poll rebuilds by name; not a task's reopened shape",
   },
   {
     path: /^packages\/orchestration\/README\.md$/,

@@ -55,7 +55,7 @@ export function githubSubscriptionProvider(options: GitHubSubscriptionProviderOp
   };
   const agentHandles = options.appBotLogin === undefined ? [] : [githubLoginId(options.appBotLogin)];
   return {
-    // FIX-2536: as the polling user, since the poll row's mark.
+    // FIX-2536: as the polling user, since the poll schedule's mark.
     poll: (thread, cursor, ctx) => pollGitHubThread(call, thread, cursor, ctx, { agentHandles }),
     provider: GITHUB_PROVIDER,
     ...(options.appBotLogin === undefined ? {} : { agentHandle: githubLoginId(options.appBotLogin) }),

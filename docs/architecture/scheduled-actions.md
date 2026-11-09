@@ -250,11 +250,11 @@ and respects `requireUser`.
 
 ## The tick
 
-A flow's dynamic schedules fire only when something claims their due rows
+A flow's dynamic schedules fire only when something claims their due entries
 from a `ScheduleIndex` and posts each to the dispatch endpoint.
 `runScheduleTick` (from `@flow-state-dev/scheduled/collection`, engine-free)
-is that body: claim the rows due now, dispatch each under its
-`formatScheduleId` id with bounded concurrency, drop an org-less row, and
+is that body: claim the entries due now, dispatch each under its
+`formatScheduleId` id with bounded concurrency, drop a schedule with no org, and
 throw only when the claim does. It runs two ways:
 
 - **Once a beat**, from a host's own cron: `createScheduleTickHandler`
@@ -264,14 +264,14 @@ throw only when the claim does. It runs two ways:
   for each registered flow whose `schedules.index` names an index, and
   dispatches through its own app, bearing `CRON_SECRET` when set. The app
   must mount `createScheduledTransportAdapter()`. One index serves one flow:
-  its rows name no flow, so an index two flows name is ticked once.
+  its entries name no flow, so an index two flows name is ticked once.
 
 `schedules.index` is a structural `{ claimDue(now, limit) }` in core, so a
 flow carries its index without core loading this package. The endpoint's
-claim is still the at-most-once guarantee; the tick only finds due rows.
+claim is still the at-most-once guarantee; the tick only finds due entries.
 
 Subscription polling (`defineSubscriptionServiceFlow({ poll })` in
-`@flow-state-dev/workforce`) is the first flow to carry one: one schedule row
+`@flow-state-dev/workforce`) is the first flow to carry one: one schedule resource
 per user and thread at `workforce/subscription-polls/*`, firing at that
 user's fastest subscription's cadence (5, 10, 15, 20, 30 or 60 minutes).
 

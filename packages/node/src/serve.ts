@@ -337,13 +337,13 @@ const MAX_PUSH_FRAME_BYTES = 64 * 1024;
 /**
  * The schedule tick of a served app: for each registered flow whose
  * `schedules` name a schedule index, `@flow-state-dev/scheduled`'s tick, each
- * minute, claiming its due rows and dispatching each to the flow's dispatch
+ * minute, claiming its due entries and dispatching each to the flow's dispatch
  * endpoint through this same app (so the app must mount
  * `createScheduledTransportAdapter()`). The dispatch carries `CRON_SECRET` as
  * its bearer when the environment sets one, as a host's own cron would.
  *
  * Only a `FlowState` is ticked: a raw router names no registry to read. An
- * index ticks once, for the first flow that names it: its rows name no flow,
+ * index ticks once, for the first flow that names it: its entries name no flow,
  * so one index serves one flow.
  */
 function serveScheduleTicks(
@@ -369,12 +369,12 @@ function serveScheduleTicks(
         ticks.push(
           startScheduleTick({
             index,
-            dispatch: async (row, scheduleId) => {
+            dispatch: async (entry, scheduleId) => {
               const { url, init } = scheduleDispatchRequest({
                 baseUrl: "http://localhost",
                 basePath,
                 flowKind: flow.id,
-                row,
+                entry,
                 scheduleId,
                 secret: process.env.CRON_SECRET,
               });

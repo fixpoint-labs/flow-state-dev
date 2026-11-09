@@ -29,7 +29,7 @@ export interface FollowPullRequestOptions {
   readonly providers: readonly SubscriptionProvider[];
   /** Called with what each subscribe came to, for a host that records it. */
   readonly onFollowed?: (pr: RecordedPullRequest, outcome: SubscribeOutcome, ctx: BlockContext) => void | Promise<void>;
-  /** The app's polling (the service flow's `poll`), when it polls: following a pull request makes the user's poll row for it. */
+  /** The app's polling (the service flow's `poll`), when it polls: following a pull request makes the user's poll schedule for it. */
   readonly poll?: SubscriptionPollingOptions | SubscriptionPolling;
 }
 

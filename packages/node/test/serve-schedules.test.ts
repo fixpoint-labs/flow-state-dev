@@ -1,11 +1,11 @@
 /**
  * `serve()`'s schedule tick (FIX-2536): a flow whose `schedules.index` is set
- * has its due rows claimed each minute by the server that serves it.
+ * has its due entries claimed each minute by the server that serves it.
  *
  * Why these matter: a long-lived host has no cron of its own, so this tick is
  * what fires the flow's schedules (subscription polls, recurring work). And a
  * server that failed to bind (a port already in use) must start nothing: a
- * tick left running there has no handle to stop it, and claims rows another
+ * tick left running there has no handle to stop it, and claims schedules another
  * process should fire.
  */
 import { createServer, type Server } from "node:net";
@@ -40,7 +40,7 @@ function scheduledApp() {
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 describe("serve() ticks a flow's schedule index", () => {
-  it("claims due rows each minute once it is listening", async () => {
+  it("claims due entries each minute once it is listening", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const { claims, flowState } = scheduledApp();
     handles.push(await serve(flowState, { port: 0, host: "127.0.0.1", handleSignals: false, shutdownGraceMs: 100 }));

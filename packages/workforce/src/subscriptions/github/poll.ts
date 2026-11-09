@@ -26,6 +26,8 @@
  * it, at most {@link MAX_PAGES} pages a list. A walk that stops at the bound
  * marks the poll `incomplete`, so the fire can say so in the session rather
  * than drop what it didn't reach. Extra pages cost only on a thread that moved.
+ * Check runs change in place rather than by append, so each of their pages is
+ * asked every poll under its own ETag, within the same bound.
  *
  * Versions an occurrence takes from its time: the timeline event's
  * `created_at` stands in for the `updated_at` a webhook payload carries for
@@ -108,8 +110,12 @@ export async function pollGitHubThread(
   };
 
   /**
-   * A list's items since the mark. GitHub lists oldest first, so an append
-   * lands on the last page and leaves the first unchanged:
+   * A list's items since the mark, read one of two ways by how the list
+   * changes.
+   *
+   * **Append-only lists** (timeline, comments, reviews, issues). GitHub
+   * lists them oldest first, so an append lands on the last page and leaves
+   * the first unchanged:
    *
    * - **First page moved:** read it, then from its last page back until a
    *   page starts before the mark.
@@ -117,15 +123,50 @@ export async function pollGitHubThread(
    *   its own ETag, and forward while a page comes back full or names a later
    *   last page (an append that rolled onto a new page).
    *
+   * **Lists that change in place** (`inPlace`: check runs, where a run on any
+   * page completes). A `304` on the first page says nothing about the rest,
+   * so every page is asked, each under its own ETag, within
+   * {@link MAX_PAGES}; a page that comes back `304` is unchanged and adds
+   * nothing. A list with more pages than that marks the poll `incomplete`.
+   *
    * Each list's last page and how full it was are kept beside the ETags, as
-   * `#last:<path>` = `<page>:<count>`. A quiet list costs one `304` on its
-   * first page, and one on its last when it has more than one.
+   * `#last:<path>` = `<page>:<count>`. A quiet append-only list costs one
+   * `304` on its first page, and one on its last when it has more than one;
+   * a quiet list that changes in place, one `304` per page.
    */
-  const pages = async (path: string, timeOf: (item: Json) => number | undefined, itemsOf: (body: unknown) => Json[] = list): Promise<Json[]> => {
+  const pages = async (
+    path: string,
+    timeOf: (item: Json) => number | undefined,
+    itemsOf: (body: unknown) => Json[] = list,
+    inPlace = false
+  ): Promise<Json[]> => {
     const lastKey = `${LAST_PREFIX}${validatorKey(path)}`;
     const [knownLast, knownCount] = (cursor.etags?.[lastKey] ?? "1:0").split(":").map(Number) as [number, number];
     const remember = (page: number, count: number) => (etags[lastKey] = `${page}:${count}`);
     const first = await get(path);
+
+    if (inPlace) {
+      const out: Json[] = [];
+      let last = knownLast;
+      if (first !== undefined) {
+        moved = true;
+        out.push(...itemsOf(first.body));
+        last = lastPageOf(first.link) ?? 1;
+      }
+      for (let page = 2; page <= last; page += 1) {
+        if (page > MAX_PAGES) {
+          incomplete = true;
+          break;
+        }
+        const read = await get(`${path}&page=${page}`);
+        if (read === undefined) continue;
+        moved = true;
+        out.push(...itemsOf(read.body));
+        last = Math.max(last, lastPageOf(read.link) ?? last);
+      }
+      remember(last, 0);
+      return out;
+    }
 
     if (first === undefined) {
       remember(knownLast, knownCount);
@@ -208,9 +249,17 @@ export async function pollGitHubThread(
         push(eventType, { action: "closed", [key]: issue, repository: repoPayload, sender: issue.closed_by ?? issue.user });
       }
     }
+    // Each comment is rebuilt with its issue, as the webhook carries it, so its labels and title reach the screens:
+    // from the issues this poll already read (a new comment moves its issue), else one read per issue still missing.
+    const issuesByNumber = new Map(issues.flatMap((i) => (typeof i.number === "number" ? [[i.number, i] as const] : [])));
     for (const comment of comments) {
       const number = Number(String(comment.issue_url ?? "").split("/").pop());
-      if (Number.isInteger(number)) push("issue_comment", { action: "created", comment, issue: { number }, repository: repoPayload, sender: comment.user });
+      if (!Number.isInteger(number)) continue;
+      if (!issuesByNumber.has(number)) {
+        const read = obj((await get(`${repo}/issues/${number}`, true))?.body);
+        issuesByNumber.set(number, read ?? { number });
+      }
+      push("issue_comment", { action: "created", comment, issue: issuesByNumber.get(number)!, repository: repoPayload, sender: comment.user });
     }
     return result(events);
   }
@@ -231,7 +280,7 @@ export async function pollGitHubThread(
   // Asked every poll, paged like the rest: a finished run changes neither the issue nor the pull request.
   const runs =
     isPr && sha !== undefined
-      ? await pages(`${repo}/commits/${sha}/check-runs?per_page=100`, (r) => ms(r.completed_at) ?? ms(r.started_at), (body) => list(obj(body)?.check_runs))
+      ? await pages(`${repo}/commits/${sha}/check-runs?per_page=100`, (r) => ms(r.completed_at) ?? ms(r.started_at), (body) => list(obj(body)?.check_runs), true)
       : [];
 
   // Something moved: the subjects an event is rebuilt from are read in full, so it carries their labels, title and privacy.

@@ -1,6 +1,6 @@
 // FIX-2536; epic FIX-2471 D10.
 /**
- * The schedule tick: claim the rows a schedule index holds due and dispatch
+ * The schedule tick: claim the schedules a schedule index holds due and dispatch
  * each, with bounded concurrency. One body, run two ways:
  *
  * - **Per beat** ({@link runScheduleTick}): a host's own cron calls it once a
@@ -9,69 +9,69 @@
  *   each minute (`@flow-state-dev/node`'s `serve()`, and so `fsdev dev`), like
  *   the engine's stale-request sweeper.
  *
- * `claimDue` advances each row as it returns it, so a row fires once per
+ * `claimDue` advances each entry as it returns it, so an entry fires once per
  * scheduled time however many hosts tick (the dispatch endpoint's claim is the
- * guarantee; the index only finds due rows). A dispatch that fails is
+ * guarantee; the index only finds due entries). A dispatch that fails is
  * dropped, not retried: at-most-once is the scheduled-actions contract.
  *
- * Engine-free: the caller supplies `dispatch`, which turns a due row and its
+ * Engine-free: the caller supplies `dispatch`, which turns a due entry and its
  * dispatch id into an HTTP status.
  */
 import type { ScheduleDueEntry } from "@flow-state-dev/core/types";
 import { formatScheduleId } from "./createResourceCollectionScheduleResolver";
 
 /** What one tick is run with. */
-export interface RunScheduleTickOptions<TRow extends ScheduleDueEntry = ScheduleDueEntry> {
-  /** The index to claim due rows from. */
-  readonly index: { claimDue(now: number, limit?: number): Promise<readonly TRow[]> };
-  /** Dispatch one due row under its dispatch id (`<orgId>/<userId>/<key>`); resolve to the HTTP status, `0` when it threw. */
-  readonly dispatch: (row: TRow, scheduleId: string) => Promise<number>;
-  /** The time due rows are claimed against. Default `Date.now()`. */
+export interface RunScheduleTickOptions<TEntry extends ScheduleDueEntry = ScheduleDueEntry> {
+  /** The index to claim due entries from. */
+  readonly index: { claimDue(now: number, limit?: number): Promise<readonly TEntry[]> };
+  /** Dispatch one due entry under its dispatch id (`<orgId>/<userId>/<key>`); resolve to the HTTP status, `0` when it threw. */
+  readonly dispatch: (entry: TEntry, scheduleId: string) => Promise<number>;
+  /** The time due entries are claimed against. Default `Date.now()`. */
   readonly now?: number;
-  /** The most rows claimed per tick. Default `100`. */
+  /** The most schedules claimed per tick. Default `100`. */
   readonly maxPerTick?: number;
   /** The most dispatches in flight at once. Default `10`. */
   readonly concurrency?: number;
-  /** Observe each dispatch: the row and its status (`0` when it threw, or the row names no org). Never throws back. */
-  readonly onDispatch?: (row: TRow, status: number) => void;
+  /** Observe each dispatch: the schedule and its status (`0` when it threw, or the schedule names no org). Never throws back. */
+  readonly onDispatch?: (entry: TEntry, status: number) => void;
 }
 
 /**
- * Claim the due rows and dispatch each. Resolves to the rows claimed. Throws
+ * Claim the due entries and dispatch each. Resolves to the entries claimed. Throws
  * only when the claim does, so a per-beat caller can answer 500 and its cron
- * retry with the rows still pending.
+ * retry with the schedules still pending.
  */
-export async function runScheduleTick<TRow extends ScheduleDueEntry>(options: RunScheduleTickOptions<TRow>): Promise<readonly TRow[]> {
+export async function runScheduleTick<TEntry extends ScheduleDueEntry>(options: RunScheduleTickOptions<TEntry>): Promise<readonly TEntry[]> {
   const due = await options.index.claimDue(options.now ?? Date.now(), options.maxPerTick ?? 100);
-  const notify = (row: TRow, status: number) => {
+  const notify = (entry: TEntry, status: number) => {
     try {
-      options.onDispatch?.(row, status);
+      options.onDispatch?.(entry, status);
     } catch {
       /* an observer never stops the tick */
     }
   };
-  await runWithConcurrency(due, Math.max(1, options.concurrency ?? 10), async (row) => {
-    // A row with no org names no cell to fire from; the endpoint would refuse it.
-    if (row.orgId === undefined) {
+  await runWithConcurrency(due, Math.max(1, options.concurrency ?? 10), async (entry) => {
+    // A schedule with no org names no cell to fire from; the endpoint would refuse it.
+    if (entry.orgId === undefined) {
       // eslint-disable-next-line no-console
-      console.error(`[flow-state/scheduled] not dispatched: ${row.userId}/${row.key} has no organization`);
-      notify(row, 0);
+      console.error(`[flow-state/scheduled] not dispatched: ${entry.userId}/${entry.key} has no organization`);
+      notify(entry, 0);
       return;
     }
     let status = 0;
     try {
-      status = await options.dispatch(row, formatScheduleId(row.orgId, row.userId, row.key));
+      status = await options.dispatch(entry, formatScheduleId(entry.orgId, entry.userId, entry.key));
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error(`[flow-state/scheduled] dispatch failed for ${row.userId}/${row.key}`, err);
+      console.error(`[flow-state/scheduled] dispatch failed for ${entry.userId}/${entry.key}`, err);
     }
-    notify(row, status);
+    notify(entry, status);
   });
   return due;
 }
 
 /** What {@link startScheduleTick} is run with: a tick, and how often. */
-export interface StartScheduleTickOptions<TRow extends ScheduleDueEntry = ScheduleDueEntry> extends Omit<RunScheduleTickOptions<TRow>, "now"> {
+export interface StartScheduleTickOptions<TEntry extends ScheduleDueEntry = ScheduleDueEntry> extends Omit<RunScheduleTickOptions<TEntry>, "now"> {
   /** How often it ticks, in ms. Default 60000 (a minute, the finest cadence a cron names). `0` or less: never. */
   readonly intervalMs?: number;
   /** The clock each tick claims against. Default `Date.now`. */
@@ -91,7 +91,7 @@ export interface ScheduleTick {
  * overlapped: the next waits its turn. A claim that throws is logged and the
  * next tick tries again.
  */
-export function startScheduleTick<TRow extends ScheduleDueEntry>(options: StartScheduleTickOptions<TRow>): ScheduleTick {
+export function startScheduleTick<TEntry extends ScheduleDueEntry>(options: StartScheduleTickOptions<TEntry>): ScheduleTick {
   const intervalMs = options.intervalMs ?? 60_000;
   const clock = options.clock ?? Date.now;
   let running: Promise<void> = Promise.resolve();
@@ -122,17 +122,17 @@ export function startScheduleTick<TRow extends ScheduleDueEntry>(options: StartS
 }
 
 /**
- * The dispatch endpoint's request for one due row:
+ * The dispatch endpoint's request for one due entry:
  * `POST <base>/api/flows/<kind>/schedules/<id>/dispatch`, its body naming the
- * scheduled time the row was claimed for (the endpoint fires each scheduled
- * time at most once, so a row claimed twice files once), with the bearer
+ * scheduled time the schedule was claimed for (the endpoint fires each scheduled
+ * time at most once, so a schedule claimed twice files once), with the bearer
  * secret when there is one. As `fetch`'s two arguments: `fetch(url, init)`,
  * or `new Request(url, init)`.
  */
 export function scheduleDispatchRequest(options: {
   readonly baseUrl: string;
   readonly flowKind: string;
-  readonly row: ScheduleDueEntry;
+  readonly entry: ScheduleDueEntry;
   readonly scheduleId: string;
   readonly secret?: string;
   /** The API mount prefix. Default `/api/flows`. */
@@ -148,7 +148,7 @@ export function scheduleDispatchRequest(options: {
         ...(options.secret === undefined || options.secret.length === 0 ? {} : { Authorization: `Bearer ${options.secret}` }),
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ nominalFireTime: new Date(options.row.nextFireAt).toISOString() })
+      body: JSON.stringify({ nominalFireTime: new Date(options.entry.nextFireAt).toISOString() })
     }
   };
 }

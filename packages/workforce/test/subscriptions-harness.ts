@@ -72,24 +72,24 @@ const github: SubscriptionProvider = {
   }
 };
 
-/** A schedule index in memory, as a store's would behave: claim advances each due row past `now`. */
-function memoryScheduleIndex(): ScheduleIndex & { rows: Map<string, ScheduleIndexEntry> } {
-  const rows = new Map<string, ScheduleIndexEntry>();
+/** A schedule index in memory, as a store's would behave: claim advances each due schedule past `now`. */
+function memoryScheduleIndex(): ScheduleIndex & { entries: Map<string, ScheduleIndexEntry> } {
+  const entries = new Map<string, ScheduleIndexEntry>();
   const id = (r: { cell: string; key: string }) => `${r.cell}\n${r.key}`;
   return {
-    rows,
-    async upsert(row) {
-      rows.set(id(row), { ...row });
+    entries,
+    async upsert(entry) {
+      entries.set(id(entry), { ...entry });
     },
-    async remove(row) {
-      rows.delete(id(row));
+    async remove(entry) {
+      entries.delete(id(entry));
     },
     async claimDue(now, limit = 100) {
-      const due = [...rows.values()].filter((r) => r.nextFireAt <= now).slice(0, limit);
-      for (const row of due) {
+      const due = [...entries.values()].filter((r) => r.nextFireAt <= now).slice(0, limit);
+      for (const entry of due) {
         // The clock reads `now` here: tests fake the date.
-        const next = parseNextFireAt(row.cron, row.timezone);
-        if (next !== null) rows.set(id(row), { ...row, nextFireAt: next });
+        const next = parseNextFireAt(entry.cron, entry.timezone);
+        if (next !== null) entries.set(id(entry), { ...entry, nextFireAt: next });
       }
       return due;
     }
@@ -176,20 +176,20 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     ]
   });
 
-  /** Every dispatch a tick made: the row's user and key, the time it fired for, and the endpoint's status. */
+  /** Every dispatch a tick made: the schedule's user and key, the time it fired for, and the endpoint's status. */
   const fires: Array<{ userId: string; key: string; at: number; status: number }> = [];
 
-  /** One beat of the shared tick at the current (faked) time: claim the due poll rows, dispatch each, wait for what they started. */
+  /** One beat of the shared tick at the current (faked) time: claim the due polls, dispatch each, wait for what they started. */
   const tick = async () => {
     if (index === undefined) throw new Error("tick: this host doesn't poll");
     const router = await board.router();
     await runScheduleTick({
       index,
-      dispatch: async (row, scheduleId) => {
-        const { url, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", flowKind: "github-service", row, scheduleId });
+      dispatch: async (entry, scheduleId) => {
+        const { url, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", flowKind: "github-service", entry, scheduleId });
         const request = new Request(url, { ...init, headers: { ...init.headers, "x-user": "scheduler" } });
         const res = await router.POST(request, { params: { path: ["github-service", "schedules", scheduleId, "dispatch"] } });
-        fires.push({ userId: row.userId, key: row.key, at: row.nextFireAt, status: res.status });
+        fires.push({ userId: entry.userId, key: entry.key, at: entry.nextFireAt, status: res.status });
         return res.status;
       }
     });
@@ -205,12 +205,12 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     const runtime = await board.state.getRuntime();
     const cell = `${userId}:~org:${ORG}`;
     const prefix = SUBSCRIPTIONS_PATTERN.replace("*", "");
-    const row = await runtime.stores.resourceState.get("user", cell, `${prefix}${from}`);
-    await runtime.stores.resourceState.set("user", cell, `${prefix}${key}`, { ...(row!.state as object), id: key } as never, "any" as never);
+    const stored = await runtime.stores.resourceState.get("user", cell, `${prefix}${from}`);
+    await runtime.stores.resourceState.set("user", cell, `${prefix}${key}`, { ...(stored!.state as object), id: key } as never, "any" as never);
   };
 
-  /** `userId`'s poll rows, from the store. */
-  const pollRows = async (userId: string) => {
+  /** `userId`'s poll schedules, from the store. */
+  const pollSchedules = async (userId: string) => {
     const runtime = await board.state.getRuntime();
     const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${ORG}`, SUBSCRIPTION_POLLS_PATTERN.replace("*", ""));
     return Object.values(entries).map((value) => value.state as Record<string, any>);
@@ -393,7 +393,7 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
     tick,
     fires,
     storeAs,
-    pollRows
+    pollSchedules
   };
 }
 

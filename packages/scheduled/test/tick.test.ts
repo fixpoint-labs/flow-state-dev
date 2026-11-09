@@ -3,9 +3,9 @@
  * and `serve()`'s interval both run.
  *
  * Why these matter: a long-lived host has no cron of its own, so this tick is
- * the only thing that fires its dynamic schedules. Each due row must reach the
- * dispatch endpoint under its canonical id, an org-less row must never be
- * sent (it names no cell to fire from), a failed claim must not lose the rows
+ * the only thing that fires its dynamic schedules. Each due schedule must reach the
+ * dispatch endpoint under its canonical id, a schedule with no org must never be
+ * sent (it names no cell to fire from), a failed claim must not lose the schedules
  * (the next beat tries again), and stopping the host must not leave a tick
  * running against closed stores.
  */
@@ -13,19 +13,19 @@ import { describe, expect, it, vi } from "vitest";
 import { formatScheduleId } from "../src";
 import { runScheduleTick, scheduleDispatchRequest, startScheduleTick } from "../src/collection";
 
-const row = (key: string, orgId: string | null = "acme") => ({ userId: "alice", ...(orgId === null ? {} : { orgId }), key, nextFireAt: 60_000 });
+const entry = (key: string, orgId: string | null = "acme") => ({ userId: "alice", ...(orgId === null ? {} : { orgId }), key, nextFireAt: 60_000 });
 
 describe("runScheduleTick", () => {
-  it("dispatches each claimed row under its dispatch id, and none with no org", async () => {
-    const claimDue = vi.fn(async () => [row("a"), row("b"), row("c", null)]);
+  it("dispatches each claimed entry under its dispatch id, and none with no org", async () => {
+    const claimDue = vi.fn(async () => [entry("a"), entry("b"), entry("c", null)]);
     const dispatched: string[] = [];
     const statuses: number[] = [];
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     await runScheduleTick({
       index: { claimDue },
       now: 123,
-      dispatch: async (_row, id) => (dispatched.push(id), 202),
-      onDispatch: (_row, status) => statuses.push(status)
+      dispatch: async (_entry, id) => (dispatched.push(id), 202),
+      onDispatch: (_entry, status) => statuses.push(status)
     });
     err.mockRestore();
     expect(claimDue).toHaveBeenCalledWith(123, 100);
@@ -40,7 +40,7 @@ describe("runScheduleTick", () => {
   });
 
   it("builds the dispatch request with the scheduled time and the bearer", () => {
-    const { url, init } = scheduleDispatchRequest({ baseUrl: "https://app.test/", flowKind: "github-service", row: row("k"), scheduleId: "acme/alice/k", secret: "s" });
+    const { url, init } = scheduleDispatchRequest({ baseUrl: "https://app.test/", flowKind: "github-service", entry: entry("k"), scheduleId: "acme/alice/k", secret: "s" });
     expect(url).toBe("https://app.test/api/flows/github-service/schedules/acme%2Falice%2Fk/dispatch");
     expect(init.headers.Authorization).toBe("Bearer s");
     expect(JSON.parse(init.body)).toEqual({ nominalFireTime: new Date(60_000).toISOString() });

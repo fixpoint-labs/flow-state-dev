@@ -7,7 +7,7 @@
  * sessions hear GitHub. One user's two sessions on a PR must cost one fetch, not
  * two (D1); a delivery the host lost must come back on a later poll, once, and
  * one that can never land must stop costing fetches (D2); a refused version
- * must not be judged again; a row no one needs must stop polling; and config
+ * must not be judged again; a poll no one needs must stop; and config
  * must not double a pinned repo on every restart (D3).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -60,7 +60,7 @@ describe("one poll per user and thread", () => {
       const two = await host.follower("alice");
       await host.subscribe("alice", one, { thread: PR });
       await host.subscribe("alice", two, { thread: PR });
-      expect(await host.pollRows("alice")).toHaveLength(1);
+      expect(await host.pollSchedules("alice")).toHaveLength(1);
       pollTimeline.events.push(reviewAt(T0 + 30_000, { text: "first" }), reviewAt(T0 + 6 * MINUTE, { text: "second" }));
       await run(host, 15);
       const alicePolls = pollTimeline.calls.filter((c) => c.userId === "alice" && c.thread === PR);
@@ -68,7 +68,7 @@ describe("one poll per user and thread", () => {
       for (const session of [one, two]) expect(await host.heard(session)).toHaveLength(2);
     }));
 
-  it("polls as each user apart: two users on one PR are two rows, and each fetch reaches only its own user's sessions", () =>
+  it("polls as each user apart: two users on one PR are two polls, and each fetch reaches only its own user's sessions", () =>
     withPolling(async (host) => {
       const alice = await host.follower("alice");
       const bob = await host.follower("bob");
@@ -79,12 +79,12 @@ describe("one poll per user and thread", () => {
       expect(new Set(pollTimeline.calls.map((c) => c.userId))).toEqual(new Set(["alice", "bob"]));
       expect(await host.heard(alice)).toHaveLength(1);
       expect(await host.heard(bob)).toHaveLength(1);
-      // Each user's rows were written only in that user's cell.
+      // Each user's messages were written only in that user's cell.
       expect((await host.serviceRows("alice")).every((r) => r.toSession === alice)).toBe(true);
       expect((await host.serviceRows("bob")).every((r) => r.toSession === bob)).toBe(true);
     }));
 
-  it("fires a row no sooner than its cadence, and only when due", () =>
+  it("fires a poll no sooner than its cadence, and only when due", () =>
     withPolling(async (host) => {
       const one = await host.follower("alice");
       await host.subscribe("alice", one, { thread: PR, everyMinutes: 15 });
@@ -100,7 +100,7 @@ describe("one poll per user and thread", () => {
       const one = await host.follower("alice");
       expect(await host.subscribe("alice", one, { thread: PR, everyMinutes: 3 })).toBeUndefined();
       expect(await host.subscriptionRows("alice")).toHaveLength(0);
-      expect(await host.pollRows("alice")).toHaveLength(0);
+      expect(await host.pollSchedules("alice")).toHaveLength(0);
     }));
 });
 
@@ -115,8 +115,8 @@ describe("the mark holds at what is still owed", () => {
       lost.restore();
       expect(lost.lost()).toBeGreaterThan(0);
       expect(await host.heard(one)).toEqual([]);
-      const [row] = await host.pollRows("alice");
-      expect(row!.input.owed).toHaveLength(1);
+      const [poll] = await host.pollSchedules("alice");
+      expect(poll!.input.owed).toHaveLength(1);
       await run(host, 20);
       expect(await host.heard(one)).toHaveLength(1);
       // The poll after the loss fetched without a validator, so an unchanged answer couldn't hide the retry;
@@ -137,9 +137,9 @@ describe("the mark holds at what is still owed", () => {
       await run(host, 15);
       lost.restore();
       // Given up on the third poll: the mark moved past it, so later polls neither fetch nor send it.
-      const [row] = await host.pollRows("alice");
-      expect(row!.input.owed).toBeUndefined();
-      expect(row!.input.polledThrough).toBeGreaterThan(review.at);
+      const [poll] = await host.pollSchedules("alice");
+      expect(poll!.input.owed).toBeUndefined();
+      expect(poll!.input.polledThrough).toBeGreaterThan(review.at);
       const polls = pollTimeline.calls.length;
       await run(host, 10);
       expect(pollTimeline.calls.slice(polls).every((c) => c.since! > review.at)).toBe(true);
@@ -157,7 +157,7 @@ describe("the mark holds at what is still owed", () => {
       await run(host, 5);
       lost.restore();
       // The mark holds at the lost delivery, before the refused one: the refusal is remembered, not re-judged.
-      expect((await host.pollRows("alice"))[0]!.input.polledThrough).toBe(held.at);
+      expect((await host.pollSchedules("alice"))[0]!.input.polledThrough).toBe(held.at);
       expect((await host.cursorOf("alice", id)).screened).toEqual([[refused.object.id, refused.object.version, refused.at]]);
       await run(host, 15);
       expect(await host.heard(one)).toHaveLength(1);
@@ -202,6 +202,27 @@ describe("a thread's closing", () => {
     }));
 });
 
+describe("a close accepted and not taken", () => {
+  // A close whose message isn't taken yet is still owed: the subscription stays on until it lands or is given up.
+  it("keeps the subscription on until the close lands, then ends it", () =>
+    withPolling(async (host) => {
+      const one = await host.follower("alice");
+      const id = ((await host.subscribe("alice", one, { thread: PR })) as { id: string }).id;
+      pollTimeline.events.push(reviewAt(T0 + 20_000, { kind: "pull_request", title: "Pull request #412 merged", closes: true }));
+      const take = await host.failFirstTake();
+      await run(host, 5);
+      take.restore();
+      expect(take.failed()).toBe(1);
+      expect(await host.heard(one)).toEqual([]);
+      expect((await host.subscriptionRows("alice")).find((r) => r.id === id)).toMatchObject({ enabled: true });
+      await run(host, 15);
+      const heard = await host.heard(one);
+      expect(heard).toHaveLength(1);
+      expect(heard[0]).toContain("merged");
+      expect((await host.subscriptionRows("alice")).find((r) => r.id === id)).toMatchObject({ enabled: false, endedReason: "thread_closed" });
+    }));
+});
+
 describe("a close that can never be sent", () => {
   // A close ends its subscriptions whether or not it was delivered, as on push.
   it("still ends the subscription when the close is given up after three polls", () =>
@@ -216,16 +237,16 @@ describe("a close that can never be sent", () => {
     }));
 });
 
-describe("a row's life", () => {
-  it("ends the poll row at its next fire once no subscription on it is on", () =>
+describe("a poll's life", () => {
+  it("ends the poll at its next fire once no subscription on it is on", () =>
     withPolling(async (host) => {
       const one = await host.follower("alice");
       const id = ((await host.subscribe("alice", one, { thread: PR })) as { id: string }).id;
       await host.unsubscribe("alice", one, id);
       await run(host, 5);
-      const [row] = await host.pollRows("alice");
-      expect(row!.enabled).toBe(false);
-      expect(host.index!.rows.size).toBe(0);
+      const [poll] = await host.pollSchedules("alice");
+      expect(poll!.enabled).toBe(false);
+      expect(host.index!.entries.size).toBe(0);
       const fired = host.fires.length;
       await run(host, 10);
       expect(host.fires.length).toBe(fired);
@@ -233,8 +254,8 @@ describe("a row's life", () => {
 });
 
 describe("declared routines on a polled thread", () => {
-  // The seed is the routines' own; what polling owns is ending a declared row whose entry left config.
-  it("ends a declared routine's row at its next fire once its entry leaves config, and leaves a session's own subscription on", () => {
+  // The seed is the routines' own; what polling owns is ending a declared routine's subscription whose entry left config.
+  it("ends a declared routine's subscription at its next fire once its entry leaves config, and leaves a session's own subscription on", () => {
     let declared = [{ id: "api-pr" }];
     return withPolling(
       async (host) => {
@@ -246,16 +267,16 @@ describe("declared routines on a polled thread", () => {
         expect((await host.subscriptionRows("alice")).find((r) => r.id === key)).toMatchObject({ enabled: true });
         declared = [];
         await run(host, 5);
-        const rows = await host.subscriptionRows("alice");
-        expect(rows.find((r) => r.id === key)).toMatchObject({ enabled: false, endedReason: "config_removed" });
-        expect(rows.find((r) => r.id === own)).toMatchObject({ enabled: true });
+        const subscriptions = await host.subscriptionRows("alice");
+        expect(subscriptions.find((r) => r.id === key)).toMatchObject({ enabled: false, endedReason: "config_removed" });
+        expect(subscriptions.find((r) => r.id === own)).toMatchObject({ enabled: true });
       },
       { declared: () => declared }
     );
   });
 
   // The routines' `declaredRoutineKey` pins the same value: a drift in either formula fails one of the two.
-  it("names a declared routine's row as the routines' seed does: entry api-pr on workforce-roster is cfg_05562bf34a380505896ae059", async () => {
+  it("names a declared routine's subscription as the routines' seed does: entry api-pr on workforce-roster is cfg_05562bf34a380505896ae059", async () => {
     expect(await declaredSubscriptionKey("api-pr")).toBe("cfg_05562bf34a380505896ae059");
   });
 });

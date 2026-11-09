@@ -124,10 +124,10 @@ export interface SubscriptionServiceOptions {
   // FIX-2536.
   /**
    * Poll the provider for the subscriptions an app has no webhook for: one
-   * schedule row per user and thread, fired by the tick (`serve()` runs one
+   * schedule resource per user and thread, fired by the tick (`serve()` runs one
    * for a flow with a schedule index). Needs the provider's `poll`. Hand the
    * same `index` to whatever subscribes (`subscriptionTools({ poll })`), so a
-   * subscribe makes the poll row.
+   * subscribe makes the poll schedule.
    */
   readonly poll?: SubscriptionServicePollOptions;
 }
@@ -136,9 +136,9 @@ export interface SubscriptionServiceOptions {
 export type SubscriptionServicePollOptions = (SubscriptionPollingOptions | SubscriptionPolling) & {
   /**
    * The routines the app's config declares (`routines.declared`), read at each
-   * fire: a declared event routine's row (`cfg_…`) on a polled thread whose
-   * entry is no longer here ends at its poll row's next fire, as
-   * `config_removed`. Omitted, declared rows are left alone. Seeding them is
+   * fire: a declared event routine's subscription (`cfg_…`) on a polled thread whose
+   * entry is no longer here ends at its poll schedule's next fire, as
+   * `config_removed`. Omitted, declared subscriptions are left alone. Seeding them is
    * the routines' own.
    */
   readonly declared?: () => readonly { readonly id: string }[];
@@ -458,7 +458,7 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     throw new Error(`defineSubscriptionServiceFlow: "${provider.provider}" can't be polled: its provider has no poll.`);
   }
   const declared = options.poll?.declared;
-  // The poll rows ride along untyped: blocks reach them through `pollSchedulesOf`, which reads them as declared or not.
+  // The poll schedules ride along untyped: blocks reach them through `pollSchedulesOf`, which reads them as declared or not.
   const pollResources = { ...subscriptionResources, ...workerMessagesResources, ...(polling?.resources ?? {}) } as typeof subscriptionResources & typeof workerMessagesResources;
 
   /** The running user's enabled subscriptions on `thread`, in the running org, under no tenant: the only ones its poll reaches (D1, ER-4). */
@@ -486,21 +486,21 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
   const fetchedSchema = z.object({ thread: z.string(), key: z.string(), screenings: z.array(screeningSchema) });
 
   /**
-   * One fire's fetch: the row's subscriptions, the provider's poll since the
+   * One fire's fetch: the poll's subscriptions, the provider's poll since the
    * mark (with validators only while nothing is owed), and, for each new
-   * event, the subscriptions that haven't settled it. Ends the row when no
-   * subscription on it is on, and a config row whose entry left config.
+   * event, the subscriptions that haven't settled it. Ends the poll when no
+   * subscription on it is on, and a declared routine's subscription whose entry left config.
    */
   const pollFetch = handler({
     name: "subscription-poll-fetch",
     inputSchema: pollInputSchema,
     outputSchema: fetchedSchema,
     resources: pollResources,
-    execute: async ({ thread, key: rowKey }, ctx) => {
-      const key = rowKey ?? pollKeyOf(thread);
-      const rowRef = await pollSchedulesOf(ctx)!.getOptional(key);
-      const row = rowRef?.state;
-      if (rowRef === undefined || row === undefined || row.enabled === false) return { thread, key, screenings: [] };
+    execute: async ({ thread, key: requestedKey }, ctx) => {
+      const key = requestedKey ?? pollKeyOf(thread);
+      const pollRef = await pollSchedulesOf(ctx)!.getOptional(key);
+      const poll = pollRef?.state;
+      if (pollRef === undefined || poll === undefined || poll.enabled === false) return { thread, key, screenings: [] };
       let subs = await liveOnThread(ctx, thread);
       if (declared !== undefined) {
         const kept = new Set(await Promise.all(declared().map((entry) => declaredSubscriptionKey(entry.id))));
@@ -508,10 +508,10 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         subs = subs.filter((s) => !isDeclaredSubscriptionKey(s.id) || kept.has(s.id));
       }
       if (subs.length === 0) {
-        await rowRef.setState({ ...row, enabled: false });
+        await pollRef.setState({ ...poll, enabled: false });
         return { thread, key, screenings: [] };
       }
-      const input = pollScheduleInputSchema.parse(row.input);
+      const input = pollScheduleInputSchema.parse(poll.input);
       const owed = input.owed ?? [];
       const result = await provider.poll!(
         thread,
@@ -524,10 +524,10 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       );
       const { fetched: _previous, ...rest } = input;
       if ("unchanged" in result) {
-        await rowRef.setState({ ...row, input: rest });
+        await pollRef.setState({ ...poll, input: rest });
         return { thread, key, screenings: [] };
       }
-      await rowRef.setState({ ...row, input: { ...rest, fetched: { through: result.through, ...(result.etags === undefined ? {} : { etags: { ...result.etags } }), ...(result.incomplete === true ? { incomplete: true as const } : {}) } } });
+      await pollRef.setState({ ...poll, input: { ...rest, fetched: { through: result.through, ...(result.etags === undefined ? {} : { etags: { ...result.etags } }), ...(result.incomplete === true ? { incomplete: true as const } : {}) } } });
       const cursors = new Map<string, SubscriptionCursor | undefined>();
       for (const sub of subs) cursors.set(sub.id, (await subscriptionCursorsOf(ctx).getOptional(sub.id))?.state);
       const events = result.events
@@ -562,10 +562,10 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     resources: pollResources,
     execute: async ({ fetched: { thread, key }, screened: screenings }, ctx) => {
       const counts = { delivered: 0, screened: 0, owed: 0, gaveUp: 0 };
-      const rowRef = await pollSchedulesOf(ctx)!.getOptional(key);
-      const row = rowRef?.state;
-      if (rowRef === undefined || row === undefined || row.enabled === false) return counts;
-      const input = pollScheduleInputSchema.parse(row.input);
+      const pollRef = await pollSchedulesOf(ctx)!.getOptional(key);
+      const poll = pollRef?.state;
+      if (pollRef === undefined || poll === undefined || poll.enabled === false) return counts;
+      const input = pollScheduleInputSchema.parse(poll.input);
       const subs = new Map((await liveOnThread(ctx, thread)).map((s) => [s.id, s]));
       const toScreen = new Map<string, Array<[string, number, number]>>();
       const screen = (subscription: string, event: SubscriptionEvent) => {
@@ -577,21 +577,28 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
       const owe = (subscription: string, event: SubscriptionEvent) => unsettled.set(subscription, [...(unsettled.get(subscription) ?? []), event]);
 
       /**
-       * Subscriptions whose thread closed in this batch with the closing send
-       * lost: nothing after the close reaches them now. The mark holds at the
-       * close, so the next poll sends it first, and the close ends them.
+       * Subscriptions whose thread closed in this batch while they still owe
+       * the close (its send lost, in flight, accepted and not yet taken, or
+       * not yet judged): nothing after the close reaches them now. The mark
+       * holds at the close, so a later poll sends it first and the close ends
+       * them, or gives it up after three polls and ends them all the same.
        */
       const closePending = new Set<string>();
       for (const screening of screenings) {
         const { event } = screening;
-        const lost = new Set<string>();
+        /** The subscriptions that still owe this event once this fire is done with it. */
+        const stillOwed = new Set<string>();
+        const oweNow = (subscription: string) => {
+          stillOwed.add(subscription);
+          owe(subscription, event);
+        };
         for (const candidate of screening.nominated) {
           const sub = subs.get(candidate.subscription);
           if (sub === undefined || closePending.has(sub.id)) continue;
           const verdict = screening.verdicts.find((v) => v.subscription === candidate.subscription);
           // No verdict: the screen couldn't judge it (an outage). Nothing is written, so the next poll judges it.
           if (verdict === undefined || verdict.reason === "no verdict") {
-            owe(sub.id, event);
+            oweNow(sub.id);
             continue;
           }
           if (!verdict.pass) {
@@ -600,20 +607,18 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
           }
           const delivered = await deliverToRow(ctx, sub.id, sub, event);
           if (delivered.act === "refused") screen(sub.id, event);
-          else if (delivered.act === "unsent" || delivered.act === "inflight") {
-            lost.add(sub.id);
-            owe(sub.id, event);
-          } else if (delivered.act === "sent") {
+          else if (delivered.act === "unsent" || delivered.act === "inflight") oweNow(sub.id);
+          else if (delivered.act === "sent") {
             counts.delivered += 1;
             // Accepted and not yet taken: unseen, so still owed until a later poll finds it taken.
             const cursor = (await subscriptionCursorsOf(ctx).getOptional(sub.id))?.state;
-            if (cursor !== undefined && !seenBefore(cursor, event.object)) owe(sub.id, event);
+            if (cursor !== undefined && !seenBefore(cursor, event.object)) oweNow(sub.id);
           }
         }
-        // The thread closed: its subscriptions end, except one whose send of the closing event was lost, which the next poll sends first.
+        // The thread closed: its subscriptions end, except one that still owes the close, which a later poll settles first.
         for (const candidate of screening.closing) {
-          if (lost.has(candidate.subscription)) closePending.add(candidate.subscription);
-          if (lost.has(candidate.subscription) || !subs.has(candidate.subscription) || closePending.has(candidate.subscription)) continue;
+          if (stillOwed.has(candidate.subscription)) closePending.add(candidate.subscription);
+          if (!subs.has(candidate.subscription) || closePending.has(candidate.subscription)) continue;
           await unsubscribe(ctx, candidate.subscription, "thread_closed");
           subs.delete(candidate.subscription);
           unsettled.delete(candidate.subscription);
@@ -703,11 +708,11 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
         ...(owed.length === 0 ? {} : { owed })
       };
       if (subs.size === 0) {
-        await rowRef.setState({ ...row, enabled: false, input: next });
+        await pollRef.setState({ ...poll, enabled: false, input: next });
       } else if (Number.isFinite(minutes) && minutes !== input.everyMinutes) {
-        await rowRef.setState(pollScheduleState(provider.provider, thread, minutes, next));
+        await pollRef.setState(pollScheduleState(provider.provider, thread, minutes, next));
       } else {
-        await rowRef.setState({ ...row, input: next });
+        await pollRef.setState({ ...poll, input: next });
       }
       return counts;
     }

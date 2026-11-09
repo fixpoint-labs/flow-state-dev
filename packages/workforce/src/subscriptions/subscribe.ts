@@ -58,7 +58,7 @@ export interface SubscriptionProvider {
   poll?(thread: string, cursor: SubscriptionPollCursor, ctx: BlockContext): Promise<SubscriptionPollResult>;
 }
 
-/** Where a poll fetches from: the poll row's mark, and its validators while no delivery is owed. */
+/** Where a poll fetches from: the poll schedule's mark, and its validators while no delivery is owed. */
 export interface SubscriptionPollCursor {
   /** Fetch events whose version is at or after this time, in ms. Absent, from the provider's own start. */
   readonly since?: number;
@@ -153,7 +153,7 @@ export const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
  * Subscribe the running session to one thread.
  *
  * @param providers The providers a session may subscribe on.
- * @param polling The app's polling, when it polls: the subscribe also makes the user's poll row for the thread.
+ * @param polling The app's polling, when it polls: the subscribe also makes the user's poll schedule for the thread.
  */
 export async function subscribe(
   ctx: BlockContext,
@@ -272,7 +272,7 @@ const unsubscribeOutputSchema = z.union([z.object({ ended: z.string() }), z.obje
  */
 export function subscriptionTools(options: {
   readonly providers: readonly SubscriptionProvider[];
-  /** The app's polling (the service flow's `poll`), when it polls: a subscribe makes the user's poll row for the thread. */
+  /** The app's polling (the service flow's `poll`), when it polls: a subscribe makes the user's poll schedule for the thread. */
   readonly poll?: SubscriptionPollingOptions | SubscriptionPolling;
 }) {
   const polling = options.poll === undefined ? undefined : subscriptionPolling(options.poll);

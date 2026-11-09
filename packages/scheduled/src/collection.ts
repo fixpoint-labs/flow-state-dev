@@ -2,7 +2,7 @@
  * `@flow-state-dev/scheduled/collection` — what a flow definition needs to keep
  * and resolve dynamic schedules, without loading the engine: the schedule
  * collection, its resolver, the dispatch id's format, next-run math, and the
- * tick that claims due rows and dispatches them (`runScheduleTick`).
+ * tick that claims due entries and dispatches them (`runScheduleTick`).
  *
  * The package's root entry also mounts the dispatch endpoint, which runs on
  * the engine. A package that defines flows but must not load the engine

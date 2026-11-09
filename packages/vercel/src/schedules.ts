@@ -120,8 +120,8 @@ export function createScheduleTickHandler(
         ...(opts.maxPerTick === undefined ? {} : { maxPerTick: opts.maxPerTick }),
         ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
         ...(opts.onDispatch === undefined ? {} : { onDispatch: opts.onDispatch }),
-        dispatch: async (row, scheduleId) => {
-          const { url, init } = scheduleDispatchRequest({ baseUrl: base, flowKind: opts.flowKind, row, scheduleId, secret });
+        dispatch: async (entry, scheduleId) => {
+          const { url, init } = scheduleDispatchRequest({ baseUrl: base, flowKind: opts.flowKind, entry, scheduleId, secret });
           return (await fetch(url, init)).status;
         }
       });
