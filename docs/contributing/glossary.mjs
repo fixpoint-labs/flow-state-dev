@@ -870,6 +870,12 @@ const EXEMPTIONS = [
     why: "FIX-2246: the README's upgrade note, which says the door is gone and how its kept lines become steers; a page can't carry the marker",
   },
   {
+    path: /^packages\/workforce\/src\/subscriptions\/github\/normalize\.ts$/,
+    line: /^const (PR|ISSUE)_ACTIONS = new Set\(\[/,
+    rules: ["reopened-shape"],
+    why: "FIX-2535: GitHub's own `reopened` webhook action, which normalize matches by name; not the task entry's reopened shape",
+  },
+  {
     path: /^packages\/orchestration\/README\.md$/,
     line: /^`reopened: true` reads unmarked; while it is still open/,
     rules: ["reopened-shape"],
@@ -1303,8 +1309,8 @@ const EXEMPTIONS = [
     // FIX-2614: an event routine is a subscription, so the routine modules, tests and screen name its thread too.
     where: (path) =>
       /^packages\/workforce\/(?:src\/subscriptions\/|src\/routines\/|test\/subscriptions-|test\/routines\.test\.ts$)|^packages\/shift-manager\/(?:src\/lib\/routines\.ts|src\/surfaces\/Routines\.tsx|test\/routines-view\.test\.tsx)$/.test(path),
-    strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
-    why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there, and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
+    strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bMEMBER\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
+    why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there (GitHub's `MEMBER` association), and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
   },
   {
     id: "subscription-docs",

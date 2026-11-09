@@ -305,9 +305,12 @@ export type {
 export { validateConcurrencyConfig } from "./types/concurrency";
 
 export type {
+  WebhookBindingsConfig,
   WebhookConfig,
   WebhookEventBinding,
   WebhookInboundEvent,
+  WebhookServiceConfig,
+  WebhookServiceRoute,
   WebhookSubscriptionConfig
 } from "./types/webhooks";
 export { defineWebhookBinding } from "./types/webhooks";

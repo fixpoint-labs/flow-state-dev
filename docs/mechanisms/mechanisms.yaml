@@ -341,7 +341,7 @@ mechanisms:
     doc: docs/architecture/authentication.md
 
   - id: webhook
-    job: An event-addressed action on the flow. The transport adapter verifies the provider and dispatches that binding.
+    job: An event-addressed action on the flow. The transport adapter verifies the provider and dispatches that binding, or, on a provider's service route (`service`), normalizes the delivery and routes each event to the sessions that follow it through `routeServiceEvent`.
     package: "@flow-state-dev/core"
     anchor: defineWebhookBinding
     file: packages/core/src/types/webhooks.ts
@@ -710,13 +710,13 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: subscriptions
-    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it, with no model; a provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. `subscribe` and `unsubscribe` are the only writers of a subscription (an event routine's trigger); a PR's closing and a task's failure or cancel end one.
+    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it, with no model; a provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. GitHub is the first provider (`githubServiceFlow`, on the webhook transport's service route), and a coding task follows the PR it opened from the moment its record is written (`followPullRequest`). `subscribe` and `unsubscribe` are the only writers of a subscription (an event routine's trigger); a PR's closing and a task's failure or cancel end one.
     package: "@flow-state-dev/workforce"
     anchor: subscribe
     file: packages/workforce/src/subscriptions/subscribe.ts
     builtOn: [collection, worker-messages, durability, flow, sequencer-dsl]
     overlaps:
-      - { id: webhook, relation: distinct-jobs, note: "A webhook binding dispatches one action on a flow for a verified request; subscriptions route an already normalized event to the conversations that follow where it happened. FIX-2535 wires a GitHub webhook into routeServiceEvent." }
+      - { id: webhook, relation: distinct-jobs, note: "A webhook binding dispatches one action on a flow for a verified request; subscriptions route an already normalized event to the conversations that follow where it happened. A provider's service route on the webhook transport is how a verified delivery reaches routeServiceEvent: one verify-and-ack pipeline for both." }
       - { id: worker-messages, relation: distinct-jobs, note: "A delivery lands as a worker message (sendServiceMessage shares sendMessage's budget-free tail), but from a service, addressed by the subscription row, never by the roster." }
       - { id: schedule, relation: distinct-jobs, note: "A dynamic schedule and an owner run both start a run as the user whose row the host found (one cell rule, resolveSharedUserCellKey); a schedule fires on a clock, a delivery on an event." }
     status: canonical

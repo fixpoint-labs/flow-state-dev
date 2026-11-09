@@ -593,6 +593,11 @@ function withFlowToolsWebhooks(
   if (webhooks === undefined || flowTools === undefined) return webhooks;
   const result: WebhookConfig = {};
   for (const [provider, sub] of Object.entries(webhooks)) {
+    // A service route runs no handler block of the flow's own.
+    if (sub.on === undefined) {
+      result[provider] = sub;
+      continue;
+    }
     const on: Record<string, WebhookEventBinding> = {};
     for (const [eventKey, binding] of Object.entries(sub.on)) {
       on[eventKey] = { ...binding, block: withFlowTools(binding.block, flowTools) };
@@ -683,7 +688,7 @@ function actionBlocks(
   }
   if (webhooks !== undefined) {
     for (const sub of Object.values(webhooks)) {
-      for (const binding of Object.values(sub.on)) blocks.push(...actionCoreBlocks(binding));
+      for (const binding of Object.values(sub.on ?? {})) blocks.push(...actionCoreBlocks(binding));
     }
   }
   if (schedules?.static !== undefined) {

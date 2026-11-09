@@ -159,13 +159,16 @@ export type { TTSConfig, VoiceConfig } from "./speech";
 
 
 export type {
+  WebhookBindingsConfig,
   WebhookConfig,
   WebhookEventBinding,
   WebhookInboundEvent,
+  WebhookServiceConfig,
+  WebhookServiceRoute,
   WebhookSubscriptionConfig
 } from "./webhooks";
 
-export { defineWebhookBinding, validateWebhookConfig } from "./webhooks";
+export { defineWebhookBinding, isWebhookServiceConfig, validateWebhookConfig } from "./webhooks";
 
 export {
   MAX_SUBSCRIPTION_EVENT_TEXT,

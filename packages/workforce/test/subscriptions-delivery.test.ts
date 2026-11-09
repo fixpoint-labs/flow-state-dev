@@ -318,6 +318,22 @@ describe("a subscription's end", () => {
 });
 
 describe("the cap", () => {
+  // FIX-2535: a thread with many followers can't make one delivery start without bound.
+  it("delivers one event to at most maxOwnerRuns subscriptions, refusing the rest with the cap as the reason", () =>
+    withHost(
+      async (host) => {
+        const sessions = [await host.follower("alice"), await host.follower("alice"), await host.follower("alice")];
+        for (const session of sessions) await host.subscribe("alice", session, { thread: PR });
+        const routed = await host.route(event({ text: "one review" }));
+        const output = routed.output as { verdicts: Array<{ pass: boolean; reason: string }> };
+        expect(output.verdicts.filter((v) => v.pass)).toHaveLength(2);
+        expect(output.verdicts.filter((v) => !v.pass).map((v) => v.reason)).toEqual(["cap: this event already reaches 2 subscriptions"]);
+        const heard = await Promise.all(sessions.map((s) => host.heard(s)));
+        expect(heard.map((h) => h.length).sort()).toEqual([0, 1, 1]);
+      },
+      { service: { maxOwnerRuns: 2 } }
+    ));
+
   it("holds deliveries past the cap and tells the session how many were held", () =>
     withHost(
       async (host) => {
