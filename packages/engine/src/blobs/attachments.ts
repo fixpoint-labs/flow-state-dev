@@ -77,8 +77,6 @@ export type ResolvedAttachment = {
 
 /** Thrown when a reference can't be read for its owner. Named so a caller can say so in the conversation. */
 export class AttachmentUnavailableError extends Error {
-  readonly code = "attachment-unavailable";
-
   constructor(readonly attachment: FileContent) {
     super(`Attachment "${attachment.filename ?? attachment.data}" is not available to this conversation`);
     this.name = "AttachmentUnavailableError";
