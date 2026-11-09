@@ -67,9 +67,9 @@ function groupTasks(tasks: readonly BoardTask[]) {
 
 /**
  * The right pane: the selected teammate's panel. At the top, who it is (its
- * name and role) and *Edit instructions*, which opens the instructions form
- * for a teammate you hired; the teammates from the files can't be edited
- * here. Under it, the tasks its conversation filed, coding tasks and
+ * name and role) and *Edit*, which opens a form to rename any teammate or
+ * replace its instructions, with *Reset to default* on a file's teammate you
+ * edited. Under it, the tasks its conversation filed, coding tasks and
  * teammates' jobs alike, newest first in each group: the running ones
  * (those waiting on you first); the failed ones, open, each with its reason;
  * then *Done* (its newest five, and *Show all*) and *Cancelled*, each one line
@@ -246,11 +246,6 @@ export function TeammatePanel({
 }
 
 /**
- * A task row's status words with its time: a running one's signal stands in
- * for "running" ("working · 4m 12s", "quiet for 7m"), and an ended one's age
- * follows its status ("done · 12m ago").
- */
-/**
  * Put a file's teammate the user edited back as the file has it: their copy
  * goes, and its next turn reads the file's name and instructions.
  */
@@ -282,6 +277,11 @@ function ResetButton({ name, onReset }: { name: string; onReset: () => Promise<v
   );
 }
 
+/**
+ * A task row's status words with its time: a running one's signal stands in
+ * for "running" ("working · 4m 12s", "quiet for 7m"), and an ended one's age
+ * follows its status ("done · 12m ago").
+ */
 function StatusWords({ task, now, stale }: { task: BoardTask; now: number; stale: boolean }) {
   if (task.view === undefined) return <>{task.status}</>;
   const time = <TaskTime view={task.view} run={task.run} now={now} stale={stale} tone={(kind) => taskPresentation(task, kind).tone} fallback={task.status} />;
