@@ -234,6 +234,29 @@ export type SchedulesConfig = {
     scheduleId: string,
     ctx: ScheduleResolutionContext
   ) => Promise<ScheduleConfig | null> | ScheduleConfig | null;
+
+  // FIX-2536.
+  /**
+   * The schedule index this flow's dynamic rows are mirrored into
+   * (`@flow-state-dev/scheduled`'s `ScheduleIndex`). A long-lived host that
+   * finds one (`serve()`) claims due rows from it each minute and dispatches
+   * them to this flow, so the flow's schedules fire with no cron of the host's
+   * own. Typed structurally so this contract can live in core.
+   */
+  index?: ScheduleDueSource;
+};
+
+/** One due row a schedule index hands back: who it runs as, in which org, its key, and the time it fires for. */
+export type ScheduleDueRow = {
+  userId: string;
+  orgId?: string;
+  key: string;
+  nextFireAt: number;
+};
+
+/** What a host's tick needs of a schedule index: claim the rows due by `now`, advancing them. */
+export type ScheduleDueSource = {
+  claimDue(now: number, limit?: number): Promise<readonly ScheduleDueRow[]>;
 };
 
 // ---------------------------------------------------------------------------

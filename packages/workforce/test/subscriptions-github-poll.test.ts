@@ -1,0 +1,82 @@
+/**
+ * GitHub's poll (FIX-2536): a PR's activity, read from GitHub's REST API as
+ * the polling user, rebuilt into the payloads GitHub's normalize reads.
+ *
+ * Why these matter: a session that is both pushed and polled hears each event
+ * once only if a poll names each object at the same version a webhook names it
+ * (ER-8): a review by its id and submit time, a review request by the time it
+ * was asked. And a quiet thread must cost conditional requests that come back
+ * `304`, not a full re-read of the PR every five minutes.
+ */
+import { describe, expect, it } from "vitest";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import { githubSubscriptionProvider } from "../src/subscriptions";
+
+const PR = "github:acme/api#412";
+const SINCE = Date.parse("2026-11-09T10:00:00Z");
+const at = (minutes: number) => new Date(SINCE + minutes * 60_000).toISOString();
+const ctx = { session: { identity: { id: "s", userId: "alice", orgId: "acme" } } } as unknown as BlockContext;
+
+const user = (login: string) => ({ login, type: "User" });
+const API: Record<string, unknown> = {
+  "/repos/acme/api": { full_name: "acme/api", private: false },
+  "/repos/acme/api/issues/412": { number: 412, title: "Rename the handler", pull_request: {}, user: user("alice"), created_at: at(-60), updated_at: at(3), labels: [] },
+  "/repos/acme/api/pulls/412": { number: 412, title: "Rename the handler", head: { sha: "abc" }, html_url: "https://github.com/acme/api/pull/412" },
+  "/repos/acme/api/issues/412/timeline": [
+    { event: "review_requested", created_at: at(1), actor: user("alice"), requested_reviewer: user("bob") },
+    { event: "labeled", created_at: at(1), actor: user("alice") }
+  ],
+  "/repos/acme/api/issues/412/comments": [{ id: 7, body: "LGTM", user: user("bob"), author_association: "MEMBER", created_at: at(2), updated_at: at(2) }],
+  "/repos/acme/api/pulls/412/reviews": [
+    { id: 90, state: "APPROVED", body: "Ship it", user: user("bob"), author_association: "MEMBER", submitted_at: at(3) },
+    { id: 80, state: "COMMENTED", body: "old", user: user("bob"), author_association: "MEMBER", submitted_at: at(-30) }
+  ],
+  "/repos/acme/api/pulls/412/comments": [],
+  "/repos/acme/api/commits/abc/check-runs": {
+    check_runs: [
+      { id: 5, name: "ci", status: "completed", conclusion: "success", completed_at: at(4), app: { slug: "github-actions", name: "GitHub Actions" } },
+      { id: 6, name: "lint", status: "in_progress", app: { slug: "github-actions" } }
+    ]
+  }
+};
+
+function fakeGitHub() {
+  const asked: Array<{ path: string; ifNoneMatch: string | null }> = [];
+  const fetch = (async (url: string, init: { headers: Record<string, string> }) => {
+    const path = new URL(url).pathname;
+    asked.push({ path, ifNoneMatch: init.headers["if-none-match"] ?? null });
+    if (init.headers["if-none-match"] === `"${path}"`) return new Response(null, { status: 304 });
+    if (!(path in API)) return new Response("{}", { status: 404 });
+    return new Response(JSON.stringify(API[path]), { status: 200, headers: { etag: `"${path}"` } });
+  }) as unknown as typeof globalThis.fetch;
+  return { asked, provider: githubSubscriptionProvider({ token: () => "t", fetch }) };
+}
+
+describe("GitHub's poll", () => {
+  it("rebuilds a PR's reviews, comments, checks and review requests since the mark, named as push names them", async () => {
+    const { provider } = fakeGitHub();
+    const result = await provider.poll!(PR, { since: SINCE }, ctx);
+    if ("unchanged" in result) throw new Error("expected events");
+    const named = result.events.map((e) => `${e.kind} ${e.object.id}@${e.object.version}`).sort();
+    expect(named).toEqual(
+      [
+        `check check_run:5@${Date.parse(at(4))}`,
+        `comment issue_comment:7@${Date.parse(at(2))}`,
+        `pull_request pull_request:${PR}:review_requested:bob@${Date.parse(at(1))}`,
+        `review review:90@${Date.parse(at(3))}`
+      ].sort()
+    );
+    // Every event is this thread's, as its own user read it.
+    expect(result.events.every((e) => e.threads.includes(PR))).toBe(true);
+  });
+
+  it("answers unchanged when every conditional request comes back 304", async () => {
+    const { provider, asked } = fakeGitHub();
+    const first = await provider.poll!(PR, { since: SINCE }, ctx);
+    if ("unchanged" in first) throw new Error("expected events");
+    asked.length = 0;
+    const second = await provider.poll!(PR, { since: SINCE, etags: first.etags! }, ctx);
+    expect(second).toEqual({ unchanged: true });
+    expect(asked.every((a) => a.ifNoneMatch !== null)).toBe(true);
+  });
+});

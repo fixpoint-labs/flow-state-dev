@@ -72,6 +72,7 @@
   "sideEffects": false,
   "dependencies": {
     "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/scheduled": "workspace:*",
     "@hono/node-server": "^1.13.7",
     "hono": "^4.6.14",
     "ws": "^8.21.3"

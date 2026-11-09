@@ -33,6 +33,11 @@ import type { WorkerManifest } from "../src/manifest";
 import { workerConfigSchema } from "../src/worker-config";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { boardWorkers, bootBoardHost, ORG, type BoardHostOptions } from "./conversation-board-harness";
+import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
+import { parseNextFireAt, runScheduleTick, scheduleDispatchRequest, type ScheduleIndex, type ScheduleIndexEntry } from "@flow-state-dev/scheduled/collection";
+import { SUBSCRIPTION_POLLS_PATTERN } from "../src/subscriptions/keys";
+import { subscriptionPolling, type SubscriptionPolling } from "../src/subscriptions/poll";
+import { SUBSCRIPTION_SEED_ENTRY, type DeclaredSubscription } from "../src/subscriptions/seed";
 
 /** Users whose read access to private threads a test has taken away. */
 export const revoked = new Set<string>();
@@ -42,17 +47,60 @@ function readableBy(userId: string, thread: string): boolean {
   return !thread.includes("/private") || (userId === "alice" && !revoked.has(userId));
 }
 
-/** The GitHub provider the host is built with: read access by {@link readableBy}, the user's GitHub login `<user>-gh`. */
+/**
+ * What a polled provider has: the events it would return, by their own time,
+ * and every poll it answered (who asked, for which thread, from when).
+ */
+export const pollTimeline: { events: SubscriptionEvent[]; calls: Array<{ userId: string; thread: string; since?: number; etags: boolean }> } = {
+  events: [],
+  calls: []
+};
+
+/** The GitHub provider the host is built with: read access by {@link readableBy}, the user's GitHub login `<user>-gh`, and a poll over {@link pollTimeline}. */
 const github: SubscriptionProvider = {
   provider: "github",
   canRead: (thread, ctx: BlockContext) => readableBy((ctx.session.identity as { userId: string }).userId, thread),
-  self: (ctx: BlockContext) => `${(ctx.session.identity as { userId: string }).userId}-gh`
+  self: (ctx: BlockContext) => `${(ctx.session.identity as { userId: string }).userId}-gh`,
+  async poll(thread, cursor, ctx) {
+    const userId = (ctx.session.identity as { userId: string }).userId;
+    pollTimeline.calls.push({ userId, thread, ...(cursor.since === undefined ? {} : { since: cursor.since }), etags: cursor.etags !== undefined });
+    const now = Date.now();
+    const events = pollTimeline.events.filter((e) => e.threads.includes(thread) && e.at <= now && (cursor.since === undefined || e.at >= cursor.since));
+    // The validator names what this thread holds up to now: unchanged answers `304`.
+    const etag = `"${pollTimeline.events.filter((e) => e.threads.includes(thread) && e.at <= now).length}"`;
+    if (cursor.etags?.thread === etag) return { unchanged: true };
+    return { events, through: now, etags: { thread: etag } };
+  }
 };
+
+/** A schedule index in memory, as a store's would behave: claim advances each due row past `now`. */
+export function memoryScheduleIndex(): ScheduleIndex & { rows: Map<string, ScheduleIndexEntry> } {
+  const rows = new Map<string, ScheduleIndexEntry>();
+  const id = (r: { cell: string; key: string }) => `${r.cell}\n${r.key}`;
+  return {
+    rows,
+    async upsert(row) {
+      rows.set(id(row), { ...row });
+    },
+    async remove(row) {
+      rows.delete(id(row));
+    },
+    async claimDue(now, limit = 100) {
+      const due = [...rows.values()].filter((r) => r.nextFireAt <= now).slice(0, limit);
+      for (const row of due) {
+        // The clock reads `now` here: tests fake the date.
+        const next = parseNextFireAt(row.cron, row.timezone);
+        if (next !== null) rows.set(id(row), { ...row, nextFireAt: next });
+      }
+      return due;
+    }
+  };
+}
 
 const doorInput = z.object({ message: z.string() });
 
-function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined) {
-  const tools = subscriptionTools({ providers: [github] });
+function followerFlow(installation: WorkerInstallation, hold: Promise<void> | undefined, polling: SubscriptionPolling | undefined) {
+  const tools = subscriptionTools({ providers: [github], ...(polling === undefined ? {} : { poll: polling }) });
   // A task's turn: `[subscribe:<thread>]` subscribes the task's session to it, `[hold]` waits on the
   // host's hold, then `[fail]` fails the task.
   const door = handler({
@@ -74,7 +122,7 @@ function followerFlow(installation: WorkerInstallation, hold: Promise<void> | un
     kind: "follower",
     configSchema: workerConfigSchema(),
     session: installation.session(),
-    resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
+    resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources, ...(polling?.resources ?? {}) },
     actions: {
       respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
       subscribe: { inputSchema: tools.subscribe.inputSchema, block: tools.subscribe },
@@ -91,11 +139,16 @@ export type SubscriptionsHostOptions = BoardHostOptions & {
   service?: Partial<Omit<SubscriptionServiceOptions, "provider" | "installation" | "kind">>;
   /** What a `[hold]` task turn waits on. */
   hold?: Promise<void>;
+  /** Poll (FIX-2536): an in-memory schedule index, the scheduled dispatch endpoint, and `tick`. */
+  poll?: { everyMinutes?: number; declared?: () => readonly DeclaredSubscription[] };
 };
 
 /** A board host with followers and a GitHub service flow. */
 export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   let host: InboundTransportHost | undefined;
+  const index = options.poll === undefined ? undefined : memoryScheduleIndex();
+  const polling =
+    index === undefined ? undefined : subscriptionPolling({ index, ...(options.poll?.everyMinutes === undefined ? {} : { everyMinutes: options.poll.everyMinutes }) });
   const standard: WorkerManifest[] = [
     ...boardWorkers({ lead: { delegates: ["eng.tasker", "eng.follower"] } }),
     { id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] }
@@ -103,18 +156,71 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
   const board = bootBoardHost({
     ...options,
     standard,
-    flows: (installation) => ({ follower: { flow: followerFlow(installation, options.hold), roles: ["contributor"] }, ...(options.flows?.(installation) ?? {}) }),
+    flows: (installation) => ({
+      follower: { flow: followerFlow(installation, options.hold, polling), roles: ["contributor"] },
+      ...(options.flows?.(installation) ?? {})
+    }),
     plainFlowsOf: (installation): Record<string, FlowInstance> => ({
       "github-service": defineSubscriptionServiceFlow({
         kind: "github-service",
         provider: github,
         installation,
         trustedBots: ["codex"],
+        ...(polling === undefined ? {} : { poll: { ...polling, ...(options.poll?.declared === undefined ? {} : { declared: options.poll.declared }) } }),
         ...(options.service ?? {})
       })
     }),
-    adapters: [{ source: "subscriptions-test", createBindings: (h: InboundTransportHost) => ((host = h), {}) }, ...(options.adapters ?? [])]
+    adapters: [
+      { source: "subscriptions-test", createBindings: (h: InboundTransportHost) => ((host = h), {}) },
+      ...(polling === undefined ? [] : [createScheduledTransportAdapter()]),
+      ...(options.adapters ?? [])
+    ]
   });
+
+  /** Every dispatch a tick made: the row's user and key, the time it fired for, and the endpoint's status. */
+  const fires: Array<{ userId: string; key: string; at: number; status: number }> = [];
+
+  /** One beat of the shared tick at the current (faked) time: claim the due poll rows, dispatch each, wait for what they started. */
+  const tick = async () => {
+    if (index === undefined) throw new Error("tick: this host doesn't poll");
+    const router = await board.router();
+    await runScheduleTick({
+      index,
+      dispatch: async (row, scheduleId) => {
+        const { url, init } = scheduleDispatchRequest({ baseUrl: "http://localhost", flowKind: "github-service", row, scheduleId });
+        const request = new Request(url, { ...init, headers: { ...init.headers, "x-user": "scheduler" } });
+        const res = await router.POST(request, { params: { path: ["github-service", "schedules", scheduleId, "dispatch"] } });
+        fires.push({ userId: row.userId, key: row.key, at: row.nextFireAt, status: res.status });
+        return res.status;
+      }
+    });
+    await board.settled();
+  };
+
+  /** Run the service flow's seed entry as `userId`, as a host does at startup for each owner (D3). */
+  const seed = async (userId: string, entries: readonly DeclaredSubscription[]) => {
+    const runtime = await board.state.getRuntime();
+    const ran = (await runAction({
+      flow: board.instances["github-service"]!,
+      actionName: SUBSCRIPTION_SEED_ENTRY,
+      source: "internal",
+      input: { entries },
+      userId,
+      orgId: ORG,
+      sessionId: `seed-${userId}`,
+      stores: runtime.stores,
+      runtimeConfig: { ...runtime.runtimeConfig }
+    })) as { output?: { outcomes: Array<Record<string, string>> }; error?: unknown };
+    if (ran.output === undefined) throw new Error(`seed failed: ${JSON.stringify(ran.error)}`);
+    return ran.output.outcomes;
+  };
+
+  /** `userId`'s poll rows, from the store. */
+  const pollRows = async (userId: string) => {
+    const runtime = await board.state.getRuntime();
+    const entries = await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${ORG}`, SUBSCRIPTION_POLLS_PATTERN.replace("*", ""));
+    return Object.values(entries).map((value) => value.state as Record<string, any>);
+  };
 
   const hostOf = async () => {
     await board.router();
@@ -274,7 +380,27 @@ export function bootSubscriptionsHost(options: SubscriptionsHostOptions = {}) {
       .filter((row) => typeof row.from === "string" && row.from.startsWith("service:"));
   };
 
-  return { ...board, hostOf, follower, followerInTenant, subscribe, unsubscribe, route, routeBeside, holdFirstDispatch, failFirstTake, heard, subscriptionRows, cursorOf, serviceRows };
+  return {
+    ...board,
+    hostOf,
+    follower,
+    followerInTenant,
+    subscribe,
+    unsubscribe,
+    route,
+    routeBeside,
+    holdFirstDispatch,
+    failFirstTake,
+    heard,
+    subscriptionRows,
+    cursorOf,
+    serviceRows,
+    index,
+    tick,
+    fires,
+    seed,
+    pollRows
+  };
 }
 
 export type SubscriptionsHost = ReturnType<typeof bootSubscriptionsHost>;

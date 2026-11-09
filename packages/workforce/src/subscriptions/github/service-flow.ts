@@ -19,7 +19,7 @@
  * ```
  */
 import type { WorkerInstallation } from "../../workers/installation";
-import { defineSubscriptionServiceFlow } from "../service-flow";
+import { defineSubscriptionServiceFlow, type SubscriptionServicePollOptions } from "../service-flow";
 import { GITHUB_PROVIDER, normalizeGitHubEvent } from "./normalize";
 import type { GitHubSubscriptionProvider } from "./provider";
 
@@ -46,6 +46,8 @@ export interface GitHubServiceFlowOptions {
   readonly capPerHour?: number;
   /** The most subscriptions one event is delivered to. */
   readonly maxOwnerRuns?: number;
+  /** Poll GitHub for subscriptions with no webhook: see `defineSubscriptionServiceFlow`'s `poll`. */
+  readonly poll?: SubscriptionServicePollOptions;
 }
 
 /** Build GitHub's service flow, with its webhook service route. */
@@ -61,6 +63,7 @@ export function githubServiceFlow(options: GitHubServiceFlowOptions) {
     ...(options.trustedBots === undefined ? {} : { trustedBots: options.trustedBots }),
     ...(options.capPerHour === undefined ? {} : { capPerHour: options.capPerHour }),
     ...(options.maxOwnerRuns === undefined ? {} : { maxOwnerRuns: options.maxOwnerRuns }),
+    ...(options.poll === undefined ? {} : { poll: options.poll }),
     normalize: (event, at) =>
       normalizeGitHubEvent(
         {

@@ -49,6 +49,7 @@ import { updateStateWith } from "@flow-state-dev/core/helpers";
 import {
   subscriptionEventSchema,
   type BlockContext,
+  type SchedulesConfig,
   type SubscriptionEvent,
   type WebhookConfig,
   type WebhookServiceRoute
@@ -59,9 +60,10 @@ import { messageLogOf, workerMessagesResources } from "../messages/message-log";
 import { sendServiceMessage } from "../messages/send-message";
 import { retryOnConflict } from "../projects/cas-retry";
 import type { WorkerInstallation } from "../workers/installation";
-import { SUBSCRIPTION_DELIVER_ENTRY, SUBSCRIPTION_ROUTE_ENTRY, serviceSender } from "./keys";
+import { SUBSCRIPTION_DELIVER_ENTRY, SUBSCRIPTION_POLL_HANDLER, SUBSCRIPTION_POLLS_RESOURCE, SUBSCRIPTION_ROUTE_ENTRY, serviceSender } from "./keys";
 import {
   MAX_CURSOR_OBJECTS,
+  MAX_SCREENED,
   indexKeyOf,
   subscriptionCursorsOf,
   subscriptionIndexOf,
@@ -72,7 +74,20 @@ import {
   type SubscriptionResourceState
 } from "./rows";
 import { configScreenChain, screenVerdictSchema, screeningSchema, type Screening } from "./screens";
-import { unsubscribe, type SubscriptionProvider } from "./subscribe";
+import { indexEntryOf, unsubscribe, type SubscriptionProvider } from "./subscribe";
+import {
+  POLL_GIVE_UP_AFTER,
+  pollKeyOf,
+  pollRowInputSchema,
+  pollRowState,
+  pollRowsOf,
+  subscriptionPolling,
+  type PollRowInput,
+  type SubscriptionPolling,
+  type SubscriptionPollingOptions
+} from "./poll";
+import { SUBSCRIPTION_SEED_ENTRY, configSubscriptionId, declaredSubscriptionSchema, isConfigSubscriptionId, seedSubscription, type DeclaredSubscription } from "./seed";
+import { createResourceCollectionScheduleResolver } from "@flow-state-dev/scheduled/collection";
 
 /** The default cap: the most messages one subscription sends in an hour. */
 export const DEFAULT_SUBSCRIPTION_CAP_PER_HOUR = 30;
@@ -106,7 +121,26 @@ export interface SubscriptionServiceOptions {
    * ingestion that calls `routeServiceEvent` itself (a poll) routes to it.
    */
   readonly normalize?: WebhookServiceRoute["normalize"];
+  // FIX-2536.
+  /**
+   * Poll the provider for the subscriptions an app has no webhook for: one
+   * schedule row per user and thread, fired by the tick (`serve()` runs one
+   * for a flow with a schedule index). Needs the provider's `poll`. Hand the
+   * same `index` to whatever subscribes (`subscriptionTools({ poll })`), so a
+   * subscribe makes the poll row.
+   */
+  readonly poll?: SubscriptionServicePollOptions;
 }
+
+/** A service flow's polling: the app's polling, and the subscriptions its config declares. */
+export type SubscriptionServicePollOptions = (SubscriptionPollingOptions | SubscriptionPolling) & {
+  /**
+   * The subscriptions the app's config declares (D3): a `cfg_` row on a polled
+   * thread whose entry is no longer here ends at its poll row's next fire.
+   * Omitted, config rows are left alone.
+   */
+  readonly declared?: () => readonly DeclaredSubscription[];
+};
 
 const deliverInputSchema = z.object({
   subscription: z.string().min(1),
@@ -415,17 +449,298 @@ export function defineSubscriptionServiceFlow(options: SubscriptionServiceOption
     }
   });
 
+  // ---- polling, as the subscriber (FIX-2536) -------------------------------
+
+  const polling = options.poll === undefined ? undefined : subscriptionPolling(options.poll);
+  if (polling !== undefined && provider.poll === undefined) {
+    throw new Error(`defineSubscriptionServiceFlow: "${provider.provider}" can't be polled: its provider has no poll.`);
+  }
+  const declared = options.poll?.declared;
+  // The poll rows ride along untyped: blocks reach them through `pollRowsOf`, which reads them as declared or not.
+  const pollResources = { ...subscriptionResources, ...workerMessagesResources, ...(polling?.resources ?? {}) } as typeof subscriptionResources & typeof workerMessagesResources;
+
+  /** The running user's enabled subscriptions on `thread`, in the running org, under no tenant: the only ones its poll reaches (D1, ER-4). */
+  const liveOnThread = async (ctx: BlockContext, thread: string): Promise<SubscriptionResourceState[]> => {
+    const identity = ctx.session.identity as { userId?: string; orgId?: string };
+    // Every subscription in the cell: its key names its session and thread, not the thread alone.
+    return (await subscriptionsOf(ctx).list())
+      .map((ref) => ref.state)
+      .filter(
+        (s) =>
+          s.enabled &&
+          s.provider === provider.provider &&
+          s.thread === thread &&
+          s.tenantId === undefined &&
+          s.userId === identity.userId &&
+          s.orgId === identity.orgId
+      );
+  };
+
+  /** Whether a subscription already settled this version: seen, or screened by an earlier poll. */
+  const judged = (cursor: SubscriptionCursor | undefined, object: SubscriptionEvent["object"]): boolean =>
+    cursor !== undefined && (seenBefore(cursor, object) || (cursor.screened ?? []).some(([id, version]) => id === object.id && version >= object.version));
+
+  const pollInputSchema = z.object({ provider: z.string(), thread: z.string(), key: z.string().optional() }).passthrough();
+  const fetchedSchema = z.object({ thread: z.string(), key: z.string(), screenings: z.array(screeningSchema) });
+
+  /**
+   * One fire's fetch: the row's subscriptions, the provider's poll since the
+   * mark (with validators only while nothing is owed), and, for each new
+   * event, the subscriptions that haven't settled it. Ends the row when no
+   * subscription on it is on, and a config row whose entry left config.
+   */
+  const pollFetch = handler({
+    name: "subscription-poll-fetch",
+    inputSchema: pollInputSchema,
+    outputSchema: fetchedSchema,
+    resources: pollResources,
+    execute: async ({ thread, key: rowKey }, ctx) => {
+      const key = rowKey ?? pollKeyOf(thread);
+      const rowRef = await pollRowsOf(ctx)!.getOptional(key);
+      const row = rowRef?.state;
+      if (rowRef === undefined || row === undefined || row.enabled === false) return { thread, key, screenings: [] };
+      let subs = await liveOnThread(ctx, thread);
+      if (declared !== undefined) {
+        const kept = new Set(await Promise.all(declared().map((entry) => configSubscriptionId(options.kind, entry.id))));
+        for (const sub of subs.filter((s) => isConfigSubscriptionId(s.id) && !kept.has(s.id))) await unsubscribe(ctx, sub.id, "config_removed");
+        subs = subs.filter((s) => !isConfigSubscriptionId(s.id) || kept.has(s.id));
+      }
+      if (subs.length === 0) {
+        await rowRef.setState({ ...row, enabled: false });
+        return { thread, key, screenings: [] };
+      }
+      const input = pollRowInputSchema.parse(row.input);
+      const owed = input.owed ?? [];
+      const result = await provider.poll!(
+        thread,
+        {
+          ...(input.polledThrough === undefined ? {} : { since: input.polledThrough }),
+          // No validator while a delivery is owed, so an unchanged answer can't hide its retry.
+          ...(owed.length === 0 && input.etags !== undefined ? { etags: input.etags } : {})
+        },
+        ctx
+      );
+      const { fetched: _previous, ...rest } = input;
+      if ("unchanged" in result) {
+        await rowRef.setState({ ...row, input: rest });
+        return { thread, key, screenings: [] };
+      }
+      await rowRef.setState({ ...row, input: { ...rest, fetched: { through: result.through, ...(result.etags === undefined ? {} : { etags: { ...result.etags } }) } } });
+      const cursors = new Map<string, SubscriptionCursor | undefined>();
+      for (const sub of subs) cursors.set(sub.id, (await subscriptionCursorsOf(ctx).getOptional(sub.id))?.state);
+      const events = result.events
+        .filter((e) => e.provider === provider.provider && e.threads.includes(thread))
+        .sort((a, b) => a.object.version - b.object.version);
+      const screenings: Screening[] = [];
+      for (const event of events) {
+        const candidates = subs
+          .filter((s) => (s.kinds === undefined || s.kinds.includes(event.kind)) && !judged(cursors.get(s.id), event.object))
+          .map((s) => ({ subscription: s.id, entry: indexEntryOf(s) }));
+        const closing = closedThreadOf(event) === thread ? subs.map((s) => ({ subscription: s.id, entry: indexEntryOf(s) })) : [];
+        if (candidates.length > 0 || closing.length > 0) screenings.push({ event, nominated: candidates, pending: candidates, verdicts: [], closing });
+      }
+      return { thread, key, screenings };
+    }
+  });
+
+  const settledSchema = z.object({ delivered: z.number(), screened: z.number(), owed: z.number(), gaveUp: z.number() });
+
+  /**
+   * One fire's settling: each passed candidate goes through `deliverToRow`,
+   * each refusal into that subscription's `screened`, a closing ends the
+   * thread's subscriptions, and the mark holds at the oldest version a
+   * subscription still owes (D2). An unjudged screen writes nothing, so the
+   * next poll judges it; one still owed after {@link POLL_GIVE_UP_AFTER} polls
+   * is given up, with a line in its session.
+   */
+  const pollSettle = handler({
+    name: "subscription-poll-settle",
+    inputSchema: z.object({ fetched: z.object({ thread: z.string(), key: z.string() }), screened: z.array(screeningSchema) }),
+    outputSchema: settledSchema,
+    resources: pollResources,
+    execute: async ({ fetched: { thread, key }, screened: screenings }, ctx) => {
+      const counts = { delivered: 0, screened: 0, owed: 0, gaveUp: 0 };
+      const rowRef = await pollRowsOf(ctx)!.getOptional(key);
+      const row = rowRef?.state;
+      if (rowRef === undefined || row === undefined || row.enabled === false) return counts;
+      const input = pollRowInputSchema.parse(row.input);
+      const subs = new Map((await liveOnThread(ctx, thread)).map((s) => [s.id, s]));
+      const toScreen = new Map<string, Array<[string, number, number]>>();
+      const screen = (subscription: string, event: SubscriptionEvent) => {
+        toScreen.set(subscription, [...(toScreen.get(subscription) ?? []), [event.object.id, event.object.version, event.at]]);
+        counts.screened += 1;
+      };
+      /** Per subscription, the versions this fire left unsettled. */
+      const unsettled = new Map<string, SubscriptionEvent[]>();
+      const owe = (subscription: string, event: SubscriptionEvent) => unsettled.set(subscription, [...(unsettled.get(subscription) ?? []), event]);
+
+      /**
+       * Subscriptions whose thread closed in this batch with the closing send
+       * lost: nothing after the close reaches them now. The mark holds at the
+       * close, so the next poll sends it first, and the close ends them.
+       */
+      const closePending = new Set<string>();
+      for (const screening of screenings) {
+        const { event } = screening;
+        const lost = new Set<string>();
+        for (const candidate of screening.nominated) {
+          const sub = subs.get(candidate.subscription);
+          if (sub === undefined || closePending.has(sub.id)) continue;
+          const verdict = screening.verdicts.find((v) => v.subscription === candidate.subscription);
+          // No verdict: the screen couldn't judge it (an outage). Nothing is written, so the next poll judges it.
+          if (verdict === undefined || verdict.reason === "no verdict") {
+            owe(sub.id, event);
+            continue;
+          }
+          if (!verdict.pass) {
+            screen(sub.id, event);
+            continue;
+          }
+          const delivered = await deliverToRow(ctx, sub.id, sub, event);
+          if (delivered.act === "refused") screen(sub.id, event);
+          else if (delivered.act === "unsent" || delivered.act === "inflight") {
+            lost.add(sub.id);
+            owe(sub.id, event);
+          } else if (delivered.act === "sent") {
+            counts.delivered += 1;
+            // Accepted and not yet taken: unseen, so still owed until a later poll finds it taken.
+            const cursor = (await subscriptionCursorsOf(ctx).getOptional(sub.id))?.state;
+            if (cursor !== undefined && !seenBefore(cursor, event.object)) owe(sub.id, event);
+          }
+        }
+        // The thread closed: its subscriptions end, except one whose send of the closing event was lost, which the next poll sends first.
+        for (const candidate of screening.closing) {
+          if (lost.has(candidate.subscription)) closePending.add(candidate.subscription);
+          if (lost.has(candidate.subscription) || !subs.has(candidate.subscription) || closePending.has(candidate.subscription)) continue;
+          await unsubscribe(ctx, candidate.subscription, "thread_closed");
+          subs.delete(candidate.subscription);
+          unsettled.delete(candidate.subscription);
+        }
+      }
+
+      // What is still owed, counted across polls: past the bound, given up.
+      const previous = new Map((input.owed ?? []).map(([sub, id, version, polls]) => [`${sub}\n${id}\n${version}`, polls]));
+      const owed: Array<[string, string, number, number, number]> = [];
+      for (const [subscription, events] of unsettled) {
+        const sub = subs.get(subscription);
+        if (sub === undefined) continue;
+        for (const event of events) {
+          const polls = (previous.get(`${subscription}\n${event.object.id}\n${event.object.version}`) ?? 0) + 1;
+          if (polls < POLL_GIVE_UP_AFTER) {
+            owed.push([subscription, event.object.id, event.object.version, polls, event.at]);
+            continue;
+          }
+          screen(subscription, event);
+          counts.gaveUp += 1;
+          await sendServiceMessage(
+            ctx,
+            installation,
+            options.kind,
+            {
+              sender: serviceSender(sub.provider),
+              to: { sessionId: sub.sessionId, flow: sub.flow, worker: sub.worker },
+              text: `An event on ${sub.thread} couldn't be delivered after ${POLL_GIVE_UP_AFTER} polls and was given up: ${event.title} ${event.url}`,
+              id: `${deliveryMessageId(event.object, sub.sessionId, sub.tenantId)}:gave-up`
+            },
+            "subscription-poll-settle"
+          ).catch(() => undefined);
+        }
+      }
+      counts.owed = owed.length;
+
+      const fetched = input.fetched;
+      const polledThrough = owed.length > 0 ? Math.min(...owed.map(([, , , , at]) => at)) : (fetched?.through ?? input.polledThrough);
+      for (const [subscription, entries] of toScreen) {
+        const cursorRef = await subscriptionCursorsOf(ctx).getOptional(subscription);
+        if (cursorRef === undefined) continue;
+        await retryOnConflict(() =>
+          cursorRef.updateState((c) => ({ ...c, screened: [...(c.screened ?? []), ...entries].slice(-MAX_SCREENED) }))
+        );
+      }
+      // `screened` prunes once the mark passes an entry: a fetch from the mark never returns it again.
+      if (polledThrough !== undefined) {
+        for (const subscription of subs.keys()) {
+          const cursorRef = await subscriptionCursorsOf(ctx).getOptional(subscription);
+          if (cursorRef === undefined || !(cursorRef.state.screened ?? []).some(([, , at]) => at < polledThrough)) continue;
+          await retryOnConflict(() => cursorRef.updateState((c) => ({ ...c, screened: (c.screened ?? []).filter(([, , at]) => at >= polledThrough) })));
+        }
+      }
+
+      // The cadence: the fastest of the subscriptions still on.
+      const minutes = Math.min(...[...subs.values()].map((s) => s.everyMinutes ?? polling!.everyMinutes));
+      const { fetched: _fetched, owed: _owed, etags: _etags, polledThrough: _mark, ...rest } = input;
+      const etags = owed.length === 0 ? (fetched?.etags ?? input.etags) : undefined;
+      const next: PollRowInput = {
+        ...rest,
+        ...(polledThrough === undefined ? {} : { polledThrough }),
+        ...(etags === undefined ? {} : { etags }),
+        ...(owed.length === 0 ? {} : { owed })
+      };
+      if (subs.size === 0) {
+        await rowRef.setState({ ...row, enabled: false, input: next });
+      } else if (Number.isFinite(minutes) && minutes !== input.everyMinutes) {
+        await rowRef.setState(pollRowState(provider.provider, thread, minutes, next));
+      } else {
+        await rowRef.setState({ ...row, input: next });
+      }
+      return counts;
+    }
+  });
+
+  const pollThread = handler({
+    name: "subscription-poll-thread",
+    inputSchema: fetchedSchema,
+    outputSchema: z.object({ thread: z.string(), key: z.string() }),
+    execute: async ({ thread, key }) => ({ thread, key })
+  });
+
+  const pollFire = sequencer({ name: "subscription-poll", inputSchema: pollInputSchema })
+    .step(pollFetch)
+    .parallel({
+      fetched: pollThread,
+      screened: { connector: (fetched: z.infer<typeof fetchedSchema>) => fetched.screenings, block: sequencer({ name: "subscription-poll-screens", inputSchema: z.array(screeningSchema) }).forEach(screens) }
+    })
+    .step(pollSettle);
+
+  const schedules: SchedulesConfig | undefined =
+    polling === undefined
+      ? undefined
+      : {
+          resolve: createResourceCollectionScheduleResolver({
+            collection: polling.resources[SUBSCRIPTION_POLLS_RESOURCE],
+            blocks: { [SUBSCRIPTION_POLL_HANDLER]: pollFire }
+          }),
+          index: polling.index
+        };
+
+  /** The running owner's declared subscriptions, each written once (D3). */
+  const seed = handler({
+    name: "subscription-seed",
+    inputSchema: z.object({ entries: z.array(declaredSubscriptionSchema) }),
+    outputSchema: z.object({ outcomes: z.array(z.object({ id: z.string(), act: z.string().optional(), refused: z.string().optional() })) }),
+    resources: { ...installation.resources, ...pollResources },
+    execute: async ({ entries }, ctx) => ({
+      outcomes: await Promise.all(
+        entries.map((entry) =>
+          seedSubscription(ctx, { flowKind: options.kind, providers: [provider], installation, ...(polling === undefined ? {} : { polling }) }, entry)
+        )
+      )
+    })
+  });
+
   const webhooks: WebhookConfig | undefined =
     options.normalize === undefined ? undefined : { [provider.provider]: { service: { entry: SUBSCRIPTION_ROUTE_ENTRY, normalize: options.normalize } } };
   return defineFlow({
     kind: options.kind,
     actions: {},
     ...(webhooks === undefined ? {} : { webhooks }),
-    resources: { ...subscriptionResources, ...workerMessagesResources },
+    ...(schedules === undefined ? {} : { schedules }),
+    resources: pollResources,
     internal: {
       actions: {
         [SUBSCRIPTION_ROUTE_ENTRY]: { inputSchema: subscriptionEventSchema, block: route },
-        [SUBSCRIPTION_DELIVER_ENTRY]: { inputSchema: deliverInputSchema, block: deliver }
+        [SUBSCRIPTION_DELIVER_ENTRY]: { inputSchema: deliverInputSchema, block: deliver },
+        [SUBSCRIPTION_SEED_ENTRY]: { inputSchema: seed.inputSchema, block: seed }
       }
     }
   })();

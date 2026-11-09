@@ -26,6 +26,20 @@ export const SUBSCRIPTION_INDEX_PATTERN = "workforce/subscription-index/*";
 /** The accessor a flow declares the thread index under. */
 export const SUBSCRIPTION_INDEX_RESOURCE = "workforceSubscriptionIndex";
 
+// FIX-2536 D1.
+/**
+ * The poll rows, at user scope: one schedule row per user and thread, keyed by
+ * the thread, firing at the user's fastest subscription's cadence. **Pinned**:
+ * persisted.
+ */
+export const SUBSCRIPTION_POLLS_PATTERN = "workforce/subscription-polls/*";
+
+/** The accessor a flow declares the poll rows under. */
+export const SUBSCRIPTION_POLLS_RESOURCE = "workforceSubscriptionPolls";
+
+/** The schedule handler a poll row's `kind` names. **Pinned**: persisted. */
+export const SUBSCRIPTION_POLL_HANDLER = "subscription-poll";
+
 /** The two tools a session subscribes and unsubscribes with. */
 export const SUBSCRIPTION_TOOLS = { subscribe: "subscribe", unsubscribe: "unsubscribe" } as const;
 

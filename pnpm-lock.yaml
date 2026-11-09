@@ -814,6 +814,9 @@ importers:
       '@openai/codex-sdk':
         specifier: 0.164.0
         version: 0.164.0
+      better-sqlite3:
+        specifier: ^11.0.0
+        version: 11.10.0
       bullmq:
         specifier: ^5.0.0
         version: 5.78.0
@@ -1665,6 +1668,9 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
+      '@flow-state-dev/scheduled':
+        specifier: workspace:*
+        version: link:../scheduled
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.14(hono@4.12.27)

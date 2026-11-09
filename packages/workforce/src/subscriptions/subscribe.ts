@@ -17,11 +17,12 @@
  * and a thread's closing ends the ones on it (ER-7 as amended by #4675).
  */
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { retryOnConflict } from "../projects/cas-retry";
 import { TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import { SUBSCRIPTION_TOOLS } from "./keys";
+import { POLL_CADENCES, ensurePollRow, subscriptionPolling, type SubscriptionPolling, type SubscriptionPollingOptions } from "./poll";
 import {
   indexKeyOf,
   listedScreenSchema,
@@ -46,7 +47,34 @@ export interface SubscriptionProvider {
   canRead(thread: string, ctx: BlockContext): boolean | Promise<boolean>;
   /** The running user's own id at the provider, so their own actions are dropped (`own`). */
   self?(ctx: BlockContext): string | undefined | Promise<string | undefined>;
+  // FIX-2536.
+  /**
+   * Fetch what happened on `thread` since the cursor, as the running request's
+   * own user, on that user's credentials (ER-4): normalized events, each named
+   * by the same object and version a webhook delivery of it names. With
+   * `etags`, a provider may answer `unchanged` when nothing moved. Absent, the
+   * provider's subscriptions are never polled.
+   */
+  poll?(thread: string, cursor: SubscriptionPollCursor, ctx: BlockContext): Promise<SubscriptionPollResult>;
 }
+
+/** Where a poll fetches from: the poll row's mark, and its validators while no delivery is owed. */
+export interface SubscriptionPollCursor {
+  /** Fetch events whose version is at or after this time, in ms. Absent, from the provider's own start. */
+  readonly since?: number;
+  /** The validators the last poll returned, by endpoint: a provider sends them as conditional requests. */
+  readonly etags?: Readonly<Record<string, string>>;
+}
+
+/** What a poll fetched: nothing new, or the events and how far it read. */
+export type SubscriptionPollResult =
+  | { readonly unchanged: true }
+  | {
+      readonly events: readonly SubscriptionEvent[];
+      /** The time it read up to, in ms: the next poll's mark when nothing is owed. */
+      readonly through: number;
+      readonly etags?: Readonly<Record<string, string>>;
+    };
 
 /** What `subscribe` takes: the tool's input. */
 export const subscribeInputSchema = z
@@ -62,9 +90,20 @@ export const subscribeInputSchema = z
           '{ screen: "allow", ids: [...] } (only these senders). Every listed screen must pass.'
       ),
     outsiders: z.literal(true).optional().describe("Also hear people outside the project (not members, collaborators or listed bots). Off by default."),
-    interest: z.string().min(1).max(500).describe("In one sentence, what you want to hear about, kept with the subscription.")
+    interest: z.string().min(1).max(500).describe("In one sentence, what you want to hear about, kept with the subscription."),
+    everyMinutes: z
+      .number()
+      .int()
+      .optional()
+      .describe(`When the app polls, how often to check, in minutes: one of ${POLL_CADENCES.join(", ")}. Leave it out for the app's default.`)
   })
-  .strict();
+  .strict()
+  // Checked in code, not left to the description: an off-list cadence is refused.
+  .superRefine((input, issue) => {
+    if (input.everyMinutes !== undefined && !(POLL_CADENCES as readonly number[]).includes(input.everyMinutes)) {
+      issue.addIssue({ code: z.ZodIssueCode.custom, path: ["everyMinutes"], message: `everyMinutes must be one of ${POLL_CADENCES.join(", ")}.` });
+    }
+  });
 
 export type SubscribeInput = z.infer<typeof subscribeInputSchema>;
 
@@ -72,7 +111,7 @@ export type SubscribeInput = z.infer<typeof subscribeInputSchema>;
 export type SubscribeOutcome = { readonly id: string } | { readonly refused: string };
 
 /** Why a subscription ended. */
-export type SubscriptionEnd = "unsubscribed" | "thread_closed" | "task_errored" | "task_cancelled";
+export type SubscriptionEnd = "unsubscribed" | "thread_closed" | "task_errored" | "task_cancelled" | "config_removed";
 
 /**
  * A stable id for one session's subscription to one thread: subscribing again
@@ -96,7 +135,7 @@ const tenantOf = (ctx: BlockContext): string | undefined => {
 /** Whether `row` was made by the running session: its id, in its tenant. */
 const madeHere = (ctx: BlockContext, row: SubscriptionResourceState): boolean => row.sessionId === ctx.session.identity.id && row.tenantId === tenantOf(ctx);
 
-const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
+export const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   provider: row.provider,
   thread: row.thread,
   ...(row.kinds === undefined ? {} : { kinds: row.kinds }),
@@ -112,8 +151,14 @@ const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
  * Subscribe the running session to one thread.
  *
  * @param providers The providers a session may subscribe on.
+ * @param polling The app's polling, when it polls: the subscribe also makes the user's poll row for the thread.
  */
-export async function subscribe(ctx: BlockContext, providers: readonly SubscriptionProvider[], input: SubscribeInput): Promise<SubscribeOutcome> {
+export async function subscribe(
+  ctx: BlockContext,
+  providers: readonly SubscriptionProvider[],
+  input: SubscribeInput,
+  polling?: SubscriptionPolling
+): Promise<SubscribeOutcome> {
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
   const worker = state[WORKER_ID_STATE_KEY];
   if (typeof worker !== "string" || worker.length === 0) return { refused: "not_a_worker: this session runs no worker, so it can't subscribe." };
@@ -160,14 +205,30 @@ export async function subscribe(ctx: BlockContext, providers: readonly Subscript
     at: Date.now()
   };
   if (row.flow.length === 0) return { refused: "no_session: this host can't read this session's record, so nothing could be delivered to it." };
-  const ref = await subscriptionsOf(ctx).getOrCreate(id, row);
+  if (input.everyMinutes !== undefined) row.everyMinutes = input.everyMinutes;
+  await writeSubscription(ctx, row, polling);
+  return { id };
+}
+
+/**
+ * The one write of a subscription row, for `subscribe` and the config seed
+ * (ER-5): the row, its cursor, and, while it is on, the thread index entry
+ * and (when the app polls and the session is under no tenant) the user's poll
+ * row for the thread.
+ */
+export async function writeSubscription(ctx: BlockContext, row: SubscriptionResourceState, polling?: SubscriptionPolling): Promise<void> {
+  const ref = await subscriptionsOf(ctx).getOrCreate(row.id, row);
   await ref.setState(row);
-  await subscriptionCursorsOf(ctx).getOrCreate(id, { seen: [], window: { start: 0, sent: 0 }, held: 0 });
+  await subscriptionCursorsOf(ctx).getOrCreate(row.id, { seen: [], window: { start: 0, sent: 0 }, held: 0, inFlight: [], screened: [] });
+  if (!row.enabled) return;
   // Other users' subscribes to this thread may write at once: `updateState`
   // runs again against the row that won, so every entry lands.
-  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(thread), { subscriptions: {} });
-  await retryOnConflict(() => index.updateState((current) => ({ subscriptions: { ...current.subscriptions, [id]: indexEntryOf(row) } })));
-  return { id };
+  const index = await subscriptionIndexOf(ctx).getOrCreate(indexKeyOf(row.thread), { subscriptions: {} });
+  await retryOnConflict(() => index.updateState((current) => ({ subscriptions: { ...current.subscriptions, [row.id]: indexEntryOf(row) } })));
+  // Tenants aren't polled in v1 (FIX-2536).
+  if (polling !== undefined && row.tenantId === undefined) {
+    await ensurePollRow(ctx, row.provider, row.thread, row.everyMinutes ?? polling.everyMinutes);
+  }
 }
 
 /**
@@ -218,7 +279,13 @@ const unsubscribeOutputSchema = z.union([z.object({ ended: z.string() }), z.obje
  * them as a model would). `unsubscribe` ends only a subscription this session
  * made.
  */
-export function subscriptionTools(options: { readonly providers: readonly SubscriptionProvider[] }) {
+export function subscriptionTools(options: {
+  readonly providers: readonly SubscriptionProvider[];
+  /** The app's polling (the service flow's `poll`), when it polls: a subscribe makes the user's poll row for the thread. */
+  readonly poll?: SubscriptionPollingOptions | SubscriptionPolling;
+}) {
+  const polling = options.poll === undefined ? undefined : subscriptionPolling(options.poll);
+  const resources = polling === undefined ? subscriptionResources : { ...subscriptionResources, ...polling.resources };
   const subscribeTool = handler({
     name: SUBSCRIPTION_TOOLS.subscribe,
     description:
@@ -226,15 +293,15 @@ export function subscriptionTools(options: { readonly providers: readonly Subscr
       "each once. Name the thread key; list kinds and screens to hear less. Refused for a thread you can't read.",
     inputSchema: subscribeInputSchema,
     outputSchema: subscribeOutputSchema,
-    resources: subscriptionResources,
-    execute: async (input, ctx) => subscribe(ctx, options.providers, input)
+    resources,
+    execute: async (input, ctx) => subscribe(ctx, options.providers, input, polling)
   });
   const unsubscribeTool = handler({
     name: SUBSCRIPTION_TOOLS.unsubscribe,
     description: "Stop following a thread this conversation subscribed to, by the id subscribe gave you.",
     inputSchema: z.object({ id: z.string().min(1) }).strict(),
     outputSchema: unsubscribeOutputSchema,
-    resources: subscriptionResources,
+    resources,
     execute: async (input, ctx) => {
       const row = (await subscriptionsOf(ctx).getOptional(input.id))?.state;
       if (row === undefined || !madeHere(ctx, row)) {

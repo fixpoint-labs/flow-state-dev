@@ -11,14 +11,14 @@
  * Bearer <secret>` (constant-time compare) and forward the same
  * bearer to the dispatch endpoint.
  *
- * Runtime dependencies stay zero — only `@flow-state-dev/scheduled`
- * type imports cross the boundary. The bundle Vercel ships for the
- * cron route stays tiny.
+ * The tick body is `@flow-state-dev/scheduled`'s (`runScheduleTick`, from its
+ * engine-free `/collection` entry), which a long-lived host runs on an
+ * interval; this handler runs it once a beat.
  */
 
 import { timingSafeEqual } from "node:crypto";
 import type { ScheduleIndex, ScheduleIndexEntry } from "@flow-state-dev/scheduled";
-import { dynamicScheduleId } from "./schedule-id";
+import { runScheduleTick, scheduleDispatchRequest } from "@flow-state-dev/scheduled/collection";
 
 /** Options for `createGetToPostCronShim`. */
 export interface CreateGetToPostCronShimOptions {
@@ -105,9 +105,6 @@ export interface CreateScheduleTickHandlerOptions {
 export function createScheduleTickHandler(
   opts: CreateScheduleTickHandlerOptions
 ): (req: Request) => Promise<Response> {
-  const maxPerTick = opts.maxPerTick ?? 100;
-  const concurrency = Math.max(1, opts.concurrency ?? 10);
-
   return async (req: Request): Promise<Response> => {
     const secret = resolveSecret(opts.secret);
     if (!authorize(req, secret)) return unauthorized();
@@ -115,72 +112,25 @@ export function createScheduleTickHandler(
     const base = resolveBaseUrl(opts.baseUrl);
     if (base === null) return new Response("Server misconfigured: missing baseUrl", { status: 500 });
 
-    let due: ScheduleIndexEntry[];
+    // The body is `@flow-state-dev/scheduled`'s tick (FIX-2536), one beat per cron call.
+    let due: readonly ScheduleIndexEntry[];
     try {
-      due = await opts.index.claimDue(Date.now(), maxPerTick);
+      due = await runScheduleTick({
+        index: opts.index,
+        ...(opts.maxPerTick === undefined ? {} : { maxPerTick: opts.maxPerTick }),
+        ...(opts.concurrency === undefined ? {} : { concurrency: opts.concurrency }),
+        ...(opts.onDispatch === undefined ? {} : { onDispatch: opts.onDispatch }),
+        dispatch: async (row, scheduleId) => {
+          const { url, init } = scheduleDispatchRequest({ baseUrl: base, flowKind: opts.flowKind, row, scheduleId, secret });
+          return (await fetch(url, init)).status;
+        }
+      });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[flow-state/vercel/schedules] claimDue failed", err);
       return new Response("claimDue failed", { status: 500 });
     }
-
-    if (due.length === 0) {
-      return new Response(null, { status: 204 });
-    }
-
-    const baseUrl = trimTrailingSlash(base);
-    const flowKind = encodeURIComponent(opts.flowKind);
-    // Never let an observer throw kill the worker — Promise.allSettled
-    // on the worker pool would swallow the rejection and every later
-    // item assigned to this slot would be silently skipped.
-    const notify = (row: ScheduleIndexEntry, status: number): void => {
-      try {
-        opts.onDispatch?.(row, status);
-      } catch {
-        /* swallow observer errors */
-      }
-    };
-
-    await runWithConcurrency(due, concurrency, async (row) => {
-      let status = 0;
-      // A row with no org names no cell to fire from; the framework would
-      // refuse its dispatch, so it is not sent.
-      if (row.orgId === undefined) {
-        // eslint-disable-next-line no-console
-        console.error(
-          `[flow-state/vercel/schedules] not dispatched: ${row.userId}/${row.key} has no organization`
-        );
-        notify(row, status);
-        return;
-      }
-      const url = `${baseUrl}/api/flows/${flowKind}/schedules/${encodeURIComponent(dynamicScheduleId(row.orgId, row.userId, row.key))}/dispatch`;
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${secret}`,
-            "Content-Type": "application/json"
-          },
-          // `row.nextFireAt` is the pre-advance fire timestamp returned
-          // by `claimDue`: the scheduled time this fire is for. The
-          // endpoint fires each scheduled time at most once, so a tick
-          // that claims a row twice, or another host's tick, files once.
-          body: JSON.stringify({
-            nominalFireTime: new Date(row.nextFireAt).toISOString()
-          })
-        });
-        status = res.status;
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error(
-          `[flow-state/vercel/schedules] dispatch failed for ${row.userId}/${row.key}`,
-          err
-        );
-      }
-      notify(row, status);
-    });
-
-    return new Response(null, { status: 200 });
+    return new Response(null, { status: due.length === 0 ? 204 : 200 });
   };
 }
 
@@ -234,32 +184,4 @@ function bearerEquals(a: string, b: string): boolean {
   ab.copy(ref, 0, 0, Math.min(ab.length, ref.length));
   const match = timingSafeEqual(ref, bb);
   return ab.length === bb.length && match;
-}
-
-/**
- * Run `task` over `items` with at most `concurrency` in flight at
- * once. Errors thrown by the task surface to the caller via
- * `Promise.allSettled` semantics — the task itself is responsible for
- * catching dispatch failures (see `createScheduleTickHandler`).
- */
-async function runWithConcurrency<T>(
-  items: T[],
-  concurrency: number,
-  task: (item: T) => Promise<void>
-): Promise<void> {
-  let cursor = 0;
-  const workers: Promise<void>[] = [];
-  const n = Math.min(concurrency, items.length);
-  for (let i = 0; i < n; i++) {
-    workers.push(
-      (async () => {
-        while (true) {
-          const idx = cursor++;
-          if (idx >= items.length) return;
-          await task(items[idx]);
-        }
-      })()
-    );
-  }
-  await Promise.allSettled(workers);
 }

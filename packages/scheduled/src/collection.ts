@@ -1,7 +1,8 @@
 /**
  * `@flow-state-dev/scheduled/collection` — what a flow definition needs to keep
  * and resolve dynamic schedules, without loading the engine: the schedule
- * collection, its resolver, the dispatch id's format, and next-run math.
+ * collection, its resolver, the dispatch id's format, next-run math, and the
+ * tick that claims due rows and dispatches them (`runScheduleTick`).
  *
  * The package's root entry also mounts the dispatch endpoint, which runs on
  * the engine. A package that defines flows but must not load the engine
@@ -29,3 +30,13 @@ export { type ScheduleIndex, type ScheduleIndexEntry } from "./scheduleIndex";
 export { parseNextFireAt } from "./parseNextFireAt";
 
 export { FIRED_RECORDS_PATTERN, firedRecordCollectionKey } from "./firedRecords";
+
+// FIX-2536.
+export {
+  runScheduleTick,
+  scheduleDispatchRequest,
+  startScheduleTick,
+  type RunScheduleTickOptions,
+  type ScheduleTick,
+  type StartScheduleTickOptions
+} from "./tick";

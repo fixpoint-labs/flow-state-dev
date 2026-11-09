@@ -41,6 +41,8 @@ import {
   type PushDelivery
 } from "@flow-state-dev/engine/host";
 import { type FlowState } from "@flow-state-dev/engine";
+import type { SchedulesConfig } from "@flow-state-dev/core/types";
+import { scheduleDispatchRequest, startScheduleTick, type ScheduleTick } from "@flow-state-dev/scheduled/collection";
 import { createServerApp } from "./app";
 import { createPageHtmlTransform } from "./page-html";
 import { isLoopbackHost } from "./bind-guard";
@@ -197,6 +199,7 @@ export function serve(
     servesPush: options.push !== false,
   });
   const push = servePush(app, options);
+  const ticks = serveScheduleTicks(app, honoApp.fetch, options.basePath ?? "/api/flows");
 
   // Static assets + SPA fallback for the DevTool UI, GET-only (Hono also answers
   // HEAD). Registered after the portable app's health/API routes, so it only
@@ -273,6 +276,7 @@ export function serve(
         resolveClose();
       };
       push.close();
+      void ticks.dispose();
       server.close(() => done());
       // Force-close lingering connections (e.g. open SSE streams) once the
       // grace window elapses so shutdown can't hang.
@@ -283,6 +287,8 @@ export function serve(
       timer.unref?.();
     });
 
+    // A tick already dispatching settles before the stores close.
+    await ticks.dispose();
     // What is left of the grace bounds the wait for requests due wakes started.
     if (disposeOnClose) await dispose({ drainMs: Math.max(0, shutdownGraceMs - (Date.now() - closing)) });
   };
@@ -324,6 +330,68 @@ export function serve(
 const DEFAULT_BASE_PATH = "/api/flows";
 /** The largest frame a client may send: a ticket, or a list of topics. */
 const MAX_PUSH_FRAME_BYTES = 64 * 1024;
+
+// FIX-2536.
+/**
+ * The schedule tick of a served app: for each registered flow whose
+ * `schedules` name a schedule index, `@flow-state-dev/scheduled`'s tick, each
+ * minute, claiming its due rows and dispatching each to the flow's dispatch
+ * endpoint through this same app (so the app must mount
+ * `createScheduledTransportAdapter()`). The dispatch carries `CRON_SECRET` as
+ * its bearer when the environment sets one, as a host's own cron would.
+ *
+ * Only a `FlowState` is ticked: a raw router names no registry to read. An
+ * index ticks once, for the first flow that names it: its rows name no flow,
+ * so one index serves one flow.
+ */
+function serveScheduleTicks(
+  app: FlowState | FlowApiRouter,
+  fetchApp: (request: Request) => Response | Promise<Response>,
+  basePath: string,
+): { dispose(): Promise<void> } {
+  if (!isFlowState(app)) return { dispose: async () => undefined };
+  const ticks: ScheduleTick[] = [];
+  let disposed = false;
+  const started = app.getRuntime().then(
+    (runtime) => {
+      if (disposed) return;
+      const seen = new Set<unknown>();
+      for (const flow of runtime.registry.list()) {
+        const index = (flow as { schedules?: SchedulesConfig }).schedules?.index;
+        if (index === undefined) continue;
+        if (seen.has(index)) {
+          process.stderr.write(`[flow-state] serve(): flow "${flow.id}" names a schedule index another flow already ticks; it is not ticked twice.\n`);
+          continue;
+        }
+        seen.add(index);
+        ticks.push(
+          startScheduleTick({
+            index,
+            dispatch: async (row, scheduleId) => {
+              const { url, init } = scheduleDispatchRequest({
+                baseUrl: "http://localhost",
+                basePath,
+                flowKind: flow.id,
+                row,
+                scheduleId,
+                secret: process.env.CRON_SECRET,
+              });
+              return (await fetchApp(new Request(url, init))).status;
+            },
+          }),
+        );
+      }
+    },
+    () => undefined,
+  );
+  return {
+    async dispose() {
+      disposed = true;
+      await started;
+      await Promise.all(ticks.map((tick) => tick.dispose()));
+    },
+  };
+}
 
 /** The push half of a served app: the upgrade it takes, and its teardown. */
 type ServedPush = {

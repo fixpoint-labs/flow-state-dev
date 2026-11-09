@@ -15,6 +15,7 @@
  */
 import type { PullRequestFollower, RecordedPullRequest } from "@flow-state-dev/core/harness";
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { subscriptionPolling, type SubscriptionPolling, type SubscriptionPollingOptions } from "../poll";
 import { subscriptionResources } from "../rows";
 import { subscribe, type SubscribeOutcome, type SubscriptionProvider } from "../subscribe";
 import { GITHUB_PROVIDER, githubThreadKey } from "./normalize";
@@ -28,6 +29,8 @@ export interface FollowPullRequestOptions {
   readonly providers: readonly SubscriptionProvider[];
   /** Called with what each subscribe came to, for a host that records it. */
   readonly onFollowed?: (pr: RecordedPullRequest, outcome: SubscribeOutcome, ctx: BlockContext) => void | Promise<void>;
+  /** The app's polling (the service flow's `poll`), when it polls: following a pull request makes the user's poll row for it. */
+  readonly poll?: SubscriptionPollingOptions | SubscriptionPolling;
 }
 
 /** The thread a recorded pull request is followed on, or `undefined` when it isn't GitHub's. */
@@ -37,17 +40,23 @@ export function pullRequestThread(pr: Pick<RecordedPullRequest, "host" | "owner"
 
 /** Build the follower: each newly recorded GitHub pull request subscribes the session to it. */
 export function followPullRequest(options: FollowPullRequestOptions): PullRequestFollower {
+  const polling = options.poll === undefined ? undefined : subscriptionPolling(options.poll);
   const follower = async (ctx: BlockContext, pr: RecordedPullRequest): Promise<void> => {
     const thread = pullRequestThread(pr);
     if (thread === undefined) return;
-    const outcome = await subscribe(ctx, options.providers, {
-      provider: GITHUB_PROVIDER,
-      thread,
-      kinds: [...FOLLOWED_PULL_REQUEST_KINDS],
-      interest: `Reviews, comments and CI on pull request #${pr.number}, which this session opened.`
-    });
+    const outcome = await subscribe(
+      ctx,
+      options.providers,
+      {
+        provider: GITHUB_PROVIDER,
+        thread,
+        kinds: [...FOLLOWED_PULL_REQUEST_KINDS],
+        interest: `Reviews, comments and CI on pull request #${pr.number}, which this session opened.`
+      },
+      polling
+    );
     await options.onFollowed?.(pr, outcome, ctx);
     if ("refused" in outcome) throw new Error(outcome.refused);
   };
-  return Object.assign(follower, { resources: subscriptionResources });
+  return Object.assign(follower, { resources: polling === undefined ? subscriptionResources : { ...subscriptionResources, ...polling.resources } });
 }
