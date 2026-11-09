@@ -28,6 +28,7 @@
  */
 
 import type { ActionCore } from "./flow";
+import type { SubscriptionEvent } from "./subscription-event";
 
 /**
  * The normalized inbound webhook event handed to a flow's webhook bindings.
@@ -87,13 +88,50 @@ export interface WebhookEventBinding extends ActionCore {
  * Verification and payload mechanics live on the host's
  * `WebhookProviderDefinition`, keyed by the same provider name.
  */
-export interface WebhookSubscriptionConfig {
+export type WebhookSubscriptionConfig = WebhookBindingsConfig | WebhookServiceConfig;
+
+/** A provider whose events each run one handler, matched by event type. */
+export interface WebhookBindingsConfig {
   /**
    * Declarative event → handler map. Each key is matched by exact string
    * equality against the host provider's extracted `eventType`. Keys are
    * opaque strings — a typo simply never matches.
    */
   on: Record<string, WebhookEventBinding>;
+  service?: never;
+}
+
+// FIX-2535 D1.
+/**
+ * A provider whose events go to the sessions that follow them, through a
+ * service flow: the transport verifies, parses and reads the delivery id as
+ * for a binding, then `service.normalize` maps the delivery to zero or more
+ * normalized events and the host routes each through the flow's internal
+ * `service.entry` as the service (`service:<provider>`), firing each owner run
+ * it names. The 202 is sent once every run is durably recorded. A flow gets
+ * it from its provider's service flow factory (`githubServiceFlow`), not by
+ * hand. Never both `on` and `service`.
+ */
+export interface WebhookServiceConfig {
+  service: WebhookServiceRoute;
+  on?: never;
+}
+
+/** What a service route runs: the delivery's normalize, and the internal entry each event is routed through. */
+export interface WebhookServiceRoute {
+  /** The flow's internal action that routes one normalized event. */
+  readonly entry: string;
+  /**
+   * The delivery as zero or more normalized events. Pure: the same delivery
+   * maps to the same events, so a redelivery names the same objects at the
+   * same versions. `received` is when the transport took it, in ms.
+   */
+  normalize(event: WebhookInboundEvent, at: { readonly received: number }): readonly SubscriptionEvent[];
+}
+
+/** Whether a provider's entry is a service route rather than a bindings map. */
+export function isWebhookServiceConfig(sub: WebhookSubscriptionConfig): sub is WebhookServiceConfig {
+  return (sub as { service?: unknown }).service !== undefined;
 }
 
 /**
@@ -152,10 +190,29 @@ export function validateWebhookConfig(
       );
     }
 
+    if (sub !== null && typeof sub === "object" && (sub as { service?: unknown }).service !== undefined) {
+      const service = (sub as { service: unknown }).service as Partial<WebhookServiceRoute> | null;
+      if ((sub as { on?: unknown }).on !== undefined) {
+        throw new Error(`Flow "${flowKind}" webhook provider "${provider}" declares both \`on\` and \`service\`. Declare one.`);
+      }
+      if (
+        service === null ||
+        typeof service !== "object" ||
+        typeof service.normalize !== "function" ||
+        typeof service.entry !== "string" ||
+        service.entry.length === 0
+      ) {
+        throw new Error(
+          `Flow "${flowKind}" webhook provider "${provider}" has a \`service\` without a \`normalize\` function and an \`entry\` name.`
+        );
+      }
+      continue;
+    }
+
     if (sub === null || typeof sub !== "object" || sub.on === null || typeof sub.on !== "object") {
       throw new Error(
         `Flow "${flowKind}" webhook provider "${provider}" must be an object with an ` +
-          `\`on\` event map.`
+          `\`on\` event map or a \`service\` route.`
       );
     }
 

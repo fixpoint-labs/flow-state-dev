@@ -4,7 +4,9 @@
  * each event on it reaches that session once, from the service, after code
  * screens, as a message. `subscriptionTools` are the two tools; a provider's
  * `defineSubscriptionServiceFlow` routes and delivers; an ingestion calls the
- * engine's `routeServiceEvent` with the entry `routeSubscriptionEvent`.
+ * engine's `routeServiceEvent` with the entry `routeSubscriptionEvent`. GitHub is
+ * the first provider: `githubServiceFlow`, `githubSubscriptionProvider`, and
+ * `followPullRequest` for a coding session that opened a pull request.
  */
 export {
   SUBSCRIPTION_CURSORS_PATTERN,
@@ -48,6 +50,14 @@ export {
   type SubscriptionEnd,
   type SubscriptionProvider
 } from "./subscribe";
+export { normalizeGitHubEvent, type GitHubEventInput, type GitHubNormalizeOptions } from "./github/normalize";
+export {
+  githubSubscriptionProvider,
+  type GitHubSubscriptionProvider,
+  type GitHubSubscriptionProviderOptions
+} from "./github/provider";
+export { githubServiceFlow, type GitHubServiceFlowOptions } from "./github/service-flow";
+export { followPullRequest, type FollowPullRequestOptions } from "./github/follow-pull-request";
 export {
   DEFAULT_SUBSCRIPTION_CAP_PER_HOUR,
   defineSubscriptionServiceFlow,

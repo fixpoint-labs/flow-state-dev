@@ -1,4 +1,4 @@
-// FIX-2534, epic FIX-2471 ER-6.
+// FIX-2534, epic FIX-2471 ER-6; FIX-2535.
 /**
  * The normalized subscription event: the one
  * shape an outside event takes before a service flow routes it to the
@@ -20,6 +20,9 @@
  * - `closes`: the last and narrowest of `threads` closed with this event (a PR
  *   merged or closed); the wider ones stay open. The subscriptions to that
  *   thread end, whether or not it reached them (ER-7 as amended).
+ * - `addressed`: the event asks the app's agent (it mentions, assigns or
+ *   requests review from a handle the app names). The provider's judgment
+ *   from the raw payload, set by its `normalize`; never model input.
  */
 import { z } from "zod";
 
@@ -57,7 +60,9 @@ export const subscriptionEventSchema = z
     /** The provider's delivery id: provenance only, never a dedupe key. */
     deliveryId: z.string().min(1).optional(),
     /** The last and narrowest of `threads` closed with this event. */
-    closes: z.literal(true).optional()
+    closes: z.literal(true).optional(),
+    /** The event asks the app's agent: it mentions, assigns or requests review from one of the app's agent handles. */
+    addressed: z.literal(true).optional()
   })
   .strict();
 

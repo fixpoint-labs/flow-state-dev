@@ -28,6 +28,7 @@
 import {
   OBSERVED_PULL_REQUESTS,
   pullRequestRefFromUrl,
+  pullRequestRecordedOf,
   pullRequestWritesSettled,
   writePullRequests,
   type PullRequestCollection,
@@ -201,6 +202,7 @@ export async function recordBranchPullRequests(
     await writePullRequests(collection, found, {
       source: "branch",
       requestId: options.requestId === undefined ? (ctx.request?.identity.id ?? null) : options.requestId,
+      onRecorded: pullRequestRecordedOf(ctx.response),
     });
     if (options.worktree !== undefined) {
       const summary = (ref: PullRequestRef) => ({ url: ref.url, number: ref.number, state: ref.state ?? null, title: ref.title ?? null });

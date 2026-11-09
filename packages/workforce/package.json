@@ -45,6 +45,10 @@
     "./fsdev-gen": {
       "types": "./dist/codegen/fsdev-gen.d.ts",
       "default": "./src/codegen/fsdev-gen.ts"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "default": "./src/internal.ts"
     }
   },
   "license": "MIT",
@@ -76,6 +80,10 @@
       "./fsdev-gen": {
         "types": "./dist/codegen/fsdev-gen.d.ts",
         "default": "./dist/codegen/fsdev-gen.js"
+      },
+      "./internal": {
+        "types": "./dist/internal.d.ts",
+        "default": "./dist/internal.js"
       }
     }
   },

@@ -23,7 +23,7 @@ import {
   harnessRunHandleSchema,
   harnessRunInputSchema,
 } from "@flow-state-dev/core/harness";
-import type { HarnessBlock } from "@flow-state-dev/core/harness";
+import type { HarnessBlock, PullRequestFollower, RecordedPullRequest } from "@flow-state-dev/core/harness";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
@@ -65,7 +65,7 @@ afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
-function host(outcome: "completed" | "throws") {
+function host(outcome: "completed" | "throws", onPullRequestRecorded?: PullRequestFollower) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-branch-prs-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -105,6 +105,7 @@ function host(outcome: "completed" | "throws") {
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     harness,
+    ...(onPullRequestRecorded === undefined ? {} : { onPullRequestRecorded }),
   });
   const board = taskBoard({
     name: "branch-prs-board",
@@ -170,6 +171,21 @@ describe("the run's pull requests, checked on its branch when it ends", () => {
     expect(Object.keys(rows)).toEqual([`${OBSERVED_PULL_REQUESTS}/github.com/acme/app/96`]);
     expect(Object.values(rows)[0]!.state).toMatchObject({ source: "branch", requestId: run!.request, title: "From the branch" });
     expect(readFileSync(ghLog, "utf8")).toMatch(/head=\{owner\}:[^&]*FIX-7/i);
+  });
+
+  // FIX-2535 D2: a coding task follows each pull request from the write that records it, as the run's session.
+  it("hands each newly recorded pull request to onPullRequestRecorded, once, in the run's session", async () => {
+    const followed: Array<{ pr: RecordedPullRequest; session: string; request: string }> = [];
+    const follower: PullRequestFollower = (ctx, pr) => {
+      followed.push({ pr, session: ctx.session.identity.id, request: ctx.request.identity.id });
+    };
+    const h = host("completed", follower);
+    await h.act("seed");
+    await h.act("drain");
+    await h.settled();
+    const [run] = h.runs;
+    expect(followed).toHaveLength(1);
+    expect(followed[0]).toMatchObject({ pr: { number: 96, key: "github.com/acme/app/96" }, session: run!.session, request: run!.request });
   });
 
   it("checks the branch of a run whose harness threw, too", async () => {
