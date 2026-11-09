@@ -35,3 +35,8 @@
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-11-09 | `21d31bc2c` | n/a | PASS | a: 10 listed = stored, 8 from the writers + 2 seeded; e: B lists only its own 2 seeds; g: main's schedule fired one task, main's subscription delivered; h: the resumed task routine kept its task and ended `task_errored`; b–d as signalled; f: two restarts, one row per entry, pauses kept, the changed cron and interest reached the rows |
+| 2026-11-09 | `21d31bc2c` | n/a | FAIL (expected) | `GOAL_CONTROL=schedules-only`: `a:every-writer` (5 event routines missing), `a:the-seed`, `a:equals-the-store`, `g:lists`, `f:once`, `f:change-reaches-the-row` |
+| 2026-11-09 | `21d31bc2c` | n/a | FAIL (expected) | `GOAL_CONTROL=pause-keeps-index`: `b:out-of-the-index`, `c:read-rechecked`, `f:keeps-the-pause` |
+| 2026-11-09 | `21d31bc2c` | n/a | FAIL (expected) | `GOAL_CONTROL=seed-unpauses`: `f:keeps-the-pause` (both seeded routines on, the event one back in the index) |
+| 2026-11-09 | `21d31bc2c` | n/a | FAIL (expected) | `GOAL_CONTROL=resume-drops-task`: `h:keeps-its-task` (the resumed row names no task) |
