@@ -175,9 +175,9 @@ describe("the interest screen", () => {
   it("refuses its askers unjudged when the call fails, asks once, and leaves the event heard by nobody but not unheard", async () => {
     const model = mockEvaluationModel({ error: new Error("the model is down") });
     await withHost({ interestModel: model }, async (host) => {
-      const asker = await host.follower("alice");
+      const listing = await host.follower("alice");
       const neighbour = await host.follower("bob");
-      const sub = (await host.subscribe("alice", asker, { thread: PR, screens: [{ screen: "interest" }], interest: "about crash" })) as { id: string };
+      const sub = (await host.subscribe("alice", listing, { thread: PR, screens: [{ screen: "interest" }], interest: "about crash" })) as { id: string };
       await host.subscribe("bob", neighbour, { thread: PR, screens: [{ screen: "words", any: ["nothing-matches"] }] });
       const routed = await host.route(event({ text: "crash" }));
       const { output, by } = verdictsOf(routed);
@@ -199,7 +199,7 @@ describe("the interest screen", () => {
     });
   });
 
-  it(`refuses every asker unjudged past ${MAX_INTEREST_QUESTIONS} distinct sentences, without a call or a split`, async () => {
+  it(`refuses every subscription unjudged past ${MAX_INTEREST_QUESTIONS} distinct sentences, without a call or a split`, async () => {
     const model = byWordModel();
     await withHost({ interestModel: model }, async (host) => {
       const ids: string[] = [];

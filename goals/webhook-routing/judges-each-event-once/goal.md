@@ -17,7 +17,7 @@
 **Model:** scripted (`mockEvaluationModel`, behind the `typesafe-ai/jev` model string through `createMockModelResolver({ evaluators })`). The claim is about how many calls routing makes, about what, and what a failed one does, not about a model's judgment, so no real model is needed and none is called.
 **Run:** `pnpm tsx goals/webhook-routing/judges-each-event-once/run.mts`
 **Controls:**
-- `GOAL_CONTROL=per-subscription` makes each judgment ask only its first asker and repeats it while any asks. Must FAIL **(b)**.
+- `GOAL_CONTROL=per-subscription` makes each judgment ask about only the first subscription that lists `interest`, and repeats it while one is left. Must FAIL **(b)**.
 - `GOAL_CONTROL=judge-first` runs the judgment before the code screens. Must FAIL **(d)**: the model is asked about subscriptions code would refuse.
 - `GOAL_CONTROL=fallback` rescues a failed call with a generator. Must FAIL **(c)** on the model-down run.
 - `GOAL_CONTROL=forward-unjudged` counts an `interest: unjudged` refusal as one on content. Must FAIL **(e)**.

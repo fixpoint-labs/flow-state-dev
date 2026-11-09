@@ -42,7 +42,7 @@ const CHAIN_TS = "packages/workforce/src/subscriptions/chain.ts";
 
 /** The controls: each degrades one behaviour in the code under test, as it loads. */
 const PATCHES: Record<string, ModulePatch[]> = {
-  // A call per subscription: each judgment asks only the first asker, and the step repeats while any asks.
+  // A call per subscription: each judgment asks about only the first subscription that lists interest, and the step repeats while one is left.
   "per-subscription": [
     { module: INTEREST_TS, from: String.raw`if \(askers === undefined\) byQuote\.set\(quote, \[candidate\.subscription\]\);`, to: "if (askers === undefined) { byQuote.set(quote, [candidate.subscription]); break; }" },
     { module: CHAIN_TS, from: String.raw`\.stepIf\(asksInterest, interestJudgment`, to: ".doWhile(asksInterest, interestJudgment" }
