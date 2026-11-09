@@ -149,13 +149,13 @@ export function askProblem(asks: readonly QuestionInit[]): string | undefined {
   return undefined;
 }
 
-/** The own questions `asks` open, each with a fresh id, from `at`, due `dueMs` later when a deadline is set. */
+/** The own questions `asks` open, each with a fresh id, from `at`, due `dueMs` later when a deadline is set and the ask isn't `untimed`. */
 export function newOwnHolds(asks: readonly QuestionInit[], at: number, options: { readonly dueMs?: number; readonly midway?: boolean } = {}): OwnHold[] {
   return asks.map((ask) => ({
     id: generateId("question"),
     actor: "user" as const,
     openedAt: at,
-    ...(options.dueMs !== undefined ? { due: at + options.dueMs } : {}),
+    ...(options.dueMs !== undefined && ask.untimed !== true ? { due: at + options.dueMs } : {}),
     source: { kind: "task" as const, closedBy: [{ by: "answer" as const }] },
     ask: {
       kind: ask.kind,

@@ -45,7 +45,7 @@ flowchart LR
 | How we verify | |
 |---|---|
 | **Goal check** | The closure, [FIX-2565](https://linear.app/fixpoint-labs/issue/FIX-2565), on one `main` commit, in each app's browser: persistent stores, real model, real harness |
-| **Signal** | a: the reply names each image; a reload, and one after a restart, show both; the session read carries references, not bytes. b: the PDF's code word. c: a composer message, no action request |
+| **Signal** | a: the reply names each image; a reload, and one after a restart, show both; the session read carries references, not bytes. b: the PDF's code word, on every page, Codex and Cursor from its extracted text ([FIX-2520 D1](../../issues/FIX-2520/DECISIONS.md#d1)). c: a composer message, no action request |
 | **Input** | Fresh images and a PDF with a random code word, per run |
 | **Anti-game** | Assert on what the person sees, never on a stubbed model |
 | **Control that must fail** | Today's `main`: every leg. A planted strip of `file` parts: legs a and b |
@@ -68,7 +68,7 @@ FIX-824 adds where bytes live and what a serverless deploy configures, and says 
 backup misses the bytes on disk. FIX-2519 adds the harness table, FIX-2520 documents, FIX-2518
 the registry page.
 
-## The set · as of 2026-11-05
+## The set · as of 2026-11-08
 
 A dated snapshot; live state is Linear. Every child is specced in one spec-set PR.
 
@@ -81,12 +81,12 @@ A dated snapshot; live state is Linear. Every child is specced in one spec-set P
 | [FIX-2520](https://linear.app/fixpoint-labs/issue/FIX-2520) · documents | PDF and text-like files | Documents differ per target ([D1](DECISIONS.md#d1)) | Backlog · blocked by 2517–2519 |
 | [FIX-2521](https://linear.app/fixpoint-labs/issue/FIX-2521) · Kitchen Sink | Flow State chat, three harness pages; the silent drop fixed | Two of five chats | Backlog · blocked by 2517–2519 |
 | [FIX-2522](https://linear.app/fixpoint-labs/issue/FIX-2522) · Shift Manager | Every composer; a new task's files join its brief | Where a file outlives its turn | Backlog · blocked by 2517–2519 |
-| [FIX-2523](https://linear.app/fixpoint-labs/issue/FIX-2523) · Claude Code-style lab | Its composer, on the harness path | One chat | Backlog · blocked by 2518, 2519 |
-| [FIX-2524](https://linear.app/fixpoint-labs/issue/FIX-2524) · Teammates lab | Its composer, to generator and coding teammates | One chat | Backlog · blocked by 2517–2519 |
+| [FIX-2523](https://linear.app/fixpoint-labs/issue/FIX-2523) · both labs | The Claude Code-style and Teammates composers, to Claude Code runs and to generator and coding teammates | Two chats | Backlog · blocked by 2517–2519 |
+| [FIX-2524](https://linear.app/fixpoint-labs/issue/FIX-2524) · Teammates lab | **Merged into FIX-2523** by D1's collapse trigger; closed as a duplicate when the spec set is approved | — | — |
 | [FIX-2565](https://linear.app/fixpoint-labs/issue/FIX-2565) · closure · **required** | Three legs per app, each team's journey, the seams | Proves the whole | Backlog · blocked by every child |
 
-Nine children and a closure. Is nine really eight? The labs send to different flows; **the
-collapse trigger is both lab specs having no decision of their own**, checked in the spec set.
+Eight children and a closure. Nine at the gate; **the spec set found neither lab spec had a
+decision of its own**, D1's collapse trigger, so the labs are one issue.
 
 ## How the issues flow into each other
 
@@ -104,14 +104,13 @@ flowchart LR
   subgraph APPS["the apps"]
     KS["FIX-2521 · Kitchen Sink"]
     SM["FIX-2522 · Shift Manager"]
-    CC["FIX-2523 · Claude Code-style lab"]
-    TM["FIX-2524 · Teammates lab"]
+    CC["FIX-2523 · both labs"]
   end
   APPS --> Z["FIX-2565 · closure · required"]
   D --> Z
 ```
 
-An edge is what one issue hands the next. FIX-824 goes first; the closure waits on all nine.
+An edge is what one issue hands the next. FIX-824 goes first; the closure waits on all eight.
 
 ## What stays as it is
 
@@ -144,7 +143,7 @@ The predecessor is this epic's merged spec, [#4766](https://github.com/fixpoint-
 | `attachments` and one limits set | Input schemas; `PromptInput`'s limit props | Extends the request's parse step; the props default to the set |
 | Per-turn files for Codex and Cursor | The workspace host | New and small: it places checkouts, not files |
 
-**Removes** Kitchen Sink's silent drop and hand-rolled base64 input. **Adds** the rows above; a
+**Removes** Kitchen Sink's silent drop. **Adds** the rows above; a
 hosted deploy refuses attachments by name until it has an adapter. **Leaves** each adapter's
 event-to-item helper. **Net: up, on purpose.**
 
@@ -156,8 +155,8 @@ named refusals, proved through a restart. If wrong: the harnesses stay blind.
 **[The set's debt](#whats-already-here-and-the-debt), net up:** one capability, one local
 adapter. If wrong: a hosted deploy waits on an adapter.
 
-1. **[D1](DECISIONS.md#d1) · Nine children and a closure: storage, images, then documents.**
-   If wrong: two lab issues that should have been one.
+1. **[D1](DECISIONS.md#d1) · Eight children and a closure: storage, images, then documents; the labs merged in the spec set.**
+   If wrong: one issue holding two apps a reviewer checks separately.
 2. **[D2](DECISIONS.md#d2) · Bytes go through a blob storage adapter, local disk by default.**
    The owner's call. If wrong: a store we needn't have built.
 3. **[D3](DECISIONS.md#d3) · Attachments ride beside the input, as references.** The owner's
@@ -167,4 +166,4 @@ adapter. If wrong: a hosted deploy waits on an adapter.
 
 **Open: none.**
 
-Epic · 9 children and a closure · Workforce: Shift Manager · Goal 1, validate through real usage
+Epic · 8 children and a closure · Workforce: Shift Manager · Goal 1, validate through real usage
