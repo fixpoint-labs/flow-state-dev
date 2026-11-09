@@ -248,7 +248,7 @@ const create = async (userId: string, flow: string, workerId: string): Promise<s
   if (body.session === undefined) throw new Error(`creating ${workerId}'s session failed: ${JSON.stringify(body)}`);
   return body.session.id;
 };
-/** Nothing running, three reads in a row. */
+/** Nothing running, on three reads one after another. */
 const quiet = async () => {
   const runtime = await state.getRuntime();
   for (let calm = 0, until = Date.now() + 30_000; calm < 3; ) {
@@ -258,7 +258,7 @@ const quiet = async () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
   }
 };
-const boardRows = async (userId: string) => {
+const boardTasks = async (userId: string) => {
   const runtime = await state.getRuntime();
   return Object.entries(await runtime.stores.resourceState.getByPrefix("user", `${userId}:~org:${ORG}`, "tasks/")).map(([key, value]) => ({ ...(value as any).state, board: key.split("/")[1] }));
 };
@@ -295,27 +295,27 @@ for (const { event } of FIXTURE) {
 }
 
 await runGoal(async (failures, tell) => {
-  const rowsOf = async (user: string) => tell.over(`${user}'s board rows`, await boardRows(user), { emptyIs: "nothing was ever filed" });
-  const all = [...(await rowsOf("alice")), ...(await rowsOf("bob"))];
-  /** The desk whose conversation a row is on: its board names that conversation. */
-  const deskOfRow = (row: any) => Object.entries(sessions).find(([, id]) => decodeURIComponent(String(row.board)).includes(id))?.[0];
-  const rowsFor = (key: string) => all.filter((row) => deskOfRow(row) === key);
-  const isAsk = (row: any) => ORACLE.asks.some((mark) => String(row.goal).includes(mark));
-  const confirms = (row: any) => (row.holds ?? []).filter((h: any) => h.ask?.kind === "confirm");
+  const tasksOf = async (user: string) => tell.over(`${user}'s board tasks`, await boardTasks(user), { emptyIs: "nothing was ever filed" });
+  const all = [...(await tasksOf("alice")), ...(await tasksOf("bob"))];
+  /** The desk whose conversation a task is on: its board names that conversation. */
+  const deskOf = (task: any) => Object.entries(sessions).find(([, id]) => decodeURIComponent(String(task.board)).includes(id))?.[0];
+  const tasksFor = (key: string) => all.filter((task) => deskOf(task) === key);
+  const isAsk = (task: any) => ORACLE.asks.some((mark) => String(task.goal).includes(mark));
+  const confirms = (task: any) => (task.holds ?? []).filter((h: any) => h.ask?.kind === "confirm");
 
   // (a) The service flow files no task.
   const runtime = await state.getRuntime();
-  const serviceRows = Object.keys(await runtime.stores.resourceState.getByPrefix("user", `service:github:~org:${ORG}`, "tasks/"));
-  if (serviceRows.length > 0) failures.push(`a: ${serviceRows.length} board row(s) in the service principal's cell`);
+  const serviceTasks = Object.keys(await runtime.stores.resourceState.getByPrefix("user", `service:github:~org:${ORG}`, "tasks/"));
+  if (serviceTasks.length > 0) failures.push(`a: ${serviceTasks.length} board task(s) in the service principal's cell`);
 
   // (b) observe: every inferred task holds a confirm and ran no attempt; the Inbox reconciles.
   for (const key of ["alice:observe", "bob:observe"]) {
-    const inferred = tell.over(`b · ${key}'s inferred tasks`, rowsFor(key).filter((row) => !isAsk(row)));
-    for (const row of inferred) {
-      if (confirms(row).length !== 1) failures.push(`b: ${key}'s "${row.goal}" holds ${confirms(row).length} confirm(s)`);
-      if (attempts.includes(row.id) || (row.attempts ?? 0) > 0) failures.push(`b: ${key}'s "${row.goal}" started an attempt`);
+    const inferred = tell.over(`b · ${key}'s inferred tasks`, tasksFor(key).filter((task) => !isAsk(task)));
+    for (const task of inferred) {
+      if (confirms(task).length !== 1) failures.push(`b: ${key}'s "${task.goal}" holds ${confirms(task).length} confirm(s)`);
+      if (attempts.includes(task.id) || (task.attempts ?? 0) > 0) failures.push(`b: ${key}'s "${task.goal}" started an attempt`);
     }
-    const inputs = rowsFor(key).map((row) => ({ board: `${sessions[key]}.tasks`, holder: { sessionId: sessions[key]!, action: "updateTask_tasks" }, id: row.id, goal: row.goal, status: row.status, holds: row.holds ?? [], steers: row.steers ?? [] }));
+    const inputs = tasksFor(key).map((task) => ({ board: `${sessions[key]}.tasks`, holder: { sessionId: sessions[key]!, action: "updateTask_tasks" }, id: task.id, goal: task.goal, status: task.status, holds: task.holds ?? [], steers: task.steers ?? [] }));
     const reconciled = reconcileInbox(inboxItems({ rows: inputs, suspensions: [], flowOf: () => "coordinator" }), { rows: taskTruthOf(inputs), suspensions: [], closed: [] } as never);
     if (!reconciled.green) failures.push(`b: ${key}'s Inbox doesn't reconcile: ${JSON.stringify(reconciled)}`);
   }
@@ -323,19 +323,19 @@ await runGoal(async (failures, tell) => {
   // (c) auto: the same inferred tasks ran.
   // A filing the model held itself waits in every mode: (c) reads the rest.
   // And a step for itself runs in auto, and is refused in observe ((g) reads that).
-  const ownHeld = (row: any) => String(row.goal).endsWith("(held)") || String(row.goal).endsWith("(step)");
-  const autoInferred = tell.over("c · auto's inferred tasks", rowsFor("alice:auto").filter((row) => !isAsk(row) && !ownHeld(row)));
-  for (const row of autoInferred) if (!attempts.includes(row.id)) failures.push(`c: auto's "${row.goal}" never ran`);
-  const observeInferred = rowsFor("alice:observe").filter((row) => !isAsk(row) && !ownHeld(row)).length;
+  const ownHeld = (task: any) => String(task.goal).endsWith("(held)") || String(task.goal).endsWith("(step)");
+  const autoInferred = tell.over("c · auto's inferred tasks", tasksFor("alice:auto").filter((task) => !isAsk(task) && !ownHeld(task)));
+  for (const task of autoInferred) if (!attempts.includes(task.id)) failures.push(`c: auto's "${task.goal}" never ran`);
+  const observeInferred = tasksFor("alice:observe").filter((task) => !isAsk(task) && !ownHeld(task)).length;
   if (autoInferred.length !== observeInferred) failures.push(`c: auto filed ${autoInferred.length} inferred task(s), observe ${observeInferred}`);
 
   // (d) off: no model call on an inferred forward; asks ran in every mode.
   const offInferred = calls.filter((c) => c.desk === "off" && c.mark !== undefined && !ORACLE.asks.includes(c.mark));
   if (offInferred.length > 0) failures.push(`d: ${offInferred.length} model call(s) on inferred forwards at the off desk (${offInferred[0]!.mark})`);
   for (const key of ["alice:observe", "alice:auto", "alice:off", "bob:observe"]) {
-    const asks = tell.over(`d · ${key}'s asks`, rowsFor(key).filter(isAsk));
+    const asks = tell.over(`d · ${key}'s asks`, tasksFor(key).filter(isAsk));
     if (asks.length !== ORACLE.asks.length) failures.push(`d: ${key} filed ${asks.length} ask task(s) of ${ORACLE.asks.length}`);
-    for (const row of asks) if (!attempts.includes(row.id)) failures.push(`d: ${key}'s ask "${row.goal}" never ran`);
+    for (const task of asks) if (!attempts.includes(task.id)) failures.push(`d: ${key}'s ask "${task.goal}" never ran`);
   }
 
   // (e) A failed screen forwards nothing: pending FIX-2537's evaluator, which is the only source of one.
@@ -347,20 +347,20 @@ await runGoal(async (failures, tell) => {
   const forwardsIn = async (user: string) =>
     Object.values(await runtime.stores.resourceState.getByPrefix("user", `${user}:~org:${ORG}`, WORKER_MESSAGES_PATTERN.replace("*", "")))
       .map((v: any) => v.state)
-      .filter((row: any) => row.forward !== undefined);
+      .filter((message: any) => message.forward !== undefined);
   const aliceForwards = tell.over("f · alice's forwarded messages", await forwardsIn("alice"));
-  const objects = new Set(aliceForwards.map((row: any) => /sub_([^@]+)@/.exec(row.id)?.[1]));
+  const objects = new Set(aliceForwards.map((message: any) => /sub_([^@]+)@/.exec(message.id)?.[1]));
   for (const id of objects) if (!ORACLE.forwarded.includes(String(id))) failures.push(`f: ${id} reached a coordinator, and the oracle forwards it to none`);
   if (aliceForwards.length !== ORACLE.forwarded.length * MODES.length) failures.push(`f: alice's desks hold ${aliceForwards.length} forward(s) of ${ORACLE.forwarded.length * MODES.length}`);
 
-  // (g) Every row an inferred observe turn filed holds the confirm, whichever way it was filed.
-  const multi = tell.over("g · observe's rows of the multi event", rowsFor("alice:observe").filter((row) => String(row.goal).includes("[evt-multi")));
-  if (multi.length !== 2) failures.push(`g: observe holds ${multi.length} row(s) of the multi event, not 2 (plain and held; the step is refused)`);
-  if (multi.some((row) => String(row.goal).endsWith("(step)"))) failures.push("g: observe filed a step for itself on an inferred turn");
-  for (const row of multi) if (confirms(row).length !== 1) failures.push(`g: "${row.goal}" holds ${confirms(row).length} confirm(s)`);
+  // (g) Every task an inferred observe turn filed holds the confirm, whichever way it was filed.
+  const multi = tell.over("g · observe's tasks of the multi event", tasksFor("alice:observe").filter((task) => String(task.goal).includes("[evt-multi")));
+  if (multi.length !== 2) failures.push(`g: observe holds ${multi.length} task(s) of the multi event, not 2 (plain and held; the step is refused)`);
+  if (multi.some((task) => String(task.goal).endsWith("(step)"))) failures.push("g: observe filed a step for itself on an inferred turn");
+  for (const task of multi) if (confirms(task).length !== 1) failures.push(`g: "${task.goal}" holds ${confirms(task).length} confirm(s)`);
 
   return {
     failures,
-    evidence: `${all.length} rows across 2 users and 4 desks; observe's inferred tasks each held one confirm and ran none, auto's ran, the off desk called no model on an inferred forward, ${ORACLE.asks.length} asks ran in every mode; ${dropped} drops counted`
+    evidence: `${all.length} tasks across 2 users and 4 desks; observe's inferred tasks each held one confirm and ran none, auto's ran, the off desk called no model on an inferred forward, ${ORACLE.asks.length} asks ran in every mode; ${dropped} drops counted`
   };
 });

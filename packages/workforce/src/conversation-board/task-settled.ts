@@ -146,12 +146,12 @@ export interface TaskSettledOptions {
   readonly onRouted?: BlockDefinition<any, any>;
   // FIX-2538.
   /**
-   * The request state a turn this row's ending wakes starts with, read off
-   * the settled row (its server-written metadata), or `undefined` for none:
+   * The request state a turn this task's ending wakes starts with, read off
+   * the settled task (its server-written metadata), or `undefined` for none:
    * written before any turn runs, so the turn's tools read it as they would
-   * on the turn that filed the row.
+   * on the turn that filed the task.
    */
-  readonly turnStateOf?: (row: Task) => Record<string, unknown> | undefined;
+  readonly turnStateOf?: (task: Task) => Record<string, unknown> | undefined;
 }
 
 /** What a conversation-result task's ending hands {@link TaskSettledOptions.onRouted}. */
@@ -421,7 +421,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       const ref = await ownConversationLedger(ctx);
       const row = ref?.get(notice.taskId);
       if (ref === undefined || row === undefined) return { act: "none" };
-      // Before any path that may wake a turn: the row says how that turn runs.
+      // Before any path that may wake a turn: the task says how that turn runs.
       const turnState = options.turnStateOf?.(row);
       if (turnState !== undefined) await ctx.request.atomicState(() => turnState);
       await beforeAcknowledge(ctx, notice);

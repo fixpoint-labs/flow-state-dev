@@ -78,7 +78,7 @@ export const RECEIVED_REPLY_OWED_STATE = "workforceReplyOwed";
 /**
  * The request-state field carrying the forward mark of the message an
  * `onMessageReceived` request landed (`addressed` or `inferred`, and the event's
- * link), copied from its row: what the board's write and the send tool read
+ * link), copied from its message: what the board's write and the send tool read
  * on that turn. Absent on every other turn.
  */
 export const RECEIVED_FORWARD_STATE = "workforceReceivedForward";

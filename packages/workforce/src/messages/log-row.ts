@@ -63,7 +63,7 @@ export const workerMessageResourceStateSchema = z.object({
    * A service's delivery of an event no other subscription heard, to a
    * coordinator's unmatched subscription: `addressed` when the event asks the app's
    * agent, `inferred` when nobody asked, and the event's link. Written by the
-   * delivery from the event, never from model input. Absent on every other row.
+   * delivery from the event, never from model input. Absent on every other message.
    */
   forward: z.object({ as: z.enum(["addressed", "inferred"]), url: z.string() }).strict().optional(),
   text: z.string(),

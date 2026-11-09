@@ -52,6 +52,7 @@ import { filingSessionIdOf } from "./filing-session";
 import { boardAboveOf } from "./board-above";
 import { withoutReportMarkers } from "./report-owed";
 import { conversationDelivery } from "./delivery";
+import { INFERRED_FORWARD_METADATA } from "../messages/hop";
 
 /**
  * The ledger's id: its resource key, and the board id its tasks are handed
@@ -189,7 +190,8 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
  * make a row a piece of a task, or point a row at a
  * session as its split or as the session that filed its work,
  * or set the hop count its turn starts at, or the
- * project it was filed in.
+ * project it was filed in, or set or clear the forward a task filed on an
+ * inferred turn was inferred from (the mark its approval guards read).
  */
 export function callerMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
@@ -197,6 +199,6 @@ export function callerMetadata(
   const unmarked = withoutNoticeMarkers(metadata);
   if (unmarked === undefined) return unmarked;
   const kept = withoutReportMarkers(unmarked);
-  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [FILED_MARKER]: _filed, [FILED_HOP]: _hop, [FILED_PROJECT]: _project, ...rest } = kept;
+  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [FILED_MARKER]: _filed, [FILED_HOP]: _hop, [FILED_PROJECT]: _project, [INFERRED_FORWARD_METADATA]: _inferred, ...rest } = kept;
   return rest;
 }

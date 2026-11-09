@@ -220,7 +220,7 @@ export interface ConversationBoardOptions {
   // FIX-2538 D2.
   /**
    * The confirm a filing on the running turn waits on (its prompt), and the
-   * marker the row carries for it, or `undefined` when it files as asked:
+   * marker the task carries for it, or `undefined` when it files as asked:
    * read on every write that files a task (one, a batch, a routed one),
    * server-side, so a model can't file around it. A step for
    * the worker itself, which nothing could confirm, is refused on such a turn.
@@ -257,8 +257,9 @@ export interface RoutedFiling {
 }
 
 /**
- * `init`, waiting on the confirm `holdsFiling` names for the running turn, with
- * its marker in the row's metadata; or as given when it names none. The
+ * `init`, waiting on the confirm `holdsFiling` names for the running turn; or
+ * as given when it names none. Its marker is written with the task's other
+ * server-written metadata ({@link heldMarker}), after a caller's is cut. The
  * board's confirm is always its own: a No cancels and no deadline closes it.
  * A caller's question with the same prompt is replaced by it, never kept in
  * its place (a caller's confirm may let the work go on after a No), so
@@ -270,22 +271,26 @@ function heldAs<T extends TaskInit>(holdsFiling: ConversationBoardOptions["holds
   const others = (init.questions ?? []).filter((q) => q.prompt !== held.prompt);
   return {
     ...init,
-    questions: [...others, { kind: "confirm" as const, prompt: held.prompt, onNo: "cancel" as const, untimed: true as const }],
-    metadata: { ...(init.metadata ?? {}), ...held.metadata }
+    questions: [...others, { kind: "confirm" as const, prompt: held.prompt, onNo: "cancel" as const, untimed: true as const }]
   };
 }
 
+/** The marker `holdsFiling` names for `init` on the running turn, for the task's metadata; none when it holds nothing. */
+function heldMarker(holdsFiling: ConversationBoardOptions["holdsFiling"], ctx: BlockContext, init: TaskInit): Record<string, unknown> {
+  return holdsFiling?.(ctx, init)?.metadata ?? {};
+}
+
 /**
- * Whether the user answered the board's confirm on an inferred row: the hold
+ * Whether the user answered the board's confirm on an inferred task: the hold
  * its marker names by prompt, answered by the user's own steer. The confirm
  * cancels on a No before any answer is kept, so an answer kept is the yes. A
  * marker that names no prompt reads as no yes.
  */
-function saidYes(row: Task): boolean {
-  const prompt = (row.metadata?.[INFERRED_FORWARD_METADATA] as { confirm?: unknown } | undefined)?.confirm;
+function saidYes(task: Task): boolean {
+  const prompt = (task.metadata?.[INFERRED_FORWARD_METADATA] as { confirm?: unknown } | undefined)?.confirm;
   if (typeof prompt !== "string") return false;
-  const confirm = (row.holds ?? []).find((hold) => hold.source.kind === "task" && hold.ask.kind === "confirm" && hold.ask.prompt === prompt);
-  return confirm !== undefined && (row.steers ?? []).some((steer) => steer.answers === confirm.id && steer.from === "user");
+  const confirm = (task.holds ?? []).find((hold) => hold.source.kind === "task" && hold.ask.kind === "confirm" && hold.ask.prompt === prompt);
+  return confirm !== undefined && (task.steers ?? []).some((steer) => steer.answers === confirm.id && steer.from === "user");
 }
 
 /** A new task's id, minted before its add so its place in the chain is reserved first. */
@@ -1300,6 +1305,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // (FIX-2106); a task held from its filing starts a fresh chain (FIX-2238).
       const metadata = {
         ...(given ?? {}),
+        ...heldMarker(options.holdsFiling, ctx, init),
         ...(owner === undefined ? {} : { [PIECE_OF]: owner }),
         [FILED_HOP]: heldFromFiling(init) ? freshHopMark(ctx) : turnHopMark(ctx),
         [FILED_PROJECT]: project
@@ -1401,10 +1407,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ? {}
         : {
             async retry(id: string) {
-              // A retry of a cancelled inferred row the user never said yes to would start work its
+              // A retry of a cancelled inferred task the user never said yes to would start work its
               // confirm never released (a No cancels before any answer is kept). Filed again, it waits on their yes.
-              const row = ref.get(id);
-              if (row?.status === "cancelled" && row.metadata?.[INFERRED_FORWARD_METADATA] !== undefined && !saidYes(row)) {
+              const task = ref.get(id);
+              if (task?.status === "cancelled" && task.metadata?.[INFERRED_FORWARD_METADATA] !== undefined && !saidYes(task)) {
                 throw new TaskWriteRefusedError(
                   "inferred_needs_a_yes",
                   `task "${id}" was inferred from an event nobody asked about, and was cancelled before the user said yes, so it can't be retried. File it again; it waits on their yes. Nothing was changed.`
@@ -1997,7 +2003,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // no board marker in its metadata, and the session's own project in its input.
     // The filing turn's hop count, which the task's turn starts at (FIX-2106).
     const { stamp, own } = await filedProjectFor(ctx);
-    const metadata = { ...callerMetadata(filing.metadata), [FILED_HOP]: heldFromFiling(filing) ? freshHopMark(ctx) : turnHopMark(ctx), [FILED_PROJECT]: stamp };
+    const metadata = { ...callerMetadata(filing.metadata), ...heldMarker(options.holdsFiling, ctx, filing), [FILED_HOP]: heldFromFiling(filing) ? freshHopMark(ctx) : turnHopMark(ctx), [FILED_PROJECT]: stamp };
     const input = ownProjectIn(filing.input, own);
     const { metadata: _metadata, input: _input, ...rest } = heldAsTurnSays(ctx, filing);
     const init: TaskInit & { id: string } = {

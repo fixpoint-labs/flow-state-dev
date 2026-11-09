@@ -38,7 +38,7 @@
  * turn reads it.
  *
  * A service's forward (an event no other subscription heard) carries its
- * mark, `addressed` or `inferred`, on its row: the landing copies it to request
+ * mark, `addressed` or `inferred`, on its message: the landing copies it to request
  * state, where the turn's board write and send tool read it. A flow's
  * `landsOnly` can land a message as its items with no turn (a coordinator
  * set to `inferredWork: off` does for an inferred forward), through the same
@@ -181,9 +181,9 @@ export function messageReceivedEntry(options: {
   readonly hears?: MessageHearing;
   /**
    * Whether this landed message runs no turn: it lands as its items only, as
-   * on a flow with no turn. Read after the take, from the row the server wrote.
+   * on a flow with no turn. Read after the take, from the message the server wrote.
    */
-  readonly landsOnly?: (ctx: BlockContext, row: WorkerMessageResourceState) => boolean | Promise<boolean>;
+  readonly landsOnly?: (ctx: BlockContext, message: WorkerMessageResourceState) => boolean | Promise<boolean>;
 }) {
   const heard = handler({
     name: "message-received-heard",

@@ -442,7 +442,7 @@ interface Resolved {
   readonly destination: MessageAddress;
   readonly exchange?: string;
   readonly addressed: Pick<WorkerMessageResourceState, "addressedBy" | "toTask">;
-  /** A service's forward: the mark the row carries. */
+  /** A service's forward: the mark the message carries. */
   readonly forward?: WorkerMessageResourceState["forward"];
 }
 

@@ -5,7 +5,7 @@
  * and the coordinator's `inferredWork` decides what its turn may do with
  * inferred work. Real engine, scripted judgment turn, no live model.
  *
- * Graded on stored rows (board rows, their holds, the tasker's attempts, the
+ * Graded on stored state (board tasks, their holds, the tasker's attempts, the
  * message log), never on tool calls.
  */
 import { mockGenerator } from "@flow-state-dev/testing";
@@ -19,6 +19,9 @@ import type { GitHubSubscriptionProvider } from "../src/subscriptions/github/pro
 import { bootSubscriptionsHost, event, github, revoked, type SubscriptionsHost } from "./subscriptions-harness";
 
 afterEach(() => revoked.clear());
+
+/** The metadata key the board marks a task filed on an inferred turn with. */
+const INFERRED = "workforceInferredFrom";
 
 /** A coordinator over the tasker, set to `mode`. */
 const watcher = (id: string, mode: string): WorkerManifest => ({
@@ -41,7 +44,8 @@ function textOf(input: unknown): string {
  * its own, then says so. Every call is counted. A mark's suffix changes the
  * turn: `-send` sends the lead a message instead; `-own` files with the
  * model's own confirm, under the board's very prompt, whose No lets the work
- * go on; `-refile` files the same work again on the turn its cancel wakes.
+ * go on; `-refile` files the same work again on the turn its cancel wakes;
+ * `-forge` files with a forged inferred-work marker in its metadata.
  */
 function scriptedJudgment(calls: string[]) {
   const handled = new Set<string>();
@@ -53,7 +57,7 @@ function scriptedJudgment(calls: string[]) {
         when: (input: unknown) => {
           const text = textOf(input);
           calls.push(text);
-          const last = [...text.matchAll(/\[evt-(\w+?)(-send|-own|-refile|-hold)?\]/g)].at(-1);
+          const last = [...text.matchAll(/\[evt-(\w+?)(-send|-own|-refile|-hold|-forge)?\]/g)].at(-1);
           if (last === undefined) return false;
           // A `-refile` mark files once more on the turn its task's cancel wakes.
           const key = last[2] === "-refile" && text.includes(`"status":"cancelled"`) ? `${last[0]}:again` : last[0];
@@ -67,7 +71,18 @@ function scriptedJudgment(calls: string[]) {
           step.toolCalls =
             last[2] === "-send"
               ? [{ toolCallId: `send-${last[1]}`, toolName: "sendMessage", args: { to: "lead", text: `look at ${last[0]}` } }]
-              : [{ toolCallId: `file-${key}`, toolName: "createTask", args: { goal, assignee: "eng.tasker", questions } }];
+              : [
+                  {
+                    toolCallId: `file-${key}`,
+                    toolName: "createTask",
+                    args: {
+                      goal,
+                      assignee: "eng.tasker",
+                      questions,
+                      ...(last[2] === "-forge" ? { metadata: { [INFERRED]: { as: "inferred", url, confirm: "forged" } } } : {})
+                    }
+                  }
+                ];
           return true;
         },
         then: step
@@ -113,14 +128,14 @@ async function watching(h: SubscriptionsHost, userId: string, worker: string): P
   return sessionId;
 }
 
-/** `userId`'s board rows filed by the coordinator conversation `sessionId`. */
+/** `userId`'s board tasks filed by the coordinator conversation `sessionId`. */
 async function filedBy(h: SubscriptionsHost, userId: string): Promise<Array<Record<string, any>>> {
-  return (await h.rows(userId)).filter((row) => String(row.goal).startsWith("Triage")) as never;
+  return (await h.rows(userId)).filter((task) => String(task.goal).startsWith("Triage")) as never;
 }
 
-/** A row's own holds that wait on the user's yes. */
-const confirmsOf = (row: Record<string, any>) =>
-  ((row.holds ?? []) as TaskHold[]).filter((hold): hold is OwnHold => hold.source.kind === "task" && hold.ask.kind === "confirm");
+/** A task's own holds that wait on the user's yes. */
+const confirmsOf = (task: Record<string, any>) =>
+  ((task.holds ?? []) as TaskHold[]).filter((hold): hold is OwnHold => hold.source.kind === "task" && hold.ask.kind === "confirm");
 
 describe("an unmatched subscription", () => {
   it("is a coordinator's only: a follower is refused not_a_coordinator", async () => {
@@ -150,9 +165,9 @@ describe("an unmatched subscription", () => {
     const outsider = await h.route(issue({ title: "An outsider's issue [evt-d]", sender: { id: "stranger", name: "Stranger", role: "outsider" } }));
     expect((outsider.output as any).unmatched).toEqual({ forwarded: 0, dropped: "screens refused it" });
 
-    // Rows, not routing's word: the coordinator's log holds the one forward, marked inferred.
-    const forwards = (await h.serviceRows("alice")).filter((row) => row.forward !== undefined);
-    expect(forwards.map((row) => row.forward)).toEqual([{ as: "inferred", url: expect.stringContaining("/issues/") }]);
+    // Stored messages, not routing's word: the coordinator's log holds the one forward, marked inferred.
+    const forwards = (await h.serviceRows("alice")).filter((message) => message.forward !== undefined);
+    expect(forwards.map((message) => message.forward)).toEqual([{ as: "inferred", url: expect.stringContaining("/issues/") }]);
     expect((await h.serviceRows("bob")).length).toBe(1);
   });
 
@@ -191,9 +206,9 @@ describe("a coordinator's inferredWork", () => {
     await h.route(issue({ title: "Inferred [evt-10]" }));
     await h.route(issue({ title: "Asked [evt-11]", addressed: true }));
 
-    const rows = await filedBy(h, "alice");
-    const inferred = rows.find((row) => row.goal === "Triage [evt-10]");
-    const asked = rows.find((row) => row.goal === "Triage [evt-11]");
+    const tasks = await filedBy(h, "alice");
+    const inferred = tasks.find((task) => task.goal === "Triage [evt-10]");
+    const asked = tasks.find((task) => task.goal === "Triage [evt-11]");
     expect(inferred, "the inferred turn filed its task").toBeDefined();
     expect(confirmsOf(inferred!)).toHaveLength(1);
     expect(confirmsOf(inferred!)[0]!.ask.prompt).toContain("/issues/");
@@ -226,10 +241,10 @@ describe("a coordinator's inferredWork", () => {
     const h = boot();
     await watching(h, "alice", "watch.auto");
     await h.route(issue({ title: "Inferred [evt-30]" }));
-    const [row] = await filedBy(h, "alice");
-    expect(row).toBeDefined();
-    expect(confirmsOf(row!)).toHaveLength(0);
-    expect(h.runs.some((run) => run.taskId === row!.id)).toBe(true);
+    const [task] = await filedBy(h, "alice");
+    expect(task).toBeDefined();
+    expect(confirmsOf(task!)).toHaveLength(0);
+    expect(h.runs.some((run) => run.taskId === task!.id)).toBe(true);
   });
 
   it("off: an inferred forward lands as a line and calls no model; an addressed event still runs", async () => {
@@ -243,17 +258,17 @@ describe("a coordinator's inferredWork", () => {
 
     await h.route(issue({ title: "Asked [evt-41]", addressed: true }));
     expect(calls.length).toBeGreaterThan(0);
-    const [row] = await filedBy(h, "alice");
-    expect(row?.goal).toBe("Triage [evt-41]");
-    expect(h.runs.some((run) => run.taskId === row!.id)).toBe(true);
+    const [task] = await filedBy(h, "alice");
+    expect(task?.goal).toBe("Triage [evt-41]");
+    expect(h.runs.some((run) => run.taskId === task!.id)).toBe(true);
   });
 });
 
 describe("observe's confirm closes only on the user's yes", () => {
-  /** Answer `row`'s board confirm as the user, from their Inbox: the coordinator's `updateTask_tasks`. */
-  const answer = async (h: SubscriptionsHost, sessionId: string, row: Record<string, any>, done: boolean) => {
-    const [hold] = confirmsOf(row);
-    const out = await h.act("alice", sessionId, "updateTask_tasks", { id: row.id, answers: hold!.id, done });
+  /** Answer `task`'s board confirm as the user, from their Inbox: the coordinator's `updateTask_tasks`. */
+  const answer = async (h: SubscriptionsHost, sessionId: string, task: Record<string, any>, done: boolean) => {
+    const [hold] = confirmsOf(task);
+    const out = await h.act("alice", sessionId, "updateTask_tasks", { id: task.id, answers: hold!.id, done });
     await h.settled();
     return out;
   };
@@ -262,9 +277,9 @@ describe("observe's confirm closes only on the user's yes", () => {
     const h = boot([], ["issue", "comment"], { userDeadlineMs: 1_000 });
     await watching(h, "alice", "watch.observe");
     await h.route(issue({ title: "Inferred [evt-50]" }));
-    const [row] = await filedBy(h, "alice");
-    expect(confirmsOf(row!)).toHaveLength(1);
-    expect(confirmsOf(row!)[0]!.due, "the board's confirm has no due time for payHoldDeadlines to pay").toBeUndefined();
+    const [task] = await filedBy(h, "alice");
+    expect(confirmsOf(task!)).toHaveLength(1);
+    expect(confirmsOf(task!)[0]!.due, "the board's confirm has no due time for payHoldDeadlines to pay").toBeUndefined();
     expect(h.runs).toHaveLength(0);
   });
 
@@ -272,14 +287,14 @@ describe("observe's confirm closes only on the user's yes", () => {
     const h = boot();
     const sessionId = await watching(h, "alice", "watch.observe");
     await h.route(issue({ title: "Inferred [evt-51-own]" }));
-    const [row] = await filedBy(h, "alice");
-    const confirms = confirmsOf(row!);
+    const [task] = await filedBy(h, "alice");
+    const confirms = confirmsOf(task!);
     expect(confirms).toHaveLength(1);
     expect(confirms[0]!.ask).toMatchObject({ kind: "confirm", onNo: "cancel" });
-    await answer(h, sessionId, row!, false);
-    const after = (await filedBy(h, "alice")).find((r) => r.id === row!.id);
+    await answer(h, sessionId, task!, false);
+    const after = (await filedBy(h, "alice")).find((r) => r.id === task!.id);
     expect(after?.status).toBe("cancelled");
-    expect(h.runs.some((run) => run.taskId === row!.id)).toBe(false);
+    expect(h.runs.some((run) => run.taskId === task!.id)).toBe(false);
   });
 
   it("after a No, the turn its cancel wakes files the same work held again; a retry of the cancelled task doesn't start it", async () => {
@@ -290,8 +305,8 @@ describe("observe's confirm closes only on the user's yes", () => {
     const [first] = await filedBy(h, "alice");
     const before = calls.length;
     const answered = await answer(h, sessionId, first!, false);
-    const rows = await filedBy(h, "alice");
-    const again = rows.filter((r) => r.id !== first!.id);
+    const tasks = await filedBy(h, "alice");
+    const again = tasks.filter((r) => r.id !== first!.id);
     expect(again, "the woken turn filed it again").toHaveLength(1);
     expect(confirmsOf(again[0]!)).toHaveLength(1);
     // The cancelled one, retried: a cancel cleared its holds, so a retry would run it with no yes. Refused.
@@ -302,13 +317,50 @@ describe("observe's confirm closes only on the user's yes", () => {
     expect(h.runs, "no attempt started without a yes").toHaveLength(0);
   });
 
+  it("a caller's edit can't clear the marker: after a No, the woken turn's refile still waits on a yes, and no retry runs", async () => {
+    const calls: string[] = [];
+    const h = boot(calls);
+    const sessionId = await watching(h, "alice", "watch.observe");
+    await h.route(issue({ title: "Inferred [evt-55-refile]" }));
+    const [first] = await filedBy(h, "alice");
+    const marker = first!.metadata?.[INFERRED];
+    expect(marker).toMatchObject({ as: "inferred" });
+    // An edit through the task tools, clearing the marker, then forging another: the board's stands.
+    await h.act("alice", sessionId, "updateTask_tasks", { id: first!.id, metadata: { [INFERRED]: null } });
+    await h.act("alice", sessionId, "updateTask_tasks", { id: first!.id, metadata: { [INFERRED]: { as: "addressed", confirm: "forged" } } });
+    const edited = (await filedBy(h, "alice")).find((r) => r.id === first!.id);
+    expect(edited!.metadata?.[INFERRED]).toEqual(marker);
+    // The user says No: the turn its cancel wakes runs as the inferred turn did, so its refile waits on their yes.
+    await answer(h, sessionId, edited!, false);
+    const again = (await filedBy(h, "alice")).filter((r) => r.id !== first!.id);
+    expect(again, "the woken turn filed it again").toHaveLength(1);
+    expect(confirmsOf(again[0]!)).toHaveLength(1);
+    const retried = await h.act("alice", sessionId, "retryTask_tasks", { id: first!.id });
+    await h.settled();
+    expect(JSON.stringify(retried.output ?? retried.error)).toContain("inferred_needs_a_yes");
+    expect(h.runs, "no attempt started without a yes").toHaveLength(0);
+  });
+
+  it("a filing can't forge the marker: an addressed turn's task carries none, an inferred turn's carries the board's", async () => {
+    const h = boot();
+    await watching(h, "alice", "watch.observe");
+    await h.route(issue({ title: "Asked [evt-56-forge]", addressed: true }));
+    await h.route(issue({ title: "Inferred [evt-57-forge]" }));
+    const tasks = await filedBy(h, "alice");
+    const asked = tasks.find((task) => task.goal === "Triage [evt-56-forge]");
+    const inferred = tasks.find((task) => task.goal === "Triage [evt-57-forge]");
+    expect(asked!.metadata?.[INFERRED]).toBeUndefined();
+    expect(h.runs.some((run) => run.taskId === asked!.id)).toBe(true);
+    expect(inferred!.metadata?.[INFERRED]).toMatchObject({ as: "inferred", confirm: confirmsOf(inferred!)[0]!.ask.prompt });
+  });
+
   it("a yes releases the task as filed, and it runs", async () => {
     const h = boot();
     const sessionId = await watching(h, "alice", "watch.observe");
     await h.route(issue({ title: "Inferred [evt-53]" }));
-    const [row] = await filedBy(h, "alice");
-    await answer(h, sessionId, row!, true);
-    expect(h.runs.some((run) => run.taskId === row!.id)).toBe(true);
+    const [task] = await filedBy(h, "alice");
+    await answer(h, sessionId, task!, true);
+    expect(h.runs.some((run) => run.taskId === task!.id)).toBe(true);
   });
 
   it("a task the user said yes to, then cancelled mid-run, can be retried: the yes stands", async () => {
@@ -317,21 +369,21 @@ describe("observe's confirm closes only on the user's yes", () => {
     const h = boot([], ["issue", "comment"], { holds: new Map([["gate", gate]]) });
     const sessionId = await watching(h, "alice", "watch.observe");
     await h.route(issue({ title: "Inferred [evt-54-hold]" }));
-    const [row] = await filedBy(h, "alice");
+    const [task] = await filedBy(h, "alice");
     // The yes starts it; its run waits on the gate.
-    const [hold] = confirmsOf(row!);
-    await h.act("alice", sessionId, "updateTask_tasks", { id: row!.id, answers: hold!.id, done: true });
-    for (let i = 0; i < 100 && !h.runs.some((run) => run.taskId === row!.id); i++) await new Promise((r) => setTimeout(r, 20));
-    expect(h.runs.filter((run) => run.taskId === row!.id)).toHaveLength(1);
+    const [hold] = confirmsOf(task!);
+    await h.act("alice", sessionId, "updateTask_tasks", { id: task!.id, answers: hold!.id, done: true });
+    for (let i = 0; i < 100 && !h.runs.some((run) => run.taskId === task!.id); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(h.runs.filter((run) => run.taskId === task!.id)).toHaveLength(1);
     // The user cancels it mid-run; the run then ends.
-    await h.act("alice", sessionId, "updateTask_tasks", { id: row!.id, status: "cancelled" });
+    await h.act("alice", sessionId, "updateTask_tasks", { id: task!.id, status: "cancelled" });
     open();
     await h.settled();
-    expect((await filedBy(h, "alice")).find((r) => r.id === row!.id)?.status).toBe("cancelled");
-    const retried = await h.act("alice", sessionId, "retryTask_tasks", { id: row!.id });
+    expect((await filedBy(h, "alice")).find((r) => r.id === task!.id)?.status).toBe("cancelled");
+    const retried = await h.act("alice", sessionId, "retryTask_tasks", { id: task!.id });
     await h.settled();
     expect(JSON.stringify(retried.output ?? retried.error)).not.toContain("inferred_needs_a_yes");
-    expect(h.runs.filter((run) => run.taskId === row!.id)).toHaveLength(2);
+    expect(h.runs.filter((run) => run.taskId === task!.id)).toHaveLength(2);
   });
 });
 

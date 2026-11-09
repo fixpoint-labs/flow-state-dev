@@ -315,8 +315,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
             ...(onRouted === undefined ? {} : { onRouted }),
             // A task filed on an inferred turn wakes its filer's turn as that forward's turn did (a No's
             // cancel included), so the work the user declined isn't filed again unheld.
-            turnStateOf: (row) => {
-              const forward = row.metadata?.[INFERRED_FORWARD_METADATA] as { as?: unknown; url?: unknown } | undefined;
+            turnStateOf: (task) => {
+              const forward = task.metadata?.[INFERRED_FORWARD_METADATA] as { as?: unknown; url?: unknown } | undefined;
               return forward?.as === "inferred" && typeof forward.url === "string"
                 ? { [RECEIVED_FORWARD_STATE]: { as: "inferred", url: forward.url } }
                 : undefined;
@@ -335,7 +335,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
           installation: options.installation,
           flowKind: options.flowKind,
           // `off`: an inferred forward lands as a line, and no model runs on it.
-          landsOnly: (ctx, row) => row.forward?.as === "inferred" && (options.inferredWork?.(ctx) ?? "observe") === "off"
+          landsOnly: (ctx, message) => message.forward?.as === "inferred" && (options.inferredWork?.(ctx) ?? "observe") === "off"
         }),
         [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!, async (ctx) =>
           soleTaskDelegate(await delegates.taskDelegates(ctx))
