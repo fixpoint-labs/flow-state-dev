@@ -2,7 +2,7 @@
 
 [Spec](../SPEC.md) · [Decisions](../DECISIONS.md) · example
 
-> **PROPOSED.** A sketch from the design review, not code. None of the APIs it names exist yet (`defineView`, `defineKit`, `runBy`, `fsd.resource`, `useView`, `ViewOutput`, kit slots and the kits' views). Names follow the working name "kit", which is open hold [O5](../DECISIONS.md#o5). The child that builds each piece owns its real shape.
+> **PROPOSED.** A sketch from the design review, not code. None of the APIs it names exist yet (`defineView`, `defineKit`, `runBy`, `fsd.resource`, `useView`, `ViewOutput`, kit slots and the kits' views). The name "kit" is the owner's answer to [O5](../DECISIONS.md#o5). The child that builds each piece owns its real shape.
 
 `src/lab.ts`, proposed, replacing `src/adapter.ts` (1,498 lines). Mostly the app's own thread renderer, plus a handful of hooks named in the app's words. **About 250 lines in all, about 135 of them the renderer that was already the app's. That is an estimate;** [FIX-2628](https://linear.app/fixpoint-labs/issue/FIX-2628) measures it. The second block is a component's side of it, today against proposed.
 

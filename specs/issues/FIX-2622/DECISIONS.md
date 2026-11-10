@@ -4,14 +4,15 @@
 
 One decision is the sign-off surface: what the proof builds. Whether FSD should have kits is
 the epic's [O1](../../epics/FIX-2618/DECISIONS.md#o1), and what they are called is
-[O5](../../epics/FIX-2618/DECISIONS.md#o5); both stay the owner's.
+[O5](../../epics/FIX-2618/DECISIONS.md#o5); the owner decided both on 2026-11-10 (kits, yes;
+"kit"), and this proof tests O1's answer.
 
 ## The tree
 
 ```mermaid
 flowchart TD
   I["FIX-2622"] --> D1["D1 · two variants, equal effort<br/>a kit host and a better-API host"]
-  D1 -.->|"rejected"| X1["the kit host alone<br/>can't fire the collapse trigger"]
+  D1 -.->|"rejected"| X1["the kit host alone<br/>can't reopen O1"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -22,10 +23,10 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Rebuilding the host on a kit alone and counting what went, as the Linear issue first described it |
-| **Because** | The claim is a comparison. The epic's collapse trigger and O1's mind-changer both ask whether *a better workforce install API* removes the wiring without a new unit. A kit host alone credits every removed line to the kit, including lines a workforce fix would remove just as well, so it can confirm kits and never refute them |
-| **Locks in** | Roughly twice the proof's work, and a workforce API sketch that is retained beside the kit sketch. If kits win, that sketch is evidence for O1; if it wins, it is the start of the workforce fix the collapse files. Either way the owner answers O1 on a table both sides had a fair shot at |
+| **Because** | The claim is a comparison. The epic's collapse trigger and O1's mind-changer, which still stand under the owner's answer, both ask whether *a better workforce install API* removes the wiring without a new unit. A kit host alone credits every removed line to the kit, including lines a workforce fix would remove just as well, so it can confirm kits and never refute them |
+| **Locks in** | Roughly twice the proof's work, and a workforce API sketch that is retained beside the kit sketch. If kits win, that sketch is evidence for O1's answer; if it wins, it is the start of the workforce fix a collapse would file. Either way O1's answer is tested on a table both sides had a fair shot at |
 
-![D1: two variants with equal effort, chosen, beside the kit host alone. Decides it: whether the proof can refute kits at all, since a kit host alone credits every removed line to the kit. Price: about twice the proof's work. Locks in that O1 is answered on a table both sides had a fair shot at. Flips if the callback and casts trace to one workforce signature a one-line fix removes](figures/d1-two-variants.svg)
+![D1: two variants with equal effort, chosen, beside the kit host alone. Decides it: whether the proof can refute kits at all, since a kit host alone credits every removed line to the kit. Price: about twice the proof's work. Locks in that O1's answer is tested on a table both sides had a fair shot at. Flips if the callback and casts trace to one workforce signature a one-line fix removes](figures/d1-two-variants.svg)
 
 It comes down to refutability: the kit host alone can confirm kits but never refute them.
 
@@ -50,12 +51,15 @@ the proof is the kit host plus that line.
 - **The coder routing stays as it is.** Merging teammates' `coder.ts` routing with
   claude-code-style's is FIX-2627's shared coding worker flow, and a proof that did it would
   credit that merge to the kit.
-- **"Kit" is the working name, and flows are imported** in variant A. The proof lists which of
-  the host's flows a user would configure, as input to O1's copied half, and decides neither O1's
-  split nor [O5](../../epics/FIX-2618/DECISIONS.md#o5).
+- **Variant A installs workforce with its file convention** ([O1](../../epics/FIX-2618/DECISIONS.md#o1)).
+  The host's `workforce/` tree is read through the kit's install, by the loader's walk
+  primitives standing in for the engine subpath, not by a `readDeclaredRoster` call in the host;
+  those lines count as A's only where B's API doesn't absorb them too. Worker flows stay imported,
+  and the proof lists which of the host's flows a user would configure, as input to FIX-2626's
+  scaffold. Variant B gets the same effort and may move the tree read into its install API.
 - **The POC lives under this issue**, at `specs/issues/FIX-2622/poc/kit-or-api/`. The Linear
   description said the epic's `poc/`; the issue owns the experiment, and the epic the four-line
-  result. A verdict that fires the collapse trigger goes to the epic as its own amendment PR.
+  result. A verdict where B removes it all goes to the owner, then to the epic as its own amendment PR.
 
 ## Considered and dropped
 
@@ -83,5 +87,9 @@ whole set by the spec-set author; see the set PR. One finding folded: D1.
 
 - **Draft (2026-11-09)** — written in the stage-1 spec set. Variant B added: the Linear issue
   described the kit host alone, which can't fire the collapse trigger it exists to test.
+- **Owner decisions (2026-11-10)** — amended in the epic's follow-up PR from `main` (this spec
+  merged in #4986). O1 and O5 are decided; variant A now installs workforce with its file
+  convention, the attribution credits the tree read accordingly, and a B-wins verdict goes to the
+  owner as a reason to reopen O1. Variant B and the parity check are unchanged.
 
 **Open: none of this issue's own.**

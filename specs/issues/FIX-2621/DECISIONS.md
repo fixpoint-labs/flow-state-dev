@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · **Decisions**
 
 One decision is the sign-off surface: where the check runs. The verdict itself is input to the
-epic's [O2](../../epics/FIX-2618/DECISIONS.md#o2), which stays the owner's.
+epic's [O2](../../epics/FIX-2618/DECISIONS.md#o2), which the owner decided (views replace reads); a REFUTED verdict returns it to them to reopen.
 
 ## The tree
 
@@ -35,7 +35,7 @@ removes the drift instead of catching it.
 ## Decided, not asked
 
 - **Touches are recorded per resource, collection and board, not per key.** `dependsOn`
-  declares resources; keys are FIX-2625's and wait for [O4](../../epics/FIX-2618/DECISIONS.md#o4).
+  declares resources; keys are FIX-2625's ([O4](../../epics/FIX-2618/DECISIONS.md#o4) is decided; parked with stage 2 under D2).
 - **Two real reads, not a toy.** The board's read reaches data through a capability, which is
   the path most likely to hide from a recorder.
 - **The POC lives under this issue**, at `specs/issues/FIX-2621/poc/dependency-check/`. The
@@ -62,7 +62,7 @@ whole set by the spec-set author; see the set PR.
    "cheap enough for production" row.
 3. **Other shapes** — static checking; inference (both above).
 4. **New factors** — none since the epic's analysis.
-5. **Necessity** — earns its place: O2's answer rests on it.
+5. **Necessity** — earns its place: O2's answer is tested by it.
 6. **Ergonomics** — the failure must name the missing entry, or developers turn it off.
 7. **Concerns** — a capability that reads through a handle the context never sees.
 

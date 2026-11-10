@@ -8,7 +8,7 @@
 |---|---|---|
 | **writes a view** (once [FIX-2623](https://linear.app/fixpoint-labs/issue/FIX-2623) ships one) | Would list `dependsOn` by hand, and a list that misses one resource silently stops the screen updating when it changes | Nothing yet. This proves whether a test can catch the missing entry, which is what makes the list safe to ask for |
 | **specs views** (FIX-2623) | Must assume declared dependencies can be checked | Specs against a recorded verdict, and the method the proof used |
-| **decides [O2](../../epics/FIX-2618/DECISIONS.md#o2)** (the owner) | Weighs "views replace reads" on a check nobody has seen run | Reads what the check caught, what it missed and what it cost |
+| **decided [O2](../../epics/FIX-2618/DECISIONS.md#o2)** (the owner: views replace reads, 2026-11-10) | Decided on a check nobody has seen run | Reads what the check caught, missed and cost: the answer confirmed, or a reason to reopen it |
 | **owns the epic** | Approved a division that rests on this claim ([D2](../../epics/FIX-2618/DECISIONS.md#d2)) | Reads four lines in the epic's decisions saying whether it held |
 
 The epic names the risk in O2: "`dependsOn` is declared by hand and can drift from what the
@@ -51,10 +51,10 @@ a capability is the failure it exists to catch.
 
 | Verdict | What the epic does |
 |---|---|
-| **CONFIRMED** | [O2](../../epics/FIX-2618/DECISIONS.md#o2)'s recommendation stands. FIX-2623 builds the check into development and tests ([D1](DECISIONS.md#d1)), on this method |
+| **CONFIRMED** | [O2](../../epics/FIX-2618/DECISIONS.md#o2)'s answer stands. FIX-2623 builds the check into development and tests ([D1](DECISIONS.md#d1)), on this method |
 | **CONFIRMED, and cheap enough for production** | The same, and FIX-2623 weighs inferring `dependsOn` from the recording instead of declaring it (the Convex shape the epic's analysis recorded). That changes FIX-2623's design, not O2's answer |
-| **REFUTED: paths it can't see** | Each unseen path is named. FIX-2623's spec either routes it through the context, named as work, or O2's mind-changer fires and the owner weighs keeping "read" with a scope |
-| **REFUTED: too costly** | O2's mind-changer fires as written: views without a checked `dependsOn` are reads with a scope |
+| **REFUTED: paths it can't see** | Each unseen path is named. FIX-2623's spec either routes it through the context, named as work, or O2's mind-changer fires and goes back to the owner to reopen O2, keeping "read" with a scope |
+| **REFUTED: too costly** | O2's mind-changer fires as written and goes back to the owner to reopen O2: views without a checked `dependsOn` are reads with a scope |
 
 ## What stays as it is
 
@@ -85,7 +85,7 @@ a capability is the failure it exists to catch.
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** a verdict on the real read
-paths, with the cost measured. If wrong: O2 is answered on a check that only works on toys.
+paths, with the cost measured. If wrong: O2 stands on a check that only works on toys.
 
 **[The debt](#whats-already-here-and-the-debt), net flat:** a retained experiment. If wrong:
 a POC someone imports.
@@ -93,6 +93,6 @@ a POC someone imports.
 1. **[D1](DECISIONS.md#d1) · The check runs in development and tests, never on every
    production read.** If wrong: drift that only production data triggers goes uncaught.
 
-**Open: none.** The verdict feeds the epic's [O2](../../epics/FIX-2618/DECISIONS.md#o2), which stays the owner's.
+**Open: none.** The verdict tests the owner's answer to the epic's [O2](../../epics/FIX-2618/DECISIONS.md#o2); a REFUTED verdict returns it to the owner to reopen.
 
 Prototype · `engine`, `orchestration` (POC only) · small · epic [FIX-2618](../../epics/FIX-2618/SPEC.md) stage 1
