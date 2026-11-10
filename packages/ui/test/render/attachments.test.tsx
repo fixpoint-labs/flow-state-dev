@@ -11,7 +11,7 @@
 import type { FileContent } from "@flow-state-dev/core/items";
 import { act, cleanup, renderHook, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   AttachButton,
   AttachmentStrip,
@@ -415,5 +415,48 @@ describe("a user line with files", () => {
     fireEvent.error(screen.getByRole("img", { name: "gone.png" }));
     expect(screen.getByText("gone.png")).toBeTruthy();
     expect(screen.getByText("Couldn't load")).toBeTruthy();
+  });
+
+  // An app that authenticates by headers (a custom fetcher) can't put them on a
+  // plain <img> request, so the thumbnail has to come through its own read.
+  it("reads a thumbnail through readFile when one is given, and shows the bytes it returns", async () => {
+    const create = vi.fn(() => "blob:local-1");
+    const revoke = vi.fn();
+    const saved = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke });
+    onTestFinished(() => void Object.assign(URL, saved));
+    const readFile = vi.fn(async () => new Blob(["png"], { type: "image/png" }));
+    const file = { type: "file", mediaType: "image/png", filename: "auth.png", data: "fsd-blob:b_authauth12" };
+    const { unmount } = render(
+      <Message
+        item={{ id: "i3", type: "message", role: "user", status: "completed", content: [file] } as never}
+        readFile={readFile}
+      />,
+    );
+    const img = (await screen.findByRole("img", { name: "auth.png" })) as HTMLImageElement;
+    expect(img.getAttribute("src")).toBe("blob:local-1");
+    expect(readFile).toHaveBeenCalledWith(file, "/api/flows/blobs/b_authauth12");
+    unmount();
+    expect(revoke).toHaveBeenCalledWith("blob:local-1");
+  });
+
+  it("says Couldn't load when readFile fails", async () => {
+    const readFile = vi.fn(async () => {
+      throw new Error("401");
+    });
+    render(
+      <Message
+        item={{
+          id: "i4",
+          type: "message",
+          role: "user",
+          status: "completed",
+          content: [{ type: "file", mediaType: "image/png", filename: "locked.png", data: "fsd-blob:b_lockedlk12" }],
+        } as never}
+        readFile={readFile}
+      />,
+    );
+    expect(await screen.findByText("Couldn't load")).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "locked.png" })).toBeNull();
   });
 });

@@ -484,13 +484,16 @@ export interface AttachmentPreviewProps {
   status?: PendingAttachment["status"];
   /** Why the file was refused, shown on its chip. */
   refusal?: string;
+  /** The file couldn't be read: drawn as a chip that says so. */
+  unavailable?: boolean;
   onRemove?: () => void;
   className?: string;
 }
 
 /** One file: a thumbnail for an image, a chip (name, type, size) for anything else or an image that can't be read. */
-export function AttachmentPreview({ filename, mediaType, size, src, status, refusal, onRemove, className }: AttachmentPreviewProps) {
-  const [broken, setBroken] = useState(false);
+export function AttachmentPreview({ filename, mediaType, size, src, status, refusal, unavailable, onRemove, className }: AttachmentPreviewProps) {
+  const [failed, setFailed] = useState(false);
+  const broken = failed || unavailable === true;
   const image = src !== undefined && !broken && mediaType.startsWith("image/") && status !== "refused";
   const removeButton = onRemove ? (
     <button
@@ -510,7 +513,7 @@ export function AttachmentPreview({ filename, mediaType, size, src, status, refu
         <img
           alt={filename}
           className={cn("size-16 rounded-md border border-border object-cover", status === "uploading" && "opacity-60")}
-          onError={() => setBroken(true)}
+          onError={() => setFailed(true)}
           src={src}
         />
         {busy}
