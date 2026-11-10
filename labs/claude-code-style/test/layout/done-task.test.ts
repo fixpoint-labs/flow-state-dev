@@ -1,11 +1,11 @@
 /**
- * A finished task's row in the tasks pane, laid out by a real browser at the
- * pane's default and narrowest widths (`pane-width.ts`): the row fits the
+ * A finished task's line in the tasks pane, laid out by a real browser at the
+ * pane's default and narrowest widths (`pane-width.ts`): the line fits the
  * pane, so the list never scrolls sideways, and its title keeps room to be
  * read. happy-dom lays nothing out, so this runs the lab's stylesheet in
  * Chromium, over a Vite server on `index.html` beside it.
  *
- * Red state produced before this was trusted: the row as it was, with the
+ * Red state produced before this was trusted: the line as it was, with the
  * worker, spend and age each refusing to shrink, overflows at both widths
  * and squeezes the title to nothing.
  */
@@ -37,15 +37,15 @@ afterAll(async () => {
   await server?.close();
 });
 
-describe("a finished task's row in the tasks pane", () => {
+describe("a finished task's line in the tasks pane", () => {
   for (const width of [PANE_DEFAULT, PANE_MIN]) {
     it(`fits the pane at ${width}px with its title readable`, async () => {
       const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
       try {
         await page.goto(`${origin}/index.html?width=${width}`);
         await page.getByText(/Done · 3/).click();
-        const rows = page.locator('[data-task-status="completed"]');
-        await expect.poll(() => rows.count()).toBe(3);
+        const done = page.locator('[data-task-status="completed"]');
+        await expect.poll(() => done.count()).toBe(3);
 
         const list = page.locator('aside[aria-label="Background tasks"] .overflow-y-auto');
         const { scrollWidth, clientWidth } = await list.evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }));
@@ -53,11 +53,11 @@ describe("a finished task's row in the tasks pane", () => {
 
         const box = (await list.boundingBox())!;
         for (let i = 0; i < 3; i++) {
-          const row = (await rows.nth(i).boundingBox())!;
-          expect(row.x + row.width, `row ${i + 1} runs past the pane`).toBeLessThanOrEqual(box.x + box.width + 0.5);
+          const line = (await done.nth(i).boundingBox())!;
+          expect(line.x + line.width, `task ${i + 1} runs past the pane`).toBeLessThanOrEqual(box.x + box.width + 0.5);
           // Room for a few words of the title, not a sliver of ellipsis.
-          const title = (await rows.nth(i).locator("[data-task-title]").boundingBox())!;
-          expect(title.width, `row ${i + 1}'s title`).toBeGreaterThanOrEqual(80);
+          const title = (await done.nth(i).locator("[data-task-title]").boundingBox())!;
+          expect(title.width, `task ${i + 1}'s title`).toBeGreaterThanOrEqual(80);
         }
       } finally {
         await page.close();

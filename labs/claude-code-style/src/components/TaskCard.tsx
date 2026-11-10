@@ -57,7 +57,7 @@ export function TaskDoneRow({ task, selected, onOpen, now }: { task: LabTask; se
       data-task-status={task.status}
     >
       <span className={cn("size-1.5 shrink-0 rounded-full", status.dot)} aria-label={status.label} />
-      {/* The title keeps room to be read; the worker and the spend give way to it, cut short, so the row never outgrows the pane. */}
+      {/* The title keeps room to be read; the worker and the spend give way to it, cut short, so the line never outgrows the pane. */}
       <span className="min-w-24 flex-1 truncate" data-task-title>
         {task.title}
       </span>

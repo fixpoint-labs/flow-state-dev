@@ -1,8 +1,8 @@
 /**
  * The tasks pane at a set width, drawn by the lab's own stylesheet, for the
- * layout tests in a real browser (`done-row.test.ts`). The width is the
+ * layout tests in a real browser (`done-task.test.ts`). The width is the
  * page's `?width=`, the pane's sizes as `pane-width.ts` bounds them. The
- * finished tasks carry what a real run leaves on a row: a long title, a
+ * finished tasks carry what a real run leaves on a task: a long title, a
  * worker (one with a long id), a model with tokens and a charge or no spend
  * at all, and an age.
  */
