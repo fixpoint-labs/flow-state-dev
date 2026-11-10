@@ -1,69 +1,37 @@
 /**
- * Keep the workspace's dependencies and package builds current for `pnpm dev`.
+ * Install the workspace's dependencies before `pnpm dev` starts any app.
  *
- * Every hosted page imports the workspace packages through their built
- * `dist/`, so a page rebuilt against a stale `dist/` (or a missing
- * `node_modules`) shows yesterday's framework. Two steps fix that:
+ * `pnpm install --frozen-lockfile`: what a pull added to the lockfile gets
+ * installed, and a dev run never rewrites the lockfile. A mismatch is reported,
+ * not fixed. It is about a second when nothing changed.
  *
- * - `install`: `pnpm install --frozen-lockfile`. Run once, before any app
- *   starts: replacing `node_modules` under a running server breaks it. Frozen,
- *   so a dev run never rewrites the lockfile; a mismatch is reported, not fixed.
- * - `packages`: `turbo run build` over `packages/*`. Run before each page
- *   build as well as at start. Turbo's cache makes it about a second when
- *   nothing changed, and a package whose source did change gets a new `dist/`,
- *   which the page build then picks up. Shift Manager is left out: its package
- *   build is a page build, which `rebuild.mjs` already runs for it.
+ * Only ever at start. Replacing `node_modules` under a running server breaks it.
  *
- * A failing step is reported and the run goes on: the pages still build
- * against the last good `dist/`, and a broken package shouldn't stop the
- * other apps from coming up.
+ * No package build belongs here. Every workspace package's runtime entry is its
+ * `src/` (`"default": "./src/index.ts"`; `dist/` is types and publish output),
+ * so the pages bundle package source, `tsx` runs it, and Next transpiles it. A
+ * package edit already reaches a page through the page watcher (`rebuild.mjs`),
+ * which records package source files among its inputs.
  */
 
 /** @typedef {{ cmd: string, args: string[], label: string }} WorkspaceStep */
 
-/**
- * `packages` is the root `packages:build` (`turbo run build --filter="./packages/*"`) minus Shift Manager.
- * The root script can't take the exclusion: `release:build` runs it and publishes Shift Manager's `dist/`.
- * Change what "build the packages" means in both places.
- *
- * @type {{ install: WorkspaceStep, packages: WorkspaceStep }}
- */
-const WORKSPACE_STEPS = {
-  install: { cmd: "pnpm", args: ["install", "--frozen-lockfile", "--prefer-offline"], label: "[install]" },
-  packages: { cmd: "pnpm", args: ["turbo", "run", "build", "--filter=./packages/*", "--filter=!@flow-state-dev/shift-manager"], label: "[packages]" },
-};
+/** @type {WorkspaceStep} */
+const INSTALL = { cmd: "pnpm", args: ["install", "--frozen-lockfile", "--prefer-offline"], label: "[install]" };
 
 /**
- * Build the refresh functions over a runner.
- *
- * `packages()` calls made while one is running share its result instead of
- * starting a second turbo run: three pages rebuilding together need one package
- * build, not three.
+ * Run the install. A failure is reported and the run goes on with what is
+ * installed: the apps come up, and a lockfile that moved is the developer's to
+ * install by hand.
  *
  * @param {object} options
  * @param {(step: WorkspaceStep) => Promise<number>} options.run  Runs a step to its end; resolves with its exit code.
  * @param {(line: string) => void} [options.warn]  Where a failure is reported.
- * @returns {{ install(): Promise<boolean>, packages(): Promise<boolean> }}  Each resolves `true` when the step succeeded.
+ * @returns {Promise<void>}
  */
-export function createWorkspaceRefresh({ run, warn = () => {} }) {
-  /** @type {Promise<boolean> | undefined} */
-  let packagesRun;
-
-  /** @param {WorkspaceStep} step @param {string} hint */
-  const attempt = async (step, hint) => {
-    const code = await run(step);
-    if (code === 0) return true;
-    warn(`${step.label} ${step.args.join(" ")} failed (exit ${code}). ${hint}`);
-    return false;
-  };
-
-  return {
-    install: () => attempt(WORKSPACE_STEPS.install, "Continuing with what is installed; run `pnpm install` by hand if the lockfile moved."),
-    packages() {
-      packagesRun ??= attempt(WORKSPACE_STEPS.packages, "Pages build against the last package build that worked.").finally(() => {
-        packagesRun = undefined;
-      });
-      return packagesRun;
-    },
-  };
+export async function installWorkspace({ run, warn = () => {} }) {
+  const code = await run(INSTALL);
+  if (code !== 0) {
+    warn(`${INSTALL.label} ${INSTALL.args.join(" ")} failed (exit ${code}). Continuing with what is installed; run \`pnpm install\` by hand if the lockfile moved.`);
+  }
 }

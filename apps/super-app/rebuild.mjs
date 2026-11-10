@@ -130,9 +130,9 @@ export function rebuildOnChange({ outDir, repoRoot, build, debounceMs = 200 }) {
       again = true;
       return;
     }
-    // A write that left every recorded file's content as it was isn't a change: an editor's rewrite, a
-    // late event from an earlier save, a package build emitting the same output again. Without this check,
-    // `pnpm dev`'s package build before each page build could trigger the next page build, forever.
+    // A write that left every recorded file's content as it was isn't a change: an editor's rewrite, or a
+    // late watch event from an earlier save (macOS delivers them after the watcher starts). Each would
+    // otherwise start a build of 20 seconds or so that bundles exactly what the last one did.
     if (changeOf(outDir, repoRoot) === undefined) return;
     running = true;
     try {

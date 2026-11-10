@@ -67,8 +67,8 @@ describe("rebuildOnChange", () => {
   });
 
   it("ignores a save that leaves a recorded file's content as it was", async () => {
-    // A package build that fails still rewrites its `dist/` with the same output. Each page build starts
-    // a package build, so rebuilding on every such write would loop: page build, package build, page build.
+    // An editor's rewrite, or a tool re-emitting a file with the same output, touches a recorded file
+    // without changing it: that is no reason to spend a build.
     const build = fakeBuild();
     watcher = rebuildOnChange({ outDir, repoRoot: repo, build, debounceMs: 20 });
     await sleep(100);
