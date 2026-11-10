@@ -328,6 +328,14 @@ export type PromptInputProps = Omit<
   HTMLAttributes<HTMLFormElement>,
   "onSubmit" | "onError"
 > & {
+  /**
+   * The attachment state, from `useAttachments`, when it is held above the
+   * composer: two drawings of one composer pass the same one, so a file
+   * attached in either is sent, and cleared, once. Its own options then apply,
+   * and `client`, `sessionId`, `accept`, the limits and `onError` here are
+   * ignored. Ignored inside a PromptInputProvider, whose own applies.
+   */
+  attachments?: Attachments;
   /** Where attached files are uploaded. With none, an attached file is refused by name. Ignored inside a PromptInputProvider, whose own applies. */
   client?: AttachmentUploader | null;
   /** The open conversation: a switch drops the draft's files. */
@@ -362,6 +370,7 @@ const ERROR_CODES = {
 } as const;
 
 export const PromptInput = ({
+  attachments,
   client,
   sessionId,
   accept,
@@ -374,6 +383,9 @@ export const PromptInput = ({
   const controller = useOptionalPromptInputController();
   if (controller) {
     return <PromptInputForm attachments={controller.attachments} controller={controller} {...props} />;
+  }
+  if (attachments) {
+    return <PromptInputForm attachments={attachments} controller={null} {...props} />;
   }
   return (
     <PromptInputOwnAttachments
@@ -393,7 +405,7 @@ export const PromptInput = ({
 
 type PromptInputFormProps = Omit<
   PromptInputProps,
-  "client" | "sessionId" | "accept" | "maxFiles" | "maxFileSize" | "onError" | "syncHiddenInput"
+  "attachments" | "client" | "sessionId" | "accept" | "maxFiles" | "maxFileSize" | "onError" | "syncHiddenInput"
 >;
 
 /** A PromptInput outside any provider: the attachment state is its own. */

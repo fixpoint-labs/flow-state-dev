@@ -40,7 +40,7 @@ import {
   PromptInputSubmit,
   type PromptInputMessage,
 } from "@/components/flow-state/prompt-input";
-import type { AttachmentUploader } from "@/components/flow-state/attachments";
+import { useAttachments, type Attachments } from "@/components/flow-state/attachments";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 import { SessionConversationLoading } from "@/components/session-conversation-loading";
@@ -187,6 +187,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   // The page's one client, as the app's user: the rail, the workforce panels and request statuses read through it.
   const fsd = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: BASE_PATH, fetcher: panelFetch }), []);
   // Where the composer uploads a file as it is attached: the assistant's own flow, so its route's checks apply.
+  // Through this page's one client: no public hook hands out the provider's.
   const assistantUploads = useMemo(() => fsd.flow("chat-agent"), [fsd]);
   // The assistant's own sessions, and which one the stream is on. The rail's
   // navigator reads the flow list once more for itself: one extra read per
@@ -267,6 +268,11 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
   const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
   const [message, setMessage] = useDraft(SESSION_DRAFT, flow.activeSessionId);
+  // The draft's files, held here like its text: the panel is drawn in both responsive trees, and
+  // each composer's own would send, and clear, only the files attached in that drawing. A switch of
+  // session drops them; keyed on the session asked for, not its snapshot's, which arrives late and
+  // would drop a file attached first.
+  const draftFiles = useAttachments({ client: assistantUploads, sessionId: flow.activeSessionId ?? null });
   const messageRef = useRef(message);
   messageRef.current = message;
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
@@ -558,7 +564,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
       waiting={lines.waiting}
       conversationLoading={conversationLoading}
       session={session}
-      uploads={assistantUploads}
+      draftFiles={draftFiles}
       sendSignal={chatSignal}
       voice={voice}
       ttsEnabled={ttsEnabled}
@@ -852,8 +858,8 @@ interface ChatPanelProps {
   waiting: readonly HarnessWaitingLine[];
   conversationLoading: boolean;
   session: ReturnType<typeof useSession>;
-  /** Where the composer uploads the files attached to a line. */
-  uploads: AttachmentUploader;
+  /** The draft's files, one state for both drawings of the panel. */
+  draftFiles: Attachments;
   /** The assistant conversation's "the user sent", heard by every drawing's feed. */
   sendSignal: SendSignal;
   /** The page's one voice: recording sends through it, and it plays each reply once. */
@@ -1004,7 +1010,7 @@ function ChatPanel({
   waiting,
   conversationLoading,
   session,
-  uploads,
+  draftFiles,
   sendSignal,
   voice,
   ttsEnabled,
@@ -1073,9 +1079,7 @@ function ChatPanel({
             <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={composerDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
-          {/* A switch of session drops the draft's files. The session asked for, not its loaded snapshot's:
-              that arrives late, and its change would drop a file attached first. */}
-          <PromptInput onSubmit={send} client={uploads} sessionId={session.sessionId ?? null}>
+          <PromptInput onSubmit={send} attachments={draftFiles}>
             <PromptInputAttachments />
             <PromptInputTextarea
               name="message"

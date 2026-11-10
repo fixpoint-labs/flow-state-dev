@@ -211,6 +211,37 @@ describe("attaching in PromptInput", () => {
     expect(form.getAttribute("data-dragging")).toBeNull();
     expect(screen.getByRole("img", { name: "dropped.png" })).toBeTruthy();
   });
+
+  // A page that draws one composer twice (one per responsive layout) holds one draft for both:
+  // a file attached in one is sent from the other, and cleared from both, never sent twice.
+  it("shares one attachment state between two composers given the same one", async () => {
+    const client = uploader();
+    const onSubmit = vi.fn<(message: PromptInputMessage) => void>();
+    function Twice() {
+      const attachments = useAttachments({ client });
+      return (
+        <>
+          {[0, 1].map((i) => (
+            <PromptInput attachments={attachments} key={i} onSubmit={onSubmit}>
+              <PromptInputAttachments />
+              <PromptInputTextarea />
+              <PromptInputSubmit />
+            </PromptInput>
+          ))}
+        </>
+      );
+    }
+    render(<Twice />);
+    const [first, second] = screen.getAllByTestId("message-input");
+    await act(async () => paste(first!, [file("shot.png", "image/png")]));
+    expect(screen.getAllByRole("img", { name: "shot.png" })).toHaveLength(2);
+    await act(async () => {
+      fireEvent.keyDown(second!, { key: "Enter" });
+    });
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]![0].attachments.map((f) => f.filename)).toEqual(["shot.png"]);
+    expect(screen.queryAllByRole("img", { name: "shot.png" })).toHaveLength(0);
+  });
 });
 
 describe("PromptInput's Send", () => {

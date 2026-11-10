@@ -135,6 +135,7 @@ function SessionBody({
   const session = useSession(sessionId, { items: true, autoResume: true });
   const [message, setMessage] = useDraft(SESSION_DRAFT, sessionId);
   // Where the composer uploads a file as it is attached: the session's own flow, so its route's checks apply.
+  // A client of its own, as the frame's rail has: no public hook hands out the provider's.
   const uploads = useMemo(() => createClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: BASE_PATH }).flow(flowKind), [flowKind]);
   const messageRef = useRef(message);
   messageRef.current = message;

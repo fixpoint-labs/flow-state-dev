@@ -201,6 +201,30 @@ describe("Flow State chat sends a pasted image", () => {
     expect(within(form).queryByRole("img", { name: "shot.png" })).not.toBeNull();
   });
 
+  // The panel is drawn in both responsive trees, and the text draft is shared between them.
+  // A file must be too: attached in one, a resize across the breakpoint shows the other, and
+  // Send there has to carry it, and clear it from both, so it can't ride along on a later line.
+  it("sends a file attached in one drawing of the panel from the other, and clears it from both", async () => {
+    render(<Page />);
+    await act(async () => undefined);
+    const [first, second] = screen.getAllByTestId("message-input") as HTMLTextAreaElement[];
+    const image = new File([new Uint8Array(16)], "shot.png", { type: "image/png" });
+    await act(async () => {
+      fireEvent.paste(first!, { clipboardData: { items: [{ kind: "file", getAsFile: () => image }], files: [image] } });
+    });
+    await act(async () => {
+      fireEvent.change(second!, { target: { value: "what is in this picture?" } });
+    });
+    await act(async () => {
+      fireEvent.submit(second!.closest("form")!);
+    });
+    await waitFor(() => expect(sendAction).toHaveBeenCalledOnce());
+    expect(sendAction.mock.calls[0]![2]).toMatchObject({ attachments: [expect.objectContaining({ filename: "shot.png" })] });
+    await act(async () => undefined);
+    expect(within(first!.closest("form")!).queryByRole("img", { name: "shot.png" })).toBeNull();
+    expect(within(second!.closest("form")!).queryByRole("img", { name: "shot.png" })).toBeNull();
+  });
+
   // The session's snapshot arrives after the page can take a file. Keyed on it, the composer
   // read its arrival as a switch of session and dropped the file: shown, then sent without it.
   it("keeps a file attached before the session's snapshot arrives", async () => {
