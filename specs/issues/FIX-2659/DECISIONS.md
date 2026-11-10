@@ -48,12 +48,17 @@ flowchart TD
 - **Where:** workforce's filing path, the same place that checks an explicit `worktreeOf`
   ([D1](#d1)). When a follow-up is filed, workforce finds the worktree's owner the same way it
   does for an explicit `worktreeOf`: the root (one hop, as `followUpOf` already resolves), or,
-  when the root itself carries `worktreeOf`, that owner. If the owner has a `ready` worktree
-  entry for this user, workforce writes `worktreeOf: <owner>` onto the follow-up. So a
-  follow-up of B, where B ran in A's worktree, joins A's worktree; it never names B, which owns
-  no entry. A root with no entry (a chat task, a files-only run) gets nothing written,
-  so the follow-up provisions as today, and orchestration's generic follow-up placement never
-  learns about worktrees. A filer can't name a different one on a follow-up
+  when the root itself carries `worktreeOf`, that owner. Workforce writes `worktreeOf: <owner>`
+  onto the follow-up when the owner has a `ready` worktree entry for this user, **or** the
+  owner is a coding run on a repository that is still open and hasn't provisioned yet. A
+  follow-up filed while its root is starting is a supported case (`resolveFollowUp` accepts a
+  running root and queues the follow-up), and it must not fall back to a fresh checkout. In
+  that case the `ready` check moves to run time: the manager attaches when the follow-up
+  opens, and refuses by name if the owner still has no ready entry. So a follow-up of B, where
+  B ran in A's worktree, joins A's worktree; it never names B, which owns no entry. A root
+  that is not a coding run on a repository (a chat task, a files-only run) gets nothing
+  written, so the follow-up provisions as today, and orchestration's generic follow-up
+  placement never learns about worktrees. A filer can't name a different one on a follow-up
   (`follow_up_takes_no_worktree`, workforce's rule).
 - **The manager is mechanism:** it reads `task.worktreeOf` and nothing else. Attach if told,
   provision otherwise. It never reads `followUpOf` to choose a place. This keeps the manager on
@@ -122,6 +127,9 @@ flowchart TD
 
 - Codex (spec PR): a follow-up of a task that itself attached must resolve to the real owner,
   not to the attached task, which owns no entry. D2 now normalizes the owner as D1 does.
+- Codex (spec PR): a follow-up filed before its coding root provisions must not lose the
+  default. D2 now writes the owner for an open coding root on a repository, and checks
+  `ready` at run time in that case.
 - Cursor (spec PR), for the implementer:
   - Check `worktreeOf` at filing with a keyed lookup (owner task, its run record and place,
     `worktreeKey`, then one get), not a scan of the list (BP-033). This is the same derivation

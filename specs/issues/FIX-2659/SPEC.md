@@ -88,9 +88,11 @@ provisioned for an attached run.
   task that itself attached (resolved one hop, as `followUpOf` is to its root).
 - **A follow-up joins its root's worktree on its own** ([D2](DECISIONS.md#d2), Jake's call):
   workforce's filing path finds the owner, which is the root, or the root's own `worktreeOf`
-  when the root attached. If the owner has a `ready` entry for this user, it writes
-  `worktreeOf: <owner>` onto the follow-up. A follow-up whose root neither owns an entry nor
-  carries `worktreeOf` (a chat task, a files-only run) gets none and provisions as today. The manager reads only `worktreeOf`, never `followUpOf`.
+  when the root attached. It writes `worktreeOf: <owner>` onto the follow-up when the owner
+  has a `ready` entry for this user, or is a coding run on a repository that hasn't
+  provisioned yet (then `ready` is checked when the follow-up opens). A follow-up whose root is
+  not a coding run on a repository (a chat task, a files-only run) gets none and provisions
+  as today. The manager reads only `worktreeOf`, never `followUpOf`.
 - **The manager attaches instead of provisioning** ([D3](DECISIONS.md#d3)): when the task
   carries `worktreeOf`, it reads the owner
   task's run record, derives the owner's location from the owner's identity and recorded branch
