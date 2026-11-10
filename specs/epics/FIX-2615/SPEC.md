@@ -55,6 +55,26 @@ Everything inside the box is the one model a host gets. The fence is the key rul
 
 **Docs:** one contributor reference, `docs/architecture/workforce-projects-and-connectors.md`, defines a project and a connector. [FIX-2645](https://linear.app/fixpoint-labs/issue/FIX-2645) writes it, and its changeset tells the release what the workforce *Projects* page must say. Each child records its own specifics in its changeset.
 
+### Packages and provisional surface
+
+**Provisional.** Every existing symbol is on `main` today; a name after → is a working name, and each child's spec settles the final one. Renamed exports drop the old name, no alias (BP-034).
+
+| Package | What changes | Provisional surface (existing symbol it extends) | Owner |
+|---|---|---|---|
+| `@flow-state-dev/workforce` · `projects/` | The connector entry, the host's set for work with no project, one resolution | `ProjectMcpServers` / `ProjectMcpServerConfig` (`{ url, seedEnv }`) → `Connectors` / `ConnectorConfig`, gaining `allow` · `planProjectMcp` → `planConnectors`: reads the project's list, or the host's set when `runProjectOf` finds no project · a new host option on both factories, e.g. `outsideProject: string[]` · `projectMcpTools` → `connectorTools` (its `named` stays) · `projectMcpCapability` → `connectorCapability`, its `allow` option narrowing only · `checkProjectMcpServers` → `checkConnectors` | FIX-2645 |
+| `@flow-state-dev/workforce` · the project row | `mcpServers` becomes `connectors`; old rows still read (BP-030) | `projectResourceStateSchema.mcpServers` → `connectors` · `ProjectBlocksOptions.mcpServers` → `connectors` · refusal `unknown-mcp-server` → `unknown-connector` · the error reporter's `mcpTools?: ProjectMcpToolsResolver` follows the rename | FIX-2645 |
+| `@flow-state-dev/workforce` · `error-reporter/` | One redaction rule, any key length | `redact` / `secretsFromEnv` (`MIN_SECRET` = 8) and tools' `redactSecrets` become one; which survives is the bug's call | FIX-2012 |
+| `@flow-state-dev/tools` · `/mcp` | Possibly the home of that one rule. Nothing else | `redactSecrets` · `createMcpManager` unchanged, still the one client (ER-2) | FIX-2012 |
+| `@flow-state-dev/codex` | Takes relayed tools through a generic option (ER-5) | `CodexAgentOptions` gains `mcpTools`, the shape `ClaudeCodeAgentOptions.mcpTools` takes, served to the CLI as a local endpoint through `CodexClientOptions.config`; no key in that config (ER-3) | FIX-1986 |
+| `@flow-state-dev/cursor` | The same option, onto the SDK's own slot | `CursorAgentOptions` gains `mcpTools`, mapped to `local.customTools` | FIX-1986 |
+| `@flow-state-dev/mcp` | Maybe: Codex's endpoint, if FIX-1986's spec serves it with the existing transport | `createMcpTransportAdapter`, reused, not changed | FIX-1986 |
+| `@flow-state-dev/shift-manager` · `teams/devteam` | The rename, and Codex and Cursor runs get the relay | `OpenLabOptions.mcpServers` → `connectors` · `FSD_MCP_SERVERS` and the projects' `mcpServers: ["linear"]` follow · `codexHarness` / `cursorHarness` take `mcpTools` as `claudeCodeHarness` does · `mcpCredentialsAdapter` unchanged | FIX-2645 · FIX-1986 |
+| Teammates lab · `labs/teammates/host.mts` | The first consumer with no project | Installs Linear, enables it outside a project, adds the capability to `defineAgentWorkerFlow({ uses })`, passes `mcpTools` to its `claudeCodeAgent`; serves a key route like Shift Manager's so each user stores their own | FIX-2645 |
+| Teammates lab · same file | Its Cursor (default) and Codex runs reach it | `cursorAgent` / `codexAgent` there take `mcpTools` | FIX-1986 |
+| Contributor docs | The word and the model | `docs/contributing/glossary.mjs` gains `connector` · `docs/architecture/workforce-projects-and-connectors.md` | FIX-2645 |
+
+**Not touched**, so the L1/L2 line holds: `@flow-state-dev/core` and `@flow-state-dev/engine` (the relay uses `HarnessCallbackContext` as it is) · `@flow-state-dev/claude-code` (its `mcpTools` is the shape the others copy) · `@flow-state-dev/harness-manager` (its `HarnessFeeds` carries no MCP; Shift Manager's extension does) · `client`, `react` · Kitchen Sink (keeps its `createMcpCapability`). The closure, FIX-2646, adds no package surface: its local MCP test server is test code.
+
 ## The set · as of 2026-11-10
 
 The reviewed snapshot. Live state is in Linear.
