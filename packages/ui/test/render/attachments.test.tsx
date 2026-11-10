@@ -380,6 +380,22 @@ describe("a send's batch", () => {
     expect(onRefused).not.toHaveBeenCalled();
     expect(result.current.refusals).toEqual([]);
   });
+
+  // A failure from the conversation the person left must not show up in the one they moved to.
+  it("doesn't announce a failed upload from a session the composer has since switched away from", async () => {
+    const { client, open } = gated(["a.png"]);
+    const onRefused = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => useAttachments({ client, sessionId, prepare: async (f) => f, onRefused }),
+      { initialProps: { sessionId: "s1" } },
+    );
+    await act(async () => result.current.add([file("a.png", "image/png")]));
+    rerender({ sessionId: "s2" });
+    await open("a.png");
+    expect(onRefused).not.toHaveBeenCalled();
+    expect(result.current.refusals).toEqual([]);
+    expect(result.current.files).toEqual([]);
+  });
 });
 
 describe("downscaling", () => {
