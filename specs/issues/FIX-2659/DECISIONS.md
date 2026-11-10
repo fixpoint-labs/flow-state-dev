@@ -10,8 +10,8 @@ joins its root's worktree on its own. What is left is how each piece honours tha
 flowchart TD
   I["FIX-2659"] --> D1["D1 · typed worktreeOf, checked at filing"]
   D1 -.->|"rejected"| X1["metadata key, or the entry points at the task"]
-  I --> D2["D2 · follow-up default read by the manager"]
-  D2 -.->|"rejected"| X2["stamped onto every follow-up at filing"]
+  I --> D2["D2 · follow-up default applied at filing, by workforce"]
+  D2 -.->|"rejected"| X2["the manager reads followUpOf"]
   I --> D3["D3 · attach: own record, own base, shared branch"]
   D3 -.->|"rejected"| X3["share the owner's run record"]
   I --> D4["D4 · entries get a title; coordinator gets the list"]
@@ -36,23 +36,37 @@ flowchart TD
   finished, and the user's worktree list holds a `ready` entry owned by `{ kind: "run", id }` for
   it (or for its owner, one hop). Refused by rule name otherwise
   (`worktree_of_unknown`, `worktree_of_open`, `worktree_of_missing`). Orchestration holds the
-  field and the follow-up rule; it doesn't know what a worktree is.
+  field; it doesn't know what a worktree is. Workforce owns the filer check and the follow-up
+  default ([D2](#d2)).
 - **Locks in:** `Task.worktreeOf`, `TaskInit.worktreeOf`, the `createTask` tool's input.
 
 <a name="d2"></a>
-## D2 · The follow-up default is read by the manager, not written onto the task
+## D2 · The follow-up default is applied at filing, by workforce; the manager only attaches
 
 - **Jake's call:** a `followUpOf` task joins its root's worktree automatically. The coordinator
   only names `worktreeOf` for unrelated work.
-- **Where:** the manager reads `task.worktreeOf ?? task.followUpOf`. A follow-up task carries no
-  `worktreeOf` of its own, and filing refuses one (`follow_up_takes_no_worktree`).
-- **Rejected, stamping it at filing:** orchestration's follow-up placement would write a coding
-  fact onto every follow-up, chat ones included, and the filing check would refuse a follow-up
-  of a root that had no worktree. Read at run time, a root with no entry means "provision as
-  today", and the two can't drift because there is one reader.
-- **Locks in:** a follow-up of a coding task always attaches when its root's entry is `ready`. A
-  root's worktree that was removed or lost refuses the follow-up's attempt by name, rather than
-  silently starting over.
+- **Where:** workforce's filing path, the same place that checks an explicit `worktreeOf`
+  ([D1](#d1)). When a follow-up is filed and its root (one hop, as `followUpOf` already
+  resolves) owns a `ready` worktree entry for this user, workforce writes `worktreeOf: <root>`
+  onto the follow-up. A root with no entry (a chat task, a files-only run) gets nothing written,
+  so the follow-up provisions as today, and orchestration's generic follow-up placement never
+  learns about worktrees. A filer can't name a different one on a follow-up
+  (`follow_up_takes_no_worktree`, workforce's rule).
+- **The manager is mechanism:** it reads `task.worktreeOf` and nothing else. Attach if told,
+  provision otherwise. It never reads `followUpOf` to choose a place. This keeps the manager on
+  the mechanism side of the split FIX-2583 is making (PR lifecycle opinions move out of the
+  manager into the coding flow), rather than adding a policy there while that work pulls
+  policy out.
+- **Rejected, the manager reads `worktreeOf ?? followUpOf`:** one reader and no drift, but it
+  is a placement policy inside the harness manager, the direction FIX-2583 reverses
+  (Architect, on the spec PR).
+- **Rejected, stamping in orchestration's follow-up placement:** it would write a coding fact
+  onto every follow-up, chat ones included, and orchestration would need to know what a
+  worktree is.
+- **Locks in:** a follow-up of a coding task carries its root as `worktreeOf` from the moment
+  it is filed. If the root's worktree is removed or lost before the follow-up runs, the run
+  refuses by name rather than silently starting over. When FIX-2583's coding flow exists, this
+  default is one of the editable defaults it can carry; the manager is unaffected by that move.
 
 <a name="d3"></a>
 ## D3 · An attached run keeps its own record and base, and shares the branch
@@ -97,6 +111,9 @@ flowchart TD
 ## How it got here
 
 - Initial draft, 2026-11-10, from the issue, Architect's call and Jake's follow-up default.
+- 2026-11-10, Architect's coherence check on the spec PR: D2 moved the follow-up default out of
+  the harness manager and into workforce's filing path, so the manager stays mechanism
+  (FIX-2583). Jake's default is unchanged.
 
 ## Notes from review
 

@@ -53,7 +53,8 @@ flowchart LR
   `worktreeOf: A` does the same. Leg **d**: `worktreeOf` naming an unknown task, another user's
   task, a task whose worktree was removed, or a task still open is refused at filing, naming why;
   an attached run that leaves the worktree on another branch fails its attempt.
-- **Controls that must fail:** `GOAL_CONTROL=no-default` drops the follow-up default; leg b fails
+- **Controls that must fail:** `GOAL_CONTROL=no-default` drops workforce's follow-up default at
+  filing (the manager is untouched); leg b fails
   **`b:joins-root`**. `GOAL_CONTROL=no-attach` provisions instead of attaching; leg c fails
   **`c:attached`**, and leg b fails too. Each control reddens only its own legs.
 - **Unit and lab:** the filing rules in orchestration and workforce; the manager's attach path
@@ -68,26 +69,29 @@ flowchart LR
     F1["createTask"] --> M1["manager: place from own task id"] --> P1["provision a new worktree"]
   end
   subgraph after["After"]
-    F2["createTask<br/>worktreeOf? (checked)"] --> M2["manager: owner = worktreeOf<br/>?? root of followUpOf"]
+    F2["createTask<br/>worktreeOf? (checked)<br/>follow-up: root stamped"] --> M2["manager: owner = worktreeOf"]
     M2 -->|"owner has a ready entry"| AT["attach: owner's place, owner's branch"]
     M2 -->|"no owner"| P2["provision, as today"]
   end
 ```
 
-The task names a worktree, or inherits its root's; the manager carries it out. Nothing new is
+The task names a worktree, or workforce writes its root's at filing; the manager carries it out. Nothing new is
 provisioned for an attached run.
 
 - **A typed `worktreeOf` on the task** ([D1](DECISIONS.md#d1)): orchestration's `Task` and
   `TaskInit` gain `worktreeOf?: string`, a task id, top-level, written once at filing, never
-  patched. The `createTask` tool takes it. A follow-up takes none of its own
-  (`follow_up_takes_no_worktree`), like its other placement settings.
+  patched. The `createTask` tool takes it. A filer can't name one on a follow-up
+  (`follow_up_takes_no_worktree`), like its other placement settings; workforce writes the
+  root's (D2).
 - **Workforce checks it at filing** ([D1](DECISIONS.md#d1)): the named task is on the same board
   and finished, and its worktree entry is the user's own and `ready`. It names the owner, never a
   task that itself attached (resolved one hop, as `followUpOf` is to its root).
 - **A follow-up joins its root's worktree on its own** ([D2](DECISIONS.md#d2), Jake's call):
-  the manager reads the owner as `worktreeOf ?? followUpOf`. A follow-up whose root has no
-  worktree entry (a files-only run) provisions as today.
-- **The manager attaches instead of provisioning** ([D3](DECISIONS.md#d3)): it reads the owner
+  workforce's filing path writes `worktreeOf: <root>` onto a follow-up whose root owns a
+  `ready` entry. A follow-up whose root has no entry (a chat task, a files-only run) gets none
+  and provisions as today. The manager reads only `worktreeOf`, never `followUpOf`.
+- **The manager attaches instead of provisioning** ([D3](DECISIONS.md#d3)): when the task
+  carries `worktreeOf`, it reads the owner
   task's run record, derives the owner's location from the owner's identity and recorded branch
   (`locationFor` checks the hex, so a record can't point elsewhere), checks the owner's entry
   through `host.attach`, and works there under the same checkout lease. The run keeps its own
@@ -117,16 +121,17 @@ review tasks, which don't attach.
 |---|---|
 | Session attach (`start: { worktreeOf }`, `host.attach`, `attachToWorktree`) | **Reused**: board runs attach through the same host call and entry list |
 | The checkout lease (`acquireCheckout`, `<dir>.lock`) | **Reused**: keyed on the path, so owner and attached runs, and sessions, already exclude each other |
-| `followUpOf` and its root resolution | **Reused** as the default owner |
+| `followUpOf` and its root resolution | **Reused** by workforce at filing to find the default owner |
+| The harness manager's mechanism/policy split (FIX-2583) | **Respected**: the follow-up default is policy and sits in workforce's filing path; the manager only attaches when told. It can move into the coding flow with FIX-2583's other defaults |
 | `locationFor` reading a name back from a recorded branch | **Reused** to find the owner's place |
 | `worktreesCollection` | **Extended** with `title` |
 | Prior design: FIX-2419 [D4](../FIX-2419/DECISIONS.md#d4) | **Kept and extended**: the one way to share a worktree, now for board runs too |
 | Prior design: `workspace.ts` "a typed field on the durable task, designed separately" | **Settled** here for attaching; the run's own place stays derived |
 
-**Adds:** one task field and its filing rule, one entry field, one capability, an attach branch in
+**Adds:** one task field and its filing rules (check and follow-up default), one entry field, one capability, an attach branch in
 the manager's open step. **Removes:** nothing. **Debt:** two attached runs interleave commits on
 one branch (turns never overlap, but the history mixes); the follow-up starts a fresh vendor
-conversation in the shared tree. **Net:** small to medium, mostly in the manager.
+conversation in the shared tree. **Net:** small to medium, split between workforce's filing path and the manager's open step.
 
 ## Sign off
 
