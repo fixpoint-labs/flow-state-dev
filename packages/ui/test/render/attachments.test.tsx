@@ -440,6 +440,29 @@ describe("a user line with files", () => {
     expect(revoke).toHaveBeenCalledWith("blob:local-1");
   });
 
+  // An inline readFile is a new function each render, and a streamed reply re-renders the
+  // transcript per token: re-reading on identity would send an authenticated request each time.
+  it("reads a thumbnail once across re-renders with a new readFile and a rebuilt item", async () => {
+    const saved = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
+    Object.assign(URL, { createObjectURL: () => "blob:local-2", revokeObjectURL: () => {} });
+    onTestFinished(() => void Object.assign(URL, saved));
+    const reads = vi.fn(async () => new Blob(["png"], { type: "image/png" }));
+    const item = () =>
+      ({
+        id: "i5",
+        type: "message",
+        role: "user",
+        status: "completed",
+        content: [{ type: "file", mediaType: "image/png", filename: "once.png", data: "fsd-blob:b_onceonce12" }],
+      }) as never;
+    const { rerender } = render(<Message item={item()} readFile={(f, u) => reads(f, u)} />);
+    await screen.findByRole("img", { name: "once.png" });
+    rerender(<Message item={item()} readFile={(f, u) => reads(f, u)} />);
+    rerender(<Message item={item()} readFile={(f, u) => reads(f, u)} />);
+    await screen.findByRole("img", { name: "once.png" });
+    expect(reads).toHaveBeenCalledTimes(1);
+  });
+
   it("says Couldn't load when readFile fails", async () => {
     const readFile = vi.fn(async () => {
       throw new Error("401");

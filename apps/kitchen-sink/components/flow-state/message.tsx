@@ -22,6 +22,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { AttachmentPreview, attachmentReadUrl } from "./attachments";
@@ -358,10 +359,13 @@ export type ReadMessageFile = (file: FileContent, url: string) => Promise<Blob>;
 /** An image read through `readFile`, shown from a local object URL. */
 function ReadThumbnail({ file, url, readFile }: { file: FileContent; url: string; readFile: ReadMessageFile }) {
   const [state, setState] = useState<{ src?: string; failed: boolean }>({ failed: false });
+  // The latest read and file, so an inline `readFile` or a rebuilt item doesn't read the bytes again.
+  const latest = useRef({ file, readFile });
+  latest.current = { file, readFile };
   useEffect(() => {
     let live = true;
     let objectUrl: string | undefined;
-    readFile(file, url).then(
+    latest.current.readFile(latest.current.file, url).then(
       (blob) => {
         if (!live) return;
         objectUrl = URL.createObjectURL(blob);
@@ -373,7 +377,7 @@ function ReadThumbnail({ file, url, readFile }: { file: FileContent; url: string
       live = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [file, url, readFile]);
+  }, [url]);
   return <AttachmentPreview filename={file.filename ?? "file"} mediaType={file.mediaType} src={state.src} unavailable={state.failed} />;
 }
 
