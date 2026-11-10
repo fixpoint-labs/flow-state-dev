@@ -41,8 +41,10 @@ removes the drift instead of catching it.
 - **The POC lives under this issue**, at `specs/issues/FIX-2621/poc/dependency-check/`. The
   Linear description said the epic's `poc/`; the issue owns the experiment, the epic the
   four-line result. A refuted verdict goes to the epic as its own amendment PR.
-- **The recorder is the read-only wrapper's twin**, not a second interception layer: one proxy
-  shape over the stores, so FIX-2623 can merge the two if it builds both.
+- ~~**The recorder is the read-only wrapper's twin**, not a second interception layer: one proxy
+  shape over the stores, so FIX-2623 can merge the two if it builds both.~~ Superseded by the
+  POC ([Settled](#settled)): a store-level recorder sees what the read's context loads, not
+  what the view reads. The recorder belongs where the engine builds a block's context.
 
 ## Considered and dropped
 
@@ -50,6 +52,26 @@ removes the drift instead of catching it.
 |---|---|
 | Check `dependsOn` statically, from the block's source | Can't see through a capability or a helper; the same blind spot the proof exists to measure |
 | Infer dependencies now and skip the declaration | FIX-2623's call, and only worth weighing once the cost is known; this proof measures it |
+
+<a name="settled"></a>
+## Settled
+
+**The POC: `dependsOn` is checkable, at the context, cheaply. CONFIRMED, with one unseen path
+named.** [`poc/dependency-check/`](poc/dependency-check/README.md), run with
+`bash specs/issues/FIX-2621/poc/dependency-check/run.sh`. Resolved; don't reopen without a
+new run.
+
+- **Caught.** On the board's `listTasks_tasks`, the lab's `listPins` and a `taskBoard()`
+  handle's `listTasks`, every control with one dependency left out fails, naming it. The
+  board's obvious declaration, `[tasks]`, fails too: the read also reaches the roster and the
+  session's state, through the board's resolver.
+- **Where it records.** At the block's context. The store-level twin of the read-only wrapper
+  reports everything the read's context loads (scope records, the request list, the flow's
+  eager resources), so it can't tell a view's reads from its flow's loading.
+- **Unseen.** A read one block down: the engine builds each block's context, so a recorder on
+  the view's own block misses a composed step. FIX-2623 records where the engine builds a
+  block's context. Not exercised: projected collections and handles held outside `ctx`.
+- **Cost.** Inside run-to-run noise (±10%) on a 9–10 ms read, for both recorders.
 
 ## Analysis
 
@@ -70,5 +92,7 @@ whole set by the spec-set author; see the set PR.
 
 - **Draft (2026-11-09)** — written in the stage-1 spec set. The verdict table gained the
   "cheap enough for production" row from the epic's analysis finding on Convex.
+- **POC** — the recorder moved from the stores to the block's context, because the run showed
+  the store-level twin reports what the context loads, not what the view reads.
 
 **Open: none.**
