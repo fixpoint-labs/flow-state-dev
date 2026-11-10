@@ -17,6 +17,7 @@ describe("reviewDetail", () => {
       judge,
       lands: [],
       landFailed: null,
+      landAttempts: [],
       checks: null,
     });
   });
@@ -31,6 +32,8 @@ describe("reviewDetail", () => {
       lands: [],
       landFailed: null,
     });
+    // Each try of the last landing, oldest first, dropping what isn't one.
+    expect(reviewDetail({ branch: "b", landAttempts: [failed, { land: "deploy", message: "x" }, "y"] })?.landAttempts).toEqual([failed]);
   });
 
   it("is null for data that is no review", () => {
@@ -50,6 +53,7 @@ describe("reviewDetail", () => {
       judge: null,
       lands: [],
       landFailed: null,
+      landAttempts: [],
       checks: null,
     });
     expect(reviewDetail({ branch: "b", commits: -1 })?.commits).toBeNull();
@@ -60,6 +64,7 @@ describe("reviewDetail", () => {
       judge: { verdict: "not_done", confidence: 0.4, reason: "" },
       lands: [],
       landFailed: null,
+      landAttempts: [],
       checks: null,
     });
   });

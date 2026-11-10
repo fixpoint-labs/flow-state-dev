@@ -586,6 +586,17 @@ export interface ManagerOptions {
    * request starts, before any harness run.
    */
   reviewChanges?: boolean;
+  // FIX-2658.
+  /**
+   * How many times an accept that names a way to land tries it before the
+   * review is asked again. Default 3. A landing that fails is handed to the
+   * coding session as one more step, with the error and the person's note,
+   * and tried again when that step comes back to review, without asking the
+   * person. A failure no run can fix (the host can't land here, or its remote
+   * is unusable) is asked of the person at once. `1` asks the person after
+   * every failure, as before.
+   */
+  landAttempts?: number;
   // FIX-2578.
   /**
    * Keep a task whose run opened a pull request open until that pull
@@ -1010,7 +1021,8 @@ type ManagerOutput = z.infer<typeof managerOutputSchema>;
  * host that can land (`WorkspaceHost.land`), as the review's `data.lands`.
  */
 export const harnessReviewAnswerSchema = z.discriminatedUnion("verdict", [
-  z.object({ verdict: z.literal("accepted"), land: z.enum(["pull-request", "merge"]).optional() }),
+  // FIX-2658: the person's note on an accept, for a landing that fails.
+  z.object({ verdict: z.literal("accepted"), land: z.enum(["pull-request", "merge"]).optional(), words: z.string().optional() }),
   // A word, not just space: a revision with none is refused when it is given.
   z.object({ verdict: z.literal("revise"), words: z.string().regex(/\S/) }),
 ]);
@@ -1138,6 +1150,20 @@ const managerStateSchema = z.object({
       landed: landedSchema.nullable().default(null),
       /** The checks the phase's `isDone` ran (`commandCheck`), for the review's `data`. `null` when it ran none. */
       checks: z.array(commandCheckResultSchema).nullable().default(null),
+    })
+    .nullable()
+    .default(null),
+  // FIX-2658; BP-030.
+  /**
+   * An accepted landing handed to the coding session after it failed: how it
+   * lands, the person's note, and each try so far. The review tries it again
+   * when the session's step comes back, without asking. `null` otherwise.
+   */
+  landing: z
+    .object({
+      land: z.enum(["pull-request", "merge"]),
+      words: z.string().nullable(),
+      attempts: z.array(z.object({ land: z.enum(["pull-request", "merge"]), message: z.string() })),
     })
     .nullable()
     .default(null),
@@ -1414,6 +1440,13 @@ function landedLine(landed: Landed): string {
     ? `Opened pull request #${landed.number} from ${landed.branch} into ${landed.base}: ${landed.url}. Next: review and merge it.`
     : `Merged ${landed.from} into ${landed.branch} in ${landed.checkout}, now at ${landed.commit.slice(0, 12)}. Next: push ${landed.branch} when you're ready.`;
 }
+
+// FIX-2658.
+/**
+ * Landing refusals no coding run can fix: the host can't land here, or its
+ * remote can't be used. These go straight back to the person.
+ */
+const UNFIXABLE_LANDINGS = new Set(["land-unsupported", "no-push-remote", "no-pull-request-repo", "remote-repointed", "base-unknown"]);
 
 /** What the feed and the review asked again say when landing failed: the run's commits are still on its branch. */
 function landFailedLine(failed: { land: LandHow; message: string }): string {
@@ -1829,6 +1862,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     ledgers,
     judge,
     reviewChanges = false,
+    landAttempts = 3,
     awaitPullRequests = false,
     onPullRequestRecorded,
     issueSpec,
@@ -3792,8 +3826,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) return input;
       const changes = decision.changes;
       if (changes?.verified === true && changes.count === 0) return input;
-      const reviewed = async (outcome: "accepted" | "deadline" | "revise" | "cancelled", landed: Landed | null = null) =>
-        ctx.sequencer!.patchState({ decided: { ...decision, reviewed: outcome, landed } });
+      // Written only as the step ends, with the landing handed to the run (or
+      // none), so a resume that runs this step again reads the state it started on.
+      const reviewed = async (
+        outcome: "accepted" | "deadline" | "revise" | "cancelled",
+        landed: Landed | null = null,
+        landing: ManagerState["landing"] = null,
+      ) => ctx.sequencer!.patchState({ decided: { ...decision, reviewed: outcome, landed }, landing });
 
       // The ways this host can land this run, as the host says (`landWays`): none where landing
       // can't work, and then the review offers the plain accept. Asked once, so a replay offers the same.
@@ -3804,7 +3843,18 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const lands: LandHow[] = ctx.runOnce === undefined ? await probe() : await ctx.runOnce(`review:lands:${state.steerSteps ?? 0}`, probe);
       // The last landing that failed, shown on the review asked again, with a retry.
       let failed: { land: LandHow; message: string } | null = null;
+      // A landing the coding session was handed is tried again first, as the
+      // person asked it the first time (FIX-2658).
+      const pending = state.landing ?? null;
+      let attempts: Array<{ land: LandHow; message: string }> = pending?.attempts ?? [];
+      let again: HarnessReviewAnswer | null =
+        pending === null ? null : { verdict: "accepted", land: pending.land, ...(pending.words !== null ? { words: pending.words } : {}) };
       for (let round = 0; ; round++) {
+        let answer: HarnessReviewAnswer;
+        if (again !== null) {
+          answer = again;
+          again = null;
+        } else {
         let asked: Awaited<ReturnType<BlockContext["suspendForUser"]>>;
         try {
           asked = await ctx.suspendForUser({
@@ -3827,6 +3877,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
               checks: decision.checks ?? null,
               lands,
               landFailed: failed,
+              // Every try of the last landing, oldest first (FIX-2658).
+              landAttempts: attempts,
               // The review card reads these fields through reviewDetail: the type keeps writer and reader in step.
             } satisfies ReviewDetail & Record<string, unknown>,
           });
@@ -3839,7 +3891,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           await reviewed("cancelled");
           return input;
         }
-        const answer = harnessReviewAnswerSchema.parse((asked as { answer: unknown }).answer);
+        answer = harnessReviewAnswerSchema.parse((asked as { answer: unknown }).answer);
+        // A person's answer starts the landing's tries over.
+        attempts = [];
+        }
         if (answer.verdict === "accepted" && answer.land === undefined) {
           await reviewed("accepted");
           return input;
@@ -3848,8 +3903,21 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           // Once per round, so a resume that runs this again doesn't push or merge twice.
           const outcome = await landOnce(ctx, state, decision, read, answer.land!, `land:${state.steerSteps ?? 0}:${round}`);
           if ("error" in outcome) {
-            // Asked again with the error and a retry; the feed says so through the review's prompt.
             failed = { land: answer.land!, message: outcome.error };
+            attempts = [...attempts, failed];
+            ctx.emit.status(`${landFailedLine(failed)} (try ${attempts.length} of ${Math.max(1, landAttempts)})`, { transient: false });
+            // **Handed to the coding session** while tries are left, when a run
+            // could fix it: the same loop "Ask for changes" uses.
+            if (attempts.length < landAttempts && !UNFIXABLE_LANDINGS.has(outcome.reason ?? "")) {
+              const handed = await handLandingToRun(ctx, state, answer.land!, answer.words ?? null, attempts);
+              if (handed !== null) {
+                // "revise" because the run takes one more step through the steer
+                // loop; the pending `landing` it carries lands again when that step stops.
+                await reviewed("revise", null, handed);
+                return input;
+              }
+            }
+            // Asked again with the error and a retry; the feed says so through the review's prompt.
             continue;
           }
           await reviewed("accepted", outcome.landed);
@@ -3892,6 +3960,48 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     },
   });
 
+  // FIX-2658.
+  /**
+   * Hand a failed landing to the run's coding session: the error and the
+   * person's note, written as the user's steer (keyed so a resume writes it
+   * once). Answers the landing for the review to keep on state and try again
+   * when the step comes back; `null` when it can't be handed (no coding
+   * session to continue, or the task takes no more steers): the person is asked.
+   */
+  const handLandingToRun = async (
+    ctx: BlockContext,
+    state: ManagerState,
+    land: LandHow,
+    words: string | null,
+    attempts: Array<{ land: LandHow; message: string }>,
+  ): Promise<NonNullable<ManagerState["landing"]> | null> => {
+    if ((await readConfirmedSession(ctx, state.topic!, state.attempt!)) === null) return null;
+    const board = await runBoard(ctx);
+    if (board.steer === undefined) return null;
+    const last = attempts[attempts.length - 1]!;
+    const what = land === "pull-request" ? "Opening the pull request" : "Merging the branch locally";
+    const message = [
+      `${what} for this work failed (try ${attempts.length} of ${landAttempts}):`,
+      "",
+      last.message,
+      ...(words !== null && words.trim() !== "" ? ["", `The person's note: ${words.trim()}`] : []),
+      "",
+      `Find what stops it and fix it here: commit what you change, and keep the work on a branch in this checkout. ` +
+        `Don't push or open the pull request yourself. When you stop, it is tried again.`,
+    ].join("\n");
+    const written = await board.steer(state.taskId!, {
+      message,
+      from: "user",
+      key: `land:${ctx.request.identity.id}:${state.steerSteps ?? 0}`,
+    });
+    if (written.outcome === "declined") return null;
+    ctx.emit.status(
+      `Handed to the coding session to fix${words !== null && words.trim() !== "" ? ", with your note" : ""}. It will try again when the session stops.`,
+      { transient: false },
+    );
+    return { land, words, attempts };
+  };
+
   /**
    * Land an accepted run's branch through the host (`WorkspaceHost.land`),
    * once per `key`: what a resume reads is what the first try did. A failure
@@ -3905,18 +4015,23 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     read: HarnessJudgeVerdict | null,
     how: LandHow,
     key: string,
-  ): Promise<{ landed: Landed } | { error: string }> => {
-    const attempt = async (): Promise<{ landed: Landed } | { error: string }> => {
+  ): Promise<{ landed: Landed } | { error: string; reason?: string }> => {
+    const attempt = async (): Promise<{ landed: Landed } | { error: string; reason?: string }> => {
       try {
-        if (host.land === undefined) throw new Error("this host can't push or merge a run's branch");
-        const target = { cwd: state.workspacePath!, branch: state.branch!, baseRef: state.baseRef };
+        if (host.land === undefined) throw new WorkspaceRefusedError("land-unsupported", "this host can't push or merge a run's branch");
+        // The base commit lets the host land the branch the checkout is on when
+        // the run moved its work off its own (FIX-2658).
+        const target = { cwd: state.workspacePath!, branch: state.branch!, baseRef: state.baseRef, baseCommit: state.baseCommit };
         const landed =
           how === "merge"
             ? await host.land(target, { kind: "merge" })
             : await host.land(target, { kind: "pull-request", ...pullRequestText(state, decision, read) });
         return { landed };
       } catch (error) {
-        return { error: error instanceof Error ? error.message : String(error) };
+        return {
+          error: error instanceof Error ? error.message : String(error),
+          ...(error instanceof WorkspaceRefusedError ? { reason: error.reason } : {}),
+        };
       }
     };
     return ctx.runOnce === undefined ? await attempt() : await ctx.runOnce(key, attempt);
