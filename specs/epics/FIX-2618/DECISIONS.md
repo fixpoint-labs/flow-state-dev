@@ -330,6 +330,21 @@ None built at create. The three proofs that the division rests on are children (
 FIX-2622), and [D2](#d2) puts them before any build spec. Each one's result is recorded here, in
 four lines, by the amendment that lands it.
 
+**FIX-2620 · a user-scoped view answers with no session (2026-11-10): CONFIRMED, past a small change.**
+
+- **Built:** one read block at user and org scope, run on `createExecutionContext` with only
+  `userId` and `orgId` and a 61-line opt-in no-session mode, against a control of today's
+  `runRead` with no session id.
+- **See it:** `bash specs/issues/FIX-2620/poc/no-session-read/run.sh` (add
+  `POC_STRICT_CONTROL=1` to see the control red); [README](../../issues/FIX-2620/poc/no-session-read/README.md).
+- **Showed:** the control dies in session birth, refused `read_only`; the no-session path reads
+  the user's pins and the org's note, a write throws `read_only`, `ctx.session` throws
+  `NoSessionError`, and the session store is never called. Only execution metadata reached for
+  the session past the context; generators in a view would too (their history), not exercised.
+- **Changed:** nothing in the division. FIX-2623 specs `scope: "user" | "org"` views on this
+  context, and its first piece of work is the no-session mode and the metadata change the patch
+  names; FIX-2624's direct reads use the same context.
+
 ## Analysis
 
 ### Analysis — FIX-2618 epic spec · 2026-11-08 · watermark 2026-11-08
