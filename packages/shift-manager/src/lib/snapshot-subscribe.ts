@@ -17,7 +17,7 @@
  * writes its readings there, and messages between workers land there.
  *
  * Shift Manager's own sessions (each flow's reading session and the usage
- * session) never enter the list: Schedules and Usage run an action on them
+ * session) never enter the list: Routines and Usage run an action on them
  * on every snapshot read, so hearing them would make each read start the
  * next. A run's request writes reach its parent's topic as `run`, so a
  * listed session whose parent is heard is left out; a root is always heard.
@@ -47,7 +47,7 @@ const READ_PREFIXES = {
 /**
  * Whether `session` is one Shift Manager reads through: a flow's reading
  * session, the usage session, or the roster session the project reader picks
- * (`projectReaderOf`), which may carry a generated id. Schedules and Usage run
+ * (`projectReaderOf`), which may carry a generated id. Routines and Usage run
  * an action on these after every snapshot read, so hearing them would make
  * each read start the next.
  */

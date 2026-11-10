@@ -14,7 +14,7 @@
 <text class="lb" x="66" y="160">SEQUENCER</text>
 <text class="sub" x="478" y="160" text-anchor="end">one board.drain call</text>
 <rect class="thin" x="66" y="174" width="412" height="156"/>
-<text class="nm" x="78" y="196">The task rows</text>
+<text class="nm" x="78" y="196">The tasks</text>
 <text class="sub" x="78" y="214">data: goal · status · assignee · input · output</text>
 <line class="hi" x1="66" y1="226" x2="478" y2="226"/>
 <text class="c" x="78" y="248">task-0</text>

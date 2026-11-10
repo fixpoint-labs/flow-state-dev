@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 430" role="img" aria-label="Q2, open for the owner: can a person edit or delete a routine the app declared? Recommended: pause only; the config owns it. Instead of: edit and delete, with a tombstone so the seed doesn&#x27;t put it back. It comes down to the first row, the app fixing its routine: with the recommendation the fix reaches every user and a pause stays through it; otherwise the fix misses edited copies and deleted ones for good. A person who wants it changed is the recommendation&#x27;s cost: they can only pause it and ask the app&#x27;s author; otherwise they change their own copy. The seed: one rule, create if absent and follow the config, against tracking a tombstone per deleted routine. Locks in that an app routine&#x27;s settings follow its config, and saveRoutine and deleteRoutine refuse one, saying why. Flips if app authors ask for per-user overrides."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+      .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">Q2 · OPEN · OWNER</text>
+    <text class="t-q" x="32" y="52">Can a person edit or delete a routine the app declared?</text>
+  </g>
+
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">Pause only; the config owns it</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Edit and delete, with a tombstone</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE APP FIXES</text>
+    <text class="t-lbl" x="32" y="169">ITS ROUTINE</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Reaches every user</text>
+    <text class="t-s" x="248" y="179">a pause stays through the fix</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Misses edited copies</text>
+    <text class="t-s" x="612" y="179">and the deleted ones, for good</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="221">A PERSON WHO</text>
+    <text class="t-lbl" x="32" y="234">WANTS IT CHANGED</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">Can only pause it</text>
+    <text class="t-s" x="248" y="241">and ask the app&#x27;s author</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Changes it</text>
+    <text class="t-s" x="612" y="241">their copy is theirs</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="279">THE SEED</text>
+    <text class="mark plus" x="228" y="282">+</text>
+    <text class="t-b" x="248" y="281">One rule</text>
+    <text class="t-s" x="248" y="299">create if absent, follow the config</text>
+    <text class="mark minus" x="592" y="282">−</text>
+    <text class="t-b" x="612" y="281">Tracks per-user state</text>
+    <text class="t-s" x="612" y="299">a tombstone per deleted routine</text>
+    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="340" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="361">LOCKS IN</text>
+    <text class="t-b" x="32" y="381">An app routine&#x27;s settings follow its config</text>
+    <text class="t-s" x="32" y="399">saveRoutine and deleteRoutine refuse one, saying why</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="340" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="361">FLIPS IF</text>
+    <text class="t-b" x="494" y="381">App authors ask for per-user overrides</text>
+    <text class="t-s" x="494" y="399">then a copy a person owns, with a tombstone</text>
+  </g>
+</svg>

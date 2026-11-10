@@ -104,14 +104,14 @@ describe("the fake's threads, on review", () => {
     expect(rows.map((t) => t.openHold?.kind)).toEqual(["review", "review"]);
   });
 
-  it("marks the line that asked for threads, not one queued behind it", async () => {
+  it("marks the line that asked for threads, not one sent while its turn runs", async () => {
     const lab = createFakeLab();
     const { id } = await lab.openSession("threads", "project-vendor-notes");
     let entries: { kind: string; text?: string; sentToThread?: boolean }[] = [];
     lab.watchThread(id, (view) => (entries = view.entries));
     await lab.send(id, "Research three vendors, one thread each.");
     await lab.send(id, "Also keep it short.");
-    await vi.advanceTimersByTimeAsync(700); // the first thread is filed; the second line still waits
+    await vi.advanceTimersByTimeAsync(700); // the first thread is filed; the second line's own turn only notes it
     const marked = entries.filter((e) => e.kind === "user" && e.sentToThread).map((e) => e.text);
     expect(marked).toEqual(["Research three vendors, one thread each."]);
   });

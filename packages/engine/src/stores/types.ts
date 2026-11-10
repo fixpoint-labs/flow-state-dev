@@ -17,6 +17,7 @@ import type {
 import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { Lease, LeaseOptions } from "../durability/types";
 import type { ChangeBus } from "../bus/types";
+import type { BlobStore } from "../blobs/types";
 
 export type { RequestStatus };
 
@@ -1884,6 +1885,14 @@ export type StoreRegistry = {
    * in-memory bus when it has none (`withChangeBus`).
    */
   bus?: ChangeBus;
+  // FIX-824.
+  /**
+   * Where attachment bytes live: the profile's `blobs` slot. `createFlowState`
+   * always fills it (on disk when the sessions persist, in memory when they
+   * don't). Optional on a registry you build yourself; without it the upload
+   * and read routes answer `attachments_not_configured`.
+   */
+  blobs?: BlobStore;
 };
 
 // FIX-406 6B.

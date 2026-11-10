@@ -29,6 +29,13 @@ import { shownSettingsOf, type ShownSettingsOf } from "./shown-settings";
 export const workerResourceStateSchema = z.object({
   /** The flow the worker runs on: a registered worker flow's name. */
   flow: z.string().min(1),
+  /**
+   * The name a user reads it by, or `null` when it has none (a view shows its
+   * id). Display only: the id stays its address. Absent on rows stored before
+   * names existed, which read as `null`.
+   */
+  // BP-030: tolerate rows stored before this field.
+  name: z.string().nullable().default(null),
   /** One line saying what the worker is for. */
   description: z.string().nullable().default(null),
   /** The worker's own instructions. `null` for a worker with none. */
@@ -62,7 +69,7 @@ export type WorkerResourceState = z.infer<typeof workerResourceStateSchema>;
  * Shared across flows (`flowIsolation: false`): every flow that declares it
  * reads the same roster, so a worker hired through one flow runs on another.
  * A browser may read the user's own rows through a session of a flow that
- * declares it, and sees each worker's `flow`, `description` and `forkedFrom`,
+ * declares it, and sees each worker's `flow`, `name`, `description` and `forkedFrom`,
  * and as `settings` only the ones its flow shows; its other settings and its
  * instructions stay on the server.
  *
@@ -83,6 +90,7 @@ export function defineWorkerCollection(shown: ShownSettingsOf = () => []) {
       // A computed field, so `data` rather than `expose` (BP-015).
       data: (row) => ({
         flow: row.flow,
+        name: row.name ?? null,
         description: row.description ?? null,
         forkedFrom: row.forkedFrom ?? null,
         settings: shownSettingsOf(shown(row.flow), row.settings ?? {}) as never

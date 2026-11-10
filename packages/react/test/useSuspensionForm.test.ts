@@ -11,8 +11,8 @@ import { createElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
 import type { ItemProvenance, SuspensionItem } from "@flow-state-dev/core/items";
+import { analyzeResumeSchema } from "../src/hooks/useSuspensionForm";
 import {
-  analyzeResumeSchema,
   suspensionShape,
   useSuspensionForm,
   FlowProvider,

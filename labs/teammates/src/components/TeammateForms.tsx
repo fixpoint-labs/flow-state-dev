@@ -1,6 +1,6 @@
 import { isSendKey, useSubmit } from "@flow-state-dev/react";
 import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
-import type { NewTeammate } from "../adapter";
+import type { NewTeammate, TeammateEdit } from "../adapter";
 
 function Shell({ label, error, children, onSubmit }: { label: string; error?: string; children: ReactNode; onSubmit: (e: FormEvent) => void }) {
   return (
@@ -55,23 +55,24 @@ export function HireForm({ onHire, onCancel }: { onHire: (teammate: NewTeammate)
 }
 
 /**
- * Replace a teammate's instructions. Its next turn reads them; a turn already
- * running keeps the ones it started with. The page can't read the old ones
- * back, since instructions stay on the server, so this sets them whole. Its
- * name shows read only, with why: a teammate can't be renamed yet.
+ * Rename a teammate, replace its instructions, or both. Its next turn reads
+ * them; a turn already running keeps the ones it started with. The page can't
+ * read the old instructions back, since they stay on the server, so a blank
+ * box keeps them and a filled one replaces them whole.
  */
-export function InstructionsForm({ name, onSave, onCancel }: { name: string; onSave: (instructions: string) => Promise<void>; onCancel: () => void }) {
+export function EditForm({ name, onSave, onCancel }: { name: string; onSave: (edit: TeammateEdit) => Promise<void>; onCancel: () => void }) {
+  const [newName, setNewName] = useState(name);
   const [instructions, setInstructions] = useState("");
-  const { error, busy, submit } = useSubmit(() => onSave(instructions));
+  const renamed = newName.trim() !== name;
+  const { error, busy, submit } = useSubmit(() =>
+    onSave({ ...(renamed ? { name: newName.trim() } : {}), ...(instructions.trim() === "" ? {} : { instructions }) }),
+  );
   return (
-    <Shell label={`Instructions for ${name}`} error={error} onSubmit={(e) => void submit(e)}>
-      <input aria-label={`Name of ${name}`} aria-describedby="teammate-name-reason" readOnly value={name} className={`${field} text-muted-foreground`} />
-      <p id="teammate-name-reason" className="text-muted-foreground">
-        Renaming a teammate isn't possible yet, so its name stays as it is.
-      </p>
+    <Shell label={`Edit ${name}`} error={error} onSubmit={(e) => void submit(e)}>
+      <input aria-label={`Name of ${name}`} value={newName} onChange={(e) => setNewName(e.target.value)} className={field} />
       <textarea
         aria-label={`New instructions for ${name}`}
-        placeholder={`${name}'s new instructions, in full. They replace the old ones from its next turn.`}
+        placeholder={`${name}'s new instructions, in full. They replace the old ones from its next turn. Leave blank to keep them.`}
         rows={4}
         value={instructions}
         onChange={(e) => setInstructions(e.target.value)}
@@ -79,8 +80,8 @@ export function InstructionsForm({ name, onSave, onCancel }: { name: string; onS
         className={field}
       />
       <div className="flex gap-2">
-        <button type="submit" disabled={busy || instructions.trim() === ""} className={primary}>
-          Save instructions
+        <button type="submit" disabled={busy || (!renamed && instructions.trim() === "")} className={primary}>
+          Save
         </button>
         <button type="button" onClick={onCancel} className={plain}>
           Cancel

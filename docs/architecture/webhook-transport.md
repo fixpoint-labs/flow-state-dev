@@ -50,8 +50,12 @@ provider:
 ```ts
 type WebhookConfig = Record<string, WebhookSubscriptionConfig>;
 
-interface WebhookSubscriptionConfig {
-  on: Record<string, WebhookEventBinding>;
+// A provider entry is a bindings map (`on`) or a service route (`service`), never both.
+type WebhookSubscriptionConfig = { on: Record<string, WebhookEventBinding> } | { service: WebhookServiceRoute };
+
+interface WebhookServiceRoute {
+  entry: string; // the flow's internal action that routes one normalized event
+  normalize: (event: WebhookInboundEvent, at: { received: number }) => readonly SubscriptionEvent[];
 }
 
 // A webhook binding is an action in webhook form: it extends the shared
@@ -65,6 +69,18 @@ interface WebhookEventBinding extends ActionCore {
   when?: (event: WebhookInboundEvent) => boolean;
 }
 ```
+
+**Two ways to route, split by provider.** A binding runs one handler per
+event, in a session it names or a fresh one: Stripe, Slack and custom
+providers. A **service route** brings the event to the sessions that asked for
+it: the transport verifies, parses and reads the delivery id exactly as for a
+binding, then `normalize` maps the delivery to zero or more normalized
+subscription events, and each one is routed through the flow's internal
+`entry` by `routeServiceEvent`, as `service:<provider>`. No session is made
+from the event. A provider's service flow factory declares it
+(`githubServiceFlow` in `@flow-state-dev/workforce`); an app doesn't write one
+by hand. `normalize` is pure, so a redelivery names the same objects at the
+same versions, and a poll that calls the same normalize agrees with the push.
 
 Because a webhook handler lives off `flow.actions`, the runtime resolves it from
 `flow.webhooks[provider].on[event]` via the `(provider, eventType)` coordinate
@@ -171,6 +187,20 @@ The order in `routes.ts` (`handleWebhook`) is load-bearing:
 
 Because the action runs after the 202, the ack returns well inside provider
 budgets (Slack 3s, GitHub 10s) regardless of action duration.
+
+**A service route** takes steps 1 to 6, then:
+
+7. **Normalize** (`service.normalize(event, { received })`). A throw → 400;
+   no events → 202 `ignored`.
+8. **Resolve principal**, as step 9 above: the org the service routes in. The
+   service runs as `service:<provider>` in that org, never as anyone the
+   payload names.
+9. **Route each event** through `routeServiceEvent`: the routing entry runs to
+   its end (code only), and each owner run it names is awaited until the host
+   recorded it. A routing error → 500; an owner run the host failed to record
+   → 503, so a redelivery sends it (a delivery's message id is
+   `<object>@<version>:<session>`, so what already landed lands once).
+10. **202** with `{ status: "accepted", events, ownerRuns, refused }`.
 
 ## Source and metadata provenance
 

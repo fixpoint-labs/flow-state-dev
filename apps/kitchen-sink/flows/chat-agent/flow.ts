@@ -57,12 +57,13 @@ const chatAgentFlow = defineFlow({
     run: {
       block: runSequencer,
       userMessage: (input) => input.message,
-      // A second `run` on the same session queues behind the first (FIFO)
-      // instead of being dropped. The first turn holds the session key until its
-      // background `.sideChain()` tasks (memory capture, auto-title) drain — the
-      // "Tidying up…" phase — so a fast follow-up would otherwise 409 under a
-      // `reject` policy even though the user-facing answer is already done.
-      concurrency: "queue",
+      // A second `run` on the same session waits for the first instead of being
+      // dropped, as long as the first takes: `queue` would refuse it after 30
+      // seconds. The first turn holds the session key until its background
+      // `.sideChain()` tasks (memory capture, auto-title) drain, the "Tidying
+      // up…" phase. `defer` starts waiting runs one at a time but in no set
+      // order, so the page keeps one waiting on the server (`useHarnessLines`).
+      concurrency: "defer",
     },
     saveArtifact: {
       block: updateArtifact,

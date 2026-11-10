@@ -176,6 +176,8 @@ export type BoardHostOptions = {
   agentAnswer?: MockGeneratorInstance;
   /** The options the judgment turn is built with: the agent worker flow's catalog and capabilities. */
   agent?: CoordinatorFlowOptions["agent"];
+  /** The coordinator flow takes the routine verbs as actions (`routines: true`). */
+  coordinatorRoutines?: boolean;
   /** The `agent` flow's `answerAgain` (FIX-2159), which the coordinator flow doesn't take. */
   answerAgain?: AgentWorkerFlowOptions["answerAgain"];
   /** Capabilities the `agent` flow installs that need the installation (FIX-2173's consult). */
@@ -192,6 +194,8 @@ export type BoardHostOptions = {
   durable?: boolean;
   /** The host's debt age (`RequestWakes.maxDebtAgeMs`): how long a debt may stay owed before a pass ends it. */
   maxDebtAgeMs?: number;
+  /** How long a question to the user waits before the board closes it "no answer came" (`RuntimeConfig.userDeadlineMs`). */
+  userDeadlineMs?: number;
   /** The host's wait deadline bounds (`RequestWaits.deadlines`). */
   waitDeadlines?: { defaultMs?: number; minMs?: number; maxMs?: number };
   /** The gates a `[hold:<name>]` task waits on, by name, until the test releases them. */
@@ -295,7 +299,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const coordinator = defineCoordinatorFlow({
     installation,
     routeModel: "typesafe-ai/jev",
-    ...(options.agent === undefined ? {} : { agent: options.agent })
+    ...(options.agent === undefined ? {} : { agent: options.agent }),
+    ...(options.coordinatorRoutines === true ? { routines: true } : {})
   });
   flows = {
     tasker: { flow: tasker, roles: ["contributor"] },
@@ -310,8 +315,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
   );
   Object.assign(instances, options.plainFlows ?? {}, options.plainFlowsOf?.(installation) ?? {});
-  const judgment = options.judgment ?? mockGenerator({ script: [{ when: () => true, then: { text: QUIET_TURN } }] });
-  const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });
+  const judgment = options.judgment ?? mockGenerator({ name: "coordinator-judgment", script: [{ when: () => true, then: { text: QUIET_TURN } }] });
+  const agentAnswer = options.agentAnswer ?? mockGenerator({ name: "agent-answer", script: [] });
   const models = createMockModelResolver({
     evaluators: {
       [COORDINATOR_ROUTE]: mockEvaluationModel({ answers: { worker: { type: "choice", choice: "eng.tasker" } } })
@@ -323,6 +328,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
     ...(options.maxDebtAgeMs === undefined ? {} : { maxDebtAgeMs: options.maxDebtAgeMs }),
+    ...(options.userDeadlineMs === undefined ? {} : { userDeadlineMs: options.userDeadlineMs }),
     ...(options.waitDeadlines === undefined ? {} : { waitDeadlines: options.waitDeadlines }),
     ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
     ...(options.adapters === undefined ? {} : { adapters: options.adapters }),

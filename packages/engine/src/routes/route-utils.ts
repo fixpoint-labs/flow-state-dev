@@ -133,6 +133,15 @@ export function unknownSessionResponse(sessionId: string): Response {
 }
 
 /**
+ * What the read route answers for a file the caller can't read: one gone, one
+ * no session owns yet, and one in a session someone else owns, alike. It
+ * names neither the file's session nor its owner.
+ */
+export function unknownBlobResponse(): Response {
+  return jsonResponse(404, { error: "attachment_not_found" });
+}
+
+/**
  * What a route answers for a session create the flow refused: the status the
  * refusal carries, its message, and the state field when one was the reason.
  * One copy for the create, action and webhook routes, so a caller sees the

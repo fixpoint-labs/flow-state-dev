@@ -44,7 +44,7 @@ describe("resolveActionCore", () => {
   it("resolves the webhook binding for a genuine webhook dispatch", () => {
     const flow = flowWithWebhook();
     const resolved = resolveActionCore(flow, "record-payment", "webhook", WEBHOOK_META);
-    expect(resolved).toBe(flow.webhooks!.stripe.on["invoice.paid"]);
+    expect(resolved).toBe(flow.webhooks!.stripe.on!["invoice.paid"]);
     expect(resolved?.block).toBe(webhookHandler);
   });
 

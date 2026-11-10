@@ -18,13 +18,13 @@ import {
   hireWorkforce,
   messageReceivedEntry,
   subscriptionResources,
-  subscriptionTools,
   workerConfigSchema,
   workerMessagesResources,
   workerTaskEntry,
   type SubscriptionProvider,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
+import { workerRoutineVerbs } from "@flow-state-dev/workforce/internal";
 import { z } from "zod";
 import { REPO_ROOT, goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
@@ -125,7 +125,8 @@ const installation = createWorkerInstallation({
   standardWorkers: [{ id: "eng.follower", declared: { flow: "follower", description: "Follows threads." }, body: "", skills: [] } as WorkerManifest],
   workerFlows: () => installationFlows as never
 });
-const tools = subscriptionTools({ providers: [github] });
+// The worker verbs as actions, called as a model would; their providers come from hireWorkforce's routines.
+const tools = workerRoutineVerbs(installation);
 const doorInput = z.object({ message: z.string() });
 const door = handler({ name: "follower-run", inputSchema: doorInput, execute: async () => "ok" });
 installationFlows.follower = {
@@ -137,8 +138,7 @@ installationFlows.follower = {
     resources: { ...installation.resources, ...workerMessagesResources, ...subscriptionResources },
     actions: {
       respond: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message },
-      subscribe: { inputSchema: tools.subscribe.inputSchema, block: tools.subscribe },
-      unsubscribe: { inputSchema: tools.unsubscribe.inputSchema, block: tools.unsubscribe }
+      ...Object.fromEntries([tools.listRoutines, tools.saveRoutine, tools.pauseRoutine, tools.deleteRoutine].map((block) => [block.name, { inputSchema: block.inputSchema, block }]))
     },
     // No turn: a message lands as its items and nothing runs.
     internal: { actions: { onMessageReceived: messageReceivedEntry({ installation, flowKind: "follower" }) } },
@@ -146,7 +146,7 @@ installationFlows.follower = {
   })
 };
 const instances: Record<string, FlowInstance> = Object.fromEntries(
-  hireWorkforce(installation).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
+  hireWorkforce(installation, { routines: { providers: [github] } }).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
 );
 instances["github-service"] = defineSubscriptionServiceFlow({
   kind: "github-service",
@@ -249,9 +249,10 @@ const refusedAtSubscribe = new Map<string, string>();
 for (const sub of SUBSCRIPTIONS) {
   const sessionId = await createFollower(sub.user);
   sessions.set(sub.label, sessionId);
-  const outcome = await act(sub.user, sessionId, "subscribe", { provider: "github", ...sub.input });
-  if (outcome.output?.id !== undefined) subscriptionIds.set(sub.label, outcome.output.id);
-  else refusedAtSubscribe.set(sub.label, String(outcome.output?.refused ?? JSON.stringify(outcome.error)));
+  // An event routine, saved as the follower's model would: its id names the subscription it wrote.
+  const outcome = await act(sub.user, sessionId, "saveRoutine", { trigger: { event: { provider: "github", ...sub.input } } });
+  if (outcome.output?.ok === true) subscriptionIds.set(sub.label, String(outcome.output.routine.id).replace(/^event:/, ""));
+  else refusedAtSubscribe.set(sub.label, String(outcome.output?.error ?? JSON.stringify(outcome.error)));
 }
 
 // The share, derived here from the verdicts routing returns: production output carries no share.
@@ -276,7 +277,7 @@ const route = async (event: SubscriptionEvent) => {
 for (const [label, id] of subscriptionIds) labelOf.set(id, label);
 for (const [i, event] of EVENTS.entries()) {
   for (const sub of SUBSCRIPTIONS) {
-    if (sub.unsubscribeAt === i) await act(sub.user, sessions.get(sub.label)!, "unsubscribe", { id: subscriptionIds.get(sub.label) });
+    if (sub.unsubscribeAt === i) await act(sub.user, sessions.get(sub.label)!, "deleteRoutine", { id: `event:${subscriptionIds.get(sub.label)}` });
   }
   const output = await route(event);
   verdictsCut += output.verdictsCut;

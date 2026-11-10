@@ -4,7 +4,8 @@ import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 /**
  * Where you type to the open worker. Enter or Cmd+Enter (Ctrl+Enter) sends,
  * Shift+Enter is a new line.
- * A line sent while the worker answers waits for that answer. It sits in the
+ * A line sent while the worker answers gets its own answer at once, beside
+ * the one already running: the worker's door starts every line you send. It sits in the
  * conversation's column (`--thread-width`), and the box grows with what you
  * type up to a cap, then scrolls.
  *
@@ -151,7 +152,7 @@ export function Composer({
         ) : null}
         {running ? (
           <p className="mt-1 text-xs text-muted-foreground">
-            {workerName} is answering · a line you send now waits for it ·{" "}
+            {workerName} is answering · a line you send now gets its own answer at once ·{" "}
             {armed ? "press Esc again to stop" : `Esc Esc or ${interruptChordLabel()} to stop`}
           </p>
         ) : null}

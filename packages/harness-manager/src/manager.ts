@@ -44,9 +44,12 @@ import {
 import {
   OBSERVED_PULL_REQUESTS,
   observedPullRequestsCollection,
+  followRecordedPullRequests,
+  pullRequestRecordedOf,
   pullRequestRefFromUrl,
   writePullRequests,
   type PullRequestCollection,
+  type PullRequestFollower,
 } from "@flow-state-dev/core/harness";
 import type {
   HarnessRunOutcome,
@@ -602,10 +605,25 @@ export interface ManagerOptions {
    * too, with a status note, and never settles the task. A run that opened no
    * pull request settles as without it.
    *
+   * A judge's confident `not-done` doesn't fail a run that opened a pull
+   * request: the task waits on it as above, the judge's reason said in a
+   * status note. The person reviewing the pull request is its check.
+   *
    * Only a host with a way to wake a waiting task should turn it on: until
    * one does, the task stays open.
    */
   awaitPullRequests?: boolean;
+  // FIX-2535 D2.
+  /**
+   * Act on each pull request a run records for the first time, in the
+   * request that records it: mid-turn, as the harness's create call settles,
+   * or at the branch check or the accept that opened it. workforce's
+   * `followPullRequest({ providers })` subscribes the run's session to the
+   * pull request, so its reviews, comments and CI reach the session from that
+   * moment, including a check that completes before the turn ends. Unset,
+   * nothing follows a pull request. A follower that throws is a status note.
+   */
+  onPullRequestRecorded?: PullRequestFollower;
   /**
    * Open the brief of a task that names an issue with the issue's spec, read
    * from the run's checkout once it is provisioned (`./issue-spec`). Off by
@@ -1441,6 +1459,7 @@ async function recordLandedPullRequest(ctx: BlockContext, landed: Extract<Landed
     await writePullRequests(collection, [{ ...link, state: "open", branch: landed.branch }], {
       source: "branch",
       requestId: ctx.request.identity.id,
+      onRecorded: pullRequestRecordedOf(ctx.response),
     });
   } catch (error) {
     ctx.emit.status(`The pull request was not recorded: ${error instanceof Error ? error.message : String(error)}`, { transient: false });
@@ -1713,6 +1732,8 @@ export function resolveOwnership(options: {
 function createManagerCapability(options: {
   /** The capability's name: the fixed board's id, or the manager's name when it has none. */
   name: string;
+  /** What the follower writes, declared beside the run's own collections. */
+  followerResources?: Readonly<Record<string, DeclaredResourceEntry>>;
   /** The fixed board's ledger collection id — also the accessor the fence reads it under. */
   boardCollectionId: string | undefined;
   /** The fixed board's ledger declaration — the same object the board itself registers. */
@@ -1746,9 +1767,11 @@ function createManagerCapability(options: {
       ...(boardCollectionId !== undefined && boardCollection !== undefined
         ? { [boardCollectionId]: boardCollection }
         : {}),
+      ...(options.followerResources ?? {}),
     },
   });
 }
+
 
 /**
  * The pull requests on the run's branch, added to the run session's record
@@ -1804,6 +1827,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     judge,
     reviewChanges = false,
     awaitPullRequests = false,
+    onPullRequestRecorded,
     issueSpec,
     approveTools = false,
     tenant,
@@ -1977,6 +2001,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     name: boardCollectionId ?? `${name}:by-claim`,
     boardCollectionId,
     boardCollection,
+    ...(onPullRequestRecorded?.resources !== undefined ? { followerResources: onPullRequestRecorded.resources } : {}),
   });
 
   /**
@@ -2941,6 +2966,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       const state = managerState(harnessCtxState(ctx));
       const identity = identityOf(ctx, harnessCtxState(ctx));
       const succeeded = handle.status === "completed";
+      followRecordedPullRequests(ctx, onPullRequestRecorded);
       await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       /**
@@ -3265,6 +3291,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       await holdWork(ctx).catch(() => undefined);
       await saveKeptFiles(ctx).catch(() => undefined);
       // A failed run's pull requests are still its own.
+      followRecordedPullRequests(ctx, onPullRequestRecorded);
       await checkBranchPullRequests(ctx, await recordRunCheckout(ctx));
 
       const reason = error instanceof Error ? error.message : String(error);
@@ -3628,7 +3655,9 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
    * nothing left to settle. A run that passed its check completes, unless a
    * judge read it and, at or over its floor, said `not-done` (the attempt fails
    * with its reason, which is the next attempt's feedback) or `ask` (the task
-   * is held on its reason, through the ask step every question takes).
+   * is held on its reason, through the ask step every question takes). With
+   * `awaitPullRequests`, a run that opened a pull request settles on it
+   * instead, a `not-done` included.
    */
   const settle = handler({
     name: "harness-manager-settle",
@@ -3651,20 +3680,27 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       }
       const read = input?.verdict ?? null;
       const identity = identityOf(ctx, state);
+      // **A task whose work is a pull request is done when it merges** (FIX-2578), read
+      // before the judge: a run that opened one settles on it, not on a reading of its last message (FIX-2579).
+      const prs = awaitPullRequests
+        ? await taskPullRequests(ctx, (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id])
+        : [];
       if (read !== null && read.verdict !== "done" && read.confidence >= judge!.floor) {
         if (read.verdict === "not-done") {
-          throw new HarnessAttemptFailed(`the judge found the task not done: ${read.reason}`);
+          if (prs.length === 0) throw new HarnessAttemptFailed(`the judge found the task not done: ${read.reason}`);
+          // The person reviews the pull request; the judge's reading goes with it, as information.
+          ctx.emit.status(`The judge found the task not done (${read.confidence.toFixed(2)}): ${read.reason}. It waits on its pull request.`, {
+            transient: false,
+          });
+          const output: ManagerOutput = { ...decision.output, judged: true, review: null, landed: decision.landed ?? null };
+          return settleOnPullRequests(ctx, prs, output);
         }
         await holdOnQuestion(ctx, read.reason);
         return { ...decision.output, judged: true };
       }
       const review = decision.reviewed === "accepted" || decision.reviewed === "deadline" ? decision.reviewed : null;
       const output: ManagerOutput = { ...decision.output, judged: read !== null, review, landed: decision.landed ?? null };
-      // **A task whose work is a pull request is done when it merges** (FIX-2578).
-      if (awaitPullRequests) {
-        const prs = await taskPullRequests(ctx, (await readRunRecord(ctx, state.topic!))?.requestIds ?? [ctx.request.identity.id]);
-        if (prs.length > 0) return settleOnPullRequests(ctx, prs, output);
-      }
+      if (prs.length > 0) return settleOnPullRequests(ctx, prs, output);
       await fenced(
         writeRunRecord(ctx, identity, { outcome: "succeeded", reason: null }),
         "the run record was completed",
@@ -3779,7 +3815,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           }
           await reviewed("accepted", outcome.landed);
           ctx.emit.status(landedLine(outcome.landed), { transient: false });
-          if (outcome.landed.kind === "pull-request") await recordLandedPullRequest(ctx, outcome.landed);
+          if (outcome.landed.kind === "pull-request") {
+            followRecordedPullRequests(ctx, onPullRequestRecorded);
+            await recordLandedPullRequest(ctx, outcome.landed);
+          }
           return input;
         }
 
@@ -4019,6 +4058,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // path forwards into the query's abort controller. The row's watch
       // (a steer's stop, or the task's end) composes in beside it.
       abortSignal: (ctx) => {
+        // Before the harness starts recording, so a pull request it opens is followed mid-turn.
+        followRecordedPullRequests(ctx, onPullRequestRecorded);
         const deadline = AbortSignal.timeout(runTimeoutMs);
         // Armed for every step: a run may offer a live steer once it starts.
         const steer = watchForSteers(ctx);

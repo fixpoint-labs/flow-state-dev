@@ -105,13 +105,23 @@ export type {
   ObservedPullRequestState,
   PullRequestCollection,
   PullRequestLink,
+  PullRequestFollower,
+  PullRequestRecordedCallback,
+  RecordedPullRequest,
   PullRequestRef,
   PullRequestRule,
   PullRequestSource,
   PullRequestToolCall,
   WritePullRequestsOptions,
 } from "../types/pull-requests";
-export { pullRequestRecorder, pullRequestWritesSettled, recordPullRequests } from "../helpers/pull-request-recorder";
+export {
+  followRecordedPullRequests,
+  pullRequestRecordedOf,
+  pullRequestRecorder,
+  pullRequestWritesSettled,
+  recordPullRequests,
+  whenPullRequestRecorded,
+} from "../helpers/pull-request-recorder";
 export type { PullRequestRecorderContext, RecordPullRequestsOptions } from "../helpers/pull-request-recorder";
 
 /** The allowlisted environment for a harness's child process, and the base every harness's list starts from. */

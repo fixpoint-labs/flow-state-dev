@@ -1,4 +1,4 @@
-// FIX-2534.
+// FIX-2534; FIX-2537.
 /**
  * Subscriptions' rows: the subscription, its cursor, and the thread
  * index entry, with the collections they live in and how a block reaches them.
@@ -29,6 +29,7 @@ import {
   SUBSCRIPTIONS_PATTERN,
   SUBSCRIPTIONS_RESOURCE
 } from "./keys";
+import { routineMakerSchema } from "../routines/listed-routine";
 
 /** The most terms a listed screen carries. */
 export const MAX_SCREEN_TERMS = 20;
@@ -42,11 +43,16 @@ const terms = z.array(z.string().min(1).max(100)).min(1).max(MAX_SCREEN_TERMS);
  * - `labels`: the event carries at least one of these labels.
  * - `words`: the event's title or text contains at least one of these words, ignoring case.
  * - `allow`: the event's sender is one of these ids.
+ * - `custom`: the app's own screen of this name, declared once on the provider (D2).
+ * - `interest`: a model judges whether the event matches the subscription's
+ *   sentence, after every code screen passed it (D1).
  */
 export const listedScreenSchema = z.discriminatedUnion("screen", [
   z.object({ screen: z.literal("labels"), any: terms }).strict(),
   z.object({ screen: z.literal("words"), any: terms }).strict(),
-  z.object({ screen: z.literal("allow"), ids: terms }).strict()
+  z.object({ screen: z.literal("allow"), ids: terms }).strict(),
+  z.object({ screen: z.literal("custom"), name: z.string().min(1).max(100) }).strict(),
+  z.object({ screen: z.literal("interest") }).strict()
 ]);
 
 export type ListedScreen = z.infer<typeof listedScreenSchema>;
@@ -65,13 +71,19 @@ const screenSettingsSchema = z.object({
   /** The subscription takes outsiders' events (epic Q1's per-subscription opt-in). */
   outsiders: z.literal(true).optional(),
   /** The subscriber's own id at the provider, for `own`. */
-  self: z.string().min(1).optional()
+  self: z.string().min(1).optional(),
+  /**
+   * The subscription hears only what no other subscription heard: an event
+   * every ordinary subscription refused on content, of a kind the app
+   * forwards. Only a coordinator's session makes one.
+   */
+  unmatched: z.literal(true).optional()
 });
 
 /** One subscription. Server-written: the session, worker, task and user come from the subscribing turn, never from the tool's input. */
 export const subscriptionResourceStateSchema = screenSettingsSchema.extend({
   id: z.string().min(1),
-  /** The sentence the subscriber gave: kept, for the screens a later issue adds. */
+  /** The sentence the subscriber gave. The `interest` screen quotes it to the model, when listed. */
   interest: z.string(),
   /** The session that hears. */
   sessionId: z.string().min(1),
@@ -88,16 +100,27 @@ export const subscriptionResourceStateSchema = screenSettingsSchema.extend({
   tenantId: z.string().min(1).optional(),
   /** `false` once it ended. The host's owner-run check reads it as off. */
   enabled: z.boolean(),
-  /** Why it ended: `unsubscribed`, `thread_closed`, `task_errored`, `task_cancelled`. */
+  // FIX-2536 D3; BP-030.
+  /** How often, in minutes, it is polled when its app polls: one of `ROUTINE_CADENCES`. Absent, the app's default. */
+  everyMinutes: z.number().int().positive().optional(),
+  /**
+   * Why it ended: `unsubscribed`, `thread_closed`, `task_errored`,
+   * `task_cancelled`, `config_removed`, or `paused`, the one end a resume undoes.
+   */
   endedReason: z.string().optional(),
   endedAt: z.number().optional(),
-  at: z.number()
+  at: z.number(),
+  /** Who made it, as the routine list names them. Optional: one saved before it names none. */
+  madeBy: routineMakerSchema.optional()
 });
 
 export type SubscriptionResourceState = z.infer<typeof subscriptionResourceStateSchema>;
 
 /** The most objects a cursor remembers; the oldest are forgotten first. */
 export const MAX_CURSOR_OBJECTS = 500;
+
+/** The most versions a cursor's `screened` keeps; the oldest are forgotten first. */
+export const MAX_SCREENED = 500;
 
 /** One subscription's delivery state. */
 export const subscriptionCursorSchema = z.object({
@@ -113,7 +136,16 @@ export const subscriptionCursorSchema = z.object({
    * without marking it seen. One past its lease (a delivery that stopped) no
    * longer counts.
    */
-  inFlight: z.array(z.tuple([z.string(), z.number(), z.number()])).default([])
+  inFlight: z.array(z.tuple([z.string(), z.number(), z.number()])).default([]),
+  // FIX-2536 D2; BP-030.
+  /**
+   * The versions a poll's screens refused or held for this subscription, or
+   * gave up on, as `[id, version, at]` (`at` the event's own time), oldest
+   * first: a later poll that fetches one again drops it without judging it
+   * again. Only a poll writes it; capped at {@link MAX_SCREENED}, and pruned
+   * once the poll's mark passes an entry's time.
+   */
+  screened: z.array(z.tuple([z.string(), z.number(), z.number()])).default([])
 });
 
 export type SubscriptionCursor = z.infer<typeof subscriptionCursorSchema>;
@@ -122,7 +154,13 @@ export type SubscriptionCursor = z.infer<typeof subscriptionCursorSchema>;
 export const indexEntrySchema = screenSettingsSchema.extend({
   userId: z.string().min(1),
   orgId: z.string().min(1),
-  tenantId: z.string().min(1).optional()
+  tenantId: z.string().min(1).optional(),
+  /**
+   * The subscription's sentence, mirrored only for a subscription that lists
+   * `interest`. An entry without one reads as not listing it (an entry from
+   * before the screen has none).
+   */
+  interest: z.string().optional()
 });
 
 export type IndexEntry = z.infer<typeof indexEntrySchema>;
@@ -189,6 +227,22 @@ export const subscriptionIndexOf = (ctx: BlockContext) => declared<ThreadIndexRe
 
 /** A thread key as an index row's key: one path segment. */
 export const indexKeyOf = (thread: string) => encodeURIComponent(thread);
+
+/**
+ * A subscription's slot in a thread's index entry: its owner and its id. A declared routine's id
+ * (`cfg_…`) is the same for every user who has one, and the thread index is the org's, so the id
+ * alone would give two users one slot.
+ */
+export const indexSlotOf = (userId: string, id: string) => `${encodeURIComponent(userId)}:${id}`;
+
+/**
+ * The subscription id a slot names: the id after its owner, or a whole key written before slots
+ * named an owner (a bare id).
+ */
+export function subscriptionIdOfSlot(slot: string, entry: { readonly userId: string }): string {
+  const owner = `${encodeURIComponent(entry.userId)}:`;
+  return slot.startsWith(owner) ? slot.slice(owner.length) : slot;
+}
 
 /** A subscription's full storage key, as the host's owner-run check reads it. */
 export const subscriptionResourceKey = (id: string) => `${SUBSCRIPTIONS_PATTERN.replace("*", "")}${id}`;

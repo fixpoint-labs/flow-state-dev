@@ -13,7 +13,13 @@
  */
 import { describe, expect, it } from "vitest";
 import type { RuntimeItem } from "../src/items/internal";
-import { pullRequestRecorder, pullRequestWritesSettled, recordPullRequests } from "../src/helpers/pull-request-recorder";
+import {
+  pullRequestRecordedOf,
+  pullRequestRecorder,
+  pullRequestWritesSettled,
+  recordPullRequests,
+  whenPullRequestRecorded,
+} from "../src/helpers/pull-request-recorder";
 import { REQUEST_END_SEAM, type RequestEndHook } from "../src/types/request-end";
 import { OBSERVED_PULL_REQUESTS, writePullRequests } from "../src/types/pull-requests";
 import type { BlockContext } from "../src/types/block";
@@ -172,5 +178,32 @@ describe("pullRequestWritesSettled", () => {
   it("resolves at once for a request with no recorder", async () => {
     await expect(pullRequestWritesSettled({})).resolves.toBeUndefined();
     await expect(pullRequestWritesSettled(undefined)).resolves.toBeUndefined();
+  });
+});
+
+// FIX-2535 D2.
+describe("whenPullRequestRecorded", () => {
+  it("hands each pull request the recorder records to the request's callback, as its call settles", async () => {
+    const r = request();
+    const followed: string[] = [];
+    whenPullRequestRecorded(r.response, (pr) => {
+      followed.push(pr.url);
+    });
+    recordPullRequests(r.ctx());
+    r.settle(88);
+    await flush();
+    // Mid-turn: before the request ends.
+    expect(followed).toEqual(["https://github.com/acme/app/pull/88"]);
+    r.settle(88);
+    await r.end();
+    expect(followed).toHaveLength(1);
+  });
+
+  it("gives another request's writers nothing", () => {
+    const one = request();
+    const other = request();
+    whenPullRequestRecorded(one.response, () => undefined);
+    expect(pullRequestRecordedOf(one.response)).toBeTypeOf("function");
+    expect(pullRequestRecordedOf(other.response)).toBeUndefined();
   });
 });
