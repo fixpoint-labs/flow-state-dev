@@ -285,8 +285,6 @@ Spec-set review round 1 (Nov 5), recorded, not folded.
   issues, FIX-2568 and FIX-2569. D2's completions POC was refuted; `/internal` stays a plain
   published subpath and the completions lock-in was dropped here and from the five children that
   create one. Two seam rows were added (findBy on the method table, scope-state defaults).
-- **Amended (Nov 10).** D4 keeps four refusals and readers, the owner's ruling by merging [#4830](https://github.com/fixpoint-labs/flow-state-dev/pull/4830);
-  its price line, ER-3 and the SPEC's restatements now match ([D4](#kept-refusals)).
   FIX-2564 is the one source for the assertion grid; FIX-2462's design is an appendix to
   FIX-2459.
 - **Spec-set review round 2 (Nov 5).** The FSD Architect's two follow-ups: the scope-state
@@ -301,5 +299,8 @@ Spec-set review round 1 (Nov 5), recorded, not folded.
   `SPEC.md`: the fifth team's *after*, the FIX-2454 row, sequencing, the debt and the sign-off.
   Every child spec was swept for aliases, refusals, readers of old shapes and shims; the PR body
   lists each one touched. Original review: [#4772](https://github.com/fixpoint-labs/flow-state-dev/pull/4772).
+- **Amended (Nov 10), a follow-up PR from `main`.** D4 keeps four refusals and readers, the
+  owner's ruling by merging [#4830](https://github.com/fixpoint-labs/flow-state-dev/pull/4830);
+  its price line, ER-3 and the SPEC's restatements now match ([D4](#kept-refusals)).
 
 **Open:** none. Q1 was answered on Nov 6 ([above](#q1)).
