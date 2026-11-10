@@ -46,7 +46,7 @@
 
 - **Because:** the issue says "pre-fills the composer". A draft already in the box is kept, with
   the follow-up line added after a blank line, so a click never loses typing.
-- **The button names the filer** (`Ask Chief of Staff to follow up`), read from the popup's
+- **The button names the filer** (`Ask Lead to follow up`), read from the popup's
   conversation; a popup whose conversation isn't on the roster shows no button.
 
 ## Decided, not asked

@@ -7,9 +7,9 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **opens a finished coding task in Teammates** | Opens each folded step group to learn which files changed and what ran | Reads one line under the title: `Edited 2 files · ran 5 commands · 2m 14s`, with a chip per edited file. Files show for a harness that records them (Claude Code today); Codex and Cursor tasks read `Ran 5 commands · 2m 14s` until theirs do (D1) |
-| **opens a task that failed** | Sees the error in red, and any result below it in the same green as a success | The result box takes the task's status: green when done, red when failed, grey when cancelled |
+| **opens a task that failed** | Sees the error in red, and any result below it in the same green as a success | The result box takes the task's tone from `taskPresentation`: neutral when done, red when failed, muted when cancelled |
 | **wants the result somewhere else** | Selects the text by hand | Presses **Copy**: the result, or the error when there is no result |
-| **wants more done after a task ends** | Closes the popup, finds the conversation that filed it, and types the context in | Presses **Ask Chief of Staff to follow up**: the popup closes, that conversation opens, and its composer holds `Follow up on "<task title>": ` with the cursor at the end |
+| **wants more done after a task ends** | Closes the popup, finds the conversation that filed it, and types the context in | Presses **Ask Lead to follow up**: the popup closes, that conversation opens, and its composer holds `Follow up on "<task title>": ` with the cursor at the end |
 
 ## The goal, and how we'll know it's met
 
@@ -64,8 +64,8 @@ flowchart LR
 ## What changes
 
 - `labs/teammates/src/adapter.ts`: `BoardTask` carries the run's `requestId` beside
-  `runSessionId`; the adapter gains `watchRecordedWork(run)`, a thin call to `readRecordedWork`
-  read again when the task ends; a pure `runSummaryLine` puts files, commands and duration in
+  `runSessionId`; the adapter gains `recordedWork(run)`, a thin call to `readRecordedWork`
+  that the popup reads again when the task's status changes; a pure `runSummaryLine` puts files, commands and duration in
   words.
 - `labs/teammates/src/components/Popups.tsx`: the task popup draws the summary line and chips,
   takes the result's tone from `lib/task-presentation.ts` (`taskPresentation`), and adds Copy and the follow-up button.
