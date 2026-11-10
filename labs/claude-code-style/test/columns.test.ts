@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { LabTask } from "../src/adapter";
-import { columnOf, waitingOnYou } from "../src/lib/columns";
+import { columnOf, dismissalKey, waitingOnYou } from "../src/lib/columns";
 
 const task = (patch: Partial<LabTask>): LabTask => ({ id: "t", title: "t", goal: "g", status: "in_progress", ...patch });
 
@@ -23,6 +23,13 @@ describe("columnOf", () => {
     ["cancelled", task({ status: "cancelled" }), "resolved"],
   ])("puts a task that is %s under its column", (_name, row, column) => {
     expect(columnOf(row, false)).toBe(column);
+  });
+
+  it("moves a failure you dismissed from Waiting on you to Resolved, and only that attempt's", () => {
+    expect(columnOf(task({ status: "errored", attempts: 1 }), false, true)).toBe("resolved");
+    // A dismissal is a failed task's alone: it never resolves work under way.
+    expect(columnOf(task({ status: "in_progress", attempts: 1 }), false, true)).toBe("working");
+    expect(dismissalKey(task({ id: "t", attempts: 1 }))).not.toBe(dismissalKey(task({ id: "t", attempts: 2 })));
   });
 
   it("puts a pinned task under Pinned whatever its status", () => {
@@ -43,5 +50,13 @@ describe("waitingOnYou", () => {
       task({ status: "cancelled" }),
     ];
     expect(waitingOnYou(tasks)).toBe(3);
+  });
+
+  it("leaves out a failure you dismissed", () => {
+    const failed = task({ id: "f", status: "errored", attempts: 1 });
+    expect(waitingOnYou([failed])).toBe(1);
+    expect(waitingOnYou([failed], new Set([dismissalKey(failed)]))).toBe(0);
+    // Retried and failed again: a new attempt, which waits on you again.
+    expect(waitingOnYou([{ ...failed, attempts: 2 }], new Set([dismissalKey(failed)]))).toBe(1);
   });
 });

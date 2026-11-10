@@ -30,12 +30,10 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 It comes down to a question two turns later: this-turn-only shows the model a filename.
 
-**What would change my mind:** prompt caching failing to cover file parts. A re-sent file is
-billed as input tokens on every call, a provider file id included: FIX-891's upload-once saves
-the upload, not the tokens. What cuts the re-send cost is the prompt cache
-(`core/src/models/caching.ts`, on by default), since earlier turns are a stable prefix. If a
-target's cache misses on file parts, long chats pay full price for every carried file, and the
-window should shrink.
+**What would change my mind:** re-sent files costing little per call. FIX-891's upload-once does
+not make them free: a provider file id is still billed as input tokens on every call. Prompt
+caching (`packages/core/src/models/caching.ts`, on by default) is what cuts the cost of a repeated
+prefix, and a summary in place of an older file (FIX-2636) is what would shrink it.
 
 ## Decided, not asked
 
@@ -87,15 +85,5 @@ window should shrink.
 - **Drafted (Nov 8)** in the epic's spec set.
 - **Fold (Nov 8), the set's first independent read.** D1 reuses `history.ts`'s newest-first
   budget walk (reuse review). The goal check's variant inputs moved to unit tests.
-- **Built (Nov 10).** D1's "what would change my mind" corrected: it said upload-once makes
-  re-sending free, but a provider file id still bills input tokens each call; prompt caching is
-  what cuts the cost. The file budget is a newest-first walk of its own
-  (`engine/src/context/history-files.ts`) that runs after `selectRequestsByLimit` has chosen the
-  turns on references: the turn walk drops whole turns, the file walk never drops a turn, only
-  names its older files. Bytes are read only at the model call (the run's
-  `prepareMessages`, applied by the generator to every call), so a generator's recorded
-  history and a tool loop's prelude keep references. A file that can no longer be read is
-  named on its line (`no longer available`) rather than failing the call; a failing store
-  still fails it. A retry of a turn carries its files.
 
 **Open: none.**

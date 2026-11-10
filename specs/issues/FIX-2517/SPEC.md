@@ -110,7 +110,7 @@ The limits are checked once, at the parse step, so no path past it can skip them
 | The debt | |
 |---|---|
 | **Removes** | Nothing in the repo: no flow here hand-rolls base64 input (searched `base64`, `readAsDataURL`, `data:image` across `apps/` and `labs/`). An adopter's own workaround stops being needed |
-| **Adds** | A second channel into a request beside the input, permanent by design (epic D3). Re-sent bytes on later turns ([D1](DECISIONS.md#d1)), billed as input each call; prompt caching, on by default, is what cuts that cost |
+| **Adds** | A second channel into a request beside the input, permanent by design (epic D3). Re-sent files on later turns ([D1](DECISIONS.md#d1)), billed each call; prompt caching cuts it, and [FIX-2636](https://linear.app/fixpoint-labs/issue/FIX-2636) would shrink it |
 | **Leaves** | Assistant-side files, FIX-137's wider scope |
 
 **Net: up, by one field.** Every app's send gains it; no flow changes.
