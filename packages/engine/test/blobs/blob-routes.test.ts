@@ -31,6 +31,8 @@ function chatFlow(authenticated = false) {
     actions: {
       send: {
         inputSchema: z.object({ message: z.string() }),
+        // Files ride on the user line, so an action that takes them writes one.
+        userMessage: (input: { message: string }) => input.message,
         block: handler({
           name: "chat-send",
           inputSchema: z.object({ message: z.string() }),

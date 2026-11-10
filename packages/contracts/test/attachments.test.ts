@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ATTACHMENT_LIMITS,
   attachmentKind,
+  attachmentLimitRefusal,
   isAttachmentMediaType,
   parseBlobRef,
   toBlobRef
@@ -47,5 +48,30 @@ describe("the limits set", () => {
     });
     // At least a day before an unclaimed upload may be swept.
     expect(ATTACHMENT_LIMITS.unclaimedTtlMs).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000);
+  });
+});
+
+describe("attachmentLimitRefusal", () => {
+  const png = { mediaType: "image/png" };
+  const pdf = { mediaType: "application/pdf" };
+
+  it("takes a message at the limits: ten images and five documents", () => {
+    expect(attachmentLimitRefusal([...Array(10).fill(png), ...Array(5).fill(pdf)])).toBeUndefined();
+    expect(attachmentLimitRefusal([])).toBeUndefined();
+  });
+
+  // The server and the composer refuse by name; a message one over must not
+  // slip through because the other kind still has room.
+  it("names the kind a message is over, and the file that tipped it", () => {
+    expect(attachmentLimitRefusal(Array(11).fill(png))).toEqual({ reason: "too-many-images", index: 10, limit: 10 });
+    expect(attachmentLimitRefusal([png, ...Array(6).fill(pdf)])).toEqual({
+      reason: "too-many-documents",
+      index: 6,
+      limit: 5
+    });
+  });
+
+  it("refuses a type off the list by its position", () => {
+    expect(attachmentLimitRefusal([png, { mediaType: "image/heic" }])).toEqual({ reason: "type", index: 1 });
   });
 });

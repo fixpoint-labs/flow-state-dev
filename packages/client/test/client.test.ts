@@ -97,6 +97,25 @@ describe("a body that fails to read", () => {
 });
 
 describe("flow(address).send", () => {
+  // Files ride beside the input, never in it: the server checks them once for
+  // every flow, and the flow's input schema stays the flow's.
+  it("sends a message's files beside the input, and leaves them out when there are none", async () => {
+    const bodies: unknown[] = [];
+    const fetcher = routed({
+      "POST /actions/run": (init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return json(EXECUTE_RESPONSE);
+      }
+    });
+    const flow = createClient({ userId: "devuser", baseUrl: "", fetcher }).flow("demo");
+    const shot = { type: "file" as const, mediaType: "image/png", data: "fsd-blob:b_0123456789abcdef", filename: "shot.png" };
+    await flow.send("run", { value: "ok" }, { sessionId: "sess_1", attachments: [shot] });
+    await flow.send("run", { value: "ok" }, { sessionId: "sess_1" });
+
+    expect(bodies[0]).toEqual({ input: { value: "ok" }, userId: "devuser", sessionId: "sess_1", attachments: [shot] });
+    expect(bodies[1]).not.toHaveProperty("attachments");
+  });
+
   it("posts the action with the client's user, and returns a request handle", async () => {
     const fetcher = routed({
       "POST /actions/run": (init) => {

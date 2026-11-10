@@ -6,6 +6,7 @@ import type {
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import type { JsonObject, ModelUsageEntry } from "@flow-state-dev/core/types";
+import type { FileContent } from "@flow-state-dev/core/items";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
@@ -221,6 +222,14 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
   input?: unknown;
+  // BP-030.
+  /**
+   * The files the person's message carried, in reference form, as the parse
+   * step checked them. What `ctx.request.attachments` reads, so a resumed or
+   * queued run sees the same files. `== null` → none: records written before
+   * the field have none.
+   */
+  attachments?: FileContent[];
   /**
    * The request's item log, trace rows included. Adapters that store items
    * separately may leave this `undefined` on `list()` results unless

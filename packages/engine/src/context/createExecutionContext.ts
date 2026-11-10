@@ -38,6 +38,7 @@ import type {
   ComponentItem,
   ContainerItem,
   Content,
+  FileContent,
   ItemProvenance,
   MessageItem,
   OutputItem,
@@ -168,6 +169,9 @@ import {
   LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
+import { resolveAttachment, sessionBlobOwner, type ResolvedAttachment } from "../blobs/attachments";
+import type { BlobStore } from "../blobs/types";
+import { resolveHistoryFiles } from "./history-files";
 import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
@@ -2921,6 +2925,23 @@ export async function createExecutionContext<
   if (providerOf !== undefined) {
     resolveModel.providerOf = (modelId: string) => providerOf.call(modelResolver, modelId);
   }
+  // A person's files reach the model at the call, through the one resolver,
+  // for this session and this person only. The history and everything a run
+  // records of it keep the references.
+  // Each file is read once per request, though every step of a tool loop
+  // sends it again. A failed read isn't kept, so the next step tries again.
+  const blobs = stores.blobs;
+  const reads = new Map<string, Promise<ResolvedAttachment>>();
+  const readOnce = (store: BlobStore, file: FileContent) => {
+    const cached = reads.get(file.data);
+    if (cached !== undefined) return cached;
+    const read = resolveAttachment(store, file, { owner: sessionBlobOwner(sessionKey), user: { userId, orgId: resolvedOrgId } });
+    reads.set(file.data, read);
+    read.catch(() => reads.delete(file.data));
+    return read;
+  };
+  resolveModel.prepareMessages = (messages: unknown[]) =>
+    resolveHistoryFiles(messages, blobs === undefined ? undefined : (file: FileContent) => readOnce(blobs, file));
   // Evaluator strings resolve only through the flow's own resolver. When an
   // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
   // absent and the evaluator refuses the string; the default resolver is
@@ -3011,6 +3032,9 @@ export async function createExecutionContext<
       // here: a retry, a resume or a queued run is the same request only if
       // it reads the same value.
       incarnation: resolveRequestIncarnation(requestRef.current),
+      // From the record, as the incarnation is: a resumed or queued run of
+      // this request sees the files the parse step checked.
+      attachments: requestRef.current.attachments ?? [],
       get tokenUsage() {
         return computeTokenUsage();
       },

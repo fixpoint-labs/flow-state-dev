@@ -34,6 +34,7 @@ import {
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
 import { claimRequestAttachments } from "./attachment-claim";
+import { resolveActionCore } from "../execution/resolve-action-core";
 
 type ActionRunInput = {
   flowKind: string;
@@ -167,7 +168,7 @@ export async function handleExecuteAction(
     }
   };
 
-  const dispatchEnvelope = {
+  const envelope = {
     source: "http" as const,
     flowKind: resolvedActionInput.flowKind,
     action: resolvedActionInput.actionName,
@@ -181,15 +182,23 @@ export async function handleExecuteAction(
     signal: resolvedActionInput.signal
   };
 
-  // The files this message names, claimed into its session before any block
-  // runs (FIX-824). Handed back if the send is refused before it is admitted.
+  // The files this message names: checked against the limits and the
+  // action's user line, then claimed into its session before any block runs
+  // (FIX-824, FIX-2517). Handed back if the send is refused before it is
+  // admitted. An action this route can't resolve is refused by the dispatch
+  // below, as without files.
   const claimed = await claimRequestAttachments(body.attachments, {
     stores: ctx.stores,
     sessionId,
     tenantId,
-    uploader: { userId: resolvedActionInput.userId, orgId: resolvedActionInput.orgId }
+    uploader: { userId: resolvedActionInput.userId, orgId: resolvedActionInput.orgId },
+    takesFiles: resolveActionCore(flow, route.actionName, "http", undefined)?.userMessage !== undefined
   });
   if ("refused" in claimed) return claimed.refused;
+  const dispatchEnvelope = {
+    ...envelope,
+    ...(claimed.attachments.length > 0 ? { attachments: claimed.attachments } : {})
+  };
   let admitted = false;
   try {
     try {

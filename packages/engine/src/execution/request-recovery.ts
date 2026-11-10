@@ -338,6 +338,10 @@ export async function retryRequest(
     orgId: attributedOrgId,
     tenantId,
     source: retrySource,
+    // The person's files: the retry is their turn again, so its line, its
+    // record and the model get the same references. Already the session's;
+    // nothing is claimed again.
+    attachments: originalRecord?.attachments ?? undefined,
     metadata: {
       ...(originalMetadata ?? {}),
       retryOf: options.originalRequestId

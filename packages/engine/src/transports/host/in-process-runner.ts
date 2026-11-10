@@ -129,6 +129,7 @@ export function createInProcessRunner(
       source: envelope.source,
       metadata: envelope.metadata,
       resolvedActionCore: envelope.resolvedActionCore,
+      attachments: envelope.attachments,
       signal,
       abortHandoff: local.abortHandoff,
       stores,

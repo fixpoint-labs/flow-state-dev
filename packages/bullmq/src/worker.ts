@@ -388,6 +388,7 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
         tenantId: data.tenantId,
         source: data.source ?? "bullmq",
         metadata: data.metadata,
+        attachments: data.attachments ?? undefined,
         stores,
         runtimeConfig,
         startSequenceNumber,
