@@ -248,10 +248,37 @@ and respects `requireUser`.
 | 500 | `resolver_failed` (resolver threw) or `dispatch_failed` (input fn threw) |
 | 503 | `flow_unregistered` (unregistered between resolve and dispatch) |
 
+## The tick
+
+A flow's dynamic schedules fire only when something claims their due entries
+from a `ScheduleIndex` and posts each to the dispatch endpoint.
+`runScheduleTick` (from `@flow-state-dev/scheduled/collection`, engine-free)
+is that body: claim the entries due now, dispatch each under its
+`formatScheduleId` id with bounded concurrency, drop a schedule with no org, and
+throw only when the claim does. It runs two ways:
+
+- **Once a beat**, from a host's own cron: `createScheduleTickHandler`
+  in `@flow-state-dev/vercel/schedules` runs it per Vercel Cron call.
+- **Each minute**, from a long-lived host: `serve()` in
+  `@flow-state-dev/node` (and so `fsdev dev`) starts `startScheduleTick`
+  for each registered flow whose `schedules.index` names an index, and
+  dispatches through its own app, bearing `CRON_SECRET` when set. The app
+  must mount `createScheduledTransportAdapter()`. One index serves one flow:
+  its entries name no flow, so an index two flows name is ticked once.
+
+`schedules.index` is a structural `{ claimDue(now, limit) }` in core, so a
+flow carries its index without core loading this package. The endpoint's
+claim is still the at-most-once guarantee; the tick only finds due entries.
+
+Subscription polling (`defineSubscriptionServiceFlow({ poll })` in
+`@flow-state-dev/workforce`) is the first flow to carry one: one schedule resource
+per user and thread at `workforce/subscription-polls/*`, firing at that
+user's fastest subscription's cadence (5, 10, 15, 20, 30 or 60 minutes).
+
 ## v1 non-goals
 
 - No fan-out. One dispatch fires one action.
-- No framework-side scheduler loop.
+- No scheduler loop in the engine: a host runs the tick (`serve()` does).
 - No durable missed-window handling.
 - No `onOverlap: "queue"`.
 - No bundled `node-cron` integration.

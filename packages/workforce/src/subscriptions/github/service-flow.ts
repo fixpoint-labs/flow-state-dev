@@ -46,6 +46,8 @@ export interface GitHubServiceFlowOptions {
   readonly capPerHour?: number;
   /** The most subscriptions one event is delivered to. */
   readonly maxOwnerRuns?: number;
+  /** Poll GitHub for subscriptions with no webhook: see `defineSubscriptionServiceFlow`'s `poll`. */
+  readonly poll?: boolean;
   /**
    * The kinds of event forwarded to a coordinator that follows the thread
    * `unmatched`, when no other subscription heard one (`["issue", "comment"]`).
@@ -67,6 +69,7 @@ export function githubServiceFlow(options: GitHubServiceFlowOptions) {
     ...(options.trustedBots === undefined ? {} : { trustedBots: options.trustedBots }),
     ...(options.capPerHour === undefined ? {} : { capPerHour: options.capPerHour }),
     ...(options.maxOwnerRuns === undefined ? {} : { maxOwnerRuns: options.maxOwnerRuns }),
+    ...(options.poll === undefined ? {} : { poll: options.poll }),
     ...(options.forwards === undefined ? {} : { forwards: options.forwards }),
     normalize: (event, at) =>
       normalizeGitHubEvent(

@@ -65,6 +65,7 @@ import {
 } from "./keys";
 import { listedRoutineSchema, routineMakerSchema, type ListedRoutine, type RoutineMaker } from "./listed-routine";
 import { routineIndexOf, routineProvidersOf } from "./routines-options";
+import { installationPolling, pollingOn, type SubscriptionPolling } from "../subscriptions/poll";
 
 // ---- inputs ------------------------------------------------------------------
 
@@ -152,6 +153,13 @@ export interface RoutinesOptions {
   readonly providers?: readonly SubscriptionProvider[];
   /** The app's own routines, seeded for each user (or an entry's owner). */
   readonly declared?: readonly DeclaredRoutine[];
+  /**
+   * Polling, for providers an app has no webhook for: a schedule index of its
+   * own (not `index`: one index ticks one flow, and this one ticks the service
+   * flow, whose `poll` is on), and the cadence an event routine that names
+   * none polls at (one of {@link ROUTINE_CADENCES}; omitted, 5). Omitted, nothing polls.
+   */
+  readonly poll?: { readonly index: ScheduleIndex; readonly everyMinutes?: number };
 }
 
 /** Why a cadence is refused, or `undefined`. */
@@ -298,6 +306,8 @@ const subscribeInputOf = (subscription: SubscriptionResourceState): SubscribeInp
   ...(subscription.kinds === undefined ? {} : { kinds: subscription.kinds }),
   screens: subscription.screens,
   ...(subscription.outsiders === true ? { outsiders: true as const } : {}),
+  ...(subscription.unmatched === true ? { unmatched: true as const } : {}),
+  ...(subscription.everyMinutes === undefined ? {} : { everyMinutes: subscription.everyMinutes }),
   interest: subscription.interest
 });
 
@@ -333,7 +343,12 @@ interface VerbDeps {
   readonly providers: readonly SubscriptionProvider[];
   /** The installation a user's event routine finds its hearer on. A worker's tools need none. */
   readonly installation?: WorkerInstallation;
+  /** The installation's polling, when `hireWorkforce` was given `routines.poll`. */
+  readonly polling?: SubscriptionPolling;
 }
+
+/** A write's polling, when the app polls. */
+const pollingWrite = (polling: SubscriptionPolling | undefined) => (polling === undefined ? {} : { polling });
 
 async function saveRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, input: SaveRoutineInput): Promise<RoutineOutcome> {
   const madeBy: RoutineMaker = caller.by === "user" ? { by: "user" } : { by: "worker", worker: caller.worker };
@@ -365,14 +380,12 @@ async function saveRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, in
     return { ok: true, routine: listedClock(input.name, schedule) };
   }
 
-  const { everyMinutes, ...event } = input.trigger.event;
+  const event = input.trigger.event;
   if (input.name !== undefined) return refused("no_name: an event routine is named by its thread; leave name out. Nothing was saved.");
   // Event to task is not a routine's (it belongs to the event's hearer).
   if (input.task !== undefined) return refused("no_task: an event routine files no task; its events reach the hearer as messages. Nothing was saved.");
-  const cadence = cadenceProblem(everyMinutes);
+  const cadence = cadenceProblem(event.everyMinutes);
   if (cadence !== undefined) return refused(cadence);
-  // A valid cadence is checked and not yet kept: every provider today pushes,
-  // and the poll that would honour it keeps its own schedule (FIX-2536).
   let target: SubscribeTarget | undefined;
   if (caller.by === "user") {
     if (input.worker === undefined) return refused("no_hearer: name the worker whose conversation hears it, in worker. Nothing was saved.");
@@ -383,7 +396,7 @@ async function saveRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, in
   } else if (input.worker !== undefined && input.worker !== caller.worker) {
     return refused(`not_yours: you can save only routines that act through you, not through "${input.worker}".`);
   }
-  const outcome = await subscribe(ctx, deps.providers, event, target, { madeBy });
+  const outcome = await subscribe(ctx, deps.providers, event, target, { madeBy, ...pollingWrite(deps.polling) });
   if ("refused" in outcome) return refused(outcome.refused);
   const subscription = await savedSubscription(ctx, outcome.id);
   return subscription === undefined ? refused(`no_routine: "${outcome.id}" wasn't written.`) : { ok: true, routine: listedEvent(subscription) };
@@ -415,7 +428,8 @@ async function pauseRoutine(ctx: BlockContext, caller: Caller, deps: VerbDeps, i
     // the same session and task, the same id and maker.
     const outcome = await resumeSubscription(ctx, deps.providers, subscribeInputOf(subscription), targetOf(subscription), {
       id: subscription.id,
-      ...(subscription.madeBy === undefined ? {} : { madeBy: subscription.madeBy })
+      ...(subscription.madeBy === undefined ? {} : { madeBy: subscription.madeBy }),
+      ...pollingWrite(deps.polling)
     });
     if ("refused" in outcome) return refused(`${outcome.refused} It stays paused.`);
   }
@@ -504,7 +518,7 @@ export async function seedDeclaredRoutines(
         outcome.written.push(entry.id);
         continue;
       }
-      const { everyMinutes: _cadence, ...event } = trigger.event;
+      const event = trigger.event;
       // An entry that was a clock routine under this key: its schedule goes.
       if ((await schedulesOf(ctx).getOptional(key)) !== undefined) await removeSchedule(ctx, key);
       const target = await conversationWith(ctx, installation, entry.worker!);
@@ -519,6 +533,8 @@ export async function seedDeclaredRoutines(
         kinds: event.kinds,
         screens: event.screens ?? [],
         outsiders: event.outsiders,
+        unmatched: event.unmatched,
+        everyMinutes: event.everyMinutes,
         interest: event.interest,
         worker: target.worker,
         sessionId: target.sessionId
@@ -530,14 +546,14 @@ export async function seedDeclaredRoutines(
         continue;
       }
       // The config's fields over the saved subscription's state: a pause, or an end, stays.
-      const written = await seedSubscription(ctx, options.providers ?? [], event, target, { id: key, madeBy });
+      const written = await seedSubscription(ctx, options.providers ?? [], event, target, { id: key, madeBy, ...pollingWrite(pollingOn(installation)) });
       (("refused" in written ? outcome.refused : outcome.written) as string[]).push(entry.id);
     } catch {
       outcome.refused.push(entry.id);
     }
   }
   // A clock routine whose entry left config goes with it. An event routine's ends at
-  // its next poll (FIX-2536), so a pushed one stays until then.
+  // its next poll, so a pushed one stays until then.
   // Filtered at the source: an app that never declared one reads nothing here.
   for (const ref of await schedulesOf(ctx).list(DECLARED_ROUTINE_KEY_PREFIX)) {
     const key = scheduleKeyOf(ref.path);
@@ -639,10 +655,14 @@ const workerVerbsByInstallation = new WeakMap<object, unknown>();
 const capabilityByInstallation = new WeakMap<object, unknown>();
 
 function buildWorkerRoutineVerbs(installation: WorkerInstallation) {
-  const resources = { ...scheduleResources(routineIndexOf(installation)), ...subscriptionResources };
+  // The poll schedules are declared whether or not the app polls: a worker flow is built before `hireWorkforce` says.
+  const resources = { ...scheduleResources(routineIndexOf(installation)), ...subscriptionResources, ...installationPolling(installation).resources };
   const deps: VerbDeps = {
     get providers() {
       return routineProvidersOf(installation);
+    },
+    get polling() {
+      return pollingOn(installation);
     }
   };
   return verbBlocks(resources, deps, workerCaller, {
@@ -696,8 +716,8 @@ function buildRoutinesCapability(installation: WorkerInstallation) {
  * all their routines, and the seed of the app's declared ones.
  */
 export function defineRoutineActions(installation: WorkerInstallation, options: RoutinesOptions, resources: Record<string, unknown>) {
-  const all = { ...installation.resources, ...resources, ...subscriptionResources };
-  const blocks = verbBlocks(all, { providers: options.providers ?? [], installation }, () => ({ by: "user" }), {
+  const all = { ...installation.resources, ...resources, ...subscriptionResources, ...installationPolling(installation).resources };
+  const blocks = verbBlocks(all, { providers: options.providers ?? [], installation, ...pollingWrite(pollingOn(installation)) }, () => ({ by: "user" }), {
     list: "The user's routines, clock and event, each with who made it, its trigger, whether it is paused, and a clock routine's next run.",
     save:
       "Save a routine: a clock trigger that files a task each time it is due, or an event trigger a worker's conversation hears. Saving a clock routine's name again replaces it." +

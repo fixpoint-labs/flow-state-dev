@@ -24,8 +24,10 @@
  * task's failure or cancel ends the subscriptions its session made, and a
  * thread's closing ends the ones on it (ER-7 as amended by #4675).
  */
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, SubscriptionEvent } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { ROUTINE_CADENCES } from "../routines/keys";
+import { ensurePollSchedule, type SubscriptionPolling } from "./poll";
 import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
 import { retryOnConflict } from "../projects/cas-retry";
 import type { RoutineMaker } from "../routines/listed-routine";
@@ -58,7 +60,36 @@ export interface SubscriptionProvider {
   self?(ctx: BlockContext): string | undefined | Promise<string | undefined>;
   /** The app's own screens on this provider, declared once: its custom functions, and the model `interest` asks. */
   readonly screens?: SubscriptionScreens;
+  // FIX-2536.
+  /**
+   * Fetch what happened on `thread` since the cursor, as the running request's
+   * own user, on that user's credentials (ER-4): normalized events, each named
+   * by the same object and version a webhook delivery of it names. With
+   * `etags`, a provider may answer `unchanged` when nothing moved. Absent, the
+   * provider's subscriptions are never polled.
+   */
+  poll?(thread: string, cursor: SubscriptionPollCursor, ctx: BlockContext): Promise<SubscriptionPollResult>;
 }
+
+/** Where a poll fetches from: the poll's mark, and its validators while no delivery is owed. */
+export interface SubscriptionPollCursor {
+  /** Fetch events whose time is at or after this one, in ms. Absent, from the provider's own start. */
+  readonly since?: number;
+  /** The validators the last poll returned, by endpoint: a provider sends them as conditional requests. */
+  readonly etags?: Readonly<Record<string, string>>;
+}
+
+/** What a poll fetched: nothing new, or the events and how far it read. */
+export type SubscriptionPollResult =
+  | { readonly unchanged: true }
+  | {
+      readonly events: readonly SubscriptionEvent[];
+      /** The time it read up to, in ms: the next poll's mark when nothing is owed. */
+      readonly through: number;
+      readonly etags?: Readonly<Record<string, string>>;
+      /** The provider read less than everything since the mark (a list busier than it reads in one poll): the fire says so in each session. */
+      readonly incomplete?: true;
+    };
 
 /** What `subscribe` takes: the tool's input. */
 export const subscribeInputSchema = z
@@ -83,7 +114,13 @@ export const subscribeInputSchema = z
     unmatched: z
       .literal(true)
       .optional()
-      .describe("Hear only the events on this thread that no other subscription heard, of the kinds the app forwards. A coordinator's only.")
+      .describe("Hear only the events on this thread that no other subscription heard, of the kinds the app forwards. A coordinator's only."),
+    // FIX-2536: checked in code against the one list (`invalid_cadence`), not left to the description.
+    everyMinutes: z
+      .number()
+      .int()
+      .optional()
+      .describe(`How often a polled provider looks, in minutes: one of ${ROUTINE_CADENCES.join(", ")}. A pushed provider ignores it.`)
   })
   .strict();
 
@@ -121,6 +158,9 @@ export interface SubscribeWrite {
   readonly id?: string;
   /** Who made it, kept with the subscription. */
   readonly madeBy?: RoutineMaker;
+  // FIX-2536.
+  /** The app's polling, when it polls: an enabled subscription under no tenant makes, or speeds up, the user's poll for its thread. */
+  readonly polling?: SubscriptionPolling;
 }
 
 /**
@@ -191,7 +231,7 @@ const tenantOf = (ctx: BlockContext): string | undefined => {
   return tenantId === undefined || tenantId.length === 0 ? undefined : tenantId;
 };
 
-const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
+export const indexEntryOf = (row: SubscriptionResourceState): IndexEntry => ({
   provider: row.provider,
   thread: row.thread,
   ...(row.kinds === undefined ? {} : { kinds: row.kinds }),
@@ -305,6 +345,9 @@ async function writeSubscription(
   }
   const unrunnable = unrunnableScreen(provider, input.screens);
   if (unrunnable !== undefined) return { refused: unrunnable };
+  if (input.everyMinutes !== undefined && !(ROUTINE_CADENCES as readonly number[]).includes(input.everyMinutes)) {
+    return { refused: `invalid_cadence: every ${input.everyMinutes} minutes isn't a cadence. Use one of ${ROUTINE_CADENCES.join(", ")}.` };
+  }
   if (!(await provider.canRead(thread, ctx))) return { refused: `not_readable: you can't read "${thread}", so you can't follow it.` };
 
   const identity = ctx.session.identity as { id: string; userId?: string; orgId?: string; tenantId?: string };
@@ -334,6 +377,7 @@ async function writeSubscription(
     ...(input.outsiders === true ? { outsiders: true as const } : {}),
     ...(self === undefined ? {} : { self }),
     ...(input.unmatched === true ? { unmatched: true as const } : {}),
+    ...(input.everyMinutes === undefined ? {} : { everyMinutes: input.everyMinutes }),
     interest: input.interest,
     sessionId: hears.sessionId,
     flow: flowKind ?? "",
@@ -369,6 +413,10 @@ async function writeSubscription(
   // loses its entry, or its stale screen settings keep nominating it there.
   if (moved.prior.thread !== moved.now.thread) await dropFromIndex(ctx, moved.prior.thread, id);
   await syncIndex(ctx, moved.now);
+  // FIX-2536: the user's poll for the thread, when the app polls and the committed subscription is on. Tenants aren't polled in v1.
+  if (write.polling !== undefined && moved.now.enabled && moved.now.tenantId === undefined) {
+    await ensurePollSchedule(ctx, moved.now.provider, moved.now.thread, moved.now.everyMinutes ?? write.polling.everyMinutes);
+  }
   return { id };
 }
 

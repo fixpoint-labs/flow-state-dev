@@ -131,6 +131,8 @@ export { DEFAULT_LOCAL_USER_ID, DEFAULT_ORG_ID, isValidOrgId } from "./auth";
 
 export type {
   ScheduleConfig,
+  ScheduleDueEntry,
+  ScheduleDueSource,
   ScheduleInputContext,
   ScheduleInputFn,
   ScheduleResolutionContext,

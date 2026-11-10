@@ -100,9 +100,12 @@ export const subscriptionResourceStateSchema = screenSettingsSchema.extend({
   tenantId: z.string().min(1).optional(),
   /** `false` once it ended. The host's owner-run check reads it as off. */
   enabled: z.boolean(),
+  // FIX-2536 D3; BP-030.
+  /** How often, in minutes, it is polled when its app polls: one of `ROUTINE_CADENCES`. Absent, the app's default. */
+  everyMinutes: z.number().int().positive().optional(),
   /**
    * Why it ended: `unsubscribed`, `thread_closed`, `task_errored`,
-   * `task_cancelled`, or `paused`, the one end a resume undoes.
+   * `task_cancelled`, `config_removed`, or `paused`, the one end a resume undoes.
    */
   endedReason: z.string().optional(),
   endedAt: z.number().optional(),
@@ -115,6 +118,9 @@ export type SubscriptionResourceState = z.infer<typeof subscriptionResourceState
 
 /** The most objects a cursor remembers; the oldest are forgotten first. */
 export const MAX_CURSOR_OBJECTS = 500;
+
+/** The most versions a cursor's `screened` keeps; the oldest are forgotten first. */
+export const MAX_SCREENED = 500;
 
 /** One subscription's delivery state. */
 export const subscriptionCursorSchema = z.object({
@@ -130,7 +136,16 @@ export const subscriptionCursorSchema = z.object({
    * without marking it seen. One past its lease (a delivery that stopped) no
    * longer counts.
    */
-  inFlight: z.array(z.tuple([z.string(), z.number(), z.number()])).default([])
+  inFlight: z.array(z.tuple([z.string(), z.number(), z.number()])).default([]),
+  // FIX-2536 D2; BP-030.
+  /**
+   * The versions a poll's screens refused or held for this subscription, or
+   * gave up on, as `[id, version, at]` (`at` the event's own time), oldest
+   * first: a later poll that fetches one again drops it without judging it
+   * again. Only a poll writes it; capped at {@link MAX_SCREENED}, and pruned
+   * once the poll's mark passes an entry's time.
+   */
+  screened: z.array(z.tuple([z.string(), z.number(), z.number()])).default([])
 });
 
 export type SubscriptionCursor = z.infer<typeof subscriptionCursorSchema>;

@@ -50,8 +50,11 @@ export {
   type SubscribeTarget,
   type SubscribeWrite,
   type SubscriptionEnd,
+  type SubscriptionPollCursor,
+  type SubscriptionPollResult,
   type SubscriptionProvider
 } from "./subscribe";
+export type { SubscriptionPolling } from "./poll";
 export { normalizeGitHubEvent, type GitHubEventInput, type GitHubNormalizeOptions } from "./github/normalize";
 export {
   githubSubscriptionProvider,
