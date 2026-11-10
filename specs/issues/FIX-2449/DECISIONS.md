@@ -17,6 +17,14 @@ flowchart TD
 <a name="d1"></a>
 ## D1 · Engine gets three entries, split by who imports a name
 
+> **Amended (Nov 10).** The root's type closure sits on `engine/host` too: the options and result
+> types of root functions (`CreateFlowStateOptions`, `FlowApiRouter`) are on `host`, not the root,
+> so the root stays at what apps import. `StoresConfig` is the exception and stays on the root:
+> an app writes it for `createFlowState({ stores })`, and the engine README names it. `InboundTransportAdapter` is on `host` too: its
+> one docs page, `advanced/inbound-transports.md`, is for adapter authors. EM rulings on
+> [#4882](https://github.com/fixpoint-labs/flow-state-dev/pull/4882); the engine changeset names
+> `StoresConfig`'s home.
+
 | | |
 |---|---|
 | **Instead of** | One public `engine/host` that carries every name a first-party package imports, the `unstable_` resource helpers and `runRead` included. Or the issue's smaller reading: the `export *` lines written out as today's 383 names |

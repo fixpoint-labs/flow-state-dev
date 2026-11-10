@@ -17,6 +17,12 @@ import { useEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
  * While the worker answers, Stop sits beside Send and stops every turn it is
  * answering; it reads *Stopping…* until they have ended, and a refused stop
  * says why beside it.
+ *
+ * A `prefill` (a popup's "Ask … to follow up") adds its words to the box,
+ * after a blank line when something is already typed, and puts the cursor at
+ * the end; nothing is sent. It calls `onPrefilled` once the words are in, so
+ * the parent drops them: a box that closes and reopens (a switch away and
+ * back) must not add them again.
  */
 export function Composer({
   sessionId,
@@ -28,6 +34,8 @@ export function Composer({
   onStop,
   seed,
   onSend,
+  prefill,
+  onPrefilled,
 }: {
   /** A line to put in the box, as a starter line's click hands it; `at` makes a second click of the same line count. Never sent by itself. */
   seed?: { text: string; at: number };
@@ -45,11 +53,31 @@ export function Composer({
   onStop: () => void;
   /** Resolves once the line has landed; rejects with why it didn't. */
   onSend: (text: string) => Promise<void>;
+  /** Words to add to the box, once per `n`. */
+  prefill?: { text: string; n: number };
+  /** Called once `prefill`'s words are in the box, for the parent to drop them. */
+  onPrefilled?: () => void;
 }) {
   const [text, setText] = useDraft("teammates:draft", sessionId);
   const current = useRef(text);
   current.current = text;
   const box = useRef<HTMLTextAreaElement>(null);
+  const applied = useRef(0);
+  const toEnd = useRef(false);
+  useEffect(() => {
+    if (prefill === undefined || prefill.n === applied.current) return;
+    applied.current = prefill.n;
+    const typed = current.current.trimEnd();
+    toEnd.current = true;
+    setText(typed === "" ? prefill.text : `${typed}\n\n${prefill.text}`);
+    onPrefilled?.();
+  }, [prefill, setText, onPrefilled]);
+  useEffect(() => {
+    if (!toEnd.current) return;
+    toEnd.current = false;
+    box.current?.focus();
+    box.current?.setSelectionRange(text.length, text.length);
+  }, [text]);
   useEffect(() => {
     if (seed === undefined) return;
     setText(seed.text);

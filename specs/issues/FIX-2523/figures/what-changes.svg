@@ -1,0 +1,86 @@
+<svg viewBox="0 0 940 354" role="img" aria-label="FIX-2523, covering both labs, before and after, four rows. The Claude Code-style lab&#x27;s composer: a plain textarea, text only; after, the plus button, paste, drop and the strip, its keys and style kept. The Teammates lab&#x27;s composer: the same change. Each lab&#x27;s adapter send: today session id and text to the respond door; after, attachments too, beside the input, the door unchanged. My line in the thread: text; after, text, thumbnails and chips, live and after a reload."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .head   { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .old    { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .same   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-bn   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; font-weight:600; }
+    .t-bg   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="354"/>
+  <g id="columns">
+    <rect class="head" x="16" y="14" width="908" height="28" rx="5"/>
+    <text class="t-lbl" x="194" y="32">TODAY</text>
+    <text class="t-lbl" x="572" y="32">AFTER</text>
+  </g>
+  <g id="row-0">
+    <text class="t-lbl" x="24" y="76">CLAUDE CODE-STYLE</text>
+    <text class="t-lbl" x="24" y="89">LAB COMPOSER</text>
+    <rect class="old" x="180" y="56" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="78">A plain textarea, text only</text>
+    <text class="t-s" x="194" y="96">Composer.tsx, keys.ts</text>
+    <rect class="new" x="558" y="56" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="78">+, paste, drop, the strip</text>
+    <text class="t-s" x="572" y="96">useAttachments; its keys and style kept</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="24" y="150">TEAMMATES LAB</text>
+    <text class="t-lbl" x="24" y="163">COMPOSER</text>
+    <rect class="old" x="180" y="130" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="152">A plain textarea, text only</text>
+    <text class="t-s" x="194" y="170">Composer.tsx, onSend(text)</text>
+    <rect class="new" x="558" y="130" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="152">+, paste, drop, the strip</text>
+    <text class="t-s" x="572" y="170">the same hook, its own style</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="24" y="224">EACH LAB&#x27;S</text>
+    <text class="t-lbl" x="24" y="237">ADAPTER.SEND</text>
+    <rect class="old" x="180" y="204" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="226">send(sessionId, text)</text>
+    <text class="t-s" x="194" y="244">flow.send(&#x27;respond&#x27;, { message })</text>
+    <rect class="new" x="558" y="204" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="226">send(sessionId, text, attachments)</text>
+    <text class="t-s" x="572" y="244">beside the input; the door unchanged</text>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="24" y="298">MY LINE IN</text>
+    <text class="t-lbl" x="24" y="311">THE THREAD</text>
+    <rect class="old" x="180" y="278" width="366" height="60" rx="5"/>
+    <text class="t-b" x="194" y="300">Text</text>
+    <text class="t-s" x="194" y="318">a session that holds a file draws none</text>
+    <rect class="new" x="558" y="278" width="366" height="60" rx="5"/>
+    <text class="t-bn" x="572" y="300">Text, thumbnails and chips</text>
+    <text class="t-s" x="572" y="318">live and after a reload</text>
+  </g>
+</svg>

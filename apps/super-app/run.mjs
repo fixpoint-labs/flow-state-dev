@@ -23,8 +23,9 @@
  * - `SUPER_APP_ONLY=kitchen-sink,teammates`: start only these apps.
  *
  * The DevTool page at `/devtool/` is built into `dist/` (`pnpm build:devtool`):
- * `dev` builds it and keeps rebuilding it (and the labs' pages) as the source
- * changes; `serve` serves what `pnpm build` made.
+ * `dev` builds it and rebuilds it (and the labs' pages) as the source changes,
+ * one ordinary build per change (`rebuild.mjs`); `serve` serves what
+ * `pnpm build` made.
  *
  * The rules are `settings.mjs`. An app that stops leaves the others running; its route answers 502 and the
  * landing page marks it stopped. Ctrl-C stops everything.
@@ -36,6 +37,7 @@ import { fileURLToPath } from "node:url";
 import { REPO } from "./apps.mjs";
 import { createAuth } from "./auth.mjs";
 import { createProxy } from "./proxy.mjs";
+import { rebuildOnChange } from "./rebuild.mjs";
 import { reclaimPort } from "./reclaim.mjs";
 import { resolveSettings } from "./settings.mjs";
 
@@ -102,6 +104,10 @@ function runStep(step, label, port) {
 function startWatchers(app, i) {
   const label = `${color(i)}[${app.id}]\x1b[0m`;
   for (const step of app.run[mode].filter((s) => s.background)) {
+    if (step.rebuildOnChange !== undefined) {
+      rebuildOnChange({ outDir: step.rebuildOnChange, repoRoot: REPO, build: () => (stopping ? Promise.resolve() : runStep(step, label, app.port)) });
+      continue;
+    }
     void runStep(step, label, app.port).then((code) => {
       if (!stopping) process.stderr.write(`${label} ${step.args.join(" ")} stopped (exit ${code}); changes to its source won't show until a restart.\n`);
     });
@@ -191,9 +197,10 @@ for (const [what, wanted, id] of [["the proxy", port, undefined], ...apps.map((a
 
 const devtoolDir = fileURLToPath(new URL("./dist", import.meta.url));
 if (mode === "dev") {
-  // Builds the page, then rebuilds it as its source changes; a refresh picks the new build up.
+  // Builds the page when it is missing or stale, then rebuilds it as its source changes; a refresh picks the new build up.
   // Until the first build is written, /devtool/ answers that it isn't built.
-  void runStep({ cmd: "pnpm", args: ["run", "build:devtool", "--watch"], cwd: fileURLToPath(new URL(".", import.meta.url)) }, "[devtool]", port);
+  const step = { cmd: "pnpm", args: ["run", "build:devtool"], cwd: fileURLToPath(new URL(".", import.meta.url)) };
+  rebuildOnChange({ outDir: devtoolDir, repoRoot: REPO, build: () => (stopping ? Promise.resolve() : runStep(step, "[devtool]", port)) });
 } else if (!existsSync(`${devtoolDir}/index.html`)) {
   process.stderr.write("[super-app] the DevTool page isn't built (run `pnpm build`); /devtool/ won't load.\n");
 }

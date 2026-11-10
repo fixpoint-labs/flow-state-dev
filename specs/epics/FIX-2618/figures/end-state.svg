@@ -1,0 +1,119 @@
+<svg viewBox="0 0 940 474" role="img" aria-label="What&#x27;s in the box. In the box, what an app on workforce gets: views replacing flow reads, one live read in the client, resources read by scope with no session, every client write sent through the flow that runs the resource, the framework&#x27;s default write flow or its own, ids on notices, kits with requires, slots, config and a client half, and the workforce and harness kits with one shared coding worker flow. The fence: a view never writes, every new client write goes through a flow, a notice carries ids and never rows, and a kit reaches another only through its slots. Composed in by the app: its own local kit, the app flows it copied in, its screens and renderer, one config object per kit. Replaced in one line: flow reads and scope derived by a view, four own sessions by a direct read, the host&#x27;s wiring by an entry in kits, hand-written row types by ViewOutput. Not built: a third-party ecosystem, a direct client-write path, the Teammates and Shift Manager adapters, the one-route-per-answer cleanup."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .box    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .chip   { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .one    { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; }
+    .none   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence  { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .o      { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .u      { fill:var(--accent-soft); }
+    .c      { fill:var(--surface); stroke:var(--accent); stroke-width:1; stroke-dasharray:3 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-col  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; font-weight:600; }
+    .t-id   { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-o    { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-u    { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="474"/>
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="612" height="356" rx="8"/>
+    <text class="t-tag c-code" x="32" y="38">IN THE BOX · WHAT AN APP ON WORKFORCE GETS</text>
+    <rect class="chip" x="32" y="52" width="284" height="44" rx="4"/>
+    <text class="t-b" x="44" y="71">Views · FIX-2623</text>
+    <text class="t-s" x="44" y="87">scope, dependsOn, key · replace reads</text>
+    <rect class="chip" x="328" y="52" width="284" height="44" rx="4"/>
+    <text class="t-b" x="340" y="71">One live read · FIX-2551</text>
+    <text class="t-s" x="340" y="87">useView and every watch sit on it</text>
+    <rect class="chip" x="32" y="104" width="284" height="44" rx="4"/>
+    <text class="t-b" x="44" y="123">Resources by scope · FIX-2624</text>
+    <text class="t-s" x="44" y="139">direct reads, no session for user or org</text>
+    <rect class="chip" x="328" y="104" width="284" height="44" rx="4"/>
+    <text class="t-b" x="340" y="123">Writes through runBy · FIX-2624</text>
+    <text class="t-s" x="340" y="139">a default write flow; a pin is one line</text>
+    <rect class="chip" x="32" y="156" width="284" height="44" rx="4"/>
+    <text class="t-b" x="44" y="175">Ids on notices · FIX-2625</text>
+    <text class="t-s" x="44" y="191">optional hints; gated on O4</text>
+    <rect class="chip" x="328" y="156" width="284" height="44" rx="4"/>
+    <text class="t-b" x="340" y="175">Kits · FIX-2626</text>
+    <text class="t-s" x="340" y="191">requires, slots, config, a client half</text>
+    <rect class="chip" x="32" y="208" width="580" height="44" rx="4"/>
+    <text class="t-b" x="44" y="227">The workforce kit and the harness kit · FIX-2627</text>
+    <text class="t-s" x="44" y="243">their views and client halves; one shared coding worker flow for every harness</text>
+  </g>
+
+  <g id="the-fence">
+    <line class="fence" x1="16" y1="272" x2="628" y2="272"/>
+    <text class="t-tag c-gone" x="32" y="296">FENCE · ER-2 · ER-4 · ER-5</text>
+    <text class="t-b" x="32" y="318">A view never writes. Every new client write goes through a flow,</text>
+    <text class="t-b" x="32" y="336">its validators inside it. A notice carries ids, never rows.</text>
+    <text class="t-s" x="32" y="356">a kit reaches another kit only through the slots that kit publishes</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="644" y="16" width="280" height="160" rx="8"/>
+    <text class="t-tag c-acc" x="660" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="660" y="64">Its own local kit</text>
+    <text class="t-s" x="660" y="80">pins, copied flows, settings · FIX-2628</text>
+    <text class="t-b" x="660" y="106">Its screens and renderer</text>
+    <text class="t-s" x="660" y="122">ThreadEntry, entriesOf, its words</text>
+    <text class="t-b" x="660" y="148">One config object per kit</text>
+    <text class="t-s" x="660" y="164">createFlowState({ kits })</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="one" x="644" y="192" width="280" height="180" rx="8"/>
+    <text class="t-lbl" x="660" y="214">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="660" y="240">Flow reads, scope derived</text>
+    <text class="t-s" x="660" y="256">→ a view</text>
+    <text class="t-b" x="660" y="282">Four own sessions to read</text>
+    <text class="t-s" x="660" y="298">→ a direct read by scope and key</text>
+    <text class="t-b" x="660" y="324">The host's wiring and casts</text>
+    <text class="t-s" x="660" y="340">→ an entry in kits: [...]</text>
+    <text class="t-s" x="660" y="360">hand-written row types → ViewOutput</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="none" x="16" y="388" width="908" height="70" rx="8"/>
+    <text class="t-tag c-gone" x="32" y="410">NOT BUILT</text>
+    <text class="t-b" x="32" y="434">A third-party ecosystem</text>
+    <text class="t-s" x="32" y="450">publish, discover, version, registry</text>
+    <text class="t-b" x="262" y="434">A direct client-write path</text>
+    <text class="t-s" x="262" y="450">skills drawer moves in FIX-2633</text>
+    <text class="t-b" x="492" y="434">The other two adapters</text>
+    <text class="t-s" x="492" y="450">Teammates, Shift Manager: next epic</text>
+    <text class="t-b" x="722" y="434">One route per answer</text>
+    <text class="t-s" x="722" y="450">the duplicate-route cleanup: next epic</text>
+  </g>
+</svg>

@@ -34,7 +34,7 @@ import {
   fileCall,
   finishTask,
   finalAnswer,
-  rows,
+  storedTasks,
   runtimeFor,
   SESSION,
   stepModel,
@@ -100,10 +100,10 @@ const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Until the row's notice is delivered: the notice turn ran, acknowledged it and ended. */
 async function untilDelivered(state: ReturnType<typeof runtimeFor>, flow: FlowInstance): Promise<void> {
-  for (const deadline = Date.now() + 5_000; owedMarkers((await rows(state, flow))[0]!).length > 0; await settle(10)) {
+  for (const deadline = Date.now() + 5_000; owedMarkers((await storedTasks(state, flow))[0]!).length > 0; await settle(10)) {
     if (Date.now() > deadline) throw new Error("the notice was never acknowledged");
   }
-  await untilTakersEnded(state, (await rows(state, flow))[0]!);
+  await untilTakersEnded(state, (await storedTasks(state, flow))[0]!);
 }
 
 describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeout: 30_000 }, (_name, stores) => {
@@ -122,7 +122,7 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
       // as the turn ended and the pass's resend have all had their chance.
       await settle(2_500);
       expect(notices).toEqual([]);
-      expect(owedMarkers((await rows(state, flow))[0]!)).toEqual([]);
+      expect(owedMarkers((await storedTasks(state, flow))[0]!)).toEqual([]);
     } finally {
       await state.dispose();
     }
@@ -141,7 +141,7 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
       expect(notices).toEqual([expect.objectContaining({ ending: "completed", output: "already done" })]);
       await settle(2_500);
       expect(notices).toHaveLength(1);
-      expect(owedMarkers((await rows(state, flow))[0]!)).toEqual([]);
+      expect(owedMarkers((await storedTasks(state, flow))[0]!)).toEqual([]);
     } finally {
       await state.dispose();
     }
@@ -226,7 +226,7 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
       const deadline = Date.now() + 20_000;
       for (;;) {
         if (Date.now() > deadline) throw new Error(`the notice was not resent ${n} times and held within 20 s`);
-        const meta = (await rows(state, flow))[0]?.metadata ?? {};
+        const meta = (await storedTasks(state, flow))[0]?.metadata ?? {};
         const record = <T>(prefix: string) => Object.entries(meta).find(([key]) => key.startsWith(prefix))?.[1] as T | null | undefined;
         const resent = record<{ at: number; n: number }>("noticeResent:");
         const deferred = record<{ at: number; whileRunning?: string }>("noticeDeferred:");
@@ -321,7 +321,7 @@ describe.each(STORES)("a task's ending is heard once by its filer (%s)", { timeo
       release();
       await settle(2_500);
       expect(notices).toHaveLength(1);
-      expect(owedMarkers((await rows(state, flow))[0]!)).toEqual([]);
+      expect(owedMarkers((await storedTasks(state, flow))[0]!)).toEqual([]);
     } finally {
       release();
       await state.dispose();

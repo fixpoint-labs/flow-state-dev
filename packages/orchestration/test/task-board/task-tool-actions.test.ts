@@ -338,7 +338,7 @@ describe("taskToolActions — an action against a row a worker holds (BR-25, FIX
     // wrong claim.
     const h = await host();
     try {
-      const held = await h.file("the worker's row");
+      const held = await h.file("the worker's entry");
       const other = await h.file("another row");
       const claim = (await h.act("claimOne", {})).output as TaskClaimTicket;
       expect(claim.taskId).toBe(held);

@@ -54,6 +54,7 @@ export function createMockContext(overrides?: MockContextOverrides): BlockContex
     request: {
       identity: { type: "request", id: "req_1" },
       incarnation: "inc_1",
+      attachments: [],
       state: {},
       tokenUsage: { totalConsumed: 0, byModel: {}, remaining: Number.POSITIVE_INFINITY },
       costEstimate: { totalUSD: 0, byModel: {} },

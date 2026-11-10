@@ -98,7 +98,7 @@
     "surface.root.core": "pass",
     "surface.root.engine": "pass",
     "surface.root.client": "pass",
-    "surface.root.react": "fail",
+    "surface.root.react": "pass",
     "surface.root.testing": "pass",
     "surface.root.orchestration": "pass",
     "surface.root.patterns": "pass",
@@ -144,7 +144,7 @@
     "shims.stored-human-approval": "pass",
     "types.typed-handler": "pass",
     "types.fresh-session-default": "pass",
-    "closure.j5:moved-name-named": "pass"
+    "closure.j5:moved-name-named": "fail"
   },
   "ratchets": {
     "export-check": "scripts/check-root-exports.mjs",

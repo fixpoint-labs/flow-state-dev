@@ -151,9 +151,9 @@
       "name": "message",
       "title": "Message",
       "type": "registry:component",
-      "description": "Individual message display with streaming markdown support.",
+      "description": "Individual message display with streaming markdown support. A person's line draws its files as thumbnails and chips.",
       "dependencies": ["@flow-state-dev/core", "lucide-react"],
-      "registryDependencies": ["button", "button-group", "tooltip", "message-response"],
+      "registryDependencies": ["attachments", "button", "button-group", "tooltip", "message-response"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/message.tsx",
@@ -243,12 +243,26 @@
       "categories": ["ai", "code"]
     },
     {
+      "name": "attachments",
+      "title": "Attachments",
+      "type": "registry:component",
+      "description": "Attachments for any composer: useAttachments takes files by paste, picker or drop, refuses by name over the attachment limits, downscales large images and uploads each as it is added; AttachmentStrip draws them with a remove button each and announces refusals; AttachButton is the + button. take() is what Send carries: references, never bytes.",
+      "dependencies": ["@flow-state-dev/core", "lucide-react", "nanoid"],
+      "registryDependencies": ["spinner"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/attachments.tsx",
+        "target": "components/flow-state/attachments.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
       "name": "prompt-input",
       "title": "Prompt Input",
       "type": "registry:component",
-      "description": "Smart input with auto-resize, file upload, and submit handling.",
+      "description": "Smart input with auto-resize, attachments, and submit handling. Paste, the + button or a drop attach files, each uploaded as it is added; a submitted message carries their references.",
       "dependencies": ["@flow-state-dev/react", "lucide-react", "nanoid"],
-      "registryDependencies": ["button", "command", "dropdown-menu", "hover-card", "input-group", "select", "spinner", "tooltip"],
+      "registryDependencies": ["attachments", "button", "command", "dropdown-menu", "hover-card", "input-group", "select", "spinner", "tooltip"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/prompt-input.tsx",
@@ -384,7 +398,7 @@
       "name": "spend",
       "title": "Spend",
       "type": "registry:component",
-      "description": "One line for what a run spent: model, tokens, the vendor's charge when it reported one, and optionally attempts and duration. Reads a task row's or a harness turn's folded spend; a count nobody reported reads as such, never as 0, and a subscription run shows no dollar figure.",
+      "description": "One line for what a run spent: model, tokens, the vendor's charge when it reported one, and optionally attempts and duration. Reads a task's or a harness turn's folded spend; a count nobody reported reads as such, never as 0, and a subscription run shows no dollar figure.",
       "dependencies": [],
       "registryDependencies": [],
       "files": [{
@@ -398,7 +412,7 @@
       "name": "task-signals",
       "title": "Task signals",
       "type": "registry:component",
-      "description": "A task row's time and stall signal: a running row's clock from this attempt's run start, quiet when its lease has lapsed (the board's own rule, never while the feed is stale), how long ago an ended row ended; and a list's per-state counts. Reads a listTasks row's taskRowView, run start and lease deadline; the app passes the time and its tone.",
+      "description": "A task's time and stall signal: a running row's clock from this attempt's run start, quiet when its lease has lapsed (the board's own rule, never while the feed is stale), how long ago an ended row ended; and a list's per-state counts. Reads a listTasks row's taskRowView, run start and lease deadline; the app passes the time and its tone.",
       "dependencies": ["@flow-state-dev/orchestration"],
       "registryDependencies": ["spend"],
       "files": [{

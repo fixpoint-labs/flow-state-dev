@@ -19,7 +19,9 @@ import { RunChecks, type RunCheck } from "./run-checks";
  * words }` (harness-manager's `harnessReviewAnswerSchema`). When the review
  * offers ways to land the work (`lands`), Accept is two labelled actions
  * instead, **Open a PR** and **Merge locally**, each an accept naming its
- * `land`; a landing that failed shows its error with **Retry**. It spells none of
+ * `land`, carrying what is in the text box as its `words`: the note goes to
+ * the coding session if the landing fails. A landing that failed shows each
+ * try (`landAttempts`) and its error with **Retry**. It spells none of
  * harness-manager's stop fields: an app reads a coding run's review with
  * harness-manager's browser entry and passes the result as `review`.
  *
@@ -47,6 +49,8 @@ export interface ReviewDetail {
   lands?: ReviewLand[];
   /** The last landing that failed, when the review is asked again; `null` or absent otherwise. */
   landFailed?: { land: ReviewLand; message: string } | null;
+  /** Every try of that landing, oldest first; absent or empty when none failed. */
+  landAttempts?: Array<{ land: ReviewLand; message: string }>;
   /** The checks the run's phase ran (harness-manager's `commandCheck`), or `null`/absent when none ran. */
   checks?: RunCheck[] | null;
 }
@@ -55,7 +59,7 @@ export interface ReviewDetail {
 export type ReviewLand = "pull-request" | "merge";
 
 /** The two answers a review takes; an accept may name how the work lands. */
-export type ReviewAnswer = { verdict: "accepted"; land?: ReviewLand } | { verdict: "revise"; words: string };
+export type ReviewAnswer = { verdict: "accepted"; land?: ReviewLand; words?: string } | { verdict: "revise"; words: string };
 
 /** Each way to land, as its button says it. */
 export const LAND_LABEL: Record<ReviewLand, string> = { "pull-request": "Open a PR", merge: "Merge locally" };
@@ -222,6 +226,15 @@ export function ReviewHold({
           {failed.land === "pull-request" ? "Opening the PR failed" : "Merging locally failed"}: {failed.message}
         </p>
       )}
+      {(review?.landAttempts?.length ?? 0) > 1 ? (
+        <ol data-land-attempts className="mt-1 list-decimal pl-4 text-xs text-muted-foreground">
+          {review!.landAttempts!.map((attempt, i) => (
+            <li key={i} title={attempt.message} className="line-clamp-2">
+              Try {i + 1}: {attempt.message}
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {review ? (
         <>
           <div className="mt-0.5 flex min-w-0 flex-wrap gap-x-1 text-xs">
@@ -279,7 +292,7 @@ export function ReviewHold({
                 revise();
               }
             }}
-            placeholder="What should change? (for Ask for changes)"
+            placeholder={ordered.length === 0 ? "What should change? (for Ask for changes)" : "What should change, or a note if landing it fails"}
             className="w-full rounded-md border border-border bg-background p-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           />
           <div className="flex flex-wrap gap-2">
@@ -299,7 +312,8 @@ export function ReviewHold({
                   type="button"
                   disabled={pending}
                   data-land={land}
-                  onClick={() => void send({ verdict: "accepted", land })}
+                  // The note goes with it, for the coding session if the landing fails.
+                  onClick={() => void send({ verdict: "accepted", land, ...(words.trim() !== "" ? { words: words.trim() } : {}) })}
                   className={
                     i === 0
                       ? "rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"

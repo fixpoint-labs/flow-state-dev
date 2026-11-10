@@ -178,7 +178,8 @@ export function scriptedCursor(): ResolveCursorClient {
   const agents: Agents = { turns: new Map(), minted: 0 };
   const open = (agentId: string): CursorAgentLike => ({
     agentId,
-    send: async (prompt) => {
+    send: async (message) => {
+      const prompt = typeof message === "string" ? message : message.text;
       const turn = (agents.turns.get(agentId) ?? 0) + 1;
       agents.turns.set(agentId, turn);
       scriptedReceived.push(prompt);

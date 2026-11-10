@@ -55,6 +55,8 @@
 
     // Loaded by `fsdev dev --config`, which no import reaches.
     "labs/claude-code-style/fsdev.config.mts",
+    // The layout tests' page: their Vite server loads it from index.html beside it.
+    "labs/claude-code-style/test/layout/page.tsx",
     // Loaded by `fsdev serve --config` when a closure pass runs on one model.
     "goals/closure-smarter-agents/haiku.config.mts",
 
@@ -166,6 +168,10 @@
     "apps/kitchen-sink/components/flow-state/spend.tsx",
     // Kitchen Sink's installed copy of the work-place chip, before an app view imports it.
     "apps/kitchen-sink/components/flow-state/work-place.tsx",
+    // Kitchen Sink's and Shift Manager's copies of the registry's attachments, which
+    // their install lists ship with message; a composer draws the strip once a client is passed.
+    "apps/kitchen-sink/components/flow-state/attachments.tsx",
+    "packages/shift-manager/src/components/flow-state/attachments.tsx",
     // Kitchen Sink's and Shift Manager's byte copies of the registry's review card:
     // their suspension cards import ReviewSuspension; the card's other exports are
     // for apps that draw holds.
@@ -189,6 +195,11 @@
   "ignoreExports": [
     { "file": "apps/kitchen-sink/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] },
     { "file": "packages/shift-manager/src/components/flow-state/tool-grouping.ts", "exports": ["toolRunOpen"] },
+    // Kitchen Sink's copies of the registry's composer and message: the attach button,
+    // the strip and the file row are for its composer once it passes a client.
+    { "file": "apps/kitchen-sink/components/flow-state/prompt-input.tsx", "exports": ["PromptInputAttachButton", "PromptInputAttachButtonProps", "PromptInputAttachments", "PromptInputAttachmentsProps"] },
+    { "file": "apps/kitchen-sink/components/flow-state/message.tsx", "exports": ["MessageFiles"] },
+    { "file": "packages/shift-manager/src/components/flow-state/message.tsx", "exports": ["MessageFiles"] },
     // The Teammates lab's copy of the registry's task-actions, with its Re-run buttons:
     // the confirm words and the cancel outcome are exported for tests and goals that read them off the page.
     { "file": "labs/teammates/src/components/flow-state/task-actions.tsx", "exports": ["CANCEL_CONFIRM", "cancelOutcome"] },

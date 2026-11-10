@@ -658,7 +658,7 @@ test("the rail, fully expanded in both hosts, draws each action on its row, one 
  * Red states produced before this was trusted:
  *   - Serve the roster from an app-private route: the API-surface assertion fails.
  *   - Put "Hire another" back on the page: the no-hire assertion fails.
- *   - Drop the description from the worker's row: the description assertion fails.
+ *   - Drop the description from the worker's line: the description assertion fails.
  */
 test("VG · a declared worker: its flow and what it handles, no instructions read, and no hire button", async ({
   page,

@@ -3,7 +3,6 @@ import {
   ApprovalRenderer,
   FlowProvider,
   ItemRenderer,
-  deriveSuspensions,
   resolveSuspension,
   useAction,
   useFlow,
@@ -34,7 +33,6 @@ describe("@flow-state-dev/react", () => {
 
   it("exports useSuspensions and HITL helpers", () => {
     expect(typeof useSuspensions).toBe("function");
-    expect(typeof deriveSuspensions).toBe("function");
     expect(typeof resolveSuspension).toBe("function");
     expect(typeof ApprovalRenderer).toBe("function");
   });

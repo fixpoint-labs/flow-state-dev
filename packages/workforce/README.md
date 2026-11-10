@@ -1569,7 +1569,7 @@ row in its creator's own user scope, which nobody else lists or reads, with its 
 one (`openWorkstream` can leave it out in a conversation that belongs to a project); another user's
 private project is refused as `no-such-project`. The roster flow `hireWorkforce` returns, the
 coordinator flow, the project blocks and `openWorkstream` declare both collections; a
-flow of your own that works on project rows without them puts `defineProjectsCollection()` and
+flow of your own that works on projects without them puts `defineProjectsCollection()` and
 `definePrivateProjectsCollection()` in its `resources` under `PROJECTS_RESOURCE` and
 `PRIVATE_PROJECTS_RESOURCE`. The guide is the docs site's Workforce → Projects page, under
 "Declaring the collections".
@@ -2904,7 +2904,7 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `checkedMcpServers(names, offered)` / `isMcpServerName(value)` | The check both project writes run on `mcpServers`. |
 | `projectChecks()` / `ProjectChecksResolver` | The resolver harness-manager's `commandCheck` takes as `commands`: each run's project's `checks`, read fresh per attempt, `[]` for a run with no project. See [Projects](#projects). |
 | `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, editWorkstreamTool, listLeadsTool, actions }`. `editWorkstreamTool` (input `editWorkstreamInputSchema`) is a project coordinator's change to one of the caller's own workstreams by id. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it asks best fit's one fit check about the lead and refuses with `lead-doesnt-fit` only when the check answers that none fits. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
-| `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
+| `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project, its entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool, which marks each workstream `yours` when the user it talks to owns it: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |
 | `linkedProjectOf(state)` | The `{ visibility, id }` a session's state links it to by its `projectId`, or `undefined`. |
@@ -2927,9 +2927,9 @@ component a received message is drawn by), `WORKER_MESSAGES_PATTERN`,
 | `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the request and must reach `runAction`), and what one boot of `openInventory` returns (`{ workers, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `workerWriter`, `userId`, `orgId`. |
 | `workerUsageAction(installation)` / `WORKER_USAGE_ACTION` | The `workerUsage` query (see [Worker usage](#worker-usage)) and its action name, `"workerUsage"`. |
-| `WorkerUsageRow` / `WorkerSourceSpend` | One worker's row for a period, and one source's spend in it. |
+| `WorkerUsageRow` / `WorkerSourceSpend` | One worker's usage for a period, and one source's spend in it. |
 | `workerUsageCollection` / `WORKER_USAGE_RESOURCE` / `WORKER_USAGE_DEFAULT_DAYS` / `WORKER_USAGE_MAX_DAYS` | The user-scoped `worker-usage/**` collection `installation.resources` carries, its accessor key, and the query's default (7) and longest (90) period in days. |
-| `workerDoorOf(worker)` / `WorkerDoor` | A hired worker's door: `respond`, the public action its worker flow declares with `userMessage` and a `{ message }` input. Returns `{ door, takesTask, problem? }`. `door` is `"respond"`, or `null` with `problem` saying what to fix when the flow has none, a second, or its door under another name. `takesTask` is `true` when the door accepts and keeps a `taskId` and names it as the turn's task (see `doorTask`). `openInventory` writes both on the worker's row, as `door` and `doorTakesTask`. Such a flow is refused when hired, so a hired worker's door is always `respond`. |
+| `workerDoorOf(worker)` / `WorkerDoor` | A hired worker's door: `respond`, the public action its worker flow declares with `userMessage` and a `{ message }` input. Returns `{ door, takesTask, problem? }`. `door` is `"respond"`, or `null` with `problem` saying what to fix when the flow has none, a second, or its door under another name. `takesTask` is `true` when the door accepts and keeps a `taskId` and names it as the turn's task (see `doorTask`). `openInventory` writes both on the worker's entry, as `door` and `doorTakesTask`. Such a flow is refused when hired, so a hired worker's door is always `respond`. |
 
 ## Error Semantics
 

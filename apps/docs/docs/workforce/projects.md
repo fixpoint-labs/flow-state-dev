@@ -54,7 +54,7 @@ Usually you don't declare anything. Shared projects live in the org's `projects`
 - The blocks `defineProjectBlocks()` returns, and `openWorkstream` from `defineWorkstreamBlocks()`, declare both on themselves. A flow that holds one has the collections, whether you spread it as an action or put it in a worker flow's tool `catalog`.
 - `defineCoordinatorFlow` declares both on the coordinator flow.
 
-Otherwise, on a flow of your own that reads or writes project rows without those blocks, put both in its `resources`, where you build the flow, under the keys the workforce's own flows use:
+Otherwise, on a flow of your own that reads or writes projects without those blocks, put both in its `resources`, where you build the flow, under the keys the workforce's own flows use:
 
 ```ts
 import {
@@ -527,7 +527,7 @@ Setting `status` to `"done"` removes the workstream's delegate, as `updateWorkst
 
 ### Managing the project from the coordinator
 
-Your coordinator can keep its own project's row current: rewrite the brief when the goal shifts, or set the repository once there is one. Give its catalog `setBrief` and `setRepository` from `defineProjectBlocks()`, named for the catalog with `.as()`:
+Your coordinator can keep its own project current: rewrite the brief when the goal shifts, or set the repository once there is one. Give its catalog `setBrief` and `setRepository` from `defineProjectBlocks()`, named for the catalog with `.as()`:
 
 ```ts
 const projects = defineProjectBlocks();
@@ -805,7 +805,7 @@ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } }
 { project: { visibility: "shared", id: "fsd" }, mcpServers: ["linear"] }
 ```
 
-`setMcpServers` replaces the list whole and returns `{ project }`. Only members can call it. Both writes refuse a name the server doesn't offer with `unknown-mcp-server`, naming the ones it does, and anything that isn't a plain name (lowercase letters, digits and hyphens) with `invalid-mcp-server`. A project row can't hold an address or a key.
+`setMcpServers` replaces the list whole and returns `{ project }`. Only members can call it. Both writes refuse a name the server doesn't offer with `unknown-mcp-server`, naming the ones it does, and anything that isn't a plain name (lowercase letters, digits and hyphens) with `invalid-mcp-server`. A project entry can't hold an address or a key.
 
 The server holds the connection, not the coding agent. When a run starts, the server connects to each of the project's servers with the requester's key, and the agent gets the servers' tools. It never gets the key or the address: not on its command line, in its environment, in its MCP config or in its session. The connections close when the run ends.
 
@@ -911,7 +911,7 @@ Each attempt reads the checks of the project the run works in, found the same wa
 
 By default a coding run gets a fresh branch in the host's own clone of the project's repository. That clone lives under the host's root, so to see what a run did you fetch from it. When the server runs on the machine where you already have the repository checked out, you can have runs work in that checkout instead. Each run gets a worktree of your checkout on a branch of its own, and the branch shows up in `git branch` there.
 
-The project's row names a remote, never a folder. The server's config says which projects are worked in which checkout:
+The project names a remote, never a folder. The server's config says which projects are worked in which checkout:
 
 ```ts
 harnessManager({

@@ -62,6 +62,7 @@ export function createWorkerRunner(
             tenantId: envelope.tenantId,
             source: envelope.source,
             metadata: envelope.metadata,
+            ...(envelope.attachments !== undefined ? { attachments: envelope.attachments } : {}),
             requestId: envelope.requestId,
             ...(place !== undefined ? { leasePlace: place } : {}),
             ...(envelope.leaseTurn != null ? { leaseTurn: envelope.leaseTurn } : {}),

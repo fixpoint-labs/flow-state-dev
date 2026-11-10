@@ -3,6 +3,7 @@ import { ChevronRightIcon, TerminalIcon } from "lucide-react";
 import type { BoardTask, LabAdapter, LabWorker } from "../adapter";
 import type { Look } from "../lib/looks";
 import { useNow, useStale, useWatch } from "../lib/use-watch";
+import { clearMark, useCleared } from "../lib/cleared";
 import { taskPresentation } from "../lib/task-presentation";
 import { cn } from "../lib/utils";
 import { Avatar } from "./Avatar";
@@ -10,13 +11,18 @@ import { STALE_CLASS } from "./flow-state/connection-banner";
 import { costAmount, tokenCount } from "./flow-state/spend";
 import { TaskTime, taskCounts, taskSignal } from "./flow-state/task-signals";
 import { reasonLine, runsOn, taskLabel, taskLine, type Popup } from "./Popups";
-import { InstructionsForm } from "./TeammateForms";
+import { EditForm } from "./TeammateForms";
 
 /** The heading over each of the panel's sections. */
 const HEADING = "font-mono text-[10px] tracking-widest text-muted-foreground uppercase";
+const PANEL_BUTTON = "w-fit rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent disabled:opacity-40";
 
-/** How many of *Done*'s rows show before *Show all*: the newest few answer "what just finished?". */
-const DONE_SHOWN = 5;
+/**
+ * How many of *Failed*'s and *Done*'s rows show before *Show all*: the newest
+ * few answer "what just broke?" and "what just finished?". Running tasks are
+ * never capped.
+ */
+const NEWEST_SHOWN = 5;
 
 /** The dot's fill for each status; a task waiting on you overrides it with `bg-warning`. */
 const STATUS_DOT = {
@@ -48,15 +54,17 @@ function newestFirst(tasks: readonly BoardTask[]): BoardTask[] {
 /**
  * A teammate's tasks, split for the panel, each group newest first: the
  * running ones (those waiting on you first), the failed ones (open: a failure
- * is something to act on), then *Done* and *Cancelled*, each collapsed to its
- * count until opened.
+ * is something to act on) less those the viewer cleared, then *Done* and
+ * *Cancelled*, each collapsed to its count until opened.
  */
-function groupTasks(tasks: readonly BoardTask[]) {
+function groupTasks(tasks: readonly BoardTask[], cleared: ReadonlySet<string>) {
   const of = (status: BoardTask["status"]) => newestFirst(tasks.filter((t) => t.status === status));
   const running = of("running");
+  const failed = of("failed");
   return {
     running: [...running.filter((t) => t.waiting !== undefined), ...running.filter((t) => t.waiting === undefined)],
-    failed: of("failed"),
+    failed: failed.filter((t) => !cleared.has(clearMark(t))),
+    clearedFailed: failed.filter((t) => cleared.has(clearMark(t))).length,
     ended: [
       { status: "done", label: "Done", tasks: of("done") },
       { status: "cancelled", label: "Cancelled", tasks: of("cancelled") },
@@ -66,12 +74,15 @@ function groupTasks(tasks: readonly BoardTask[]) {
 
 /**
  * The right pane: the selected teammate's panel. At the top, who it is (its
- * name and role) and *Edit instructions*, which opens the instructions form
- * for a teammate you hired; the teammates from the files can't be edited
- * here. Under it, the tasks its conversation filed, coding tasks and
+ * name and role) and *Edit*, which opens a form to rename any teammate or
+ * replace its instructions, with *Reset to default* on a file's teammate you
+ * edited. Under it, the tasks its conversation filed, coding tasks and
  * teammates' jobs alike, newest first in each group: the running ones
- * (those waiting on you first); the failed ones, open, each with its reason;
- * then *Done* (its newest five, and *Show all*) and *Cancelled*, each one line
+ * (those waiting on you first), all of them; the failed ones, open, each with
+ * its reason, its newest five with *Show all* / *Show fewer*, and *Clear*,
+ * which hides them from this panel in this browser (the tasks themselves stay,
+ * and *Show N cleared* brings them back); then *Done* (its newest five, and
+ * *Show all*) and *Cancelled*, each one line
  * with its count that opens to its rows. A task that ends moves to its group
  * as its row changes. Each row opens the task in a popup, and carries its
  * time: a running one's clock on this attempt, *quiet* once its run stopped
@@ -110,7 +121,8 @@ export function TeammatePanel({
   );
   const tasks = useWatch(watchTasks, sessionId) ?? [];
   const stale = useStale(adapter, sessionId) || boardStale;
-  const { running, failed, ended } = groupTasks(tasks);
+  const [cleared, clearFailed, restoreCleared] = useCleared(sessionId);
+  const { running, failed, clearedFailed, ended } = groupTasks(tasks, cleared);
   // A running clock ticks each second; it holds while the feed is stale, as the status line's age does.
   const now = useNow(1_000, !stale);
   const counts = taskCounts(tasks.flatMap((t) => (t.view === undefined ? [] : [t.view])));
@@ -119,6 +131,10 @@ export function TeammatePanel({
   const [opened, setOpened] = useState<Record<string, boolean>>({});
   // *Done* shows its newest few until *Show all*.
   const [allDone, setAllDone] = useState(false);
+  // *Failed* shows its newest few until *Show all*, and folds back with *Show fewer*.
+  const [allFailed, setAllFailed] = useState(false);
+  const failedCapped = failed.length > NEWEST_SHOWN;
+  const failedShown = failedCapped && !allFailed ? failed.slice(0, NEWEST_SHOWN) : failed;
 
   const row = (t: BoardTask) => {
     const coding = isCoding(t.to);
@@ -165,35 +181,22 @@ export function TeammatePanel({
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{worker.name}</h2>
         </div>
         <p className="text-xs text-muted-foreground">{worker.role}</p>
-        {worker.own ? (
-          editing ? (
-            <InstructionsForm
-              name={worker.name}
-              onSave={async (instructions) => {
-                await adapter.editInstructions(worker.id, instructions);
-                setEditing(false);
-              }}
-              onCancel={() => setEditing(false)}
-            />
-          ) : (
-            <button type="button" onClick={() => setEditing(true)} className="w-fit rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase hover:bg-accent">
-              Edit instructions
-            </button>
-          )
+        {editing ? (
+          <EditForm
+            name={worker.name}
+            onSave={async (edit) => {
+              await adapter.editTeammate(worker.id, edit);
+              setEditing(false);
+            }}
+            onCancel={() => setEditing(false)}
+          />
         ) : (
-          <>
-            <button
-              type="button"
-              disabled
-              aria-describedby="standard-teammate"
-              className="w-fit rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase opacity-40"
-            >
-              Edit instructions
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setEditing(true)} className={PANEL_BUTTON}>
+              Edit
             </button>
-            <p id="standard-teammate" className="text-xs text-muted-foreground">
-              {worker.name} comes from the lab's files, so its instructions can't be changed here yet.
-            </p>
-          </>
+            {worker.edited ? <ResetButton name={worker.name} onReset={() => adapter.resetTeammate(worker.id)} /> : null}
+          </div>
         )}
       </section>
       <div className="flex-1 overflow-y-auto pb-4">
@@ -212,14 +215,38 @@ export function TeammatePanel({
                 <span aria-hidden className="rounded-full bg-destructive/15 px-1.5 text-[10px] leading-4 text-destructive tabular-nums">
                   {failed.length}
                 </span>
+                <button
+                  type="button"
+                  aria-label={`Clear failed (${failed.length})`}
+                  title="Hide these from this panel. The tasks themselves stay."
+                  onClick={() => clearFailed(failed.map(clearMark))}
+                  className="ml-auto text-[11px] font-normal text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  Clear
+                </button>
               </div>
-              <ul aria-label="Failed" className="space-y-px px-2 pb-1">{failed.map(row)}</ul>
+              <ul aria-label="Failed" className="space-y-px px-2 pb-1">{failedShown.map(row)}</ul>
+              {failedCapped ? (
+                <button
+                  type="button"
+                  aria-expanded={allFailed}
+                  onClick={() => setAllFailed(!allFailed)}
+                  className="px-4 py-1 text-left text-xs text-muted-foreground underline-offset-2 hover:underline"
+                >
+                  {allFailed ? "Show fewer" : `Show all ${failed.length}`}
+                </button>
+              ) : null}
             </div>
+          ) : null}
+          {clearedFailed > 0 ? (
+            <button type="button" onClick={restoreCleared} className="px-4 py-1 text-left text-xs text-muted-foreground underline-offset-2 hover:underline">
+              Show {clearedFailed} cleared
+            </button>
           ) : null}
           {ended.map((group) => {
             const open = opened[group.status] ?? false;
-            const capped = group.status === "done" && !allDone && group.tasks.length > DONE_SHOWN;
-            const shown = capped ? group.tasks.slice(0, DONE_SHOWN) : group.tasks;
+            const capped = group.status === "done" && !allDone && group.tasks.length > NEWEST_SHOWN;
+            const shown = capped ? group.tasks.slice(0, NEWEST_SHOWN) : group.tasks;
             return (
               <div key={group.status}>
                 <button
@@ -254,6 +281,38 @@ export function TeammatePanel({
         </section>
       </div>
     </aside>
+  );
+}
+
+/**
+ * Put a file's teammate the user edited back as the file has it: their copy
+ * goes, and its next turn reads the file's name and instructions.
+ */
+function ResetButton({ name, onReset }: { name: string; onReset: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const reset = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await onReset();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <button type="button" disabled={busy} onClick={() => void reset()} aria-label={`Reset ${name} to default`} className={PANEL_BUTTON}>
+        Reset to default
+      </button>
+      {error ? (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </>
   );
 }
 

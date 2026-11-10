@@ -89,7 +89,7 @@ export default defineBenchmark({
 `fsdev benchmark` loads the definition, resolves the patterns, runs the sweep, and prints the scorecard. Real runs make real model calls, so set a cost ceiling.
 
 ```bash
-fsdev benchmark ./benchmark.ts --max-cost 0.50 --format markdown
+pnpm fsdev benchmark ./benchmark.ts --max-cost 0.50 --format markdown
 ```
 
 Provider credentials come from the environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENROUTER_API_KEY`). When the running cost estimate crosses `--max-cost`, the sweep stops and prints a partial scorecard, and the command exits non-zero so a CI step notices.
@@ -98,13 +98,13 @@ Useful flags while iterating:
 
 ```bash
 # only the reasoning tasks, fewer repetitions, while tuning rubrics
-fsdev benchmark ./benchmark.ts --category reasoning --runs 1
+pnpm fsdev benchmark ./benchmark.ts --category reasoning --runs 1
 
 # a subset of patterns
-fsdev benchmark ./benchmark.ts --patterns supervisor,debate
+pnpm fsdev benchmark ./benchmark.ts --patterns supervisor,debate
 
 # a free-tier model for a zero-cost dry run
-fsdev benchmark ./benchmark.ts --model openrouter:meta-llama/llama-3.1-70b-instruct
+pnpm fsdev benchmark ./benchmark.ts --model openrouter:meta-llama/llama-3.1-70b-instruct
 ```
 
 ## 5. Read the scorecard

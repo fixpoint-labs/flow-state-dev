@@ -1,6 +1,6 @@
 /**
  * The progress note a run's activity becomes, and how often it reaches the
- * task row (FIX-2290). The row write is a stub here; the fenced write on a
+ * task (FIX-2290). The row write is a stub here; the fenced write on a
  * real board is `progress-from-a-run.spec.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

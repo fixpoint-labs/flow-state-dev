@@ -1,0 +1,47 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="What changes. Before: only a webhook reaches the service flow, and a laptop has no public URL, so a subscribed session hears nothing. After: subscribe creates or joins one schedule row per user and thread, shared by that user&#x27;s subscriptions on it, at their fastest cadence and no more often than every 5 minutes. One shared tick from @flow-state-dev/scheduled, started by serve() in fsdev dev and called by Vercel, claims only due rows once a minute. Each fire runs as the row&#x27;s user and polls the provider on that user&#x27;s credentials since its polledThrough mark. Versions the cursor has seen or screened are dropped; the rest go to FIX-2534&#x27;s config screens and delivery for each of that user&#x27;s subscriptions on the thread. A version a screen refused or held is recorded in that subscription&#x27;s screened. The row&#x27;s polledThrough holds at the oldest event any of them has neither taken nor screened out, so a lost delivery is fetched again on the next poll. New parts: the row, the tick helper, the fire, the poll and its cursor fields. Reused: the screens, delivery, the cursor&#x27;s seen."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+      .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+      .new { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .old { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .arr { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .arr-k { stroke:var(--accent); stroke-width:1.4; fill:none; stroke-dasharray:4 3; }
+    .x { stroke:var(--gone); stroke-width:2; }
+    .head { fill:var(--ink-3); }
+    .head-k { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <g id="before"><text class="t-lbl" x="24" y="34">BEFORE</text><rect class="old" x="24" y="46" width="200" height="54" rx="5"/><text class="t-h c-lost" x="36" y="68">A webhook</text><text class="t-s" x="36" y="86">needs a public URL</text><path class="arr" d="M224,73 L290,73"/><path class="head" d="M290,73 L283,69 L283,77 z"/><rect class="old" x="292" y="46" width="250" height="54" rx="5"/><text class="t-h c-lost" x="304" y="68">The service flow</text><text class="t-s" x="304" y="86">routes · screens · delivers</text><path class="arr" d="M542,73 L608,73"/><path class="head" d="M608,73 L601,69 L601,77 z"/><rect class="old" x="610" y="46" width="150" height="54" rx="5"/><text class="t-h c-lost" x="622" y="68">A session</text><text class="t-s" x="622" y="86">hears the event</text><rect class="old" x="780" y="46" width="140" height="54" rx="5"/><text class="t-h c-lost" x="792" y="68">A laptop</text><text class="t-s" x="792" y="86">no URL</text><line class="x" x1="866" y1="56" x2="908" y2="90"/><line class="x" x1="908" y1="56" x2="866" y2="90"/></g>
+  <line class="row" x1="16" y1="122" x2="924" y2="122"/>
+  <g id="after"><text class="t-lbl" x="24" y="150">AFTER</text><rect class="new" x="24" y="162" width="200" height="54" rx="5"/><text class="t-h c-acc" x="36" y="184">subscribe, or config</text><text class="t-s" x="36" y="202">a row per user, thread · 5–60 min</text><path class="arr" d="M224,189 L260,189"/><path class="head" d="M260,189 L253,185 L253,193 z"/><rect class="new" x="262" y="162" width="200" height="54" rx="5"/><text class="t-h c-acc" x="274" y="184">A tick, once a minute</text><text class="t-s" x="274" y="202">serve() or Vercel · due rows</text><path class="arr" d="M462,189 L498,189"/><path class="head" d="M498,189 L491,185 L491,193 z"/><rect class="new" x="500" y="162" width="200" height="54" rx="5"/><text class="t-h c-acc" x="512" y="184">The fire, as the user</text><text class="t-s" x="512" y="202">onOverlap skip</text><path class="arr" d="M700,189 L736,189"/><path class="head" d="M736,189 L729,185 L729,193 z"/><rect class="new" x="738" y="162" width="182" height="54" rx="5"/><text class="t-h c-acc" x="750" y="184">The poll</text><text class="t-s" x="750" y="202">since its polledThrough mark</text><path class="arr" d="M829,216 L829,262"/><path class="head" d="M829,262 L825,255 L833,255 z"/><rect class="old" x="642" y="264" width="278" height="54" rx="5"/><text class="t-h c-lost" x="654" y="286">Seen or screened? Dropped</text><text class="t-s" x="654" y="304">the rest to the user&#x27;s subscriptions</text><path class="arr" d="M642,291 L560,291"/><path class="head" d="M560,291 L567,287 L567,295 z"/><rect class="old" x="282" y="264" width="276" height="54" rx="5"/><text class="t-h c-lost" x="294" y="286">Delivery: cursor, in flight, cap</text><text class="t-s" x="294" y="304">FIX-2534 · deliverToRow</text><path class="arr" d="M282,291 L226,291"/><path class="head" d="M226,291 L233,287 L233,295 z"/><rect class="old" x="24" y="264" width="200" height="54" rx="5"/><text class="t-h c-lost" x="36" y="286">The session</text><text class="t-s" x="36" y="304">each event once</text><path class="arr-k" d="M420,318 L420,360 L932,360 L932,189 L928,189"/><path class="head-k" d="M921,189 L929,185 L929,193 z"/><text class="t-s c-acc" x="436" y="380">polledThrough holds at the oldest event neither taken nor screened out</text></g>
+  <g id="key"><rect class="new" x="24" y="392" width="14" height="12" rx="2"/><text class="t-s" x="44" y="402">new here</text><rect class="old" x="120" y="392" width="14" height="12" rx="2"/><text class="t-s" x="140" y="402">reused as it is</text></g>
+</svg>

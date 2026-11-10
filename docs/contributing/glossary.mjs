@@ -97,127 +97,11 @@ const SEAT_MAILBOX_GOAL_NAMES = [
   "a-seat-reaches-the-documents-its-file-names",
 ];
 
-/** A name whose word parts include Row: `FooRow`, `Rows`, `RowHold`, `TaskRowsPage`, `writeRunRow`. Not `Arrow`, `Rowan`. */
-const ROW_NAME = String.raw`\w*Rows?(?:[A-Z_]\w*)?(?![\w$])`;
-/** `text` with every line and block comment blanked to spaces, newlines kept: same length, same offsets. */
-function blankComments(text) {
-  return text.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (c) => c.replace(/[^\n]/g, " "));
-}
-
-/** An export list, read forward: `export {…}` or `export type {…}`, its members, and whether it re-exports (`from`). */
-const EXPORT_LIST = /(?<![\w$.])export\s+(?:type\s+)?\{([^}]*)\}(\s*from\b)?/g;
-const IS_ROW_NAME = new RegExp(String.raw`^(?:${ROW_NAME}|rows?[A-Z]\w*)$`);
-
 /**
- * The Row names a module exports through a list: a local's own name (`export { readTaskRow }`), or an
- * alias's exported name (`export { x as fooRow }`, a re-export too). A plain re-export (`export { FooRow } from`)
- * is left: its declaration is where the name counts. Each hit is `{ index, name }`, `index` at the member.
- * @param {string} text
- * @returns {{ index: number; name: string }[]}
+ * A row name: `row` or `rows` as a word part, camelCase or snake: `row`, `rows`, `taskRow`, `rowId`, `TRow`,
+ * `TaskRowsPage`, `ROW_ID`. Not `arrow`, `narrow`, `Rowan`, `rowset`.
  */
-function rowNamesInExportLists(text) {
-  const hits = [];
-  EXPORT_LIST.lastIndex = 0;
-  for (let m = EXPORT_LIST.exec(text); m !== null; m = EXPORT_LIST.exec(text)) {
-    const reexport = m[2] !== undefined;
-    const bodyAt = m.index + m[0].indexOf("{") + 1;
-    let offset = 0;
-    for (const part of blankComments(m[1]).split(",")) {
-      const spec = /^\s*(?:type\s+)?([\w$]+)(?:\s+as\s+([\w$]+))?\s*$/.exec(part);
-      if (spec !== null) {
-        const [, local, alias] = spec;
-        const exported = alias ?? local;
-        if ((alias !== undefined || !reexport) && IS_ROW_NAME.test(exported)) {
-          hits.push({ index: bodyAt + offset + part.indexOf(exported, alias !== undefined ? part.indexOf(" as ") : 0), name: exported });
-        }
-      }
-      offset += part.length + 1;
-    }
-  }
-  return hits;
-}
-
-/** An exported destructuring declaration's opening: `export const {` or `export let [`. */
-const EXPORT_PATTERN = /(?<![\w$.])export\s+(?:const|let|var)\s*([{[])/g;
-
-/** Split `text` at the commas that sit outside any bracket, keeping each part's offset. */
-function topLevelParts(text) {
-  const parts = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i <= text.length; i++) {
-    const c = text[i];
-    if (c === "{" || c === "[" || c === "(") depth++;
-    else if (c === "}" || c === "]" || c === ")") depth--;
-    else if ((c === "," && depth === 0) || i === text.length) {
-      parts.push({ text: text.slice(start, i), at: start });
-      start = i + 1;
-    }
-  }
-  return parts;
-}
-
-/** The names a destructuring pattern binds, each with its offset in `pattern` (the text inside the brackets). */
-function patternBindings(pattern, isObject) {
-  const out = [];
-  for (const part of topLevelParts(pattern)) {
-    let body = part.text;
-    let at = part.at;
-    // The default (`= …`) is read, not bound: cut it at the first top-level `=`.
-    let depth = 0;
-    for (let i = 0; i < body.length; i++) {
-      const c = body[i];
-      if (c === "{" || c === "[" || c === "(") depth++;
-      else if (c === "}" || c === "]" || c === ")") depth--;
-      else if (c === "=" && depth === 0) { body = body.slice(0, i); break; }
-    }
-    // In an object pattern `key: target` binds `target`; a bare key binds itself.
-    if (isObject) {
-      const colon = body.indexOf(":");
-      if (colon !== -1) { at += colon + 1; body = body.slice(colon + 1); }
-    }
-    const lead = body.length - body.trimStart().length;
-    at += lead;
-    body = body.trim().replace(/^\.\.\./, (m) => { at += m.length; return ""; });
-    const open = body[0];
-    if (open === "{" || open === "[") {
-      const close = body.lastIndexOf(open === "{" ? "}" : "]");
-      for (const b of patternBindings(body.slice(1, close), open === "{")) out.push({ name: b.name, at: at + 1 + b.at });
-    } else {
-      const name = /^[\w$]+/.exec(body)?.[0];
-      if (name) out.push({ name, at });
-    }
-  }
-  return out;
-}
-
-/**
- * The Row names an exported destructuring declaration binds: `export const { readTaskRow } = helpers`,
- * `export const { list: listTaskRows } = …`, nested and array patterns too. A property only read
- * (`{ taskRow: task }`) is left: `task` is the name a consumer meets.
- * @param {string} text
- * @returns {{ index: number; name: string }[]}
- */
-function rowNamesInExportedPatterns(text) {
-  const hits = [];
-  EXPORT_PATTERN.lastIndex = 0;
-  for (let m = EXPORT_PATTERN.exec(text); m !== null; m = EXPORT_PATTERN.exec(text)) {
-    const open = m.index + m[0].length - 1;
-    let depth = 0;
-    let close = -1;
-    for (let i = open; i < text.length; i++) {
-      const c = text[i];
-      if (c === "{" || c === "[" || c === "(") depth++;
-      else if (c === "}" || c === "]" || c === ")") { depth--; if (depth === 0) { close = i; break; } }
-    }
-    if (close === -1) continue;
-    for (const b of patternBindings(blankComments(text.slice(open + 1, close)), m[1] === "{")) {
-      if (IS_ROW_NAME.test(b.name)) hits.push({ index: open + 1 + b.at, name: b.name });
-    }
-    EXPORT_PATTERN.lastIndex = close;
-  }
-  return hits;
-}
+const ROW_NAME = /(?:^|_)rows?(?:$|[A-Z_0-9])|Rows?(?:$|[A-Z_0-9])|(?:^|_)ROWS?(?:$|_)/;
 
 // ---------------------------------------------------------------------------------------------
 // 1. The terms
@@ -240,23 +124,29 @@ export const ENTRIES = [
         id: "collection-row",
         check: "tree",
         // The whole tree (epic ER-6): every in-scope file, so a name left anywhere counts, not only a new one.
+        // Row locals, parameters and properties are the exception, by the owner's staging (FIX-2631): only a
+        // change's new ones count, until FIX-2632 renames the existing ones package by package.
         say: "the resource: XResourceState for what is stored, XResourceRef for one instance; XStatus for a lifecycle",
         anchor: ["ResourceRef", "XResourceState", "XResourceRef", "XCollectionRef", "XStatus"],
-        // Code. A type declared with Row in its name, exported or not: Row is a store adapter's word, and a UI list's.
-        declaresRow: new RegExp(String.raw`(?<![\w$.])(?:type|interface|class|enum)\s+(${ROW_NAME})\s*(?:[<={]|extends\b|implements\b)`, "g"),
-        // Code. An exported value built on Row: `readRunRow`, `fooRowSchema`, `rowTruthOf`. A local is no name anyone meets.
-        exportsRow: new RegExp(String.raw`(?<![\w$.])export\s+(?:default\s+)?(?:declare\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|enum)\s+(${ROW_NAME}|rows?[A-Z]\w*)`, "g"),
-        // Code. A Row name exported through a list: `export { readTaskRow }`, or an alias `export { x as fooRow }` (a re-export too).
-        // A plain re-export (`export { FooRow } from`) is left: its declaration is where the name counts.
-        exportsRowInList: rowNamesInExportLists,
-        // Code. A Row name an exported destructuring declaration binds: `export const { readTaskRow } = helpers`.
-        exportsRowInPattern: rowNamesInExportedPatterns,
+        // Code. The guard reads the names a file declares with TypeScript's parser (FIX-2631 D2) and keeps the
+        // ones `rowName` matches. `treeKinds` count on every line of the tree: any type, interface, enum or class,
+        // an exported function, variable or destructured binding, a name an export list binds, and a type
+        // parameter. A local, a parameter, an import alias or a property is no name anyone meets yet, so it counts
+        // only when a change adds it (`--added-since`): a file may not declare more row names than its base did.
+        // A read (`entry.row`), an object key, a plain import and a plain re-export are uses, never counted.
+        rowName: ROW_NAME,
+        treeKinds: ["type", "class", "exported-value", "export", "type-parameter"],
+        // What a refusal of an added row name says to use instead.
+        sayAdded: "entry, or the resource's own name (taskEntry, task)",
         // Code. Any name built on CollectionItem, a use as well as a declaration: always a resource, wherever it sits.
         namesItem: /(?<![\w$])([\w$]*[Cc]ollectionItems?[\w$]*)/g,
         // Code. A lifecycle named State: a string-literal union (on one line or several) or a z.enum. State is scope or resource state only.
         declaresState: /(?<![\w$.])type\s+(\w*State)\s*=\s*(?:\/\*[\s\S]*?\*\/\s*|\/\/[^\n]*\n\s*)*\|?\s*["'`]|(?<![\w$.])(?:const|let|var)\s+(\w*State(?:Schema)?)\s*=\s*z\s*\.\s*enum\(|(?<![\w$.])enum\s+(\w*State)\s*\{/g,
         // Docs calling a resource in a collection a row: "collection row", "collection's row", "the row of the collection".
         prose: /\bcollection\s+rows?\b|\bcollection(?:'s|s')\s+rows?\b|\brows?\s+(?:in|of|from|inside|on)\s+(?:the\s+|a\s+|an\s+)?(?:[\w'-]+\s+){0,4}collection\b/i,
+        // Every line of every in-scope file, code and pages alike: a resource's own noun, then row or rows.
+        // "the subscription row", "a task's rows". The kept paths keep these too.
+        phrases: /\b(?:subscription|schedule|poll|task|worker|project)(?:'s)?\s+rows?\b/i,
       },
     ],
   },
@@ -800,6 +690,36 @@ export const ENTRIES = [
       { id: "side-chain-tier-value", check: "side-chain", position: "tier-value", names: ["work"] },
     ],
   },
+
+  // Routines ----------------------------------------------------------------------------------
+  {
+    term: "Routine",
+    means: "A standing instruction that fires on its own as its owner, with exactly one trigger: a clock (recurring work) or an event (a subscription, pushed or polled).",
+    decision: "Owner, 2026-11-08; FIX-2471 D12; FIX-2614",
+    // FIX-2614 renamed the shipped surface: the four routine verbs and the routines capability replace the schedule
+    // actions and the subscription tools, with no aliases. "Schedule" and "subscription" stay, as the words
+    // for a clock trigger's stored resource and an event trigger's.
+    retires: [
+      { name: "subscriptionTools" },
+      { name: "SUBSCRIPTION_TOOLS" },
+      { name: "saveSchedule" },
+      { name: "listSchedules" },
+      { name: "deleteSchedule" },
+      { name: "LIST_SCHEDULES_ACTION" },
+      { name: "listedScheduleSchema" },
+      { name: "ListedSchedule" },
+      { name: "ScheduledWorkOptions" },
+      {
+        id: "recurring-work-prose",
+        check: "sweep",
+        reach: "meaning",
+        files: CODE_OR_PUBLISHED,
+        // The user-facing names a routine replaces: "recurring work" for a clock routine, and the
+        // "Scheduled work" screen that listed only those.
+        pattern: /\brecurring work\b|\bscheduled work\b/i,
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -840,6 +760,18 @@ const EXEMPTIONS = [
     why: "FIX-2246: the README's upgrade note, which says the door is gone and how its kept lines become steers; a page can't carry the marker",
   },
   {
+    path: /^packages\/workforce\/src\/subscriptions\/github\/normalize\.ts$/,
+    line: /^const (PR|ISSUE)_ACTIONS = new Set\(\[/,
+    rules: ["reopened-shape"],
+    why: "FIX-2535: GitHub's own `reopened` webhook action, which normalize matches by name; not the task entry's reopened shape",
+  },
+  {
+    path: /^packages\/workforce\/src\/subscriptions\/github\/poll\.ts$/,
+    line: /^const TIMELINE_ACTIONS = new Set\(\[/,
+    rules: ["reopened-shape"],
+    why: "FIX-2536: GitHub's own `reopened` timeline event, which the poll rebuilds by name; not a task's reopened shape",
+  },
+  {
     path: /^packages\/orchestration\/README\.md$/,
     line: /^`reopened: true` reads unmarked; while it is still open/,
     rules: ["reopened-shape"],
@@ -856,6 +788,19 @@ const EXEMPTIONS = [
     line: /\bteammates\.chief-of-staff\b|^\(file path\)$/,
     rules: ["shift-coordinator-names"],
     why: "FIX-2354: the Teammates lab's Lead keeps its stored worker id `teammates.chief-of-staff` (its folder and roster key): stored worker id — renaming strands persisted conversations (BP-030). The name a person reads is Lead",
+  },
+  {
+    path: /^\.changeset\/fix-2614-routines\.md$/,
+    rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "LIST_SCHEDULES_ACTION", "listedScheduleSchema"],
+    why: "FIX-2614: the release note that tells consumers what each retired schedule and subscription name became",
+  },
+  {
+    // User docs change only at release (docs/contributing/release-docs.md), so these pages document the
+    // released names until then. As FIX-2479 D4's released-quotes: /release-docs rewrites them from the
+    // changeset's Docs: line, and deletes this in the same PR.
+    path: /^(?:apps\/docs\/docs\/workforce\/delegating-work\.md|apps\/docs\/docs\/shift-manager\/overview\.md|packages\/workforce\/README\.md|packages\/shift-manager\/README\.md)$/,
+    rules: ["subscriptionTools", "saveSchedule", "listSchedules", "deleteSchedule", "recurring-work-prose"],
+    why: "FIX-2614: published pages may name the released schedule and subscription surface until /release-docs rewrites them, and deletes this in the same PR",
   },
   {
     path: /^\.changeset\/user-suspension-reasons\.md$/,
@@ -1257,14 +1202,16 @@ const EXEMPTIONS = [
   {
     id: "subscription-modules",
     terms: ["thread", "member", "kind"],
-    where: (path) => /^packages\/workforce\/(?:src\/subscriptions\/|test\/subscriptions-)/.test(path),
-    strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
-    why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there, and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
+    // FIX-2614: an event routine is a subscription, so the routine modules, tests and screen name its thread too.
+    where: (path) =>
+      /^packages\/workforce\/(?:src\/subscriptions\/|src\/routines\/|test\/subscriptions-|test\/routines\.test\.ts$)|^packages\/shift-manager\/(?:src\/lib\/routines\.ts|src\/surfaces\/Routines\.tsx|test\/routines-view\.test\.tsx)$/.test(path),
+    strip: /\bthreads?\b|\bThreads?(?=[A-Z_]|\b)|(?<=[a-z])Threads?\b|\bmembers?\b|\bMEMBER\b|\bkinds?\b|(?<=\b|_)KINDS\b|(?<=[a-z])Kinds?\b/g,
+    why: "an outside service's thread (a PR, an issue, a repository), a sender's `member` role there (GitHub's `MEMBER` association), and an event's kind: FIX-2471's signed subscription vocabulary, not a mailbox's thread or member, nor a worker flow",
   },
   {
     id: "subscription-docs",
     terms: ["thread", "member", "kind"],
-    where: (path) => path === "packages/workforce/README.md" || path === "apps/docs/docs/workforce/messaging-workers.md",
+    where: (path) => path === "packages/workforce/README.md" || path === "apps/docs/docs/workforce/messaging-workers.md" || path === ".changeset/fix-2614-routines.md",
     // Only on a line that names the outside service, so a mailbox's thread elsewhere on the page still counts.
     strip: /\bSCREEN_KINDS\b|(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)(?=[^\n]*(?:subscri|provider|\bPR\b|pull request|repositor|outside|`thread`|canRead|github))|(?<=(?:subscri|provider|\bPR\b|pull request|repositor|outside|canRead|github)[^\n]*)(?:\bthreads?\b|\b[Mm]embers?\b|\bkinds?\b)/g,
     why: "the subscription pages' outside thread, a sender's member role and an event's kind (FIX-2471), on lines that name the outside service",
@@ -1280,7 +1227,7 @@ const EXEMPTIONS = [
     id: "registry-copies",
     terms: ["kind", "person"],
     where: (path) => /^packages\/shift-manager\/src\/components\/flow-state\//.test(path),
-    strip: /\bkinds?\b|\bpersons?\b|\bperson's\b/gi,
+    strip: /\battachmentKind\b|\bkinds?\b|\bpersons?\b|\bperson's\b/gi,
     why: "an installed copy of a ui registry component, held byte-equal to its source in packages/ui (outside Workforce) by Shift Manager's static test: its words are the registry's",
   },
   {

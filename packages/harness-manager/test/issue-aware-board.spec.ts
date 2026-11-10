@@ -56,8 +56,8 @@ describe("a board task that names its issue", () => {
     }
     const segment = runBoardSegment(CONVERSATIONS, "conv-a");
     const [a, b] = await Promise.all(["task_a", "task_b"].map((id) => lab.record(runTopic(segment, id, PHASE))));
-    expect(a!.branch).toMatch(/\/fix-77--task_a--implement$/);
-    expect(b!.branch).toMatch(/\/fix-77--task_b--implement$/);
+    expect(a!.branch).toMatch(/^conductor\/fix-77-task-a-implement-[0-9a-f]{6}$/);
+    expect(b!.branch).toMatch(/^conductor\/fix-77-task-b-implement-[0-9a-f]{6}$/);
   }, 60_000);
 
   it("leaves the branch of a task naming no issue as it was", async () => {
@@ -65,7 +65,7 @@ describe("a board task that names its issue", () => {
     await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "task_plain", goal: "an ask", input: {} });
     await lab.runAttempt(CONVERSATIONS, "task_plain", "conv-a");
     const record = await lab.record(runTopic(runBoardSegment(CONVERSATIONS, "conv-a"), "task_plain", PHASE));
-    expect(record!.branch).toMatch(/\/task_plain--implement$/);
+    expect(record!.branch).toMatch(/^conductor\/task-plain-implement-[0-9a-f]{6}$/);
   }, 60_000);
 
   it("opens the brief with the issue's spec from the run's checkout when the host turns it on", async () => {

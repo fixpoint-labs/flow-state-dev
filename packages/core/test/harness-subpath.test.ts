@@ -21,6 +21,7 @@ const REPO = join(__dirname, "../../..");
 /** The source files whose exports are harness vocabulary. */
 const HARNESS_FILES = [
   "packages/core/src/types/harness.ts",
+  "packages/core/src/types/harness-attachments.ts",
   "packages/core/src/types/harness-plan.ts",
   "packages/core/src/types/pull-requests.ts",
   "packages/core/src/helpers/harness-activity.ts",

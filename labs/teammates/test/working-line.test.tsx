@@ -26,7 +26,7 @@ const STEPS: SessionStep[] = [
   { id: "t1", kind: "tool", tool: "Bash", text: "ls", code: true },
 ];
 
-/** An adapter whose task row and run status a test sets by hand. */
+/** An adapter whose task and run status a test sets by hand. */
 function stub(task: BoardTask) {
   let showTasks: (tasks: BoardTask[]) => void = () => {};
   let showNow: (now: WorkingNow) => void = () => {};
@@ -43,6 +43,7 @@ function stub(task: BoardTask) {
     },
     watchReview: () => () => {},
     taskActions: () => ({}),
+    recordedWork: async () => ({ plan: null, files: null, pullRequests: null }),
     watchWorking: (run: { sessionId: string; requestId?: string }, onChange: (now: WorkingNow) => void) => {
       watched.push(`${run.sessionId}/${run.requestId}`);
       showNow = onChange;

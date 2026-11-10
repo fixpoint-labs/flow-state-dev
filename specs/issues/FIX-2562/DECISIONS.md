@@ -25,6 +25,15 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 <a name="d1"></a>
 ## D1 · At the wrap, the passing legs and journeys fold into `CHECKS` and gate every PR; the manifest goes
 
+> **Amended (Nov 10).** The fold is held until two cells can pass; it is still the plan. Until
+> then the manifest stays and the closure runs it whole.
+> - `first-hour.quickstart` fails on a fresh pnpm 10 install, which never builds better-sqlite3.
+>   It waits on [FIX-2610](https://linear.app/fixpoint-labs/issue/FIX-2610).
+> - `closure.j5:moved-name-named` waits on the owner's call on how release notes name removed
+>   exports, and expects `fail` until then ([#4938](https://github.com/fixpoint-labs/flow-state-dev/pull/4938)).
+>   Today the cell is aggregate, so a name that loses its changelog line still reads `fail`. Making
+>   it strict per name belongs in the PR that flips it to `pass` (Codex's finding on #4938).
+
 | | |
 |---|---|
 | **Instead of** | Keeping the manifest after the wrap, with the journeys as its rows, as the non-gating job on `main` that the epic runs while its cells are expected to fail |
@@ -50,10 +59,16 @@ Two things in the plan depended on Q1: **which commit is pinned**, and **how man
 
 | Q1's answer | The pinned commit | j5's upgrade | *Shims* |
 |---|---|---|---|
-| **Break as each lands** (the owner, Nov 6) | After the last child merges | One hop: 0.4.0 → the pinned commit. Each moved name fails to compile, and the package's changelog line names its new home ([ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what)). A TypeScript "no exported member" error names nothing, so the changelog line is the only thing that does: j5 grades that line, which is now the epic's whole *upgrades across a rename* promise | No exemption: `shims.never-published` only |
+| **Break as each lands** (the owner, Nov 6) | After the last child merges | One hop: 0.4.0 → the pinned commit. Each moved name fails to compile, and the package's changelog line names its new home ([ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what)). A TypeScript "no exported member" error names nothing, so the changelog line is the only thing that does: j5 grades that line, which is now the epic's whole *upgrades across a rename* promise | No exemption: `shims.never-published`, `shims.human-approval-throws` and `shims.stored-human-approval` (amended Nov 10) |
 
-A retired runtime value is not refused under D4, so the closure grades no refusal; it checks that
-the changeset names the replacement, inside j5.
+A retired runtime value is not refused under D4, so the closure grades no refusal of its own; it
+checks that the changeset names the replacement, inside j5.
+
+> **Amended (Nov 10).** D4 now keeps four refusals and readers ([epic D4](../../epics/FIX-2447/DECISIONS.md#kept-refusals)),
+> the owner's ruling by merging [#4830](https://github.com/fixpoint-labs/flow-state-dev/pull/4830)
+> as it was. The two `human_*` ones are manifest cells (`shims.human-approval-throws`,
+> `shims.stored-human-approval`), so the closure grades them by running the manifest whole, and
+> adds no journey for them. The *Shims* row is those two plus `shims.never-published`.
 
 ## The plan in full
 
@@ -74,6 +89,11 @@ First, the *Surface* row as the epic narrowed it: on the installed tarballs, eve
 is clean (core, engine, client, react, testing, orchestration, patterns, the three harnesses, both
 stores, and workforce's `*_ENTRY` names), and every other published root sits at or below its
 ratchet baseline.
+
+> **Amended (Nov 10).** "At or below" is measured against the epic's start, `ebec5326`, not each
+> PR's merge base: `node scripts/check-root-exports.mjs ebec5326`. Each PR passed against its own
+> merge base while workforce's and workspace's roots grew by 11 names; the ruling came with
+> [FIX-2641](https://linear.app/fixpoint-labs/issue/FIX-2641), which takes them off or justifies them.
 
 | Seam ([epic](../../epics/FIX-2447/DECISIONS.md#coordination-seams)) | Exercised as |
 |---|---|
@@ -110,7 +130,7 @@ FIX-2447 blocks this issue in Linear.
   that cell or check. Each team in the epic's table is walked by a cell, a re-run goal check or a
   kept journey ([the mapping](SPEC.md#the-journeys)).
 - **Grade the *Surface* row as narrowed** (pending the owner's sign-off on the epic): owned roots
-  clean, every other published root at or below its ratchet baseline. Cleaning those roots is
+  clean, every other published root at or below its ratchet baseline at `ebec5326` ([amended Nov 10](#the-gap-sweep)). Cleaning those roots is
   FIX-2568's and FIX-2569's, outside the epic.
 - **The journeys run on the installed project, like the legs.** A journey on workspace `src` reads
   what the adopter never installs.

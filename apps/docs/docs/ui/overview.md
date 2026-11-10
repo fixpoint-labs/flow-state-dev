@@ -14,14 +14,14 @@ The trade-off: upgrades are not automatic. When the canonical source changes, yo
 
 ```bash
 # Via the fsdev CLI (recommended)
-fsdev ui add message
-fsdev ui add conversation prompt-input
+pnpm fsdev ui add message
+pnpm fsdev ui add conversation prompt-input
 
 # Or via shadcn directly
 npx shadcn@latest add https://ui.flow-state.dev/r/message.json
 
 # List what's available
-fsdev ui list
+pnpm fsdev ui list
 ```
 
 ## Colours and theming
@@ -43,7 +43,7 @@ Each has a `-foreground` partner for text on a filled background. `warning` and 
 Defaults come with the components. The first `fsdev ui add` of a component that uses a status token also adds the `tokens` item, which writes every token, light and dark, into your stylesheet. The defaults are plain: green, amber, blue, yellow and red.
 
 ```bash
-fsdev ui add tool task-plan   # also adds tokens
+pnpm fsdev ui add tool task-plan   # also adds tokens
 ```
 
 The defaults sit in a base layer, so your own values win wherever you declare them. To restyle, set the tokens you want to change:

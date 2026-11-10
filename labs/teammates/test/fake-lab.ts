@@ -289,6 +289,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       status: "running",
       boardStatus: "in_progress",
       runSessionId: `run:${id}`,
+      runRequestId: `req:${id}`,
       sessionId: w.sessionId,
       harness: HARNESS[harness]!.name,
       createdAt: Date.now(),
@@ -720,8 +721,22 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
       return row;
     },
 
-    async editInstructions(workerId) {
-      if (!worker(workerId).row.own) throw new Error(`"${workerId}" is a standard worker`);
+    async editTeammate(workerId, { name }) {
+      // As the workforce's edit: a file's teammate becomes the user's copy, under the same id.
+      const w = worker(workerId);
+      const id = w.row.id;
+      if (name !== undefined) w.row = { ...w.row, name: name.trim() === "" ? id.slice(id.lastIndexOf(".") + 1) : name.trim() };
+      if (!w.row.own) w.row = { ...w.row, edited: true };
+      notify();
+    },
+
+    async resetTeammate(workerId) {
+      const w = worker(workerId);
+      const file = ROSTER.find((row) => row.id === workerId);
+      if (file === undefined) throw new Error(`"${workerId}" isn't a standard worker`);
+      if (!w.row.edited) throw new Error(`You haven't edited "${workerId}"`);
+      w.row = file;
+      notify();
     },
 
     async fire(workerId) {
@@ -747,6 +762,20 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
 
     watchReview(runSessionId, onChange) {
       return watch(() => onChange(reviews.get(runSessionId)));
+    },
+
+    /**
+     * What a run recorded, as harness-manager's reader returns it: a Claude Code run's edited
+     * files, one row per path; `files: null` on Codex and Cursor, whose blocks record none.
+     */
+    async recordedWork({ sessionId }) {
+      const task = tasks.find((t) => t.runSessionId === sessionId);
+      if (task?.harness !== HARNESS["claude-code"]!.name) return { plan: null, files: null, pullRequests: null };
+      const edited = (runs.get(task.id) ?? []).flatMap((item) => {
+        const call = (item as { toolCall?: { name?: string; arguments?: string } }).toolCall;
+        return call?.name === "Edit" ? [JSON.parse(call.arguments ?? "{}").file_path as string] : [];
+      });
+      return { plan: null, files: { rows: [...new Set(edited)].map((path) => ({ path, kind: "edited" as const, applied: 1 })), truncated: false }, pullRequests: null };
     },
 
     async answerOpenHold(_sessionId, taskId, answer) {
@@ -805,6 +834,7 @@ export function createFixtureLab(options: FixtureOptions = {}): FixtureLab {
             status: "running",
             boardStatus: "in_progress",
             runSessionId: `run:${id}`,
+            runRequestId: `req:${id}`,
             sessionId,
             harness: HARNESS[harness]!.name,
             createdAt: Date.now(),

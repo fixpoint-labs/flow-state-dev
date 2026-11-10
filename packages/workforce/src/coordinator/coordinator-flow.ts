@@ -105,7 +105,7 @@ import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-fl
 import { markUserTurn, userTurnStateSchema } from "../standing-rules/user-turn";
 import { STANDING_RULES_ACTION, standingRulesAction } from "../standing-rules/rules-action";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
-import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
+import { PROJECT_ENTRY_RESOURCES } from "../projects/project-address";
 import {
   resolveWorkstreamTarget,
   WORKSTREAM_DELEGATE_ACTION,
@@ -130,6 +130,7 @@ import { doorTask, RESPOND_ACTION } from "../worker-door";
 import { declareBuiltInRoles, markRolePiece } from "../worker-roles";
 import { reportRescuedFailure } from "../error-reporter/rescued";
 import { verifiedWorkerOf, workerConfigOf } from "../workers/verified-worker";
+import { workerRoutineVerbs } from "../routines/routines";
 import { ROUTED_FROM_STATE_KEY, SET_WORK_PROJECT_ACTION, WORK_PROJECT_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import { setWorkProjectAction } from "../projects/work-project";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
@@ -231,6 +232,16 @@ export interface CoordinatorFlowOptions {
    * five minutes ({@link ROUND_DEADLINE_MS}).
    */
   roundDeadlineMs?: number;
+  // FIX-2538 D1; FIX-2614.
+  /**
+   * `true`: the flow takes the four routine verbs as actions (`listRoutines`,
+   * `saveRoutine`, `pauseRoutine`, `deleteRoutine`), so its user keeps the
+   * routines that act through this conversation, among them an event routine
+   * with `unmatched: true` that hears what no other subscription heard, under
+   * its `inferredWork:`. Its providers are the ones `hireWorkforce`'s
+   * `routines.providers` names. Omitted, a coordinator keeps no routines.
+   */
+  routines?: boolean;
 }
 
 /** What best fit's one call is asked. */
@@ -397,6 +408,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     flowKind: COORDINATOR_FLOW,
     // A project's coordinator starts with its user's open workstreams there.
     seed: (ctx) => workstreamDelegateSeed(ctx),
+    // Read at the turn, so a change applies to the next forward.
+    inferredWork: (ctx) => (workerConfigOf(ctx) as unknown as Partial<CoordinatorConfig>).inferredWork ?? "observe",
     // The judgment turn hands a message on with `createTask` and the routing
     // settings, on a turn routing one: the message comes from request state.
     routes: {
@@ -411,7 +424,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     }
   });
   const check = sessionBoard.delegates.check;
-  const resources = { ...installation.resources, ...PROJECT_ROW_RESOURCES };
+  const resources = { ...installation.resources, ...PROJECT_ENTRY_RESOURCES };
 
   /**
    * The worker this conversation runs as, and its defaults, with the
@@ -1681,6 +1694,18 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * wakes the turn, after that. The failure or cancel of one with no routed brief (a routed task's
    * follow-up) is in no round, and is heard as a filed task's is.
    */
+  // The routine verbs, as actions: the ones that act through this conversation.
+  const routineVerbs = options.routines === true ? workerRoutineVerbs(installation) : undefined;
+  const routineActions =
+    routineVerbs === undefined
+      ? undefined
+      : Object.fromEntries(
+          [routineVerbs.listRoutines, routineVerbs.saveRoutine, routineVerbs.pauseRoutine, routineVerbs.deleteRoutine].map((block) => [
+            block.name,
+            { inputSchema: block.inputSchema, block, description: block.description }
+          ])
+        );
+
   const boardEntries = sessionBoard.entries(
     turn.run,
     (ctx) => {
@@ -1712,7 +1737,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       // runs out of retries fails after its round has closed, and its answers are lost.
       cas: { maxRetries: 8 }
     },
-    resources: { ...resources, ...(turn.bound.resources ?? {}), ...sessionBoard.resources },
+    resources: {
+      ...resources,
+      ...(turn.bound.resources ?? {}),
+      ...sessionBoard.resources,
+      ...(routineVerbs === undefined ? {} : routineVerbs.resources)
+    },
     isolateUserState: options.agent?.isolateUserState ?? false,
     actions: {
       // The task tools, as actions on this conversation's board
@@ -1727,7 +1757,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         concurrency: REPLY_CONCURRENCY
       },
       [STANDING_RULES_ACTION]: standingRulesAction,
-      [SET_WORK_PROJECT_ACTION]: setWorkProjectAction
+      [SET_WORK_PROJECT_ACTION]: setWorkProjectAction,
+      ...(routineActions ?? {})
     },
     // The task list, read with nothing stored (FIX-2286).
     reads: sessionBoard.reads,

@@ -460,7 +460,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
 
     // Without the drain, `fsdev run` disposed here: pooled stores closed while
     // the child was still writing, the child failed on a closed store, and its
-    // task row was stranded `in_progress` forever. Nothing in the parent's own
+    // task was stranded `in_progress` forever. Nothing in the parent's own
     // output said so.
     expect(observed.children).toHaveLength(1);
 
@@ -794,7 +794,7 @@ describe("dispatch on a runtime-only init (FIX-1077)", () => {
       // the shutdown bound unenforceable. Settling a child's row is not the
       // parent's job — the substrate recovers it. `detectInterruptedRequests`
       // marks an abandoned `in_progress` record `interrupted` on the next start,
-      // and a task row's lapsed lease makes it claimable again without ever
+      // and a task's lapsed lease makes it claimable again without ever
       // being terminalized here.
       //
       // Read through the raw registry, since the adapter is closed to callers.

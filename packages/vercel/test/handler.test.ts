@@ -1,6 +1,33 @@
 import { describe, it, expect, vi } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores, createLocalBlobStore } from "@flow-state-dev/engine/host";
 import { createVercelHandler, createVercelBareHandler } from "../src/handler";
 import type { FlowApiRouter } from "../src/types";
+
+describe("attachments on Vercel (FIX-824)", () => {
+  const upload = () =>
+    new Request("http://localhost/api/flows/blobs?userId=u1", {
+      method: "POST",
+      headers: { "content-type": "image/png" },
+      body: new Uint8Array([1])
+    });
+
+  it("tells the router its disk does not last, so a local upload is refused by name", async () => {
+    const router = createFlowApiRouter({
+      registry: createFlowRegistry(),
+      stores: { ...createInMemoryStores(), blobs: createLocalBlobStore({ rootDir: mkdtempSync(join(tmpdir(), "fsd-vercel-")) }) }
+    });
+    // Before the adapter serves it, the same router takes the upload.
+    expect((await router.POST(upload(), { params: { path: ["blobs"] } })).status).toBe(201);
+
+    const response = await createVercelHandler(router).POST(upload(), { params: Promise.resolve({ path: ["blobs"] }) });
+    expect(response.status).toBe(501);
+    expect(await response.json()).toMatchObject({ error: "attachments_unavailable" });
+  });
+});
 
 function createMockRouter(overrides?: Partial<FlowApiRouter>): FlowApiRouter {
   const defaultHandler = async () => new Response(JSON.stringify({ ok: true }), {

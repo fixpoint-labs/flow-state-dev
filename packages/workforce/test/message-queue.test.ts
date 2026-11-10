@@ -92,7 +92,7 @@ beforeEach(() => {
 });
 
 describe("a message to a task held on a question", () => {
-  it("parks bound to the task row with a short deadline, says it is queued, and lands once the question is answered", async () => {
+  it("parks bound to the task with a short deadline, says it is queued, and lands once the question is answered", async () => {
     const { ctx, parked, row } = harness();
     const before = Date.now();
     expect(await queueBehindUser(ctx as never, { id: "msg_1" })).toBe("admitted");

@@ -20,6 +20,7 @@ import {
 } from "@flow-state-dev/client";
 import type {
   ContentAudioDeltaEvent,
+  FileContent,
   ItemVisibility,
   MessageItem,
   OutputItem,
@@ -433,10 +434,16 @@ export type SessionView = {
   getItemsByAgent: (agentName: string) => OutputItem[];
   /** Returns items matching the given visibility predicate. */
   getItemsByVisibility: (predicate: Partial<ItemVisibility>) => OutputItem[];
+  /**
+   * Send an action on this session. `userMessage` shows the person's line at
+   * once, before the server's copy arrives. `attachments` are the message's
+   * files, as `upload` returned them, sent beside the input: the line shown
+   * at once holds them after the text, as the server's will.
+   */
   sendAction: (
     action: string,
     input: unknown,
-    options?: { metadata?: Record<string, unknown>; userMessage?: string }
+    options?: { metadata?: Record<string, unknown>; userMessage?: string; attachments?: FileContent[] }
   ) => Promise<ExecuteActionResponse>;
   /** Abort the currently in-flight request. No-op if nothing is in flight. */
   abortRequest: () => Promise<void>;
@@ -2158,7 +2165,7 @@ export function useSession(
     async (
       action: string,
       input: unknown,
-      actionOptions?: { metadata?: Record<string, unknown>; userMessage?: string }
+      actionOptions?: { metadata?: Record<string, unknown>; userMessage?: string; attachments?: FileContent[] }
     ): Promise<ExecuteActionResponse> => {
       if (sessionId === undefined) {
         throw new Error("useSession.sendAction requires a sessionId");
@@ -2219,7 +2226,7 @@ export function useSession(
           itemIndex: -1,
           provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
           ts: Date.now(),
-          content: [{ type: "output_text", text: actionOptions.userMessage }]
+          content: [{ type: "output_text", text: actionOptions.userMessage }, ...(actionOptions.attachments ?? [])]
         } as OutputItem;
 
         storeRef.current.upsert(optimisticItem);
@@ -2236,6 +2243,7 @@ export function useSession(
           sessionId,
           requestId,
           metadata: actionOptions?.metadata,
+          attachments: actionOptions?.attachments,
           stream: true
         });
 

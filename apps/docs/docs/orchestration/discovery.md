@@ -56,7 +56,7 @@ const flow = defineAgentWorkerFlow({
     createWorkforceCapability({
       // What the tree declared, read once at boot.
       roster: declaredRoster,
-      // Where the inventory's worker rows are mounted on this block.
+      // Where the inventory's worker entries are mounted on this block.
       inventory: { workers: "workerInventory" },
       // The other domains, behind the same door.
       sources: [

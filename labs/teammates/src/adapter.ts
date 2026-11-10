@@ -23,7 +23,8 @@
  * | `watchWindow`       | the last answering request's `historyStart`, and the session's `historySummary` |
  * |                     | on each request notice and each notice of that resource                      |
  * | `hire`              | the workforce client's `hire`: a row on the user's roster                     |
- * | `editInstructions`  | the workforce client's `edit`, on one of the user's own workers               |
+ * | `editTeammate`      | the workforce client's `edit`: name and instructions, on any teammate         |
+ * | `resetTeammate`     | the workforce client's `reset`: a file's teammate back as the file has it    |
  * | `fire`              | the workforce client's `fire`, on one of the user's own workers               |
  * | `watchTasks`        | the board's rows, as the conversation's stream carries each one (`task-change`) |
  * |                     | and the board's `listTasks` read (`taskActionName`), on each notice of the     |
@@ -35,7 +36,7 @@
  * | `taskActions`       | the Inbox client's `board(at)` on the conversation that filed the task, its   |
  * |                     | `"tasks"` board: cancel, steer, release, retry, and `refile` for a re-run      |
  * | `watchReview`       | the run's review stop, read by harness-manager's browser `reviewDetail`        |
- * | `watchRun`          | the items of the session the task's row names as its run, each tool call      |
+ * | `watchRun`          | the items of the session the task names as its run, each tool call      |
  * |                     | named by the UI registry's `tool-naming` (`components/flow-state/`)           |
  * | `watchExchange`     | the receiving worker's conversation: the turn that read one message          |
  * | `watchWorking`      | the run session's items and its run request's own stream (which sends a call |
@@ -91,12 +92,13 @@ import {
   type RefiledTask,
   type TaskView,
 } from "@flow-state-dev/orchestration/inbox";
-import { pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitInput, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
+import { pullRequestWait, readRecordedWork, readSessionPullRequests, reviewDetail, type PullRequestWaitInput, type RecordedRun, type RecordedWork, type ReviewDetail } from "@flow-state-dev/harness-manager/browser";
 import type { LandedWork, ReviewLand } from "./components/flow-state/review-hold";
 import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
 import {
   composeToolGroupLabel,
+  TOOL_VERB_MAP,
   toolRunOpen,
   toolRunState,
   toolStepState,
@@ -104,6 +106,7 @@ import {
   type ToolCallStatus,
   type ToolStepStatus,
 } from "./components/flow-state/tool-grouping";
+import { durationText } from "./components/flow-state/spend";
 import { toolInFlight, type PlanRowNow, type ToolCallNow } from "./components/flow-state/working-status";
 import { harnessName } from "./lib/harness";
 import { sessionFeeds, type SessionFeed } from "./lib/session-feed";
@@ -123,14 +126,24 @@ export interface LabWorker {
   role: string;
   /** Coding tasks run on it: it is not a teammate, so it is off the list and has no conversation. */
   takesTasks?: boolean;
-  /** The user hired it: they can change its instructions or fire it. The files' workers can't be. */
+  /** The user hired it, so they can fire it. The files' workers can't be fired. */
   own?: boolean;
+  /** A file's worker the user has edited: they have their own copy, and can reset it to the file's. */
+  edited?: boolean;
   /** For a coding worker, its file's `harness:`, from the roster row's shown settings. */
   harness?: string;
   /** Its file's `icon:`, from the roster row's shown settings. */
   icon?: string;
   /** Its file's `color:`, a name from the lab's palette, from the roster row's shown settings. */
   color?: string;
+}
+
+/** What an edit changes: a name, instructions, or both. */
+export interface TeammateEdit {
+  /** Its new name; blank clears it, so the list shows its id. */
+  name?: string;
+  /** Its new instructions, in full. */
+  instructions?: string;
 }
 
 /** A teammate to hire from the page. */
@@ -170,6 +183,8 @@ export interface BoardTask {
   priority?: number;
   /** The session its run works in, once it started. */
   runSessionId?: string;
+  /** The request that is its latest run, in {@link runSessionId}: what the run recorded is read by the two. */
+  runRequestId?: string;
   /** For a coding task, the harness it runs on: the one its run reported, else its worker's `harness:`. */
   harness?: string;
   /** The model its run reported, when it reported one; never guessed. */
@@ -197,8 +212,6 @@ export interface BoardTask {
   note?: string;
   /** When it started running, in ms: what its feed's elapsed time counts from. */
   startedAt?: number;
-  /** The request its run is, in its run session, once it started. */
-  runRequestId?: string;
 }
 
 /** What a running task's run shows it doing now: the tool call still running, and the plan its harness recorded. */
@@ -247,7 +260,7 @@ export interface TaskActions {
 }
 
 /** Your answer to what a task waits on: the words to a question, or a review's verdict, an accept naming how its work lands. */
-export type TaskAnswer = { text: string } | { verdict: "accepted"; land?: ReviewLand } | { verdict: "revise"; words: string };
+export type TaskAnswer = { text: string } | { verdict: "accepted"; land?: ReviewLand; words?: string } | { verdict: "revise"; words: string };
 
 /**
  * One step of a session as a popup draws it: a line given to the worker (a
@@ -266,6 +279,8 @@ export interface SessionStep {
   code?: boolean;
   /** For `tool`, how it stands: running, waiting, done, or failed (thrown, or a result that says so). */
   state?: ToolStepStatus;
+  /** For `tool`, the request (turn) that made the call: a task's session holds every attempt's. */
+  requestId?: string;
   /** For `said`, while it is still being written. */
   streaming?: boolean;
 }
@@ -320,6 +335,61 @@ export function stepRun(steps: readonly SessionStep[]): StepRun {
         ? withToolState(now.text, "running")
         : withToolState(composeToolGroupLabel(steps.map((step) => step.tool ?? step.text)), state, states.filter((s) => s === state).length, steps.length);
   return { label, state, open: toolRunOpen(state) };
+}
+
+/** A tool the registry's words call running a command: each harness's shell tool. */
+const isCommand = (tool: string | undefined) => tool !== undefined && TOOL_VERB_MAP[tool.toLowerCase()]?.singular === "ran a command";
+
+/**
+ * How many shell commands a run's steps ran, done or failed; one still running
+ * isn't counted. Known by the tool's name in the registry's vocabulary, the
+ * one the step groups' "ran 3 commands" already uses. Given the run's request,
+ * only that request's calls count: a retry runs in the same session.
+ */
+export function commandsRun(steps: readonly SessionStep[], requestId?: string): number {
+  return steps.filter(
+    (step) =>
+      step.kind === "tool" &&
+      isCommand(step.tool) &&
+      (step.state ?? "completed") !== "running" &&
+      (requestId === undefined || step.requestId === undefined || step.requestId === requestId),
+  ).length;
+}
+
+/** What a coding task's popup says the run did: the files it recorded, its commands, and how long it took. */
+export interface RunSummary {
+  /** The files the run's harness recorded touching; `null` when the harness records none (Codex and Cursor today). */
+  files: { count: number; truncated: boolean } | null;
+  commands: number;
+  /** Only once the task ended. */
+  durationMs?: number;
+}
+
+/**
+ * "Edited 2 files · ran 5 commands · 2m 14s", with what the run didn't do
+ * left out, and no file part for a harness that records none (never "0
+ * files"). Empty when there is nothing to say.
+ */
+export function runSummaryLine({ files, commands, durationMs }: RunSummary): string {
+  const n = files?.count ?? 0;
+  const parts = [
+    n === 0 ? null : `edited ${n}${files?.truncated ? "+" : ""} file${n === 1 && !files?.truncated ? "" : "s"}`,
+    commands === 0 ? null : `ran ${commands} command${commands === 1 ? "" : "s"}`,
+    durationMs === undefined ? null : durationText(durationMs),
+  ].filter((p): p is string => p !== null);
+  const line = parts.join(" · ");
+  return line.charAt(0).toUpperCase() + line.slice(1);
+}
+
+/**
+ * How long this attempt ran: from its start (the run link's, so a retry times
+ * itself, not the task's first start) to when the task ended. `undefined`
+ * while it runs, or when either end is missing.
+ */
+export function attemptDurationMs(task: Pick<BoardTask, "status" | "startedAt" | "view">): number | undefined {
+  const end = task.view?.times.completedAt;
+  if (task.status === "running" || task.startedAt === undefined || end == null || end < task.startedAt) return undefined;
+  return end - task.startedAt;
 }
 
 /** What a conversation shows now. */
@@ -427,8 +497,14 @@ export interface LabAdapter {
   watchWindow(sessionId: string, onChange: (mark: WindowMark | undefined) => void): Unsubscribe;
   /** Hire a teammate onto the user's roster, on the built-in agent flow. */
   hire(teammate: NewTeammate): Promise<LabWorker>;
-  /** Replace one of the user's own teammates' instructions, from its next turn on. */
-  editInstructions(worker: string, instructions: string): Promise<void>;
+  /**
+   * Rename a teammate or replace its instructions, from its next turn on. Any
+   * teammate: the first edit of a file's teammate makes the user's own copy
+   * of it, under the same id.
+   */
+  editTeammate(worker: string, edit: TeammateEdit): Promise<void>;
+  /** Put a file's teammate the user edited back as the file has it, from its next turn on. */
+  resetTeammate(worker: string): Promise<void>;
   /** Fire one of the user's own teammates: it leaves the roster, and its conversation stays readable. */
   fire(worker: string): Promise<void>;
   /**
@@ -445,6 +521,8 @@ export interface LabAdapter {
   readPullRequests(runSessionId: string): Promise<{ number: number; url: string; title: string | null }[]>;
   /** The run's latest review, read from its stop; `undefined` until it stops for one. */
   watchReview(runSessionId: string, onChange: (review: ReviewDetail | undefined) => void): Unsubscribe;
+  /** What a run recorded (its files, plan and pull requests), by the run's session and request: harness-manager's reader. */
+  recordedWork(run: RecordedRun): Promise<RecordedWork>;
   /** Answer what a task waits on you for; the run goes on, or the task completes on an accept. */
   answerOpenHold(sessionId: string, taskId: string, answer: TaskAnswer): Promise<void>;
   /** The board's actions on the tasks conversation `sessionId` filed, sent to that conversation's board. */
@@ -814,7 +892,7 @@ export function toBoardTask(
     ...(Array.isArray(row.labels) ? { labels: row.labels.filter((label: unknown): label is string => typeof label === "string") } : {}),
     ...(typeof row.priority === "number" ? { priority: row.priority } : {}),
     ...(typeof row.run?.sessionId === "string" ? { runSessionId: row.run.sessionId } : {}),
-    ...(typeof row.run?.requestId === "string" ? { runRequestId: row.run.requestId } : {}),
+    ...(typeof row.run?.sessionId === "string" && typeof row.run?.requestId === "string" ? { runRequestId: row.run.requestId } : {}),
     ...(typeof row.statusNote === "string" ? { note: row.statusNote } : {}),
     ...startedAtOf(row),
     ...harnessAndModel(spend, harnessOf(row.assignee ?? "")),
@@ -913,11 +991,21 @@ export function reviewOf(items: readonly Item[]): ReviewDetail | undefined {
   return stop === undefined ? undefined : (reviewDetail(stop.data) ?? undefined);
 }
 
-/** A {@link TaskAnswer} as the Inbox client's answer for the hold it answers. */
-function inboxAnswerOf(answer: TaskAnswer): InboxAnswer {
+/**
+ * A {@link TaskAnswer} as the Inbox client's answer for the hold it answers.
+ * An accept's `words` (the note on Open a PR or Retry) go with it, so a failed
+ * landing hands them to the coding session. Exported for its tests.
+ */
+export function inboxAnswerOf(answer: TaskAnswer): InboxAnswer {
   if ("text" in answer) return { text: answer.text };
   if (answer.verdict === "revise") return { value: { verdict: "revise", words: answer.words } };
-  return { value: answer.land === undefined ? { verdict: "accepted" } : { verdict: "accepted", land: answer.land } };
+  return {
+    value: {
+      verdict: "accepted",
+      ...(answer.land === undefined ? {} : { land: answer.land }),
+      ...(answer.words === undefined ? {} : { words: answer.words }),
+    },
+  };
 }
 
 /** The harness by its name (the run's, else the worker's), and the run's model. */
@@ -1109,6 +1197,7 @@ function toolStep(item: Item, ended: readonly string[] = []): SessionStep {
     text: intent ?? subject?.text ?? `Used ${tool}`,
     ...(subject?.code ? { code: true } : {}),
     state: toolStepState(status, tool, output),
+    ...(typeof item.requestId === "string" ? { requestId: item.requestId } : {}),
   };
 }
 
@@ -1162,6 +1251,7 @@ function toWorkerRow(w: RosterEntry): LabWorker {
     role: w.description ?? "",
     ...(w.flow === CODER_FLOW ? { takesTasks: true } : {}),
     ...(w.standard ? {} : { own: true }),
+    ...(w.edited ? { edited: true } : {}),
     ...(typeof w.settings?.harness === "string" ? { harness: w.settings.harness } : {}),
     ...(typeof w.settings?.icon === "string" ? { icon: w.settings.icon } : {}),
     ...(typeof w.settings?.color === "string" ? { color: w.settings.color } : {}),
@@ -1509,8 +1599,15 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
       workerIds.add(hired.id);
       return toWorkerRow(hired);
     },
-    async editInstructions(worker, instructions) {
-      await workforce.edit({ id: worker, instructions });
+    async editTeammate(worker, { name, instructions }) {
+      await workforce.edit({
+        id: worker,
+        ...(name !== undefined ? { name: name.trim() === "" ? null : name.trim() } : {}),
+        ...(instructions !== undefined ? { instructions } : {}),
+      });
+    },
+    async resetTeammate(worker) {
+      await workforce.reset(worker);
     },
     async fire(worker) {
       await workforce.fire(worker);
@@ -1659,6 +1756,9 @@ export function createLabAdapter(client: Client = connect()): LabAdapter {
         last = seen;
         onChange(review);
       });
+    },
+    recordedWork(run) {
+      return readRecordedWork(client, run);
     },
     taskActions(sessionId) {
       // The board is the conversation's own: its flow, the session that filed the task, and its `"tasks"` collection.

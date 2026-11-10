@@ -6,6 +6,7 @@ import type {
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import type { JsonObject, ModelUsageEntry } from "@flow-state-dev/core/types";
+import type { FileContent } from "@flow-state-dev/core/items";
 import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
 import type { ExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
@@ -17,6 +18,7 @@ import type {
 import type { RuntimeItem } from "@flow-state-dev/core/internal";
 import type { Lease, LeaseOptions } from "../durability/types";
 import type { ChangeBus } from "../bus/types";
+import type { BlobStore } from "../blobs/types";
 
 export type { RequestStatus };
 
@@ -220,6 +222,14 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
   input?: unknown;
+  // BP-030.
+  /**
+   * The files the person's message carried, in reference form, as the parse
+   * step checked them. What `ctx.request.attachments` reads, so a resumed or
+   * queued run sees the same files. `== null` → none: records written before
+   * the field have none.
+   */
+  attachments?: FileContent[];
   /**
    * The request's item log, trace rows included. Adapters that store items
    * separately may leave this `undefined` on `list()` results unless
@@ -1884,6 +1894,14 @@ export type StoreRegistry = {
    * in-memory bus when it has none (`withChangeBus`).
    */
   bus?: ChangeBus;
+  // FIX-824.
+  /**
+   * Where attachment bytes live: the profile's `blobs` slot. `createFlowState`
+   * always fills it (on disk when the sessions persist, in memory when they
+   * don't). Optional on a registry you build yourself; without it the upload
+   * and read routes answer `attachments_not_configured`.
+   */
+  blobs?: BlobStore;
 };
 
 // FIX-406 6B.

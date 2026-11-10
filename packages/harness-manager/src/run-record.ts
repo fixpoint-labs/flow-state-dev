@@ -434,7 +434,7 @@ export interface AttemptIdentity {
   /** The board's ledger collection id, resolved from `ctx.resources`. */
   boardCollectionId: string;
   /**
-   * How to read this task's row on a board read from the claim, in place of
+   * How to read this task on a board read from the claim, in place of
    * resolving {@link boardCollectionId} off `ctx.resources`: such a board is
    * one of many the host's resolver answers for, at the partition the claim
    * names, and is never registered under one accessor. Answers `undefined`
@@ -450,7 +450,7 @@ export interface AttemptIdentity {
 }
 
 /**
- * A task row as this module reads it. Structural: only the three fields the
+ * A task as this module reads it. Structural: only the three fields the
  * fence consults, so nothing here depends on the substrate's `Task` type.
  */
 interface ClaimView {

@@ -6,7 +6,7 @@
  *
  * - **Which tasks.** A task's session files its pieces on its own board (the
  *   ledger at that session's partition), each marked as a piece of the task
- *   (`PIECE_OF`). The first piece it files stamps the task's row on the board
+ *   (`PIECE_OF`). The first piece it files stamps the task on the board
  *   above with where those pieces are (`FILED_MARKER`: the session and its
  *   partition), server-written, so the ending knows where to cancel.
  * - **The debt.** Orchestration writes `Task.cascadeOwed` in the ending's own

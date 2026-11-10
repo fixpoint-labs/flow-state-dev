@@ -57,11 +57,12 @@ export function TaskDoneRow({ task, selected, onOpen, now }: { task: LabTask; se
       data-task-status={task.status}
     >
       <span className={cn("size-1.5 shrink-0 rounded-full", status.dot)} aria-label={status.label} />
-      <span className="min-w-0 flex-1 truncate" data-task-title>
+      {/* The title keeps room to be read; the worker and the spend give way to it, cut short, so the line never outgrows the pane. */}
+      <span className="min-w-24 flex-1 truncate" data-task-title>
         {task.title}
       </span>
-      {task.assignee ? <span className="shrink-0 text-muted-foreground">{task.assignee}</span> : null}
-      <Spend spend={task.spend} className="shrink-0" />
+      {task.assignee ? <span className="max-w-24 min-w-0 truncate text-muted-foreground">{task.assignee}</span> : null}
+      <Spend spend={task.spend} className="min-w-0" />
       {task.view === undefined ? null : (
         <span className="shrink-0 font-mono text-[10px]">
           <TaskTime view={task.view} run={task.run} now={now} tone={taskSignalTone} />

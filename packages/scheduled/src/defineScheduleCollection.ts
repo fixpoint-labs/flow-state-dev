@@ -60,7 +60,14 @@ const SCHEDULE_RESOURCE_SCHEMA = z.object({
   timezone: z.string().optional(),
   onOverlap: z.enum(["skip", "allow"]).optional(),
   description: z.string().optional(),
-  enabled: z.boolean().default(true)
+  enabled: z.boolean().default(true),
+  // FIX-2614; BP-030.
+  /**
+   * The writer's own fields, kept with the schedule and never read here: the
+   * resolver, the index and dispatch ignore them. Optional, so a schedule from
+   * before it reads as it always did.
+   */
+  metadata: z.record(z.string(), z.unknown()).optional()
 });
 
 /** Inferred state shape for a schedule resource instance. */
@@ -80,6 +87,13 @@ export interface DefineScheduleCollectionOptions {
    * schema.
    */
   index?: ScheduleIndex;
+  /**
+   * The collection's own `flowIsolation`. Omitted, it follows the declaring
+   * flow's `isolateUserState`, as any collection does. `false` keeps one set
+   * of schedules for the user across flows, so one written by one flow is read
+   * and fired by another.
+   */
+  flowIsolation?: boolean;
 }
 
 /**
@@ -98,7 +112,8 @@ export function defineScheduleCollection(
     // admitted under, and a reschedule that omits it keeps it, so the resolver
     // has the stored target it requires and the schedule fires (BR-19,
     // FIX-1545).
-    stampOrgId: true
+    stampOrgId: true,
+    ...(opts.flowIsolation === undefined ? {} : { flowIsolation: opts.flowIsolation })
   };
 
   const { index } = opts;

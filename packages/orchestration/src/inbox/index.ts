@@ -3,8 +3,8 @@
  * `@flow-state-dev/orchestration/inbox` — the Inbox: one item type over what
  * holds a task for the user, and the one call that answers it.
  *
- * **One item type.** An item is one task row's open holds for the user, or a
- * suspension for the user in a request with no task row. Each hold says where
+ * **One item type.** An item is one task's open holds for the user, or a
+ * suspension for the user in a request with no task. Each hold says where
  * its answer goes and whether the Inbox can answer it; an item is answerable
  * when one of its holds is. {@link createInboxClient}'s `answer` routes each
  * hold by its source: a suspension to the engine's answer route
@@ -38,7 +38,7 @@ export {
   type TaskActionTool,
 } from "./client";
 export { inboxItems } from "./list";
-// One task row as a person sees it: the one status and waiting-on vocabulary (FIX-2379).
+// One task as a person sees it: the one status and waiting-on vocabulary (FIX-2379).
 export { taskView, type TaskViewStatus, type TaskView, type TaskViewInput } from "./task-view";
 // What a row's holds are, for a reader that parses a published row (FIX-2133).
 export { taskHoldSchema, type TaskHold } from "../tasks/schema/hold";

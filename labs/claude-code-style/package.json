@@ -12,7 +12,8 @@
     "dev": "vite build && cd ../.. && tsx packages/cli/bin/fsdev.ts dev --config labs/claude-code-style/fsdev.config.mts --app @flow-state-dev/claude-code-style",
     "build": "vite build",
     "typecheck": "node ../../scripts/typecheck.mjs",
-    "test": "vitest run --root ."
+    "test": "vitest run --root .",
+    "test:layout": "vitest run --root . --config vitest.layout.config.ts"
   },
   "devDependencies": {
     "@cursor/sdk": "1.0.40",
@@ -31,6 +32,7 @@
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
     "@flow-state-dev/workspace": "workspace:*",
+    "@playwright/test": "^1.49.0",
     "@streamdown/cjk": "^1.0.2",
     "@streamdown/code": "^1.0.3",
     "@streamdown/math": "^1.0.2",

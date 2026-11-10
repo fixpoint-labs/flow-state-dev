@@ -31,7 +31,7 @@ needs is a gap filed against the package.
   by its status: *Cancel* (it asks once, since tasks waiting on it go too) and a *Steer* box while
   it runs or waits, *Release* when it is held, *Retry* once it failed or was cancelled. A failed
   task shows its error. Each action is the board's own, and a refusal shows in the board's words.
-  You can still ask the main session to stop or steer a task. The open task's row is marked,
+  You can still ask the main session to stop or steer a task. The open task is marked,
   whether you opened it here or from the main thread; *Done* opens to show it when it is finished.
 - **Keys:** ⌘K (Ctrl+K) finds any session by its title, in either view, or starts a new one.
   Alt+↑ and Alt+↓ move to the previous or next session in the view. `/` puts the cursor in the
@@ -49,8 +49,9 @@ threads, each a task in a session of its own, and the right pane is the status b
   view, as *View task* does.
 - **Right:** the board groups threads by what you owe them: *Pinned*, *Working*, *Waiting on you*,
   *Ready for review* and *Resolved*, collapsed to a count. A column is read from the task's
-  status and what it waits on, never a mark the lab keeps. A failed thread waits on you; its view
-  shows the error and offers *Retry*.
+  status and what it waits on, plus two marks of your own: your pins, and the failures you
+  dismissed. A failed thread waits on you; its view shows the error and offers *Retry* and
+  *Dismiss*, which moves that failed attempt to *Resolved* (a retry that fails again waits on you again).
 - **The right pane** is as wide as you drag its left edge (or move it with the arrow keys once it
   has focus), and keeps that width across reloads.
 - **The page's address** names the view, the open session and the task open in its pane
@@ -183,6 +184,7 @@ a package call:
 | *Not reviewed* | a finished coding thread's output, `review: "deadline"`, through `getTask_tasks` |
 | Answering in a thread | the Inbox client's `answerOne` on its open question; with none, `updateTask_tasks` with your line as a steer |
 | Pins | the `pins` flow's `listPins` read, so reading them stores nothing |
+| Dismissed failures | the `dismissals` flow's `listDismissed` read, the same way |
 
 The thread and a task's work follow their session's stream. The rest reads when something changes,
 through `client.subscribe`: a row of the sessions list on its session's notices (a turn, a board
@@ -192,6 +194,7 @@ push can miss a change, such as the SQLite store the lab runs on, each also read
 the list and pins every 3 seconds, the running turn every 1.5.
 | *Resolve* and *Request changes* | the Inbox client's `answerOne` on its review: `{ verdict: "accepted" }` or `{ verdict: "revise", words }` |
 | *Pin* and *Unpin* | the lab's `pins` flow (`workforce/flows/pins.mts`), your own user state |
+| *Dismiss* | the lab's `dismissals` flow (`workforce/flows/dismissals.mts`), your own user state, kept per task attempt |
 
 `desk.coder` and `desk.thread-coder`, and their plan, Codex and Cursor siblings, are on the lab's one coding flow,
 `workforce/flows/harness-thread.mts`: a `harnessManager` per harness, picked by the worker's

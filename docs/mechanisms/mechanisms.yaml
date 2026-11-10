@@ -238,7 +238,7 @@ mechanisms:
     file: packages/core/src/blocks/dispatcher.ts
     builtOn: [block, dispatch]
     overlaps:
-      - { id: task, relation: distinct-jobs, note: "fifo and priority claim orders pick a pending task row; dispatcher() sends work to a session." }
+      - { id: task, relation: distinct-jobs, note: "fifo and priority claim orders pick a pending task; dispatcher() sends work to a session." }
     status: canonical
     doc: docs/architecture/dispatched-work.md
 
@@ -341,7 +341,7 @@ mechanisms:
     doc: docs/architecture/authentication.md
 
   - id: webhook
-    job: An event-addressed action on the flow. The transport adapter verifies the provider and dispatches that binding.
+    job: An event-addressed action on the flow. The transport adapter verifies the provider and dispatches that binding, or, on a provider's service route (`service`), normalizes the delivery and routes each event to the sessions that follow it through `routeServiceEvent`.
     package: "@flow-state-dev/core"
     anchor: defineWebhookBinding
     file: packages/core/src/types/webhooks.ts
@@ -383,7 +383,7 @@ mechanisms:
     doc: docs/architecture/server-and-client.md
 
   - id: bullmq
-    job: A queue-backed host. Flows run as jobs; schedules are the schedule row's BullMQ adapter.
+    job: A queue-backed host. Flows run as jobs; schedules are the schedule entry's BullMQ adapter.
     package: "@flow-state-dev/bullmq"
     anchor: createBullmqRuntime
     file: packages/bullmq/src/runtime.ts
@@ -519,7 +519,7 @@ mechanisms:
     doc: packages/orchestration/README.md
 
   - id: inbox
-    job: One read of what holds work for the user (a task row's open holds, or a suspension with no row) and the one call that answers it.
+    job: One read of what holds work for the user (a task's open holds, or a suspension with no row) and the one call that answers it.
     package: "@flow-state-dev/orchestration"
     anchor: createInboxClient
     file: packages/orchestration/src/inbox/client.ts
@@ -647,19 +647,19 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: worker-messages
-    job: Let one worker message another on its user's roster. Talk, not delegation; no task row. One way to get an answer (FIX-2318). A message that asks for a reply (replyRequested, or wait to wait for it in the turn) gets exactly one answer, sent through sendMessage inReplyTo; a waited answer is held as the tool's result, a late one lands as a message. consultSessionHistory reads a conversation without waking it.
+    job: Let one worker message another on its user's roster. Talk, not delegation; no task. One way to get an answer (FIX-2318). A message that asks for a reply (replyRequested, or wait to wait for it in the turn) gets exactly one answer, sent through sendMessage inReplyTo; a waited answer is held as the tool's result, a late one lands as a message. consultSessionHistory reads a conversation without waking it.
     package: "@flow-state-dev/workforce"
     anchor: sendMessage
     file: packages/workforce/src/messages/send-message.ts
     builtOn: [workforce, dispatch, wait-gate]
     overlaps:
-      - { id: task, relation: distinct-jobs, note: "Delegation files a task row; a message files nothing. A second way to reach a worker would be a third." }
+      - { id: task, relation: distinct-jobs, note: "Delegation files a task; a message files nothing. A second way to reach a worker would be a third." }
       - { id: wait-gate, relation: distinct-jobs, note: "sendMessage({ wait }) parks on the one wait gate, as getTask({ wait }) does; the gate is the park, this row is the reply. There is no second reply path (the call's was removed by FIX-2318)." }
     status: canonical
     doc: packages/workforce/README.md
 
   - id: projects
-    job: Shared and private project rows, their files, and the workstream entries a project's progress is worked out from.
+    job: Shared and private project entries, their files, and the workstream entries a project's progress is worked out from.
     package: "@flow-state-dev/workforce"
     anchor: defineProjectsCollection
     file: packages/workforce/src/projects/collections.ts
@@ -710,15 +710,25 @@ mechanisms:
     doc: packages/workforce/README.md
 
   - id: subscriptions
-    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it, with no model; a provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. The two tools are the only writers of a subscription; a PR's closing and a task's failure or cancel end one.
+    job: Let a worker's conversation follow a PR, an issue or a repository on an outside service and hear each event on it once, as a message from `service:<provider>`. Code screens decide who hears it (five config screens and the app's own custom functions); a subscription that lists `interest` is judged by one evaluator call per routing run, a yes or no per distinct sentence, only after code passed it, and a failed call refuses it unjudged, never as unheard. A provider's service flow routes as the service and each delivery runs as its subscriber, started host-side by `routeServiceEvent`. GitHub is the first provider (`githubServiceFlow`, on the webhook transport's service route), and a coding task follows the PR it opened from the moment its record is written (`followPullRequest`). `subscribe` and `unsubscribe` are the only writers of a subscription (an event routine's trigger); a PR's closing and a task's failure or cancel end one. A coordinator can follow one `unmatched`, hearing only events no other subscription heard, of the event types the app forwards (`forwards`), each marked addressed or inferred by the delivery, and its `inferredWork` (`off`, `observe`, `auto`) decides whether inferred work runs, waits on a confirm the board's write adds, or lands as a line with no turn.
     package: "@flow-state-dev/workforce"
-    anchor: subscriptionTools
+    anchor: subscribe
     file: packages/workforce/src/subscriptions/subscribe.ts
-    builtOn: [collection, worker-messages, durability, flow, sequencer-dsl]
+    builtOn: [collection, worker-messages, durability, flow, sequencer-dsl, model]
     overlaps:
-      - { id: webhook, relation: distinct-jobs, note: "A webhook binding dispatches one action on a flow for a verified request; subscriptions route an already normalized event to the conversations that follow where it happened. FIX-2535 wires a GitHub webhook into routeServiceEvent." }
-      - { id: worker-messages, relation: distinct-jobs, note: "A delivery lands as a worker message (sendServiceMessage shares sendMessage's budget-free tail), but from a service, addressed by the subscription row, never by the roster." }
+      - { id: webhook, relation: distinct-jobs, note: "A webhook binding dispatches one action on a flow for a verified request; subscriptions route an already normalized event to the conversations that follow where it happened. A provider's service route on the webhook transport is how a verified delivery reaches routeServiceEvent: one verify-and-ack pipeline for both." }
+      - { id: worker-messages, relation: distinct-jobs, note: "A delivery lands as a worker message (sendServiceMessage shares sendMessage's budget-free tail), but from a service, addressed by the subscription entry, never by the roster." }
       - { id: schedule, relation: distinct-jobs, note: "A dynamic schedule and an owner run both start a run as the user whose row the host found (one cell rule, resolveSharedUserCellKey); a schedule fires on a clock, a delivery on an event." }
+    status: canonical
+    doc: packages/workforce/README.md
+
+  - id: routines
+    job: See and stop everything that fires on its own as a user, in one list. A routine has one trigger, a clock (a schedule that files a task) or an event (a subscription); four verbs, listRoutines, saveRoutine, pauseRoutine and deleteRoutine, reach both, as roster actions for the user and, for a worker flow that names it in `uses`, as the routines capability's tools. The app's declared routines are seeded per user under cfg_ keys and can only be paused.
+    package: "@flow-state-dev/workforce"
+    anchor: createRoutinesCapability
+    file: packages/workforce/src/routines/routines.ts
+    builtOn: [schedule, subscriptions, flow]
+    overlaps: []
     status: canonical
     doc: packages/workforce/README.md
 

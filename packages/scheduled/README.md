@@ -98,7 +98,7 @@ reference) to expose it both ways.
 
 ## Dynamic schedules (per-user reminders, agent-created follow-ups)
 
-A persisted schedule row can't hold a block, so it stores a `kind`
+A persisted schedule can't hold a block, so it stores a `kind`
 discriminator string instead. The resolver maps `kind → block` through a
 required `blocks` map.
 
@@ -108,7 +108,7 @@ import {
   defineScheduleCollection
 } from "@flow-state-dev/scheduled";
 
-// User-scoped, with the schedule row schema: `cron`, `kind` (a handler
+// User-scoped, with the stored schedule's schema: `cron`, `kind` (a handler
 // discriminator, not a flow-action name), and optional `input`, `timezone`,
 // `onOverlap`, `description`, `enabled`. `create` records the organization
 // the creating run belongs to on each row.

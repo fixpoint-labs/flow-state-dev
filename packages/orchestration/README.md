@@ -1362,14 +1362,14 @@ miss path.
 import { createInboxClient, inboxItems } from "@flow-state-dev/orchestration/inbox";
 
 const items = inboxItems({
-  rows,        // task rows: a board's listTasks, or a browser's read of the board
+  rows,        // the tasks: a board's listTasks, or a browser's read of the board
   suspensions, // asks a reader found in sessions
   flowOf,      // the flow that owns a session
 });
 await createInboxClient(client).answer(items[0], { approved: true });
 ```
 
-- **One item per task row** that waits on the user. A stop in that task's run lists under the row, never a second time on its own.
+- **One item per task** that waits on the user. A stop in that task's run lists under the row, never a second time on its own.
 - **One item per suspension** that no open task's run holds, such as a user's ask in a session of their own.
 - **Each question** says what it asks, where its answer goes, and whether the Inbox can answer it. An item is `answerable` when one of its questions is.
 - **One item per task, however many questions it has.** A task's questions and confirms, asked at filing or midway, list oldest first as its `holds`, beside a stop in its run.
@@ -1397,9 +1397,9 @@ const newId = await tasks.refile(row, { assignee: "eng.writer" });
 - **Answering a question stays `answerOne`.** There is no second answer call on the board.
 - **`taskActionName(tool, board)`** gives a board action's name (`taskActionName("updateTask", "tasks")` is `"updateTask_tasks"`), for a reader that builds a row's `holder` or a test that calls the action directly. To change a task, call `board(at)`.
 
-### A task row, as a person sees it
+### A task, as a person sees it
 
-`taskRowView(row, holds?)` turns one task row into what a task screen draws, so every screen uses the same words for the same row:
+`taskRowView(row, holds?)` turns one task into what a task screen draws, so every screen uses the same words for the same row:
 
 ```ts
 import { taskRowView } from "@flow-state-dev/orchestration/inbox";

@@ -43,7 +43,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { ClientHttpError, type Client, type FlowHandle, type RequestResult } from "@flow-state-dev/client";
 import { pause } from "@flow-state-dev/client/internal";
 import { isUserSuspension } from "@flow-state-dev/core/types";
-import { deriveSuspensions } from "@flow-state-dev/react";
+import { deriveSuspensions } from "@flow-state-dev/react/internal";
 import { describeFailure } from "./reads";
 
 /**
@@ -54,7 +54,7 @@ export type TurnStop = "ask" | "wait" | null;
 
 /**
  * Where a line goes: the session, the flow that owns it, and that flow's door.
- * `taskId`, for a door that takes one (its worker row's `doorTakesTask`): the task
+ * `taskId`, for a door that takes one (its worker entry's `doorTakesTask`): the task
  * the line is sent from, which the door stamps on the line and its reply.
  */
 export type TurnTarget = { sessionId: string; flowId: string; door: string; taskId?: string };

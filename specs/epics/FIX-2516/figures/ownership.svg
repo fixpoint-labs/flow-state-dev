@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 344" role="img" aria-label="Who owns what: seven rules across FIX-824, FIX-2517 to FIX-2524 and the closure FIX-2565. Each rule has exactly one owner. ER-1 One attachment shape, by reference: owned by FIX-824, used by FIX-2517, FIX-2518, FIX-2519, FIX-2520, FIX-2521, FIX-2522, FIX-2523, FIX-2524. ER-2 Bytes only in the blob store: owned by FIX-824, used by FIX-2517, FIX-2518, FIX-2519, FIX-2520, FIX-2522, checked by the closure. ER-3 Served to the owner's readers: owned by FIX-824, used by FIX-2518. ER-4 One limits set, named refusals: owned by FIX-824, used by FIX-2517, FIX-2518, FIX-2520, checked by the closure. ER-5 A target says what it can't take: owned by FIX-2519, used by FIX-2517, FIX-2520, checked by the closure. ER-6 Composer pieces from the registry: owned by FIX-2518, used by FIX-2521, FIX-2522, FIX-2523, FIX-2524, checked by the closure. ER-7 A task's files are its brief's: owned by FIX-2522, used by FIX-2519, checked by the closure."
+<svg viewBox="0 0 940 344" role="img" aria-label="Who owns what: seven rules across FIX-824, FIX-2517 to FIX-2523 and the closure FIX-2565; FIX-2524 merged into FIX-2523 in the spec set; FIX-2634, the attachments block, joined on Nov 9. Each rule has exactly one owner. ER-1 One attachment shape, by reference: owned by FIX-824, used by FIX-2517, FIX-2518, FIX-2519, FIX-2520, FIX-2521, FIX-2522, FIX-2523, FIX-2634. ER-2 Bytes only in the blob store: owned by FIX-824, used by FIX-2517, FIX-2518, FIX-2519, FIX-2520, FIX-2522, FIX-2634, checked by the closure. ER-3 Served to the owner's readers: owned by FIX-824, used by FIX-2518. ER-4 One limits set, named refusals: owned by FIX-824, used by FIX-2517, FIX-2518, FIX-2520, checked by the closure. ER-5 A target says what it can't take: owned by FIX-2519, used by FIX-2517, FIX-2520, checked by the closure. ER-6 Composer pieces from the registry: owned by FIX-2518, used by FIX-2521, FIX-2522, FIX-2523, checked by the closure. ER-7 A task's files are its brief's: owned by FIX-2522, used by FIX-2519, checked by the closure."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,9 +36,9 @@
     <text class="t-col" x="703" y="36" text-anchor="middle">2522</text>
     <text class="t-lbl" x="703" y="52" text-anchor="middle">SM</text>
     <text class="t-col" x="765" y="36" text-anchor="middle">2523</text>
-    <text class="t-lbl" x="765" y="52" text-anchor="middle">CC lab</text>
-    <text class="t-col" x="827" y="36" text-anchor="middle">2524</text>
-    <text class="t-lbl" x="827" y="52" text-anchor="middle">Team lab</text>
+    <text class="t-lbl" x="765" y="52" text-anchor="middle">both labs</text>
+    <text class="t-col" x="827" y="36" text-anchor="middle">2634</text>
+    <text class="t-lbl" x="827" y="52" text-anchor="middle">block</text>
     <text class="t-col" x="889" y="36" text-anchor="middle">2565</text>
     <text class="t-lbl" x="889" y="52" text-anchor="middle">closure</text>
     <line class="line" x1="16" y1="62" x2="924" y2="62"/>
@@ -82,6 +82,8 @@
     <text class="t-u" x="579" y="117" text-anchor="middle">uses</text>
     <rect class="u" x="676" y="102" width="54" height="22" rx="3"/>
     <text class="t-u" x="703" y="117" text-anchor="middle">uses</text>
+    <rect class="u" x="800" y="102" width="54" height="22" rx="3"/>
+    <text class="t-u" x="827" y="117" text-anchor="middle">uses</text>
     <rect class="c" x="862" y="102" width="54" height="22" rx="3"/>
     <text class="t-u" x="889" y="117" text-anchor="middle">checks</text>
     <line class="line" x1="16" y1="128" x2="924" y2="128"/>
@@ -134,8 +136,6 @@
     <text class="t-u" x="703" y="237" text-anchor="middle">uses</text>
     <rect class="u" x="738" y="222" width="54" height="22" rx="3"/>
     <text class="t-u" x="765" y="237" text-anchor="middle">uses</text>
-    <rect class="u" x="800" y="222" width="54" height="22" rx="3"/>
-    <text class="t-u" x="827" y="237" text-anchor="middle">uses</text>
     <rect class="c" x="862" y="222" width="54" height="22" rx="3"/>
     <text class="t-u" x="889" y="237" text-anchor="middle">checks</text>
     <line class="line" x1="16" y1="248" x2="924" y2="248"/>

@@ -102,6 +102,7 @@ import {
   harnessFailureKind,
   harnessSteering,
   observedPullRequestsCollection,
+  refuseUnacceptedAttachments,
   type HarnessSteering,
 } from "@flow-state-dev/core/harness";
 import { taskSpendViewSchema, type TaskSpendView } from "@flow-state-dev/orchestration/tasks";
@@ -113,6 +114,7 @@ import type {
   HarnessCallbackContext,
   HarnessResolver,
   HarnessRunHandle,
+  HarnessRunInput,
   HarnessSessionHook,
   HarnessSteerHook,
   HarnessUsageHook,
@@ -1096,6 +1098,21 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
   // The brief provisions the checkout, so a failure there is the turn's
   // failure too, recorded the way the harness's own is.
   const brief = withIssueSpec?.rescue([{ block: recordFailure }]);
+  // FIX-2519. The person's files, handed to the harness beside the prompt, in
+  // reference form: the harness reads their bytes itself. A harness that
+  // declares what it takes refuses any other type itself, by name, before its
+  // run starts; one that declares nothing is never handed a file. Either
+  // refusal is the turn's failure, recorded the way the harness's own is.
+  const turnFiles = handler({
+    name: "turn-files",
+    inputSchema: z.object({ prompt: z.string().min(1) }),
+    execute: async (input, ctx): Promise<HarnessRunInput> => {
+      const attachments = ctx.request.attachments;
+      if (attachments.length === 0) return { prompt: input.prompt };
+      if (agent.accepts === undefined) refuseUnacceptedAttachments("This session's harness", undefined, attachments);
+      return { prompt: input.prompt, attachments: [...attachments] };
+    },
+  }).rescue([{ block: recordFailure }]);
   // The harness step, with its approval loop when `approveTools` is on; the
   // turn's records come after it either way.
   const opened = sequencer({
@@ -1104,8 +1121,8 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     inputSchema: z.object({ prompt: z.string().min(1) }),
   }).tap(titleFromPrompt);
   const harnessTurn = approveTools
-    ? approvals.turn({ agent, titleFromPrompt, recordTurnFailure, brief })
-    : (brief === undefined ? opened : opened.step(brief)).step(agent.rescue([{ block: recordFailure }]));
+    ? approvals.turn({ agent, titleFromPrompt, recordTurnFailure, brief, turnFiles })
+    : (brief === undefined ? opened : opened.step(brief)).step(turnFiles).step(agent.rescue([{ block: recordFailure }]));
   const turn = harnessTurn
     .tap(recordFailedOutcome)
     .tap(turnSpend)
@@ -1287,12 +1304,15 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
       titleFromPrompt,
       recordTurnFailure,
       brief,
+      turnFiles,
     }: {
       agent: HarnessBlock;
       titleFromPrompt: ReturnType<typeof handler>;
       recordTurnFailure: (error: Error, ctx: BlockContext) => Promise<never>;
       /** The issue-spec brief, run once ahead of the harness step (never on a loop back). */
       brief?: ReturnType<ReturnType<typeof handler>["rescue"]>;
+      /** The person's files onto the run's input, once ahead of the harness step: a loop back continues a conversation that has them. */
+      turnFiles: ReturnType<ReturnType<typeof handler>["rescue"]>;
     }) {
       // Refused before the harness runs: a held call waits as a durable stop.
       const requireDurable = handler({
@@ -1438,6 +1458,7 @@ function sessionApprovals(kind: string, workspace: HarnessSessionWorkspace) {
         .tap(oneTurnAtATime)
         .tap(titleFromPrompt);
       return (brief === undefined ? opened : opened.step(brief))
+        .step(turnFiles)
         .step(harnessStep)
         .step(heldCallStep)
         .step(approvalStep)

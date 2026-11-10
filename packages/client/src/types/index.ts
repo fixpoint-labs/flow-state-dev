@@ -21,7 +21,7 @@ import type {
   SessionStreamEvent
 } from "@flow-state-dev/core/items";
 import type { PushCapability } from "@flow-state-dev/contracts";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { FileContent, OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActionInputSchema,
   SuspensionRecord,
@@ -70,6 +70,8 @@ export type ExecuteActionRequestBody = {
   sessionId?: string;
   requestId?: string;
   metadata?: Record<string, unknown>;
+  /** The message's files, as references from an upload, beside the input. */
+  attachments?: FileContent[];
 };
 
 /**

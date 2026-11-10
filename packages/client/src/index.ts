@@ -31,6 +31,7 @@ export {
   type StreamOption,
   type TranscribeRequest,
   type TranscribeResponse,
+  type UploadRequest,
   type TypedFlow,
   type UntypedFlow,
   type UpdateResourceContentOptions,

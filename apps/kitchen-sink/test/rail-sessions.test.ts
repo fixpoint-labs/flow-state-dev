@@ -16,6 +16,7 @@ const entry = (id: string, flow: string): RosterEntry => ({
   name: null,
   teamName: null,
   forkedFrom: null,
+  edited: false,
   settings: {},
 });
 

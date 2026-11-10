@@ -346,18 +346,20 @@ export async function sendMessage(
 interface ServiceMessage {
   /** Where the sending worker would stand: `service:<provider>`. */
   readonly sender: string;
-  /** A live subscription's session, the worker it runs, and its flow: the subscription row is the recipient check. */
-  readonly to: { readonly sessionId: string; readonly flow: string; readonly worker: string };
+  /** A live subscription's session, the worker it runs, and its flow: the subscription entry is the recipient check. */
+  readonly to: { readonly sessionId: string; readonly flow: string; readonly worker: string; readonly state?: Record<string, string> };
   readonly text: string;
   /** The server-chosen id, so a repeat lands once. */
   readonly id: string;
+  /** An unheard event forwarded to an unmatched subscription: how it reached it, and its link. */
+  readonly forward?: WorkerMessageResourceState["forward"];
 }
 
 /**
  * Send a service's delivery to a subscription's session: the server's own
  * message (no budget), from `service:<provider>`, to the session the
- * subscription row names. That row is its recipient check, not the roster's
- * or `checkTargetSession`'s. Set by server code from a subscription row,
+ * subscription entry names. That row is its recipient check, not the roster's
+ * or `checkTargetSession`'s. Set by server code from a subscription entry,
  * never by a model.
  */
 export async function sendServiceMessage(
@@ -379,8 +381,9 @@ export async function sendServiceMessage(
     {
       sender: message.sender,
       recipientId: message.to.worker,
-      destination: { sessionId: message.to.sessionId, flow: message.to.flow },
-      addressed: { addressedBy: "session" as const }
+      destination: { sessionId: message.to.sessionId, flow: message.to.flow, ...(message.to.state === undefined ? {} : { state: message.to.state }) },
+      addressed: { addressedBy: "session" as const },
+      ...(message.forward === undefined ? {} : { forward: message.forward })
     }
   );
 }
@@ -439,6 +442,8 @@ interface Resolved {
   readonly destination: MessageAddress;
   readonly exchange?: string;
   readonly addressed: Pick<WorkerMessageResourceState, "addressedBy" | "toTask">;
+  /** A service's forward: the mark the message carries. */
+  readonly forward?: WorkerMessageResourceState["forward"];
 }
 
 /** Every send's tail, once its recipient is checked: the budget, the owed id, the row, then one dispatch. */
@@ -466,6 +471,7 @@ async function sendTo(
     from: resolved.sender,
     to: resolved.recipientId,
     ...resolved.addressed,
+    ...(resolved.forward === undefined ? {} : { forward: resolved.forward }),
     text: input.text,
     exchange: resolved.exchange ?? id,
     ...(input.inReplyTo === undefined ? {} : { inReplyTo: input.inReplyTo }),

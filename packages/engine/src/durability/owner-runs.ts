@@ -95,6 +95,12 @@ export type MalformedOwnerRun = { readonly value: unknown; readonly reason: stri
 export interface RoutedServiceEvent {
   readonly output: unknown;
   readonly error?: unknown;
+  /**
+   * The routing request ended with no error and no `ownerRuns` in its output:
+   * stopped before it finished (a shutdown cancelled it). Not "routed to no
+   * one": an ingestion answers it as retryable.
+   */
+  readonly incomplete?: true;
   readonly ownerRuns: readonly RoutedOwnerRun[];
   /** Entries of the output's `ownerRuns` that weren't a run of this service's own flow, in its org. */
   readonly malformed: readonly MalformedOwnerRun[];
@@ -166,9 +172,10 @@ export async function routeServiceEvent(
   const result = await handle.finished;
   if (result.error !== undefined) return { output: result.output, error: result.error, ownerRuns: [], malformed: [] };
   const named = (result.output as { ownerRuns?: unknown } | undefined)?.ownerRuns;
+  if (!Array.isArray(named)) return { output: result.output, incomplete: true, ownerRuns: [], malformed: [] };
   const runs: OwnerRun[] = [];
   const malformed: MalformedOwnerRun[] = [];
-  for (const value of Array.isArray(named) ? named : []) {
+  for (const value of named) {
     const parsed = parseOwnerRun(value, service.flowKind, orgId);
     if (typeof parsed === "string") malformed.push({ value, reason: parsed });
     else runs.push(parsed);

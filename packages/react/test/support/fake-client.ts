@@ -98,6 +98,7 @@ export function fakeClient(parts: FakeClientParts): Client {
         return Object.assign(handle(address, response.request.id), { response });
       }) as never,
       createSession: async (options?: unknown) => call(parts.flow?.createSession, "flow.createSession", options),
+      upload: async () => missing("flow.upload"),
       read: (async (name: string, input: unknown, options: unknown) => call(parts.flow?.read, "flow.read", name, input, options)) as never,
       request: (id: string) => handle(address, id)
     }),
@@ -119,7 +120,8 @@ export function fakeClient(parts: FakeClientParts): Client {
     }),
     requests: { interrupted: async () => missing("requests.interrupted") },
     subscribe: (topics, options) => parts.subscribe?.(topics, options) ?? { close() {} },
-    transcribe: async () => missing("transcribe")
+    transcribe: async () => missing("transcribe"),
+    upload: async () => missing("upload")
   };
 }
 
