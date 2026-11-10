@@ -394,8 +394,8 @@ objective or the division.
   owned directory read by a shared walker, React components split by the same two halves, and
   no new package; [O2](#o2), [O4](#o4) and
   [O5](#o5) as recommended; [ER-8](#who-owns-what) confirmed until each adapter is deleted; the
-  project spec skipped, so cross-epic agreements live here ([D3](#d3)). FIX-2619 and FIX-2622 are
-  amended to match.
+  project spec skipped, so cross-epic agreements live here ([D3](#d3)). FIX-2619, FIX-2621 and
+  FIX-2622 are amended to match.
 
 **Open:** none. **Decided by the owner:** [O3](#o3) in review; [O1](#o1), [O2](#o2), [O4](#o4)
 and [O5](#o5) in session.
