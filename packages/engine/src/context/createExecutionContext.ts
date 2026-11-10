@@ -2945,7 +2945,12 @@ export async function createExecutionContext<
     return read;
   };
   resolveModel.prepareMessages = (messages: unknown[], target?: { accepts: AttachmentAccepts }) =>
-    resolveHistoryFiles(messages, blobs === undefined ? undefined : (file: FileContent) => readOnce(blobs, file), target);
+    resolveHistoryFiles(
+      messages,
+      blobs === undefined ? undefined : (file: FileContent) => readOnce(blobs, file),
+      target,
+      requestRef.current.attachments ?? []
+    );
   // The same reader for a harness handed the turn's files (FIX-2519), named
   // in core's terms. No blob store: no reader, and a harness refuses the files.
   const harnessAttachmentSeam: HarnessAttachmentSeam | undefined =

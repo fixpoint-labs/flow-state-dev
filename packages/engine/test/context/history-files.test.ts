@@ -87,7 +87,7 @@ async function history(
   live: OutputItem[],
   readAttachment?: (file: FileContent) => ReturnType<typeof resolveAttachment>
 ): Promise<LLMMessage[]> {
-  return (await resolveHistoryFiles(await read(prior, live), readAttachment)) as LLMMessage[];
+  return (await resolveHistoryFiles(await read(prior, live), readAttachment, undefined, [])) as LLMMessage[];
 }
 
 type Part = { type: string; text?: string; image?: unknown; data?: unknown; mediaType?: string; filename?: string };
@@ -177,11 +177,11 @@ describe("a user line's files in the history", () => {
     const shot = await add("image/png", "shot.png");
     const read1 = await read([], [userLine("r1", "look", [shot], 1) as unknown as OutputItem]);
     expect(parts(read1[0])).toEqual([{ type: "text", text: "look" }, shot]);
-    const resolved = await resolveHistoryFiles(read1, readAttachment);
+    const resolved = await resolveHistoryFiles(read1, readAttachment, undefined, [shot]);
     expect(parts(resolved[0] as LLMMessage)[1]).toMatchObject({ type: "image" });
     expect(parts(read1[0])[1]).toEqual(shot);
     // A call whose files are already bytes is passed through, not read again.
-    expect(await resolveHistoryFiles(resolved, readAttachment)).toBe(resolved);
+    expect(await resolveHistoryFiles(resolved, readAttachment, undefined, [shot])).toBe(resolved);
   });
 
   it("names a file that can no longer be read instead of failing the call", async () => {
@@ -228,7 +228,12 @@ describe("a user line's documents, by what the model reads", () => {
     const line = (files: FileContent[]) => [userLine("r1", "what does it say?", files, 1) as unknown as OutputItem];
     const call = async (files: FileContent[], accepts: ReadonlyArray<string> | undefined) =>
       parts(
-        ((await resolveHistoryFiles(await read([], line(files)), readAttachment, accepts === undefined ? undefined : { accepts: accepts as never })) as LLMMessage[])[0]
+        ((await resolveHistoryFiles(
+          await read([], line(files)),
+          readAttachment,
+          accepts === undefined ? undefined : { accepts: accepts as never },
+          files
+        )) as LLMMessage[])[0]
       );
     return { put, pdf, call, readAttachment };
   }
@@ -285,13 +290,28 @@ describe("a user line's documents, by what the model reads", () => {
       turn("r1", [userLine("r1", "here are two", [dense, broken], 100) as unknown as OutputItem], 100)
     ];
     const live = [userLine("r2", "and now?", [], 200) as unknown as OutputItem];
-    const messages = (await resolveHistoryFiles(await read(prior, live), readAttachment, { accepts: IMAGES_ONLY as never })) as LLMMessage[];
+    const messages = (await resolveHistoryFiles(await read(prior, live), readAttachment, { accepts: IMAGES_ONLY as never }, [])) as LLMMessage[];
     expect(parts(messages[0])).toEqual([
       { type: "text", text: "here are two" },
       { type: "text", text: "[document: dense.pdf, too much text to re-send]" },
       { type: "text", text: "[document: broken.pdf, can't be read as text]" }
     ]);
     expect(messages.at(-1)).toMatchObject({ role: "user", content: "and now?" });
+  });
+
+  // A generator may add its own user line after the history (a planner's
+  // "Original request: …"): the turn being answered is the one whose files
+  // the request sent, not whichever user line comes last.
+  it("refuses the call on the request's own PDF that can't go as text, though a prompt line follows it", async () => {
+    const { pdf, readAttachment } = await documentFixture();
+    const dense = await pdf("dense.pdf", "x".repeat(ATTACHMENT_LIMITS.maxTextBytes + 1));
+    const messages = [
+      ...(await read([], [userLine("r1", "read this", [dense], 100) as unknown as OutputItem])),
+      { role: "user", content: "Original request: read this" }
+    ];
+    await expect(resolveHistoryFiles(messages, readAttachment, { accepts: IMAGES_ONLY as never }, [dense])).rejects.toBeInstanceOf(
+      AttachmentTextTooLargeError
+    );
   });
 
   it("sends a PDF as a file when the call names no target, as before", async () => {

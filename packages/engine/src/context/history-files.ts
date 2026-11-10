@@ -103,30 +103,31 @@ export function budgetHistoryFiles(messages: LLMMessage[]): LLMMessage[] {
  * when the file is gone, the file is named instead: a reference never reaches
  * a provider. Returns new messages; the ones passed in are not changed, so a
  * record that holds them keeps its references.
+ *
+ * `current` is the files the request being answered sent: only these refuse
+ * the call when they can't go as text. Any other line's document that can't
+ * is named on its turn, so one file can't fail every later turn of the
+ * session. It is the request's own list, not the last user line, because a
+ * generator may add a user line of its own after the history.
  */
 export async function resolveHistoryFiles(
   messages: unknown[],
   read: ReadAttachment | undefined,
-  target?: { accepts: AttachmentAccepts }
+  target: { accepts: AttachmentAccepts } | undefined,
+  current: ReadonlyArray<FileContent>
 ): Promise<unknown[]> {
   const accepts = target?.accepts ?? UNNAMED_TARGET_ACCEPTS;
   if (!messages.some(hasFileReferences)) return messages;
-  // The newest user line is the turn being answered: only its files refuse
-  // the call. An older line's document that can't go as text is named on its
-  // turn, so one file can't fail every later turn of the session.
-  let newest = -1;
-  messages.forEach((message, index) => {
-    if ((message as { role?: unknown } | null)?.role === "user") newest = index;
-  });
+  const sent = new Set(current.map((file) => file.data));
   const out: unknown[] = [];
-  for (const [index, message] of messages.entries()) {
+  for (const message of messages) {
     if (!hasFileReferences(message)) {
       out.push(message);
       continue;
     }
     const content: unknown[] = [];
     for (const part of message.content) {
-      content.push(isFileReference(part) ? await toModelPart(part, read, accepts, index === newest) : part);
+      content.push(isFileReference(part) ? await toModelPart(part, read, accepts, sent.has(part.data)) : part);
     }
     out.push({ ...message, content });
   }
