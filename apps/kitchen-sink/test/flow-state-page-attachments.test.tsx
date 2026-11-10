@@ -17,7 +17,7 @@
  * And key the composer's session on the loaded snapshot's id, and the
  * early-file case fails: the snapshot's arrival drops the file.
  */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
@@ -136,6 +136,24 @@ afterEach(() => {
   localStorage.clear();
 });
 
+/** Mount the page, paste an image into the first drawing's box, type `text`, and submit; its form is returned. */
+async function pasteAndSubmit(text: string): Promise<HTMLFormElement> {
+  render(<Page />);
+  await act(async () => undefined);
+  const box = screen.getAllByTestId("message-input")[0] as HTMLTextAreaElement;
+  const image = new File([new Uint8Array(16)], "shot.png", { type: "image/png" });
+  await act(async () => {
+    fireEvent.paste(box, { clipboardData: { items: [{ kind: "file", getAsFile: () => image }], files: [image] } });
+  });
+  await act(async () => {
+    fireEvent.change(box, { target: { value: text } });
+  });
+  await act(async () => {
+    fireEvent.submit(box.closest("form")!);
+  });
+  return box.closest("form")!;
+}
+
 describe("Flow State chat sends a pasted image", () => {
   it("on the run request, beside the line, uploaded to the assistant's flow", async () => {
     render(<Page />);
@@ -161,6 +179,26 @@ describe("Flow State chat sends a pasted image", () => {
       attachments: [{ type: "file", mediaType: "image/png", filename: "shot.png", data: "fsd-blob:b_0000000001" }],
     });
     expect(uploadFlows).toEqual(["chat-agent"]);
+  });
+
+  // The composer clears its files when Send resolves. A page that resolves on a send it didn't
+  // make loses the images while the text draft stays, so a retry goes out without them.
+  it("keeps the line's image when the run's send fails", async () => {
+    sendAction.mockImplementationOnce(async () => {
+      throw new Error("refused");
+    });
+    const form = await pasteAndSubmit("what is in this picture?");
+    await waitFor(() => expect(sendAction).toHaveBeenCalledOnce());
+    await act(async () => undefined);
+    expect(within(form).queryByRole("img", { name: "shot.png" })).not.toBeNull();
+  });
+
+  // The run takes a message: an image with no line is not a run, so nothing goes and the image stays.
+  it("keeps the line's image when there is no line to send it with", async () => {
+    const form = await pasteAndSubmit("");
+    await act(async () => undefined);
+    expect(sendAction).not.toHaveBeenCalled();
+    expect(within(form).queryByRole("img", { name: "shot.png" })).not.toBeNull();
   });
 
   // The session's snapshot arrives after the page can take a file. Keyed on it, the composer

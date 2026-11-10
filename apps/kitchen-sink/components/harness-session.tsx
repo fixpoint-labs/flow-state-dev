@@ -187,7 +187,9 @@ function SessionBody({
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const prompt = msg.text.trim();
-      if (prompt.length === 0) return;
+      // Not sent, so this rejects: the composer clears its files only on a send that resolves.
+      // A turn takes a prompt, so files with no line wait for one.
+      if (prompt.length === 0) throw new Error("nothing to send");
       if (heldBy !== null) {
         // Not sent: the message stays in the composer, and the card it waits on comes into view.
         setHeld(true);
@@ -197,19 +199,16 @@ function SessionBody({
         // Refused, so the composer keeps the line's files too: it clears them only on a send that resolves.
         throw new Error("held for an answer");
       }
-      try {
-        const outcome = await lines.send(prompt, { attachments: msg.attachments });
-        setLastLine(outcome);
-        // The view may have closed (a session switch) while it ran: the stored draft goes only if it is still this line.
-        clearDraft(SESSION_DRAFT, sessionId, prompt);
-        if (messageRef.current.trim() === prompt) setMessage("");
-        // The steer request records a taken line in session state, and this
-        // view follows only the turn's stream: re-read state (not the
-        // history) so the line shows now.
-        if (outcome === "taken") void refresh({ items: false });
-      } catch {
-        // Keep the persisted draft so a failed send can be retried.
-      }
+      // A failed send throws here, so the persisted draft and the files stay for a retry.
+      const outcome = await lines.send(prompt, { attachments: msg.attachments });
+      setLastLine(outcome);
+      // The view may have closed (a session switch) while it ran: the stored draft goes only if it is still this line.
+      clearDraft(SESSION_DRAFT, sessionId, prompt);
+      if (messageRef.current.trim() === prompt) setMessage("");
+      // The steer request records a taken line in session state, and this
+      // view follows only the turn's stream: re-read state (not the
+      // history) so the line shows now.
+      if (outcome === "taken") void refresh({ items: false });
     },
     [heldBy, lines, refresh, setMessage, sessionId],
   );

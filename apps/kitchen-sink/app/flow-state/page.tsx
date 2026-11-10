@@ -428,15 +428,14 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     async (msg: PromptInputMessage) => {
       const text = msg.text.trim();
       const sessionId = flow.activeSessionId;
-      if (!sessionId || text.length === 0) return;
-      try {
-        await lines.send(text, { attachments: msg.attachments });
-        // The page may have moved to another session while it ran: the stored draft goes only if it is still this line.
-        clearDraft(SESSION_DRAFT, sessionId, text);
-        if (messageRef.current.trim() === text) setMessage("");
-      } catch {
-        // Keep the persisted draft so a failed send can be retried.
-      }
+      // Not sent, so this rejects: the composer clears its files only on a send that resolves.
+      // A run takes a message, so files with no line wait for one.
+      if (!sessionId || text.length === 0) throw new Error("nothing to send");
+      // A failed send throws here, so the persisted draft and the files stay for a retry.
+      await lines.send(text, { attachments: msg.attachments });
+      // The page may have moved to another session while it ran: the stored draft goes only if it is still this line.
+      clearDraft(SESSION_DRAFT, sessionId, text);
+      if (messageRef.current.trim() === text) setMessage("");
     },
     [flow.activeSessionId, lines, setMessage]
   );

@@ -145,3 +145,30 @@ describe("a harness page sends a pasted image", () => {
     ]);
   });
 });
+
+// The composer clears its files when Send resolves. A page that resolves on a send it didn't
+// make loses the images while the text draft stays, so a retry goes out without them.
+describe("a harness page keeps the line's image when it isn't sent", () => {
+  const strip = () => screen.queryByRole("img", { name: "shot.png" });
+
+  it("when the turn's send fails", async () => {
+    sendAction.mockImplementationOnce(async () => {
+      throw new Error("refused");
+    });
+    mount();
+    await pasteAndSend("what is in this picture?");
+    await waitFor(() => expect(sendAction).toHaveBeenCalledOnce());
+    await act(async () => undefined);
+    expect(strip()).not.toBeNull();
+  });
+
+  // A turn takes a prompt: an image with no line is not a turn, so nothing goes and the image stays.
+  it("when there is no line to send it with", async () => {
+    mount();
+    await pasteAndSend("");
+    await act(async () => undefined);
+    expect(sendAction).not.toHaveBeenCalled();
+    expect(clientSend).not.toHaveBeenCalled();
+    expect(strip()).not.toBeNull();
+  });
+});
