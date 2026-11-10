@@ -21,8 +21,14 @@
 
 /** @typedef {{ cmd: string, args: string[], label: string }} WorkspaceStep */
 
-/** @type {{ install: WorkspaceStep, packages: WorkspaceStep }} */
-export const WORKSPACE_STEPS = {
+/**
+ * `packages` is the root `packages:build` (`turbo run build --filter="./packages/*"`) minus Shift Manager.
+ * The root script can't take the exclusion: `release:build` runs it and publishes Shift Manager's `dist/`.
+ * Change what "build the packages" means in both places.
+ *
+ * @type {{ install: WorkspaceStep, packages: WorkspaceStep }}
+ */
+const WORKSPACE_STEPS = {
   install: { cmd: "pnpm", args: ["install", "--frozen-lockfile", "--prefer-offline"], label: "[install]" },
   packages: { cmd: "pnpm", args: ["turbo", "run", "build", "--filter=./packages/*", "--filter=!@flow-state-dev/shift-manager"], label: "[packages]" },
 };

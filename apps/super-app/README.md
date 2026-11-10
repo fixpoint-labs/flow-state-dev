@@ -45,14 +45,21 @@ keeps those current too (`workspace.mjs`):
   bundles the packages as they are now. Turbo's cache makes it about a second
   when nothing changed.
 
-A failing step is logged and the run goes on with the last good build. Installs
-only happen at start: replacing `node_modules` under a running server would
+A failing step is logged and the run goes on with the last good build. That
+includes a failed install, which runs the apps against whatever `node_modules`
+holds: when the lockfile has moved and the install fails, run `pnpm install` by
+hand and restart. The proxy listens while this runs, so the landing page is up
+during a slow first install. Installs only happen at start: replacing `node_modules` under a running server would
 break it. Shift Manager's package build is skipped, because it is its page
 build, which the page rebuild already runs.
 
 A page rebuild is still started by a change to a file the last build was made
 from, so a package edit alone doesn't rebuild anything until a page file changes
-or the run restarts.
+or the run restarts. When you do change a page file after a package edit, that
+rebuild pays the package build and the page build together, since nothing
+noticed the package edit itself. A save that leaves a recorded file's content
+unchanged never starts a rebuild; that is what keeps a package build that
+rewrites identical output from starting page builds in a loop.
 
 The page is a small Vite build (`pnpm build:devtool`, into `dist/`). `pnpm dev`
 rebuilds it at start and again as its source changes; `pnpm serve` serves what `pnpm build` made, and warns when

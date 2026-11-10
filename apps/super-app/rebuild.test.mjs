@@ -22,8 +22,10 @@ let watcher;
 function fakeBuild({ durationMs = 0 } = {}) {
   const build = async () => {
     build.runs += 1;
+    // What the bundle was made from is what the file held when the build read it, not when it finished.
+    const read = readA();
     await sleep(durationMs);
-    writeFileSync(join(outDir, "build-inputs.json"), JSON.stringify({ inputs: { "src/a.ts": hash(readA()) } }));
+    writeFileSync(join(outDir, "build-inputs.json"), JSON.stringify({ inputs: { "src/a.ts": hash(read) } }));
   };
   build.runs = 0;
   return build;
@@ -62,6 +64,23 @@ describe("rebuildOnChange", () => {
     editA("four");
     await sleep(300);
     assert.equal(build.runs, 1);
+  });
+
+  it("ignores a save that leaves a recorded file's content as it was", async () => {
+    // A package build that fails still rewrites its `dist/` with the same output. Each page build starts
+    // a package build, so rebuilding on every such write would loop: page build, package build, page build.
+    const build = fakeBuild();
+    watcher = rebuildOnChange({ outDir, repoRoot: repo, build, debounceMs: 20 });
+    await sleep(100);
+    for (let i = 0; i < 3; i += 1) {
+      writeFileSync(join(repo, "src/a.ts"), a);
+      await sleep(60);
+    }
+    assert.equal(build.runs, 0, "unchanged content is not a change");
+
+    editA("really changed");
+    await sleep(200);
+    assert.equal(build.runs, 1, "a real change still builds");
   });
 
   it("ignores files the build wasn't made from", async () => {

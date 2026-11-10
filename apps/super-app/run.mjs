@@ -214,15 +214,19 @@ for (const [what, wanted, id] of [["the proxy", port, undefined], ...apps.map((a
 }
 
 const devtoolDir = fileURLToPath(new URL("./dist", import.meta.url));
+/** Settled once `dev` has what the apps need; `serve` needs nothing. The proxy listens meanwhile, so a slow install leaves the landing page up. */
+let ready = Promise.resolve();
 if (mode === "dev") {
-  // Before any app starts: dependencies installed and packages built, so every app comes up on the latest of both.
-  // The install is only ever here; replacing `node_modules` under a running server would break it.
-  await workspace.install();
-  await workspace.packages();
-  // Builds the page when it is missing or stale, then rebuilds it as its source changes; a refresh picks the new build up.
-  // Until the first build is written, /devtool/ answers that it isn't built.
-  const step = { cmd: "pnpm", args: ["run", "build:devtool"], cwd: fileURLToPath(new URL(".", import.meta.url)) };
-  rebuildOnChange({ outDir: devtoolDir, repoRoot: REPO, build: () => buildPage(step, "[devtool]", port) });
+  ready = (async () => {
+    // Before any app starts: dependencies installed and packages built, so every app comes up on the latest of both.
+    // The install is only ever here; replacing `node_modules` under a running server would break it.
+    await workspace.install();
+    await workspace.packages();
+    // Builds the page when it is missing or stale, then rebuilds it as its source changes; a refresh picks the new build up.
+    // Until the first build is written, /devtool/ answers that it isn't built.
+    const step = { cmd: "pnpm", args: ["run", "build:devtool"], cwd: fileURLToPath(new URL(".", import.meta.url)) };
+    rebuildOnChange({ outDir: devtoolDir, repoRoot: REPO, build: () => buildPage(step, "[devtool]", port) });
+  })();
 } else if (!existsSync(`${devtoolDir}/index.html`)) {
   process.stderr.write("[super-app] the DevTool page isn't built (run `pnpm build`); /devtool/ won't load.\n");
 }
@@ -240,8 +244,9 @@ proxy.listen(port, host, () => {
   for (const app of apps) process.stdout.write(`[super-app]   ${origin}${app.prefix}/  ->  127.0.0.1:${app.port}\n`);
 });
 
+await ready;
 apps.forEach((app, i) => {
-  if (blocked.has(app.id)) return;
+  if (stopping || blocked.has(app.id)) return;
   watchPort(app, i);
   void startApp(app, i);
 });

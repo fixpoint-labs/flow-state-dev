@@ -6,35 +6,41 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { WORKSPACE_STEPS, createWorkspaceRefresh } from "./workspace.mjs";
+import { createWorkspaceRefresh } from "./workspace.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function harness({ code = 0, durationMs = 0 } = {}) {
   const ran = [];
+  const steps = [];
   const warnings = [];
   const refresh = createWorkspaceRefresh({
     run: async (step) => {
       ran.push(step.label);
+      steps.push(step);
       await sleep(durationMs);
       return code;
     },
     warn: (line) => warnings.push(line),
   });
-  return { refresh, ran, warnings };
+  return { refresh, ran, steps, warnings };
 }
 
 describe("createWorkspaceRefresh", () => {
-  it("installs frozen, so a dev run never rewrites the lockfile", () => {
-    assert.ok(WORKSPACE_STEPS.install.args.includes("--frozen-lockfile"));
+  it("runs the install frozen, so a dev run never rewrites the lockfile", async () => {
+    const { refresh, steps } = harness();
+    await refresh.install();
+    assert.equal(steps.length, 1);
+    assert.deepEqual([steps[0].cmd, ...steps[0].args.slice(0, 1)], ["pnpm", "install"]);
+    assert.ok(steps[0].args.includes("--frozen-lockfile"));
   });
 
-  it("builds only the workspace packages, not the apps", () => {
-    assert.ok(WORKSPACE_STEPS.packages.args.includes("--filter=./packages/*"));
-  });
-
-  it("leaves Shift Manager's page build to the page watcher", () => {
-    assert.ok(WORKSPACE_STEPS.packages.args.includes("--filter=!@flow-state-dev/shift-manager"));
+  it("runs the package build over packages/* without Shift Manager, whose page build the page watcher owns", async () => {
+    const { refresh, steps } = harness();
+    await refresh.packages();
+    assert.equal(steps.length, 1);
+    assert.ok(steps[0].args.includes("--filter=./packages/*"), "the packages, not the apps");
+    assert.ok(steps[0].args.includes("--filter=!@flow-state-dev/shift-manager"));
   });
 
   it("shares one package build between concurrent callers", async () => {
