@@ -1,5 +1,5 @@
 /**
- * A person attaches images in Flow State chat and on each coding harness
+ * The user attaches images in Flow State chat and on each coding harness
  * page, in the browser: one pasted, one picked with +. Both show before Send,
  * the turn's request carries both by reference, and after a reload the user
  * line still shows both. A HEIC is refused in the composer and nothing is sent.
@@ -45,8 +45,8 @@ function png(rgb: [number, number, number], size = 8): Buffer {
   header.writeUInt32BE(size, 4);
   header[8] = 8; // bit depth
   header[9] = 2; // truecolour
-  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: size }, () => rgb).flat())]);
-  const pixels = Buffer.concat(Array.from({ length: size }, () => row));
+  const scanline = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: size }, () => rgb).flat())]);
+  const pixels = Buffer.concat(Array.from({ length: size }, () => scanline));
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk("IHDR", header),

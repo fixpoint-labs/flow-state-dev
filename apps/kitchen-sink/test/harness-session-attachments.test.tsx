@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * A person pastes an image into a harness page's composer and sends: the
+ * The user pastes an image into a harness page's composer and sends: the
  * turn's request carries the image, by reference.
  *
  * The page lost it: the composer held the pasted image where no one saw it

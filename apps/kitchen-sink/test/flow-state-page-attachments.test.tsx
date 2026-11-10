@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * A person pastes an image into Flow State chat and sends: the `run` request
+ * The user pastes an image into Flow State chat and sends: the `run` request
  * carries it, by reference, beside the line.
  *
  * The page lost it: the composer held the pasted image where no one saw it,
