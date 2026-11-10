@@ -98,7 +98,7 @@ import { CODER_FLOW } from "./lib/coder-flow";
 import { toolIntent, toolSubject } from "./components/flow-state/tool-naming";
 import {
   composeToolGroupLabel,
-  TOOL_VERB_MAP,
+  knownToolVerbs,
   toolRunOpen,
   toolRunState,
   toolStepState,
@@ -338,7 +338,7 @@ export function stepRun(steps: readonly SessionStep[]): StepRun {
 }
 
 /** A tool the registry's words call running a command: each harness's shell tool. */
-const isCommand = (tool: string | undefined) => tool !== undefined && TOOL_VERB_MAP[tool.toLowerCase()]?.singular === "ran a command";
+const isCommand = (tool: string | undefined) => tool !== undefined && knownToolVerbs(tool)?.singular === "ran a command";
 
 /**
  * How many shell commands a run's steps ran, done or failed; one still running
