@@ -184,6 +184,26 @@ describe("the threads-mode screen", () => {
     expect(rowsIn("Working").join()).toMatch(/Weekly uptime digest/);
   });
 
+  it("lets you dismiss a failed thread: it leaves Waiting on you for Resolved, and the session stops counting it", async () => {
+    render(<App adapter={createFakeLab({ speed: 0.01 })} />);
+    fireEvent.click(within(screen.getByRole("tablist", { name: "View" })).getByRole("tab", { name: "Projects" }));
+    const session = () => within(screen.getByRole("navigation", { name: "Sessions" })).getByRole("button", { name: /Billing triage/ });
+    expect(session().textContent).toMatch(/1 waiting on you/);
+    fireEvent.click(session());
+    fireEvent.click(await within(group("Waiting on you")).findByRole("button", { name: /Export failed invoices/ }));
+    const view = screen.getByRole("dialog", { name: "Task: Export failed invoices" });
+    fireEvent.click(within(view).getByRole("button", { name: "Dismiss" }));
+    // Nothing else waited on you in this session, so the group goes.
+    await waitFor(() => expect(within(board()).queryByRole("region", { name: "Waiting on you" })).toBeNull());
+    expect(within(view).queryByRole("button", { name: "Dismiss" })).toBeNull();
+    // Still failed, and still retryable from its view: dismissing only stops it waiting on you.
+    expect(within(within(view).getByTestId("task-action-row")).getByRole("button", { name: "Retry" })).toBeTruthy();
+    fireEvent.click(within(view).getByRole("button", { name: "Close" }));
+    fireEvent.click(within(board()).getByRole("button", { name: /Resolved · 4/ }));
+    expect(rowsIn("Resolved").join()).toMatch(/Export failed invoices.*Failed · The export timed out/);
+    expect(session().textContent).not.toMatch(/waiting on you/);
+  });
+
   it("runs a code change as a thread tagged Claude Code, ready for review with the judge's verdict", async () => {
     await startThreadsSession(0.01);
     await ask("Add a CHANGELOG line for the vendor pick");
