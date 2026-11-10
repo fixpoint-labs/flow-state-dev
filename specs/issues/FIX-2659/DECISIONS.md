@@ -46,9 +46,12 @@ flowchart TD
 - **Jake's call:** a `followUpOf` task joins its root's worktree automatically. The coordinator
   only names `worktreeOf` for unrelated work.
 - **Where:** workforce's filing path, the same place that checks an explicit `worktreeOf`
-  ([D1](#d1)). When a follow-up is filed and its root (one hop, as `followUpOf` already
-  resolves) owns a `ready` worktree entry for this user, workforce writes `worktreeOf: <root>`
-  onto the follow-up. A root with no entry (a chat task, a files-only run) gets nothing written,
+  ([D1](#d1)). When a follow-up is filed, workforce finds the worktree's owner the same way it
+  does for an explicit `worktreeOf`: the root (one hop, as `followUpOf` already resolves), or,
+  when the root itself carries `worktreeOf`, that owner. If the owner has a `ready` worktree
+  entry for this user, workforce writes `worktreeOf: <owner>` onto the follow-up. So a
+  follow-up of B, where B ran in A's worktree, joins A's worktree; it never names B, which owns
+  no entry. A root with no entry (a chat task, a files-only run) gets nothing written,
   so the follow-up provisions as today, and orchestration's generic follow-up placement never
   learns about worktrees. A filer can't name a different one on a follow-up
   (`follow_up_takes_no_worktree`, workforce's rule).
@@ -117,4 +120,5 @@ flowchart TD
 
 ## Notes from review
 
-None yet.
+- Codex (spec PR): a follow-up of a task that itself attached must resolve to the real owner,
+  not to the attached task, which owns no entry. D2 now normalizes the owner as D1 does.
