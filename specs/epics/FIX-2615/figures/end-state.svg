@@ -1,0 +1,91 @@
+<svg viewBox="0 0 940 452" role="img" aria-label="What's in the box. In the box, the model: the host installs a connector once, with its address, how its key is supplied and which of its tools a user may use; a project enables connectors by name from the host's set; the host enables a set for work with no project. In the box, the routes: a worker's model and coding runs on Claude Code, Codex and Cursor resolve through one path; one redaction rule; one contributor reference for projects and connectors. A fence across the box: a key is read on the server for the run's own user and goes into the connection only, so a run gets tools and never a key. Composed in by the app: which connectors it installs, which it enables outside a project, and its key-entry screen. Replaced in one line: the project-only gate, the second redaction rule, the Claude Code-only relay. Not built: FSD as an MCP server, which is FIX-2331; per-user OAuth sign-in; servers beyond Linear; any change in core or engine."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .chip  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .app   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .one   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .none  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .fence { stroke:var(--gone); stroke-width:2; stroke-dasharray:8 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="452"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="16" width="612" height="312" rx="8"/>
+    <text class="t-tag c-code" x="32" y="38">IN THE BOX · ONE MODEL FOR EVERY HOST</text>
+    <text class="t-lbl" x="32" y="62">THE MODEL · FIX-2645</text>
+    <rect class="chip" x="32" y="70" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="92">A connector, installed once at the host</text>
+    <rect class="chip" x="32" y="110" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="132">A project enables some, by name</text>
+    <rect class="chip" x="32" y="150" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="172">The host's set for work with no project</text>
+    <rect class="chip" x="32" y="190" width="282" height="34" rx="4"/>
+    <text class="t-b" x="44" y="212">The reference: project and connector</text>
+    <text class="t-lbl" x="330" y="62">THE ROUTES · ALL THREE CHILDREN</text>
+    <rect class="chip" x="330" y="70" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="92">A worker's model, when its file says so</text>
+    <rect class="chip" x="330" y="110" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="132">Coding runs: Claude Code, Codex, Cursor</text>
+    <rect class="chip" x="330" y="150" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="172">One resolution, one MCP client</text>
+    <rect class="chip" x="330" y="190" width="282" height="34" rx="4"/>
+    <text class="t-b" x="342" y="212">One redaction rule, any key length</text>
+  </g>
+
+  <g id="the-fence">
+    <line class="fence" x1="16" y1="250" x2="628" y2="250"/>
+    <text class="t-tag c-gone" x="32" y="272">FENCE · ER-3</text>
+    <text class="t-b" x="32" y="292">A run gets tools, never a key</text>
+    <text class="t-s" x="32" y="310">read on the server for the run's own user, and put only in the connection's headers</text>
+  </g>
+
+  <g id="composed-in">
+    <rect class="app" x="644" y="16" width="280" height="150" rx="8"/>
+    <text class="t-tag c-acc" x="660" y="38">COMPOSED IN BY THE APP</text>
+    <text class="t-b" x="660" y="64">Which connectors it installs</text>
+    <text class="t-s" x="660" y="80">Linear, with the operator's variable</text>
+    <text class="t-b" x="660" y="106">Which it enables with no project</text>
+    <text class="t-s" x="660" y="122">none, unless the host says so</text>
+    <text class="t-b" x="660" y="146">Its key-entry screen</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="one" x="644" y="182" width="280" height="146" rx="8"/>
+    <text class="t-lbl" x="660" y="204">REPLACED IN ONE LINE</text>
+    <text class="t-b" x="660" y="226">The project-only gate</text>
+    <text class="t-s" x="660" y="241">the host's set when there is none</text>
+    <text class="t-b" x="660" y="262">The second redaction rule</text>
+    <text class="t-s" x="660" y="277">the error report uses the one rule</text>
+    <text class="t-b" x="660" y="298">The Claude Code-only relay</text>
+    <text class="t-s" x="660" y="313">Codex and Cursor take the same tools</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="none" x="16" y="344" width="908" height="92" rx="8"/>
+    <text class="t-tag c-gone" x="32" y="366">NOT BUILT</text>
+    <text class="t-b" x="32" y="394">FSD as an MCP server</text>
+    <text class="t-s" x="32" y="410">FIX-2331, its own epic</text>
+    <text class="t-b" x="252" y="394">Per-user OAuth sign-in</text>
+    <text class="t-s" x="252" y="410">a key is pasted, as today</text>
+    <text class="t-b" x="472" y="394">Servers beyond Linear</text>
+    <text class="t-s" x="472" y="410">any server fits; none is added</text>
+    <text class="t-b" x="692" y="394">Any change in core or engine</text>
+    <text class="t-s" x="692" y="410">workforce is Layer 2 (ER-5)</text>
+  </g>
+</svg>
