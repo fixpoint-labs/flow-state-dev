@@ -16,6 +16,7 @@ import type { DispatchAddress, DispatchSeam } from "./dispatch";
 import { DISPATCH_SEAM } from "./dispatch";
 import type { RequestEndSeam, RequestSpendSeam } from "./request-end";
 import { REQUEST_END_SEAM, REQUEST_SPEND_SEAM } from "./request-end";
+import { HARNESS_ATTACHMENT_SEAM, type HarnessAttachmentSeam } from "./harness-attachment-seam";
 import { REQUEST_RESUME_SEAM, type RequestResume } from "./request-resume";
 import { BOARD_NOTICE_SEAM, type BoardNoticeSeam } from "./board-notice";
 import type { TracingLevel } from "../helpers/tracing-level";
@@ -959,6 +960,14 @@ export interface InternalBlockContext extends BlockContext {
    * ends. See `types/request-end.ts`.
    */
   [REQUEST_SPEND_SEAM]?: RequestSpendSeam;
+
+  // FIX-2519.
+  /**
+   * The request's file reader, the engine's one resolver bound to the
+   * request's conversation, under a symbol key. Read only by
+   * `readHarnessAttachments`. See `types/harness-attachments.ts`.
+   */
+  [HARNESS_ATTACHMENT_SEAM]?: HarnessAttachmentSeam;
 
   /**
    * The running request's board-notice seam, under a

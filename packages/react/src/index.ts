@@ -19,6 +19,7 @@ export {
 
 export {
   useHarnessLines,
+  type HarnessLineSendOptions,
   type HarnessLinesView,
   type HarnessWaitingLine,
   type UseHarnessLinesOptions

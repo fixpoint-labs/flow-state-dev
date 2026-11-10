@@ -107,6 +107,31 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe("useHarnessLines, a line with files", () => {
+  const shot = { type: "file" as const, mediaType: "image/png", data: "ref-of-shot", filename: "shot.png" };
+
+  it("sends its files with the turn when no turn runs", async () => {
+    const { result } = mount(false);
+    await expect(result.current.send("what is this?", { attachments: [shot] })).resolves.toBe("turn");
+    expect(sendAction).toHaveBeenCalledWith("turn", { prompt: "what is this?" }, { userMessage: "what is this?", attachments: [shot] });
+  });
+
+  it("never steers while a turn runs: it waits as the next turn, files and all", async () => {
+    steerRunningTurn.mockResolvedValue({ taken: true, live: true });
+    const { result } = mount();
+    await expect(result.current.send("and this one", { attachments: [shot] })).resolves.toBe("after-this-turn");
+    expect(steerRunningTurn).not.toHaveBeenCalled();
+    expect(flowMock.send).toHaveBeenCalledWith("turn", { prompt: "and this one" }, { sessionId: "s1", attachments: [shot] });
+    await waitFor(() => expect(result.current.waiting).toEqual([expect.objectContaining({ text: "and this one" })]));
+  });
+
+  it("sends no files for an empty list, and still steers", async () => {
+    steerRunningTurn.mockResolvedValue({ taken: true, live: true });
+    const { result } = mount();
+    await expect(result.current.send("use v3", { attachments: [] })).resolves.toBe("taken");
+  });
+});
+
 describe("useHarnessLines", () => {
   it("sends a line as a turn through the session view when no turn runs", async () => {
     const { result } = mount(false);

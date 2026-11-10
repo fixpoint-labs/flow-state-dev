@@ -52,6 +52,8 @@ import {
   resolveAllowedActions,
   BOARD_NOTICE_SEAM,
   DISPATCH_SEAM,
+  HARNESS_ATTACHMENT_SEAM,
+  type HarnessAttachmentSeam,
   REQUEST_RESUME_SEAM,
   REQUEST_SPEND_SEAM,
   type RequestResume,
@@ -119,7 +121,7 @@ import {
   suspendForUserOn,
   type SuspendForUser
 } from "@flow-state-dev/core/types";
-import type { HarnessRunSpend } from "@flow-state-dev/core/harness";
+import { HarnessAttachmentUnavailableError, type HarnessRunSpend } from "@flow-state-dev/core/harness";
 import { matchesPattern } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
@@ -169,7 +171,7 @@ import {
   LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
-import { resolveAttachment, sessionBlobOwner, type ResolvedAttachment } from "../blobs/attachments";
+import { AttachmentUnavailableError, resolveAttachment, sessionBlobOwner, type ResolvedAttachment } from "../blobs/attachments";
 import type { BlobStore } from "../blobs/types";
 import { resolveHistoryFiles } from "./history-files";
 import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
@@ -2942,6 +2944,26 @@ export async function createExecutionContext<
   };
   resolveModel.prepareMessages = (messages: unknown[]) =>
     resolveHistoryFiles(messages, blobs === undefined ? undefined : (file: FileContent) => readOnce(blobs, file));
+  // The same reader for a harness handed the turn's files (FIX-2519), named
+  // in core's terms. No blob store: no reader, and a harness refuses the files.
+  const harnessAttachmentSeam: HarnessAttachmentSeam | undefined =
+    blobs === undefined
+      ? undefined
+      : async (file: FileContent) => {
+          let resolved: ResolvedAttachment;
+          try {
+            resolved = await readOnce(blobs, file);
+          } catch (error) {
+            if (error instanceof AttachmentUnavailableError) throw new HarnessAttachmentUnavailableError(file, { cause: error });
+            throw error;
+          }
+          return {
+            mediaType: resolved.record.mediaType,
+            ...(file.filename !== undefined ? { filename: file.filename } : {}),
+            bytes: resolved.bytes,
+            base64: resolved.base64
+          };
+        };
   // Evaluator strings resolve only through the flow's own resolver. When an
   // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
   // absent and the evaluator refuses the string; the default resolver is
@@ -3933,6 +3955,7 @@ export async function createExecutionContext<
       // A task board's change reaches this run's bus, under the
       // request's tenant. No bus (a registry no entry wrapped): no seam.
       ...(boardNoticeSeam !== undefined ? { [BOARD_NOTICE_SEAM]: boardNoticeSeam } : {}),
+      ...(harnessAttachmentSeam !== undefined ? { [HARNESS_ATTACHMENT_SEAM]: harnessAttachmentSeam } : {}),
       settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,

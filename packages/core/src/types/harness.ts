@@ -16,10 +16,11 @@
  * This file owns:
  *
  * - {@link HarnessRunInput} / {@link harnessRunInputSchema} — what a caller
- *   hands a harness per run. The prompt, and nothing else: everything that
- *   decides *where* a run writes or *which* conversation it continues is
- *   harness configuration fed through a trusted channel, never a field on a
- *   schema a model tool can see.
+ *   hands a harness per run. The prompt and the turn's files, and nothing
+ *   else: everything that decides *where* a run writes or *which*
+ *   conversation it continues is harness configuration fed through a trusted
+ *   channel, never a field on a schema a model tool can see. How a harness
+ *   reads the files is `./harness-attachments.ts`.
  * - {@link HarnessRunEnvelope} / {@link harnessRunEnvelopeSchema} — the
  *   identity-and-status core every dispatch produces, including one-way doors
  *   that never report a result.
@@ -59,6 +60,8 @@ import { z } from "zod";
 import type { BlockContext, BlockDefinition, InternalBlockContext } from "./block";
 import type { AnyResourceRef } from "./resource";
 import { REQUEST_SPEND_SEAM } from "./request-end";
+import type { FileContent } from "../items/content";
+import { parseBlobRef, type AttachmentAccepts } from "../attachments";
 
 /**
  * Which harness, and which of its doors, produced a handle.
@@ -112,6 +115,14 @@ export interface HarnessRunCost {
 export interface HarnessRunInput {
   /** The instruction to run. */
   prompt: string;
+  // FIX-2519.
+  /**
+   * The turn's files, in reference form (`FileContent` whose `data` is
+   * `fsd-blob:<id>`), in the order attached. The adapter reads their bytes
+   * (`readHarnessAttachments`) and hands them on in its SDK's form; a type
+   * the harness doesn't take refuses the run. Absent or empty: a text turn.
+   */
+  attachments?: FileContent[];
 }
 
 // BP-031.
@@ -127,6 +138,17 @@ export interface HarnessRunInput {
  */
 export const harnessRunInputSchema = z.object({
   prompt: z.string(),
+  // A stored file's reference only: bytes never ride on a run's input.
+  attachments: z
+    .array(
+      z.object({
+        type: z.literal("file"),
+        mediaType: z.string(),
+        data: z.string().refine((data) => parseBlobRef(data) !== undefined, "a stored file's reference"),
+        filename: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 /**
@@ -224,6 +246,15 @@ export type HarnessBlock = BlockDefinition<any, any, HarnessRunInput, HarnessRun
    * doesn't carry it.
    */
   readonly stopsOnAbort?: boolean;
+  // FIX-2519.
+  /**
+   * The file types the harness takes on {@link HarnessRunInput}'s
+   * `attachments`. A host checks a turn's files against it before the turn
+   * starts (`refuseUnacceptedAttachments`), and the adapter again before its
+   * run. Absent means it takes no files. Stamped on the block the factory
+   * returns, as `stopsOnAbort` is.
+   */
+  readonly accepts?: AttachmentAccepts;
 };
 
 /**

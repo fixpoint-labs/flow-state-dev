@@ -40,6 +40,7 @@ import type {
   CursorRunResult,
   CursorSdkMessage,
   CursorSendOptions,
+  CursorUserMessage,
   ResolveCursorClient,
   ResolvedCursorClient,
 } from "./types";
@@ -207,7 +208,7 @@ async function openInChild(
   let sent = false;
   return {
     agentId: opened.agentId,
-    async send(prompt: string, sendOptions?: CursorSendOptions): Promise<CursorRunLike> {
+    async send(prompt: string | CursorUserMessage, sendOptions?: CursorSendOptions): Promise<CursorRunLike> {
       if (sent) throw new Error("This Cursor agent's runtime process serves one run.");
       sent = true;
       const started = (await runtime.request("send", { prompt, options: sendOptions })) as {
