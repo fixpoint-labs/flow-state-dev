@@ -227,6 +227,21 @@ describe("PromptInput's Send", () => {
     expect(screen.queryByRole("img", { name: "a.png" })).toBeNull();
     expect(screen.getByRole("img", { name: "b.png" })).toBeTruthy();
   });
+
+  it("sends once when Enter is pressed again while an upload is in flight", async () => {
+    let open!: () => void;
+    const client = uploader({ gate: new Promise<void>((done) => (open = done)) });
+    const { onSubmit, box } = composer(client);
+    await act(async () => pick([file("a.png", "image/png")]));
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
+    await act(async () => open());
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    // A second call would send the same file in a second message.
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
 });
 
 describe("useAttachments in an app's own composer", () => {

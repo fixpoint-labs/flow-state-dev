@@ -416,6 +416,8 @@ const PromptInputForm = ({
   controller: PromptInputControllerProps | null;
 }) => {
   const formRef = useRef<HTMLFormElement | null>(null);
+  // Set while a Send waits on uploads and onSubmit, so a second Enter doesn't send the same files again.
+  const submittingRef = useRef(false);
 
   // ----- Local referenced sources (always local to PromptInput)
   const [referencedSources, setReferencedSources] = useState<
@@ -480,6 +482,8 @@ const PromptInputForm = ({
   const handleSubmit: FormEventHandler<HTMLFormElement> = useCallback(
     async (event) => {
       event.preventDefault();
+      if (submittingRef.current) return;
+      submittingRef.current = true;
 
       const form = event.currentTarget;
       const text = controller
@@ -525,6 +529,8 @@ const PromptInputForm = ({
         }
       } catch {
         // Don't clear on error - user may want to retry
+      } finally {
+        submittingRef.current = false;
       }
     },
     [controller, attachments, onSubmit, clearReferencedSources]
