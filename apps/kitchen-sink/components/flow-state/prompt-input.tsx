@@ -61,6 +61,7 @@ import {
 import { nanoid } from "nanoid";
 import { isSendKey } from "@flow-state-dev/react";
 import {
+  AttachmentFileInput,
   AttachmentStrip,
   useAttachments,
   type AttachmentUploader,
@@ -497,6 +498,8 @@ const PromptInputForm = ({
         form.reset();
       }
 
+      // Not `take()`: that clears on the spot, and a failed onSubmit must leave the files for a retry.
+      // So: settle, then consume only once onSubmit succeeds.
       // The files and refusal lines on screen at Send; one attached or refused while it waits stays.
       const sent = attachments.files.map((f) => f.id);
       const shown = attachments.refusals;
@@ -540,22 +543,7 @@ const PromptInputForm = ({
   const { dropTarget } = attachments;
   const inner = (
     <>
-      <input
-        accept={attachments.accept}
-        aria-label="Upload files"
-        className="hidden"
-        multiple={multiple}
-        onChange={(event) => {
-          if (event.currentTarget.files) {
-            attachments.add(event.currentTarget.files);
-          }
-          event.currentTarget.value = "";
-        }}
-        ref={attachments.fileInputRef}
-        tabIndex={-1}
-        title="Upload files"
-        type="file"
-      />
+      <AttachmentFileInput attachments={attachments} multiple={multiple} />
       <form
         className={cn("w-full", className)}
         data-dragging={attachments.dragging || undefined}

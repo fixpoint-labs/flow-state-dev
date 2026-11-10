@@ -592,23 +592,31 @@ export interface AttachButtonProps {
   children?: ReactNode;
 }
 
+/** The hidden picker `openFileDialog` opens. Render one per composer. */
+export function AttachmentFileInput({ attachments, multiple = true }: { attachments: Attachments; multiple?: boolean }) {
+  return (
+    <input
+      accept={attachments.accept}
+      aria-label="Upload files"
+      className="hidden"
+      multiple={multiple}
+      onChange={(event) => {
+        if (event.currentTarget.files) attachments.add(event.currentTarget.files);
+        event.currentTarget.value = "";
+      }}
+      ref={attachments.fileInputRef}
+      tabIndex={-1}
+      title="Upload files"
+      type="file"
+    />
+  );
+}
+
 /** The + button and the multi-select picker it opens, for a composer without PromptInput. */
 export function AttachButton({ attachments, className, children }: AttachButtonProps) {
   return (
     <>
-      <input
-        accept={attachments.accept}
-        aria-hidden
-        className="hidden"
-        multiple
-        onChange={(event) => {
-          if (event.currentTarget.files) attachments.add(event.currentTarget.files);
-          event.currentTarget.value = "";
-        }}
-        ref={attachments.fileInputRef}
-        tabIndex={-1}
-        type="file"
-      />
+      <AttachmentFileInput attachments={attachments} />
       <button
         aria-label="Attach files"
         className={cn(
