@@ -9,6 +9,7 @@
  * and stream goes through the one transport built here.
  */
 import type { ResumeAction, WireTopic } from "@flow-state-dev/contracts";
+import type { FileContent } from "@flow-state-dev/contracts/items";
 import type { ActionConfig, FlowActionInput, RequestStatusSnapshot } from "@flow-state-dev/core/types";
 import { clientError, createTransport, requireValue, seg, topicPath, type Transport } from "./internal/http";
 import { pause } from "./internal/pause";
@@ -196,6 +197,13 @@ export type TranscribeRequest = {
 export type TranscribeResponse = {
   text: string;
   language?: string;
+};
+
+/** One file to attach: its bytes, its type (a `Blob`'s own type when omitted), and the name a person sees. */
+export type UploadRequest = {
+  data: Uint8Array | Blob;
+  mediaType?: string;
+  filename?: string;
 };
 
 /** How a send is addressed and labelled. */
@@ -422,6 +430,13 @@ export interface FlowHandle<TFlow extends TypedFlow = UntypedFlow> {
   read<TOutput = unknown>(name: string, input: unknown, options: { sessionId: string }): Promise<TOutput>;
   /** Start a session on this flow, as the client's user. */
   createSession(options?: CreateSessionOptions): Promise<SessionDetail>;
+  /**
+   * Upload one file to attach to this flow's messages, checked by this flow's
+   * own sign-in, so the file is held for the user its sends resolve. Use this
+   * when the flow authenticates its own callers; otherwise `client.upload` is
+   * the same.
+   */
+  upload(request: UploadRequest): Promise<FileContent>;
   /** A request of this flow, by id. Reads nothing until a method is called. */
   request(id: string): RequestHandle;
 }
@@ -524,6 +539,12 @@ export interface Client {
   subscribe(topics: readonly WireTopic[], options: SubscribeOptions): Subscription;
   /** Transcribe audio on the server. */
   transcribe(request: TranscribeRequest): Promise<TranscribeResponse>;
+  /**
+   * Upload one file to attach, once. Resolves to the file in reference form
+   * (`data` is `fsd-blob:<id>`), held for this user until a message that
+   * names it is sent. Send that, never the bytes.
+   */
+  upload(request: UploadRequest): Promise<FileContent>;
 }
 
 // ---------------------------------------------------------------------------
@@ -716,9 +737,23 @@ export function createClient(options: CreateClientOptions): Client {
         { method: "POST", headers: { "content-type": mediaType }, body },
         { userId, language: request.language }
       );
-    }
+    },
+    upload: (request) => uploadTo(t, "/api/flows/blobs", userId, request)
   };
   return client;
+}
+
+/** POST one file's raw bytes to an upload route and resolve to its reference. */
+async function uploadTo(t: Transport, path: string, userId: string, request: UploadRequest): Promise<FileContent> {
+  const mediaType = request.mediaType ?? (request.data instanceof Blob ? request.data.type : "");
+  const body =
+    request.data instanceof Blob ? request.data : new Blob([request.data as Uint8Array<ArrayBuffer>], { type: mediaType });
+  const answer = await t.json<{ attachment: FileContent }>(
+    path,
+    { method: "POST", headers: { "content-type": mediaType }, body },
+    { userId, filename: request.filename }
+  );
+  return answer.attachment;
 }
 
 // ---------------------------------------------------------------------------
@@ -779,6 +814,7 @@ function flowHandle<TFlow extends TypedFlow>(t: Transport, userId: string, addre
           body: JSON.stringify({ userId, ...create })
         })
       ).session,
+    upload: (request) => uploadTo(t, `/api/flows/${seg(flow)}/blobs`, userId, request),
     request: (id) => requestHandle(t, flow, requireValue(id, "requestId"), undefined)
   };
 }

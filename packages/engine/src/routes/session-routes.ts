@@ -47,6 +47,7 @@ import {
 } from "../stores/scope-keys";
 import { sessionRequestScope } from "../context/session-request-scope";
 import { toClientSession } from "./client-session";
+import { sessionBlobOwner } from "../blobs/attachments";
 import { latestRequestStatus } from "./session-request-status";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import {
@@ -548,7 +549,9 @@ export async function handleDeleteSession(
   // content/state) is a leak. All keyed by the namespaced session key (FIX-682).
   await Promise.all([
     ctx.stores.content.deleteAll("session", sessionKey),
-    ctx.stores.resourceState.deleteAll("session", sessionKey)
+    ctx.stores.resourceState.deleteAll("session", sessionKey),
+    // Its attachments go with it (FIX-824).
+    ctx.stores.blobs?.deleteOwner(sessionBlobOwner(sessionKey))
   ]);
   await ctx.stores.session.delete(sessionKey);
   return emptyResponse(204);

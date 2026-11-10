@@ -45,6 +45,7 @@ import type {
 import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { generateId } from "../utils/generate-id";
+import { sessionBlobOwner } from "../blobs/attachments";
 import { findResourceConfig, isCollectionConfig, isProjectedResourceCollection } from "../resources/internal";
 import { ownerKeyAdmits } from "../resources/owner-private";
 import {
@@ -148,10 +149,15 @@ import { scopeStateSchema } from "./scope-state-defaults";
  *    never-existed key.
  */
 export async function purgeStaleResourceState(
-  stores: Pick<StoreRegistry, "resourceState">,
-  storageKey: string
+  stores: Pick<StoreRegistry, "resourceState" | "blobs">,
+  storageKey: string,
+  newOwner?: { userId: string; orgId: string }
 ): Promise<void> {
   await stores.resourceState.purgeTombstones("session", storageKey);
+  // The dead incarnation's files (FIX-824): one a straggling send claimed after
+  // the delete would otherwise be readable by whoever takes the id next. The
+  // files this create's own first message claimed, just before it, stay.
+  await stores.blobs?.deleteOwner(sessionBlobOwner(storageKey), { keepUploader: newOwner });
 }
 
 /** The flow fields a birth reads. */
@@ -161,7 +167,7 @@ export type BirthFlow = Pick<FlowInstance, "kind" | "id" | "session" | "resource
 };
 
 /** The stores a session's birth touches. */
-export type SessionBirthStores = Pick<StoreRegistry, "session" | "resourceState">;
+export type SessionBirthStores = Pick<StoreRegistry, "session" | "resourceState" | "blobs">;
 
 /**
  * Thrown when a create is refused: the flow's create check said no, the
@@ -402,7 +408,7 @@ export async function birthSession(
 
   // Before the create, so nothing is committed until it has succeeded. See
   // `purgeStaleResourceState` for why this order and no other.
-  await purgeStaleResourceState(stores, storageKey);
+  await purgeStaleResourceState(stores, storageKey, request.principal);
 
   const seed = build();
   const record: SessionRecord = {
