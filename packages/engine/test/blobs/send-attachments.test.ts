@@ -13,7 +13,7 @@ import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core"
 import { parseBlobRef } from "@flow-state-dev/core/attachments";
 import type { FileContent, MessageItem } from "@flow-state-dev/core/items";
 import type { GeneratorModel, LLMMessage } from "@flow-state-dev/core/types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { createFlowApiRouter, createFlowRegistry, type StoreRegistry } from "../../src";
 import { createMemoryBlobStore } from "../../src/blobs/memory-blob-store";
@@ -233,6 +233,20 @@ describe("a message's files, from the request to the model", () => {
       expect(stored.length).toBeLessThan(32 * 1024);
     });
   }
+
+  // Each step of a tool loop sends the files again, but the store reads each
+  // one once per request: a remote store would otherwise pay a round trip per
+  // file per step.
+  it("reads each file from the store once per request, however many steps the tool loop takes", async () => {
+    const { calls, stores, upload, send, finished } = setup({ toolLoop: true });
+    const shot = await upload(PNG, "image/png", "shot.png");
+    const doc = await upload(PDF, "application/pdf", "doc.pdf");
+    const read = vi.spyOn(stores.blobs!, "read");
+    const record = await finished(await send("s1", [shot, doc]));
+    expect(record.status).toBe("completed");
+    expect(calls.length).toBe(2);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
 
   // A retried turn is the person's turn again: the same files on its line,
   // on its record and to the model.
