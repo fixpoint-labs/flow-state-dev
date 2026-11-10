@@ -126,7 +126,8 @@ It comes down to workforce's tarball: an unpublished `./internal` breaks its fir
 > **Amended (Nov 6) by [D4](#d4).** Neither half stands. A retired value is not refused, and no
 > shape is dual-read, published or not; the helper, its tables, removal versions and the expiry
 > check are not built. What survives is the half both cards share: code for names no published
-> version carried is deleted (FIX-2454's 19). The card below is the history.
+> version carried is deleted (FIX-2454's 19). The card below is the history. Four refusals and
+> readers were later kept under D4's guard ([amended Nov 10](#kept-refusals)).
 
 | | |
 |---|---|
@@ -142,13 +143,26 @@ accepts that price.
 <a name="d4"></a>
 ## D4 · No backward-compat code in this epic (the owner, Nov 6)
 
+<a name="kept-refusals"></a>
+> **Amended (Nov 10).** Four pieces stay, because removing them gives silently wrong behaviour,
+> not a loud failure: the `human_*` refusal, with the reader that takes a stored 0.2.0 `human_*`
+> stop as a user's stop; engine's `dispatcher` refusal (`refuseRetiredDispatcherOption`); the task
+> board's `dispatcher` refusal; and the stored `blocked` row read. FIX-2454 held them back for
+> the owner, who kept them by merging
+> [#4830](https://github.com/fixpoint-labs/flow-state-dev/pull/4830) as it was. They are *The one
+> guard* applied, not a new policy: D3's generic retired-name helper was not built, and none has a
+> table or removal version. Engine's `dispatcher` refusal is one shared function,
+> `refuseRetiredDispatcherOption` in `engine/src/transports/runner.ts`, called by its four entry
+> points; the other three are inline checks at their sites. The price line is corrected: on `main`, `human_approval` throws, naming
+> `user_approval`. The figure shows the Nov 6 call.
+
 | | |
 |---|---|
 | **Instead of** | [D3](#d3)'s loud refusal with a removal version and its dual-read of published shapes, and [Q1](#q1)'s recommended alias |
 | **Because** | The owner, in the coordinating session on Nov 6: "We are not worried about backwards compatibility, all PRs can streamline themselves further if there is an opportunity to not have additional code to support older versions." And on Q1: "Remove the aliases" ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/4836#issuecomment-6689198303)). Pre-1.0 every minor is breaking already, and compat code is surface this epic exists to shrink |
 | **Locks in** | No child adds, and each may delete where it streamlines: a `@deprecated` alias or re-export at an old path; a reader of an old stored or persisted shape; a retired-name table, refusal or friendly error; a migration shim. **BP-030 is waived for this epic**, not rewritten. BP-034's re-export rule reads the paths the docs name after a move, not the old ones. The changeset names each moved or retired name's replacement (ER-7) |
 | **The one guard** | Code whose absence would *silently corrupt data*, not merely fail, is raised to the coordinator before it is removed. A compile error, a thrown error, an ignored option or an unanswerable stop is failing, not corrupting |
-| **The price** | `ctx.suspend({ reason: "human_approval" })` still runs as a custom reason with no Inbox item, as on 0.4.0, and a stored 0.2.0 `human_*` stop is not read as a user's stop. A moved import fails with "no exported member", and only the changeset names its home |
+| **The price** | A retired option or value outside [the four kept](#kept-refusals) takes the generic path: a type error, an unknown option or an ignored key, naming nothing. `ctx.suspend({ reason: "human_approval" })` is one of the four: it throws, naming `user_approval`. A moved import fails with "no exported member", and only the changeset names its home |
 
 ![D4: no backward-compat code, chosen, beside D3's refusals and Q1's aliases. Decides it: how much code the packages carry for older versions. Price: old code that passes a retired value isn't stopped, and a moved import's error names nothing. Flips if adopters must keep running across upgrades](figures/d4-no-compat.svg)
 
@@ -168,7 +182,7 @@ Each rule has one owner. A *uses* cell is a place where a child must not decide 
 |---|---|---|---|
 | ER-1 | Pending the owner, the recommended reading: every root export of a package the set owns has an outside consumer or a README entry, and every other published root is held at its ratchet baseline, for [FIX-2568](https://linear.app/fixpoint-labs/issue/FIX-2568) (workforce's wider root and memory) and [FIX-2569](https://linear.app/fixpoint-labs/issue/FIX-2569) (the other nine), related issues, not children. No app, example or docs page imports an `/internal` path. An outside consumer is adopter code (`apps/` except the DevTool, `examples/`, `labs/`) or the docs site. Another `@flow-state-dev/*` package's import does not count, and neither does `goals/`, which is ours and may import `/internal`. A README passage written for framework authors moves to `docs/architecture/`. One import census, FIX-2448's, is read by every check that needs it. The check lands first, as a ratchet on today's baseline, so the roots stop growing while the set is specced. It holds every published root from its first day, and the set cleans the roots it owns (the goal's *Surface* row). Blocks and resources stay public library API; Workforce's app-level flows are Shadcn-style copies and are not root surface | FIX-2448 builds it, its first PR · FIX-2449 adds collisions | CI, gating every PR; leg b for installed-name collisions |
 | ER-2 | Hidden surface is one of D2's two kinds | FIX-2448 | Each spec in the spec set; packed-install |
-| ER-3 | Every moved or retired name follows [D4](#d4) and Q1's answer: no alias, refusal, reader of an old shape or shim; the changeset names the new home (ER-7). What would silently corrupt data is raised first | FIX-2454 | Implementation review; closure leg b (`shims.never-published`) |
+| ER-3 | Every moved or retired name follows [D4](#d4) and Q1's answer: no alias, refusal, reader of an old shape or shim, except [the four D4 keeps](#kept-refusals); the changeset names the new home (ER-7). What would silently corrupt data is raised first | FIX-2454 | Implementation review; closure leg b (`shims.never-published`) |
 | ER-4 | A new check extends what exists: the export check reads `mechanism-exports.mjs`'s `packageExports`, split per entry once, plus an import census, FIX-2162's caller-census pattern, not Fallow, which keeps its dead-code jobs; collisions are one workspace assertion over every published root; `ctx as never` is a `no-restricted-syntax` entry; the tracker-id rule is the one custom ESLint rule; the goal's judge extends `run.mjs`'s `CHECKS` | FIX-2453 decides the lint shape at spec time | Cross-spec review |
 | ER-5 | Nothing an adopter reads carries a tracker or process id: JSDoc, error and log strings, conformance titles, copied registry and example files, including each child's own new ones. A `//` comment is not read, so it may keep a pointer | FIX-2453 | The lint |
 | ER-6 | No second way to do a job. FIX-2463 shows capabilities and the existing bundles can't carry a flow part. FIX-2455's React read builds on `useAction`, and its server read is one request by id from the existing status route (the owner's answer), sharing only the list's result projection; the handle keeps one wait, and `testFlow` settles through that same read. FIX-2456 extends the registry's `ConversationScrollButton`. FIX-2459 keeps `./tasks` as the one browser-safe entry. FIX-2460's answer helper goes through the engine's answer path | Each child | `reuse-review` in the spec set |
@@ -287,5 +301,8 @@ Spec-set review round 1 (Nov 5), recorded, not folded.
   `SPEC.md`: the fifth team's *after*, the FIX-2454 row, sequencing, the debt and the sign-off.
   Every child spec was swept for aliases, refusals, readers of old shapes and shims; the PR body
   lists each one touched. Original review: [#4772](https://github.com/fixpoint-labs/flow-state-dev/pull/4772).
+- **Amended (Nov 10), a follow-up PR from `main`.** D4 keeps four refusals and readers, the
+  owner's ruling by merging [#4830](https://github.com/fixpoint-labs/flow-state-dev/pull/4830);
+  its price line, ER-3 and the SPEC's restatements now match ([D4](#kept-refusals)).
 
 **Open:** none. Q1 was answered on Nov 6 ([above](#q1)).

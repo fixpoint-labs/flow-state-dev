@@ -34,6 +34,12 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 It comes down to the reach check: only the status route already holds it for one record.
 
+> **Amended (Nov 10).** `result()` sends `include_result_output` on every poll, so the read that
+> settles the request is the one returned: one wait, not `wait()` plus a second read, which a
+> resumed run could slip in front of. A running request has no stored result yet, so those polls
+> stay small; `wait()` and `status()` still poll without the flag. Built in [#4896](https://github.com/fixpoint-labs/flow-state-dev/pull/4896);
+> the figure on SPEC's *What changes* shows the earlier wait-then-read.
+
 **What would change my mind:** a host that caches or proxies the status route as a liveness
 probe. Then the output needs its own route, and FIX-1661 D1 is reopened on purpose.
 
@@ -69,8 +75,8 @@ It comes down to FIX-2367's rule: a read hook beside `useSubscription` is a seco
 ## Decided, not asked
 
 - **From the epic, cited, not restated:** [ER-3](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-6](../../epics/FIX-2447/DECISIONS.md#who-owns-what), [ER-7](../../epics/FIX-2447/DECISIONS.md#who-owns-what) · **cells owned** in [FIX-2564's grid](../FIX-2564/SPEC.md#what-changes): `onepath.output-read`; contributes to `surface.root.react`.
-- **`result()` is `wait()` plus one read.** One polling loop on the handle; `result()` never
-  polls on its own. The convergence point for "settled" is `wait()`'s predicate (not
+- **`result()` is the one wait, with the flag on.** One polling loop on the handle; `result()`
+  never polls on its own, and returns the flagged read that settled it ([amended Nov 10](#d1)). The convergence point for "settled" is `wait()`'s predicate (not
   `in_progress`, no live heartbeat), and every copy that waits goes through it.
 - **`result()` is on every request handle**, not only `SentRequest`: orchestration waits on
   `flow.request(id)`.
