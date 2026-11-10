@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D1, what the teammates proof builds. Chosen: two rebuilt hosts with equal effort, one on a kit and one on a better workforce install API. Instead of: the kit host alone. It comes down to the first row: with both, the proof can refute kits, and fire the epic's collapse trigger; with the kit host alone, every removed line is credited to the kit, so it can only confirm. The price is the second row: about twice the proof's work. The third row: the owner answers O1 on an attributed table, instead of on a total. Locks in that O1 is answered on a table both sides had a fair shot at. Flips if the callback and casts trace to one workforce signature a one-line change removes."
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, chosen: the proof builds both variants with equal effort, a kit host and a better workforce API host, beside the kit host alone. Decides it: whether the proof can refute kits at all, since a kit host alone credits every removed line to the kit. Price: about twice the proof&#x27;s work. Locks in that the owner&#x27;s O1 answer is tested on a table both sides had a fair shot at, and B&#x27;s sketch starts the workforce fix if it wins. Flips if the pain traces to one workforce signature; then B is a line, not a host."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -56,7 +56,7 @@
     <text class="t-lbl" x="32" y="169">KITS</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Yes: the collapse can fire</text>
+    <text class="t-b" x="248" y="161">Yes: it can reopen O1</text>
     <text class="t-s" x="248" y="179">B shows what a workforce fix removes</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">No: it can only confirm</text>
@@ -75,8 +75,8 @@
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">WHAT THE OWNER</text>
-    <text class="t-lbl" x="32" y="293">READS FOR O1</text>
+    <text class="t-lbl" x="32" y="280">WHAT TESTS</text>
+    <text class="t-lbl" x="32" y="293">O1&#x27;S ANSWER</text>
     <text class="mark plus" x="228" y="282">+</text>
     <text class="t-b" x="248" y="281">An attributed table</text>
     <text class="t-s" x="248" y="299">each line: both, A only, B only, neither</text>
@@ -89,7 +89,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">O1 answered on a table both sides had a fair shot at</text>
+    <text class="t-b" x="32" y="369">O1&#x27;s answer tested on a table fair to both sides</text>
     <text class="t-s" x="32" y="387">B's sketch starts the workforce fix if it wins</text>
   </g>
 
