@@ -10,6 +10,7 @@ import {
   clearDraft,
   useDraft,
   useFlow,
+  useHarnessLines,
   useSession,
   useClientData,
   useResourceCollectionList,
@@ -17,11 +18,12 @@ import {
   type FlowNavigatorLeaf,
   type FlowNavigatorLeafState,
   type FlowNavigatorSection,
+  type HarnessWaitingLine,
 } from "@flow-state-dev/react";
 import { createClient, type ClientFetch } from "@flow-state-dev/client";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { Button } from "@/components/ui/button";
-import { Menu, MessageSquareText, Package, Plus, RotateCcw, Users, Wrench, X } from "lucide-react";
+import { Menu, MessageSquareText, Package, Plus, RotateCcw, SquareIcon, Users, Wrench, X } from "lucide-react";
 
 import {
   Conversation,
@@ -31,6 +33,7 @@ import {
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
+  PromptInputButton,
   PromptInputTextarea,
   PromptInputSubmit,
   type PromptInputMessage,
@@ -407,18 +410,22 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     };
   }, [selectedArtifactMeta, artifactContent]);
 
+  // A line sent while a turn runs waits for it: `run` is `defer`, and the hook keeps one waiting
+  // turn on the server at a time, so lines run in the order typed while the view stays on the
+  // running answer. Mode, thinking style and features are read when the line is sent.
+  const lines = useHarnessLines(session, {
+    turnAction: "run",
+    input: (line) => ({ message: line, mode, thinkingStyle, features }),
+    sendOne: (line, _running, sender) => sender.turn(line).then(() => "turn"),
+  });
+
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
       const text = msg.text.trim();
       const sessionId = flow.activeSessionId;
       if (!sessionId || text.length === 0) return;
       try {
-        await session.sendAction("run", {
-          message: text,
-          mode,
-          thinkingStyle,
-          features,
-        }, { userMessage: text });
+        await lines.send(text);
         // The page may have moved to another session while it ran: the stored draft goes only if it is still this line.
         clearDraft(SESSION_DRAFT, sessionId, text);
         if (messageRef.current.trim() === text) setMessage("");
@@ -426,7 +433,7 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
         // Keep the persisted draft so a failed send can be retried.
       }
     },
-    [flow.activeSessionId, mode, thinkingStyle, features, session, setMessage]
+    [flow.activeSessionId, lines, setMessage]
   );
 
   const handleNewSession = useCallback(
@@ -527,7 +534,11 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
     [flow.activeSessionId, session]
   );
 
+  // Model, thinking and voice save or send through `sendAction`, which would leave the running
+  // answer's stream: they wait for the turn to end. The text box, mode, thinking style and
+  // features stay live, since a line sent now waits for the turn.
   const isDisabled = !session.canSendAction || !flow.activeSessionId || flow.isLoading;
+  const composerDisabled = !flow.activeSessionId || flow.isLoading;
   const conversationLoading = flow.isLoading || session.isLoading;
 
   const chatPanel = (
@@ -539,6 +550,8 @@ function KitchenSinkApp({ namedSessionId, pickedLive }: { namedSessionId: string
       thinkingEnabled={thinkingEnabled}
       features={features}
       isDisabled={isDisabled}
+      composerDisabled={composerDisabled}
+      waiting={lines.waiting}
       conversationLoading={conversationLoading}
       session={session}
       sendSignal={chatSignal}
@@ -826,7 +839,12 @@ interface ChatPanelProps {
   selectedModel: ModelId;
   thinkingEnabled: boolean;
   features: Features;
+  /** Locks the controls that save or send through `sendAction`: model, thinking, voice. */
   isDisabled: boolean;
+  /** Locks the text box, mode, thinking style and features: only with no session to send to. */
+  composerDisabled: boolean;
+  /** The lines waiting for the running turn, oldest first. */
+  waiting: readonly HarnessWaitingLine[];
   conversationLoading: boolean;
   session: ReturnType<typeof useSession>;
   /** The assistant conversation's "the user sent", heard by every drawing's feed. */
@@ -952,6 +970,21 @@ function ResumePrompt({ session }: { session: ReturnType<typeof useSession> }) {
   );
 }
 
+/** The lines waiting for the running turn, under the conversation: a waiting line has no item until its turn starts. */
+function WaitingLines({ lines }: { lines: readonly HarnessWaitingLine[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <ol className="mx-auto max-w-3xl space-y-1 px-3 pt-2 text-sm sm:px-4" aria-label="Waiting lines" data-testid="waiting-lines">
+      {lines.map((line) => (
+        <li key={line.key} className="flex items-baseline justify-end gap-2" data-testid="waiting-line">
+          <span className="min-w-0 truncate">{line.text ?? "A line sent earlier"}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">runs when this turn ends</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function ChatPanel({
   message,
   mode,
@@ -960,6 +993,8 @@ function ChatPanel({
   thinkingEnabled,
   features,
   isDisabled,
+  composerDisabled,
+  waiting,
   conversationLoading,
   session,
   sendSignal,
@@ -1009,8 +1044,9 @@ function ChatPanel({
       </Conversation>
 
       <div className="border-t">
+        <WaitingLines lines={waiting} />
         {!conversationLoading && session.items.length === 0 && (
-          <SuggestionRow mode={mode} onSuggestionClick={onSetMessage} disabled={isDisabled} />
+          <SuggestionRow mode={mode} onSuggestionClick={onSetMessage} disabled={composerDisabled} />
         )}
         <StuckRequestBanner session={session} />
         {/* Outside the conversation, deliberately: a child session's output is not
@@ -1022,11 +1058,11 @@ function ChatPanel({
         <ResumePrompt session={session} />
         <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
           <div className="mb-2 flex items-center gap-3">
-            <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
-            <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={isDisabled} />
+            <ModeSelector mode={mode} onModeChange={onSetMode} disabled={composerDisabled} />
+            <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={composerDisabled} />
             <ModelSelector value={selectedModel} onValueChange={onSelectedModelChange} disabled={isDisabled} />
             <ThinkingToggle value={thinkingEnabled} onValueChange={onThinkingEnabledChange} disabled={isDisabled} />
-            <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} />
+            <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={composerDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
           <PromptInput onSubmit={send}>
@@ -1040,13 +1076,22 @@ function ChatPanel({
               }
               value={message}
               onChange={(e) => onSetMessage(e.target.value)}
-              disabled={isDisabled}
+              disabled={composerDisabled}
             />
+            {/* While a turn runs, Stop and Send are two buttons: one that did both would stop the turn when a line was meant. */}
+            {session.isStreaming && (
+              <PromptInputButton
+                aria-label="Stop"
+                data-testid="turn-stop"
+                onClick={() => void (session.isStuck ? session.dismissRequest() : session.abortRequest())}
+              >
+                <SquareIcon className="size-4" />
+              </PromptInputButton>
+            )}
             <PromptInputSubmit
               className="mr-2 sm:mr-4"
-              status={session.isStreaming ? "streaming" : "ready"}
-              disabled={!session.isStreaming && (isDisabled || message.trim().length === 0)}
-              onStop={session.isStuck ? () => session.dismissRequest() : session.abortRequest}
+              status="ready"
+              disabled={composerDisabled || message.trim().length === 0}
             />
           </PromptInput>
         </div>

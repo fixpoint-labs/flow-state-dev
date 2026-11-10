@@ -225,6 +225,20 @@ describe("the teammates screen", () => {
     expect(await within(conversation()).findByText(/researcher answered: "Nov 12, per the plan doc\."/, {}, { timeout: 2000 })).toBeTruthy();
   });
 
+  it("answers a line you send while Lead answers at once, beside that answer, and never says it waits", async () => {
+    render(<App adapter={fast()} />);
+    await tell("Lead", "Meanwhile, draft the release note.");
+    await within(conversation()).findByRole("status");
+    // The composer says what a line sent now does.
+    expect(screen.getByText(/Lead is answering · a line you send now gets its own answer at once/)).toBeTruthy();
+    await tell("Lead", "Ask researcher for our launch date.");
+    // Its answer lands while the first turn still runs: that one's text hasn't.
+    await within(conversation()).findByText(/Asking researcher now/, {}, { timeout: 2000 });
+    expect(within(conversation()).queryByText("Drafted.")).toBeNull();
+    expect(screen.getByText(/Lead is answering · a line you send now gets its own answer at once/)).toBeTruthy();
+    expect(screen.queryByText(/waits for/)).toBeNull();
+  });
+
   it("counts what researcher did while you watched Lead as unread, and clears it when you open researcher", async () => {
     render(<App adapter={fast()} />);
     await tell("Lead", "Ask researcher for our launch date, and help me outline the post.");

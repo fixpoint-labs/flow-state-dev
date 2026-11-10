@@ -1,11 +1,11 @@
 /**
- * The lab's contract matrix: five scenarios, each run against the test double
+ * The lab's contract matrix: six scenarios, each run against the test double
  * (`test/fake-lab.ts`) and against the real adapter over the lab's own host
  * (`host.mts`, in process, with only the model scripted and every coding run
  * on harness-manager's scripted coder). Both columns share every assertion,
  * so a package change that alters what the adapter hands the screen fails
  * here, and a fake that draws what the real adapter can't fails too. The
- * Claude Code-style lab runs the same five scenarios on its own adapter.
+ * Claude Code-style lab runs the same scenarios on its own adapter.
  *
  * A stop is a task's Cancel, or Stop on the worker's turn. Its main worker
  * takes a task's result as a turn of its own, after the one that filed it.
@@ -18,13 +18,16 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { createClient, type SessionConnectionStatus } from "@flow-state-dev/client";
 import type { ModelResolver } from "@flow-state-dev/core/types";
 import { createInProcessFetch } from "@flow-state-dev/engine";
 import { pluggable, scriptedModels, waitFor } from "../../../test-support/contract";
 import { openTeammates } from "../../host.mts";
-import { createLabAdapter, type BoardTask, type ConversationView, type LabAdapter, type Unsubscribe } from "../../src/adapter";
+import { createLabAdapter, type BoardTask, type ConversationEntry, type ConversationView, type LabAdapter, type Unsubscribe } from "../../src/adapter";
+import { Entry } from "../../src/components/Entry";
 import { createFixtureLab } from "../fake-lab";
 
 const CHIEF = "teammates.chief-of-staff";
@@ -42,6 +45,8 @@ interface Target {
   refuseNextAbort(): void;
   /** The abort calls the adapter posted, by URL; the fake posts none, so it has none. */
   aborts?: string[];
+  /** How many of the conversation's turns the server holds `in_progress` now, from its request rows; the fake has none. */
+  turnsRunning?(sessionId: string): Promise<number>;
   close(): Promise<void>;
 }
 
@@ -60,6 +65,10 @@ const ASK = {
   meanwhile: "Meanwhile, draft the release note.",
   /** A turn that answers at once. */
   hello: "Hello there.",
+  /** More lines sent while a turn runs: like `meanwhile`, each one's turn works on until it is stopped. */
+  beside: ["Meanwhile, list the launch risks.", "Meanwhile, check the launch date."],
+  /** A line sent as a turn ends. */
+  next: "Add the beta numbers.",
 };
 
 /** The last user message of a step's messages: what this turn answers, not what an earlier one did. */
@@ -103,7 +112,7 @@ function labScript(failing: { next: boolean }): ModelResolver {
           const module = step === 0 ? "A" : "B";
           return { call: { name: "createTask", args: { assignee: CODER, title: `Fix module ${module}`, goal: `Fix the typo in module ${module}.` } } };
         }
-        if (asked.includes(ASK.stopMe) || asked.includes(ASK.meanwhile)) {
+        if (asked.includes(ASK.stopMe) || asked.includes("Meanwhile,")) {
           await waitFor(30_000, signal);
           if (signal?.aborted) throw new DOMException("The turn was stopped.", "AbortError");
           return { text: "Written up." };
@@ -158,7 +167,8 @@ async function realTarget(): Promise<Target> {
     }
     return inProcess(input, init);
   });
-  const lab = createLabAdapter(createClient({ userId: "you", baseUrl: "", fetcher: plug.fetcher as never }));
+  const client = createClient({ userId: "you", baseUrl: "", fetcher: plug.fetcher as never });
+  const lab = createLabAdapter(client);
   return {
     lab,
     failNextTurn: () => (failing.next = true),
@@ -166,6 +176,8 @@ async function realTarget(): Promise<Target> {
     restore: () => plug.restore(),
     refuseNextAbort: () => (refuse.next = true),
     aborts,
+    turnsRunning: async (sessionId) =>
+      (await client.sessions.requests(sessionId, { limit: 20 })).filter((r) => r.actionName === "respond" && r.status === "in_progress").length,
     close: async () => {
       plug.restore();
       await (flowState as unknown as { dispose?: () => Promise<void> }).dispose?.();
@@ -176,8 +188,6 @@ async function realTarget(): Promise<Target> {
 
 /** Assertions the real adapter can't meet yet, by column, with the issue that closes each. */
 const GAPS: Record<string, { real?: string; fake?: string }> = {
-  // The fake holds a line sent mid-turn until the turn ends; the server starts its answer at once.
-  "stops only the turns answering at the press: a line sent after it runs on": { fake: "FIX-2376" },
 };
 
 const stops: Unsubscribe[] = [];
@@ -227,6 +237,48 @@ const conversation = (lab: LabAdapter, id: string) => follow<ConversationView>((
 const tasks = (lab: LabAdapter, id: string) => follow<BoardTask[]>((on) => lab.watchTasks(id, on));
 const connection = (lab: LabAdapter, id: string) => follow<SessionConnectionStatus>((on) => lab.watchConnection(id, on));
 
+/** Reads `read` every 100 ms until `check` holds for it, or fails after `ms`. */
+async function readUntil<T>(read: () => Promise<T>, check: (value: T) => boolean, ms = 15_000): Promise<T> {
+  const end = Date.now() + ms;
+  let last = await read();
+  while (!check(last)) {
+    if (Date.now() > end) throw new Error(`condition never held; last read: ${JSON.stringify(last)}`);
+    await waitFor(100);
+    last = await read();
+  }
+  return last;
+}
+
+/** Presses Stop until the conversation reads nothing running. */
+async function stopAll(lab: LabAdapter, id: string, view: Followed<ConversationView>) {
+  for (let press = 0; press < 10 && view.latest()!.running; press++) {
+    await lab.interrupt(id);
+    await waitFor(1_000);
+  }
+  await view.until((v) => !v.running, 30_000);
+}
+
+/** What a user line may carry: anything more is a state the screen could draw. */
+const USER_LINE_KEYS = new Set(["kind", "id", "text"]);
+
+/** The entries after your line `text`: what its turn, and any later one, wrote. */
+const afterLine = (view: ConversationView, text: string) => {
+  const at = view.entries.findIndex((e) => e.kind === "user" && e.text === text);
+  return at < 0 ? [] : view.entries.slice(at + 1);
+};
+
+/**
+ * A line of yours says only what you typed: it carries no field past its text, and the conversation
+ * draws nothing more for it, such as a mark that it waits for the worker's answer.
+ */
+function expectPlainLine(view: ConversationView, text: string) {
+  const line = view.entries.find((e) => e.kind === "user" && e.text === text) as ConversationEntry | undefined;
+  expect(line, `the line "${text}" is in the conversation`).toBeDefined();
+  expect(Object.keys(line!).filter((key) => !USER_LINE_KEYS.has(key))).toEqual([]);
+  const entry = createElement(Entry, { entry: line!, workerName: "Lead", nameOf: (id: string) => id, lookOf: () => ({ icon: "★", color: "amber" as const }) });
+  expect(renderToStaticMarkup(entry).replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")).toBe(text);
+}
+
 describe.each([
   ["fake", async (asks: boolean) => fakeTarget(asks)],
   ["real", async () => realTarget()],
@@ -258,6 +310,45 @@ describe.each([
       await lab.answerOpenHold(id, card.taskId, { verdict: "accepted" });
       await view.until((v) => v.entries.some((e) => e.kind === "result" && e.taskId === card.taskId && e.from === card.to && e.failed !== true && e.text.length > 0));
       await board.until((r) => r.some((t) => t.id === card.taskId && t.status === "done"));
+    });
+  });
+
+  describe("a line sent mid-turn", () => {
+    check("starts its own turn at once, beside the running one, and nothing says it waits", async () => {
+      const { lab, id } = await chief();
+      const view = conversation(lab, id);
+      // Every view the conversation draws, not only the latest: a mark drawn for a moment counts.
+      const drawn: ConversationView[] = [];
+      stops.push(lab.watchConversation(id, (v) => drawn.push(v)));
+      await lab.send(id, ASK.meanwhile);
+      await view.until((v) => v.running && v.entries.some((e) => e.kind === "user" && e.text === ASK.meanwhile));
+      for (const line of ASK.beside) await lab.send(id, line);
+      // Both lines are in the conversation while it reads running.
+      await view.until((v) => v.running && ASK.beside.every((line) => v.entries.some((e) => e.kind === "user" && e.text === line)));
+      if (target!.turnsRunning !== undefined) {
+        // On the server all three turns run at once: none waits to start.
+        await readUntil(() => target!.turnsRunning!(id), (count) => count === 3);
+        // Then past the conversation's next read of the requests, so it has drawn all three running.
+        await waitFor(2_000);
+        expect(view.latest()!.running).toBe(true);
+      }
+      // No line was ever drawn with a mark, in any view.
+      for (const v of drawn) for (const e of v.entries) if (e.kind === "user") expectPlainLine(v, e.text);
+      // Stopped, so the host can close. A Stop stops the turns the view had read as running at the
+      // press, and its request read can trail the sends, so Stop is pressed until none runs.
+      await stopAll(lab, id, view);
+    });
+
+    check("a line sent as a turn ends is answered too, and nothing says it waited", async () => {
+      const { lab, id } = await chief();
+      const view = conversation(lab, id);
+      await lab.send(id, ASK.hello);
+      // The turn's text is in: it is ending.
+      await view.until((v) => afterLine(v, ASK.hello).some((e) => e.kind === "assistant"), 30_000);
+      await lab.send(id, ASK.next);
+      const ended = await view.until((v) => !v.running && afterLine(v, ASK.next).some((e) => e.kind === "assistant"), 30_000);
+      expectPlainLine(ended, ASK.hello);
+      expectPlainLine(ended, ASK.next);
     });
   });
 

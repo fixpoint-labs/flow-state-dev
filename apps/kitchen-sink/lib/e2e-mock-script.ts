@@ -90,6 +90,19 @@ const SCENARIO_SCRIPTS: ScenarioScript[] = [
     match: (turn) => turn.includes("[scenario:fail-once]"),
     steps: [{ text: "Answered on the retry." }],
   },
+  {
+    // A turn held past `queue`'s 30-second wait, so lines sent during it
+    // must wait longer than a `queue` action would let them.
+    match: (turn) => turn.includes("[scenario:held-turn]"),
+    holdMs: 35_000,
+    steps: [{ text: "[answer:held] The held turn is done." }],
+  },
+  {
+    // A line's answer names the line (`[line:<name>]`), so a check reads which
+    // line each answer is for, and in what order they came.
+    match: (turn) => turn.includes("[scenario:line]"),
+    steps: (turn) => [{ text: `[answer:${/\[line:([a-z0-9-]+)\]/.exec(turn)?.[1] ?? "none"}] Answered.` }],
+  },
 ];
 
 /**
@@ -266,6 +279,7 @@ export const agentWorkerMock = buildScenarioMock("agent-answer", AGENT_WORKER_SC
 
 /** The scripts whose scenarios may hold, by the generator they answer for. */
 const SCRIPTS_BY_GENERATOR: Record<string, ScenarioScript[]> = {
+  "assistant-generator": SCENARIO_SCRIPTS,
   "agent-answer": AGENT_WORKER_SCRIPTS,
   "agent-answer-with-activate-tool": AGENT_WORKER_SCRIPTS,
 };

@@ -20,6 +20,7 @@ export {
 export {
   useHarnessLines,
   type HarnessLinesView,
+  type HarnessWaitingLine,
   type UseHarnessLinesOptions
 } from "./hooks/useHarnessLines";
 
