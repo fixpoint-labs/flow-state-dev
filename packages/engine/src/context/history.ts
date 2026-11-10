@@ -21,6 +21,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type {
   Content,
+  FileContent,
   ItemVisibility,
   MessageItem,
   OutputItem,
@@ -35,6 +36,7 @@ import {
   failedToolResultText,
 } from "@flow-state-dev/core/models";
 import type { RequestRecord } from "../stores/types";
+import { budgetHistoryFiles, resolveHistoryFiles, type ReadAttachment } from "./history-files";
 
 /**
  * Set of item types that enter LLM context.
@@ -57,9 +59,23 @@ function omittedToolResultText(toolName: string, bytes: number | null): string {
   return `[The result of ${toolName} (${size}) was too large to keep in the conversation history.]`;
 }
 
+/** A user line's file as the history carries it: the reference and what names it, nothing else. */
+function fileReference(file: FileContent): FileContent {
+  return {
+    type: "file",
+    mediaType: file.mediaType,
+    data: file.data,
+    ...(file.filename !== undefined ? { filename: file.filename } : {})
+  };
+}
+
 // FIX-413.
 /**
  * Converts a persisted OutputItem into an LLM-ready message.
+ *
+ * A user line with files becomes one message whose content is a text part,
+ * then a `file` part per file in reference form. Those parts are not yet what
+ * a model takes: `loadLLMHistory` budgets and resolves them.
  *
  * Items with `history: false` (resolved via `resolveItemVisibility`) are
  * excluded. Returns an empty array for item types that don't map to
@@ -79,6 +95,17 @@ export function itemToLLMMessages(item: RuntimeItem, allItems: readonly RuntimeI
       .filter((c) => c.type === "output_text")
       .map((c) => (c as { text: string }).text)
       .join("");
+
+    // A person's files ride on their line, after the text, in reference form;
+    // `loadLLMHistory` budgets them and reads their bytes (`history-files.ts`).
+    const files =
+      msg.role === "user"
+        ? (msg.content ?? []).filter((c): c is FileContent => c.type === "file").map(fileReference)
+        : [];
+
+    if (files.length > 0) {
+      return [{ role: msg.role, content: [...(text.length > 0 ? [{ type: "text", text }] : []), ...files] }];
+    }
 
     if (text.length === 0) {
       return [];
@@ -340,7 +367,8 @@ export async function loadLLMHistory(
   resolveModelId: () => string,
   query?: ItemQuery,
   readLiveItems?: () => RuntimeItem[],
-  readStartedAtMs?: (requestId: string) => Promise<number | undefined>
+  readStartedAtMs?: (requestId: string) => Promise<number | undefined>,
+  readAttachment?: ReadAttachment
 ): Promise<LLMMessage[]> {
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
@@ -372,7 +400,8 @@ export async function loadLLMHistory(
   // Defense-in-depth: with turn-aligned slicing orphans should be
   // structurally unreachable in normal operation, but keep the trim for
   // edge data states (e.g., a request whose items begin mid-tool-pair).
-  return trimOrphanedToolMessages(messages);
+  // The turns were chosen on references; only the files that go are read.
+  return resolveHistoryFiles(budgetHistoryFiles(trimOrphanedToolMessages(messages)), readAttachment);
 }
 
 /**
@@ -509,6 +538,12 @@ export function createSessionItemViews(
      * or not, in the window or not, the running request included.
      */
     readStartedAtMs?: (requestId: string) => Promise<number | undefined>;
+    /**
+     * Reads a file on a person's line for the model, through the one resolver
+     * bound to this session. Without it, a file is named in the history, never
+     * sent as a reference.
+     */
+    readAttachment?: ReadAttachment;
   }
 ): SessionItemViews {
   // Compute once — priorItems is immutable for the request lifetime.
@@ -573,7 +608,8 @@ export function createSessionItemViews(
         options.resolveModelId,
         query,
         options.readLiveItems,
-        options.readStartedAtMs
+        options.readStartedAtMs,
+        options.readAttachment
       ),
     selectForContext: (query) => select(query),
     turns: (query) => options.readTurns?.(query) ?? Promise.resolve([]),

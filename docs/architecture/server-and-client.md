@@ -204,7 +204,29 @@ flow authenticates its callers, so the uploader is the user its sends resolve.
 ```ts
 const file = await fsd.flow("hello-chat").upload({ data: blob, filename: "plan.pdf" });
 // file.data === "fsd-blob:<id>"
+await fsd.flow("hello-chat").send("chat", { message: text }, { sessionId, attachments: [file] });
+// React: sendAction("chat", { message: text }, { userMessage: text, attachments: [file] })
 ```
+
+The action route's parse step checks the files once, for every flow, before it
+claims them: the action must have a `userMessage`, since files go on the
+person's line (`attachments_not_accepted` otherwise), each file must name the
+type it was uploaded as, and the message must be within
+`ATTACHMENT_LIMITS` (`attachmentLimitRefusal` in
+`@flow-state-dev/contracts/attachments`: `attachment_limit`,
+`attachment_type_refused`). The run then writes a `file` part per file after
+the text on the user line, in reference form, records them on the request, and
+shows them to blocks as `ctx.request.attachments`; a flow's input schema never
+sees them.
+
+A model call reaches the bytes through the session's history
+(`engine/src/context/history-files.ts`): the turns are chosen on references,
+then, counting back from the newest line, files up to one message's limits are
+read through `resolveAttachment` and sent inline as image and file parts. An
+older file is named on its turn as `[image: shot.png, not re-sent]`, and one
+that can no longer be read as `no longer available`; a reference never reaches
+a provider. Re-sent files are billed as input on every call; prompt caching is
+what keeps that cheap.
 
 ### Sessions
 

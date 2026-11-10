@@ -1,12 +1,14 @@
 /**
  * The action route's half of attachments: the files a message names
- * in `attachments` are claimed into the turn's session before any block runs,
+ * in `attachments` are checked against the one limits set and the action's
+ * user line, then claimed into the turn's session before any block runs,
  * after the session check, and handed back to their uploader if the send is
  * then refused. A reference that is not the caller's, or that the caller
  * already sent with another conversation, is refused by name and nothing is
  * claimed.
  */
 import { randomUUID } from "node:crypto";
+import { attachmentLimitRefusal } from "@flow-state-dev/core/attachments";
 import type { FileContent } from "@flow-state-dev/core/items";
 import { claimAttachments, confirmAttachments, releaseAttachments, sessionBlobOwner } from "../blobs/attachments";
 import type { BlobUploader } from "../blobs/types";
@@ -21,12 +23,26 @@ import { jsonResponse, loadTenantSession, unknownSessionResponse } from "./route
  */
 export type RequestAttachmentClaim =
   | { refused: Response }
-  | { confirm: () => Promise<void>; release: () => Promise<void> };
+  | {
+      /** The files the request carries, as the run gets them: each the reference and its name, nothing else. */
+      attachments: FileContent[];
+      confirm: () => Promise<void>;
+      release: () => Promise<void>;
+    };
 
-const NOTHING_CLAIMED: RequestAttachmentClaim = { confirm: async () => undefined, release: async () => undefined };
+const NOTHING_CLAIMED: RequestAttachmentClaim = {
+  attachments: [],
+  confirm: async () => undefined,
+  release: async () => undefined
+};
 
 /**
- * Claim the files a request body's `attachments` names into its session.
+ * Check the files a request body's `attachments` names, then claim them into
+ * its session. This is the request's parse step for files, the one place
+ * every send passes: the action must have a user line to put them on
+ * (`userMessage`), and the message must be within the one limits set
+ * (`attachmentLimitRefusal`). Each refusal is by name, before anything is
+ * claimed or runs.
  *
  * The session check here is the one a send gets at admission, made early so
  * a file is never claimed into someone else's session: an existing session
@@ -42,6 +58,8 @@ export async function claimRequestAttachments(
     sessionId: string | undefined;
     tenantId: string | undefined;
     uploader: BlobUploader;
+    /** Whether the action writes a user line (`userMessage`), the only place files go. */
+    takesFiles: boolean;
   }
 ): Promise<RequestAttachmentClaim> {
   if (field === undefined || field === null) return NOTHING_CLAIMED;
@@ -52,7 +70,46 @@ export async function claimRequestAttachments(
   for (const [index, entry] of field.entries()) {
     if (!isFileContent(entry)) return { refused: invalid(index) };
   }
-  const attachments = field as FileContent[];
+  // Only what names the file: a caller's `ephemeral`, say, would drop it from
+  // the stored line.
+  const attachments = (field as FileContent[]).map(
+    (file): FileContent => ({
+      type: "file",
+      mediaType: file.mediaType,
+      data: file.data,
+      ...(typeof file.filename === "string" ? { filename: file.filename } : {})
+    })
+  );
+
+  if (!options.takesFiles) {
+    return {
+      refused: jsonResponse(400, {
+        error: "attachments_not_accepted",
+        message: "This action writes no user message, so it takes no files."
+      })
+    };
+  }
+  const overLimit = attachmentLimitRefusal(attachments);
+  if (overLimit !== undefined) {
+    if (overLimit.reason === "type") {
+      return {
+        refused: jsonResponse(400, {
+          error: "attachment_type_refused",
+          index: overLimit.index,
+          message: "Attachments may be PNG, JPEG, WebP or GIF images, or PDFs."
+        })
+      };
+    }
+    const kind = overLimit.reason === "too-many-images" ? "images" : "documents";
+    return {
+      refused: jsonResponse(400, {
+        error: "attachment_limit",
+        index: overLimit.index,
+        limit: overLimit.limit,
+        message: `A message can carry at most ${overLimit.limit} ${kind}.`
+      })
+    };
+  }
 
   const blobs = options.stores.blobs;
   if (blobs === undefined) {
@@ -99,6 +156,7 @@ export async function claimRequestAttachments(
   }
   const ids = outcome.held;
   return {
+    attachments,
     confirm: () => confirmAttachments(blobs, ids, owner, send),
     release: () => releaseAttachments(blobs, ids, owner, send)
   };

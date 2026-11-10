@@ -38,6 +38,7 @@ import type {
   ComponentItem,
   ContainerItem,
   Content,
+  FileContent,
   ItemProvenance,
   MessageItem,
   OutputItem,
@@ -168,6 +169,7 @@ import {
   LLM_AUDIENCE_TYPES,
 } from "./history";
 import { shouldPersistScopeChange, wrapStateOpsWithEmit } from "./scope-emit";
+import { resolveAttachment, sessionBlobOwner } from "../blobs/attachments";
 import { noticePathFor, publishScopeChange } from "../bus/scope-changes";
 import {
   createScopeResourceRegistry,
@@ -3011,6 +3013,9 @@ export async function createExecutionContext<
       // here: a retry, a resume or a queued run is the same request only if
       // it reads the same value.
       incarnation: resolveRequestIncarnation(requestRef.current),
+      // From the record, as the incarnation is: a resumed or queued run of
+      // this request sees the files the parse step checked.
+      attachments: requestRef.current.attachments ?? [],
       get tokenUsage() {
         return computeTokenUsage();
       },
@@ -3111,6 +3116,17 @@ export async function createExecutionContext<
       },
       items: createSessionItemViews(priorItems, settledPriorRequests, {
         readTurns,
+        // A person's files reach the model through the one resolver, for this
+        // session and this person only.
+        ...(stores.blobs !== undefined
+          ? {
+              readAttachment: (file: FileContent) =>
+                resolveAttachment(stores.blobs!, file, {
+                  owner: sessionBlobOwner(sessionKey),
+                  user: { userId, orgId: resolvedOrgId }
+                })
+            }
+          : {}),
         // A summary's mark can name the request running now (a waiting turn
         // that resumed), which `turns()` leaves out: read its start directly.
         readStartedAtMs: async (id) => {

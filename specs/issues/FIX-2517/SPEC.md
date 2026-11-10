@@ -110,7 +110,7 @@ The limits are checked once, at the parse step, so no path past it can skip them
 | The debt | |
 |---|---|
 | **Removes** | Nothing in the repo: no flow here hand-rolls base64 input (searched `base64`, `readAsDataURL`, `data:image` across `apps/` and `labs/`). An adopter's own workaround stops being needed |
-| **Adds** | A second channel into a request beside the input, permanent by design (epic D3). Re-sent bytes on later turns ([D1](DECISIONS.md#d1)), paid by FIX-891's upload-once |
+| **Adds** | A second channel into a request beside the input, permanent by design (epic D3). Re-sent bytes on later turns ([D1](DECISIONS.md#d1)), billed as input each call; prompt caching, on by default, is what cuts that cost |
 | **Leaves** | Assistant-side files, FIX-137's wider scope |
 
 **Net: up, by one field.** Every app's send gains it; no flow changes.
