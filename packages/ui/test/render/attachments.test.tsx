@@ -293,6 +293,20 @@ describe("useAttachments in an app's own composer", () => {
   });
 });
 
+describe("a blank accept", () => {
+  // <input accept=""> offers every type, so the composer must not then refuse what the picker allowed;
+  // the contract's own types (attachmentKind) still decide what is supported.
+  it("takes a supported file, as the picker it configures does", async () => {
+    const client = {
+      upload: vi.fn(async (): Promise<FileContent> => ({ type: "file", mediaType: "image/png", filename: "a.png", data: "fsd-blob:b_blankacc12" })),
+    } satisfies AttachmentUploader;
+    const { result } = renderHook(() => useAttachments({ client, accept: " ", prepare: async (f) => f }));
+    await act(async () => result.current.add([file("a.png", "image/png")]));
+    expect(result.current.refusals).toEqual([]);
+    expect(client.upload).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("a send's batch", () => {
   /** An uploader whose answer for each file waits on that file's own gate. */
   function gated(refused: string[] = []) {

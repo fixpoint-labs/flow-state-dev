@@ -170,8 +170,9 @@ export async function downscaleImage(file: File, maxEdge = ATTACHMENT_IMAGE_MAX_
   }
 }
 
-/** Whether `type` matches an `accept` list (`image/*`, `image/png`, …). */
+/** Whether `type` matches an `accept` list (`image/*`, `image/png`, …). A blank list, like `<input accept="">`, takes any type. */
 function accepts(accept: string, type: string): boolean {
+  if (accept.trim() === "") return true;
   return accept
     .split(",")
     .map((s) => s.trim().toLowerCase())
